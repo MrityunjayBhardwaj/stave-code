@@ -48,7 +48,6 @@ Source: `packages/editor/src/toolbar/Toolbar.tsx` (gap: 8, padding: 12px), `pack
 Exceptions:
 - Toolbar height: 40px (fixed, from ROADMAP.md spec)
 - Decoration `border-radius`: 2px (sub-4 exception; cosmetic rounding on character-level decoration)
-- Toolbar button padding: `4px 10px` (existing pattern — 4px is on scale, 10px is off-scale but already established)
 
 ---
 
