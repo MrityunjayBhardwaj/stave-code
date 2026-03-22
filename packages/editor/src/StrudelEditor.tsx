@@ -15,12 +15,14 @@ import { useHighlighting } from './monaco/useHighlighting'
 import type { HapStream } from './engine/HapStream'
 import { VizPanel } from './visualizers/VizPanel'
 import { VizPicker } from './visualizers/VizPicker'
-import type { VizMode, SketchFactory } from './visualizers/types'
+import type { VizMode, SketchFactory, PatternScheduler } from './visualizers/types'
 import { PianorollSketch } from './visualizers/sketches/PianorollSketch'
 import { ScopeSketch } from './visualizers/sketches/ScopeSketch'
+import { FscopeSketch } from './visualizers/sketches/FscopeSketch'
 import { SpectrumSketch } from './visualizers/sketches/SpectrumSketch'
 import { SpiralSketch } from './visualizers/sketches/SpiralSketch'
 import { PitchwheelSketch } from './visualizers/sketches/PitchwheelSketch'
+import { WordfallSketch } from './visualizers/sketches/WordfallSketch'
 import { addInlineViewZones } from './visualizers/viewZones'
 
 export type { StrudelTheme }
@@ -101,6 +103,7 @@ export function StrudelEditor({
     (_visualizer !== 'off' ? _visualizer : 'pianoroll') as VizMode
   )
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
+  const [patternScheduler, setPatternScheduler] = useState<PatternScheduler | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<StrudelEngine | null>(null)
@@ -133,7 +136,9 @@ export function StrudelEditor({
   // Sketch factory map — stable via useMemo
   const SKETCH_MAP: Record<VizMode, SketchFactory> = useMemo(() => ({
     pianoroll: PianorollSketch,
+    wordfall: WordfallSketch,
     scope: ScopeSketch,
+    fscope: FscopeSketch,
     spectrum: SpectrumSketch,
     spiral: SpiralSketch,
     pitchwheel: PitchwheelSketch,
@@ -197,6 +202,7 @@ export function StrudelEditor({
       if (denominator > 0) setBpm(Math.round((numerator / denominator) * 60))
     }
 
+    setPatternScheduler(engine.getPatternScheduler())
     engine.play()
     setIsPlaying(true)
     onPlay?.()
@@ -332,9 +338,11 @@ export function StrudelEditor({
 
       {_visualizer !== 'off' && (
         <VizPanel
+          key={activeViz}
           vizHeight={vizHeight}
           hapStream={hapStream}
           analyser={analyser}
+          scheduler={patternScheduler}
           sketchFactory={currentSketch}
         />
       )}
