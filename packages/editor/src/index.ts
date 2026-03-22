@@ -15,10 +15,16 @@ export { noteToMidi } from './engine/noteToMidi'
 export type { StrudelTheme } from './theme/tokens'
 export { DARK_THEME_TOKENS, LIGHT_THEME_TOKENS, applyTheme } from './theme/tokens'
 
-// Visualizers
+// Visualizers — new VizRenderer interface family
+export type { VizRenderer, VizRefs, VizRendererSource, VizDescriptor, PatternScheduler } from './visualizers/types'
+export { P5VizRenderer } from './visualizers/renderers/P5VizRenderer'
+export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
+
+// Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'
 export { VizPicker } from './visualizers/VizPicker'
-export type { SketchFactory, VizMode, PatternScheduler } from './visualizers/types'
+
+// Visualizers — individual sketches (for advanced use: manual P5VizRenderer wrapping)
 export { PianorollSketch } from './visualizers/sketches/PianorollSketch'
 export { ScopeSketch } from './visualizers/sketches/ScopeSketch'
 export { SpectrumSketch } from './visualizers/sketches/SpectrumSketch'

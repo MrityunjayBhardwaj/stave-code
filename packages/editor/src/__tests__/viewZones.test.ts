@@ -6,6 +6,7 @@ vi.mock('p5', () => {
   return {
     default: vi.fn().mockImplementation(() => ({
       remove: vi.fn(),
+      resizeCanvas: vi.fn(),
     })),
   }
 })
@@ -13,6 +14,14 @@ vi.mock('p5', () => {
 // Mock PianorollSketch to return a no-op factory
 vi.mock('../visualizers/sketches/PianorollSketch', () => ({
   PianorollSketch: vi.fn(() => vi.fn()),
+}))
+
+// Mock mountVizRenderer to avoid DOM/canvas side-effects
+vi.mock('../visualizers/mountVizRenderer', () => ({
+  mountVizRenderer: vi.fn(() => ({
+    renderer: { mount: vi.fn(), resize: vi.fn(), pause: vi.fn(), resume: vi.fn(), destroy: vi.fn() },
+    disconnect: vi.fn(),
+  })),
 }))
 
 function makeEditor(code: string) {
@@ -33,7 +42,8 @@ function makeEditor(code: string) {
     }),
   }
 
-  const changeViewZones = vi.fn((cb: (accessor: typeof accessor) => void) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const changeViewZones = vi.fn((cb: (accessor: any) => void) => {
     cb(accessor)
   })
 

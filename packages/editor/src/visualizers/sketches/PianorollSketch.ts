@@ -11,6 +11,83 @@ const INACTIVE_COLOR = '#75baff'  // Strudel foreground blue
 const ACTIVE_COLOR = '#FFCA28'    // Strudel active yellow
 const PLAYHEAD_COLOR = 'rgba(255,255,255,0.5)'
 
+// --- Exported utility constants and pure functions (used by tests and inline views) ---
+
+/** Total seconds visible in the pianoroll time window. */
+export const WINDOW_SECONDS = 6
+
+/** Minimum MIDI note displayed on Y axis. */
+export const MIDI_MIN = 24
+
+/** Maximum MIDI note displayed on Y axis. */
+export const MIDI_MAX = 96
+
+/**
+ * Maps an audio timestamp to a canvas X coordinate.
+ * audioTime == now → x = canvasWidth (right edge / playhead)
+ * audioTime == now - WINDOW_SECONDS → x = 0 (left edge)
+ */
+export function getNoteX(audioTime: number, now: number, canvasWidth: number): number {
+  return ((audioTime - (now - WINDOW_SECONDS)) / WINDOW_SECONDS) * canvasWidth
+}
+
+/**
+ * Maps a MIDI note number to a canvas Y coordinate.
+ * MIDI_MAX → y = 0 (top), MIDI_MIN → y = pitchAreaHeight (bottom)
+ */
+export function getNoteY(midi: number, pitchAreaHeight: number): number {
+  return ((MIDI_MAX - midi) / (MIDI_MAX - MIDI_MIN)) * pitchAreaHeight
+}
+
+/** Drum sound name prefixes used for color classification. */
+const DRUM_PREFIXES = ['bd', 'sd', 'hh', 'rim', 'cp', 'cy', 'lt', 'mt', 'ht', 'oh', 'cl']
+
+/** Returns true if the sound name matches a known drum/percussion prefix. */
+export function isDrumSound(s: string): boolean {
+  return DRUM_PREFIXES.some((prefix) => s === prefix || s.startsWith(prefix) && /\d/.test(s[prefix.length] ?? ''))
+}
+
+/** Default drum slot ordering for Y layout. */
+const DRUM_SLOTS: Record<string, number> = { bd: 0, sd: 1, hh: 2, oh: 3 }
+const DRUM_FALLBACK_SLOT = 4
+
+/** Returns the drum slot index for a given drum sound name. */
+export function getDrumSlot(s: string): number {
+  for (const [prefix, slot] of Object.entries(DRUM_SLOTS)) {
+    if (s === prefix || s.startsWith(prefix)) return slot
+  }
+  return DRUM_FALLBACK_SLOT
+}
+
+/** Default color tokens for sound categories. */
+const DEFAULT_COLOR_TOKENS: Record<string, string> = {
+  '--stem-drums': '#f97316',
+  '--stem-bass': '#06b6d4',
+  '--stem-pad': '#10b981',
+  '--stem-accent': '#8b5cf6',
+}
+
+/** Bass sound name prefixes. */
+const BASS_PREFIXES = ['bass']
+/** Pad sound name prefixes. */
+const PAD_PREFIXES = ['pad']
+
+/**
+ * Resolves the display color for a hap value.
+ * Priority: hap.color → sound-category color → accent fallback.
+ */
+export function getColor(
+  value: { color: string | null; s: string | null },
+  tokens: Record<string, string> = DEFAULT_COLOR_TOKENS
+): string {
+  if (value.color) return value.color
+  const s = value.s ?? ''
+  if (isDrumSound(s)) return tokens['--stem-drums'] ?? DEFAULT_COLOR_TOKENS['--stem-drums']
+  if (BASS_PREFIXES.some((p) => s.startsWith(p))) return tokens['--stem-bass'] ?? DEFAULT_COLOR_TOKENS['--stem-bass']
+  if (PAD_PREFIXES.some((p) => s.startsWith(p))) return tokens['--stem-pad'] ?? DEFAULT_COLOR_TOKENS['--stem-pad']
+  return tokens['--stem-accent'] ?? DEFAULT_COLOR_TOKENS['--stem-accent']
+}
+
 /** Mirrors Strudel's getValue() — returns MIDI number for pitched notes, "_s" string for sounds. */
 function getValue(hap: any): number | string {
   const val = hap.value

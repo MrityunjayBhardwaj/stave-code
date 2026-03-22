@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import React from 'react'
 
-// Mock useP5Sketch so it doesn't try to instantiate p5 in tests
-vi.mock('../visualizers/useP5Sketch', () => ({
-  useP5Sketch: vi.fn(),
+// Mock useVizRenderer so it doesn't try to instantiate renderers in tests
+vi.mock('../visualizers/useVizRenderer', () => ({
+  useVizRenderer: vi.fn(),
 }))
 
 // Mock p5 to prevent import errors
@@ -17,25 +17,27 @@ describe('VizPanel', () => {
     vi.clearAllMocks()
   })
 
+  const mockSource = vi.fn()
+
   it('renders a div with data-testid="viz-panel"', () => {
-    const sketchFactory = vi.fn()
     render(
       <VizPanel
-        sketchFactory={sketchFactory}
+        source={mockSource}
         hapStream={null}
         analyser={null}
+        scheduler={null}
       />
     )
     expect(screen.getByTestId('viz-panel')).toBeTruthy()
   })
 
   it('has default height of 200px', () => {
-    const sketchFactory = vi.fn()
     render(
       <VizPanel
-        sketchFactory={sketchFactory}
+        source={mockSource}
         hapStream={null}
         analyser={null}
+        scheduler={null}
       />
     )
     const panel = screen.getByTestId('viz-panel')
@@ -43,12 +45,12 @@ describe('VizPanel', () => {
   })
 
   it('respects custom vizHeight prop', () => {
-    const sketchFactory = vi.fn()
     render(
       <VizPanel
-        sketchFactory={sketchFactory}
+        source={mockSource}
         hapStream={null}
         analyser={null}
+        scheduler={null}
         vizHeight={300}
       />
     )
@@ -57,12 +59,12 @@ describe('VizPanel', () => {
   })
 
   it('has background var(--background)', () => {
-    const sketchFactory = vi.fn()
     render(
       <VizPanel
-        sketchFactory={sketchFactory}
+        source={mockSource}
         hapStream={null}
         analyser={null}
+        scheduler={null}
       />
     )
     const panel = screen.getByTestId('viz-panel')
@@ -70,12 +72,12 @@ describe('VizPanel', () => {
   })
 
   it('has borderTop 1px solid var(--border)', () => {
-    const sketchFactory = vi.fn()
     render(
       <VizPanel
-        sketchFactory={sketchFactory}
+        source={mockSource}
         hapStream={null}
         analyser={null}
+        scheduler={null}
       />
     )
     const panel = screen.getByTestId('viz-panel')
@@ -83,12 +85,12 @@ describe('VizPanel', () => {
   })
 
   it('has overflow hidden', () => {
-    const sketchFactory = vi.fn()
     render(
       <VizPanel
-        sketchFactory={sketchFactory}
+        source={mockSource}
         hapStream={null}
         analyser={null}
+        scheduler={null}
       />
     )
     const panel = screen.getByTestId('viz-panel')
