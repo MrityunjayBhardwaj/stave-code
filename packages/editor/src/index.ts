@@ -18,7 +18,7 @@ export { DARK_THEME_TOKENS, LIGHT_THEME_TOKENS, applyTheme } from './theme/token
 // Visualizers
 export { VizPanel } from './visualizers/VizPanel'
 export { VizPicker } from './visualizers/VizPicker'
-export type { SketchFactory, VizMode } from './visualizers/types'
+export type { SketchFactory, VizMode, PatternScheduler } from './visualizers/types'
 export { PianorollSketch } from './visualizers/sketches/PianorollSketch'
 export { ScopeSketch } from './visualizers/sketches/ScopeSketch'
 export { SpectrumSketch } from './visualizers/sketches/SpectrumSketch'
