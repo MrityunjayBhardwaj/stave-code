@@ -121,9 +121,9 @@ Plans:
   4. Zone appears after the LAST LINE of the pattern block (not after the `$:` line)
   5. InlineZoneHandle pause/resume lifecycle works (pause on stop, resume on play)
   6. `inlinePianoroll` prop removed from StrudelEditorProps
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 06-01-PLAN.md — Register .viz() capture in StrudelEngine + refactor viewZones.ts to opt-in + update tests
+- [x] 06-01-PLAN.md — Register .viz() capture in StrudelEngine + refactor viewZones.ts to opt-in + update tests
 - [ ] 06-02-PLAN.md — Wire StrudelEditor with vizRequests, remove inlinePianoroll prop, visual verification
 
 ### Phase 7: Additional Renderers
@@ -195,7 +195,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 3. Audio Visualizers | N/A | Complete | 2026-03-22 |
 | 4. VizRenderer Abstraction | 2/2 | Complete   | 2026-03-22 |
 | 5. Per-Track Data | 1/1 | Complete   | 2026-03-22 |
-| 6. Inline Zones via Abstraction | 0/2 | Replanned | - |
+| 6. Inline Zones via Abstraction | 1/2 | In Progress|  |
 | 7. Additional Renderers | 0/TBD | Not started | - |
 | 8. Engine Protocol | 0/TBD | Not started | - |
 | 9. Normalized Hap Type | 0/TBD | Not started | - |

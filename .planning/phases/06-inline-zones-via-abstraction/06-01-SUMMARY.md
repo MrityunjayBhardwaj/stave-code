@@ -1,89 +1,100 @@
 ---
 phase: 06-inline-zones-via-abstraction
 plan: 01
-subsystem: visualizers
-tags: [viewZones, VizRenderer, InlineZoneHandle, trackSchedulers, tdd]
+subsystem: engine + visualizers
+tags: [viz, prototype-intercept, inline-zones, opt-in, pattern-capture]
 dependency_graph:
-  requires:
-    - 04-vizrenderer-abstraction/04-01 (VizRenderer interface, mountVizRenderer)
-    - 05-per-track-data/05-01 (getTrackSchedulers)
-  provides:
-    - InlineZoneHandle interface (cleanup/pause/resume)
-    - addInlineViewZones with VizRendererSource + trackSchedulers
-    - StrudelEditor wired to use pause-on-stop + cleanup-before-re-add
-  affects:
-    - packages/editor/src/visualizers/viewZones.ts
-    - packages/editor/src/StrudelEditor.tsx
-    - packages/editor/src/__tests__/viewZones.test.ts
+  requires: [Phase 05-per-track-data]
+  provides: [getVizRequests, addInlineViewZones-opt-in]
+  affects: [StrudelEngine, viewZones, StrudelEditor]
 tech_stack:
   added: []
-  patterns:
-    - InlineZoneHandle object return (replaces () => void)
-    - Per-zone schedulerRef resolved from trackSchedulers Map by $N key
-    - editor.getLayoutInfo().contentWidth for zone initial width
-    - pause-on-stop / cleanup-before-re-add zone lifecycle
+  patterns: [Pattern.prototype setter-intercept, _pendingViz tag pattern, factory-from-descriptor lookup]
 key_files:
   created: []
   modified:
+    - packages/editor/src/engine/StrudelEngine.ts
     - packages/editor/src/visualizers/viewZones.ts
-    - packages/editor/src/StrudelEditor.tsx
     - packages/editor/src/__tests__/viewZones.test.ts
+    - packages/editor/src/StrudelEditor.tsx
 decisions:
-  - InlineZoneHandle object returned instead of bare function — enables pause/resume without destroy
-  - pause() on stop freezes inline zones at last frame; cleanup() only before re-adding
-  - Per-zone schedulerRef keyed by $N (anonIndex) mirrors Phase 5 setter-intercept convention
-  - contentWidth from editor.getLayoutInfo() avoids zero-width issue (zone div not yet in DOM at mount time)
+  - ".viz() capture via _pendingViz tagging in prototype — ordering problem (.viz before .p) solved by tagging instance then resolving in .p() wrapper"
+  - "Legacy ._pianoroll() etc. aliased to .viz() for Strudel code compatibility"
+  - "addInlineViewZones now opt-in only — only tracks in vizRequests map get zones"
+  - "Last-line detection via forward-scan heuristic for multi-line pattern blocks"
+  - "Rule 3 auto-fix: StrudelEditor.tsx updated to use getVizRequests() instead of inlinePianoroll prop"
 metrics:
-  duration: "~2 minutes"
-  completed: "2026-03-22"
+  duration: ~10m
+  completed: "2026-03-23"
   tasks: 2
-  files_modified: 3
+  files: 4
+requirements: [ZONE-01, ZONE-02, ZONE-03]
 ---
 
-# Phase 06 Plan 01: Inline Zones via VizRenderer Abstraction Summary
+# Phase 06 Plan 01: .viz() Opt-In Capture and addInlineViewZones Refactor Summary
 
-**One-liner:** InlineZoneHandle (cleanup/pause/resume) replaces bare cleanup function, viewZones now renderer-agnostic via VizRendererSource + per-track schedulers from trackSchedulers Map.
+**One-liner:** Per-pattern .viz("name") opt-in inline zone system via _pendingViz prototype-intercept pattern, factory resolved from VizDescriptor[] by name.
+
+## What Was Built
+
+Replaced the blanket `inlinePianoroll={true}` flag with a per-pattern `.viz("name")` opt-in system. Only patterns where the user writes `.viz("pianoroll")` (or `.viz("scope")`, etc.) get an inline Monaco view zone. The viz type is resolved dynamically from `VizDescriptor[]` by name, so any registered viz mode can be used inline.
 
 ## Tasks Completed
 
 | Task | Name | Commit | Files |
 |------|------|--------|-------|
-| 1 | Refactor viewZones.ts — InlineZoneHandle, VizRendererSource, trackSchedulers, contentWidth | 4765696 | viewZones.ts, viewZones.test.ts |
-| 2 | Wire InlineZoneHandle into StrudelEditor — pause on stop, cleanup before re-add | 06b5f4b | StrudelEditor.tsx |
+| 1 | Register .viz() capture in StrudelEngine.evaluate(), add getVizRequests() | 6bf14ae | packages/editor/src/engine/StrudelEngine.ts |
+| 2 | Refactor addInlineViewZones to opt-in via vizRequests+vizDescriptors, update all tests | c508a1a | packages/editor/src/visualizers/viewZones.ts, packages/editor/src/__tests__/viewZones.test.ts, packages/editor/src/StrudelEditor.tsx |
 
-## What Was Built
+## Technical Approach
 
-### viewZones.ts refactor
-- Exported `InlineZoneHandle` interface with `cleanup()`, `pause()`, `resume()` methods
-- Changed `addInlineViewZones` from 3-param `(editor, hapStream, analyser) => () => void` to 5-param `(editor, source, hapStream, analyser, trackSchedulers) => InlineZoneHandle`
-- Removed hardcoded `P5VizRenderer` and `PianorollSketch` imports — any `VizRendererSource` works
-- Zone initial width now uses `editor.getLayoutInfo().contentWidth` (not `container.clientWidth` which is 0 before DOM insert)
-- Per-zone `schedulerRef` resolved from `trackSchedulers.get('$N')` where N is the anonymous index
+### .viz() Capture (Task 1)
 
-### StrudelEditor.tsx wiring
-- Import `InlineZoneHandle` type from viewZones
-- `viewZoneCleanupRef` type changed from `(() => void) | null` to `InlineZoneHandle | null`
-- handlePlay: calls `cleanup()` before re-adding zones, passes `currentSource` and `engine.getTrackSchedulers()`
-- handleStop: calls `pause()` instead of `cleanup()` — zones stay visible frozen at last frame
-- `currentSource` added to handlePlay useCallback deps
+The `.viz()` method is registered on `Pattern.prototype` inside `evaluate()` using the same setter-intercept mechanism used for `.p` in Phase 5. The key challenge: `.viz("pianoroll")` fires BEFORE `.p("$")` in the chain (`$: expr.viz("pianoroll")` transpiles to `expr.viz("pianoroll").p('$')`).
 
-### Tests migrated (TDD)
-- All 8 existing tests migrated to new 5-param signature and InlineZoneHandle return type
-- 5 new tests added: ZONE-01 (source passed through), ZONE-02 (schedulerRef from trackSchedulers), ZONE-03 (contentWidth), ZONE-04 (pause/resume forwarding)
-- 13 tests total, all passing
+**Solution:** The `_pendingViz` tagging pattern:
+1. `.viz(vizName)` sets `this._pendingViz = vizName` and returns `this`
+2. In the existing `.p()` wrapper, after `capturedPatterns.set(captureId, this)`, check for `_pendingViz` and record `capturedVizRequests.set(captureId, this._pendingViz)`
+
+Legacy methods `._pianoroll()`, `._scope()`, etc. are aliased to `.viz("name")` for Strudel code compatibility.
+
+### addInlineViewZones Refactor (Task 2)
+
+Function signature changed from 5 params (with `source: VizRendererSource`) to 6 params (with `vizRequests: Map<string, string>` and `vizDescriptors: VizDescriptor[]`).
+
+Key changes:
+- **Opt-in gate:** `const vizName = vizRequests.get(key); if (!vizName) return` skips tracks without a viz request
+- **Factory dispatch:** `vizDescriptors.find(d => d.id === vizName)` resolves the factory per-zone
+- **Last-line detection:** Forward-scan heuristic finds the last continuation line of a pattern block for accurate zone placement
+- **Unknown viz warning:** `console.warn('[motif] Unknown viz name: ...')` for unrecognized viz names
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 3 - Blocking] Updated StrudelEditor.tsx to compile with new viewZones signature**
+- **Found during:** Task 2 verification (TypeScript compile)
+- **Issue:** StrudelEditor.tsx called `addInlineViewZones` with the old 5-param signature including `source: VizRendererSource`
+- **Fix:** Updated the inline zone wiring to use `engine.getVizRequests()` instead of `_inlinePianoroll` flag; removed `currentSource` from the call; updated dependency array
+- **Files modified:** packages/editor/src/StrudelEditor.tsx
+- **Commit:** c508a1a
+
+## Test Results
+
+All 16 viewZones tests pass:
+- 13 existing tests migrated to new 6-param signature
+- 3 new tests added:
+  - "adds zone only for $: lines present in vizRequests" — opt-in filtering
+  - "logs warning and skips zone for unknown vizName" — warning behavior
+  - "places zone after last line of multi-line pattern block" — last-line detection
 
 ## Known Stubs
 
-None. All wiring is complete and functional.
+None — all functionality is wired through the complete data path.
 
 ## Self-Check: PASSED
-- packages/editor/src/visualizers/viewZones.ts — FOUND
-- packages/editor/src/StrudelEditor.tsx — FOUND
-- packages/editor/src/__tests__/viewZones.test.ts — FOUND
-- Commit 4765696 — FOUND
-- Commit 06b5f4b — FOUND
-- All 90 tests pass
+
+- packages/editor/src/engine/StrudelEngine.ts — FOUND (getVizRequests, _pendingViz, legacyVizNames all present)
+- packages/editor/src/visualizers/viewZones.ts — FOUND (vizRequests.get, descriptor.factory, lastLineIdx, console.warn all present)
+- packages/editor/src/__tests__/viewZones.test.ts — FOUND (16 tests all pass)
+- Commits 6bf14ae and c508a1a — FOUND in git log

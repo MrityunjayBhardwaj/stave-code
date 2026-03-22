@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 06-inline-zones-via-abstraction/06-02-PLAN.md
-last_updated: "2026-03-22T18:14:55.136Z"
+stopped_at: Completed 06-inline-zones-via-abstraction/06-01-PLAN.md
+last_updated: "2026-03-22T19:41:45.404Z"
 progress:
   total_phases: 11
-  completed_phases: 5
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 10
+  completed_plans: 9
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: THESIS.md (platform vision — Motif)
 ## Current Position
 
 Phase: 06 (inline-zones-via-abstraction) — EXECUTING
-Plan: 1 of 1
+Plan: 2 of 2
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Plan: 1 of 1
 | Phase 05-per-track-data P01 | 8 | 2 tasks | 2 files |
 | Phase 06 P01 | 137 | 2 tasks | 3 files |
 | Phase 06-inline-zones-via-abstraction P02 | 2m | 1 tasks | 1 files |
+| Phase 06-inline-zones-via-abstraction P01 | 10 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 06]: InlineZoneHandle object return pattern replaces bare () => void — enables pause/resume lifecycle without destroying zones
 - [Phase 06]: pause() on stop freezes inline zones at last frame; cleanup() called only before re-adding zones on next play
 - [Phase 06]: resume() placed after inline zone if-block in handlePlay — fires unconditionally, no-op on fresh zones, unfreezes paused zones
+- [Phase 06]: .viz() capture via _pendingViz tagging in prototype — ordering problem (.viz before .p) solved by tagging instance then resolving in .p() wrapper
+- [Phase 06]: addInlineViewZones now opt-in only — only tracks in vizRequests map get zones; factory resolved by name from vizDescriptors
 
 ### Pending Todos
 
@@ -92,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T18:14:55.134Z
-Stopped at: Completed 06-inline-zones-via-abstraction/06-02-PLAN.md
+Last session: 2026-03-22T19:41:45.402Z
+Stopped at: Completed 06-inline-zones-via-abstraction/06-01-PLAN.md
 Resume file: None
