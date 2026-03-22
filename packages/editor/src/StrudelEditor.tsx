@@ -13,6 +13,15 @@ import { applyTheme } from './theme/tokens'
 import type { StrudelTheme } from './theme/tokens'
 import { useHighlighting } from './monaco/useHighlighting'
 import type { HapStream } from './engine/HapStream'
+import { VizPanel } from './visualizers/VizPanel'
+import { VizPicker } from './visualizers/VizPicker'
+import type { VizMode, SketchFactory } from './visualizers/types'
+import { PianorollSketch } from './visualizers/sketches/PianorollSketch'
+import { ScopeSketch } from './visualizers/sketches/ScopeSketch'
+import { SpectrumSketch } from './visualizers/sketches/SpectrumSketch'
+import { SpiralSketch } from './visualizers/sketches/SpiralSketch'
+import { PitchwheelSketch } from './visualizers/sketches/PitchwheelSketch'
+import { addInlineViewZones } from './visualizers/viewZones'
 
 export type { StrudelTheme }
 
@@ -33,6 +42,8 @@ export interface StrudelEditorProps {
   inlinePianoroll?: boolean
   activeHighlight?: boolean
   theme?: 'dark' | 'light' | StrudelTheme
+  showVizPicker?: boolean
+  vizSketch?: SketchFactory
 
   // Layout
   height?: number | string
@@ -65,10 +76,12 @@ export function StrudelEditor({
   height = 320,
   vizHeight = 200,
   showToolbar = true,
+  showVizPicker,
   readOnly = false,
   activeHighlight: _activeHighlight = true,
   visualizer: _visualizer = 'off',
   inlinePianoroll: _inlinePianoroll = false,
+  vizSketch,
   onExport,
   engineRef: engineRefProp,
 }: StrudelEditorProps) {
@@ -84,10 +97,15 @@ export function StrudelEditor({
   const [bpm, setBpm] = useState<number | undefined>(120)
   const [hapStream, setHapStream] = useState<HapStream | null>(null)
   const [soundNames, setSoundNames] = useState<string[]>([])
+  const [activeViz, setActiveViz] = useState<VizMode>(
+    (_visualizer !== 'off' ? _visualizer : 'pianoroll') as VizMode
+  )
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<StrudelEngine | null>(null)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+  const viewZoneCleanupRef = useRef<(() => void) | null>(null)
 
   // Expose engine to parent via engineRef prop
   useEffect(() => {
@@ -112,6 +130,17 @@ export function StrudelEditor({
     return engineRef.current
   }
 
+  // Sketch factory map — stable via useMemo
+  const SKETCH_MAP: Record<VizMode, SketchFactory> = useMemo(() => ({
+    pianoroll: PianorollSketch,
+    scope: ScopeSketch,
+    spectrum: SpectrumSketch,
+    spiral: SpiralSketch,
+    pitchwheel: PitchwheelSketch,
+  }), [])
+
+  const currentSketch: SketchFactory = vizSketch ?? SKETCH_MAP[activeViz]
+
   const { clearAll: clearHighlights } = useHighlighting(editorRef.current, hapStream)
 
   const handlePlay = useCallback(async () => {
@@ -119,6 +148,14 @@ export function StrudelEditor({
     const engine = getEngine()
     await engine.init()
     setHapStream(engine.getHapStream())
+
+    // setAnalyser() triggers a re-render. VizPanel will receive the new analyser
+    // on the next render cycle. On the first frame after play, VizPanel's analyser
+    // prop may still be null — PianorollSketch handles this by falling back to
+    // performance.now()/1000 for timing (see analyserRef.current?.context.currentTime
+    // ?? performance.now() / 1000 in PianorollSketch.ts). This is intentional: the
+    // fallback provides smooth animation until the real AudioContext time is available.
+    setAnalyser(engine.getAnalyser())
 
     // Route runtime audio errors (scheduler-time, e.g. "sound X not found") into the UI.
     engine.setRuntimeErrorHandler((err) => {
@@ -140,6 +177,18 @@ export function StrudelEditor({
       return
     }
 
+    // Re-add inline pianoroll view zones (they reset after evaluate).
+    // addInlineViewZones receives engine.getAnalyser() directly (synchronous),
+    // bypassing the React state timing — view zones get the analyser immediately.
+    if (_inlinePianoroll && editorRef.current) {
+      viewZoneCleanupRef.current?.()
+      viewZoneCleanupRef.current = addInlineViewZones(
+        editorRef.current,
+        engine.getHapStream(),
+        engine.getAnalyser()
+      )
+    }
+
     // Extract BPM from setcps line if present
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/)
     if (cpsMatch) {
@@ -151,11 +200,13 @@ export function StrudelEditor({
     engine.play()
     setIsPlaying(true)
     onPlay?.()
-  }, [code, onPlay, onError, clearHighlights, soundNames])
+  }, [code, onPlay, onError, clearHighlights, soundNames, _inlinePianoroll])
 
   const handleStop = useCallback(() => {
     engineRef.current?.stop()
     clearHighlights()
+    viewZoneCleanupRef.current?.()
+    viewZoneCleanupRef.current = null
     setIsPlaying(false)
     onStop?.()
   }, [onStop, clearHighlights])
@@ -261,6 +312,12 @@ export function StrudelEditor({
         />
       )}
 
+      <VizPicker
+        activeMode={activeViz}
+        onModeChange={setActiveViz}
+        showVizPicker={showVizPicker ?? true}
+      />
+
       <div style={{ flex: 1, minHeight: 0 }}>
         <StrudelMonaco
           code={code}
@@ -273,22 +330,13 @@ export function StrudelEditor({
         />
       </div>
 
-      {/* Visualizer panel placeholder — populated in Phase 3/4 */}
       {_visualizer !== 'off' && (
-        <div
-          style={{
-            height: vizHeight,
-            background: 'var(--surface)',
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--foreground-muted)',
-            fontSize: 12,
-          }}
-        >
-          {_visualizer} — coming in Phase 3/4
-        </div>
+        <VizPanel
+          vizHeight={vizHeight}
+          hapStream={hapStream}
+          analyser={analyser}
+          sketchFactory={currentSketch}
+        />
       )}
     </div>
   )
