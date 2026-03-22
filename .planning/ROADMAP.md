@@ -48,11 +48,15 @@ Plans:
 **Requirements**: PIANO-01, PIANO-02, PIANO-03, PIANO-04, PIANO-05, PIANO-06, PIANO-07, UI-01, UI-02, UI-03, UI-04
 **Success Criteria** (what must be TRUE):
   1. A full-panel pianoroll renders at 60fps with a 6-second rolling window, note blocks colored by instrument type
-  2. Percussion sounds (bd, sd, hh, etc.) appear at fixed positions below the pitch area; pitched notes span MIDI 24–96 on the Y-axis
+  2. Percussion sounds (bd, sd, hh, etc.) appear at fixed positions below the pitch area; pitched notes span MIDI 24-96 on the Y-axis
   3. An inline pianoroll appears as a Monaco view zone below each `$:` line and re-appears after every evaluate() call
   4. The VizPicker toolbar lets the user switch between visualizer modes (pianoroll, scope, spectrum, spiral, pitchwheel)
   5. The layout follows spec: toolbar (40px) + viz-picker (32px) + editor + visualizer panel; vizHeight and showToolbar props work correctly
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 02-01-PLAN.md — Install p5, types, useP5Sketch hook, PianorollSketch factory + stubs
+- [ ] 02-02-PLAN.md — VizPanel + VizPicker React components
+- [ ] 02-03-PLAN.md — StrudelEditor wiring, inline view zones, visual verification
 
 ### Phase 3: Audio Visualizers
 **Goal**: Users can see real-time audio analysis visualizations — an oscilloscope waveform, a frequency spectrum, a spiral note display, and a pitchwheel — all driven by the live AnalyserNode.
@@ -92,12 +96,12 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Active Highlighting | 2/2 | Complete   | 2026-03-21 |
-| 2. Pianoroll Visualizers | 0/TBD | Not started | - |
+| 2. Pianoroll Visualizers | 0/3 | Planned | - |
 | 3. Audio Visualizers | 0/TBD | Not started | - |
 | 4. Monaco Intelligence | 0/TBD | Not started | - |
 | 5. Library Polish + Demo Site | 0/TBD | Not started | - |
