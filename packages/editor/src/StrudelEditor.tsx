@@ -184,6 +184,9 @@ export function StrudelEditor({
       )
     }
 
+    // Resume inline zones if they were paused by a previous stop (ZONE-04)
+    viewZoneCleanupRef.current?.resume()
+
     // Extract BPM from setcps line if present
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/)
     if (cpsMatch) {
