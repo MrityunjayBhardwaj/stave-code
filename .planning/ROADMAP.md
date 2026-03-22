@@ -52,10 +52,10 @@ Plans:
   3. An inline pianoroll appears as a Monaco view zone below each `$:` line and re-appears after every evaluate() call
   4. The VizPicker toolbar lets the user switch between visualizer modes (pianoroll, scope, spectrum, spiral, pitchwheel)
   5. The layout follows spec: toolbar (40px) + viz-picker (32px) + editor + visualizer panel; vizHeight and showToolbar props work correctly
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 Plans:
 - [x] 02-01-PLAN.md — Install p5, types, useP5Sketch hook, PianorollSketch factory + stubs
-- [ ] 02-02-PLAN.md — VizPanel + VizPicker React components
+- [x] 02-02-PLAN.md — VizPanel + VizPicker React components
 - [ ] 02-03-PLAN.md — StrudelEditor wiring, inline view zones, visual verification
 
 ### Phase 3: Audio Visualizers
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Active Highlighting | 2/2 | Complete   | 2026-03-21 |
-| 2. Pianoroll Visualizers | 1/3 | In Progress|  |
+| 2. Pianoroll Visualizers | 2/3 | In Progress|  |
 | 3. Audio Visualizers | 0/TBD | Not started | - |
 | 4. Monaco Intelligence | 0/TBD | Not started | - |
 | 5. Library Polish + Demo Site | 0/TBD | Not started | - |

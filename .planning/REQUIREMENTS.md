@@ -67,10 +67,10 @@
 
 ### Toolbar & UI
 
-- [ ] **UI-01**: VizPicker toolbar component lets user switch between visualizer modes
-- [ ] **UI-02**: Layout follows spec: toolbar (40px) + viz-picker (32px) + editor + visualizer panel
-- [ ] **UI-03**: vizHeight prop controls visualizer panel height (default 200px)
-- [ ] **UI-04**: showToolbar prop hides toolbar (default: shown)
+- [x] **UI-01**: VizPicker toolbar component lets user switch between visualizer modes
+- [x] **UI-02**: Layout follows spec: toolbar (40px) + viz-picker (32px) + editor + visualizer panel
+- [x] **UI-03**: vizHeight prop controls visualizer panel height (default 200px)
+- [x] **UI-04**: showToolbar prop hides toolbar (default: shown)
 
 ### Library Polish
 
@@ -135,10 +135,10 @@
 | PIANO-05 | Phase 2 | Complete |
 | PIANO-06 | Phase 2 | Pending |
 | PIANO-07 | Phase 2 | Pending |
-| UI-01 | Phase 2 | Pending |
-| UI-02 | Phase 2 | Pending |
-| UI-03 | Phase 2 | Pending |
-| UI-04 | Phase 2 | Pending |
+| UI-01 | Phase 2 | Complete |
+| UI-02 | Phase 2 | Complete |
+| UI-03 | Phase 2 | Complete |
+| UI-04 | Phase 2 | Complete |
 | VIZ-01 | Phase 3 | Pending |
 | VIZ-02 | Phase 3 | Pending |
 | VIZ-03 | Phase 3 | Pending |

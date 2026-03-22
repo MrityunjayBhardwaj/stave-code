@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-pianoroll-visualizers-01-PLAN.md
-last_updated: "2026-03-22T04:28:06.403Z"
+stopped_at: Completed 02-pianoroll-visualizers-02-PLAN.md
+last_updated: "2026-03-22T04:31:36.862Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 ## Current Position
 
 Phase: 02 (pianoroll-visualizers) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Plan: 2 of 3
 | Phase 01-active-highlighting P01 | 3 | 2 tasks | 3 files |
 | Phase 01-active-highlighting P02 | 5 | 2 tasks | 1 files |
 | Phase 02-pianoroll-visualizers P01 | 3m | 1 tasks | 10 files |
+| Phase 02-pianoroll-visualizers P02 | 2m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Recent decisions affecting current work:
 - [Phase 02-pianoroll-visualizers]: Unknown sounds fall back to --accent, not --stem-melody — no melody branch in getColor()
 - [Phase 02-pianoroll-visualizers]: ResizeObserver created in same useEffect as p5 instance to share cleanup closure
 - [Phase 02-pianoroll-visualizers]: Pure math functions exported from PianorollSketch for direct unit testing without p5 mock
+- [Phase 02-pianoroll-visualizers]: VizPanel does not contain ResizeObserver — useP5Sketch handles canvas resize internally
+- [Phase 02-pianoroll-visualizers]: data-active attribute uses string 'true' not boolean to match DOM attribute conventions in tests
 
 ### Pending Todos
 
@@ -81,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T04:28:06.401Z
-Stopped at: Completed 02-pianoroll-visualizers-01-PLAN.md
+Last session: 2026-03-22T04:31:36.860Z
+Stopped at: Completed 02-pianoroll-visualizers-02-PLAN.md
 Resume file: None
