@@ -41,8 +41,8 @@
 - [x] **PIANO-03**: Y-axis spans MIDI 24 (C1) to MIDI 96 (C7)
 - [x] **PIANO-04**: Note blocks colored by s field (drums=orange, bass=cyan, melody=violet, pad=emerald, default=accent) or by hap.value.color if present
 - [x] **PIANO-05**: Percussion sounds (bd, sd, hh, etc.) shown at fixed MIDI positions below pitch area
-- [ ] **PIANO-06**: Inline pianoroll embedded in Monaco as a view zone below $: lines (120px height)
-- [ ] **PIANO-07**: Inline view zones re-added after every evaluate() call (they reset on editor re-layout)
+- [x] **PIANO-06**: Inline pianoroll embedded in Monaco as a view zone below $: lines (120px height)
+- [x] **PIANO-07**: Inline view zones re-added after every evaluate() call (they reset on editor re-layout)
 
 ### Visualizers — Audio Analysis
 
@@ -133,8 +133,8 @@
 | PIANO-03 | Phase 2 | Complete |
 | PIANO-04 | Phase 2 | Complete |
 | PIANO-05 | Phase 2 | Complete |
-| PIANO-06 | Phase 2 | Pending |
-| PIANO-07 | Phase 2 | Pending |
+| PIANO-06 | Phase 2 | Complete |
+| PIANO-07 | Phase 2 | Complete |
 | UI-01 | Phase 2 | Complete |
 | UI-02 | Phase 2 | Complete |
 | UI-03 | Phase 2 | Complete |

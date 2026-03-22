@@ -56,7 +56,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — Install p5, types, useP5Sketch hook, PianorollSketch factory + stubs
 - [x] 02-02-PLAN.md — VizPanel + VizPicker React components
-- [ ] 02-03-PLAN.md — StrudelEditor wiring, inline view zones, visual verification
+- [x] 02-03-PLAN.md — StrudelEditor wiring, inline view zones, visual verification
 
 ### Phase 3: Audio Visualizers
 **Goal**: Users can see real-time audio analysis visualizations — an oscilloscope waveform, a frequency spectrum, a spiral note display, and a pitchwheel — all driven by the live AnalyserNode.

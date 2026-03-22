@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 02-pianoroll-visualizers-02-PLAN.md
-last_updated: "2026-03-22T04:31:36.862Z"
+stopped_at: Completed 02-pianoroll-visualizers-03-PLAN.md
+last_updated: "2026-03-22T04:36:28.102Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -50,6 +50,7 @@ Plan: 3 of 3
 | Phase 01-active-highlighting P02 | 5 | 2 tasks | 1 files |
 | Phase 02-pianoroll-visualizers P01 | 3m | 1 tasks | 10 files |
 | Phase 02-pianoroll-visualizers P02 | 2m | 2 tasks | 4 files |
+| Phase 02-pianoroll-visualizers P03 | 3m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [Phase 02-pianoroll-visualizers]: Pure math functions exported from PianorollSketch for direct unit testing without p5 mock
 - [Phase 02-pianoroll-visualizers]: VizPanel does not contain ResizeObserver — useP5Sketch handles canvas resize internally
 - [Phase 02-pianoroll-visualizers]: data-active attribute uses string 'true' not boolean to match DOM attribute conventions in tests
+- [Phase 02-pianoroll-visualizers]: viewZones.ts named as imperative module (not useViewZones.ts) — hooks reserve use* prefix
+- [Phase 02-pianoroll-visualizers]: addInlineViewZones receives engine.getAnalyser() synchronously to bypass React state timing for view zones
+- [Phase 02-pianoroll-visualizers]: viewZoneCleanupRef pattern: store cleanup fn in ref, caller calls before each new addInlineViewZones invocation
 
 ### Pending Todos
 
@@ -84,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-22T04:31:36.860Z
-Stopped at: Completed 02-pianoroll-visualizers-02-PLAN.md
+Last session: 2026-03-22T04:36:28.100Z
+Stopped at: Completed 02-pianoroll-visualizers-03-PLAN.md
 Resume file: None
