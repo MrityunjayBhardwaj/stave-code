@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
+
+// Mock p5 to prevent import errors from defaultDescriptors -> P5VizRenderer -> p5 -> gifenc (CJS)
+vi.mock('p5', () => ({ default: vi.fn() }))
+
 import { VizPicker } from '../visualizers/VizPicker'
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
 
@@ -9,7 +13,9 @@ describe('VizPicker', () => {
     const onIdChange = vi.fn()
     render(<VizPicker descriptors={DEFAULT_VIZ_DESCRIPTORS} activeId="pianoroll" onIdChange={onIdChange} />)
     expect(screen.getByTestId('viz-btn-pianoroll')).toBeTruthy()
+    expect(screen.getByTestId('viz-btn-wordfall')).toBeTruthy()
     expect(screen.getByTestId('viz-btn-scope')).toBeTruthy()
+    expect(screen.getByTestId('viz-btn-fscope')).toBeTruthy()
     expect(screen.getByTestId('viz-btn-spectrum')).toBeTruthy()
     expect(screen.getByTestId('viz-btn-spiral')).toBeTruthy()
     expect(screen.getByTestId('viz-btn-pitchwheel')).toBeTruthy()
