@@ -1,9 +1,10 @@
 import React from 'react'
-import type { VizMode } from './types'
+import type { VizDescriptor } from './types'
 
 interface VizPickerProps {
-  activeMode: VizMode
-  onModeChange: (mode: VizMode) => void
+  descriptors: VizDescriptor[]
+  activeId: string
+  onIdChange: (id: string) => void
   showVizPicker?: boolean
 }
 
@@ -72,17 +73,18 @@ function WordfallIcon() {
   )
 }
 
-const MODES: { mode: VizMode; label: string; icon: React.ReactNode }[] = [
-  { mode: 'pianoroll', label: 'Pianoroll', icon: <PianorollIcon /> },
-  { mode: 'wordfall', label: 'Wordfall', icon: <WordfallIcon /> },
-  { mode: 'scope', label: 'Scope', icon: <ScopeIcon /> },
-  { mode: 'fscope', label: 'Freq Scope', icon: <FscopeIcon /> },
-  { mode: 'spectrum', label: 'Spectrum', icon: <SpectrumIcon /> },
-  { mode: 'spiral', label: 'Spiral', icon: <SpiralIcon /> },
-  { mode: 'pitchwheel', label: 'Pitchwheel', icon: <PitchwheelIcon /> },
-]
+/** Private icon lookup — keeps VizDescriptor lean (no React-specific fields). */
+const ICON_MAP: Record<string, React.ReactNode> = {
+  pianoroll:  <PianorollIcon />,
+  wordfall:   <WordfallIcon />,
+  scope:      <ScopeIcon />,
+  fscope:     <FscopeIcon />,
+  spectrum:   <SpectrumIcon />,
+  spiral:     <SpiralIcon />,
+  pitchwheel: <PitchwheelIcon />,
+}
 
-export function VizPicker({ activeMode, onModeChange, showVizPicker = true }: VizPickerProps) {
+export function VizPicker({ descriptors, activeId, onIdChange, showVizPicker = true }: VizPickerProps) {
   if (!showVizPicker) return null
 
   return (
@@ -100,15 +102,15 @@ export function VizPicker({ activeMode, onModeChange, showVizPicker = true }: Vi
         fontFamily: 'var(--font-mono)',
       }}
     >
-      {MODES.map(({ mode, label, icon }) => {
-        const isActive = mode === activeMode
+      {descriptors.map((descriptor) => {
+        const isActive = descriptor.id === activeId
         return (
           <button
-            key={mode}
-            data-testid={`viz-btn-${mode}`}
+            key={descriptor.id}
+            data-testid={`viz-btn-${descriptor.id}`}
             data-active={isActive ? 'true' : undefined}
-            title={label}
-            onClick={() => onModeChange(mode)}
+            title={descriptor.label}
+            onClick={() => onIdChange(descriptor.id)}
             style={{
               width: 32,
               height: 24,
@@ -124,7 +126,7 @@ export function VizPicker({ activeMode, onModeChange, showVizPicker = true }: Vi
               padding: 0,
             }}
           >
-            {icon}
+            {ICON_MAP[descriptor.id] ?? descriptor.label.charAt(0)}
           </button>
         )
       })}
