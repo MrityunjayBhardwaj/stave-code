@@ -1,0 +1,59 @@
+{
+  "name": "@strucode/editor",
+  "version": "0.1.0",
+  "description": "Monaco-based Strudel.js editor with visual feedback and track export",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "@kabelsalat/web": "0.4.1",
+    "@monaco-editor/react": "^4.6.0",
+    "@strudel/core": "^1.0.0",
+    "@strudel/draw": "^1.0.0",
+    "@strudel/midi": "^1.0.0",
+    "@strudel/mini": "^1.0.0",
+    "@strudel/soundfonts": "^1.0.0",
+    "@strudel/tonal": "^1.0.0",
+    "@strudel/transpiler": "^1.0.0",
+    "@strudel/webaudio": "^1.0.0",
+    "@strudel/xen": "^1.0.0",
+    "@types/p5": "1.7.7",
+    "monaco-editor": "^0.50.0",
+    "p5": "2.2.3"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "jsdom": "^24.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

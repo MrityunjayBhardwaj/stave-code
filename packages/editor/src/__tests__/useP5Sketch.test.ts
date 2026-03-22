@@ -3,25 +3,30 @@ import { renderHook } from '@testing-library/react'
 import { useRef } from 'react'
 import { useP5Sketch } from '../visualizers/useP5Sketch'
 
-// Mock p5 constructor
-const mockRemove = vi.fn()
-const mockResizeCanvas = vi.fn()
-const mockP5Instance = {
-  remove: mockRemove,
-  resizeCanvas: mockResizeCanvas,
-}
-const MockP5Constructor = vi.fn(() => mockP5Instance)
-vi.mock('p5', () => ({ default: MockP5Constructor }))
+// vi.mock is hoisted — cannot reference variables declared below vi.mock.
+// Use a module-level spy holder pattern instead.
+const p5Instances: { remove: ReturnType<typeof vi.fn>; resizeCanvas: ReturnType<typeof vi.fn> }[] =
+  []
+
+vi.mock('p5', () => {
+  const P5 = vi.fn(function (this: { remove: ReturnType<typeof vi.fn>; resizeCanvas: ReturnType<typeof vi.fn> }) {
+    this.remove = vi.fn()
+    this.resizeCanvas = vi.fn()
+    p5Instances.push(this)
+  })
+  return { default: P5 }
+})
+
+// Import after mock is registered
+import p5 from 'p5'
+const MockP5Constructor = p5 as unknown as ReturnType<typeof vi.fn>
 
 // Mock ResizeObserver
 const mockDisconnect = vi.fn()
 const mockObserve = vi.fn()
-let mockResizeObserverCallback: ResizeObserverCallback | null = null
 
 class MockResizeObserver {
-  constructor(cb: ResizeObserverCallback) {
-    mockResizeObserverCallback = cb
-  }
+  constructor(_cb: ResizeObserverCallback) {}
   observe = mockObserve
   disconnect = mockDisconnect
   unobserve = vi.fn()
@@ -29,8 +34,7 @@ class MockResizeObserver {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockResizeObserverCallback = null
-  // Install mock ResizeObserver globally
+  p5Instances.length = 0
   ;(globalThis as unknown as Record<string, unknown>).ResizeObserver = MockResizeObserver
 })
 
@@ -64,9 +68,9 @@ describe('useP5Sketch', () => {
 
   it('calls instance.remove() on unmount', () => {
     const { unmount } = renderUseP5Sketch()
-    expect(mockRemove).not.toHaveBeenCalled()
+    expect(p5Instances[0].remove).not.toHaveBeenCalled()
     unmount()
-    expect(mockRemove).toHaveBeenCalledTimes(1)
+    expect(p5Instances[0].remove).toHaveBeenCalledTimes(1)
   })
 
   it('creates a ResizeObserver that observes the container', () => {
@@ -83,10 +87,18 @@ describe('useP5Sketch', () => {
 
   it('calls disconnect before remove on cleanup', () => {
     const callOrder: string[] = []
-    mockDisconnect.mockImplementation(() => callOrder.push('disconnect'))
-    mockRemove.mockImplementation(() => callOrder.push('remove'))
 
     const { unmount } = renderUseP5Sketch()
+
+    // Intercept after instance is created
+    const instance = p5Instances[0]
+    const origRemove = instance.remove
+    instance.remove = vi.fn(() => {
+      callOrder.push('remove')
+      origRemove()
+    })
+    mockDisconnect.mockImplementation(() => callOrder.push('disconnect'))
+
     unmount()
 
     expect(callOrder).toEqual(['disconnect', 'remove'])
