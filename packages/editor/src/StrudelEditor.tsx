@@ -17,7 +17,7 @@ import { VizPanel } from './visualizers/VizPanel'
 import { VizPicker } from './visualizers/VizPicker'
 import type { VizDescriptor, VizRendererSource, PatternScheduler } from './visualizers/types'
 import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
-import { addInlineViewZones } from './visualizers/viewZones'
+import { addInlineViewZones, type InlineZoneHandle } from './visualizers/viewZones'
 
 export type { StrudelTheme }
 
@@ -104,7 +104,7 @@ export function StrudelEditor({
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef = useRef<StrudelEngine | null>(null)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
-  const viewZoneCleanupRef = useRef<(() => void) | null>(null)
+  const viewZoneCleanupRef = useRef<InlineZoneHandle | null>(null)
 
   // Expose engine to parent via engineRef prop
   useEffect(() => {
@@ -174,11 +174,13 @@ export function StrudelEditor({
     // addInlineViewZones receives engine.getAnalyser() directly (synchronous),
     // bypassing the React state timing — view zones get the analyser immediately.
     if (_inlinePianoroll && editorRef.current) {
-      viewZoneCleanupRef.current?.()
+      viewZoneCleanupRef.current?.cleanup()
       viewZoneCleanupRef.current = addInlineViewZones(
         editorRef.current,
+        currentSource,
         engine.getHapStream(),
-        engine.getAnalyser()
+        engine.getAnalyser(),
+        engine.getTrackSchedulers()
       )
     }
 
@@ -194,13 +196,12 @@ export function StrudelEditor({
     engine.play()
     setIsPlaying(true)
     onPlay?.()
-  }, [code, onPlay, onError, clearHighlights, soundNames, _inlinePianoroll])
+  }, [code, onPlay, onError, clearHighlights, soundNames, _inlinePianoroll, currentSource])
 
   const handleStop = useCallback(() => {
     engineRef.current?.stop()
     clearHighlights()
-    viewZoneCleanupRef.current?.()
-    viewZoneCleanupRef.current = null
+    viewZoneCleanupRef.current?.pause()
     setIsPlaying(false)
     onStop?.()
   }, [onStop, clearHighlights])
