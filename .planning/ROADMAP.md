@@ -26,7 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Audio Visualizers** - Scope, FScope, Spectrum, Spiral, Pitchwheel, Wordfall canvas visualizers (completed 2026-03-22)
 - [x] **Phase 4: VizRenderer Abstraction** - Replace p5-coupled SketchFactory with renderer-agnostic VizRenderer interface (completed 2026-03-22)
 - [x] **Phase 5: Per-Track Data** - Expose per-track PatternSchedulers via monkey-patching Pattern.prototype.p (completed 2026-03-22)
-- [ ] **Phase 6: Inline Zones via Abstraction** - Per-pattern .viz("name") opt-in replacing blanket inlinePianoroll prop (REPLANNED 2026-03-23)
+- [x] **Phase 6: Inline Zones via Abstraction** - Per-pattern .viz("name") opt-in replacing blanket inlinePianoroll prop (REPLANNED 2026-03-23) (completed 2026-03-22)
 - [ ] **Phase 7: Additional Renderers** - Canvas 2D, Three.js, Shadertoy GLSL renderer implementations
 - [ ] **Phase 8: Engine Protocol** - Define LiveCodingEngine interface, refactor StrudelEngine, prove multi-engine
 - [ ] **Phase 9: Normalized Hap Type** - Engine-agnostic event format so viz works across all engines
@@ -121,10 +121,10 @@ Plans:
   4. Zone appears after the LAST LINE of the pattern block (not after the `$:` line)
   5. InlineZoneHandle pause/resume lifecycle works (pause on stop, resume on play)
   6. `inlinePianoroll` prop removed from StrudelEditorProps
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 06-01-PLAN.md — Register .viz() capture in StrudelEngine + refactor viewZones.ts to opt-in + update tests
-- [ ] 06-02-PLAN.md — Wire StrudelEditor with vizRequests, remove inlinePianoroll prop, visual verification
+- [x] 06-02-PLAN.md — Wire StrudelEditor with vizRequests, remove inlinePianoroll prop, visual verification
 
 ### Phase 7: Additional Renderers
 **Goal**: Implement Canvas 2D, Three.js (dynamic import), and Shadertoy GLSL renderers. Each implements VizRenderer interface. Third-party renderer authors can publish motif-renderer-* packages.
@@ -195,7 +195,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 3. Audio Visualizers | N/A | Complete | 2026-03-22 |
 | 4. VizRenderer Abstraction | 2/2 | Complete   | 2026-03-22 |
 | 5. Per-Track Data | 1/1 | Complete   | 2026-03-22 |
-| 6. Inline Zones via Abstraction | 1/2 | In Progress|  |
+| 6. Inline Zones via Abstraction | 2/2 | Complete   | 2026-03-22 |
 | 7. Additional Renderers | 0/TBD | Not started | - |
 | 8. Engine Protocol | 0/TBD | Not started | - |
 | 9. Normalized Hap Type | 0/TBD | Not started | - |
