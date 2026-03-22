@@ -1,8 +1,10 @@
-import p5 from 'p5'
 import type * as Monaco from 'monaco-editor'
 import type { RefObject } from 'react'
 import type { HapStream } from '../engine/HapStream'
+import type { VizRefs } from './types'
+import { P5VizRenderer } from './renderers/P5VizRenderer'
 import { PianorollSketch } from './sketches/PianorollSketch'
+import { mountVizRenderer } from './mountVizRenderer'
 
 const VIEW_ZONE_HEIGHT = 120
 
@@ -10,11 +12,9 @@ const VIEW_ZONE_HEIGHT = 120
  * Imperatively adds inline pianoroll view zones below every $: line in the Monaco editor.
  *
  * Named `viewZones.ts` (not `useViewZones.ts`) because this exports a plain imperative
- * function, NOT a React hook. The `use*` prefix is reserved for hooks in this project.
+ * function, NOT a React hook.
  *
- * Returns a cleanup function that removes all zones and destroys p5 instances.
- * The caller (StrudelEditor.handlePlay) is responsible for calling the previous cleanup
- * before calling addInlineViewZones again after each evaluate().
+ * Returns a cleanup function that removes all zones and destroys renderer instances.
  */
 export function addInlineViewZones(
   editor: Monaco.editor.IStandaloneCodeEditor,
@@ -27,7 +27,7 @@ export function addInlineViewZones(
   const code = model.getValue()
   const lines = code.split('\n')
   const zoneIds: string[] = []
-  const p5Instances: p5[] = []
+  const cleanups: (() => void)[] = []
 
   editor.changeViewZones((accessor) => {
     lines.forEach((line, i) => {
@@ -36,9 +36,9 @@ export function addInlineViewZones(
       const container = document.createElement('div')
       container.style.cssText = 'overflow:hidden;height:120px;'
 
-      // Uses plain object refs (not React.useRef) since this is imperative, not a hook.
       const hapStreamRef = { current: hapStream } as RefObject<HapStream | null>
       const analyserRef = { current: analyser } as RefObject<AnalyserNode | null>
+      const schedulerRef = { current: null } as RefObject<null>
 
       const zoneId = accessor.addZone({
         afterLineNumber: i + 1,
@@ -48,15 +48,24 @@ export function addInlineViewZones(
       })
       zoneIds.push(zoneId)
 
-      // Create p5 pianoroll in the zone container.
-      const sketch = PianorollSketch(hapStreamRef, analyserRef)
-      const instance = new p5(sketch, container)
-      p5Instances.push(instance)
+      const refs: VizRefs = { hapStreamRef, analyserRef, schedulerRef }
+      const { renderer, disconnect } = mountVizRenderer(
+        container,
+        () => new P5VizRenderer(PianorollSketch),
+        refs,
+        { w: container.clientWidth || 400, h: VIEW_ZONE_HEIGHT },
+        console.error
+      )
+
+      cleanups.push(() => {
+        disconnect()
+        renderer.destroy()
+      })
     })
   })
 
   return () => {
-    p5Instances.forEach((inst) => inst.remove())
+    cleanups.forEach((fn) => fn())
     editor.changeViewZones((accessor) => {
       zoneIds.forEach((id) => accessor.removeZone(id))
     })
