@@ -2,6 +2,7 @@ import { HapStream } from './HapStream'
 import { LiveRecorder } from './LiveRecorder'
 import { OfflineRenderer } from './OfflineRenderer'
 import type { HapEvent } from './HapStream'
+import type { PatternScheduler } from '../visualizers/types'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -89,15 +90,17 @@ export class StrudelEngine {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const audioCtx = this.audioCtx!
 
-    // Build an analyser and insert it before the hardware output.
-    // connectToDestination from superdough adds a node into the output chain.
+    // Tap superdough's master output for analysis.
+    // connectToDestination() wires a node as a SOURCE into superdough's mix — wrong for
+    // an analyser because nothing feeds into the analyser's INPUT, so it sees silence.
+    // Correct approach: get the master destinationGain and connect it → analyserNode
+    // as a side-tap. Audio still flows unchanged to audioCtx.destination.
     this.analyserNode = audioCtx.createAnalyser()
     this.analyserNode.fftSize = 2048
-    const { connectToDestination } = webaudioMod
-    // connectToDestination wires a node as a "tap" on superdough's master output
+    this.analyserNode.smoothingTimeConstant = 0.8
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(connectToDestination as any)(this.analyserNode)
-    this.analyserNode.connect(audioCtx.destination)
+    const audioController = (webaudioMod as any).getSuperdoughAudioController()
+    audioController.output.destinationGain.connect(this.analyserNode)
 
     // Wrap the native output trigger so we can fan events to HapStream subscribers
     const hapStream = this.hapStream
@@ -209,6 +212,23 @@ export class StrudelEngine {
 
   getHapStream(): HapStream {
     return this.hapStream
+  }
+
+  /**
+   * Returns a thin PatternScheduler wrapper around the Strudel scheduler.
+   * Only available after evaluate() succeeds (scheduler.pattern is set then).
+   */
+  getPatternScheduler(): PatternScheduler | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sched = (this.repl as any)?.scheduler
+    const pattern = sched?.pattern
+    if (!sched || !pattern) return null
+    return {
+      now: () => sched.now(),
+      query: (begin: number, end: number) => {
+        try { return pattern.queryArc(begin, end) } catch { return [] }
+      },
+    }
   }
 
   /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
