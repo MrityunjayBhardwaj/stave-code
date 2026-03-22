@@ -26,6 +26,8 @@ export class StrudelEngine {
   private runtimeErrorHandler: ((err: Error) => void) | null = null
   // Sound names registered after init() — used for editor autocompletion
   private loadedSoundNames: string[] = []
+  // Per-track PatternSchedulers captured during the last evaluate() call
+  private trackSchedulers: Map<string, PatternScheduler> = new Map()
 
   async init(): Promise<void> {
     if (this.initialized) return
@@ -136,15 +138,76 @@ export class StrudelEngine {
   async evaluate(code: string): Promise<{ error?: Error }> {
     if (!this.initialized) await this.init()
 
-    // repl.evaluate() never rejects — errors go to the onEvalError callback
-    // set during repl construction. We bridge via evalResolve.
-    return new Promise((resolve) => {
-      this.evalResolve = resolve
-      this.repl.evaluate(code).then(() => {
-        // If onEvalError didn't fire, evaluation succeeded
-        if (this.evalResolve) { this.evalResolve({}); this.evalResolve = null }
-      })
+    const capturedPatterns = new Map<string, any>() // eslint-disable-line @typescript-eslint/no-explicit-any
+    let anonIndex = 0
+
+    // Dynamic import — Pattern is from @strudel/core which is already loaded after init()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { Pattern } = await import('@strudel/core') as any
+
+    // Save current descriptor (may be value descriptor from previous injectPatternMethods)
+    const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'p')
+
+    // Install setter trap — fires when injectPatternMethods does Pattern.prototype.p = fn
+    // This intercepts the assignment so we can wrap Strudel's fn with our capturing logic.
+    Object.defineProperty(Pattern.prototype, 'p', {
+      configurable: true,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      set(strudelFn: (id: string) => any) {
+        // Wrap Strudel's fn with our capturing logic
+        Object.defineProperty(Pattern.prototype, 'p', {
+          configurable: true,
+          writable: true,
+          value: function (this: any, id: string) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            if (typeof id === 'string' && !(id.startsWith('_') || id.endsWith('_'))) {
+              let captureId = id
+              if (id.includes('$')) {
+                captureId = `$${anonIndex}`
+                anonIndex++
+              }
+              capturedPatterns.set(captureId, this)
+            }
+            return strudelFn.call(this, id)
+          },
+        })
+      },
     })
+
+    try {
+      // repl.evaluate() never rejects — errors go to the onEvalError callback
+      // set during repl construction. We bridge via evalResolve.
+      const result = await new Promise<{ error?: Error }>((resolve) => {
+        this.evalResolve = resolve
+        this.repl.evaluate(code).then(() => {
+          // If onEvalError didn't fire, evaluation succeeded
+          if (this.evalResolve) { this.evalResolve({}); this.evalResolve = null }
+        })
+      })
+
+      if (!result.error) {
+        // Build PatternSchedulers from captured patterns
+        const sched = (this.repl as any).scheduler // eslint-disable-line @typescript-eslint/no-explicit-any
+        this.trackSchedulers = new Map<string, PatternScheduler>()
+        for (const [id, pattern] of capturedPatterns) {
+          const captured = pattern // close over this specific pattern instance
+          this.trackSchedulers.set(id, {
+            now: () => sched.now(),
+            query: (begin: number, end: number) => {
+              try { return captured.queryArc(begin, end) } catch { return [] }
+            },
+          })
+        }
+      }
+
+      return result
+    } finally {
+      // Always restore Pattern.prototype.p — even on error
+      if (savedDescriptor) {
+        Object.defineProperty(Pattern.prototype, 'p', savedDescriptor)
+      } else {
+        delete (Pattern.prototype as any).p // eslint-disable-line @typescript-eslint/no-explicit-any
+      }
+    }
   }
 
   play(): void {
@@ -229,6 +292,16 @@ export class StrudelEngine {
         try { return pattern.queryArc(begin, end) } catch { return [] }
       },
     }
+  }
+
+  /**
+   * Returns per-track PatternSchedulers captured during the last evaluate() call.
+   * Each $: block gets its own scheduler that queries its Pattern directly via queryArc.
+   * Keys: anonymous "$:" → "$0", "$1"; named "d1:" → "d1".
+   * Empty Map before first evaluate or after evaluate error.
+   */
+  getTrackSchedulers(): Map<string, PatternScheduler> {
+    return this.trackSchedulers
   }
 
   /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
