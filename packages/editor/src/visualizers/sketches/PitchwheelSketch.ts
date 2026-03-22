@@ -1,18 +1,119 @@
+/**
+ * Port of Strudel's pitchwheel.mjs to p5.js.
+ * Active notes are placed on a circle by frequency angle (mod octave).
+ * Lines connect center to each note (flake mode).
+ */
 import type { RefObject } from 'react'
 import type p5 from 'p5'
 import type { HapStream } from '../../engine/HapStream'
+import type { PatternScheduler } from '../types'
+import { noteToMidi } from '../../engine/noteToMidi'
+
+const BG = '#090912'
+const BASE_COLOR = '#75baff'
+// MIDI 36 = C2, used as the root for freq2angle
+const ROOT_FREQ = 440 * Math.pow(2, (36 - 69) / 12)
+const EDO = 12
+
+function midiToFreq(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12)
+}
+
+function getFreq(hap: any): number | null {
+  const { freq, note, n } = hap.value ?? {}
+  if (typeof freq === 'number') return freq
+  const noteVal = note ?? n
+  const midi = typeof noteVal === 'number' ? noteVal : noteToMidi(String(noteVal ?? ''))
+  return midi !== null ? midiToFreq(midi) : null
+}
+
+function freq2angle(freq: number, root: number): number {
+  return 0.5 - (Math.log2(freq / root) % 1)
+}
+
+function circlePos(cx: number, cy: number, radius: number, angle: number): [number, number] {
+  const a = angle * Math.PI * 2
+  return [Math.sin(a) * radius + cx, Math.cos(a) * radius + cy]
+}
 
 export function PitchwheelSketch(
   _hapStreamRef: RefObject<HapStream | null>,
-  _analyserRef: RefObject<AnalyserNode | null>
+  _analyserRef: RefObject<AnalyserNode | null>,
+  schedulerRef: RefObject<PatternScheduler | null>
 ): (p: p5) => void {
   return (p: p5) => {
     p.setup = () => {
       p.createCanvas(300, 200)
       p.pixelDensity(window.devicePixelRatio || 1)
     }
+
     p.draw = () => {
-      p.background('#090912')
+      const W = p.width
+      const H = p.height
+      p.background(BG)
+
+      const scheduler = schedulerRef.current
+      if (!scheduler) return
+
+      let now: number
+      try { now = scheduler.now() } catch { return }
+
+      let haps: any[]
+      try { haps = scheduler.query(now - 0.01, now + 0.01) } catch { return }
+      // Only draw currently active haps
+      haps = haps.filter(h => {
+        const begin = Number(h.whole?.begin ?? 0)
+        const end = Number(h.endClipped ?? h.whole?.end ?? begin + 0.25)
+        return begin <= now && end > now
+      })
+
+      const size = Math.min(W, H)
+      const hapRadius = 6
+      const thickness = 2
+      const margin = 12
+      const radius = size / 2 - thickness / 2 - hapRadius - margin
+      const cx = W / 2
+      const cy = H / 2
+
+      // Draw EDO reference dots
+      p.noStroke()
+      p.fill(BASE_COLOR + '40')
+      for (let i = 0; i < EDO; i++) {
+        const angle = freq2angle(ROOT_FREQ * Math.pow(2, i / EDO), ROOT_FREQ)
+        const [x, y] = circlePos(cx, cy, radius, angle)
+        p.circle(x, y, hapRadius * 1.2)
+      }
+
+      // Draw reference circle
+      p.noFill()
+      p.stroke(BASE_COLOR + '30')
+      p.strokeWeight(1)
+      p.circle(cx, cy, radius * 2)
+
+      // Draw each active hap
+      for (const hap of haps) {
+        const freq = getFreq(hap)
+        if (freq === null) continue
+
+        const angle = freq2angle(freq, ROOT_FREQ)
+        const [x, y] = circlePos(cx, cy, radius, angle)
+        const color = hap.value?.color ?? BASE_COLOR
+        const gain = hap.value?.gain ?? 1
+        const velocity = hap.value?.velocity ?? 1
+        const alpha = Math.min(1, gain * velocity)
+
+        // Line from center to note
+        p.stroke(color)
+        p.strokeWeight(thickness)
+        ;(p.drawingContext as CanvasRenderingContext2D).globalAlpha = alpha
+        p.line(cx, cy, x, y)
+
+        // Filled circle at note position
+        p.fill(color)
+        p.noStroke()
+        p.circle(x, y, hapRadius * 2)
+      }
+      ;(p.drawingContext as CanvasRenderingContext2D).globalAlpha = 1
     }
   }
 }

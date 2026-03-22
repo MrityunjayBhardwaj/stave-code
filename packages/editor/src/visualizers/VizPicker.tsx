@@ -51,9 +51,32 @@ function PitchwheelIcon() {
   )
 }
 
+function FscopeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <line x1="1" y1="10" x2="1" y2="7" /><line x1="3" y1="10" x2="3" y2="5" />
+      <line x1="5" y1="10" x2="5" y2="4" /><line x1="7" y1="10" x2="7" y2="3" />
+      <line x1="9" y1="10" x2="9" y2="5" /><line x1="11" y1="10" x2="11" y2="7" />
+      <line x1="13" y1="10" x2="13" y2="9" />
+    </svg>
+  )
+}
+
+function WordfallIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="1" y="2" width="3" height="4" rx="0.5" />
+      <rect x="6" y="5" width="3" height="4" rx="0.5" />
+      <rect x="10" y="1" width="3" height="3" rx="0.5" />
+    </svg>
+  )
+}
+
 const MODES: { mode: VizMode; label: string; icon: React.ReactNode }[] = [
   { mode: 'pianoroll', label: 'Pianoroll', icon: <PianorollIcon /> },
+  { mode: 'wordfall', label: 'Wordfall', icon: <WordfallIcon /> },
   { mode: 'scope', label: 'Scope', icon: <ScopeIcon /> },
+  { mode: 'fscope', label: 'Freq Scope', icon: <FscopeIcon /> },
   { mode: 'spectrum', label: 'Spectrum', icon: <SpectrumIcon /> },
   { mode: 'spiral', label: 'Spiral', icon: <SpiralIcon /> },
   { mode: 'pitchwheel', label: 'Pitchwheel', icon: <PitchwheelIcon /> },
