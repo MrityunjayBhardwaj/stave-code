@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-02-PLAN.md (useHighlighting wired into StrudelEditor)
-last_updated: "2026-03-21T15:50:14.723Z"
+stopped_at: Completed 02-pianoroll-visualizers-01-PLAN.md
+last_updated: "2026-03-22T04:28:06.403Z"
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 5
+  completed_plans: 3
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-21)
 
 **Core value:** A standalone, embeddable Strudel editor that plays audio, exports WAV, and gives real-time visual feedback — clean enough to drop into any React app as a single import.
-**Current focus:** Phase 01 — active-highlighting
+**Current focus:** Phase 02 — pianoroll-visualizers
 
 ## Current Position
 
-Phase: 01 (active-highlighting) — EXECUTING
-Plan: 2 of 2
+Phase: 02 (pianoroll-visualizers) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Plan: 2 of 2
 *Updated after each plan completion*
 | Phase 01-active-highlighting P01 | 3 | 2 tasks | 3 files |
 | Phase 01-active-highlighting P02 | 5 | 2 tasks | 1 files |
+| Phase 02-pianoroll-visualizers P01 | 3m | 1 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,9 @@ Recent decisions affecting current work:
 - [Phase 01-active-highlighting]: Canvas ctx.fillStyle color parsing for per-note color injection — graceful fallback to base class if canvas unavailable in test/SSR environments
 - [Phase 01-active-highlighting]: useHighlighting call placed before handlePlay/handleStop so clearHighlights binding is available in callback closures — React const bindings are not hoisted
 - [Phase 01-active-highlighting]: setHapStream(engine.getHapStream()) on every play call is safe — HapStream instance is stable per engine lifetime, useState skips re-render on identity equality
+- [Phase 02-pianoroll-visualizers]: Unknown sounds fall back to --accent, not --stem-melody — no melody branch in getColor()
+- [Phase 02-pianoroll-visualizers]: ResizeObserver created in same useEffect as p5 instance to share cleanup closure
+- [Phase 02-pianoroll-visualizers]: Pure math functions exported from PianorollSketch for direct unit testing without p5 mock
 
 ### Pending Todos
 
@@ -77,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T15:50:14.722Z
-Stopped at: Completed 01-02-PLAN.md (useHighlighting wired into StrudelEditor)
+Last session: 2026-03-22T04:28:06.401Z
+Stopped at: Completed 02-pianoroll-visualizers-01-PLAN.md
 Resume file: None

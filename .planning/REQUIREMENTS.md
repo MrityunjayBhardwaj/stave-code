@@ -36,11 +36,11 @@
 
 ### Visualizers — Pianoroll
 
-- [ ] **PIANO-01**: Full-panel Pianoroll canvas renders at 60fps via requestAnimationFrame
-- [ ] **PIANO-02**: Pianoroll shows a rolling 6-second time window (right edge = now, scrolls left)
-- [ ] **PIANO-03**: Y-axis spans MIDI 24 (C1) to MIDI 96 (C7)
-- [ ] **PIANO-04**: Note blocks colored by s field (drums=orange, bass=cyan, melody=violet, pad=emerald, default=accent) or by hap.value.color if present
-- [ ] **PIANO-05**: Percussion sounds (bd, sd, hh, etc.) shown at fixed MIDI positions below pitch area
+- [x] **PIANO-01**: Full-panel Pianoroll canvas renders at 60fps via requestAnimationFrame
+- [x] **PIANO-02**: Pianoroll shows a rolling 6-second time window (right edge = now, scrolls left)
+- [x] **PIANO-03**: Y-axis spans MIDI 24 (C1) to MIDI 96 (C7)
+- [x] **PIANO-04**: Note blocks colored by s field (drums=orange, bass=cyan, melody=violet, pad=emerald, default=accent) or by hap.value.color if present
+- [x] **PIANO-05**: Percussion sounds (bd, sd, hh, etc.) shown at fixed MIDI positions below pitch area
 - [ ] **PIANO-06**: Inline pianoroll embedded in Monaco as a view zone below $: lines (120px height)
 - [ ] **PIANO-07**: Inline view zones re-added after every evaluate() call (they reset on editor re-layout)
 
@@ -128,11 +128,11 @@
 | HIGH-03 | Phase 1 | Complete |
 | HIGH-04 | Phase 1 | Complete |
 | HIGH-05 | Phase 1 | Complete |
-| PIANO-01 | Phase 2 | Pending |
-| PIANO-02 | Phase 2 | Pending |
-| PIANO-03 | Phase 2 | Pending |
-| PIANO-04 | Phase 2 | Pending |
-| PIANO-05 | Phase 2 | Pending |
+| PIANO-01 | Phase 2 | Complete |
+| PIANO-02 | Phase 2 | Complete |
+| PIANO-03 | Phase 2 | Complete |
+| PIANO-04 | Phase 2 | Complete |
+| PIANO-05 | Phase 2 | Complete |
 | PIANO-06 | Phase 2 | Pending |
 | PIANO-07 | Phase 2 | Pending |
 | UI-01 | Phase 2 | Pending |
