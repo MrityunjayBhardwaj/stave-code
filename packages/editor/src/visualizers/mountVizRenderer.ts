@@ -1,0 +1,32 @@
+import type { VizRenderer, VizRendererSource, VizRefs } from './types'
+
+/**
+ * Shared imperative utility that creates/resolves a VizRenderer, calls mount(),
+ * and wires a ResizeObserver. Used by both useVizRenderer (React hook) and
+ * viewZones.ts (imperative).
+ *
+ * Returns the renderer instance and a disconnect function for the ResizeObserver.
+ */
+export function mountVizRenderer(
+  container: HTMLDivElement,
+  source: VizRendererSource,
+  refs: VizRefs,
+  size: { w: number; h: number },
+  onError: (e: Error) => void
+): { renderer: VizRenderer; disconnect: () => void } {
+  const renderer = typeof source === 'function' ? (source as () => VizRenderer)() : source
+  renderer.mount(container, refs, size, onError)
+
+  const ro = new ResizeObserver((entries) => {
+    const { width, height } = entries[0].contentRect
+    if (width > 0 && height > 0) {
+      renderer.resize(width, height)
+    }
+  })
+  ro.observe(container)
+
+  return {
+    renderer,
+    disconnect: () => ro.disconnect(),
+  }
+}
