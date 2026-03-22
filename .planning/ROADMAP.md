@@ -119,7 +119,9 @@ Plans:
   2. Each inline zone gets track-scoped VizRefs (scheduler from getTrackSchedulers)
   3. Zone width from editor.getLayoutInfo().contentWidth (not container.clientWidth)
   4. Cleanup returns { cleanup, pause, resume } — pause on stop, resume on play
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Refactor viewZones.ts + wire StrudelEditor with InlineZoneHandle
 
 ### Phase 7: Additional Renderers
 **Goal**: Implement Canvas 2D, Three.js (dynamic import), and Shadertoy GLSL renderers. Each implements VizRenderer interface. Third-party renderer authors can publish motif-renderer-* packages.
@@ -130,7 +132,9 @@ Plans:
   2. Three.js renderer dynamically imports (~600KB) only when mounted
   3. Shadertoy GLSL renderer compiles user shaders with onError for compile failures
   4. VizDescriptor.requires capability check disables unsupported renderers in picker
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Refactor viewZones.ts + wire StrudelEditor with InlineZoneHandle
 
 ### Phase 8: Engine Protocol
 **Goal**: Define the LiveCodingEngine interface. Refactor StrudelEngine to implement it. Prove multi-engine support by adding a second engine adapter.
@@ -141,7 +145,9 @@ Plans:
   2. StrudelEngine implements LiveCodingEngine without behavioral change
   3. LiveCodingEditor component accepts engine prop (not hardcoded to Strudel)
   4. At least one proof-of-concept second engine adapter exists
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Refactor viewZones.ts + wire StrudelEditor with InlineZoneHandle
 
 ### Phase 9: Normalized Hap Type
 **Goal**: Define a normalized Hap interface that engines map their native events to. Viz layer becomes truly engine-agnostic — sketches work with any engine's events without modification.
@@ -151,7 +157,9 @@ Plans:
   1. Normalized Hap interface defined (begin, end, pitch, gain, duration, label, color, trackId)
   2. StrudelEngine maps Strudel haps to normalized Hap type
   3. All 7 sketches consume normalized Hap (not raw Strudel hap)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Refactor viewZones.ts + wire StrudelEditor with InlineZoneHandle
 
 ### Phase 10: Monaco Intelligence
 **Goal**: The Monaco editor understands Strudel code — syntax elements get distinct colors, users get completions for functions and note names, hovering a function shows docs, and evaluation errors appear as red squiggles.
@@ -163,7 +171,9 @@ Plans:
   3. Inside `note("...")` or `s("...")`, completions offer context-appropriate values (note names, oscillator types, percussion names)
   4. After an evaluate() error, the error location is underlined with red squiggles in Monaco; hovering shows the message
   5. Hovering a Strudel function name shows a documentation popup with the function signature and an example
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Refactor viewZones.ts + wire StrudelEditor with InlineZoneHandle
 
 ### Phase 11: Library Polish + Demo Site
 **Goal**: The @motif/editor package is ready to publish — tested, documented, built correctly — and packages/app is a polished public-facing demo that showcases all features.
@@ -175,7 +185,9 @@ Plans:
   3. Storybook stories exist for StrudelEditor (default, pianoroll, scope, read-only) and each visualizer component in isolation
   4. The packages/app demo site loads in a browser with play/stop/export working, all visualizer modes switchable, and an examples gallery of 3-5 starter patterns
   5. README.md contains npm install instructions and a minimal working usage example that an integrator can copy
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Refactor viewZones.ts + wire StrudelEditor with InlineZoneHandle
 
 ## Progress
 
