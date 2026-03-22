@@ -15,14 +15,8 @@ import { useHighlighting } from './monaco/useHighlighting'
 import type { HapStream } from './engine/HapStream'
 import { VizPanel } from './visualizers/VizPanel'
 import { VizPicker } from './visualizers/VizPicker'
-import type { VizMode, SketchFactory, PatternScheduler } from './visualizers/types'
-import { PianorollSketch } from './visualizers/sketches/PianorollSketch'
-import { ScopeSketch } from './visualizers/sketches/ScopeSketch'
-import { FscopeSketch } from './visualizers/sketches/FscopeSketch'
-import { SpectrumSketch } from './visualizers/sketches/SpectrumSketch'
-import { SpiralSketch } from './visualizers/sketches/SpiralSketch'
-import { PitchwheelSketch } from './visualizers/sketches/PitchwheelSketch'
-import { WordfallSketch } from './visualizers/sketches/WordfallSketch'
+import type { VizDescriptor, VizRendererSource, PatternScheduler } from './visualizers/types'
+import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
 import { addInlineViewZones } from './visualizers/viewZones'
 
 export type { StrudelTheme }
@@ -40,12 +34,13 @@ export interface StrudelEditorProps {
   onError?: (error: Error) => void
 
   // Visual
-  visualizer?: 'pianoroll' | 'scope' | 'spectrum' | 'spiral' | 'pitchwheel' | 'off'
+  visualizer?: string
   inlinePianoroll?: boolean
   activeHighlight?: boolean
   theme?: 'dark' | 'light' | StrudelTheme
   showVizPicker?: boolean
-  vizSketch?: SketchFactory
+  vizDescriptors?: VizDescriptor[]
+  vizRenderer?: VizRendererSource
 
   // Layout
   height?: number | string
@@ -83,7 +78,8 @@ export function StrudelEditor({
   activeHighlight: _activeHighlight = true,
   visualizer: _visualizer = 'off',
   inlinePianoroll: _inlinePianoroll = false,
-  vizSketch,
+  vizDescriptors = DEFAULT_VIZ_DESCRIPTORS,
+  vizRenderer,
   onExport,
   engineRef: engineRefProp,
 }: StrudelEditorProps) {
@@ -99,8 +95,8 @@ export function StrudelEditor({
   const [bpm, setBpm] = useState<number | undefined>(120)
   const [hapStream, setHapStream] = useState<HapStream | null>(null)
   const [soundNames, setSoundNames] = useState<string[]>([])
-  const [activeViz, setActiveViz] = useState<VizMode>(
-    (_visualizer !== 'off' ? _visualizer : 'pianoroll') as VizMode
+  const [activeViz, setActiveViz] = useState<string>(
+    _visualizer !== 'off' ? _visualizer : (vizDescriptors[0]?.id ?? 'pianoroll')
   )
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
   const [patternScheduler, setPatternScheduler] = useState<PatternScheduler | null>(null)
@@ -133,18 +129,10 @@ export function StrudelEditor({
     return engineRef.current
   }
 
-  // Sketch factory map — stable via useMemo
-  const SKETCH_MAP: Record<VizMode, SketchFactory> = useMemo(() => ({
-    pianoroll: PianorollSketch,
-    wordfall: WordfallSketch,
-    scope: ScopeSketch,
-    fscope: FscopeSketch,
-    spectrum: SpectrumSketch,
-    spiral: SpiralSketch,
-    pitchwheel: PitchwheelSketch,
-  }), [])
-
-  const currentSketch: SketchFactory = vizSketch ?? SKETCH_MAP[activeViz]
+  const currentSource: VizRendererSource = useMemo(
+    () => vizRenderer ?? (vizDescriptors.find(d => d.id === activeViz)?.factory ?? vizDescriptors[0].factory),
+    [activeViz, vizDescriptors, vizRenderer]
+  )
 
   const { clearAll: clearHighlights } = useHighlighting(editorRef.current, hapStream)
 
@@ -319,8 +307,9 @@ export function StrudelEditor({
       )}
 
       <VizPicker
-        activeMode={activeViz}
-        onModeChange={setActiveViz}
+        descriptors={vizDescriptors}
+        activeId={activeViz}
+        onIdChange={setActiveViz}
         showVizPicker={showVizPicker ?? true}
       />
 
@@ -343,7 +332,7 @@ export function StrudelEditor({
           hapStream={hapStream}
           analyser={analyser}
           scheduler={patternScheduler}
-          sketchFactory={currentSketch}
+          source={currentSource}
         />
       )}
     </div>

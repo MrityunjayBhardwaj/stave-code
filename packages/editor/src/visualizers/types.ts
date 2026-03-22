@@ -46,5 +46,5 @@ export interface VizDescriptor {
 export type P5SketchFactory = (
   hapStreamRef: RefObject<HapStream | null>,
   analyserRef: RefObject<AnalyserNode | null>,
-  schedulerRef?: RefObject<PatternScheduler | null>
+  schedulerRef: RefObject<PatternScheduler | null>
 ) => (p: import('p5').default) => void

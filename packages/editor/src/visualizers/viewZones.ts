@@ -1,7 +1,7 @@
 import type * as Monaco from 'monaco-editor'
 import type { RefObject } from 'react'
 import type { HapStream } from '../engine/HapStream'
-import type { VizRefs } from './types'
+import type { VizRefs, PatternScheduler } from './types'
 import { P5VizRenderer } from './renderers/P5VizRenderer'
 import { PianorollSketch } from './sketches/PianorollSketch'
 import { mountVizRenderer } from './mountVizRenderer'
@@ -38,7 +38,7 @@ export function addInlineViewZones(
 
       const hapStreamRef = { current: hapStream } as RefObject<HapStream | null>
       const analyserRef = { current: analyser } as RefObject<AnalyserNode | null>
-      const schedulerRef = { current: null } as RefObject<null>
+      const schedulerRef = { current: null } as RefObject<PatternScheduler | null>
 
       const zoneId = accessor.addZone({
         afterLineNumber: i + 1,
