@@ -4,10 +4,10 @@ slug: inline-zones-via-abstraction
 status: draft
 nyquist_compliant: false
 wave_0_complete: false
-created: 2026-03-22
+created: 2026-03-23
 ---
 
-# Phase 6 — Validation Strategy
+# Phase 6 — Validation Strategy (REVISED: .viz() per-pattern opt-in)
 
 > Per-phase validation contract for feedback sampling during execution.
 
@@ -38,10 +38,10 @@ created: 2026-03-22
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 06-01-01 | 01 | 1 | ZONE-01 | unit | `pnpm --filter @strucode/editor test -- --run viewZones` | ✅ | ⬜ pending |
+| 06-01-01 | 01 | 1 | ZONE-01 | unit | `pnpm --filter @strucode/editor test -- --run StrudelEngine` | ✅ | ⬜ pending |
 | 06-01-02 | 01 | 1 | ZONE-02 | unit | `pnpm --filter @strucode/editor test -- --run viewZones` | ✅ | ⬜ pending |
-| 06-01-03 | 01 | 1 | ZONE-03 | unit | `pnpm --filter @strucode/editor test -- --run viewZones` | ✅ | ⬜ pending |
-| 06-01-04 | 01 | 1 | ZONE-04 | unit | `pnpm --filter @strucode/editor test -- --run StrudelEditor` | ✅ | ⬜ pending |
+| 06-02-01 | 02 | 2 | ZONE-03 | unit | `pnpm --filter @strucode/editor test -- --run viewZones` | ✅ | ⬜ pending |
+| 06-02-02 | 02 | 2 | ZONE-04 | unit | `pnpm --filter @strucode/editor test -- --run StrudelEditor` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -49,7 +49,7 @@ created: 2026-03-22
 
 ## Wave 0 Requirements
 
-Existing test infrastructure covers all phase requirements. `viewZones.test.ts` and `StrudelEditor.test.tsx` already exist with working mocks.
+Existing test infrastructure covers framework needs. StrudelEngine.test.ts and viewZones.test.ts already exist.
 
 ---
 
@@ -57,8 +57,9 @@ Existing test infrastructure covers all phase requirements. `viewZones.test.ts` 
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Inline zones render correct per-track visualizations | ZONE-02 | Visual verification of separate track rendering | Play multi-track pattern, verify each inline zone shows only its track's notes |
-| Zones freeze on stop, resume on play | ZONE-04 | Visual lifecycle verification | Play → verify animation → Stop → verify frozen → Play → verify resumed |
+| .viz("pianoroll") renders inline zone after last line of pattern block | ZONE-01 | Visual zone placement verification | Write `$: note("c4").viz("pianoroll")` over 2 lines, verify zone appears after line 2 |
+| Per-track data isolation in inline zones | ZONE-02 | Visual verification of separate track rendering | Two $: blocks with .viz(), verify each shows only its track |
+| Patterns without .viz() get no inline zone | ZONE-01 | Visual absence verification | Three $: blocks, only one with .viz(), verify only one zone appears |
 
 ---
 
