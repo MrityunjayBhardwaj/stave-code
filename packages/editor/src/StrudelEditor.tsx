@@ -1,7 +1,6 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -15,7 +14,7 @@ import { useHighlighting } from './monaco/useHighlighting'
 import type { HapStream } from './engine/HapStream'
 import { VizPanel } from './visualizers/VizPanel'
 import { VizPicker } from './visualizers/VizPicker'
-import type { VizDescriptor, VizRendererSource, PatternScheduler } from './visualizers/types'
+import type { VizDescriptor, PatternScheduler } from './visualizers/types'
 import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
 import { addInlineViewZones, type InlineZoneHandle } from './visualizers/viewZones'
 
@@ -35,12 +34,10 @@ export interface StrudelEditorProps {
 
   // Visual
   visualizer?: string
-  inlinePianoroll?: boolean
   activeHighlight?: boolean
   theme?: 'dark' | 'light' | StrudelTheme
   showVizPicker?: boolean
   vizDescriptors?: VizDescriptor[]
-  vizRenderer?: VizRendererSource
 
   // Layout
   height?: number | string
@@ -77,9 +74,7 @@ export function StrudelEditor({
   readOnly = false,
   activeHighlight: _activeHighlight = true,
   visualizer: _visualizer = 'off',
-  inlinePianoroll: _inlinePianoroll = false,
   vizDescriptors = DEFAULT_VIZ_DESCRIPTORS,
-  vizRenderer,
   onExport,
   engineRef: engineRefProp,
 }: StrudelEditorProps) {
@@ -128,11 +123,6 @@ export function StrudelEditor({
     }
     return engineRef.current
   }
-
-  const currentSource: VizRendererSource = useMemo(
-    () => vizRenderer ?? (vizDescriptors.find(d => d.id === activeViz)?.factory ?? vizDescriptors[0].factory),
-    [activeViz, vizDescriptors, vizRenderer]
-  )
 
   const { clearAll: clearHighlights } = useHighlighting(editorRef.current, hapStream)
 
@@ -338,7 +328,7 @@ export function StrudelEditor({
           hapStream={hapStream}
           analyser={analyser}
           scheduler={patternScheduler}
-          source={currentSource}
+          source={vizDescriptors.find(d => d.id === activeViz)?.factory ?? vizDescriptors[0].factory}
         />
       )}
     </div>
