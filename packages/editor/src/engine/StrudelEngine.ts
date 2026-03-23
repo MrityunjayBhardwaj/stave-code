@@ -30,6 +30,9 @@ export class StrudelEngine {
   private trackSchedulers: Map<string, PatternScheduler> = new Map()
   // Per-track viz requests captured during the last evaluate() call
   private vizRequests: Map<string, string> = new Map()
+  // Reference to superdough audio controller (set during init)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private audioController: any = null
 
   async init(): Promise<void> {
     if (this.initialized) return
@@ -104,6 +107,7 @@ export class StrudelEngine {
     this.analyserNode.smoothingTimeConstant = 0.8
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const audioController = (webaudioMod as any).getSuperdoughAudioController()
+    this.audioController = audioController
     audioController.output.destinationGain.connect(this.analyserNode)
 
     // Wrap the native output trigger so we can fan events to HapStream subscribers
@@ -152,42 +156,64 @@ export class StrudelEngine {
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'p')
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'viz')
 
-    // Install .viz() capture — tags pattern instance with requested viz name.
-    // Resolved later in the .p() wrapper when the track key becomes known.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Object.defineProperty(Pattern.prototype, 'viz', {
-      configurable: true,
-      writable: true,
-      value: function(this: any, vizName: string) { // eslint-disable-line @typescript-eslint/no-explicit-any
-        this._pendingViz = vizName
-        return this  // preserve chaining
-      },
-    })
-
-    // Backwards compat: Strudel's ._pianoroll(), ._scope(), etc. → .viz("name")
-    // So existing Strudel code works unmodified in struCode.
+    // Legacy viz names for backwards compat with Strudel's ._pianoroll(), ._scope(), etc.
     const legacyVizNames = ['pianoroll', 'punchcard', 'wordfall', 'scope', 'fscope', 'spectrum', 'spiral', 'pitchwheel', 'markCSS']
     const savedLegacyDescriptors = new Map<string, PropertyDescriptor | undefined>()
-    for (const name of legacyVizNames) {
-      const methodName = `_${name}`
-      savedLegacyDescriptors.set(methodName, Object.getOwnPropertyDescriptor(Pattern.prototype, methodName))
-      Object.defineProperty(Pattern.prototype, methodName, {
-        configurable: true,
-        writable: true,
-        value: function(this: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-          this._pendingViz = name
-          return this
-        },
-      })
-    }
 
     // Install setter trap — fires when injectPatternMethods does Pattern.prototype.p = fn
     // This intercepts the assignment so we can wrap Strudel's fn with our capturing logic.
+    // IMPORTANT: .viz() and legacy method wrappers are installed INSIDE this setter,
+    // AFTER injectPatternMethods finishes — because injectPatternMethods overwrites
+    // any .viz() we install beforehand (Strudel has its own .viz() from @strudel/draw).
     Object.defineProperty(Pattern.prototype, 'p', {
       configurable: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set(strudelFn: (id: string) => any) {
-        // Wrap Strudel's fn with our capturing logic
+        // NOW install .viz() wrapper — after injectPatternMethods has set Strudel's .viz()
+        // Wrap Strudel's existing .viz() so it still renders, but also capture the viz name.
+        const strudelViz = Pattern.prototype.viz // eslint-disable-line @typescript-eslint/no-explicit-any
+        Object.defineProperty(Pattern.prototype, 'viz', {
+          configurable: true,
+          writable: true,
+          value: function(this: any, vizName: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            // Extract viz name — Strudel's transpiler reifies string args into Patterns
+            let resolvedName: string | undefined
+            if (typeof vizName === 'string') {
+              resolvedName = vizName
+            } else if (vizName && vizName._Pattern) {
+              // Reified Pattern — extract the original string value
+              try {
+                const haps = vizName.queryArc(0, 1)
+                if (haps.length > 0) resolvedName = String(haps[0].value)
+              } catch { /* ignore query errors */ }
+            }
+            // Chain to Strudel's .viz() if it exists
+            const result = strudelViz ? strudelViz.call(this, vizName) : this
+            // Tag the RETURNED pattern with the resolved viz name
+            if (resolvedName) {
+              result._pendingViz = resolvedName
+            }
+            return result
+          },
+        })
+
+        // Install legacy ._pianoroll(), ._scope(), etc. wrappers AFTER injectPatternMethods
+        for (const name of legacyVizNames) {
+          const methodName = `_${name}`
+          savedLegacyDescriptors.set(methodName, Object.getOwnPropertyDescriptor(Pattern.prototype, methodName))
+          const strudelLegacy = (Pattern.prototype as any)[methodName] // eslint-disable-line @typescript-eslint/no-explicit-any
+          Object.defineProperty(Pattern.prototype, methodName, {
+            configurable: true,
+            writable: true,
+            value: function(this: any, ...args: any[]) { // eslint-disable-line @typescript-eslint/no-explicit-any
+              const result = strudelLegacy ? strudelLegacy.apply(this, args) : this
+              result._pendingViz = name
+              return result
+            },
+          })
+        }
+
+        // Wrap Strudel's .p() fn with our capturing logic
         Object.defineProperty(Pattern.prototype, 'p', {
           configurable: true,
           writable: true,
@@ -201,7 +227,7 @@ export class StrudelEngine {
               capturedPatterns.set(captureId, this)
 
               // Resolve pending .viz() request — .viz() fires BEFORE .p() in chain
-              if (this._pendingViz) {
+              if (this._pendingViz && typeof this._pendingViz === 'string') {
                 capturedVizRequests.set(captureId, this._pendingViz)
                 delete this._pendingViz
               }
@@ -369,6 +395,7 @@ export class StrudelEngine {
   getVizRequests(): Map<string, string> {
     return this.vizRequests
   }
+
 
   /** Register a handler for runtime audio errors (fires during scheduling, not evaluation). */
   setRuntimeErrorHandler(handler: (err: Error) => void): void {
