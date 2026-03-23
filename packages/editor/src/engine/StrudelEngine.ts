@@ -3,6 +3,7 @@ import { LiveRecorder } from './LiveRecorder'
 import { OfflineRenderer } from './OfflineRenderer'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
+import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -13,7 +14,7 @@ type HapHandler = (event: HapEvent) => void
  * API surface matches ARCHITECTURE.md.
  * One instance per page. Must be init()'d after a user gesture.
  */
-export class StrudelEngine {
+export class StrudelEngine implements LiveCodingEngine {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private repl: any = null
   private audioCtx: AudioContext | null = null
@@ -33,6 +34,8 @@ export class StrudelEngine {
   // Reference to superdough audio controller (set during init)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private audioController: any = null
+  // Code from the last successful evaluate() — used by buildVizRequestsWithLines
+  private lastEvaluatedCode: string = ''
 
   async init(): Promise<void> {
     if (this.initialized) return
@@ -143,6 +146,7 @@ export class StrudelEngine {
 
   async evaluate(code: string): Promise<{ error?: Error }> {
     if (!this.initialized) await this.init()
+    this.lastEvaluatedCode = code
 
     const capturedPatterns = new Map<string, any>() // eslint-disable-line @typescript-eslint/no-explicit-any
     const capturedVizRequests = new Map<string, string>()
@@ -290,6 +294,62 @@ export class StrudelEngine {
         }
       }
     }
+  }
+
+  get components(): Partial<EngineComponents> {
+    const bag: Partial<EngineComponents> = {
+      streaming: { hapStream: this.hapStream },
+    }
+    if (this.analyserNode && this.audioCtx) {
+      bag.audio = { analyser: this.analyserNode, audioCtx: this.audioCtx }
+    }
+    bag.queryable = {
+      scheduler: this.getPatternScheduler(),
+      trackSchedulers: this.trackSchedulers,
+    }
+    // Build inlineViz from vizRequests + line scanning
+    if (this.vizRequests.size > 0 && this.lastEvaluatedCode) {
+      bag.inlineViz = {
+        vizRequests: this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode),
+      }
+    }
+    return bag
+  }
+
+  /**
+   * Scans code for $: blocks and maps each track's viz request to the line
+   * after the last line of that block. Mirrors the line-scanning logic in
+   * viewZones.ts but returns structured data instead of creating DOM zones.
+   */
+  private buildVizRequestsWithLines(
+    requests: Map<string, string>,
+    code: string,
+  ): Map<string, { vizId: string; afterLine: number }> {
+    const result = new Map<string, { vizId: string; afterLine: number }>()
+    const lines = code.split('\n')
+    let anonIndex = 0
+
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].trim().startsWith('$:')) continue
+
+      const key = `$${anonIndex}`
+      anonIndex++
+
+      const vizId = requests.get(key)
+      if (!vizId) continue
+
+      // Find last line of this pattern block (continuation lines)
+      let lastLineIdx = i
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j].trim()
+        if (next === '' || next.startsWith('$:') || next.startsWith('setcps')) break
+        lastLineIdx = j
+      }
+
+      result.set(key, { vizId, afterLine: lastLineIdx + 1 }) // 1-indexed
+    }
+
+    return result
   }
 
   play(): void {
