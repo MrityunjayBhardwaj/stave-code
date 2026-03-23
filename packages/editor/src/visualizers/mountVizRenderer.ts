@@ -17,9 +17,13 @@ export function mountVizRenderer(
   const renderer = typeof source === 'function' ? (source as () => VizRenderer)() : source
   renderer.mount(container, refs, size, onError)
 
+  let lastW = size.w
+  let lastH = size.h
   const ro = new ResizeObserver((entries) => {
     const { width, height } = entries[0].contentRect
-    if (width > 0 && height > 0) {
+    if (width > 0 && height > 0 && (Math.abs(width - lastW) > 1 || Math.abs(height - lastH) > 1)) {
+      lastW = width
+      lastH = height
       renderer.resize(width, height)
     }
   })

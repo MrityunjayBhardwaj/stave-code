@@ -72,7 +72,7 @@ export function addInlineViewZones(
 
       const descriptor = vizDescriptors.find(d => d.id === vizName)
       if (!descriptor) {
-        console.warn(`[motif] Unknown viz name: "${vizName}". Available: ${vizDescriptors.map(d => d.id).join(', ')}`)
+        console.warn(`[strucode] Unknown viz name: "${vizName}". Available: ${vizDescriptors.map(d => d.id).join(', ')}`)
         return
       }
 
@@ -86,7 +86,7 @@ export function addInlineViewZones(
       let lastLineIdx = i
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim()
-        if (next === '' || next.startsWith('$:') || next.startsWith('setcps') || next.startsWith('//')) break
+        if (next === '' || next.startsWith('$:') || next.startsWith('setcps')) break
         lastLineIdx = j
       }
 
