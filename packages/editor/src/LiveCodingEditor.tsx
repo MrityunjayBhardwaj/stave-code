@@ -16,7 +16,7 @@ import { VizPicker } from './visualizers/VizPicker'
 import type { VizDescriptor, PatternScheduler } from './visualizers/types'
 import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
 import { addInlineViewZones, type InlineZoneHandle } from './visualizers/viewZones'
-import type { LiveCodingEngine } from './engine/LiveCodingEngine'
+import type { LiveCodingEngine, EngineComponents } from './engine/LiveCodingEngine'
 
 export type { StrudelTheme }
 
@@ -51,6 +51,10 @@ export interface LiveCodingEditorProps {
   // Extension points
   toolbarExtra?: React.ReactNode
   onPostEvaluate?: (engine: LiveCodingEngine) => void
+  soundNames?: string[]
+  bpm?: number
+  isExporting?: boolean
+  onExport?: () => void
 
   // Advanced
   engineRef?: React.MutableRefObject<LiveCodingEngine | null>
@@ -78,6 +82,10 @@ export function LiveCodingEditor({
   vizDescriptors = DEFAULT_VIZ_DESCRIPTORS,
   toolbarExtra,
   onPostEvaluate,
+  soundNames,
+  bpm,
+  isExporting: isExportingProp = false,
+  onExport: onExportProp,
   engineRef: engineRefProp,
 }: LiveCodingEditorProps) {
   const isControlled = controlledCode !== undefined
@@ -153,29 +161,12 @@ export function LiveCodingEditor({
     onPostEvaluate?.(engine)
 
     // Re-add inline view zones for patterns that called .viz() (they reset after evaluate).
-    // TODO(08-02): Replace this bridge code — read afterLine directly from inlineViz component
-    //              instead of converting back to the old addInlineViewZones arg format.
-    const inlineViz = engine.components.inlineViz
-    if (inlineViz && inlineViz.vizRequests.size > 0 && editorRef.current) {
+    const components = engine.components
+    if (components.inlineViz?.vizRequests.size && editorRef.current) {
       viewZoneCleanupRef.current?.cleanup()
-
-      // Bridge: convert new Map<string, { vizId, afterLine }> to old Map<string, string>
-      // and extract trackSchedulers from queryable component
-      const legacyVizRequests = new Map<string, string>()
-      for (const [key, val] of inlineViz.vizRequests) {
-        legacyVizRequests.set(key, val.vizId)
-      }
-
-      const trackSchedulers = engine.components.queryable?.trackSchedulers ?? new Map()
-      const currentHapStream = engine.components.streaming?.hapStream ?? null
-      const currentAnalyser = engine.components.audio?.analyser ?? null
-
       viewZoneCleanupRef.current = addInlineViewZones(
         editorRef.current,
-        currentHapStream,
-        currentAnalyser,
-        trackSchedulers,
-        legacyVizRequests,
+        components,
         vizDescriptors
       )
     }
@@ -275,7 +266,7 @@ export function LiveCodingEditor({
 
   const showVizPanel = _visualizer !== 'off' && !isFullscreen
 
-  // No-op export handler for generic toolbar (export is Strudel-specific)
+  // No-op export handler for generic toolbar (export is engine-specific)
   const noopExport = useCallback(() => {}, [])
 
   return (
@@ -302,11 +293,12 @@ export function LiveCodingEditor({
           <div style={{ flex: 1 }}>
             <Toolbar
               isPlaying={isPlaying}
+              bpm={bpm}
               error={errorMsg}
-              isExporting={false}
+              isExporting={isExportingProp}
               onPlay={handlePlay}
               onStop={handleStop}
-              onExport={noopExport}
+              onExport={onExportProp ?? noopExport}
             />
           </div>
           {toolbarExtra}
@@ -352,6 +344,7 @@ export function LiveCodingEditor({
           activeId={activeViz}
           onIdChange={setActiveViz}
           showVizPicker={showVizPicker ?? true}
+          availableComponents={Object.keys(engine.components) as (keyof EngineComponents)[]}
         />
       )}
 
@@ -363,6 +356,7 @@ export function LiveCodingEditor({
           theme={monoTheme}
           readOnly={readOnly}
           onMount={handleMonacoMount}
+          soundNames={soundNames}
         />
       </div>
 
