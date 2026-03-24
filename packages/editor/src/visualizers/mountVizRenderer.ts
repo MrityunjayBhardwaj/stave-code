@@ -1,4 +1,5 @@
-import type { VizRenderer, VizRendererSource, VizRefs } from './types'
+import type { EngineComponents } from '../engine/LiveCodingEngine'
+import type { VizRenderer, VizRendererSource } from './types'
 
 /**
  * Shared imperative utility that creates/resolves a VizRenderer, calls mount(),
@@ -10,12 +11,12 @@ import type { VizRenderer, VizRendererSource, VizRefs } from './types'
 export function mountVizRenderer(
   container: HTMLDivElement,
   source: VizRendererSource,
-  refs: VizRefs,
+  components: Partial<EngineComponents>,
   size: { w: number; h: number },
   onError: (e: Error) => void
 ): { renderer: VizRenderer; disconnect: () => void } {
   const renderer = typeof source === 'function' ? (source as () => VizRenderer)() : source
-  renderer.mount(container, refs, size, onError)
+  renderer.mount(container, components, size, onError)
 
   let lastW = size.w
   let lastH = size.h

@@ -1,5 +1,6 @@
 import type { RefObject } from 'react'
 import type { HapStream } from '../engine/HapStream'
+import type { EngineComponents } from '../engine/LiveCodingEngine'
 
 /**
  * Thin wrapper around the Strudel scheduler exposed to sketches.
@@ -12,7 +13,11 @@ export interface PatternScheduler {
   query(begin: number, end: number): any[]
 }
 
-/** Bundled refs passed to every VizRenderer on mount. */
+/**
+ * Bundled refs passed to every VizRenderer on mount.
+ * @deprecated Use {@link EngineComponents} instead. VizRenderer.mount() now accepts
+ * `Partial<EngineComponents>`. This type is retained for backward compatibility.
+ */
 export interface VizRefs {
   hapStreamRef: RefObject<HapStream | null>
   analyserRef:  RefObject<AnalyserNode | null>
@@ -21,7 +26,9 @@ export interface VizRefs {
 
 /** Renderer-agnostic visualization lifecycle. */
 export interface VizRenderer {
-  mount(container: HTMLDivElement, refs: VizRefs, size: { w: number; h: number }, onError: (e: Error) => void): void
+  mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: { w: number; h: number }, onError: (e: Error) => void): void
+  /** Refresh engine data refs (called each React render for live updates). */
+  update(components: Partial<EngineComponents>): void
   resize(w: number, h: number): void
   pause(): void
   resume(): void
@@ -31,11 +38,17 @@ export interface VizRenderer {
 /** A factory function returning a VizRenderer, or a VizRenderer instance directly. */
 export type VizRendererSource = (() => VizRenderer) | VizRenderer
 
-/** Descriptor for a visualization mode in the VizPicker. */
+/**
+ * Descriptor for a visualization mode in the VizPicker.
+ *
+ * `requires` lists the engine component slots this viz needs. Used by VizPicker
+ * to disable unavailable visualizations. This is about engine data requirements,
+ * NOT renderer capabilities (e.g. WebGL) — renderer caps are a separate concern.
+ */
 export interface VizDescriptor {
   id: string
   label: string
-  requires?: 'webgl' | 'webgl2'
+  requires?: (keyof EngineComponents)[]
   factory: () => VizRenderer
 }
 

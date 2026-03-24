@@ -82,7 +82,7 @@ describe('addInlineViewZones', () => {
     expect(changeViewZones).toHaveBeenCalled()
   })
 
-  it('adds a zone for each $: line with heightInPx 120', () => {
+  it('adds a zone for each $: line with heightInPx 150', () => {
     const code = '$: note("c3").s("sine")\n$: note("e3").s("sine")'
     const { editor, addedZones } = makeEditor(code)
     const vizRequests = new Map([['$0', 'pianoroll'], ['$1', 'pianoroll']])
@@ -91,8 +91,8 @@ describe('addInlineViewZones', () => {
     addInlineViewZones(editor as any, null, null, new Map(), vizRequests, mockVizDescriptors as any)
 
     expect(addedZones).toHaveLength(2)
-    expect(addedZones[0].heightInPx).toBe(120)
-    expect(addedZones[1].heightInPx).toBe(120)
+    expect(addedZones[0].heightInPx).toBe(150)
+    expect(addedZones[1].heightInPx).toBe(150)
   })
 
   it('does not add zones for non-$: lines', () => {
@@ -205,10 +205,10 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addInlineViewZones(editor as any, null, null, trackSchedulers, vizRequests, mockVizDescriptors as any)
 
-    // mountVizRenderer called twice; first call should have schedulerRef.current === mockScheduler
+    // mountVizRenderer called twice; first call should have queryable.scheduler === mockScheduler
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const firstCallRefs = (mountVizRenderer as any).mock.calls[0][2]
-    expect(firstCallRefs.schedulerRef.current).toBe(mockScheduler)
+    const firstCallComponents = (mountVizRenderer as any).mock.calls[0][2]
+    expect(firstCallComponents.queryable.scheduler).toBe(mockScheduler)
   })
 
   it('uses editor.getLayoutInfo().contentWidth for initial size', () => {
@@ -220,7 +220,7 @@ describe('addInlineViewZones', () => {
     addInlineViewZones(editor as any, null, null, new Map(), vizRequests, mockVizDescriptors as any)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((mountVizRenderer as any).mock.calls[0][3]).toEqual({ w: 800, h: 120 })
+    expect((mountVizRenderer as any).mock.calls[0][3]).toEqual({ w: 800, h: 150 })
   })
 
   it('handle.pause() calls renderer.pause() on all renderers', () => {

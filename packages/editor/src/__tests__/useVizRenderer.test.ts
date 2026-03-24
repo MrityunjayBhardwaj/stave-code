@@ -10,8 +10,10 @@ const mockMount = vi.fn()
 const mockDestroy = vi.fn()
 const mockResize = vi.fn()
 
+const mockUpdate = vi.fn()
 const mockRenderer: VizRenderer = {
   mount: mockMount,
+  update: mockUpdate,
   resize: mockResize,
   pause: vi.fn(),
   resume: vi.fn(),

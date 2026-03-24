@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { EngineComponents } from '../engine/LiveCodingEngine'
 
 // Mock p5 — same pattern as old useP5Sketch.test.ts
 const p5Instances: Array<{
@@ -23,14 +24,9 @@ import p5 from 'p5'
 const MockP5 = p5 as unknown as ReturnType<typeof vi.fn>
 
 import { P5VizRenderer } from '../visualizers/renderers/P5VizRenderer'
-import type { VizRefs } from '../visualizers/types'
 
-function makeRefs(): VizRefs {
-  return {
-    hapStreamRef: { current: null },
-    analyserRef: { current: null },
-    schedulerRef: { current: null },
-  }
+function makeComponents(): Partial<EngineComponents> {
+  return {}
 }
 
 describe('P5VizRenderer', () => {
@@ -44,7 +40,7 @@ describe('P5VizRenderer', () => {
     const renderer = new P5VizRenderer(sketchFactory)
     const container = document.createElement('div')
 
-    renderer.mount(container, makeRefs(), { w: 400, h: 200 }, vi.fn())
+    renderer.mount(container, makeComponents(), { w: 400, h: 200 }, vi.fn())
 
     expect(MockP5).toHaveBeenCalledTimes(1)
     expect(MockP5.mock.calls[0][1]).toBe(container)
@@ -55,23 +51,23 @@ describe('P5VizRenderer', () => {
     const renderer = new P5VizRenderer(sketchFactory)
     const container = document.createElement('div')
 
-    renderer.mount(container, makeRefs(), { w: 300, h: 150 }, vi.fn())
+    renderer.mount(container, makeComponents(), { w: 300, h: 150 }, vi.fn())
 
     expect(p5Instances[0].resizeCanvas).toHaveBeenCalledWith(300, 150)
   })
 
-  it('mount() passes refs to sketch factory', () => {
+  it('mount() passes ref objects to sketch factory', () => {
     const sketchFactory = vi.fn(() => vi.fn())
     const renderer = new P5VizRenderer(sketchFactory)
-    const refs = makeRefs()
 
-    renderer.mount(document.createElement('div'), refs, { w: 400, h: 200 }, vi.fn())
+    renderer.mount(document.createElement('div'), makeComponents(), { w: 400, h: 200 }, vi.fn())
 
-    expect(sketchFactory).toHaveBeenCalledWith(
-      refs.hapStreamRef,
-      refs.analyserRef,
-      refs.schedulerRef
-    )
+    expect(sketchFactory).toHaveBeenCalledTimes(1)
+    // The factory receives ref-like objects with .current
+    const args = sketchFactory.mock.calls[0] as unknown[]
+    expect(args[0]).toHaveProperty('current', null)
+    expect(args[1]).toHaveProperty('current', null)
+    expect(args[2]).toHaveProperty('current', null)
   })
 
   it('mount() calls onError if sketch factory throws', () => {
@@ -81,7 +77,7 @@ describe('P5VizRenderer', () => {
     const renderer = new P5VizRenderer(sketchFactory)
     const onError = vi.fn()
 
-    renderer.mount(document.createElement('div'), makeRefs(), { w: 400, h: 200 }, onError)
+    renderer.mount(document.createElement('div'), makeComponents(), { w: 400, h: 200 }, onError)
 
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError.mock.calls[0][0].message).toBe('sketch error')
@@ -90,7 +86,7 @@ describe('P5VizRenderer', () => {
   it('resize() calls resizeCanvas on the p5 instance', () => {
     const sketchFactory = vi.fn(() => vi.fn())
     const renderer = new P5VizRenderer(sketchFactory)
-    renderer.mount(document.createElement('div'), makeRefs(), { w: 400, h: 200 }, vi.fn())
+    renderer.mount(document.createElement('div'), makeComponents(), { w: 400, h: 200 }, vi.fn())
 
     renderer.resize(500, 300)
 
@@ -100,7 +96,7 @@ describe('P5VizRenderer', () => {
   it('pause() calls noLoop on the p5 instance', () => {
     const sketchFactory = vi.fn(() => vi.fn())
     const renderer = new P5VizRenderer(sketchFactory)
-    renderer.mount(document.createElement('div'), makeRefs(), { w: 400, h: 200 }, vi.fn())
+    renderer.mount(document.createElement('div'), makeComponents(), { w: 400, h: 200 }, vi.fn())
 
     renderer.pause()
 
@@ -110,7 +106,7 @@ describe('P5VizRenderer', () => {
   it('resume() calls loop on the p5 instance', () => {
     const sketchFactory = vi.fn(() => vi.fn())
     const renderer = new P5VizRenderer(sketchFactory)
-    renderer.mount(document.createElement('div'), makeRefs(), { w: 400, h: 200 }, vi.fn())
+    renderer.mount(document.createElement('div'), makeComponents(), { w: 400, h: 200 }, vi.fn())
 
     renderer.resume()
 
@@ -120,7 +116,7 @@ describe('P5VizRenderer', () => {
   it('destroy() calls remove on the p5 instance and nulls it', () => {
     const sketchFactory = vi.fn(() => vi.fn())
     const renderer = new P5VizRenderer(sketchFactory)
-    renderer.mount(document.createElement('div'), makeRefs(), { w: 400, h: 200 }, vi.fn())
+    renderer.mount(document.createElement('div'), makeComponents(), { w: 400, h: 200 }, vi.fn())
 
     renderer.destroy()
 
@@ -137,5 +133,31 @@ describe('P5VizRenderer', () => {
     expect(() => renderer.resize(100, 100)).not.toThrow()
     expect(() => renderer.pause()).not.toThrow()
     expect(() => renderer.resume()).not.toThrow()
+  })
+
+  it('update() refreshes internal refs', () => {
+    const sketchFactory = vi.fn(() => vi.fn())
+    const renderer = new P5VizRenderer(sketchFactory)
+    renderer.mount(document.createElement('div'), makeComponents(), { w: 400, h: 200 }, vi.fn())
+
+    // Verify the factory was initially called with null refs
+    const args = sketchFactory.mock.calls[0] as unknown[]
+    const hapStreamRef = args[0] as { current: unknown }
+    expect(hapStreamRef.current).toBeNull()
+
+    // Update with streaming component
+    const mockHapStream = { push: vi.fn() } as any
+    renderer.update({ streaming: { hapStream: mockHapStream } })
+
+    // The same ref object should now have the updated value
+    expect(hapStreamRef.current).toBe(mockHapStream)
+  })
+
+  it('update() is a no-op before mount', () => {
+    const sketchFactory = vi.fn(() => vi.fn())
+    const renderer = new P5VizRenderer(sketchFactory)
+
+    // Should not throw when no instance exists
+    expect(() => renderer.update({})).not.toThrow()
   })
 })

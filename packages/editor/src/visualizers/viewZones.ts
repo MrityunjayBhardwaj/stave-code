@@ -1,10 +1,10 @@
 import type * as Monaco from 'monaco-editor'
-import type { RefObject } from 'react'
 import type { HapStream } from '../engine/HapStream'
-import type { VizRefs, PatternScheduler, VizRenderer, VizDescriptor } from './types'
+import type { EngineComponents } from '../engine/LiveCodingEngine'
+import type { PatternScheduler, VizRenderer, VizDescriptor } from './types'
 import { mountVizRenderer } from './mountVizRenderer'
 
-const VIEW_ZONE_HEIGHT = 120
+const VIEW_ZONE_HEIGHT = 150
 
 /**
  * Handle returned by addInlineViewZones.
@@ -54,9 +54,6 @@ export function addInlineViewZones(
 
   const contentWidth = editor.getLayoutInfo().contentWidth
 
-  const hapStreamRef = { current: hapStream } as RefObject<HapStream | null>
-  const analyserRef = { current: analyser } as RefObject<AnalyserNode | null>
-
   let anonIndex = 0
 
   editor.changeViewZones((accessor) => {
@@ -77,10 +74,9 @@ export function addInlineViewZones(
       }
 
       const trackScheduler = trackSchedulers.get(key) ?? null
-      const schedulerRef = { current: trackScheduler } as RefObject<PatternScheduler | null>
 
       const container = document.createElement('div')
-      container.style.cssText = 'overflow:hidden;height:120px;'
+      container.style.cssText = `overflow:hidden;height:${VIEW_ZONE_HEIGHT}px;`
 
       // Find last line of this pattern block (continuation lines)
       let lastLineIdx = i
@@ -98,11 +94,23 @@ export function addInlineViewZones(
       })
       zoneIds.push(zoneId)
 
-      const refs: VizRefs = { hapStreamRef, analyserRef, schedulerRef }
+      // Build per-zone component bag
+      const zoneComponents: Partial<EngineComponents> = {}
+      if (hapStream) {
+        zoneComponents.streaming = { hapStream }
+      }
+      if (analyser) {
+        zoneComponents.audio = { analyser, audioCtx: analyser.context as AudioContext }
+      }
+      zoneComponents.queryable = {
+        scheduler: trackScheduler,
+        trackSchedulers,
+      }
+
       const { renderer, disconnect } = mountVizRenderer(
         container,
         descriptor.factory,
-        refs,
+        zoneComponents,
         { w: contentWidth || 400, h: VIEW_ZONE_HEIGHT },
         console.error
       )
