@@ -33,11 +33,35 @@ export class SonicPiEngine implements LiveCodingEngine {
   private schedulerStartTime = 0
   private runtimeErrorHandler: ((err: Error) => void) | null = null
 
+  private initOptions: { schedAheadTime?: number }
+  private rawCreated = false
+
   constructor(options?: { schedAheadTime?: number }) {
-    this.raw = new RawSonicPiEngine(options)
+    this.initOptions = options ?? {}
+    // raw engine created lazily in init() after SuperSonic is loaded
+    this.raw = null as unknown as RawSonicPiEngine
   }
 
   async init(): Promise<void> {
+    // Dynamically load SuperSonic from CDN (ES module, GPL — never bundled)
+    let SuperSonicClass: unknown = undefined
+    try {
+      // @ts-ignore — CDN URL resolved at runtime by browser, not tsc
+      const mod = await import(/* @vite-ignore */ 'https://unpkg.com/supersonic-scsynth@latest')
+      SuperSonicClass = mod.SuperSonic ?? mod.default
+    } catch (err) {
+      console.warn('[SonicPi] SuperSonic CDN load failed — running without audio:', err)
+    }
+
+    // Create raw engine with SuperSonic class (or without for silent mode)
+    if (!this.rawCreated) {
+      this.raw = new RawSonicPiEngine({
+        ...this.initOptions,
+        bridge: SuperSonicClass ? { SuperSonicClass: SuperSonicClass as never } : {},
+      })
+      this.rawCreated = true
+    }
+
     await this.raw.init()
 
     // Bridge: sonicPiWeb's HapStream events → Motif's HapStream
