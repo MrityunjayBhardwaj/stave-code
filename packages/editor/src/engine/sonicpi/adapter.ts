@@ -1,101 +1,86 @@
 /**
- * Adapter that wraps sonicPiWeb's SonicPiEngine to conform to
- * Motif's LiveCodingEngine interface.
+ * SonicPiEngine adapter — wraps the standalone sonicPiWeb engine
+ * to conform to Motif's LiveCodingEngine interface.
  *
- * Key adaptations:
- * 1. PatternScheduler.query() is SYNC in Motif but sonicPiWeb's
- *    capture scheduler is async. Solution: pre-capture during
- *    evaluate() and serve from cache.
- * 2. Uses Motif's HapStream (same emit signature).
- * 3. Passes through all ECS components unchanged.
- *
- * NOTE: This imports from sonicPiWeb via relative path.
- * In production, sonicPiWeb would be published as an npm package.
- * For development, the relative path avoids npm link issues with pnpm.
+ * Adaptations:
+ *  - SuperSonic (scsynth WASM) loaded dynamically from CDN at init time.
+ *    Uses Function constructor to prevent bundler interception.
+ *  - sonicPiWeb's HapStream events forwarded to Motif's HapStream.
+ *  - Audio and inlineViz components passed through from the raw engine.
+ *  - Queryable disabled until CaptureScheduler supports full DSL context.
+ *  - All lifecycle methods null-safe (components/play/stop/dispose work
+ *    correctly before init).
  */
 
-// sonicPiWeb engine — relative path to sibling project
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — path resolved at build time, not by tsc directly
+// @ts-ignore — resolved at build time via relative path to sibling project
 import { SonicPiEngine as RawSonicPiEngine } from '../../../../../../sonicPiWeb/src/engine/SonicPiEngine'
-// @ts-ignore
-import type { CapturedEvent } from '../../../../../../sonicPiWeb/src/engine/CaptureScheduler'
 
-// Motif types
 import type { LiveCodingEngine, EngineComponents } from '../LiveCodingEngine'
-import type { PatternScheduler } from '../../visualizers/types'
 import { HapStream } from '../HapStream'
+
+const SUPERSONIC_CDN = 'https://unpkg.com/supersonic-scsynth@latest'
+
+/** Load an ES module from a URL without bundler interception. */
+async function importFromCDN(url: string): Promise<Record<string, unknown>> {
+  const load = new Function('url', 'return import(url)')
+  return load(url)
+}
 
 export class SonicPiEngine implements LiveCodingEngine {
   private raw: RawSonicPiEngine | null = null
-  private motifHapStream = new HapStream()
-  private cachedEvents: CapturedEvent[] = []
-  private schedulerStartTime = 0
+  private hapStream = new HapStream()
   private runtimeErrorHandler: ((err: Error) => void) | null = null
-  private initOptions: { schedAheadTime?: number }
+  private options: { schedAheadTime?: number }
 
   constructor(options?: { schedAheadTime?: number }) {
-    this.initOptions = options ?? {}
+    this.options = options ?? {}
   }
 
   async init(): Promise<void> {
-    if (this.raw) return // already initialized
+    if (this.raw) return
 
-    // Dynamically load SuperSonic from CDN (ES module, GPL — never bundled)
-    // Use Function constructor to hide the import() from Turbopack/Vite bundlers
-    let SuperSonicClass: unknown = undefined
+    let SuperSonicClass: unknown
     try {
-      const dynamicImport = new Function('url', 'return import(url)')
-      const mod = await dynamicImport('https://unpkg.com/supersonic-scsynth@latest')
+      const mod = await importFromCDN(SUPERSONIC_CDN)
       SuperSonicClass = mod.SuperSonic ?? mod.default
-    } catch (err) {
-      console.warn('[SonicPi] SuperSonic CDN load failed — running without audio:', err)
+    } catch {
+      // Silent mode — engine works without audio (tests, offline)
     }
 
-    // Create raw engine with SuperSonic class (or without for silent mode)
     this.raw = new RawSonicPiEngine({
-      ...this.initOptions,
+      ...this.options,
       bridge: SuperSonicClass ? { SuperSonicClass: SuperSonicClass as never } : {},
     })
 
     await this.raw.init()
 
-    // Bridge: sonicPiWeb's HapStream events → Motif's HapStream
-    const rawStreaming = this.raw.components.streaming
-    if (rawStreaming) {
-      rawStreaming.hapStream.on((event: { hap: unknown; audioTime: number; audioDuration: number; scheduledAheadMs: number }) => {
-        this.motifHapStream.emit(
-          event.hap,
-          event.audioTime,
-          2,
-          event.audioTime + event.audioDuration,
-          event.audioTime - (event.scheduledAheadMs / 1000)
+    // Forward raw engine's HapStream events into Motif's HapStream
+    this.raw.components.streaming?.hapStream.on(
+      (e: { hap: unknown; audioTime: number; audioDuration: number; scheduledAheadMs: number }) => {
+        this.hapStream.emit(
+          e.hap, e.audioTime, 2,
+          e.audioTime + e.audioDuration,
+          e.audioTime - e.scheduledAheadMs / 1000,
         )
-      })
+      },
+    )
+
+    if (this.runtimeErrorHandler) {
+      this.raw.setRuntimeErrorHandler(this.runtimeErrorHandler)
     }
   }
 
   async evaluate(code: string): Promise<{ error?: Error }> {
-    if (!this.raw) return { error: new Error('SonicPiEngine not initialized — call init() first') }
-
-    const result = await this.raw.evaluate(code)
-    if (result.error) return result
-
-    // NOTE: Pre-capture for queryable is disabled until sonicPiWeb's
-    // CaptureScheduler passes the full DSL context (use_bpm, use_synth, etc.)
-    // to the re-executed code. For now, SonicPiEngine runs as streaming-only.
-    // TODO: Enable when CaptureScheduler is fixed in sonicPiWeb.
-    this.cachedEvents = []
-
-    this.schedulerStartTime = Date.now() / 1000
-    return {}
+    if (!this.raw) return { error: new Error('Call init() before evaluate()') }
+    return this.raw.evaluate(code)
   }
 
   play(): void { this.raw?.play() }
   stop(): void { this.raw?.stop() }
 
   dispose(): void {
-    this.motifHapStream.dispose()
+    this.hapStream.dispose()
     this.raw?.dispose()
     this.raw = null
   }
@@ -107,44 +92,19 @@ export class SonicPiEngine implements LiveCodingEngine {
 
   get components(): Partial<EngineComponents> {
     const bag: Partial<EngineComponents> = {
-      streaming: { hapStream: this.motifHapStream },
+      streaming: { hapStream: this.hapStream },
     }
-
     if (!this.raw) return bag
 
-    const rawAudio = this.raw.components.audio
-    if (rawAudio) {
-      bag.audio = rawAudio
-    }
+    const rawComponents = this.raw.components
 
-    if (this.cachedEvents.length > 0) {
-      const cached = this.cachedEvents
-      const startTime = this.schedulerStartTime
+    if (rawComponents.audio) bag.audio = rawComponents.audio
+    if (rawComponents.inlineViz) bag.inlineViz = rawComponents.inlineViz
 
-      const scheduler: PatternScheduler = {
-        now: () => (Date.now() / 1000) - startTime,
-        query: (begin: number, end: number) => {
-          return cached
-            .filter((e: CapturedEvent) => e.time >= begin && e.time < end)
-            .map((e: CapturedEvent) => ({
-              whole: { begin: e.time, end: e.time + 0.25 },
-              part: { begin: e.time, end: e.time + 0.25 },
-              value: e.params,
-              context: {},
-            }))
-        },
-      }
-
-      bag.queryable = {
-        scheduler,
-        trackSchedulers: new Map(),
-      }
-    }
-
-    const rawInlineViz = this.raw.components.inlineViz
-    if (rawInlineViz) {
-      bag.inlineViz = rawInlineViz
-    }
+    // Queryable pass-through — currently disabled because sonicPiWeb's
+    // CaptureScheduler doesn't pass the full DSL context when re-executing
+    // code in capture mode. When fixed upstream, uncomment:
+    // if (rawComponents.queryable) bag.queryable = rawComponents.queryable
 
     return bag
   }
