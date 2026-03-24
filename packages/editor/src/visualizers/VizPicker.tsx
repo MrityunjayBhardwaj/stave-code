@@ -1,4 +1,5 @@
 import React from 'react'
+import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizDescriptor } from './types'
 
 interface VizPickerProps {
@@ -6,6 +7,8 @@ interface VizPickerProps {
   activeId: string
   onIdChange: (id: string) => void
   showVizPicker?: boolean
+  /** When provided, descriptors whose requires[] aren't met are disabled. */
+  availableComponents?: (keyof EngineComponents)[]
 }
 
 function PianorollIcon() {
@@ -84,8 +87,13 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   pitchwheel: <PitchwheelIcon />,
 }
 
-export function VizPicker({ descriptors, activeId, onIdChange, showVizPicker = true }: VizPickerProps) {
+export function VizPicker({ descriptors, activeId, onIdChange, showVizPicker = true, availableComponents }: VizPickerProps) {
   if (!showVizPicker) return null
+
+  const isEnabled = (d: VizDescriptor): boolean => {
+    if (!availableComponents || !d.requires?.length) return true
+    return d.requires.every(req => availableComponents.includes(req))
+  }
 
   return (
     <div
@@ -104,25 +112,29 @@ export function VizPicker({ descriptors, activeId, onIdChange, showVizPicker = t
     >
       {descriptors.map((descriptor) => {
         const isActive = descriptor.id === activeId
+        const enabled = isEnabled(descriptor)
         return (
           <button
             key={descriptor.id}
             data-testid={`viz-btn-${descriptor.id}`}
             data-active={isActive ? 'true' : undefined}
+            data-disabled={!enabled ? 'true' : undefined}
             title={descriptor.label}
-            onClick={() => onIdChange(descriptor.id)}
+            onClick={enabled ? () => onIdChange(descriptor.id) : undefined}
+            disabled={!enabled}
             style={{
               width: 32,
               height: 24,
               borderRadius: 4,
               border: 'none',
-              cursor: 'pointer',
+              cursor: enabled ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               background: isActive ? 'var(--accent-dim)' : 'transparent',
               outline: isActive ? '1px solid var(--accent)' : 'none',
               color: isActive ? 'var(--foreground)' : 'var(--foreground-muted)',
+              opacity: enabled ? 1 : 0.3,
               padding: 0,
             }}
           >

@@ -17,11 +17,11 @@ import { PitchwheelSketch } from './sketches/PitchwheelSketch'
  *   vizDescriptors={[...DEFAULT_VIZ_DESCRIPTORS, myCustomDescriptor]}
  */
 export const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[] = [
-  { id: 'pianoroll',  label: 'Piano Roll', factory: () => new P5VizRenderer(PianorollSketch) },
-  { id: 'wordfall',   label: 'Wordfall',   factory: () => new P5VizRenderer(WordfallSketch) },
-  { id: 'scope',      label: 'Scope',      factory: () => new P5VizRenderer(ScopeSketch) },
-  { id: 'fscope',     label: 'FScope',     factory: () => new P5VizRenderer(FscopeSketch) },
-  { id: 'spectrum',   label: 'Spectrum',   factory: () => new P5VizRenderer(SpectrumSketch) },
-  { id: 'spiral',     label: 'Spiral',     factory: () => new P5VizRenderer(SpiralSketch) },
-  { id: 'pitchwheel', label: 'Pitchwheel', factory: () => new P5VizRenderer(PitchwheelSketch) },
+  { id: 'pianoroll',  label: 'Piano Roll', requires: ['streaming', 'queryable'], factory: () => new P5VizRenderer(PianorollSketch) },
+  { id: 'wordfall',   label: 'Wordfall',   requires: ['streaming', 'queryable'], factory: () => new P5VizRenderer(WordfallSketch) },
+  { id: 'scope',      label: 'Scope',      requires: ['audio'],                  factory: () => new P5VizRenderer(ScopeSketch) },
+  { id: 'fscope',     label: 'FScope',     requires: ['audio'],                  factory: () => new P5VizRenderer(FscopeSketch) },
+  { id: 'spectrum',   label: 'Spectrum',   requires: ['audio'],                  factory: () => new P5VizRenderer(SpectrumSketch) },
+  { id: 'spiral',     label: 'Spiral',     requires: ['streaming'],              factory: () => new P5VizRenderer(SpiralSketch) },
+  { id: 'pitchwheel', label: 'Pitchwheel', requires: ['streaming'],              factory: () => new P5VizRenderer(PitchwheelSketch) },
 ]
