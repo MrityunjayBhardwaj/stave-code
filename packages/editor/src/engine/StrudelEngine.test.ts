@@ -167,6 +167,7 @@ vi.mock('@strudel/transpiler', () => ({
 // ---------------------------------------------------------------------------
 
 import { StrudelEngine } from './StrudelEngine'
+import type { LiveCodingEngine } from './LiveCodingEngine'
 import { Pattern } from '@strudel/core'
 
 // ---------------------------------------------------------------------------
@@ -281,5 +282,41 @@ describe('StrudelEngine.getTrackSchedulers', () => {
     expect(map.has('$0')).toBe(true)
     expect(map.has('d1')).toBe(true)
     expect(map.size).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LiveCodingEngine interface conformance
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine LiveCodingEngine conformance', () => {
+  it('satisfies LiveCodingEngine interface (compile-time + runtime)', () => {
+    // Compile-time check: if this file compiles, the interface is satisfied
+    const engine: LiveCodingEngine = new StrudelEngine()
+    expect(engine.init).toBeDefined()
+    expect(engine.evaluate).toBeDefined()
+    expect(engine.play).toBeDefined()
+    expect(engine.stop).toBeDefined()
+    expect(engine.dispose).toBeDefined()
+    expect(engine.components).toBeDefined()
+    expect(engine.setRuntimeErrorHandler).toBeDefined()
+    engine.dispose()
+  })
+
+  it('has components getter that returns object', () => {
+    const engine = new StrudelEngine()
+    expect(engine.components).toBeDefined()
+    expect(typeof engine.components).toBe('object')
+    engine.dispose()
+  })
+
+  it('components.streaming.hapStream is defined before init', () => {
+    const engine = new StrudelEngine()
+    const { streaming } = engine.components
+    expect(streaming).toBeDefined()
+    expect(streaming!.hapStream).toBeDefined()
+    expect(typeof streaming!.hapStream.on).toBe('function')
+    expect(typeof streaming!.hapStream.off).toBe('function')
+    engine.dispose()
   })
 })
