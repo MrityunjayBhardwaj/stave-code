@@ -2,14 +2,14 @@
  * SonicPiEngine adapter — wraps the standalone sonicPiWeb engine
  * to conform to Motif's LiveCodingEngine interface.
  *
- * Adaptations:
- *  - SuperSonic (scsynth WASM) loaded dynamically from CDN at init time.
- *    Uses Function constructor to prevent bundler interception.
- *  - sonicPiWeb's HapStream events forwarded to Motif's HapStream.
- *  - Audio and inlineViz components passed through from the raw engine.
- *  - Queryable disabled until CaptureScheduler supports full DSL context.
- *  - All lifecycle methods null-safe (components/play/stop/dispose work
- *    correctly before init).
+ * Responsibilities of the ADAPTER (not the engine):
+ *  - SuperSonic CDN loading (bundler-proof dynamic import)
+ *  - HapStream bridging (sonicPiWeb events → Motif events)
+ *  - Viz request capture (viz() injected here, not in the engine)
+ *  - inlineViz component assembly (afterLine computed from code)
+ *
+ * The engine (sonicPiWeb) knows about music: play, sleep, sample.
+ * The adapter knows about the editor: viz, components, highlighting.
  */
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -27,11 +27,97 @@ async function importFromCDN(url: string): Promise<Record<string, unknown>> {
   return load(url)
 }
 
+/**
+ * Parse code for viz requests. Supports two syntaxes:
+ *  - Runtime: viz :scope (inside live_loop — Ruby) or viz("scope") (JS)
+ *  - Comment: # @viz scope or // @viz scope (after a loop block)
+ *
+ * Returns Map<trackName, { vizId, afterLine }>
+ */
+function parseVizRequests(code: string): Map<string, { vizId: string; afterLine: number }> {
+  const requests = new Map<string, { vizId: string; afterLine: number }>()
+  const lines = code.split('\n')
+
+  // Match both JS and Ruby live_loop declarations
+  const loopPattern = /live_loop\s*(?:\(\s*["'](\w+)["']|:(\w+)\s)/
+
+  // Track loop blocks: name → { startLine, endLine }
+  const loopBlocks = new Map<string, { start: number; end: number }>()
+
+  for (let i = 0; i < lines.length; i++) {
+    const loopMatch = lines[i].match(loopPattern)
+    if (loopMatch) {
+      const name = loopMatch[1] ?? loopMatch[2]
+      const start = i
+      // Find closing: "end" for Ruby, "}" / ")" for JS
+      let depth = 0
+      let end = lines.length - 1
+      for (let j = i; j < lines.length; j++) {
+        if (/\bdo\b/.test(lines[j])) depth++
+        if (/\bend\b/.test(lines[j])) depth--
+        depth += (lines[j].match(/[{(]/g) ?? []).length
+        depth -= (lines[j].match(/[})]/g) ?? []).length
+        if (depth <= 0 && j > i) { end = j; break }
+      }
+      loopBlocks.set(name, { start, end })
+    }
+  }
+
+  // Source 1: viz() function calls inside live_loop blocks
+  const vizCallPattern = /\bviz\s+:(\w+)|viz\s*\(\s*["':]+(\w+)["']?\s*\)/
+  for (const [name, block] of loopBlocks) {
+    for (let i = block.start; i <= block.end; i++) {
+      const vizMatch = lines[i].match(vizCallPattern)
+      if (vizMatch) {
+        requests.set(name, {
+          vizId: vizMatch[1] ?? vizMatch[2],
+          afterLine: block.end + 1, // 1-indexed, after closing end/}
+        })
+        break // one viz per loop
+      }
+    }
+  }
+
+  // Source 2: Comment-based @viz (fallback for tracks without runtime viz)
+  const commentVizPattern = /(?:\/\/|#)\s*@viz\s+(\w+)/
+  for (let i = 0; i < lines.length; i++) {
+    const vizMatch = lines[i].match(commentVizPattern)
+    if (vizMatch) {
+      // Find preceding loop
+      let trackName = `track_${i}`
+      for (let j = i - 1; j >= 0; j--) {
+        const loopMatch = lines[j].match(loopPattern)
+        if (loopMatch) {
+          trackName = loopMatch[1] ?? loopMatch[2]
+          break
+        }
+      }
+      if (!requests.has(trackName)) {
+        requests.set(trackName, { vizId: vizMatch[1], afterLine: i + 1 })
+      }
+    }
+  }
+
+  return requests
+}
+
+/**
+ * Strip viz() calls from code before passing to the engine.
+ * The engine doesn't know about viz — it's an adapter concern.
+ */
+function stripVizCalls(code: string): string {
+  return code
+    .replace(/^\s*viz\s+:\w+\s*$/gm, '')       // Ruby: viz :scope
+    .replace(/^\s*viz\s*\(\s*["']\w+["']\s*\)\s*$/gm, '') // JS: viz("scope")
+    .replace(/^\s*(?:\/\/|#)\s*@viz\s+\w+\s*$/gm, '')     // Comment: # @viz scope
+}
+
 export class SonicPiEngine implements LiveCodingEngine {
   private raw: RawSonicPiEngine | null = null
   private hapStream = new HapStream()
   private runtimeErrorHandler: ((err: Error) => void) | null = null
   private options: { schedAheadTime?: number }
+  private vizRequests = new Map<string, { vizId: string; afterLine: number }>()
 
   constructor(options?: { schedAheadTime?: number }) {
     this.options = options ?? {}
@@ -45,7 +131,7 @@ export class SonicPiEngine implements LiveCodingEngine {
       const mod = await importFromCDN(SUPERSONIC_CDN)
       SuperSonicClass = mod.SuperSonic ?? mod.default
     } catch {
-      // Silent mode — engine works without audio (tests, offline)
+      // Silent mode — engine works without audio
     }
 
     this.raw = new RawSonicPiEngine({
@@ -73,7 +159,14 @@ export class SonicPiEngine implements LiveCodingEngine {
 
   async evaluate(code: string): Promise<{ error?: Error }> {
     if (!this.raw) return { error: new Error('Call init() before evaluate()') }
-    return this.raw.evaluate(code)
+
+    // Capture viz requests BEFORE stripping (adapter concern)
+    this.vizRequests = parseVizRequests(code)
+
+    // Strip viz calls — engine doesn't know about visualization
+    const cleanCode = stripVizCalls(code)
+
+    return this.raw.evaluate(cleanCode)
   }
 
   play(): void { this.raw?.play() }
@@ -83,6 +176,7 @@ export class SonicPiEngine implements LiveCodingEngine {
     this.hapStream.dispose()
     this.raw?.dispose()
     this.raw = null
+    this.vizRequests.clear()
   }
 
   setRuntimeErrorHandler(handler: (err: Error) => void): void {
@@ -99,12 +193,10 @@ export class SonicPiEngine implements LiveCodingEngine {
     const rawComponents = this.raw.components
 
     if (rawComponents.audio) bag.audio = rawComponents.audio
-    if (rawComponents.inlineViz) bag.inlineViz = rawComponents.inlineViz
 
-    // Queryable pass-through — currently disabled because sonicPiWeb's
-    // CaptureScheduler doesn't pass the full DSL context when re-executing
-    // code in capture mode. When fixed upstream, uncomment:
-    // if (rawComponents.queryable) bag.queryable = rawComponents.queryable
+    if (this.vizRequests.size > 0) {
+      bag.inlineViz = { vizRequests: this.vizRequests }
+    }
 
     return bag
   }
