@@ -7,6 +7,7 @@ export type { LiveCodingEditorProps } from './LiveCodingEditor'
 // Engine
 export { StrudelEngine } from './engine/StrudelEngine'
 export { DemoEngine } from './engine/DemoEngine'
+export { SonicPiEngine } from './engine/sonicpi'
 export type { LiveCodingEngine, EngineComponents } from './engine/LiveCodingEngine'
 export { HapStream } from './engine/HapStream'
 export type { HapEvent } from './engine/HapStream'
