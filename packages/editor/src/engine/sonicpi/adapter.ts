@@ -59,16 +59,12 @@ export class SonicPiEngine implements LiveCodingEngine {
     const result = await this.raw.evaluate(code)
     if (result.error) return result
 
-    // Pre-capture events for sync query (Stratum 1-2 only)
-    const rawQueryable = this.raw.components.queryable
-    if (rawQueryable?.scheduler) {
-      try {
-        const events = await rawQueryable.scheduler.queryArc(0, 16)
-        this.cachedEvents = events as CapturedEvent[]
-      } catch {
-        this.cachedEvents = []
-      }
-    }
+    // NOTE: Pre-capture for queryable is disabled until sonicPiWeb's
+    // CaptureScheduler passes the full DSL context (use_bpm, use_synth, etc.)
+    // to the re-executed code. For now, SonicPiEngine runs as streaming-only —
+    // scope/spectrum/spiral/pitchwheel work, pianoroll disabled.
+    // TODO: Enable when CaptureScheduler is fixed in sonicPiWeb.
+    this.cachedEvents = []
 
     this.schedulerStartTime = Date.now() / 1000
     return {}
