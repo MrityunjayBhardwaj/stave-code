@@ -42,10 +42,11 @@ export class SonicPiEngine implements LiveCodingEngine {
     if (this.raw) return // already initialized
 
     // Dynamically load SuperSonic from CDN (ES module, GPL — never bundled)
+    // Use Function constructor to hide the import() from Turbopack/Vite bundlers
     let SuperSonicClass: unknown = undefined
     try {
-      // @ts-ignore — CDN URL resolved at runtime by browser, not tsc
-      const mod = await import(/* @vite-ignore */ 'https://unpkg.com/supersonic-scsynth@latest')
+      const dynamicImport = new Function('url', 'return import(url)')
+      const mod = await dynamicImport('https://unpkg.com/supersonic-scsynth@latest')
       SuperSonicClass = mod.SuperSonic ?? mod.default
     } catch (err) {
       console.warn('[SonicPi] SuperSonic CDN load failed — running without audio:', err)
