@@ -27,22 +27,20 @@ import type { PatternScheduler } from '../../visualizers/types'
 import { HapStream } from '../HapStream'
 
 export class SonicPiEngine implements LiveCodingEngine {
-  private raw: RawSonicPiEngine
+  private raw: RawSonicPiEngine | null = null
   private motifHapStream = new HapStream()
   private cachedEvents: CapturedEvent[] = []
   private schedulerStartTime = 0
   private runtimeErrorHandler: ((err: Error) => void) | null = null
-
   private initOptions: { schedAheadTime?: number }
-  private rawCreated = false
 
   constructor(options?: { schedAheadTime?: number }) {
     this.initOptions = options ?? {}
-    // raw engine created lazily in init() after SuperSonic is loaded
-    this.raw = null as unknown as RawSonicPiEngine
   }
 
   async init(): Promise<void> {
+    if (this.raw) return // already initialized
+
     // Dynamically load SuperSonic from CDN (ES module, GPL — never bundled)
     let SuperSonicClass: unknown = undefined
     try {
@@ -54,13 +52,10 @@ export class SonicPiEngine implements LiveCodingEngine {
     }
 
     // Create raw engine with SuperSonic class (or without for silent mode)
-    if (!this.rawCreated) {
-      this.raw = new RawSonicPiEngine({
-        ...this.initOptions,
-        bridge: SuperSonicClass ? { SuperSonicClass: SuperSonicClass as never } : {},
-      })
-      this.rawCreated = true
-    }
+    this.raw = new RawSonicPiEngine({
+      ...this.initOptions,
+      bridge: SuperSonicClass ? { SuperSonicClass: SuperSonicClass as never } : {},
+    })
 
     await this.raw.init()
 
@@ -80,13 +75,14 @@ export class SonicPiEngine implements LiveCodingEngine {
   }
 
   async evaluate(code: string): Promise<{ error?: Error }> {
+    if (!this.raw) return { error: new Error('SonicPiEngine not initialized — call init() first') }
+
     const result = await this.raw.evaluate(code)
     if (result.error) return result
 
     // NOTE: Pre-capture for queryable is disabled until sonicPiWeb's
     // CaptureScheduler passes the full DSL context (use_bpm, use_synth, etc.)
-    // to the re-executed code. For now, SonicPiEngine runs as streaming-only —
-    // scope/spectrum/spiral/pitchwheel work, pianoroll disabled.
+    // to the re-executed code. For now, SonicPiEngine runs as streaming-only.
     // TODO: Enable when CaptureScheduler is fixed in sonicPiWeb.
     this.cachedEvents = []
 
@@ -94,23 +90,26 @@ export class SonicPiEngine implements LiveCodingEngine {
     return {}
   }
 
-  play(): void { this.raw.play() }
-  stop(): void { this.raw.stop() }
+  play(): void { this.raw?.play() }
+  stop(): void { this.raw?.stop() }
 
   dispose(): void {
     this.motifHapStream.dispose()
-    this.raw.dispose()
+    this.raw?.dispose()
+    this.raw = null
   }
 
   setRuntimeErrorHandler(handler: (err: Error) => void): void {
     this.runtimeErrorHandler = handler
-    this.raw.setRuntimeErrorHandler(handler)
+    this.raw?.setRuntimeErrorHandler(handler)
   }
 
   get components(): Partial<EngineComponents> {
     const bag: Partial<EngineComponents> = {
       streaming: { hapStream: this.motifHapStream },
     }
+
+    if (!this.raw) return bag
 
     const rawAudio = this.raw.components.audio
     if (rawAudio) {
