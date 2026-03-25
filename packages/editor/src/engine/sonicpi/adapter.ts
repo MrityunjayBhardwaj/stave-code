@@ -141,11 +141,13 @@ export class SonicPiEngine implements LiveCodingEngine {
 
     await this.raw.init()
 
-    // Forward raw engine's HapStream events into Motif's HapStream
+    // Forward sonicPiWeb's HapEvents into Motif's HapStream
+    // sonicPiWeb now emits flat HapEvents (no fake Strudel hap) — forward directly
     this.raw.components.streaming?.hapStream.on(
-      (e: { hap: unknown; audioTime: number; audioDuration: number; scheduledAheadMs: number }) => {
+      (e: { audioTime: number; audioDuration: number; scheduledAheadMs: number; midiNote: number | null; s: string | null; color: string | null; loc: Array<{ start: number; end: number }> | null }) => {
         this.hapStream.emit(
-          e.hap, e.audioTime, 2,
+          { value: { note: e.midiNote, s: e.s } },  // minimal hap for legacy emit()
+          e.audioTime, 2,
           e.audioTime + e.audioDuration,
           e.audioTime - e.scheduledAheadMs / 1000,
         )
