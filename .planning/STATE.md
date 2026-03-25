@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Completed 06-inline-zones-via-abstraction/06-02-PLAN.md
-last_updated: "2026-03-22T19:45:51.841Z"
+status: active
+stopped_at: Completed Phase 8 (Engine Protocol) + Sonic Pi integration branch
+last_updated: "2026-03-25T12:00:00Z"
 progress:
-  total_phases: 11
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
+  total_phases: 23
+  completed_phases: 7
+  total_plans: 13
+  completed_plans: 13
 ---
 
 # Project State
@@ -17,87 +17,93 @@ progress:
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-03-21)
-See: THESIS.md (platform vision — Motif)
+See: THESIS_COMPLETE.md (full platform vision — Motif, ECS, stratified isomorphism, MLIR, provenance)
+See: SONIC_PI_WEB.md (Sonic Pi browser engine thesis)
+See: FULL_TRANSPARENCY.md (quadtree → normalizing flow → attribution framework)
 
-**Core value:** A renderer-agnostic, engine-agnostic live coding platform delivered as an embeddable React component library — the infrastructure layer for live coding music.
-**Current focus:** Phase 06 — inline-zones-via-abstraction
+**Core value:** Five independent islands — Language, Visualization, Synthesis, DAW, Control — connected by one embeddable React component library. Any engine, any viz, any synth. The bridge holds.
+
+**Current focus:** Phase 9 (Normalized Hap Type) — next to execute
 
 ## Current Position
 
-Phase: 06 (inline-zones-via-abstraction) — EXECUTING
-Plan: 2 of 2
+Phase: 9 (Normalized Hap Type) — READY TO PLAN
+Last completed: Phase 8 (Engine Protocol) — 2026-03-25
 
-## Performance Metrics
+## What's Shipped
 
-**Velocity:**
+### Phases 1-6 (foundation, 2026-03-21 to 2026-03-22)
+- Active highlighting (useHighlighting + HapStream)
+- 7 p5.js visualizers (pianoroll, scope, fscope, spectrum, spiral, pitchwheel, wordfall)
+- VizRenderer abstraction (renderer-agnostic interface)
+- Per-track data (PatternScheduler per $: block)
+- Inline zones via .viz() opt-in
 
-- Total plans completed: 5
-- Average duration: ~3m
-- Total execution time: ~15 minutes
+### Phase 8 (engine protocol, 2026-03-25)
+- LiveCodingEngine interface with ECS components (streaming, queryable, audio, inlineViz)
+- StrudelEngine implements LiveCodingEngine
+- LiveCodingEditor component (engine-agnostic, accepts engine prop)
+- StrudelEditor as thin wrapper
+- DemoEngine (streaming + audio + inlineViz, no queryable)
+- VizRenderer.mount() with component bag + update()
+- VizDescriptor.requires[] + VizPicker auto-filtering
+- Engine-agnostic viewZones (reads inlineViz component, no $: scanning)
+- 140 tests passing, conformance suite
 
-**By Phase:**
+### Sonic Pi Integration (feat/sonic-pi-engine branch, 2026-03-25)
+- SonicPiEngine adapter wrapping sonicPiWeb
+- Dual-engine demo app (Strudel ↔ Sonic Pi tabs)
+- viz :scope parsed by adapter, stripped before engine
+- SuperSonic CDN via bundler-proof dynamic import
+- Ruby syntax demo code (RubyTranspiler handles it)
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| Phase 01-active-highlighting P01 | 3m | 2 tasks | 3 files |
-| Phase 01-active-highlighting P02 | 5m | 2 tasks | 1 files |
-| Phase 02-pianoroll-visualizers P01 | 3m | 1 tasks | 10 files |
-| Phase 02-pianoroll-visualizers P02 | 2m | 2 tasks | 4 files |
-| Phase 02-pianoroll-visualizers P03 | 3m | 2 tasks | 4 files |
-| Phase 03-audio-visualizers | Done outside GSD | 7 sketches | ~10 files |
-| Phase 04-vizrenderer-abstraction P01 | 12 | 3 tasks | 14 files |
-| Phase 04-vizrenderer-abstraction P02 | 5 | 2 tasks | 3 files |
-| Phase 05-per-track-data P01 | 8 | 2 tasks | 2 files |
-| Phase 06 P01 | 137 | 2 tasks | 3 files |
-| Phase 06-inline-zones-via-abstraction P02 | 2m | 1 tasks | 1 files |
-| Phase 06-inline-zones-via-abstraction P01 | 10 | 2 tasks | 4 files |
-| Phase 06-inline-zones-via-abstraction P02 | 10m | 2 tasks | 2 files |
+### Thesis & Documentation (2026-03-24 to 2026-03-25)
+- THESIS_COMPLETE.md updated: ECS architecture, stratified isomorphism (Thm 5.13),
+  MLIR dialect model, provenance as debug info, WebRTC Link sync, SyncComponent
+- SONIC_PI_WEB.md: complete build thesis for browser Sonic Pi
+- FULL_TRANSPARENCY.md: quadtree → normalizing flow → attribution → legal frameworks
+- motif-vision.html: ecosystem visualization page
 
 ## Accumulated Context
 
-### Decisions
+### Key Decisions (Phase 8 + integration)
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
+- ECS over traits: component bags, not interface inheritance. Runtime capability addition.
+- Capability ladder: Level 0 (streaming) → Level 1 (queryable) → Level 2 (patternIR)
+- viz is adapter's concern, not engine's. Engine is pure music. Adapter parses/strips viz.
+- SuperSonic loaded via `new Function('url', 'return import(url)')` to bypass Turbopack.
+- SonicPiEngine adapter: raw engine is null before init(), all methods null-safe.
+- VizRefs deprecated → EngineComponents bag. P5VizRenderer bridges internally.
+- P5SketchFactory unchanged — 7 sketches untouched during Phase 8.
+- inlineViz.vizRequests uses { vizId, afterLine } — engine computes afterLine.
+- StrudelEditor wraps LiveCodingEditor with toolbarExtra (BPM, export) + onPostEvaluate.
+- LiveCodingEditor does NOT dispose engine on unmount (parent owns lifecycle).
 
-- [Existing]: Engine layer (StrudelEngine, HapStream, OfflineRenderer, WavEncoder, noteToMidi) fully implemented — do not rewrite
-- [Existing]: webaudioRepl chosen over raw Scheduler for better superdough integration
-- [Phase 01]: Per-hap IEditorDecorationsCollection for independent clear() calls
-- [Phase 02]: ResizeObserver created in same useEffect as p5 instance to share cleanup closure
-- [Phase 02]: viewZones.ts named as imperative module (not useViewZones.ts)
-- [Phase 03]: All 7 viz modes implemented via p5.js SketchFactory pattern
-- [Phase 03]: Analyser wired as side-tap on superdough's destinationGain (not connectToDestination)
-- [Phase 03]: PatternScheduler exposed from StrudelEngine for pianoroll/spiral/pitchwheel sketches
-- [THESIS]: Project evolving from struCode to Motif — renderer-agnostic, engine-agnostic platform
-- [THESIS]: VizRenderer interface replaces SketchFactory — hard break on vizSketch prop
-- [THESIS]: VizDescriptor + DEFAULT_VIZ_DESCRIPTORS pattern for extensibility
-- [THESIS]: Per-track data via monkey-patching Pattern.prototype.p during evaluate
-- [Phase 04-01]: VizRenderer interface with 5 lifecycle methods is the foundational abstraction — all future renderers implement this interface
-- [Phase 04-01]: P5SketchFactory kept as internal type (not exported) — P5VizRenderer is the only consumer
-- [Phase 04-01]: VizDescriptor uses factory: () => VizRenderer so each mount creates a fresh renderer instance
-- [Phase 04-02]: vi.mock('p5') must appear before any import transitively reaching gifenc — CJS named export incompatibility in ESM test environments
-- [Phase 04-02]: useVizRenderer.test.ts and viewZones.test.ts were already fully migrated in 04-01; P5VizRenderer.test.ts and defaultDescriptors.test.ts are new additions completing the test coverage
-- [Phase 05-per-track-data]: Setter-intercept pattern via Object.defineProperty intercepts injectPatternMethods assigning Pattern.prototype.p — naive monkey-patch clobbered before user code runs
-- [Phase 05-per-track-data]: anonIndex reset to 0 per evaluate() call mirrors Strudel's hush() resetting anonymousIndex; prevents key desync on re-evaluate
-- [Phase 06]: InlineZoneHandle object return pattern replaces bare () => void — enables pause/resume lifecycle without destroying zones
-- [Phase 06]: pause() on stop freezes inline zones at last frame; cleanup() called only before re-adding zones on next play
-- [Phase 06]: resume() placed after inline zone if-block in handlePlay — fires unconditionally, no-op on fresh zones, unfreezes paused zones
-- [Phase 06]: .viz() capture via _pendingViz tagging in prototype — ordering problem (.viz before .p) solved by tagging instance then resolving in .p() wrapper
-- [Phase 06]: addInlineViewZones now opt-in only — only tracks in vizRequests map get zones; factory resolved by name from vizDescriptors
-- [Phase 06]: VizPanel source computed inline via vizDescriptors.find (no useMemo currentSource) — removes vizRenderer prop dependency
-- [Phase 06]: inlinePianoroll and vizRenderer props removed as breaking change cleanup — replaced entirely by .viz() opt-in in pattern code
+### Architecture Vision (5 Islands)
+
+1. Language (engine): Strudel, Sonic Pi, Hydra, ORCA, custom DSL
+2. Visualization (renderer): p5, Three.js, Shadertoy, Hydra, Canvas2D, DAW timeline
+3. Synthesis (backend): superdough, SuperSonic, Tone.js, FAUST, MIDI, OSC
+4. DAW (timeline): Level 1 read-only, Level 2 editable (Pattern IR), Level 3 collaborative
+5. Control (surface): UI Bento Box, Link sync, MIDI I/O, live mic
+
+All connected by ECS Component Bus. Five invariances: change any island, others stay.
 
 ### Pending Todos
 
-None yet.
+- Phase 9: HapStream.emitEvent() for engine-agnostic highlighting
+- Merge feat/sonic-pi-engine branch after Phase 9
+- SynthBackend interface (Phase 12)
+- Publish @motif/editor to npm (Phase 11)
 
 ### Blockers/Concerns
 
-- Hard break on `vizSketch` prop — consumers must update to `vizDescriptors`/`vizRenderer`
-- p5 v2 API differences (windowWidth removed, canvas not typed) — documented in memory
+- SonicPiEngine queryable disabled (CaptureScheduler needs full DSL context in capture mode — sonicPiWeb fix)
+- Sonic Pi highlighting needs Phase 9 (emitEvent with loc from transpiler source positions)
+- SuperSonic GPL core must stay CDN-loaded, never bundled
 
 ## Session Continuity
 
-Last session: 2026-03-22T19:45:51.839Z
-Stopped at: Completed 06-inline-zones-via-abstraction/06-02-PLAN.md
-Resume file: None
+Last session: 2026-03-25
+Stopped at: Phase 8 complete. Sonic Pi integration working. Ready for Phase 9.
+Resume: Run /anvi:plan-phase 9

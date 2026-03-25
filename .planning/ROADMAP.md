@@ -2,16 +2,19 @@
 
 ## Overview
 
-The foundation is shipped: engine layer, Monaco editor, active highlighting, and all 7
-p5.js visualizers (pianoroll, wordfall, scope, fscope, spectrum, spiral, pitchwheel).
+Motif is a renderer-agnostic, engine-agnostic live coding platform delivered as an
+embeddable React component library. The architecture decouples five independent islands
+— Language, Visualization, Synthesis, DAW, and Control — connected by an Entity-Component
+bus. Any engine, any viz renderer, any synth backend plugs in. The bridge holds.
 
-The remaining work transforms struCode from a Strudel-specific editor into **Motif** — a
-renderer-agnostic, engine-agnostic live coding platform. The architecture introduces three
-decoupled layers: Engine (pluggable language adapters), PatternScheduler API (the agnostic
-boundary), and VizRenderer (extensible visualization). Each phase delivers a coherent,
-verifiable capability before the next begins.
+Phases 1-6 shipped the foundation (Monaco, highlighting, 7 p5.js visualizers, VizRenderer
+abstraction, per-track data, inline zones). Phase 8 shipped the engine protocol (ECS
+components, LiveCodingEditor, multi-engine support). Sonic Pi Web integration is on a
+feature branch with a working dual-engine demo.
 
-See THESIS.md for the full platform vision.
+See THESIS_COMPLETE.md for the full platform vision.
+See SONIC_PI_WEB.md for the Sonic Pi browser engine thesis.
+See FULL_TRANSPARENCY.md for the provenance/attribution framework.
 
 ## Phases
 
@@ -27,11 +30,23 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: VizRenderer Abstraction** - Replace p5-coupled SketchFactory with renderer-agnostic VizRenderer interface (completed 2026-03-22)
 - [x] **Phase 5: Per-Track Data** - Expose per-track PatternSchedulers via monkey-patching Pattern.prototype.p (completed 2026-03-22)
 - [x] **Phase 6: Inline Zones via Abstraction** - Per-pattern .viz("name") opt-in replacing blanket inlinePianoroll prop (REPLANNED 2026-03-23) (completed 2026-03-22)
-- [ ] **Phase 7: Additional Renderers** - Canvas 2D, Three.js, Shadertoy GLSL renderer implementations
-- [ ] **Phase 8: Engine Protocol** - Define LiveCodingEngine interface, refactor StrudelEngine, prove multi-engine
-- [ ] **Phase 9: Normalized Hap Type** - Engine-agnostic event format so viz works across all engines
-- [ ] **Phase 10: Monaco Intelligence** - Strudel tokenizer, completions, hover docs, and error squiggles
-- [ ] **Phase 11: Library Polish + Demo Site** - Tests, Storybook, tsup build, README, and public demo app
+- [x] **Phase 8: Engine Protocol** - ECS components, LiveCodingEngine, LiveCodingEditor, DemoEngine, VizDescriptor.requires[] filtering, engine-agnostic viewZones (completed 2026-03-25)
+- [ ] **Phase 9: Normalized Hap Type** - HapStream.emitEvent(), engine-agnostic highlighting with source positions
+- [ ] **Phase 7: Additional Renderers** - HydraEngine (visual component), Canvas2D renderer, Level 1 DAW timeline
+- [ ] **Phase 10: Monaco Intelligence** - Strudel tokenizer, completions, hover docs, error squiggles
+- [ ] **Phase 11: Library Polish + Publish** - tsup build, README, publish @motif/editor to npm
+- [ ] **Phase 12: Synth Invariance** - SynthBackend interface, SuperSonicBackend, SuperdoughBackend, MidiBackend
+- [ ] **Phase 13: External Sync** - SyncComponent, LinkBridge (WebRTC), MidiInput
+- [ ] **Phase 14: Recording & Export** - Engine-agnostic Recorder, WAV export, stem export
+- [ ] **Phase 15: Provenance** - SessionLog, Ed25519 signing, WAV metadata embedding
+- [ ] **Phase 16: Collaboration** - Yjs CRDT + WebRTC, cursor presence, shared tempo via Link
+- [ ] **Phase 17: UI Bento Box** - Slider/knob/XY pad controls, MIDI CC mapping, slider() DSL
+- [ ] **Phase 18: Composr Integration** - Replace iframe with <StrudelEditor>, renderStems, per-stem export
+- [ ] **Phase 19: Pattern IR** - IR compiler, transform tree, provenance backward map, Level 2 DAW
+- [ ] **Phase 20: Transform Graph** - React Flow node editor, bypass/solo, proc gen nodes
+- [ ] **Phase 21: Indian Classical** - Tala Circle VizRenderer, bol notation, tihai verification
+- [ ] **Phase 22: Audio Analysis** - Quadtree decomposition, audio → Pattern IR, the closed loop
+- [ ] **Phase 23: Transparent AI** - Normalizing flow synth, GANSpace timbral control, training data attribution
 
 ## Phase Details
 
@@ -126,36 +141,51 @@ Plans:
 - [x] 06-01-PLAN.md — Register .viz() capture in StrudelEngine + refactor viewZones.ts to opt-in + update tests
 - [x] 06-02-PLAN.md — Wire StrudelEditor with vizRequests, remove inlinePianoroll prop, visual verification
 
-### Phase 7: Additional Renderers
-**Goal**: Implement Canvas 2D, Three.js (dynamic import), and Shadertoy GLSL renderers. Each implements VizRenderer interface. Third-party renderer authors can publish motif-renderer-* packages.
-**Depends on**: Phase 4
-**Requirements**: EXTRA-01, EXTRA-02, EXTRA-03, EXTRA-04
+### Phase 7: Additional Renderers + Hydra Engine
+**Goal**: HydraEngine (proves visual component), Canvas2D renderer (lightweight), Level 1 DAW timeline (read-only, requires queryable).
+**Depends on**: Phase 8
 **Success Criteria** (what must be TRUE):
-  1. Canvas2DVizRenderer renders a basic pianoroll without p5 dependency
-  2. Three.js renderer dynamically imports (~600KB) only when mounted
-  3. Shadertoy GLSL renderer compiles user shaders with onError for compile failures
-  4. VizDescriptor.requires capability check disables unsupported renderers in picker
+  1. HydraEngine implements LiveCodingEngine with visual component (canvas passthrough)
+  2. VizPicker disables all audio/streaming viz for Hydra, shows "Hydra Output" only
+  3. Canvas2DVizRenderer renders basic pianoroll without p5 dependency
+  4. Level 1 DAW VizRenderer: multi-track timeline, playhead, zoom, requires: ['queryable']
 **Plans:** TBD
 
-### Phase 8: Engine Protocol
-**Goal**: Define the LiveCodingEngine interface. Refactor StrudelEngine to implement it. Prove multi-engine support by adding a second engine adapter.
+### Phase 8: Engine Protocol (COMPLETE — 2026-03-25)
+**Goal**: Define the LiveCodingEngine interface with Entity-Component architecture. Refactor StrudelEngine. Create LiveCodingEditor. Build DemoEngine. Make inline viz engine-agnostic.
 **Depends on**: Phase 5
-**Requirements**: ENG-P-01, ENG-P-02, ENG-P-03, ENG-P-04
-**Success Criteria** (what must be TRUE):
-  1. LiveCodingEngine interface defined with init/evaluate/play/stop/getAnalyser/getPatternScheduler/getTrackSchedulers/dispose
+**Success Criteria** (all TRUE):
+  1. LiveCodingEngine interface with 5 core methods + ECS components bag
   2. StrudelEngine implements LiveCodingEngine without behavioral change
-  3. LiveCodingEditor component accepts engine prop (not hardcoded to Strudel)
-  4. At least one proof-of-concept second engine adapter exists
-**Plans:** TBD
+  3. LiveCodingEditor accepts engine prop (not hardcoded to Strudel)
+  4. StrudelEditor is thin wrapper around LiveCodingEditor
+  5. DemoEngine proves interface with streaming + audio + inlineViz (no queryable)
+  6. VizRenderer.mount() accepts Partial<EngineComponents> (component bag)
+  7. VizDescriptor.requires[] filters VizPicker by available components
+  8. viewZones.ts is engine-agnostic (reads inlineViz component, no $: scanning)
+  9. All 140 tests pass, conformance suite added
+**Plans:** 3/3 plans complete (08-01, 08-02, 08-03)
+Plans:
+- [x] 08-01-PLAN.md — LiveCodingEngine interface + StrudelEngine conformance + LiveCodingEditor + StrudelEditor wrapper + exports (5 tasks)
+- [x] 08-02-PLAN.md — VizRenderer component bag + VizDescriptor.requires[] + VizPicker filtering + engine-agnostic viewZones + tests (7 tasks)
+- [x] 08-03-PLAN.md — DemoEngine + conformance tests + integration verification (4 tasks)
+
+**Also shipped (unplanned, on feat/sonic-pi-engine branch):**
+- SonicPiEngine adapter wrapping sonicPiWeb (streaming + audio + inlineViz)
+- Dual-engine demo app (Strudel ↔ Sonic Pi tabs)
+- viz :scope DSL parsing in adapter (stripped before engine sees it)
+- SuperSonic loaded via bundler-proof dynamic import from CDN
 
 ### Phase 9: Normalized Hap Type
-**Goal**: Define a normalized Hap interface that engines map their native events to. Viz layer becomes truly engine-agnostic — sketches work with any engine's events without modification.
+**Goal**: Define a normalized Hap interface that engines map their native events to. Viz layer and highlighting become truly engine-agnostic — sketches and active highlighting work with any engine's events without modification.
 **Depends on**: Phase 8
-**Requirements**: HAP-01, HAP-02, HAP-03
+**Requirements**: HAP-01, HAP-02, HAP-03, HAP-04, HAP-05
 **Success Criteria** (what must be TRUE):
-  1. Normalized Hap interface defined (begin, end, pitch, gain, duration, label, color, trackId)
+  1. Normalized Hap interface defined (begin, end, pitch, gain, duration, label, color, trackId, loc)
   2. StrudelEngine maps Strudel haps to normalized Hap type
   3. All 7 sketches consume normalized Hap (not raw Strudel hap)
+  4. HapStream.emitEvent(event: HapEvent) added — engines emit HapEvents directly without constructing Strudel-specific hap objects. Legacy emit() preserved for backward compat.
+  5. Active highlighting works for any engine that provides `loc` (source character ranges) in HapEvents — verified with DemoEngine and/or SonicPiEngine
 **Plans:** TBD
 
 ### Phase 10: Monaco Intelligence
@@ -188,16 +218,28 @@ Plans:
 Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11
 (Phase 7 can run in parallel with 5-6; Phase 10 can run in parallel with 5-9)
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
+| Phase | Plans | Status | Completed |
+|-------|-------|--------|-----------|
 | 1. Active Highlighting | 2/2 | Complete | 2026-03-21 |
 | 2. Pianoroll Visualizers | 3/3 | Complete | 2026-03-22 |
 | 3. Audio Visualizers | N/A | Complete | 2026-03-22 |
-| 4. VizRenderer Abstraction | 2/2 | Complete   | 2026-03-22 |
-| 5. Per-Track Data | 1/1 | Complete   | 2026-03-22 |
-| 6. Inline Zones via Abstraction | 2/2 | Complete   | 2026-03-22 |
-| 7. Additional Renderers | 0/TBD | Not started | - |
-| 8. Engine Protocol | 0/TBD | Not started | - |
-| 9. Normalized Hap Type | 0/TBD | Not started | - |
+| 4. VizRenderer Abstraction | 2/2 | Complete | 2026-03-22 |
+| 5. Per-Track Data | 1/1 | Complete | 2026-03-22 |
+| 6. Inline Zones via Abstraction | 2/2 | Complete | 2026-03-22 |
+| **8. Engine Protocol** | **3/3** | **Complete** | **2026-03-25** |
+| 9. Normalized Hap Type | 0/TBD | **Next** | - |
+| 7. Additional Renderers + Hydra | 0/TBD | Not started | - |
 | 10. Monaco Intelligence | 0/TBD | Not started | - |
-| 11. Library Polish + Demo Site | 0/TBD | Not started | - |
+| 11. Library Polish + Publish | 0/TBD | Not started | - |
+| 12. Synth Invariance | 0/TBD | Not started | - |
+| 13. External Sync (Link) | 0/TBD | Not started | - |
+| 14. Recording & Export | 0/TBD | Not started | - |
+| 15. Provenance | 0/TBD | Not started | - |
+| 16. Collaboration | 0/TBD | Not started | - |
+| 17. UI Bento Box | 0/TBD | Not started | - |
+| 18. Composr Integration | 0/TBD | Not started | - |
+| 19. Pattern IR | 0/TBD | Not started | - |
+| 20. Transform Graph | 0/TBD | Not started | - |
+| 21. Indian Classical | 0/TBD | Not started | - |
+| 22. Audio Analysis | 0/TBD | Not started | - |
+| 23. Transparent AI | 0/TBD | Not started | - |
