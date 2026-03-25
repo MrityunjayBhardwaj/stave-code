@@ -2,6 +2,7 @@ import type { RefObject } from 'react'
 import type p5 from 'p5'
 import type { HapStream } from '../../engine/HapStream'
 import type { PatternScheduler } from '../types'
+import type { NormalizedHap } from '../../engine/NormalizedHap'
 import { noteToMidi } from '../../engine/noteToMidi'
 
 const CYCLES = 4      // total cycles visible
@@ -88,19 +89,12 @@ export function getColor(
   return tokens['--stem-accent'] ?? DEFAULT_COLOR_TOKENS['--stem-accent']
 }
 
-/** Mirrors Strudel's getValue() — returns MIDI number for pitched notes, "_s" string for sounds. */
-function getValue(hap: any): number | string {
-  const val = hap.value
-  if (!val || typeof val !== 'object') {
-    const n = typeof val === 'number' ? val : null
-    return n ?? 0
-  }
-  const { note, n, freq, s } = val
-  if (typeof freq === 'number') return Math.round(12 * Math.log2(freq / 440) + 69)
-  const noteVal = note ?? n
-  if (typeof noteVal === 'string') return noteToMidi(noteVal) ?? ('_' + noteVal)
-  if (typeof noteVal === 'number') return noteVal
-  if (typeof s === 'string') return '_' + s
+/** Returns MIDI number for pitched notes, "_s" string for sounds. Used for fold-layout grouping. */
+function getValue(hap: NormalizedHap): number | string {
+  if (hap.freq !== null) return Math.round(12 * Math.log2(hap.freq / 440) + 69)
+  if (typeof hap.note === 'string') return noteToMidi(hap.note) ?? ('_' + hap.note)
+  if (typeof hap.note === 'number') return hap.note
+  if (hap.s !== null) return '_' + hap.s
   return 0
 }
 
@@ -145,7 +139,7 @@ export function PianorollSketch(
       const to = now + CYCLES * (1 - PLAYHEAD)
       const timeExtent = to - from
 
-      let haps: any[]
+      let haps: NormalizedHap[]
       try { haps = scheduler.query(from, to) } catch { haps = [] }
 
       // --- Fold layout: collect distinct values, sort ascending ---
@@ -168,25 +162,20 @@ export function PianorollSketch(
         const laneIdx = foldValues.indexOf(value)
         if (laneIdx < 0) continue
 
-        // Strudel's exact x formula
-        const hapBegin = Number(hap.whole?.begin ?? 0)
-        const hapEnd = Number(hap.whole?.end ?? hapBegin + 0.25)
-        const duration = hapEnd - hapBegin
-        const x = ((hapBegin - now + CYCLES * PLAYHEAD) / timeExtent) * W
+        const duration = hap.end - hap.begin
+        const x = ((hap.begin - now + CYCLES * PLAYHEAD) / timeExtent) * W
         const noteW = Math.max(2, (duration / timeExtent) * W)
 
         // Higher pitch = higher on canvas (lower y index)
         const y = ((foldCount - 1 - laneIdx) / foldCount) * H
 
-        const isActive = hapBegin <= now && Number(hap.endClipped ?? hapEnd) > now
+        const isActive = hap.begin <= now && hap.endClipped > now
 
-        const gain = Math.min(1, Math.max(0.1, hap.value?.gain ?? 1))
-        const velocity = Math.min(1, Math.max(0.1, hap.value?.velocity ?? 1))
+        const gain = Math.min(1, Math.max(0.1, hap.gain))
+        const velocity = Math.min(1, Math.max(0.1, hap.velocity))
         const alpha = gain * velocity
 
-        // Resolve color — hap.value.color → theme color
-        const hapColor = hap.value?.color
-        let rgb = hapColor ? parseHex(String(hapColor)) : null
+        const rgb = hap.color ? parseHex(String(hap.color)) : null
 
         if (isActive) {
           const [r, g, b] = rgb ?? parseHex(ACTIVE_COLOR)!

@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Per-Track Data** - Expose per-track PatternSchedulers via monkey-patching Pattern.prototype.p (completed 2026-03-22)
 - [x] **Phase 6: Inline Zones via Abstraction** - Per-pattern .viz("name") opt-in replacing blanket inlinePianoroll prop (REPLANNED 2026-03-23) (completed 2026-03-22)
 - [x] **Phase 8: Engine Protocol** - ECS components, LiveCodingEngine, LiveCodingEditor, DemoEngine, VizDescriptor.requires[] filtering, engine-agnostic viewZones (completed 2026-03-25)
-- [ ] **Phase 9: Normalized Hap Type** - HapStream.emitEvent(), engine-agnostic highlighting with source positions
+- [x] **Phase 9: Normalized Hap Type** - NormalizedHap interface, engine-agnostic sketches and highlighting (completed 2026-03-25)
 - [ ] **Phase 7: Additional Renderers** - HydraEngine (visual component), Canvas2D renderer, Level 1 DAW timeline
 - [ ] **Phase 10: Monaco Intelligence** - Strudel tokenizer, completions, hover docs, error squiggles
 - [ ] **Phase 11: Library Polish + Publish** - tsup build, README, publish @motif/editor to npm
@@ -181,12 +181,16 @@ Plans:
 **Depends on**: Phase 8
 **Requirements**: HAP-01, HAP-02, HAP-03, HAP-04, HAP-05
 **Success Criteria** (what must be TRUE):
-  1. Normalized Hap interface defined (begin, end, pitch, gain, duration, label, color, trackId, loc)
-  2. StrudelEngine maps Strudel haps to normalized Hap type
-  3. All 7 sketches consume normalized Hap (not raw Strudel hap)
-  4. HapStream.emitEvent(event: HapEvent) added — engines emit HapEvents directly without constructing Strudel-specific hap objects. Legacy emit() preserved for backward compat.
-  5. Active highlighting works for any engine that provides `loc` (source character ranges) in HapEvents — verified with DemoEngine and/or SonicPiEngine
-**Plans:** TBD
+  1. NormalizedHap interface defined (begin, end, endClipped, note, freq, s, gain, velocity, color) and exported from index.ts
+  2. StrudelEngine maps Strudel haps to NormalizedHap via normalizeStrudelHap() in PatternScheduler.query()
+  3. All 4 queryable sketches (Pianoroll, Spiral, Pitchwheel, Wordfall) consume NormalizedHap — no raw Strudel hap access
+  4. HapStream.emitEvent(event: HapEvent) added — engines emit HapEvents directly without constructing Strudel-specific hap objects. Legacy emit() preserved for backward compat. HapEvent.hap made optional.
+  5. DemoEngine and SonicPiEngine adapter use emitEvent() directly — no fake Strudel hap construction
+**Plans:** 3 plans
+Plans:
+- [x] 09-01-PLAN.md — NormalizedHap type + normalize function + PatternScheduler contract + StrudelEngine wrappers + index.ts export (5 tasks)
+- [x] 09-02-PLAN.md — Migrate all 4 queryable sketches to consume NormalizedHap (5 tasks)
+- [x] 09-03-PLAN.md — HapStream.emitEvent() + HapEvent cleanup + DemoEngine/SonicPiAdapter updates (4 tasks)
 
 ### Phase 10: Monaco Intelligence
 **Goal**: The Monaco editor understands Strudel code — syntax elements get distinct colors, users get completions for functions and note names, hovering a function shows docs, and evaluation errors appear as red squiggles.
@@ -227,7 +231,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 5. Per-Track Data | 1/1 | Complete | 2026-03-22 |
 | 6. Inline Zones via Abstraction | 2/2 | Complete | 2026-03-22 |
 | **8. Engine Protocol** | **3/3** | **Complete** | **2026-03-25** |
-| 9. Normalized Hap Type | 0/TBD | **Next** | - |
+| **9. Normalized Hap Type** | **3/3** | **Complete** | **2026-03-25** |
 | 7. Additional Renderers + Hydra | 0/TBD | Not started | - |
 | 10. Monaco Intelligence | 0/TBD | Not started | - |
 | 11. Library Polish + Publish | 0/TBD | Not started | - |

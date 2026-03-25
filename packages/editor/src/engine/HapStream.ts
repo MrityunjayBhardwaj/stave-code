@@ -1,9 +1,9 @@
 import { noteToMidi } from './noteToMidi'
 
 export interface HapEvent {
-  /** Full Strudel Hap object */
+  /** Full Strudel Hap object (optional for non-Strudel engines) */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  hap: any
+  hap?: any
   /** AudioContext.currentTime when note fires */
   audioTime: number
   /** Duration in AudioContext seconds */
@@ -63,6 +63,14 @@ export class HapStream {
       loc: hap?.context?.locations ?? hap?.context?.loc ?? null,
     }
 
+    this.emitEvent(event)
+  }
+
+  /**
+   * Emit a pre-constructed HapEvent directly.
+   * Preferred API for non-Strudel engines that don't have raw hap objects.
+   */
+  emitEvent(event: HapEvent): void {
     for (const handler of this.handlers) {
       try {
         handler(event)

@@ -1,16 +1,16 @@
 import type { RefObject } from 'react'
 import type { HapStream } from '../engine/HapStream'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
+import type { NormalizedHap } from '../engine/NormalizedHap'
 
 /**
- * Thin wrapper around the Strudel scheduler exposed to sketches.
+ * Thin wrapper around the engine scheduler exposed to sketches.
  * `now()` returns the current playback position in cycles.
- * `query()` returns all haps overlapping the given cycle range.
+ * `query()` returns all normalized haps overlapping the given cycle range.
  */
 export interface PatternScheduler {
   now(): number
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  query(begin: number, end: number): any[]
+  query(begin: number, end: number): NormalizedHap[]
 }
 
 /**

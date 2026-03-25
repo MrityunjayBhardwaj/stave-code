@@ -32,7 +32,10 @@ class MockPattern {
     this.instanceId = ++patternInstanceCounter
   }
   queryArc(begin: number, end: number) {
-    return [{ mock: true, id: this.instanceId, begin, end }]
+    return [{
+      whole: { begin, end },
+      value: { note: `note_${this.instanceId}`, s: `inst_${this.instanceId}` },
+    }]
   }
 }
 
@@ -228,9 +231,9 @@ describe('StrudelEngine.getTrackSchedulers', () => {
     expect(sched1).toBeDefined()
     const result0 = sched0.query(0, 1)
     const result1 = sched1.query(0, 1)
-    // Each returns its own Pattern's queryArc result (different instanceId)
+    // Each returns its own Pattern's queryArc result (different note/s from instanceId)
     expect(result0).not.toEqual(result1)
-    expect(result0[0].id).not.toBe(result1[0].id)
+    expect(result0[0].note).not.toBe(result1[0].note)
   })
 
   it('restores Pattern.prototype.p after successful evaluate (TRACK-02)', async () => {

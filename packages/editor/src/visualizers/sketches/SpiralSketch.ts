@@ -7,6 +7,7 @@ import type { RefObject } from 'react'
 import type p5 from 'p5'
 import type { HapStream } from '../../engine/HapStream'
 import type { PatternScheduler } from '../types'
+import type { NormalizedHap } from '../../engine/NormalizedHap'
 
 const BG = '#090912'
 const ACTIVE_COLOR = '#75baff'
@@ -47,7 +48,7 @@ export function SpiralSketch(
       // Show 2 cycles behind, 1 cycle ahead
       const lookbehind = 2
       const lookahead = 1
-      let haps: any[]
+      let haps: NormalizedHap[]
       try { haps = scheduler.query(now - lookbehind, now + lookahead) } catch { return }
 
       const cx = W / 2
@@ -59,14 +60,12 @@ export function SpiralSketch(
 
       // Draw each hap as a spiral arc segment (mirrors Strudel's spiralSegment)
       for (const hap of haps) {
-        const hapBegin = Number(hap.whole?.begin ?? 0)
-        const hapEnd = Number(hap.endClipped ?? hap.whole?.end ?? hapBegin + 0.25)
-        const isActive = hapBegin <= now && hapEnd > now
-        const from = hapBegin - now + inset
-        const to = hapEnd - now + inset - 0.005
-        const opacity = Math.max(0, 1 - Math.abs((hapBegin - now) / lookbehind))
+        const isActive = hap.begin <= now && hap.endClipped > now
+        const from = hap.begin - now + inset
+        const to = hap.endClipped - now + inset - 0.005
+        const opacity = Math.max(0, 1 - Math.abs((hap.begin - now) / lookbehind))
 
-        const hapColor = hap.value?.color ?? (isActive ? ACTIVE_COLOR : INACTIVE_COLOR)
+        const hapColor = hap.color ?? (isActive ? ACTIVE_COLOR : INACTIVE_COLOR)
 
         // Parse color for p5 fill/stroke
         const col = p.color(hapColor)

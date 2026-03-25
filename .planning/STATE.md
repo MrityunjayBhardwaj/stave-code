@@ -23,12 +23,12 @@ See: FULL_TRANSPARENCY.md (quadtree → normalizing flow → attribution framewo
 
 **Core value:** Five independent islands — Language, Visualization, Synthesis, DAW, Control — connected by one embeddable React component library. Any engine, any viz, any synth. The bridge holds.
 
-**Current focus:** Phase 9 (Normalized Hap Type) — next to execute
+**Current focus:** Phase 9 complete. Next: Phase 7 (Additional Renderers) or merge branch.
 
 ## Current Position
 
-Phase: 9 (Normalized Hap Type) — READY TO PLAN
-Last completed: Phase 8 (Engine Protocol) — 2026-03-25
+Phase: 9 (Normalized Hap Type) — COMPLETE
+Last completed: Phase 9 (Normalized Hap Type) — 2026-03-25
 
 ## What's Shipped
 
@@ -89,10 +89,17 @@ Last completed: Phase 8 (Engine Protocol) — 2026-03-25
 
 All connected by ECS Component Bus. Five invariances: change any island, others stay.
 
+### Phase 9 (Normalized Hap Type, 2026-03-25)
+- NormalizedHap interface (begin, end, endClipped, note, freq, s, gain, velocity, color)
+- normalizeStrudelHap() maps raw Strudel haps at PatternScheduler.query() boundary
+- All 4 queryable sketches consume NormalizedHap (zero raw hap access)
+- HapStream.emitEvent() for direct HapEvent emission (DemoEngine + SonicPiAdapter use it)
+- HapEvent.hap made optional (dead field)
+- 146 tests passing
+
 ### Pending Todos
 
-- Phase 9: HapStream.emitEvent() for engine-agnostic highlighting
-- Merge feat/sonic-pi-engine branch after Phase 9
+- Merge feat/sonic-pi-engine branch
 - SynthBackend interface (Phase 12)
 - Publish @motif/editor to npm (Phase 11)
 

@@ -8,6 +8,7 @@ import type { RefObject } from 'react'
 import type p5 from 'p5'
 import type { HapStream } from '../../engine/HapStream'
 import type { PatternScheduler } from '../types'
+import type { NormalizedHap } from '../../engine/NormalizedHap'
 
 const BG = '#090912'
 const INACTIVE_COLOR = '#75baff'
@@ -16,20 +17,17 @@ const PLAYHEAD_COLOR = 'rgba(255,255,255,0.5)'
 const CYCLES = 4
 const PLAYHEAD = 0.5
 
-function getValue(hap: any): number | string {
-  const { note, n, freq, s } = hap.value ?? {}
-  if (typeof freq === 'number') return freq
-  const noteVal = note ?? n
-  if (noteVal !== undefined && noteVal !== null) return noteVal
-  if (s) return '_' + s
-  return hap.value ?? 0
+function getValue(hap: NormalizedHap): number | string {
+  if (hap.freq !== null) return hap.freq
+  if (hap.note !== null) return hap.note
+  if (hap.s !== null) return '_' + hap.s
+  return 0
 }
 
-function getLabel(hap: any): string {
-  const { note, n, s } = hap.value ?? {}
-  if (note !== undefined) return String(note)
-  if (s !== undefined) return n !== undefined ? `${s}:${n}` : String(s)
-  if (n !== undefined) return String(n)
+function getLabel(hap: NormalizedHap): string {
+  if (hap.note !== null && hap.s !== null) return `${hap.s}:${hap.note}`
+  if (hap.note !== null) return String(hap.note)
+  if (hap.s !== null) return String(hap.s)
   return ''
 }
 
@@ -55,7 +53,7 @@ export function WordfallSketch(
       let now: number
       try { now = scheduler.now() } catch { return }
 
-      let haps: any[]
+      let haps: NormalizedHap[]
       try { haps = scheduler.query(now - CYCLES * PLAYHEAD, now + CYCLES * (1 - PLAYHEAD)) } catch { return }
 
       // Fold layout — unique sorted values, same as pianoroll
@@ -70,14 +68,11 @@ export function WordfallSketch(
       const barW = W / foldValues.length
 
       for (const hap of haps) {
-        const hapBegin = Number(hap.whole?.begin ?? 0)
-        const hapEnd = Number(hap.endClipped ?? hap.whole?.end ?? hapBegin + 0.25)
-        const hapDuration = hapEnd - hapBegin
-        const isActive = hapBegin <= now && hapEnd > now
+        const hapDuration = hap.endClipped - hap.begin
+        const isActive = hap.begin <= now && hap.endClipped > now
 
         // Vertical: y=0 is future (+CYCLES*(1-PLAYHEAD) ahead), y=H is past
-        // timeToHap < 0 = past → y > playheadY; timeToHap > 0 = future → y < playheadY
-        const timeToHap = hapBegin - now
+        const timeToHap = hap.begin - now
         const playheadY = H * PLAYHEAD
         const y = playheadY - (timeToHap / CYCLES) * H
         const durationH = (hapDuration / CYCLES) * H
@@ -86,7 +81,7 @@ export function WordfallSketch(
         const foldIdx = foldValues.indexOf(value)
         const x = foldIdx * barW
 
-        const color = hap.value?.color ?? INACTIVE_COLOR
+        const color = hap.color ?? INACTIVE_COLOR
         p.noStroke()
         if (isActive) {
           p.fill(ACTIVE_COLOR)

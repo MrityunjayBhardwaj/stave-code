@@ -1,6 +1,7 @@
 import { HapStream } from './HapStream'
 import { LiveRecorder } from './LiveRecorder'
 import { OfflineRenderer } from './OfflineRenderer'
+import { normalizeStrudelHap } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
@@ -262,7 +263,7 @@ export class StrudelEngine implements LiveCodingEngine {
           this.trackSchedulers.set(id, {
             now: () => sched.now(),
             query: (begin: number, end: number) => {
-              try { return captured.queryArc(begin, end) } catch { return [] }
+              try { return captured.queryArc(begin, end).map(normalizeStrudelHap) } catch { return [] }
             },
           })
         }
@@ -431,7 +432,7 @@ export class StrudelEngine implements LiveCodingEngine {
     return {
       now: () => sched.now(),
       query: (begin: number, end: number) => {
-        try { return pattern.queryArc(begin, end) } catch { return [] }
+        try { return pattern.queryArc(begin, end).map(normalizeStrudelHap) } catch { return [] }
       },
     }
   }

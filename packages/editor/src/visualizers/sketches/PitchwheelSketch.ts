@@ -7,6 +7,7 @@ import type { RefObject } from 'react'
 import type p5 from 'p5'
 import type { HapStream } from '../../engine/HapStream'
 import type { PatternScheduler } from '../types'
+import type { NormalizedHap } from '../../engine/NormalizedHap'
 import { noteToMidi } from '../../engine/noteToMidi'
 
 const BG = '#090912'
@@ -19,11 +20,9 @@ function midiToFreq(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
 }
 
-function getFreq(hap: any): number | null {
-  const { freq, note, n } = hap.value ?? {}
-  if (typeof freq === 'number') return freq
-  const noteVal = note ?? n
-  const midi = typeof noteVal === 'number' ? noteVal : noteToMidi(String(noteVal ?? ''))
+function getFreq(hap: NormalizedHap): number | null {
+  if (hap.freq !== null) return hap.freq
+  const midi = typeof hap.note === 'number' ? hap.note : noteToMidi(String(hap.note ?? ''))
   return midi !== null ? midiToFreq(midi) : null
 }
 
@@ -58,14 +57,10 @@ export function PitchwheelSketch(
       let now: number
       try { now = scheduler.now() } catch { return }
 
-      let haps: any[]
+      let haps: NormalizedHap[]
       try { haps = scheduler.query(now - 0.01, now + 0.01) } catch { return }
       // Only draw currently active haps
-      haps = haps.filter(h => {
-        const begin = Number(h.whole?.begin ?? 0)
-        const end = Number(h.endClipped ?? h.whole?.end ?? begin + 0.25)
-        return begin <= now && end > now
-      })
+      haps = haps.filter(h => h.begin <= now && h.endClipped > now)
 
       const size = Math.min(W, H)
       const hapRadius = 6
@@ -97,10 +92,8 @@ export function PitchwheelSketch(
 
         const angle = freq2angle(freq, ROOT_FREQ)
         const [x, y] = circlePos(cx, cy, radius, angle)
-        const color = hap.value?.color ?? BASE_COLOR
-        const gain = hap.value?.gain ?? 1
-        const velocity = hap.value?.velocity ?? 1
-        const alpha = Math.min(1, gain * velocity)
+        const color = hap.color ?? BASE_COLOR
+        const alpha = Math.min(1, hap.gain * hap.velocity)
 
         // Line from center to note
         p.stroke(color)

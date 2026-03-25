@@ -1,4 +1,5 @@
 import { HapStream } from './HapStream'
+import type { HapEvent } from './HapStream'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
 
 /**
@@ -108,13 +109,16 @@ export class DemoEngine implements LiveCodingEngine {
 
         // Emit HapEvent for highlighting/viz
         const now = this.audioCtx.currentTime
-        const hap = {
-          value: { note: noteName, s: 'demo' },
-          whole: { begin: this.cyclePos, end: this.cyclePos + 0.25 },
-          part: { begin: this.cyclePos, end: this.cyclePos + 0.25 },
-          context: { locations: [] },
+        const event: HapEvent = {
+          audioTime: now,
+          audioDuration: 0.5,
+          scheduledAheadMs: 0,
+          midiNote: null,
+          s: 'demo',
+          color: null,
+          loc: null,
         }
-        this.hapStream.emit(hap, now, 2, now + 0.5, now)
+        this.hapStream.emitEvent(event)
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err))
         this.runtimeErrorHandler?.(error)

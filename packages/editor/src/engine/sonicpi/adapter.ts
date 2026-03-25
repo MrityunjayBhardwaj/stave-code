@@ -18,6 +18,7 @@ import { SonicPiEngine as RawSonicPiEngine } from '../../../../../../sonicPiWeb/
 
 import type { LiveCodingEngine, EngineComponents } from '../LiveCodingEngine'
 import { HapStream } from '../HapStream'
+import type { HapEvent } from '../HapStream'
 
 const SUPERSONIC_CDN = 'https://unpkg.com/supersonic-scsynth@latest'
 
@@ -142,15 +143,21 @@ export class SonicPiEngine implements LiveCodingEngine {
     await this.raw.init()
 
     // Forward sonicPiWeb's HapEvents into Motif's HapStream
-    // sonicPiWeb now emits flat HapEvents (no fake Strudel hap) — forward directly
+    // sonicPiWeb emits flat HapEvents — forward directly via emitEvent()
     this.raw.components.streaming?.hapStream.on(
-      (e: { audioTime: number; audioDuration: number; scheduledAheadMs: number; midiNote: number | null; s: string | null; color: string | null; loc: Array<{ start: number; end: number }> | null }) => {
-        this.hapStream.emit(
-          { value: { note: e.midiNote, s: e.s } },  // minimal hap for legacy emit()
-          e.audioTime, 2,
-          e.audioTime + e.audioDuration,
-          e.audioTime - e.scheduledAheadMs / 1000,
-        )
+      (e: { audioTime: number; audioDuration: number; scheduledAheadMs: number;
+             midiNote: number | null; s: string | null; color: string | null;
+             loc: Array<{ start: number; end: number }> | null }) => {
+        const event: HapEvent = {
+          audioTime: e.audioTime,
+          audioDuration: e.audioDuration,
+          scheduledAheadMs: e.scheduledAheadMs,
+          midiNote: e.midiNote,
+          s: e.s,
+          color: e.color,
+          loc: e.loc,
+        }
+        this.hapStream.emitEvent(event)
       },
     )
 
