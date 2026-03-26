@@ -9,7 +9,7 @@ import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
 type HapHandler = (event: HapEvent) => void
 
 /**
- * Single source of truth for audio in struCode.
+ * Single source of truth for audio in Stave.
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
  *
  * API surface matches ARCHITECTURE.md.
@@ -62,7 +62,7 @@ export class StrudelEngine implements LiveCodingEngine {
     //        enableWebMidi() is NOT called here; users call it explicitly (triggers browser permission prompt).
     // drawMod (@strudel/draw) intentionally excluded: it injects a full-screen canvas
     // into document.body (id="test-canvas") the first time any draw function runs.
-    // struCode uses its own visualizer system, so strudel's canvas draw functions
+    // Stave uses its own visualizer system, so strudel's canvas draw functions
     // (pianoroll, drawFrequencyScope, etc.) are not exposed to user code.
     await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod)
 

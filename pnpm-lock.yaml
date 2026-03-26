@@ -17,7 +17,7 @@ importers:
 
   packages/app:
     dependencies:
-      '@strucode/editor':
+      '@stave/editor':
         specifier: workspace:*
         version: link:../editor
       next:

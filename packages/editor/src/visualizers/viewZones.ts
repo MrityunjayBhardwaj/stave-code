@@ -50,7 +50,7 @@ export function addInlineViewZones(
     for (const [trackKey, { vizId, afterLine }] of vizRequests) {
       const descriptor = vizDescriptors.find(d => d.id === vizId)
       if (!descriptor) {
-        console.warn(`[strucode] Unknown viz "${vizId}". Available: ${vizDescriptors.map(d => d.id).join(', ')}`)
+        console.warn(`[stave] Unknown viz "${vizId}". Available: ${vizDescriptors.map(d => d.id).join(', ')}`)
         continue
       }
 

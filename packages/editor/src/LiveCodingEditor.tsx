@@ -63,7 +63,7 @@ export interface LiveCodingEditorProps {
   language?: string
 }
 
-const DEFAULT_CODE = `// Welcome to struCode`
+const DEFAULT_CODE = `// Welcome to Stave`
 
 export function LiveCodingEditor({
   engine,
@@ -223,7 +223,7 @@ export function LiveCodingEditor({
       editorRef.current = editor
 
       editor.addAction({
-        id: 'strucode.play',
+        id: 'stave.play',
         label: 'Play',
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
         run: () => {
@@ -233,7 +233,7 @@ export function LiveCodingEditor({
       })
 
       editor.addAction({
-        id: 'strucode.stop',
+        id: 'stave.stop',
         label: 'Stop',
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period],
         run: () => handleStop(),
@@ -289,7 +289,7 @@ export function LiveCodingEditor({
   return (
     <div
       ref={containerRef}
-      data-strucode-theme={themeKey}
+      data-stave-theme={themeKey}
       style={{
         display: 'flex',
         flexDirection: 'column',

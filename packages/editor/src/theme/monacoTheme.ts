@@ -1,7 +1,7 @@
 import type * as Monaco from 'monaco-editor'
 
 export function defineStrudelMonacoTheme(monaco: typeof Monaco): void {
-  monaco.editor.defineTheme('strucode-dark', {
+  monaco.editor.defineTheme('stave-dark', {
     base: 'vs-dark',
     inherit: true,
     rules: [
@@ -37,7 +37,7 @@ export function defineStrudelMonacoTheme(monaco: typeof Monaco): void {
     },
   })
 
-  monaco.editor.defineTheme('strucode-light', {
+  monaco.editor.defineTheme('stave-light', {
     base: 'vs',
     inherit: true,
     rules: [

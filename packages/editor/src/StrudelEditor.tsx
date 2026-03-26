@@ -45,7 +45,7 @@ export interface StrudelEditorProps {
   engineRef?: React.MutableRefObject<StrudelEngine | null>
 }
 
-const DEFAULT_CODE = `// Welcome to struCode
+const DEFAULT_CODE = `// Welcome to Stave
 setcps(120/240)
 $: note("c3 e3 g3 b3").s("sine").gain(0.7)`
 

@@ -1,7 +1,7 @@
 {
-  "name": "@strucode/editor",
+  "name": "@stave/editor",
   "version": "0.1.0",
-  "description": "Monaco-based Strudel.js editor with visual feedback and track export",
+  "description": "Engine-agnostic live coding editor — any engine, any viz, any synth",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",

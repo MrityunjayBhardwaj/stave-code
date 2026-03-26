@@ -1,5 +1,5 @@
 {
-  "name": "strucode",
+  "name": "stave",
   "private": true,
   "scripts": {
     "build": "turbo run build",

@@ -7,7 +7,7 @@ import type * as Monaco from 'monaco-editor'
 import { defineStrudelMonacoTheme } from '../theme/monacoTheme'
 import { registerStrudelLanguage, registerSonicPiLanguage } from './language'
 
-const DEFAULT_CODE = `// Welcome to struCode
+const DEFAULT_CODE = `// Welcome to Stave
 setcps(120/240)
 $: note("c3 e3 g3 b3").s("sine").gain(0.7)`
 
@@ -47,7 +47,7 @@ export function StrudelMonaco({
     registerSonicPiLanguage(monaco)
 
     monaco.editor.setTheme(
-      theme === 'dark' ? 'strucode-dark' : 'strucode-light'
+      theme === 'dark' ? 'stave-dark' : 'stave-light'
     )
 
     // Inject active highlight CSS once
@@ -57,13 +57,13 @@ export function StrudelMonaco({
     editor.addCommand(
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
       () => {
-        editor.trigger('keyboard', 'strucode.play', null)
+        editor.trigger('keyboard', 'stave.play', null)
       }
     )
     editor.addCommand(
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period,
       () => {
-        editor.trigger('keyboard', 'strucode.stop', null)
+        editor.trigger('keyboard', 'stave.stop', null)
       }
     )
 

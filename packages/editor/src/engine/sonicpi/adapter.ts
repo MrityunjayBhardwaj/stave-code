@@ -1,10 +1,10 @@
 /**
  * SonicPiEngine adapter — wraps the standalone sonicPiWeb engine
- * to conform to Motif's LiveCodingEngine interface.
+ * to conform to Stave's LiveCodingEngine interface.
  *
  * Responsibilities of the ADAPTER (not the engine):
  *  - SuperSonic CDN loading (bundler-proof dynamic import)
- *  - SoundEvent → HapEvent bridging (sonicPiWeb events → Motif events)
+ *  - SoundEvent → HapEvent bridging (sonicPiWeb events → Stave events)
  *  - loc computation (engine provides srcLine, adapter computes char offsets)
  *  - Viz request capture (viz() injected here, not in the engine)
  *  - inlineViz component assembly (afterLine computed from code)
@@ -157,7 +157,7 @@ export class SonicPiEngine implements LiveCodingEngine {
 
     await this.raw.init()
 
-    // Forward sonicPiWeb's SoundEvents into Motif's HapStream
+    // Forward sonicPiWeb's SoundEvents into Stave's HapStream
     // Engine provides srcLine (raw integer), adapter computes loc (char offsets)
     // Events are routed to both the global stream AND per-track streams
     this.raw.components.streaming?.eventStream.on(
