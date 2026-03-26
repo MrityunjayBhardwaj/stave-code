@@ -32,6 +32,17 @@ export class BufferedScheduler implements IRPattern {
       const begin = event.audioTime
       const end = event.audioTime + event.audioDuration
 
+      // Clip previous event's end to this event's begin — prevents overlap
+      // when engines emit hardcoded durations (e.g. sonicPiWeb uses 0.25/0.5)
+      // that exceed the actual gap between events.
+      if (this.buffer.length > 0) {
+        const prev = this.buffer[this.buffer.length - 1]
+        if (prev.end > begin) {
+          prev.end = begin
+          prev.endClipped = begin
+        }
+      }
+
       this.buffer.push({
         begin,
         end,
