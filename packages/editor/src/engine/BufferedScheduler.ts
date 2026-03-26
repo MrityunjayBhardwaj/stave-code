@@ -1,23 +1,23 @@
 import type { HapEvent } from './HapStream'
 import type { HapStream } from './HapStream'
-import type { NormalizedHap } from './NormalizedHap'
-import type { PatternScheduler } from '../visualizers/types'
+import type { IREvent } from '../ir/IREvent'
+import type { IRPattern } from '../ir/IRPattern'
 
 /**
- * Engine-agnostic PatternScheduler built from a live HapStream.
+ * Engine-agnostic IRPattern built from a live HapStream.
  *
- * Accumulates HapEvents into a rolling buffer of NormalizedHap[].
+ * Accumulates HapEvents into a rolling buffer of IREvent[].
  * Any engine that provides streaming (HapStream) automatically gets
  * a synchronous queryable — no engine-specific code needed.
  *
  * Usage:
  *   const sched = new BufferedScheduler(hapStream, audioCtx)
- *   sched.query(begin, end) // → NormalizedHap[] from the buffer
+ *   sched.query(begin, end) // → IREvent[] from the buffer
  *   sched.now()             // → current audioContext time
  *   sched.dispose()         // → unsubscribe + clear buffer
  */
-export class BufferedScheduler implements PatternScheduler {
-  private buffer: NormalizedHap[] = []
+export class BufferedScheduler implements IRPattern {
+  private buffer: IREvent[] = []
   private audioCtx: AudioContext
   private maxAge: number
   private hapStream: HapStream
@@ -44,6 +44,7 @@ export class BufferedScheduler implements PatternScheduler {
         gain: 1,
         velocity: 1,
         color: event.color,
+        loc: event.loc ?? undefined,
       })
 
       // Evict old events
@@ -60,7 +61,7 @@ export class BufferedScheduler implements PatternScheduler {
     return this.audioCtx.currentTime
   }
 
-  query(begin: number, end: number): NormalizedHap[] {
+  query(begin: number, end: number): IREvent[] {
     return this.buffer.filter(h => h.begin < end && h.end > begin)
   }
 

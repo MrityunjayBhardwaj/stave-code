@@ -2,16 +2,13 @@ import type { RefObject } from 'react'
 import type { HapStream } from '../engine/HapStream'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { NormalizedHap } from '../engine/NormalizedHap'
+import type { IRPattern } from '../ir/IRPattern'
 
 /**
- * Thin wrapper around the engine scheduler exposed to sketches.
- * `now()` returns the current playback position in cycles.
- * `query()` returns all normalized haps overlapping the given cycle range.
+ * PatternScheduler — backward-compatible alias for IRPattern.
+ * New code should import IRPattern from '../ir' directly.
  */
-export interface PatternScheduler {
-  now(): number
-  query(begin: number, end: number): NormalizedHap[]
-}
+export type PatternScheduler = IRPattern
 
 /**
  * Bundled refs passed to every VizRenderer on mount.

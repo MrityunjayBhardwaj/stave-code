@@ -1,30 +1,17 @@
 /**
- * Engine-agnostic hap representation for the queryable path.
- * Sketches consume this type from PatternScheduler.query() — never raw engine haps.
+ * NormalizedHap — backward-compatible alias for IREvent.
+ *
+ * All viz sketches import NormalizedHap. This re-exports from the IR module
+ * so existing code keeps working. New code should import IREvent directly.
  */
-export interface NormalizedHap {
-  /** Cycle position start (from hap.whole.begin) */
-  begin: number
-  /** Cycle position end (from hap.whole.end) */
-  end: number
-  /** Clipped end for active detection (from hap.endClipped ?? end) */
-  endClipped: number
-  /** Note name or MIDI number (from hap.value.note ?? hap.value.n) */
-  note: number | string | null
-  /** Frequency in Hz (from hap.value.freq) */
-  freq: number | null
-  /** Instrument/sample name (from hap.value.s) */
-  s: string | null
-  /** Gain 0-1 (from hap.value.gain, default 1) */
-  gain: number
-  /** Velocity 0-1 (from hap.value.velocity, default 1) */
-  velocity: number
-  /** Display color (from hap.value.color) */
-  color: string | null
-}
+
+import type { IREvent } from '../ir/IREvent'
+
+/** @deprecated Use IREvent from '../ir' instead. */
+export type NormalizedHap = IREvent
 
 /**
- * Convert a raw Strudel hap into a NormalizedHap.
+ * Convert a raw Strudel hap into an IREvent (NormalizedHap).
  * Handles Fraction objects (Number() coercion), missing fields, and optional value bag.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,3 +1,7 @@
+// Pattern IR — universal music representation
+export type { IREvent, SourceLocation, IRPattern } from './ir'
+export { merge, transpose, timestretch, filter, scaleGain } from './ir'
+
 // Main components
 export { StrudelEditor } from './StrudelEditor'
 export type { StrudelEditorProps } from './StrudelEditor'
