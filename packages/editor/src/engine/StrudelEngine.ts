@@ -339,12 +339,17 @@ export class StrudelEngine implements LiveCodingEngine {
       const vizId = requests.get(key)
       if (!vizId) continue
 
-      // Find last line of this pattern block (continuation lines)
+      // Find last line of this pattern block (continuation lines).
+      // Blank lines are allowed within a block — only break on a new block
+      // start ($:, setcps) or end of file. This handles multi-line patterns
+      // with arbitrary whitespace.
       let lastLineIdx = i
       for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim()
-        if (next === '' || next.startsWith('$:') || next.startsWith('setcps')) break
-        lastLineIdx = j
+        // New block starts — stop here
+        if (next.startsWith('$:') || next.startsWith('setcps')) break
+        // Track the last non-empty line as the block end
+        if (next !== '') lastLineIdx = j
       }
 
       result.set(key, { vizId, afterLine: lastLineIdx + 1 }) // 1-indexed
