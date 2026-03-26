@@ -242,9 +242,10 @@ export class SonicPiEngine implements LiveCodingEngine {
 
     const result = await this.raw.evaluate(cleanCode)
 
-    // Resume after a brief delay — enough for the old iteration to drain
+    // Resume immediately after evaluate completes — no magic delay.
+    // The old loop iteration's stale events fired during suspend (inaudible).
     if (wasRunning && audioCtx) {
-      setTimeout(() => audioCtx.resume(), 80)
+      audioCtx.resume()
     }
 
     return result

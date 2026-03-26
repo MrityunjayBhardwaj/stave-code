@@ -11,6 +11,9 @@ import type { IRPattern } from './IRPattern'
 /**
  * Merge multiple patterns into one. Events from all sources appear
  * in the merged query result, sorted by begin time.
+ *
+ * CONSTRAINT: All patterns must use the same time domain (all cycles
+ * or all audio-seconds). Merging across time domains is undefined.
  */
 export function merge(patterns: IRPattern[]): IRPattern {
   return {

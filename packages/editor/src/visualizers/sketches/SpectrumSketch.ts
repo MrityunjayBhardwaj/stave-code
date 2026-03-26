@@ -17,9 +17,22 @@ const MIN_DB = -80
 const MAX_DB = 0
 const SPEED = 2 // scroll pixels per frame
 
+import { noteToMidi } from '../../engine/noteToMidi'
+
 /** Convert MIDI note to frequency for bar positioning. */
 function midiToFreq(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
+}
+
+/** Resolve frequency from an IREvent's note/freq fields. */
+function resolveFreq(hap: NormalizedHap): number | null {
+  if (hap.freq !== null) return hap.freq
+  if (typeof hap.note === 'number') return midiToFreq(hap.note)
+  if (typeof hap.note === 'string') {
+    const midi = noteToMidi(hap.note)
+    return midi !== null ? midiToFreq(midi) : null
+  }
+  return null
 }
 
 export function SpectrumSketch(
@@ -87,7 +100,7 @@ export function SpectrumSketch(
       const MAX_FREQ = 4000
 
       for (const hap of haps) {
-        const freq = hap.freq ?? (typeof hap.note === 'number' ? midiToFreq(hap.note) : null)
+        const freq = resolveFreq(hap)
         if (freq === null || freq < MIN_FREQ) continue
 
         const logPos = Math.log(freq / MIN_FREQ) / Math.log(MAX_FREQ / MIN_FREQ)

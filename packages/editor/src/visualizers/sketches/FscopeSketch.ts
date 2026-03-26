@@ -21,8 +21,20 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
 }
 
+import { noteToMidi } from '../../engine/noteToMidi'
+
 function midiToFreq(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
+}
+
+function resolveFreq(hap: NormalizedHap): number | null {
+  if (hap.freq !== null) return hap.freq
+  if (typeof hap.note === 'number') return midiToFreq(hap.note)
+  if (typeof hap.note === 'string') {
+    const midi = noteToMidi(hap.note)
+    return midi !== null ? midiToFreq(midi) : null
+  }
+  return null
 }
 
 export function FscopeSketch(
@@ -86,7 +98,7 @@ export function FscopeSketch(
       // Accumulate energy per frequency bin from active events
       const bins = new Float32Array(NUM_BINS)
       for (const hap of haps) {
-        const freq = hap.freq ?? (typeof hap.note === 'number' ? midiToFreq(hap.note) : null)
+        const freq = resolveFreq(hap)
         if (freq === null || freq < MIN_FREQ) continue
 
         const logPos = Math.log(freq / MIN_FREQ) / Math.log(MAX_FREQ / MIN_FREQ)

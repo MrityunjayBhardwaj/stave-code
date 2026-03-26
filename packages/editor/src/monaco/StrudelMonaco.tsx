@@ -110,6 +110,83 @@ export function StrudelMonaco({
     return () => disposable.dispose()
   }, [soundNames])
 
+  // Register Sonic Pi DSL completions (functions, synth names, sample names)
+  useEffect(() => {
+    const monaco = monacoRef.current
+    if (!monaco) return
+
+    const sonicPiFunctions = [
+      'live_loop', 'play', 'sample', 'sleep', 'sync', 'cue', 'in_thread',
+      'use_synth', 'use_bpm', 'use_random_seed', 'with_fx', 'control',
+      'define', 'density', 'puts', 'print', 'at', 'time_warp',
+      'choose', 'rrand', 'rrand_i', 'rand', 'rand_i', 'dice', 'one_in',
+      'ring', 'knit', 'range', 'line', 'spread', 'chord', 'scale',
+      'note', 'hz_to_midi', 'midi_to_hz', 'tick', 'look',
+    ]
+    const sonicPiSynths = [
+      'beep', 'saw', 'prophet', 'tb303', 'supersaw', 'pluck',
+      'pretty_bell', 'piano', 'sine', 'square', 'tri', 'noise',
+    ]
+    const sonicPiSamples = [
+      'bd_haus', 'bd_zum', 'bd_boom', 'bd_klub',
+      'sn_dub', 'sn_zome', 'sn_generic',
+      'hat_snap', 'hat_cab',
+      'loop_amen', 'loop_breakbeat', 'loop_compus',
+      'bass_hit_c', 'bass_voxy_c',
+      'ambi_choir', 'ambi_dark_woosh', 'ambi_glass_hum',
+      'perc_bell', 'perc_snap',
+    ]
+
+    const disposable = monaco.languages.registerCompletionItemProvider('sonicpi', {
+      triggerCharacters: [' ', ':'],
+      provideCompletionItems(model, position) {
+        const word = model.getWordUntilPosition(position)
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        }
+
+        const textBefore = model.getLineContent(position.lineNumber).substring(0, position.column - 1)
+
+        // After "use_synth :" or "sample :" — suggest synths/samples
+        if (/use_synth\s+:$/.test(textBefore)) {
+          return {
+            suggestions: sonicPiSynths.map(name => ({
+              label: name,
+              kind: monaco.languages.CompletionItemKind.Value,
+              insertText: name,
+              range,
+            })),
+          }
+        }
+        if (/sample\s+:$/.test(textBefore)) {
+          return {
+            suggestions: sonicPiSamples.map(name => ({
+              label: name,
+              kind: monaco.languages.CompletionItemKind.Value,
+              insertText: name,
+              range,
+            })),
+          }
+        }
+
+        // Default: suggest DSL functions
+        return {
+          suggestions: sonicPiFunctions.map(name => ({
+            label: name,
+            kind: monaco.languages.CompletionItemKind.Function,
+            insertText: name,
+            range,
+          })),
+        }
+      },
+    })
+
+    return () => disposable.dispose()
+  }, [])
+
   // Sync external code changes without resetting cursor position
   useEffect(() => {
     const editor = editorRef.current
