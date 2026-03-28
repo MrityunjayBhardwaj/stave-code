@@ -213,6 +213,9 @@ export function LiveCodingEditor({
     (val: string) => {
       if (!isControlled) setInternalCode(val)
       onChange?.(val)
+      // Code changed — old inline viz zones no longer correspond to current code
+      viewZoneCleanupRef.current?.cleanup()
+      viewZoneCleanupRef.current = null
     },
     [isControlled, onChange]
   )
