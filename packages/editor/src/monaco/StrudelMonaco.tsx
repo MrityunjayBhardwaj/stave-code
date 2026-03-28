@@ -6,6 +6,20 @@ const MonacoEditor = MonacoEditorRaw as any
 import type * as Monaco from 'monaco-editor'
 import { defineStrudelMonacoTheme } from '../theme/monacoTheme'
 import { registerStrudelLanguage, registerSonicPiLanguage } from './language'
+import { registerStrudelHover } from './strudelDocs'
+import { registerStrudelDotCompletions, registerStrudelNoteCompletions } from './strudelCompletions'
+
+// Register static language providers once per Monaco instance (module-level guard).
+// Dot completions, note completions, and hover docs are global to the strudel language —
+// not per-editor — so registering more than once creates duplicate suggestions.
+let strudelProvidersRegistered = false
+function registerStrudelProvidersOnce(monaco: typeof Monaco): void {
+  if (strudelProvidersRegistered) return
+  strudelProvidersRegistered = true
+  registerStrudelDotCompletions(monaco)
+  registerStrudelNoteCompletions(monaco)
+  registerStrudelHover(monaco)
+}
 
 const DEFAULT_CODE = `// Welcome to Stave
 setcps(120/240)
@@ -45,6 +59,7 @@ export function StrudelMonaco({
     defineStrudelMonacoTheme(monaco)
     registerStrudelLanguage(monaco)
     registerSonicPiLanguage(monaco)
+    registerStrudelProvidersOnce(monaco)
 
     monaco.editor.setTheme(
       theme === 'dark' ? 'stave-dark' : 'stave-light'
