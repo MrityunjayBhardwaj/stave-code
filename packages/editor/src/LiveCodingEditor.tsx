@@ -10,6 +10,7 @@ import { Toolbar } from './toolbar/Toolbar'
 import { applyTheme } from './theme/tokens'
 import type { StrudelTheme } from './theme/tokens'
 import { useHighlighting } from './monaco/useHighlighting'
+import { setEvalError, clearEvalErrors } from './monaco/diagnostics'
 import type { HapStream } from './engine/HapStream'
 import { VizPanel } from './visualizers/VizPanel'
 import { VizPicker } from './visualizers/VizPicker'
@@ -112,6 +113,7 @@ export function LiveCodingEditor({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<typeof Monaco | null>(null)
   const viewZoneCleanupRef = useRef<InlineZoneHandle | null>(null)
   const globalBufferedRef = useRef<BufferedScheduler | null>(null)
 
@@ -158,12 +160,16 @@ export function LiveCodingEditor({
 
     clearHighlights()
     const { error } = await engine.evaluate(code)
+    const monaco = monacoRef.current
+    const model = editorRef.current?.getModel() ?? null
     if (error) {
       const msg = error.message ?? String(error)
       setErrorMsg(msg)
       onError?.(error)
+      if (monaco && model) setEvalError(monaco, model, error)
       return
     }
+    if (monaco && model) clearEvalErrors(monaco, model)
 
     // Fire post-evaluate callback (for StrudelEditor to extract BPM, soundNames, etc.)
     onPostEvaluate?.(engine)
@@ -207,6 +213,9 @@ export function LiveCodingEditor({
     viewZoneCleanupRef.current?.pause()
     setIsPlaying(false)
     onStop?.()
+    const monaco = monacoRef.current
+    const model = editorRef.current?.getModel() ?? null
+    if (monaco && model) clearEvalErrors(monaco, model)
   }, [engine, onStop, clearHighlights])
 
   const handleCodeChange = useCallback(
@@ -224,6 +233,7 @@ export function LiveCodingEditor({
   const handleMonacoMount = useCallback(
     (editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) => {
       editorRef.current = editor
+      monacoRef.current = monaco
 
       editor.addAction({
         id: 'stave.play',
