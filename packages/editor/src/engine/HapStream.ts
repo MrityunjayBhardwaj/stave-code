@@ -40,21 +40,24 @@ export class HapStream {
   /**
    * Called by the engine scheduler for each scheduled Hap.
    * Enriches the raw data and fans it out to all subscribers.
+   *
+   * Parameters match Strudel's onTrigger signature:
+   *   (hap, deadline, duration, cps, t)
    */
   emit(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     hap: any,
-    time: number,
+    deadline: number,
+    duration: number,
     cps: number,
-    endTime: number,
     audioCtxCurrentTime: number
   ): void {
-    const scheduledAheadMs = (time - audioCtxCurrentTime) * 1000
-    const audioDuration = endTime - time
+    const scheduledAheadMs = (deadline - audioCtxCurrentTime) * 1000
+    const audioDuration = duration
 
     const event: HapEvent = {
       hap,
-      audioTime: time,
+      audioTime: deadline,
       audioDuration,
       scheduledAheadMs,
       midiNote: noteToMidi(hap?.value?.note ?? hap?.value?.n),

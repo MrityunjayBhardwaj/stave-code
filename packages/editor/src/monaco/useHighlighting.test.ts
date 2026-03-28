@@ -55,7 +55,7 @@ describe('useHighlighting', () => {
     expect(result.current).toBeDefined()
 
     act(() => {
-      hapStream.emit(makeHap(), 0.1, 1, 0.6, 0) // scheduledAheadMs = 100ms
+      hapStream.emit(makeHap(), 0.1, 0.5, 1, 0) // scheduledAheadMs = 100ms
     })
 
     // Before 100ms — no decoration
@@ -76,7 +76,7 @@ describe('useHighlighting', () => {
     renderHook(() => useHighlighting(editor as any, hapStream))
 
     act(() => {
-      hapStream.emit(makeHap(), 0.1, 1, 0.6, 0) // scheduledAheadMs = 100ms
+      hapStream.emit(makeHap(), 0.1, 0.5, 1, 0) // scheduledAheadMs = 100ms
     })
 
     act(() => { vi.advanceTimersByTime(99) })
@@ -97,7 +97,7 @@ describe('useHighlighting', () => {
 
     // scheduledAheadMs=100, audioDuration=0.5 => clear at 600ms
     act(() => {
-      hapStream.emit(makeHap(), 0.1, 1, 0.6, 0)
+      hapStream.emit(makeHap(), 0.1, 0.5, 1, 0)
     })
 
     // Show at 100ms
@@ -129,12 +129,12 @@ describe('useHighlighting', () => {
 
     // Hap 1: scheduledAheadMs=100, audioDuration=0.5 => show@100, clear@600
     act(() => {
-      hapStream.emit(makeHap(), 0.1, 1, 0.6, 0)
+      hapStream.emit(makeHap(), 0.1, 0.5, 1, 0)
     })
 
     // Hap 2: scheduledAheadMs=200, audioDuration=0.5 => show@200, clear@700
     act(() => {
-      hapStream.emit(makeHap(), 0.2, 1, 0.7, 0)
+      hapStream.emit(makeHap(), 0.2, 0.5, 1, 0)
     })
 
     // Advance to 700ms — hap1 show@100, clear@600; hap2 show@200
@@ -153,7 +153,7 @@ describe('useHighlighting', () => {
     renderHook(() => useHighlighting(editor as any, hapStream))
 
     act(() => {
-      hapStream.emit(makeHap({ loc: null }), 0.1, 1, 0.6, 0)
+      hapStream.emit(makeHap({ loc: null }), 0.1, 0.5, 1, 0)
     })
 
     act(() => { vi.advanceTimersByTime(1000) })
@@ -172,7 +172,7 @@ describe('useHighlighting', () => {
 
     // Emit on first hapStream
     act(() => {
-      hapStream1.emit(makeHap(), 0.1, 1, 0.6, 0)
+      hapStream1.emit(makeHap(), 0.1, 0.5, 1, 0)
     })
 
     // Switch hapStream — triggers cleanup of first effect
@@ -192,7 +192,7 @@ describe('useHighlighting', () => {
 
     // audioCtxCurrentTime > time => negative scheduledAheadMs
     act(() => {
-      hapStream.emit(makeHap(), 0.05, 1, 0.55, 0.1) // scheduledAheadMs = (0.05-0.1)*1000 = -50ms
+      hapStream.emit(makeHap(), 0.05, 0.5, 1, 0.1) // scheduledAheadMs = (0.05-0.1)*1000 = -50ms
     })
 
     // Should appear at 0ms (clamped)
@@ -207,7 +207,7 @@ describe('useHighlighting', () => {
 
     // Emit with color
     act(() => {
-      hapStream.emit(makeHap({ color: '#ff0000' }), 0.1, 1, 0.6, 0)
+      hapStream.emit(makeHap({ color: '#ff0000' }), 0.1, 0.5, 1, 0)
     })
 
     act(() => { vi.advanceTimersByTime(100) })
