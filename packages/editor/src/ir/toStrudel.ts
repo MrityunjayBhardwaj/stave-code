@@ -38,12 +38,9 @@ function gen(ir: PatternIR): string {
       if (canCollapse(ir.children)) {
         return collapseToMini(ir.children)
       }
-      // Fall back: generate each child and combine
-      // If all children produce method chains off the same root, join differently
-      // For general case: use explicit sequence (note chaining via Strudel isn't direct)
-      // The idiomatic approach is to keep the first as root and show the rest inline
+      // Non-collapsible: use Strudel's cat() for sequential composition
       const parts = ir.children.map(gen)
-      return parts.join(' ')
+      return `cat(${parts.join(', ')})`
     }
 
     case 'Stack': {
@@ -53,16 +50,26 @@ function gen(ir: PatternIR): string {
     }
 
     case 'Choice': {
-      const body = gen(ir.then)
-      if (Math.abs(ir.p - 0.5) < 0.001) {
-        return `${body}.sometimes(x => x)`
+      const thenCode = gen(ir.then)
+      if (ir.else_.tag === 'Pure') {
+        // Simple case: pattern plays with probability p
+        // degradeBy(amount) drops events with probability `amount`
+        const dropAmount = +(1 - ir.p).toFixed(4)
+        return `${thenCode}.degradeBy(${dropAmount})`
       }
-      return `${body}.sometimesBy(${ir.p}, x => x)`
+      // General case: both branches with complementary degradation
+      const elseCode = gen(ir.else_)
+      const dropThen = +(1 - ir.p).toFixed(4)
+      const dropElse = +ir.p.toFixed(4)
+      return `stack(\n  ${thenCode}.degradeBy(${dropThen}),\n  ${elseCode}.degradeBy(${dropElse})\n)`
     }
 
     case 'Every': {
-      const body = gen(ir.body)
-      return `${body}.every(${ir.n}, fast(2))`
+      // Reconstruct the Strudel transform from the stored body + default_
+      const base = ir.default_
+      const baseCode = base ? gen(base) : gen(ir.body)
+      const transformStr = base ? extractTransform(ir.body, base) : '() => rev'
+      return `${baseCode}.every(${ir.n}, ${transformStr})`
     }
 
     case 'Cycle': {
@@ -93,15 +100,10 @@ function gen(ir: PatternIR): string {
 
     case 'FX': {
       const body = gen(ir.body)
-      // Map known FX names to method chains
-      const fxParams = ir.params
-      const paramStr = Object.entries(fxParams)
-        .map(([k, v]) => `${body}.${k}(${v})`)
-        .join('.')
-      // If there are params, generate individual method calls
-      if (Object.keys(fxParams).length > 0) {
+      if (Object.keys(ir.params).length > 0) {
+        // Each param key becomes a method call: .room(0.8), .delay(0.5), etc.
         let result = body
-        for (const [k, v] of Object.entries(fxParams)) {
+        for (const [k, v] of Object.entries(ir.params)) {
           result = `${result}.${k}(${v})`
         }
         return result
@@ -128,6 +130,26 @@ function gen(ir: PatternIR): string {
       // All Strudel patterns loop implicitly
       return gen(ir.body)
   }
+}
+
+/** Deep structural equality for PatternIR nodes (plain objects). */
+function nodesEqual(a: PatternIR, b: PatternIR): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * Recover the Strudel transform string from Every's body + default_.
+ * e.g. Every(4, Fast(2, base), base) → "fast(2)"
+ */
+function extractTransform(body: PatternIR, base: PatternIR): string {
+  if (body.tag === 'Fast' && nodesEqual(body.body, base)) return `fast(${body.factor})`
+  if (body.tag === 'Slow' && nodesEqual(body.body, base)) return `slow(${body.factor})`
+  if (body.tag === 'FX' && nodesEqual(body.body, base)) {
+    const params = Object.entries(body.params).map(([k, v]) => `.${k}(${v})`).join('')
+    return `x => x${params}`
+  }
+  // Generic fallback: inline arrow returning the body expression
+  return `() => ${gen(body)}`
 }
 
 /** Generate code for a Play node. */

@@ -31,7 +31,7 @@ export interface CollectContext {
 
 const DEFAULT_CONTEXT: CollectContext = {
   begin: 0,
-  end: 1,
+  end: Infinity,  // no window by default — all events emitted
   time: 0,
   cycle: 0,
   duration: 1,
@@ -40,11 +40,16 @@ const DEFAULT_CONTEXT: CollectContext = {
 }
 
 /**
- * Convert a note name to MIDI number.
- * Returns null if not parseable. Only handles common octave notation (c4 = 60).
+ * Convert a note to frequency in Hz.
+ * - String notes: parsed as MIDI note name (c4 = middle C = 261.63 Hz)
+ * - Numeric notes: treated as MIDI note number and converted to Hz
+ * Returns null if the string format is unrecognised.
  */
 function noteToFreq(note: string | number): number | null {
-  if (typeof note === 'number') return note
+  if (typeof note === 'number') {
+    // MIDI note number → Hz (MIDI 69 = A4 = 440 Hz)
+    return 440 * Math.pow(2, (note - 69) / 12)
+  }
   const noteNames = ['c', 'db', 'd', 'eb', 'e', 'f', 'gb', 'g', 'ab', 'a', 'bb', 'b']
   const lower = note.toLowerCase()
   for (let i = 0; i < noteNames.length; i++) {
@@ -101,6 +106,8 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       return []
 
     case 'Play': {
+      // Respect the query window: skip events outside [begin, end)
+      if (ctx.time < ctx.begin || ctx.time >= ctx.end) return []
       const event = makeEvent(ctx, ir.note, { ...ir.params })
       return [event]
     }

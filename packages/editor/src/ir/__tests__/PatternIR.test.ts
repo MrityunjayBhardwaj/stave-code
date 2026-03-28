@@ -283,6 +283,40 @@ describe('collect', () => {
     expect(events.some(e => e.note === 'sd')).toBe(true)
     expect(events.some(e => e.note === 'hh')).toBe(true)
   })
+
+  // --- Fixed: noteToFreq for numeric MIDI input ---
+  it('numeric note 60 (middle C) produces freq ~261 Hz not 60', () => {
+    const events = collect(IR.play(60))
+    expect(events[0].freq).toBeCloseTo(261.63, 1)
+  })
+
+  it('numeric note 69 (A4) produces freq 440 Hz', () => {
+    const events = collect(IR.play(69))
+    expect(events[0].freq).toBeCloseTo(440, 1)
+  })
+
+  // --- Fixed: begin/end window filtering ---
+  it('filters events before begin', () => {
+    const tree = IR.seq(IR.play('c4'), IR.play('e4'), IR.play('g4'))
+    // 3 equal slots: c4@0, e4@1/3, g4@2/3
+    const events = collect(tree, { begin: 0.5, end: Infinity })
+    expect(events).toHaveLength(1)
+    expect(events[0].note).toBe('g4')
+  })
+
+  it('filters events at or after end', () => {
+    const tree = IR.seq(IR.play('c4'), IR.play('e4'), IR.play('g4'))
+    const events = collect(tree, { end: 0.5 })
+    // c4@0 and e4@0.333 are < 0.5; g4@0.667 is excluded
+    expect(events).toHaveLength(2)
+    expect(events[0].note).toBe('c4')
+    expect(events[1].note).toBe('e4')
+  })
+
+  it('default context has no end window (all events emitted)', () => {
+    const tree = IR.seq(IR.play('c4'), IR.play('e4'), IR.play('g4'))
+    expect(collect(tree)).toHaveLength(3)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -362,6 +396,52 @@ describe('toStrudel', () => {
     const result = toStrudel(tree)
     expect(result).toContain('note("c4")')
     expect(result).toContain('.room(0.8)')
+  })
+
+  // --- Fixed: non-collapsible Seq uses cat() not invalid space-join ---
+  it('non-collapsible Seq uses cat()', () => {
+    const tree = IR.seq(IR.fast(2, IR.play('c4')), IR.play('e4'))
+    const result = toStrudel(tree)
+    expect(result).toBe('cat(note("c4").fast(2), note("e4"))')
+  })
+
+  // --- Fixed: Choice with Pure else_ uses degradeBy ---
+  it('Choice with Pure else_ → degradeBy', () => {
+    expect(toStrudel(IR.choice(0.5, IR.play('c4')))).toBe('note("c4").degradeBy(0.5)')
+    expect(toStrudel(IR.choice(0.7, IR.play('c4')))).toBe('note("c4").degradeBy(0.3)')
+  })
+
+  it('Choice with non-Pure else_ → stack with degradeBy on both branches', () => {
+    const result = toStrudel(IR.choice(0.5, IR.play('c4'), IR.play('g4')))
+    expect(result).toContain('stack(')
+    expect(result).toContain('note("c4").degradeBy(0.5)')
+    expect(result).toContain('note("g4").degradeBy(0.5)')
+  })
+
+  // --- Fixed: Every uses extracted transform, not hardcoded fast(2) ---
+  it('Every with Fast body → correct transform extracted', () => {
+    const base = IR.play('c4')
+    const tree = IR.every(4, IR.fast(2, base), base)
+    expect(toStrudel(tree)).toBe('note("c4").every(4, fast(2))')
+  })
+
+  it('Every with Slow body → slow(n) extracted', () => {
+    const base = IR.play('c4')
+    const tree = IR.every(4, IR.slow(3, base), base)
+    expect(toStrudel(tree)).toBe('note("c4").every(4, slow(3))')
+  })
+
+  it('Every with FX body → arrow function extracted', () => {
+    const base = IR.play('c4')
+    const tree = IR.every(4, IR.fx('reverb', { room: 0.8 }, base), base)
+    expect(toStrudel(tree)).toContain('.every(4, x => x.room(0.8))')
+  })
+
+  it('Every without default_ uses generic fallback', () => {
+    const tree = IR.every(4, IR.fast(2, IR.play('c4')))
+    // no default_ stored → generic fallback
+    const result = toStrudel(tree)
+    expect(result).toContain('.every(4,')
   })
 })
 
