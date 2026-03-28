@@ -1,0 +1,65 @@
+/**
+ * PatternIR — the free monad over musical effects.
+ *
+ * The universal structural representation of music patterns.
+ * PatternIR is the tree — IREvent[] is the derived flattened denotation.
+ * Both coexist: PatternIR for structure/editing, IREvent[] for rendering.
+ *
+ * Design decisions:
+ * - Tagged union (not generic <A>) — no return values needed for Phase F interpreters
+ * - No Bind node — Seq covers musical sequencing without data dependency
+ * - Code node — opaque fallback for fragments the parser can't handle
+ * - All nodes are plain objects — serializable, no methods
+ */
+
+export interface PlayParams {
+  s?: string            // instrument/sample name
+  gain?: number         // 0-1
+  velocity?: number     // 0-1
+  sustain?: number      // seconds
+  release?: number      // seconds
+  pan?: number          // -1 to 1
+  color?: string        // display color
+  [key: string]: unknown  // extensible
+}
+
+export type PatternIR =
+  | { tag: 'Pure' }
+  | { tag: 'Seq';    children: PatternIR[] }
+  | { tag: 'Stack';  tracks: PatternIR[] }
+  | { tag: 'Play';   note: string | number; duration: number; params: PlayParams }
+  | { tag: 'Sleep';  duration: number }
+  | { tag: 'Choice'; p: number; then: PatternIR; else_: PatternIR }
+  | { tag: 'Every';  n: number; body: PatternIR; default_?: PatternIR }
+  | { tag: 'Cycle';  items: PatternIR[] }
+  | { tag: 'When';   gate: string; body: PatternIR }
+  | { tag: 'FX';     name: string; params: Record<string, number | string>; body: PatternIR }
+  | { tag: 'Ramp';   param: string; from: number; to: number; cycles: number; body: PatternIR }
+  | { tag: 'Fast';   factor: number; body: PatternIR }
+  | { tag: 'Slow';   factor: number; body: PatternIR }
+  | { tag: 'Loop';   body: PatternIR }
+  | { tag: 'Code';   code: string; lang: 'strudel' }  // Opaque fallback for unparseable fragments
+
+/** Smart constructors — reduce boilerplate when building trees by hand. */
+export const IR = {
+  pure: (): PatternIR => ({ tag: 'Pure' }),
+  play: (note: string | number, duration = 0.25, params: Partial<PlayParams> = {}): PatternIR =>
+    ({ tag: 'Play', note, duration, params: { gain: 1, velocity: 1, ...params } }),
+  sleep: (duration: number): PatternIR => ({ tag: 'Sleep', duration }),
+  seq: (...children: PatternIR[]): PatternIR => ({ tag: 'Seq', children }),
+  stack: (...tracks: PatternIR[]): PatternIR => ({ tag: 'Stack', tracks }),
+  choice: (p: number, then: PatternIR, else_: PatternIR = { tag: 'Pure' }): PatternIR =>
+    ({ tag: 'Choice', p, then, else_ }),
+  every: (n: number, body: PatternIR, default_?: PatternIR): PatternIR =>
+    ({ tag: 'Every', n, body, default_ }),
+  cycle: (...items: PatternIR[]): PatternIR => ({ tag: 'Cycle', items }),
+  when: (gate: string, body: PatternIR): PatternIR => ({ tag: 'When', gate, body }),
+  fx: (name: string, params: Record<string, number | string>, body: PatternIR): PatternIR =>
+    ({ tag: 'FX', name, params, body }),
+  ramp: (param: string, from: number, to: number, cycles: number, body: PatternIR): PatternIR =>
+    ({ tag: 'Ramp', param, from, to, cycles, body }),
+  fast: (factor: number, body: PatternIR): PatternIR => ({ tag: 'Fast', factor, body }),
+  slow: (factor: number, body: PatternIR): PatternIR => ({ tag: 'Slow', factor, body }),
+  loop: (body: PatternIR): PatternIR => ({ tag: 'Loop', body }),
+  code: (code: string): PatternIR => ({ tag: 'Code', code, lang: 'strudel' }),
+} as const

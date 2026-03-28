@@ -1,6 +1,9 @@
 // Pattern IR — universal music representation
 export type { IREvent, SourceLocation, IRPattern } from './ir'
 export { merge, transpose, timestretch, filter, scaleGain } from './ir'
+export type { PatternIR, PlayParams, CollectContext, ComponentBag, System } from './ir'
+export { IR, collect, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
+export { parseMini, parseStrudel, propagate, StrudelParseSystem, IREventCollectSystem } from './ir'
 
 // Main components
 export { StrudelEditor } from './StrudelEditor'
@@ -12,7 +15,7 @@ export type { LiveCodingEditorProps } from './LiveCodingEditor'
 export { StrudelEngine } from './engine/StrudelEngine'
 export { DemoEngine } from './engine/DemoEngine'
 export { SonicPiEngine } from './engine/sonicpi'
-export type { LiveCodingEngine, EngineComponents } from './engine/LiveCodingEngine'
+export type { LiveCodingEngine, EngineComponents, IRComponent } from './engine/LiveCodingEngine'
 export { HapStream } from './engine/HapStream'
 export type { HapEvent } from './engine/HapStream'
 export type { NormalizedHap } from './engine/NormalizedHap'

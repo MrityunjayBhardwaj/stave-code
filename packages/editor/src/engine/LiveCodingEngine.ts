@@ -1,5 +1,7 @@
 import type { HapStream } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
+import type { PatternIR } from '../ir/PatternIR'
+import type { IREvent } from '../ir/IREvent'
 
 // ---------------------------------------------------------------------------
 // Engine Component Bags
@@ -40,6 +42,14 @@ export interface InlineVizComponent {
   trackStreams?: Map<string, HapStream>
 }
 
+/** Pattern IR derived from the last successful evaluate(). */
+export interface IRComponent {
+  /** Algebraic structure of the pattern (free monad tree). */
+  patternIR: PatternIR | null
+  /** Flattened event list derived from patternIR (for rendering). */
+  irEvents: IREvent[]
+}
+
 /**
  * Component bag exposing engine capabilities.
  * Each slot is independently optional -- consumers MUST check existence before access.
@@ -49,6 +59,8 @@ export interface EngineComponents {
   queryable: QueryableComponent
   audio: AudioComponent
   inlineViz: InlineVizComponent
+  /** Pattern IR — present after successful evaluate() on engines that support parsing. */
+  ir: IRComponent
 }
 
 // ---------------------------------------------------------------------------

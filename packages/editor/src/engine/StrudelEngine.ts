@@ -5,6 +5,9 @@ import { normalizeStrudelHap } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
 import type { LiveCodingEngine, EngineComponents } from './LiveCodingEngine'
+import { propagate, StrudelParseSystem, IREventCollectSystem } from '../ir/propagation'
+import type { PatternIR } from '../ir/PatternIR'
+import type { IREvent } from '../ir/IREvent'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -37,6 +40,9 @@ export class StrudelEngine implements LiveCodingEngine {
   private audioController: any = null
   // Code from the last successful evaluate() — used by buildVizRequestsWithLines
   private lastEvaluatedCode: string = ''
+  // Pattern IR from the last successful evaluate() — derived by propagation
+  private lastPatternIR: PatternIR | null = null
+  private lastIREvents: IREvent[] = []
 
   async init(): Promise<void> {
     if (this.initialized) return
@@ -118,13 +124,18 @@ export class StrudelEngine implements LiveCodingEngine {
     const hapStream = this.hapStream
     const audioCtxRef = audioCtx
 
+    // Strudel's scheduler calls: onTrigger(hap, deadline, duration, cps, t)
+    //   deadline = AudioContext time when note plays
+    //   duration = note duration in seconds
+    //   cps = cycles per second
+    //   t = current AudioContext.currentTime
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const wrappedOutput = async (hap: any, time: number, cps: number, endTime: number, s: number) => {
+    const wrappedOutput = async (hap: any, deadline: number, duration: number, cps: number, t: number) => {
       // Emit to all visualizers / highlighters BEFORE triggering audio
-      hapStream.emit(hap, time, cps, endTime, audioCtxRef.currentTime)
+      hapStream.emit(hap, deadline, duration, cps, audioCtxRef.currentTime)
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return await (webaudioOutput as any)(hap, time, cps, endTime, s)
+        return await (webaudioOutput as any)(hap, deadline, duration, cps, t)
       } catch (err) {
         // Route scheduler-time errors (e.g. "sound X not found", "cannot parse as numeral")
         // through the registered handler so they surface in the editor UI, not just the console.
@@ -268,6 +279,20 @@ export class StrudelEngine implements LiveCodingEngine {
           })
         }
         this.vizRequests = capturedVizRequests
+
+        // Run propagation pipeline: code → PatternIR → IREvent[]
+        // Uses the ORIGINAL user code string (not transpiled) so the parser
+        // sees idiomatic Strudel patterns rather than reified output.
+        const irBag = propagate(
+          { strudelCode: code },
+          [StrudelParseSystem, IREventCollectSystem],
+        )
+        this.lastPatternIR = irBag.patternIR ?? null
+        this.lastIREvents = irBag.irEvents ?? []
+      } else {
+        // Failed evaluate — clear stale IR
+        this.lastPatternIR = null
+        this.lastIREvents = []
       }
 
       return result
@@ -312,6 +337,13 @@ export class StrudelEngine implements LiveCodingEngine {
     if (this.vizRequests.size > 0 && this.lastEvaluatedCode) {
       bag.inlineViz = {
         vizRequests: this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode),
+      }
+    }
+    // Expose Pattern IR if available
+    if (this.lastPatternIR) {
+      bag.ir = {
+        patternIR: this.lastPatternIR,
+        irEvents: this.lastIREvents,
       }
     }
     return bag
