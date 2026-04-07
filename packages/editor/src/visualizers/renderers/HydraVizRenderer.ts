@@ -64,9 +64,21 @@ export class HydraVizRenderer implements VizRenderer {
     })
 
     const synth = this.hydra.synth
-    if (synth?.a) {
-      synth.a.setCutoff(config.hydraAudioBins)
-      synth.a.setBins(config.hydraAudioBins)
+
+    // With makeGlobal:false, the audio object is on the Hydra instance (this.hydra.a),
+    // NOT on synth. Bridge it so preset patterns can use s.a.fft[] naturally.
+    const audio = this.hydra.a
+    if (audio) {
+      synth.a = audio
+      if (typeof audio.setCutoff === 'function') audio.setCutoff(config.hydraAudioBins)
+      if (typeof audio.setBins === 'function') audio.setBins(config.hydraAudioBins)
+      // Ensure fft array exists with correct size even if setBins isn't available
+      if (!Array.isArray(audio.fft) || audio.fft.length < config.hydraAudioBins) {
+        audio.fft = new Array(config.hydraAudioBins).fill(0)
+      }
+    } else {
+      // No audio object — create a minimal stub so presets don't throw
+      synth.a = { fft: new Array(config.hydraAudioBins).fill(0) }
     }
 
     if (this.pattern) {
@@ -87,9 +99,10 @@ export class HydraVizRenderer implements VizRenderer {
   }
 
   private pumpAudio = (): void => {
-    if (!this.paused && this.analyser && this.freqData && this.hydra?.synth?.a) {
+    // Read audio from hydra.a (bridged to synth.a during init)
+    const a = this.hydra?.synth?.a
+    if (!this.paused && this.analyser && this.freqData && a?.fft) {
       this.analyser.getByteFrequencyData(this.freqData)
-      const a = this.hydra.synth.a
       const numBins = getVizConfig().hydraAudioBins
       const binSize = Math.floor(this.freqData.length / numBins)
       for (let i = 0; i < numBins; i++) {

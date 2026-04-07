@@ -7,19 +7,29 @@ import type { HydraPatternFn } from './HydraVizRenderer'
  * pumped from the engine's AnalyserNode by HydraVizRenderer.
  */
 
-/** Vertical bars driven by FFT — Hydra's take on a pianoroll/frequency display. */
+/** Scrolling frequency bands — Hydra's take on a pianoroll. */
 export const hydraPianoroll: HydraPatternFn = (s) => {
-  s.osc(60, 0, 0)
-    .thresh(() => 1 - s.a.fft[0], 0.05)
-    .color(0.4, 0.6, 1.0)
+  // Bass band — wide horizontal stripes, scrolling left
+  s.osc(() => 10 + s.a.fft[0] * 50, -0.3, 0)
+    .thresh(() => 0.3 + s.a.fft[0] * 0.5, 0.1)
+    .color(0.46, 0.71, 1.0) // Stave accent blue
     .add(
-      s.osc(30, 0, 0)
+      // Mid band — narrower stripes, scrolling right
+      s.osc(() => 20 + s.a.fft[1] * 40, 0.2, 0)
         .rotate(Math.PI / 2)
-        .thresh(() => 1 - s.a.fft[1], 0.05)
-        .color(1.0, 0.4, 0.6),
-      0.5
+        .thresh(() => 0.4 + s.a.fft[1] * 0.4, 0.08)
+        .color(1.0, 0.79, 0.16), // Stave active yellow
+      () => s.a.fft[1] * 0.8
     )
-    .modulate(s.noise(1, () => s.a.fft[2] * 0.3), 0.01)
+    .add(
+      // High band — fine texture, subtle shimmer
+      s.osc(() => 40 + s.a.fft[2] * 60, 0.1, 0)
+        .thresh(() => 0.6 + s.a.fft[2] * 0.3, 0.05)
+        .color(0.54, 0.36, 0.96), // purple accent
+      () => s.a.fft[2] * 0.5
+    )
+    .modulate(s.noise(2, () => s.a.fft[3] * 0.4), () => s.a.fft[0] * 0.015)
+    .scrollX(() => s.a.fft[0] * 0.02)
     .out()
 }
 
