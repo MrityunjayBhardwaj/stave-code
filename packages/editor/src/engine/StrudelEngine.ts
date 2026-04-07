@@ -194,7 +194,8 @@ export class StrudelEngine implements LiveCodingEngine {
           value: function(this: any, vizName: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
             // Extract viz name — Strudel's transpiler reifies string args into Patterns.
             // Mini-notation `:` is the sample-index operator, so "pianoroll:hydra" gets
-            // split: value="pianoroll", n="hydra". We must reconstruct the full viz ID.
+            // split into an array: hap.value = ["pianoroll", "hydra"]. We reconstruct
+            // the original "mode:renderer" ID by joining the array with `:`.
             let resolvedName: string | undefined
             if (typeof vizName === 'string') {
               resolvedName = vizName
@@ -202,18 +203,13 @@ export class StrudelEngine implements LiveCodingEngine {
               try {
                 const haps = vizName.queryArc(0, 1)
                 if (haps.length > 0) {
-                  const hap = haps[0]
-                  const v = hap.value
+                  const v = haps[0].value
                   if (typeof v === 'string') {
-                    // Simple string value — check if `:` was parsed as the `n` control
-                    const n = hap.value?.n ?? hap.context?.controls?.n
-                    resolvedName = (n != null && String(n)) ? `${v}:${n}` : v
-                  } else if (v && typeof v === 'object') {
-                    // Object form: { s: "pianoroll", n: "hydra" }
-                    const base = v.s ?? v.value ?? String(v)
-                    const n = v.n
-                    resolvedName = (n != null && String(n)) ? `${base}:${n}` : String(base)
-                  } else {
+                    resolvedName = v
+                  } else if (Array.isArray(v)) {
+                    // Reified "mode:renderer" — colon became array separator
+                    resolvedName = v.join(':')
+                  } else if (v != null) {
                     resolvedName = String(v)
                   }
                 }
