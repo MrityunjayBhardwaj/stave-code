@@ -192,15 +192,31 @@ export class StrudelEngine implements LiveCodingEngine {
           configurable: true,
           writable: true,
           value: function(this: any, vizName: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-            // Extract viz name — Strudel's transpiler reifies string args into Patterns
+            // Extract viz name — Strudel's transpiler reifies string args into Patterns.
+            // Mini-notation `:` is the sample-index operator, so "pianoroll:hydra" gets
+            // split: value="pianoroll", n="hydra". We must reconstruct the full viz ID.
             let resolvedName: string | undefined
             if (typeof vizName === 'string') {
               resolvedName = vizName
             } else if (vizName && vizName._Pattern) {
-              // Reified Pattern — extract the original string value
               try {
                 const haps = vizName.queryArc(0, 1)
-                if (haps.length > 0) resolvedName = String(haps[0].value)
+                if (haps.length > 0) {
+                  const hap = haps[0]
+                  const v = hap.value
+                  if (typeof v === 'string') {
+                    // Simple string value — check if `:` was parsed as the `n` control
+                    const n = hap.value?.n ?? hap.context?.controls?.n
+                    resolvedName = (n != null && String(n)) ? `${v}:${n}` : v
+                  } else if (v && typeof v === 'object') {
+                    // Object form: { s: "pianoroll", n: "hydra" }
+                    const base = v.s ?? v.value ?? String(v)
+                    const n = v.n
+                    resolvedName = (n != null && String(n)) ? `${base}:${n}` : String(base)
+                  } else {
+                    resolvedName = String(v)
+                  }
+                }
               } catch { /* ignore query errors */ }
             }
             // Chain to Strudel's .viz() if it exists
