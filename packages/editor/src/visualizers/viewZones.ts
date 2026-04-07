@@ -3,9 +3,8 @@ import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizRenderer, VizDescriptor } from './types'
 import { mountVizRenderer } from './mountVizRenderer'
 import { resolveDescriptor } from './resolveDescriptor'
+import { getVizConfig } from './vizConfig'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
-
-const VIEW_ZONE_HEIGHT = 150
 
 /**
  * Handle returned by addInlineViewZones.
@@ -46,6 +45,7 @@ export function addInlineViewZones(
 
   const contentWidth = editor.getLayoutInfo().contentWidth
   const audioCtx = components.audio?.audioCtx
+  const zoneHeight = getVizConfig().inlineZoneHeight
 
   editor.changeViewZones((accessor) => {
     for (const [trackKey, { vizId, afterLine }] of vizRequests) {
@@ -84,11 +84,11 @@ export function addInlineViewZones(
       }
 
       const container = document.createElement('div')
-      container.style.cssText = `overflow:hidden;height:${VIEW_ZONE_HEIGHT}px;`
+      container.style.cssText = `overflow:hidden;height:${zoneHeight}px;`
 
       const zoneId = accessor.addZone({
         afterLineNumber: afterLine,
-        heightInPx: VIEW_ZONE_HEIGHT,
+        heightInPx: zoneHeight,
         domNode: container,
         suppressMouseDown: true,
       })
@@ -98,7 +98,7 @@ export function addInlineViewZones(
         container,
         descriptor.factory,
         zoneComponents,
-        { w: contentWidth || 400, h: VIEW_ZONE_HEIGHT },
+        { w: contentWidth || 400, h: zoneHeight },
         console.error
       )
       renderers.push(renderer)

@@ -1,7 +1,6 @@
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { VizRenderer } from '../types'
-
-const NUM_BINS = 4
+import { getVizConfig } from '../vizConfig'
 
 export type HydraPatternFn = (synth: any) => void
 
@@ -11,6 +10,8 @@ export type HydraPatternFn = (synth: any) => void
  *
  * Audio data from the engine's AnalyserNode is pumped into Hydra's `a.fft[]`
  * bins each frame, enabling audio-reactive shader patterns.
+ *
+ * Reads `hydraAudioBins` and `hydraAutoLoop` from the active VizConfig.
  */
 export class HydraVizRenderer implements VizRenderer {
   private hydra: any = null
@@ -49,6 +50,7 @@ export class HydraVizRenderer implements VizRenderer {
 
   private async initHydra(size: { w: number; h: number }): Promise<void> {
     const { default: Hydra } = await import('hydra-synth')
+    const config = getVizConfig()
 
     if (!this.canvas) return // destroyed before load finished
 
@@ -58,13 +60,13 @@ export class HydraVizRenderer implements VizRenderer {
       height: size.h,
       detectAudio: false,
       makeGlobal: false,
-      autoLoop: true,
+      autoLoop: config.hydraAutoLoop,
     })
 
     const synth = this.hydra.synth
     if (synth?.a) {
-      synth.a.setCutoff(NUM_BINS)
-      synth.a.setBins(NUM_BINS)
+      synth.a.setCutoff(config.hydraAudioBins)
+      synth.a.setBins(config.hydraAudioBins)
     }
 
     if (this.pattern) {
@@ -88,8 +90,9 @@ export class HydraVizRenderer implements VizRenderer {
     if (!this.paused && this.analyser && this.freqData && this.hydra?.synth?.a) {
       this.analyser.getByteFrequencyData(this.freqData)
       const a = this.hydra.synth.a
-      const binSize = Math.floor(this.freqData.length / NUM_BINS)
-      for (let i = 0; i < NUM_BINS; i++) {
+      const numBins = getVizConfig().hydraAudioBins
+      const binSize = Math.floor(this.freqData.length / numBins)
+      for (let i = 0; i < numBins; i++) {
         let sum = 0
         for (let j = 0; j < binSize; j++) {
           sum += this.freqData[i * binSize + j]

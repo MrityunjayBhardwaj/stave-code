@@ -38,6 +38,8 @@ export type { HydraPatternFn } from './visualizers/renderers/HydraVizRenderer'
 export { hydraPianoroll, hydraScope, hydraKaleidoscope } from './visualizers/renderers/hydraPresets'
 export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
 export { resolveDescriptor } from './visualizers/resolveDescriptor'
+export type { VizConfig } from './visualizers/vizConfig'
+export { DEFAULT_VIZ_CONFIG, createVizConfig, getVizConfig, setVizConfig } from './visualizers/vizConfig'
 
 // Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'
