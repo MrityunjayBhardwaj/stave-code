@@ -2,6 +2,7 @@ import type * as Monaco from 'monaco-editor'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizRenderer, VizDescriptor } from './types'
 import { mountVizRenderer } from './mountVizRenderer'
+import { resolveDescriptor } from './resolveDescriptor'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 
 const VIEW_ZONE_HEIGHT = 150
@@ -48,7 +49,7 @@ export function addInlineViewZones(
 
   editor.changeViewZones((accessor) => {
     for (const [trackKey, { vizId, afterLine }] of vizRequests) {
-      const descriptor = vizDescriptors.find(d => d.id === vizId)
+      const descriptor = resolveDescriptor(vizId, vizDescriptors)
       if (!descriptor) {
         console.warn(`[stave] Unknown viz "${vizId}". Available: ${vizDescriptors.map(d => d.id).join(', ')}`)
         continue

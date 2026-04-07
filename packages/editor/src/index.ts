@@ -33,7 +33,11 @@ export { DARK_THEME_TOKENS, LIGHT_THEME_TOKENS, applyTheme } from './theme/token
 // Visualizers — new VizRenderer interface family
 export type { VizRenderer, VizRefs, VizRendererSource, VizDescriptor, PatternScheduler } from './visualizers/types'
 export { P5VizRenderer } from './visualizers/renderers/P5VizRenderer'
+export { HydraVizRenderer } from './visualizers/renderers/HydraVizRenderer'
+export type { HydraPatternFn } from './visualizers/renderers/HydraVizRenderer'
+export { hydraPianoroll, hydraScope, hydraKaleidoscope } from './visualizers/renderers/hydraPresets'
 export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
+export { resolveDescriptor } from './visualizers/resolveDescriptor'
 
 // Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'

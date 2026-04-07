@@ -41,11 +41,17 @@ export type VizRendererSource = (() => VizRenderer) | VizRenderer
  * `requires` lists the engine component slots this viz needs. Used by VizPicker
  * to disable unavailable visualizations. This is about engine data requirements,
  * NOT renderer capabilities (e.g. WebGL) — renderer caps are a separate concern.
+ *
+ * IDs follow the `"mode:renderer"` convention when multiple renderers offer the
+ * same visual concept (e.g. `"pianoroll"` vs `"pianoroll:hydra"`). The bare
+ * `"mode"` form is the default renderer for that concept.
  */
 export interface VizDescriptor {
   id: string
   label: string
   requires?: (keyof EngineComponents)[]
+  /** Renderer technology name (e.g. 'p5', 'hydra', 'canvas2d'). Used for VizPicker grouping. */
+  renderer?: string
   factory: () => VizRenderer
 }
 

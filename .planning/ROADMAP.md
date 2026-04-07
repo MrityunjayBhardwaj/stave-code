@@ -1,16 +1,19 @@
-# Roadmap: Motif (formerly struCode)
+# Roadmap: Stave (stave.live)
 
 ## Overview
 
-Motif is a renderer-agnostic, engine-agnostic live coding platform delivered as an
-embeddable React component library. The architecture decouples five independent islands
-— Language, Visualization, Synthesis, DAW, and Control — connected by an Entity-Component
-bus. Any engine, any viz renderer, any synth backend plugs in. The bridge holds.
+Stave is a renderer-agnostic, engine-agnostic live coding platform delivered as an
+embeddable React component library (@stave/editor). The architecture decouples five
+independent islands — Language, Visualization, Synthesis, DAW, and Control — connected
+by an Entity-Component bus. Any engine, any viz renderer, any synth backend plugs in.
 
 Phases 1-6 shipped the foundation (Monaco, highlighting, 7 p5.js visualizers, VizRenderer
 abstraction, per-track data, inline zones). Phase 8 shipped the engine protocol (ECS
-components, LiveCodingEditor, multi-engine support). Sonic Pi Web integration is on a
-feature branch with a working dual-engine demo.
+components, LiveCodingEditor, multi-engine support). Phase 9 normalized the hap type
+across engines. Phase F shipped the Free Monad PatternIR with parsers, interpreters,
+and an ECS propagation engine. Phase 10 is in progress (error squiggles, completions,
+hover docs shipped; tokenizer remaining). Sonic Pi Web integration is on a feature branch
+with a working dual-engine demo.
 
 See THESIS_COMPLETE.md for the full platform vision.
 See SONIC_PI_WEB.md for the Sonic Pi browser engine thesis.
@@ -32,8 +35,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Inline Zones via Abstraction** - Per-pattern .viz("name") opt-in replacing blanket inlinePianoroll prop (REPLANNED 2026-03-23) (completed 2026-03-22)
 - [x] **Phase 8: Engine Protocol** - ECS components, LiveCodingEngine, LiveCodingEditor, DemoEngine, VizDescriptor.requires[] filtering, engine-agnostic viewZones (completed 2026-03-25)
 - [x] **Phase 9: Normalized Hap Type** - NormalizedHap interface, engine-agnostic sketches and highlighting (completed 2026-03-25)
+- [x] **Phase F: Free Monad PatternIR** - PatternIR ADT (15 node types), parseMini, parseStrudel, collect/toStrudel interpreters, ECS propagation engine, StrudelEngine integration (completed 2026-03-28)
 - [ ] **Phase 7: Additional Renderers** - HydraEngine (visual component), Canvas2D renderer, Level 1 DAW timeline
-- [ ] **Phase 10: Monaco Intelligence** - Strudel tokenizer, completions, hover docs, error squiggles
+- [ ] **Phase 10: Monaco Intelligence** - Strudel tokenizer, completions, hover docs, error squiggles (10-01 + 10-02 shipped)
 - [ ] **Phase 11: Library Polish + Publish** - tsup build, README, publish @motif/editor to npm
 - [ ] **Phase 12: Synth Invariance** - SynthBackend interface, SuperSonicBackend, SuperdoughBackend, MidiBackend
 - [ ] **Phase 13: External Sync** - SyncComponent, LinkBridge (WebRTC), MidiInput
@@ -42,7 +46,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 16: Collaboration** - Yjs CRDT + WebRTC, cursor presence, shared tempo via Link
 - [ ] **Phase 17: UI Bento Box** - Slider/knob/XY pad controls, MIDI CC mapping, slider() DSL
 - [ ] **Phase 18: Composr Integration** - Replace iframe with <StrudelEditor>, renderStems, per-stem export
-- [ ] **Phase 19: Pattern IR** - IR compiler, transform tree, provenance backward map, Level 2 DAW
+- [ ] **Phase 19: Pattern IR (full)** - IR compiler, transform tree, provenance backward map, Level 2 DAW (builds on Phase F foundation)
 - [ ] **Phase 20: Transform Graph** - React Flow node editor, bypass/solo, proc gen nodes
 - [ ] **Phase 21: Indian Classical** - Tala Circle VizRenderer, bol notation, tihai verification
 - [ ] **Phase 22: Audio Analysis** - Quadtree decomposition, audio → Pattern IR, the closed loop
@@ -192,7 +196,25 @@ Plans:
 - [x] 09-02-PLAN.md — Migrate all 4 queryable sketches to consume NormalizedHap (5 tasks)
 - [x] 09-03-PLAN.md — HapStream.emitEvent() + HapEvent cleanup + DemoEngine/SonicPiAdapter updates (4 tasks)
 
-### Phase 10: Monaco Intelligence
+### Phase F: Free Monad PatternIR (COMPLETE — 2026-03-28)
+**Goal**: Ship a universal Pattern IR based on free monads — a tree ADT with 15 node types, parsers for mini-notation and Strudel code, interpreters (collect → IREvent[], toStrudel → code string), JSON serialization, and an ECS propagation engine wired into StrudelEngine.
+**Depends on**: Phase 8
+**Success Criteria** (all TRUE):
+  1. PatternIR ADT with 15 node types (Pure/Seq/Stack/Play/Sleep/Choice/Every/Cycle/When/FX/Ramp/Fast/Slow/Loop/Code) and IR.* smart constructors
+  2. collect interpreter walks the tree → IREvent[] with time accumulation, multiplicative speed, FX/Ramp param override
+  3. toStrudel interpreter produces idiomatic Strudel code (mini-notation collapse, stack indentation, method chains)
+  4. JSON round-trip serialization with schema versioning (patternir/1.0)
+  5. parseMini: recursive descent for mini-notation (sequences, rests, cycles, sub-sequences, repeat, sometimes)
+  6. parseStrudel: structural matcher for Strudel code (note/s/stack, $: syntax, method chain walking, Code fallback)
+  7. ECS propagation engine: ComponentBag, System interface with strata, propagate() with stratum ordering
+  8. StrudelEngine.evaluate() runs propagation, exposes ir component on EngineComponents
+  9. 110+ new tests, 281 total passing
+**Plans:** 2/2 plans complete
+Plans:
+- [x] F-01-PLAN.md — PatternIR ADT, collect/toStrudel interpreters, JSON serialization, 77 tests
+- [x] F-02-PLAN.md — parseMini, parseStrudel, propagation engine, StrudelEngine integration, 33 integration tests
+
+### Phase 10: Monaco Intelligence (IN PROGRESS)
 **Goal**: The Monaco editor understands Strudel code — syntax elements get distinct colors, users get completions for functions and note names, hovering a function shows docs, and evaluation errors appear as red squiggles.
 **Depends on**: Phase 4
 **Requirements**: MON-01, MON-02, MON-03, MON-04, MON-05, MON-06, MON-07, MON-08, MON-09
@@ -202,7 +224,11 @@ Plans:
   3. Inside `note("...")` or `s("...")`, completions offer context-appropriate values (note names, oscillator types, percussion names)
   4. After an evaluate() error, the error location is underlined with red squiggles in Monaco; hovering shows the message
   5. Hovering a Strudel function name shows a documentation popup with the function signature and an example
-**Plans:** TBD
+**Plans:** 2/TBD plans complete
+Plans:
+- [x] 10-01 — Eval error squiggles via setModelMarkers
+- [x] 10-02 — Dot completions, note completions, hover docs
+- [ ] 10-03 — Strudel tokenizer / syntax highlighting (TBD)
 
 ### Phase 11: Library Polish + Demo Site
 **Goal**: The @motif/editor package is ready to publish — tested, documented, built correctly — and packages/app is a polished public-facing demo that showcases all features.
@@ -219,8 +245,8 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11
-(Phase 7 can run in parallel with 5-6; Phase 10 can run in parallel with 5-9)
+1→2→3→4→5→6→8→9→F→10→11 (ship staveCoder) → 12-17 (Studio alpha) → 19-20 (multi-view) → 22 (audio input)
+Phase 7 can run in parallel with later phases.
 
 | Phase | Plans | Status | Completed |
 |-------|-------|--------|-----------|
@@ -230,10 +256,11 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 4. VizRenderer Abstraction | 2/2 | Complete | 2026-03-22 |
 | 5. Per-Track Data | 1/1 | Complete | 2026-03-22 |
 | 6. Inline Zones via Abstraction | 2/2 | Complete | 2026-03-22 |
-| **8. Engine Protocol** | **3/3** | **Complete** | **2026-03-25** |
-| **9. Normalized Hap Type** | **3/3** | **Complete** | **2026-03-25** |
+| 8. Engine Protocol | 3/3 | Complete | 2026-03-25 |
+| 9. Normalized Hap Type | 3/3 | Complete | 2026-03-25 |
+| **F. Free Monad PatternIR** | **2/2** | **Complete** | **2026-03-28** |
+| **10. Monaco Intelligence** | **2/TBD** | **In progress** | - |
 | 7. Additional Renderers + Hydra | 0/TBD | Not started | - |
-| 10. Monaco Intelligence | 0/TBD | Not started | - |
 | 11. Library Polish + Publish | 0/TBD | Not started | - |
 | 12. Synth Invariance | 0/TBD | Not started | - |
 | 13. External Sync (Link) | 0/TBD | Not started | - |
@@ -242,7 +269,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 16. Collaboration | 0/TBD | Not started | - |
 | 17. UI Bento Box | 0/TBD | Not started | - |
 | 18. Composr Integration | 0/TBD | Not started | - |
-| 19. Pattern IR | 0/TBD | Not started | - |
+| 19. Pattern IR (full) | 0/TBD | Not started | - |
 | 20. Transform Graph | 0/TBD | Not started | - |
 | 21. Indian Classical | 0/TBD | Not started | - |
 | 22. Audio Analysis | 0/TBD | Not started | - |

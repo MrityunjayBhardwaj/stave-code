@@ -6,8 +6,8 @@ vi.mock('p5', () => ({ default: vi.fn() }))
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
 
 describe('DEFAULT_VIZ_DESCRIPTORS', () => {
-  it('has exactly 7 entries', () => {
-    expect(DEFAULT_VIZ_DESCRIPTORS).toHaveLength(7)
+  it('has exactly 11 entries', () => {
+    expect(DEFAULT_VIZ_DESCRIPTORS).toHaveLength(11)
   })
 
   it('each entry has id, label, and factory', () => {
@@ -20,8 +20,9 @@ describe('DEFAULT_VIZ_DESCRIPTORS', () => {
     }
   })
 
-  it('contains the 7 expected ids', () => {
+  it('contains the expected ids', () => {
     const ids = DEFAULT_VIZ_DESCRIPTORS.map(d => d.id)
+    // p5 renderers
     expect(ids).toContain('pianoroll')
     expect(ids).toContain('wordfall')
     expect(ids).toContain('scope')
@@ -29,6 +30,11 @@ describe('DEFAULT_VIZ_DESCRIPTORS', () => {
     expect(ids).toContain('spectrum')
     expect(ids).toContain('spiral')
     expect(ids).toContain('pitchwheel')
+    // hydra renderers
+    expect(ids).toContain('hydra')
+    expect(ids).toContain('pianoroll:hydra')
+    expect(ids).toContain('scope:hydra')
+    expect(ids).toContain('kaleidoscope:hydra')
   })
 
   it('factory returns a VizRenderer with all 5 methods', () => {
@@ -57,7 +63,7 @@ describe('DEFAULT_VIZ_DESCRIPTORS', () => {
   })
 
   it('requires[] contains only valid EngineComponents keys', () => {
-    const validKeys = ['streaming', 'queryable', 'audio', 'inlineViz']
+    const validKeys = ['streaming', 'queryable', 'audio', 'inlineViz', 'ir']
     for (const d of DEFAULT_VIZ_DESCRIPTORS) {
       for (const req of d.requires ?? []) {
         expect(validKeys, `${d.id} has invalid requires key "${req}"`).toContain(req)
@@ -69,6 +75,21 @@ describe('DEFAULT_VIZ_DESCRIPTORS', () => {
     for (const d of DEFAULT_VIZ_DESCRIPTORS) {
       const renderer = d.factory()
       expect(typeof renderer.update).toBe('function')
+    }
+  })
+
+  it('every descriptor has a renderer field', () => {
+    for (const d of DEFAULT_VIZ_DESCRIPTORS) {
+      expect(typeof d.renderer, `${d.id} should have renderer string`).toBe('string')
+    }
+  })
+
+  it('mode:renderer ids match their renderer field', () => {
+    for (const d of DEFAULT_VIZ_DESCRIPTORS) {
+      if (d.id.includes(':')) {
+        const suffix = d.id.split(':')[1]
+        expect(suffix, `${d.id} suffix should match renderer field`).toBe(d.renderer)
+      }
     }
   })
 })
