@@ -46,11 +46,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 16: Collaboration** - Yjs CRDT + WebRTC, cursor presence, shared tempo via Link
 - [ ] **Phase 17: UI Bento Box** - Slider/knob/XY pad controls, MIDI CC mapping, slider() DSL
 - [ ] **Phase 18: Composr Integration** - Replace iframe with <StrudelEditor>, renderStems, per-stem export
-- [ ] **Phase 19: Pattern IR (full)** - IR compiler, transform tree, provenance backward map, Level 2 DAW (builds on Phase F foundation)
-- [ ] **Phase 20: Transform Graph** - React Flow node editor, bypass/solo, proc gen nodes
-- [ ] **Phase 21: Indian Classical** - Tala Circle VizRenderer, bol notation, tihai verification
-- [ ] **Phase 22: Audio Analysis** - Quadtree decomposition, audio → Pattern IR, the closed loop
-- [ ] **Phase 23: Transparent AI** - Normalizing flow synth, GANSpace timbral control, training data attribution
+- [ ] **Phase 19: Bidirectional DAW** - IRNodeMeta provenance, Poly backward maps, DawVizRenderer (interactive timeline), BidirectionalBinding, code synthesis tiers (T1-T4), AudioRegion node (builds on Phase F foundation). See artifacts/stave/STAVE-STUDIO-DESIGN.md §5-6.
+- [ ] **Phase 20: Transform Graph** - React Flow node patcher (visual free monad), bypass/solo toggles, bidirectional (edit nodes → IR → code). See STAVE-STUDIO-DESIGN.md §4.
+- [ ] **Phase 21: Indian Classical** - Tala Circle VizRenderer, bol notation, tihai verification, layakari via fast() slider
+- [ ] **Phase 22: Audio Analysis + Vocals** - AudioInput component (recording), onset/pitch detection, audio → IREvents (closed loop), AudioRegion manipulation (chop/slice/stretch), vocal workflow (record → display → edit). See STAVE-STUDIO-DESIGN.md §6-7.
+- [ ] **Phase 23: Transparent AI** - Layer 3 kernel/wavelet signal representation, similarity/interpolation in signal space, normalizing flow synth, training data attribution. See STAVE-STUDIO-DESIGN.md §3.
 
 ## Phase Details
 
@@ -261,16 +261,18 @@ Phase 7 can run in parallel with later phases.
 | **F. Free Monad PatternIR** | **2/2** | **Complete** | **2026-03-28** |
 | **10. Monaco Intelligence** | **2/TBD** | **In progress** | - |
 | 7. Additional Renderers + Hydra | 0/TBD | Not started | - |
+| **── staveCoder ships here (v0.1.0 on npm) ──** | | | |
 | 11. Library Polish + Publish | 0/TBD | Not started | - |
+| **── Stave Studio phases below ──** | | | |
 | 12. Synth Invariance | 0/TBD | Not started | - |
-| 13. External Sync (Link) | 0/TBD | Not started | - |
-| 14. Recording & Export | 0/TBD | Not started | - |
-| 15. Provenance | 0/TBD | Not started | - |
-| 16. Collaboration | 0/TBD | Not started | - |
-| 17. UI Bento Box | 0/TBD | Not started | - |
+| 13. External Sync (Link, MIDI, OSC) | 0/TBD | Not started | - |
+| 14. Recording & Export (WAV, stems) | 0/TBD | Not started | - |
+| 15. Provenance (session log, signing) | 0/TBD | Not started | - |
+| 16. Collaboration (Yjs CRDT, WebRTC) | 0/TBD | Not started | - |
+| 17. UI Bento Box (sliders, knobs, MIDI CC) | 0/TBD | Not started | - |
 | 18. Composr Integration | 0/TBD | Not started | - |
-| 19. Pattern IR (full) | 0/TBD | Not started | - |
-| 20. Transform Graph | 0/TBD | Not started | - |
-| 21. Indian Classical | 0/TBD | Not started | - |
-| 22. Audio Analysis | 0/TBD | Not started | - |
-| 23. Transparent AI | 0/TBD | Not started | - |
+| 19. Bidirectional DAW (IRNodeMeta, backward maps, DawVizRenderer, code synthesis) | 0/TBD | Not started | - |
+| 20. Transform Graph (React Flow node patcher, bypass/solo) | 0/TBD | Not started | - |
+| 21. Indian Classical (tala circle, bol, tihai) | 0/TBD | Not started | - |
+| 22. Audio Analysis (audio→IR, AudioRegion, vocals, closed loop) | 0/TBD | Not started | - |
+| 23. Transparent AI (kernel/wavelet Layer 3, attribution) | 0/TBD | Not started | - |
