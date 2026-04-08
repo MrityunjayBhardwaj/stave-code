@@ -50,7 +50,14 @@ export type { VizEditorProps } from './visualizers/VizEditor'
 
 // Visualizers — preset system
 export type { VizPreset } from './visualizers/vizPreset'
-export { VizPresetStore } from './visualizers/vizPreset'
+export {
+  VizPresetStore,
+  BUNDLED_PREFIX,
+  sanitizePresetName,
+  bundledPresetId,
+  isBundledPresetId,
+  generateUniquePresetId,
+} from './visualizers/vizPreset'
 export { compilePreset } from './visualizers/vizCompiler'
 
 // Visualizers — editor internals (advanced use)

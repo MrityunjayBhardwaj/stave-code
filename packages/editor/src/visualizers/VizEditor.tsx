@@ -3,7 +3,7 @@ import type * as Monaco from 'monaco-editor'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizDescriptor } from './types'
 import type { VizPreset } from './vizPreset'
-import { VizPresetStore } from './vizPreset'
+import { VizPresetStore, generateUniquePresetId } from './vizPreset'
 import { compilePreset } from './vizCompiler'
 import { VizPanel } from './VizPanel'
 import type { HapStream } from '../engine/HapStream'
@@ -233,12 +233,16 @@ export function VizEditor({
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleNewViz = useCallback((renderer: 'hydra' | 'p5', targetGroupId?: string) => {
-    const id = `custom-${Date.now()}`
+  const handleNewViz = useCallback(async (renderer: 'hydra' | 'p5', targetGroupId?: string) => {
+    // Collect ALL known ids — both persisted (in IndexedDB) and currently
+    // open across any editor group — so we never collide.
+    const stored = await VizPresetStore.getAll()
+    const openIds = groups.flatMap(g => g.tabs.map(t => t.id))
+    const allIds = [...stored.map(p => p.id), ...openIds]
+
+    const name = 'untitled'
+    const id = generateUniquePresetId(name, renderer, allIds)
     const now = Date.now()
-    // Count existing tabs across all groups for unique naming
-    const totalTabs = groups.reduce((n, g) => n + g.tabs.length, 0)
-    const name = `untitled-${totalTabs + 1}`
     const preset: VizPreset = {
       id,
       name,
