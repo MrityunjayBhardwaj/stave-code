@@ -38,7 +38,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase F: Free Monad PatternIR** - PatternIR ADT (15 node types), parseMini, parseStrudel, collect/toStrudel interpreters, ECS propagation engine, StrudelEngine integration (completed 2026-03-28)
 - [ ] **Phase 7: Additional Renderers** - Canvas2D renderer, HydraEngine (visual LiveCodingEngine), Level 1 DAW timeline
 - [ ] **Phase 10: Monaco Intelligence** - Strudel tokenizer, completions, hover docs, error squiggles (10-01 + 10-02 shipped)
-- [ ] **Phase 10.1: Viz Editor** - Tab groups + splits (VS Code-style), multi-model Monaco, VizPreset/IndexedDB, vizCompiler (code→descriptor), hot reload, VizDropdown (grouped, replaces icon bar), preview modes (panel/inline/bg/pop-out). See artifacts/stave/VIZ-EDITOR-DESIGN.md. INSERTED.
+- [x] **Phase 10.1: Viz Editor v0.1.0+** - Tab groups + splits (VS Code-style), multi-model Monaco, VizPreset/IndexedDB, vizCompiler (code→descriptor), hot reload, VizDropdown (grouped, replaces icon bar), preview modes (panel/inline/bg/pop-out), tab dragging between groups, resizable splits. See artifacts/stave/VIZ-EDITOR-DESIGN.md. INSERTED. (completed 2026-04-08)
+- [ ] **Phase 10.2: Workspace Shell Refactor** - Single-editor-per-view architecture (markdown-preview model). Split current StrudelEditor/LiveCodingEditor/VizEditor into uniform `EditorView` (Monaco only) + `PreviewView` (file-extension-aware, hot-reloads on change). Preview provider registry. WorkspaceAudioBus singleton (pattern previews publish, viz previews consume). Generic tab/group/split shell that holds any view. Removes per-group `previewMode` state — preview becomes a separate view opened via command. INSERTED 2026-04-08. See artifacts/stave/IDE-SHELL-DESIGN.md §1-3.
+- [ ] **Phase 10.3: IDE Shell** - MenuBar (File/Edit/View/Run/Preferences/Help with dropdowns), FileExplorer (left sidebar, tree view, context menu, drag-drop), VirtualFileSystem (IndexedDB-backed, generalizes VizPresetStore — files/folders/recent/rename/delete/import-export), CommandPalette (Cmd+K / Cmd+Shift+P fuzzy over all actions), StatusBar (BPM/errors/live-mode/active-engine), Settings dialog (themes/hotkeys), ProjectManifest (stave.project.json, .zip export). Built on top of 10.2's workspace shell. INSERTED 2026-04-08. See artifacts/stave/IDE-SHELL-DESIGN.md §4-7.
 - [ ] **Phase 11: Library Polish + Publish** - tsup build, README, publish @stave/editor to npm
 - [ ] **Phase 12: Synth Invariance** - SynthBackend interface, SuperSonicBackend, SuperdoughBackend, MidiBackend
 - [ ] **Phase 13: External Sync** - SyncComponent, LinkBridge (WebRTC), MidiInput
@@ -230,6 +232,56 @@ Plans:
 - [x] 10-01 — Eval error squiggles via setModelMarkers
 - [x] 10-02 — Dot completions, note completions, hover docs
 - [ ] 10-03 — Strudel tokenizer / syntax highlighting (TBD)
+
+### Phase 10.1: Viz Editor v0.1.0+ (COMPLETED 2026-04-08)
+**Goal**: Users can author custom visualizations (Hydra shaders, p5 sketches) in a dedicated editor with hot-reload preview, save them to local storage, and reference them by name from pattern code via `.viz("name")`.
+**Depends on**: Phase 4 (VizRenderer abstraction), Phase 8 (engine protocol)
+**Branch**: feat/viz-mode-renderer-convention
+**Success Criteria** (what is TRUE):
+  1. `VizPreset` type + `VizPresetStore` (IndexedDB) — CRUD for user-authored viz presets
+  2. `vizCompiler` compiles code strings → `VizDescriptor` for both hydra and p5 renderers (uses `new Function()` for dynamic eval)
+  3. `VizDropdown` replaces icon-bar `VizPicker` — grouped by renderer, custom presets marked with star, "+ New Viz" entry
+  4. `VizEditor` component with multi-tab Monaco (one model per tab), hydra/p5 syntax highlighting, Ctrl+S save
+  5. N-group split layout via zero-dependency `SplitPane` (resizable dividers, min-size clamping)
+  6. Tab dragging between groups via HTML5 DnD (drop zones outline accent color)
+  7. Four preview modes per group: panel (40% side), inline (150px below), background (canvas behind transparent editor), popout (separate browser window with audio bridge via `usePopoutPreview`)
+  8. Hot reload pipeline: code change → 300ms debounce → recompile → re-mount renderer with current audio components
+  9. User presets seeded into pattern editor descriptor list at app startup (merged with `DEFAULT_VIZ_DESCRIPTORS`)
+  10. Theme tokens applied via `applyTheme()` on container ref (CSS variables resolve correctly when used standalone)
+**Files shipped**: `vizPreset.ts`, `vizCompiler.ts`, `VizDropdown.tsx`, `VizEditor.tsx`, `editor/SplitPane.tsx`, `editor/EditorGroup.tsx`, `editor/PopoutPreview.tsx`, `editor/vizEditorTypes.ts`. LiveCodingEditor wired to merge user descriptors.
+**Lessons (catalogue updates)**:
+  - hetvabhasa: P6 (CSS variables undefined when standalone — must `applyTheme()` on container)
+  - hetvabhasa: P7 (preview shows only background when no scheduler — preview code must have a "demo mode" fallback)
+  - krama: PK5 (viz hot-reload lifecycle — debounce → compile → destroy → mount)
+
+### Phase 10.2: Workspace Shell Refactor (NEXT — INSERTED 2026-04-08)
+**Goal**: Refactor `StrudelEditor`, `LiveCodingEditor`, and `VizEditor` into a uniform single-editor-per-view architecture (markdown-preview model). One workspace shell holds any kind of view; previews are independent views opened via command, not state inside an editor group.
+**Depends on**: Phase 10.1
+**Why**: The current 3-component split (StrudelEditor / LiveCodingEditor / VizEditor) has duplicated tab/preview logic, can't compose (e.g., "edit pattern A while previewing viz B"), and won't accept a menu bar / file explorer cleanly. The refactor unifies them along the seam VS Code already validates: editors are pure code views, previews are first-class sibling views.
+**Success Criteria**:
+  1. `EditorView` component — Monaco only, language-aware (strudel, sonicpi, hydra, p5js, markdown). No embedded preview, no audio engine wiring.
+  2. `PreviewView` component — file-extension-aware. Renders the right preview for the active file via a `PreviewProviderRegistry`.
+  3. `PreviewProvider` registry: `{ extensions, label, render }` entries. Built-in providers: `STRUDEL_RUNTIME`, `SONICPI_RUNTIME`, `HYDRA_VIZ`, `P5_VIZ`, `MARKDOWN_HTML`.
+  4. `WorkspaceShell` — generic tab/group/split layout (refactored from current `EditorGroup`/`SplitPane`). Holds any view, not just viz tabs. Tab drag-and-drop works between any views.
+  5. `WorkspaceAudioBus` singleton — pattern preview views publish `{ hapStream, analyser, scheduler }` when running; viz preview views consume the latest published bus.
+  6. Commands wired: "Open Preview to Side" (Cmd+K V), "Toggle Background Preview" (Cmd+K B), "Open Preview in New Window" (Cmd+K W).
+  7. Existing `StrudelEditor` / `LiveCodingEditor` / `VizEditor` exports preserved as thin compositions over the new primitives (backwards compat for embedders).
+  8. App page rewired to use `WorkspaceShell` directly. The 3-tab top bar (strudel/sonicpi/viz) goes away — all 4 tabs (`pattern.strudel`, `pattern.sonicpi`, `pianoroll.p5`, `pianoroll.hydra`) live in the same shell.
+
+### Phase 10.3: IDE Shell (INSERTED 2026-04-08)
+**Goal**: A real IDE shell on top of the workspace — menu bar, file explorer, command palette, status bar, settings — without forking VS Code or pulling a heavy IDE framework.
+**Depends on**: Phase 10.2
+**Why not port to VS Code web?**: VS Code's file-centric model fights our live-coding UX (`.viz()` inline zones, audio engine sharing, multi-engine bus). Build vs port trade documented in artifacts/stave/IDE-SHELL-DESIGN.md §1. Decision: build lightweight on Monaco; selectively pull `@codingame/monaco-vscode-api` later only if extension support becomes a need.
+**Success Criteria**:
+  1. `MenuBar` — File / Edit / View / Run / Preferences / Help. Each opens a dropdown with keyboard shortcuts shown. Menu items dispatch commands through the same registry as the command palette.
+  2. `FileExplorer` — left sidebar, tree view of `VirtualFileSystem`. Context menu (rename / duplicate / delete / reveal). Drag files into editor groups to open. Folders can collapse/expand.
+  3. `VirtualFileSystem` — generalizes `VizPresetStore` from "presets" to a full IndexedDB-backed FS. Files have `path`, `content`, `language`, `metadata`. Folders are virtual (path prefixes). Supports recent files, rename, delete, import/export.
+  4. `CommandPalette` — Cmd+K / Cmd+Shift+P, fuzzy search over a global `CommandRegistry`. All menu actions, file open, viz commands, settings registered as commands.
+  5. `StatusBar` — bottom strip. Shows BPM, error count, live mode indicator, active engine, current file's git-like status (clean/dirty), language mode.
+  6. `Settings` dialog — themes (dark/light/custom), keybindings, default audio device, default viz config. Persisted to IndexedDB.
+  7. `ProjectManifest` — `stave.project.json` describing files in the workspace, default file bindings, project-level settings. Import/export as `.zip`.
+  8. File types supported: `*.strudel`, `*.sonicpi`, `*.hydra`, `*.p5`, `*.md`, future: `*.wav`/`*.mp3` (sample preview).
+**Out of scope** (deferred to a later phase): real Git integration, multi-workspace, extension API, terminal, debugger.
 
 ### Phase 11: Library Polish + Demo Site
 **Goal**: The @motif/editor package is ready to publish — tested, documented, built correctly — and packages/app is a polished public-facing demo that showcases all features.

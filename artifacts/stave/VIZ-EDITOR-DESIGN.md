@@ -246,32 +246,57 @@ void main() {
 
 ## 9. Build Sequence
 
-### staveCoder v0.1.0 (minimal)
+### staveCoder v0.1.0 (SHIPPED 2026-04-08, branch feat/viz-mode-renderer-convention)
 
-| Step | What | Size |
-|------|------|------|
-| 1 | VizPreset type + VizPresetStore (IndexedDB) | Small |
-| 2 | vizCompiler (code → VizDescriptor for hydra/p5) | Small |
-| 3 | VizDropdown (replace icon bar with grouped dropdown) | Medium |
-| 4 | Multi-model Monaco (tab support, `editor.setModel()`) | Medium |
-| 5 | 2-group split layout (pattern left, viz right — toggle) | Medium |
-| 6 | VizPreview — panel mode (reuse VizPanel) | Small |
-| 7 | Hot reload loop (debounced code change → re-mount renderer) | Small |
-| 8 | Save preset + register in descriptor list | Small |
+| Step | What | Status |
+|------|------|--------|
+| 1 | VizPreset type + VizPresetStore (IndexedDB) | ✅ |
+| 2 | vizCompiler (code → VizDescriptor for hydra/p5) | ✅ |
+| 3 | VizDropdown (replace icon bar with grouped dropdown) | ✅ |
+| 4 | Multi-model Monaco (tab support, `editor.setModel()`) | ✅ |
+| 5 | 2-group split layout (pattern left, viz right — toggle) | ✅ |
+| 6 | VizPreview — panel mode (reuse VizPanel) | ✅ |
+| 7 | Hot reload loop (debounced code change → re-mount renderer) | ✅ |
+| 8 | Save preset + register in descriptor list | ✅ |
 
-### Post v0.1.0
+### Post v0.1.0 (SHIPPED 2026-04-08, same branch)
 
-| Step | What |
-|------|------|
-| 9 | Arbitrary N-group splits (drag to dock anywhere) |
-| 10 | Tab dragging between groups |
-| 11 | Inline preview mode |
-| 12 | Background mode (canvas behind editor) |
-| 13 | Pop-out mode (separate window + postMessage audio bridge) |
-| 14 | GLSL renderer support |
+| Step | What | Status |
+|------|------|--------|
+| 9 | Arbitrary N-group splits (drag to dock anywhere) | ✅ |
+| 10 | Tab dragging between groups | ✅ |
+| 11 | Inline preview mode | ✅ |
+| 12 | Background mode (canvas behind editor) | ✅ |
+| 13 | Pop-out mode (separate window + audio bridge) | ✅ |
+| 14 | GLSL renderer support | (deferred) |
 
 ---
 
 ## 10. Key Constraint
 
 **Viz code and music code are completely separate.** The viz editor never touches the pattern DSL. The only bridge is the `.viz("name")` string reference — a name lookup, not code injection.
+
+---
+
+## 11. Architectural Pivot — Phase 10.2 (NEXT)
+
+After shipping v0.1.0+, a strategic conversation (2026-04-08) identified that the current architecture has a structural limitation:
+
+**The problem:** `VizEditor` has per-group `previewMode: 'panel' | 'inline' | 'background' | 'popout'` state. This works for one editor but doesn't compose:
+- Pattern editors (`StrudelEditor`, `LiveCodingEditor`) and viz editors (`VizEditor`) are 3 separate components with duplicated tab/preview logic.
+- A user can't preview viz file A while editing pattern file B.
+- A file can't have *zero* previews open OR *multiple* previews simultaneously.
+
+**The fix (Phase 10.2):** Refactor along the seam VS Code uses for markdown/markdown-preview — editors are pure code views, previews are first-class sibling views opened via command.
+
+```
+EditorView           — Monaco only, language-aware (no embedded preview)
+PreviewView          — file-extension-aware, hot-reloads on file change
+PreviewProvider      — registry mapping extensions → preview renderers
+WorkspaceShell       — generic tab/group/split holding any view
+WorkspaceAudioBus    — singleton: pattern previews publish, viz previews consume
+```
+
+The current `VizEditor` becomes a thin composition over the new primitives — backwards-compatible export. Then Phase 10.3 adds the IDE shell (menu bar, file explorer, command palette) on top.
+
+See `.planning/ROADMAP.md` Phase 10.2 + 10.3 for full success criteria. See `vyapti.md` PV7 + PV8 for the structural invariants this refactor enforces.

@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: staveCoder v1.0
 status: active
-stopped_at: Phase F complete (F-01 + F-02 executed). Branch feat/pattern-ir. 281 tests passing.
-last_updated: "2026-03-28T00:00:00Z"
+stopped_at: Phase 10.1 complete (Viz Editor v0.1.0+ shipped). Branch feat/viz-mode-renderer-convention. 336 tests passing. Next: Phase 10.2 (Workspace Shell Refactor — single-editor-per-view architecture).
+last_updated: "2026-04-08T00:00:00Z"
 progress:
-  total_phases: 30
-  completed_phases: 10
+  total_phases: 32
+  completed_phases: 11
   total_plans: 18
   completed_plans: 18
 ---
@@ -25,14 +25,14 @@ See: SONIC_PI_WEB.md (Sonic Pi browser engine thesis)
 
 **Core value:** Pattern IR (free monad over 9 algebraic effects) is the universal representation. Every surface — code, DAW, nodes, sheet music, audio, viz — is an ECS component synced by derivation systems with stratified fixed-point propagation. No surface is privileged. Code is optional.
 
-**Current focus:** Phase F (Free Monad MVP) → Phase 10 → Phase 11 → ship staveCoder.
+**Current focus:** Phase 10.1 (Viz Editor) shipped → Phase 10.2 (Workspace Shell Refactor) → Phase 10.3 (IDE Shell) → Phase 10/11 → ship staveCoder.
 
 ## Current Position
 
-Phase: F (Free Monad MVP) — COMPLETE (2026-03-28)
-Branch: feat/pattern-ir (ready to merge to main)
-Last completed: Phase F (PatternIR free monad MVP)
-Next: Phase 10 (Monaco Intelligence)
+Phase: 10.1 (Viz Editor v0.1.0+) — COMPLETE (2026-04-08)
+Branch: feat/viz-mode-renderer-convention (do not merge yet — Phase 10.2 builds on it)
+Last completed: Phase 10.1 (Viz Editor — multi-tab Monaco, splits, drag-drop, 4 preview modes, IndexedDB presets, hot reload)
+Next: Phase 10.2 — Workspace Shell Refactor (single-editor-per-view architecture, EditorView/PreviewView split, PreviewProviderRegistry, WorkspaceAudioBus, then Phase 10.3 for the IDE shell on top)
 
 ## What's Shipped
 

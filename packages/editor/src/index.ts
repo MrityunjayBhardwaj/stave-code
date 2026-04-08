@@ -44,6 +44,19 @@ export { DEFAULT_VIZ_CONFIG, createVizConfig, getVizConfig, setVizConfig } from 
 // Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'
 export { VizPicker } from './visualizers/VizPicker'
+export { VizDropdown } from './visualizers/VizDropdown'
+export { VizEditor } from './visualizers/VizEditor'
+export type { VizEditorProps } from './visualizers/VizEditor'
+
+// Visualizers — preset system
+export type { VizPreset } from './visualizers/vizPreset'
+export { VizPresetStore } from './visualizers/vizPreset'
+export { compilePreset } from './visualizers/vizCompiler'
+
+// Visualizers — editor internals (advanced use)
+export { SplitPane } from './visualizers/editor/SplitPane'
+export { EditorGroup } from './visualizers/editor/EditorGroup'
+export type { VizTab, PreviewMode, EditorGroupState } from './visualizers/editor/vizEditorTypes'
 
 // Visualizers — individual sketches (for advanced use: manual P5VizRenderer wrapping)
 export { PianorollSketch } from './visualizers/sketches/PianorollSketch'
