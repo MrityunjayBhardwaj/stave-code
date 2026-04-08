@@ -36,9 +36,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: Engine Protocol** - ECS components, LiveCodingEngine, LiveCodingEditor, DemoEngine, VizDescriptor.requires[] filtering, engine-agnostic viewZones (completed 2026-03-25)
 - [x] **Phase 9: Normalized Hap Type** - NormalizedHap interface, engine-agnostic sketches and highlighting (completed 2026-03-25)
 - [x] **Phase F: Free Monad PatternIR** - PatternIR ADT (15 node types), parseMini, parseStrudel, collect/toStrudel interpreters, ECS propagation engine, StrudelEngine integration (completed 2026-03-28)
-- [ ] **Phase 7: Additional Renderers** - HydraEngine (visual component), Canvas2D renderer, Level 1 DAW timeline
+- [ ] **Phase 7: Additional Renderers** - Canvas2D renderer, HydraEngine (visual LiveCodingEngine), Level 1 DAW timeline
 - [ ] **Phase 10: Monaco Intelligence** - Strudel tokenizer, completions, hover docs, error squiggles (10-01 + 10-02 shipped)
-- [ ] **Phase 11: Library Polish + Publish** - tsup build, README, publish @motif/editor to npm
+- [ ] **Phase 10.1: Viz Editor** - Tab groups + splits (VS Code-style), multi-model Monaco, VizPreset/IndexedDB, vizCompiler (code→descriptor), hot reload, VizDropdown (grouped, replaces icon bar), preview modes (panel/inline/bg/pop-out). See artifacts/stave/VIZ-EDITOR-DESIGN.md. INSERTED.
+- [ ] **Phase 11: Library Polish + Publish** - tsup build, README, publish @stave/editor to npm
 - [ ] **Phase 12: Synth Invariance** - SynthBackend interface, SuperSonicBackend, SuperdoughBackend, MidiBackend
 - [ ] **Phase 13: External Sync** - SyncComponent, LinkBridge (WebRTC), MidiInput
 - [ ] **Phase 14: Recording & Export** - Engine-agnostic Recorder, WAV export, stem export
@@ -245,7 +246,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-1→2→3→4→5→6→8→9→F→10→11 (ship staveCoder) → 12-17 (Studio alpha) → 19-20 (multi-view) → 22 (audio input)
+1→2→3→4→5→6→8→9→F→10→10.1→11 (ship staveCoder) → 12-17 (Studio alpha) → 19-20 (multi-view) → 22 (audio input)
 Phase 7 can run in parallel with later phases.
 
 | Phase | Plans | Status | Completed |
@@ -261,6 +262,7 @@ Phase 7 can run in parallel with later phases.
 | **F. Free Monad PatternIR** | **2/2** | **Complete** | **2026-03-28** |
 | **10. Monaco Intelligence** | **2/TBD** | **In progress** | - |
 | 7. Additional Renderers + Hydra | 0/TBD | Not started | - |
+| **10.1 Viz Editor** (INSERTED) | **0/TBD** | **Not started** | - |
 | **── staveCoder ships here (v0.1.0 on npm) ──** | | | |
 | 11. Library Polish + Publish | 0/TBD | Not started | - |
 | **── Stave Studio phases below ──** | | | |
