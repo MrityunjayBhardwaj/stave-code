@@ -33,11 +33,37 @@ export { DARK_THEME_TOKENS, LIGHT_THEME_TOKENS, applyTheme } from './theme/token
 // Visualizers — new VizRenderer interface family
 export type { VizRenderer, VizRefs, VizRendererSource, VizDescriptor, PatternScheduler } from './visualizers/types'
 export { P5VizRenderer } from './visualizers/renderers/P5VizRenderer'
+export { HydraVizRenderer } from './visualizers/renderers/HydraVizRenderer'
+export type { HydraPatternFn } from './visualizers/renderers/HydraVizRenderer'
+export { hydraPianoroll, hydraScope, hydraKaleidoscope } from './visualizers/renderers/hydraPresets'
 export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
+export { resolveDescriptor } from './visualizers/resolveDescriptor'
+export type { VizConfig } from './visualizers/vizConfig'
+export { DEFAULT_VIZ_CONFIG, createVizConfig, getVizConfig, setVizConfig } from './visualizers/vizConfig'
 
 // Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'
 export { VizPicker } from './visualizers/VizPicker'
+export { VizDropdown } from './visualizers/VizDropdown'
+export { VizEditor } from './visualizers/VizEditor'
+export type { VizEditorProps } from './visualizers/VizEditor'
+
+// Visualizers — preset system
+export type { VizPreset } from './visualizers/vizPreset'
+export {
+  VizPresetStore,
+  BUNDLED_PREFIX,
+  sanitizePresetName,
+  bundledPresetId,
+  isBundledPresetId,
+  generateUniquePresetId,
+} from './visualizers/vizPreset'
+export { compilePreset } from './visualizers/vizCompiler'
+
+// Visualizers — editor internals (advanced use)
+export { SplitPane } from './visualizers/editor/SplitPane'
+export { EditorGroup } from './visualizers/editor/EditorGroup'
+export type { VizTab, PreviewMode, EditorGroupState } from './visualizers/editor/vizEditorTypes'
 
 // Visualizers — individual sketches (for advanced use: manual P5VizRenderer wrapping)
 export { PianorollSketch } from './visualizers/sketches/PianorollSketch'

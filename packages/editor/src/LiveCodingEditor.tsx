@@ -13,9 +13,13 @@ import { useHighlighting } from './monaco/useHighlighting'
 import { setEvalError, clearEvalErrors } from './monaco/diagnostics'
 import type { HapStream } from './engine/HapStream'
 import { VizPanel } from './visualizers/VizPanel'
-import { VizPicker } from './visualizers/VizPicker'
+import { VizDropdown } from './visualizers/VizDropdown'
+import { VizEditor } from './visualizers/VizEditor'
 import type { VizDescriptor, PatternScheduler } from './visualizers/types'
 import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
+import { compilePreset } from './visualizers/vizCompiler'
+import { VizPresetStore } from './visualizers/vizPreset'
+import type { VizPreset } from './visualizers/vizPreset'
 import { addInlineViewZones, type InlineZoneHandle } from './visualizers/viewZones'
 import type { LiveCodingEngine, EngineComponents } from './engine/LiveCodingEngine'
 import { BufferedScheduler } from './engine/BufferedScheduler'
@@ -110,6 +114,8 @@ export function LiveCodingEditor({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [vizCollapsed, setVizCollapsed] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [showVizEditor, setShowVizEditor] = useState(false)
+  const [userDescriptors, setUserDescriptors] = useState<VizDescriptor[]>([])
 
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -126,6 +132,28 @@ export function LiveCodingEditor({
 
   // Cleanup global BufferedScheduler on unmount
   useEffect(() => () => { globalBufferedRef.current?.dispose() }, [])
+
+  // Load user presets from IndexedDB on mount
+  useEffect(() => {
+    VizPresetStore.getAll().then(presets => {
+      setUserDescriptors(presets.map(p => compilePreset(p)))
+    })
+  }, [])
+
+  const allDescriptors = [...vizDescriptors, ...userDescriptors]
+
+  const handlePresetSaved = useCallback((preset: VizPreset) => {
+    const compiled = compilePreset(preset)
+    setUserDescriptors(prev => {
+      const existing = prev.findIndex(d => d.id === preset.id)
+      if (existing >= 0) {
+        const next = [...prev]
+        next[existing] = compiled
+        return next
+      }
+      return [...prev, compiled]
+    })
+  }, [])
 
   // Apply theme tokens to container
   const themeKey = typeof theme === 'string' ? theme : 'dark'
@@ -181,7 +209,7 @@ export function LiveCodingEditor({
       viewZoneCleanupRef.current = addInlineViewZones(
         editorRef.current,
         components,
-        vizDescriptors
+        allDescriptors
       )
     }
 
@@ -205,7 +233,7 @@ export function LiveCodingEditor({
     engine.play()
     setIsPlaying(true)
     onPlay?.()
-  }, [code, engine, onPlay, onError, onPostEvaluate, clearHighlights, vizDescriptors])
+  }, [code, engine, onPlay, onError, onPostEvaluate, clearHighlights, allDescriptors])
 
   const handleStop = useCallback(() => {
     engine.stop()
@@ -368,12 +396,12 @@ export function LiveCodingEditor({
         </div>
       )}
 
-      {!isFullscreen && (
-        <VizPicker
-          descriptors={vizDescriptors}
+      {!isFullscreen && (showVizPicker ?? true) && (
+        <VizDropdown
+          descriptors={allDescriptors}
           activeId={activeViz}
           onIdChange={setActiveViz}
-          showVizPicker={showVizPicker ?? true}
+          onNewViz={() => setShowVizEditor(true)}
           availableComponents={Object.keys(engine.components) as (keyof EngineComponents)[]}
         />
       )}
@@ -416,15 +444,15 @@ export function LiveCodingEditor({
               transition: 'transform 0.15s ease',
               fontSize: 10,
             }}>{'\u25BC'}</span>
-            Visualizer — {vizDescriptors.find(d => d.id === activeViz)?.label ?? activeViz}
+            Visualizer — {allDescriptors.find(d => d.id === activeViz)?.label ?? activeViz}
           </button>
           {!vizCollapsed && (
             <>
-              <VizPicker
-                descriptors={vizDescriptors}
+              <VizDropdown
+                descriptors={allDescriptors}
                 activeId={activeViz}
                 onIdChange={setActiveViz}
-                showVizPicker={showVizPicker ?? true}
+                onNewViz={() => setShowVizEditor(true)}
               />
               <VizPanel
                 key={activeViz}
@@ -432,10 +460,45 @@ export function LiveCodingEditor({
                 hapStream={hapStream}
                 analyser={analyser}
                 scheduler={patternScheduler}
-                source={vizDescriptors.find(d => d.id === activeViz)?.factory ?? vizDescriptors[0].factory}
+                source={allDescriptors.find(d => d.id === activeViz)?.factory ?? allDescriptors[0].factory}
               />
             </>
           )}
+        </>
+      )}
+
+      {showVizEditor && (
+        <>
+          <button
+            onClick={() => setShowVizEditor(false)}
+            style={{
+              background: 'var(--surface)',
+              border: 'none',
+              borderTop: '1px solid var(--border)',
+              color: 'var(--foreground-muted)',
+              cursor: 'pointer',
+              padding: '4px 12px',
+              fontSize: 11,
+              fontFamily: 'inherit',
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span style={{ fontSize: 10 }}>{'\u25BC'}</span>
+            Viz Editor
+            <span style={{ marginLeft: 'auto', fontSize: 10 }}>{'\u00D7'} close</span>
+          </button>
+          <VizEditor
+            components={engine.components}
+            hapStream={hapStream}
+            analyser={analyser}
+            scheduler={patternScheduler}
+            onPresetSaved={handlePresetSaved}
+            height={250}
+            previewHeight={180}
+          />
         </>
       )}
     </div>

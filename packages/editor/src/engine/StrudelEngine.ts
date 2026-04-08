@@ -192,15 +192,27 @@ export class StrudelEngine implements LiveCodingEngine {
           configurable: true,
           writable: true,
           value: function(this: any, vizName: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-            // Extract viz name — Strudel's transpiler reifies string args into Patterns
+            // Extract viz name — Strudel's transpiler reifies string args into Patterns.
+            // Mini-notation `:` is the sample-index operator, so "pianoroll:hydra" gets
+            // split into an array: hap.value = ["pianoroll", "hydra"]. We reconstruct
+            // the original "mode:renderer" ID by joining the array with `:`.
             let resolvedName: string | undefined
             if (typeof vizName === 'string') {
               resolvedName = vizName
             } else if (vizName && vizName._Pattern) {
-              // Reified Pattern — extract the original string value
               try {
                 const haps = vizName.queryArc(0, 1)
-                if (haps.length > 0) resolvedName = String(haps[0].value)
+                if (haps.length > 0) {
+                  const v = haps[0].value
+                  if (typeof v === 'string') {
+                    resolvedName = v
+                  } else if (Array.isArray(v)) {
+                    // Reified "mode:renderer" — colon became array separator
+                    resolvedName = v.join(':')
+                  } else if (v != null) {
+                    resolvedName = String(v)
+                  }
+                }
               } catch { /* ignore query errors */ }
             }
             // Chain to Strudel's .viz() if it exists

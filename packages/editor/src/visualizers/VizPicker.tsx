@@ -76,15 +76,31 @@ function WordfallIcon() {
   )
 }
 
+function HydraIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="7" cy="7" r="3" />
+      <line x1="7" y1="1" x2="7" y2="4" />
+      <line x1="7" y1="10" x2="7" y2="13" />
+      <line x1="1" y1="7" x2="4" y2="7" />
+      <line x1="10" y1="7" x2="13" y2="7" />
+    </svg>
+  )
+}
+
 /** Private icon lookup — keeps VizDescriptor lean (no React-specific fields). */
 const ICON_MAP: Record<string, React.ReactNode> = {
-  pianoroll:  <PianorollIcon />,
-  wordfall:   <WordfallIcon />,
-  scope:      <ScopeIcon />,
-  fscope:     <FscopeIcon />,
-  spectrum:   <SpectrumIcon />,
-  spiral:     <SpiralIcon />,
-  pitchwheel: <PitchwheelIcon />,
+  pianoroll:             <PianorollIcon />,
+  wordfall:              <WordfallIcon />,
+  scope:                 <ScopeIcon />,
+  fscope:                <FscopeIcon />,
+  spectrum:              <SpectrumIcon />,
+  spiral:                <SpiralIcon />,
+  pitchwheel:            <PitchwheelIcon />,
+  hydra:                 <HydraIcon />,
+  'pianoroll:hydra':     <HydraIcon />,
+  'scope:hydra':         <HydraIcon />,
+  'kaleidoscope:hydra':  <HydraIcon />,
 }
 
 export function VizPicker({ descriptors, activeId, onIdChange, showVizPicker = true, availableComponents }: VizPickerProps) {
