@@ -6213,6 +6213,21 @@ var workspaceAudioBus = {
   listSources,
   onSourcesChanged
 };
+var baseStyleInjected = false;
+function ensureBaseHighlightStyle() {
+  if (baseStyleInjected || typeof document === "undefined") return;
+  baseStyleInjected = true;
+  const style = document.createElement("style");
+  style.textContent = `
+    .strudel-active-hap {
+      background: rgba(var(--accent-rgb, 139, 92, 246), 0.3);
+      border-radius: 2px;
+      outline: 1px solid rgba(var(--accent-rgb, 139, 92, 246), 0.5);
+      box-shadow: 0 0 8px rgba(var(--accent-rgb, 139, 92, 246), 0.3);
+    }
+  `;
+  document.head.appendChild(style);
+}
 var injectedColorClasses = /* @__PURE__ */ new Map();
 function hashColor(color) {
   let hash = 0;
@@ -6288,6 +6303,7 @@ function useHighlighting(editor, hapStream) {
   }, []);
   React.useEffect(() => {
     if (!editor || !hapStream) return;
+    ensureBaseHighlightStyle();
     const handler = (event) => {
       if (!event.loc || event.loc.length === 0) return;
       const model = editor.getModel();
@@ -8504,6 +8520,13 @@ var MinHeap = class {
 };
 
 // ../../../sonicPiWeb/src/engine/VirtualTimeScheduler.ts
+function cueGlobMatch(pattern, name2) {
+  if (pattern === name2) return true;
+  if (!pattern.includes("*") && !pattern.includes("?")) return false;
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp("^" + escaped.replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+  return re.test(name2);
+}
 var DEFAULT_SCHED_AHEAD_TIME = 0.3;
 var DEFAULT_TICK_INTERVAL_MS = 25;
 var HEAP_TIEBREAK_EPSILON = 1e-12;
@@ -8675,8 +8698,9 @@ var VirtualTimeScheduler = class {
       audioTime: this.getAudioTime(),
       params: { name: name2, args: args2 }
     });
-    const waiters = this.syncWaiters.get(name2);
-    if (waiters && waiters.length > 0) {
+    for (const [pattern, waiters] of this.syncWaiters) {
+      if (waiters.length === 0) continue;
+      if (!cueGlobMatch(pattern, name2)) continue;
       for (const waiter of waiters) {
         const waiterTask = this.tasks.get(waiter.taskId);
         if (waiterTask) {
@@ -8684,7 +8708,7 @@ var VirtualTimeScheduler = class {
         }
         waiter.resolve(args2);
       }
-      this.syncWaiters.delete(name2);
+      this.syncWaiters.delete(pattern);
     }
   }
   /**
@@ -9849,6 +9873,11 @@ var ProgramBuilder = class _ProgramBuilder {
     this._debug = enabled;
     return this;
   }
+  /** Set schedule-ahead time to 0 for this thread — responsive MIDI input (#149). */
+  use_real_time() {
+    this.steps.push({ tag: "useRealTime" });
+    return this;
+  }
   /**
    * Control whether time params (release, attack, phase, etc.) are automatically
    * BPM-scaled. Default: true (matching Desktop Sonic Pi).
@@ -10510,6 +10539,9 @@ async function runProgram(program, ctx, fxCounter) {
       case "useBpm":
         currentBpm = step.bpm;
         if (task) task.bpm = step.bpm;
+        break;
+      case "useRealTime":
+        ctx.schedAheadTime = 0;
         break;
       case "control": {
         const realNodeId = ctx.nodeRefMap.get(step.nodeRef);
@@ -11794,8 +11826,9 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "with_bpm",
   "with_synth",
   "use_density",
-  // Debug
+  // Debug + latency
   "use_debug",
+  "use_real_time",
   // BPM scaling control
   "use_arg_bpm_scaling",
   "with_arg_bpm_scaling",
@@ -14457,8 +14490,9 @@ var SonicPiEngine = class {
     this.midiBridge.onMidiEvent((event) => {
       const sched = this.scheduler;
       if (!sched) return;
-      const cueName = `/midi/${event.type}`;
-      sched.fireCue(cueName, "__midi__", [event]);
+      const ch = event.channel ?? 1;
+      sched.fireCue(`/midi:*:${ch}/${event.type}`, "__midi__", [event]);
+      sched.fireCue(`/midi/${event.type}`, "__midi__", [event]);
     });
     this.initialized = true;
   }
@@ -14981,7 +15015,9 @@ var SonicPiEngine = class {
         // Sample BPM
         "use_sample_bpm",
         // Debug (no-op in browser — silences log output in Desktop SP)
-        "use_debug"
+        "use_debug",
+        // Latency — set schedule-ahead to 0 for responsive MIDI input (#149)
+        "use_real_time"
       ];
       const dslValues = [
         topLevelBuilder,
@@ -15070,6 +15106,9 @@ var SonicPiEngine = class {
         (name2) => topLevelBuilder.use_sample_bpm(name2),
         // Debug (no-op in browser)
         (_val) => {
+        },
+        // Latency — no-op at top level; inside loops it's handled by ProgramBuilder + AudioInterpreter
+        () => {
         }
       ];
       const codeWarnings = validateCode(transpiledCode);

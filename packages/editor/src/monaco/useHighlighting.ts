@@ -2,6 +2,23 @@ import { useEffect, useRef, useCallback } from 'react'
 import type * as Monaco from 'monaco-editor'
 import type { HapStream, HapEvent } from '../engine/HapStream'
 
+// ---- Base style injection (was previously owned by StrudelMonaco.tsx) ----
+let baseStyleInjected = false
+function ensureBaseHighlightStyle(): void {
+  if (baseStyleInjected || typeof document === 'undefined') return
+  baseStyleInjected = true
+  const style = document.createElement('style')
+  style.textContent = `
+    .strudel-active-hap {
+      background: rgba(var(--accent-rgb, 139, 92, 246), 0.3);
+      border-radius: 2px;
+      outline: 1px solid rgba(var(--accent-rgb, 139, 92, 246), 0.5);
+      box-shadow: 0 0 8px rgba(var(--accent-rgb, 139, 92, 246), 0.3);
+    }
+  `
+  document.head.appendChild(style)
+}
+
 // ---- Per-color style injection cache ----
 const injectedColorClasses = new Map<string, boolean>()
 
@@ -141,6 +158,11 @@ export function useHighlighting(
 
   useEffect(() => {
     if (!editor || !hapStream) return
+
+    // Ensure the base CSS for .strudel-active-hap exists. Previously
+    // injected by StrudelMonaco.tsx, but the new EditorView doesn't
+    // use StrudelMonaco — so the hook owns its own styles.
+    ensureBaseHighlightStyle()
 
     const handler = (event: HapEvent): void => {
       if (!event.loc || event.loc.length === 0) return
