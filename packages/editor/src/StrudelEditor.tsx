@@ -1,3 +1,14 @@
+/**
+ * StrudelEditor — backwards-compatible shim (Phase 10.2 Task 09).
+ *
+ * Thin wrapper around the new `LiveCodingEditor` that adds BPM extraction,
+ * sound names for Monaco autocompletion, and an export button via the
+ * `toolbarExtra` prop (which routes through `chromeExtras` per U8).
+ *
+ * Shape barely changes from the pre-refactor version — it was already a
+ * thin wrapper.
+ */
+
 import React, {
   useCallback,
   useEffect,
@@ -75,7 +86,6 @@ export function StrudelEditor({
   const [bpm, setBpm] = useState<number | undefined>(120)
   const [soundNames, setSoundNames] = useState<string[]>([])
   const [isExporting, setIsExporting] = useState(false)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   // Lazily create engine (one per component instance)
   function getEngine(): StrudelEngine {
@@ -125,7 +135,6 @@ export function StrudelEditor({
   const handleExport = useCallback(async () => {
     if (isExporting) return
     setIsExporting(true)
-    setErrorMsg(null)
 
     try {
       const engine = getEngine()
@@ -145,7 +154,6 @@ export function StrudelEditor({
       }
     } catch (err) {
       const e = err as Error
-      setErrorMsg(e.message ?? String(e))
       onError?.(e)
     } finally {
       setIsExporting(false)

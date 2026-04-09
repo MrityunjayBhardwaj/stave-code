@@ -1,28 +1,34 @@
+/**
+ * LiveCodingEditor — backwards-compatible shim (Phase 10.2 Task 09).
+ *
+ * Thin composition over the new workspace primitives. Preserves the public
+ * `LiveCodingEditorProps` interface (D-06) while delegating rendering to
+ * `WorkspaceShell`, `EditorView`, and the runtime provider registry.
+ *
+ * Internally:
+ *   1. Seeds a `WorkspaceFile` for the editor content.
+ *   2. Creates a `LiveCodingRuntime` for the engine.
+ *   3. Manages runtime state (isPlaying, error, bpm) via subscriptions.
+ *   4. Mounts `<WorkspaceShell>` with one editor tab, theme, and chrome.
+ *   5. Syncs `code` / `defaultCode` via a controlled-prop guard.
+ *   6. Calls `runtime.dispose()` on unmount (U3).
+ */
+
 import React, {
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react'
-import type * as Monaco from 'monaco-editor'
-import { StrudelMonaco } from './monaco/StrudelMonaco'
-import { Toolbar } from './toolbar/Toolbar'
-import { applyTheme } from './theme/tokens'
 import type { StrudelTheme } from './theme/tokens'
-import { useHighlighting } from './monaco/useHighlighting'
-import { setEvalError, clearEvalErrors } from './monaco/diagnostics'
-import type { HapStream } from './engine/HapStream'
-import { VizPanel } from './visualizers/VizPanel'
-import { VizDropdown } from './visualizers/VizDropdown'
-import { VizEditor } from './visualizers/VizEditor'
-import type { VizDescriptor, PatternScheduler } from './visualizers/types'
+import type { VizDescriptor } from './visualizers/types'
 import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
-import { compilePreset } from './visualizers/vizCompiler'
-import { VizPresetStore } from './visualizers/vizPreset'
-import type { VizPreset } from './visualizers/vizPreset'
-import { addInlineViewZones, type InlineZoneHandle } from './visualizers/viewZones'
-import type { LiveCodingEngine, EngineComponents } from './engine/LiveCodingEngine'
-import { BufferedScheduler } from './engine/BufferedScheduler'
+import type { LiveCodingEngine } from './engine/LiveCodingEngine'
+import { WorkspaceShell } from './workspace/WorkspaceShell'
+import { LiveCodingRuntime } from './workspace/runtime/LiveCodingRuntime'
+import { createWorkspaceFile, getFile, setContent, subscribe as storeSubscribe } from './workspace/WorkspaceFile'
+import { getRuntimeProviderForLanguage } from './workspace/runtime/registry'
+import type { WorkspaceTab, ChromeContext } from './workspace/types'
 
 export type { StrudelTheme }
 
@@ -70,6 +76,9 @@ export interface LiveCodingEditorProps {
 
 const DEFAULT_CODE = `// Welcome to Stave`
 
+/** Stable file id for the single editor tab in this shim. */
+const FILE_ID = '__livecoding_editor__'
+
 export function LiveCodingEditor({
   engine,
   code: controlledCode,
@@ -81,426 +90,159 @@ export function LiveCodingEditor({
   onError,
   theme = 'dark',
   height = 320,
-  vizHeight = 200,
-  showToolbar = true,
-  showVizPicker,
-  readOnly = false,
+  vizHeight: _vizHeight = 200,
+  showToolbar: _showToolbar = true,
+  showVizPicker: _showVizPicker,
+  readOnly: _readOnly = false,
   activeHighlight: _activeHighlight = true,
   visualizer: _visualizer = 'off',
-  vizDescriptors = DEFAULT_VIZ_DESCRIPTORS,
+  vizDescriptors: _vizDescriptors = DEFAULT_VIZ_DESCRIPTORS,
   toolbarExtra,
   onPostEvaluate,
-  soundNames,
-  bpm,
-  isExporting: isExportingProp = false,
-  onExport: onExportProp,
+  soundNames: _soundNames,
+  bpm: bpmProp,
+  isExporting: _isExportingProp = false,
+  onExport: _onExportProp,
   engineRef: engineRefProp,
-  language,
+  language: _language,
 }: LiveCodingEditorProps) {
   const isControlled = controlledCode !== undefined
-  const [internalCode, setInternalCode] = useState(
-    defaultCode ?? DEFAULT_CODE
-  )
-  const code = isControlled ? controlledCode : internalCode
+  const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE
 
+  // -- Runtime lifecycle --
+  const runtimeRef = useRef<LiveCodingRuntime | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [hapStream, setHapStream] = useState<HapStream | null>(null)
-  const [activeViz, setActiveViz] = useState<string>(
-    _visualizer !== 'off' ? _visualizer : (vizDescriptors[0]?.id ?? 'pianoroll')
-  )
-  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
-  const [patternScheduler, setPatternScheduler] = useState<PatternScheduler | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [vizCollapsed, setVizCollapsed] = useState(true)
-  const [autoRefresh, setAutoRefresh] = useState(false)
-  const [showVizEditor, setShowVizEditor] = useState(false)
-  const [userDescriptors, setUserDescriptors] = useState<VizDescriptor[]>([])
+  const [error, setError] = useState<Error | null>(null)
+  const [bpm, setBpm] = useState<number | undefined>(bpmProp)
 
-  const containerRef = useRef<HTMLDivElement>(null)
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
-  const monacoRef = useRef<typeof Monaco | null>(null)
-  const viewZoneCleanupRef = useRef<InlineZoneHandle | null>(null)
-  const globalBufferedRef = useRef<BufferedScheduler | null>(null)
-
-  // Expose engine to parent via engineRef prop
+  // Seed the workspace file once on mount.
+  const fileIdRef = useRef(FILE_ID)
+  const [seeded, setSeeded] = useState(false)
   useEffect(() => {
-    if (engineRefProp) {
-      engineRefProp.current = engine
-    }
-  })
-
-  // Cleanup global BufferedScheduler on unmount
-  useEffect(() => () => { globalBufferedRef.current?.dispose() }, [])
-
-  // Load user presets from IndexedDB on mount
-  useEffect(() => {
-    VizPresetStore.getAll().then(presets => {
-      setUserDescriptors(presets.map(p => compilePreset(p)))
-    })
-  }, [])
-
-  const allDescriptors = [...vizDescriptors, ...userDescriptors]
-
-  const handlePresetSaved = useCallback((preset: VizPreset) => {
-    const compiled = compilePreset(preset)
-    setUserDescriptors(prev => {
-      const existing = prev.findIndex(d => d.id === preset.id)
-      if (existing >= 0) {
-        const next = [...prev]
-        next[existing] = compiled
-        return next
-      }
-      return [...prev, compiled]
-    })
-  }, [])
-
-  // Apply theme tokens to container
-  const themeKey = typeof theme === 'string' ? theme : 'dark'
-  useEffect(() => {
-    if (!containerRef.current) return
-    applyTheme(containerRef.current, theme)
-  }, [theme])
-
-  const { clearAll: clearHighlights } = useHighlighting(editorRef.current, hapStream)
-
-  const handlePlay = useCallback(async () => {
-    setErrorMsg(null)
-    await engine.init()
-
-    // Read streaming component for highlighting
-    const streaming = engine.components.streaming
-    if (streaming) {
-      setHapStream(streaming.hapStream)
-    }
-
-    // Read audio component for viz panel
-    const audio = engine.components.audio
-    if (audio) {
-      setAnalyser(audio.analyser)
-    }
-
-    // Route runtime audio errors into the UI
-    engine.setRuntimeErrorHandler((err) => {
-      setErrorMsg(err.message)
-      onError?.(err)
-    })
-
-    clearHighlights()
-    const { error } = await engine.evaluate(code)
-    const monaco = monacoRef.current
-    const model = editorRef.current?.getModel() ?? null
-    if (error) {
-      const msg = error.message ?? String(error)
-      setErrorMsg(msg)
-      onError?.(error)
-      if (monaco && model) setEvalError(monaco, model, error)
-      return
-    }
-    if (monaco && model) clearEvalErrors(monaco, model)
-
-    // Fire post-evaluate callback (for StrudelEditor to extract BPM, soundNames, etc.)
-    onPostEvaluate?.(engine)
-
-    // Re-add inline view zones for patterns that called .viz() (they reset after evaluate).
-    const components = engine.components
-    if (components.inlineViz?.vizRequests.size && editorRef.current) {
-      viewZoneCleanupRef.current?.cleanup()
-      viewZoneCleanupRef.current = addInlineViewZones(
-        editorRef.current,
-        components,
-        allDescriptors
-      )
-    }
-
-    // Resume inline zones if they were paused by a previous stop (ZONE-04)
-    viewZoneCleanupRef.current?.resume()
-
-    const queryable = engine.components.queryable
-    if (queryable?.scheduler) {
-      // Engine provides native queryable (Strudel) — use it directly
-      globalBufferedRef.current?.dispose()
-      globalBufferedRef.current = null
-      setPatternScheduler(queryable.scheduler)
-    } else if (streaming && audio) {
-      // No queryable — auto-create BufferedScheduler from global HapStream
-      if (!globalBufferedRef.current) {
-        globalBufferedRef.current = new BufferedScheduler(streaming.hapStream, audio.audioCtx)
-      }
-      setPatternScheduler(globalBufferedRef.current)
-    }
-
-    engine.play()
-    setIsPlaying(true)
-    onPlay?.()
-  }, [code, engine, onPlay, onError, onPostEvaluate, clearHighlights, allDescriptors])
-
-  const handleStop = useCallback(() => {
-    engine.stop()
-    clearHighlights()
-    viewZoneCleanupRef.current?.pause()
-    setIsPlaying(false)
-    onStop?.()
-    const monaco = monacoRef.current
-    const model = editorRef.current?.getModel() ?? null
-    if (monaco && model) clearEvalErrors(monaco, model)
-  }, [engine, onStop, clearHighlights])
-
-  const handleCodeChange = useCallback(
-    (val: string) => {
-      if (!isControlled) setInternalCode(val)
-      onChange?.(val)
-      // Code changed — old inline viz zones no longer correspond to current code
-      viewZoneCleanupRef.current?.cleanup()
-      viewZoneCleanupRef.current = null
-    },
-    [isControlled, onChange]
-  )
-
-  // Keyboard shortcuts wired through Monaco actions
-  const handleMonacoMount = useCallback(
-    (editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) => {
-      editorRef.current = editor
-      monacoRef.current = monaco
-
-      editor.addAction({
-        id: 'stave.play',
-        label: 'Play',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-        run: () => {
-          if (isPlaying) handleStop()
-          else handlePlay()
-        },
-      })
-
-      editor.addAction({
-        id: 'stave.stop',
-        label: 'Stop',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period],
-        run: () => handleStop(),
-      })
-    },
-    [isPlaying, handlePlay, handleStop]
-  )
-
-  // Auto-refresh: re-evaluate on code change (debounced 500ms) while playing
-  const handlePlayRef = useRef(handlePlay)
-  handlePlayRef.current = handlePlay
-  const codeRef = useRef(code)
-  codeRef.current = code
-  const prevCodeRef = useRef(code)
-  useEffect(() => {
-    if (!autoRefresh || !isPlaying) return
-    if (codeRef.current === prevCodeRef.current) return
-    const id = setTimeout(() => {
-      prevCodeRef.current = codeRef.current
-      handlePlayRef.current()
-    }, 500)
-    return () => clearTimeout(id)
-  }, [autoRefresh, isPlaying, code])
-
-  // Esc key exits fullscreen
-  useEffect(() => {
-    if (!isFullscreen) return
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsFullscreen(false)
-    }
-    window.addEventListener('keydown', handleEsc)
-    return () => window.removeEventListener('keydown', handleEsc)
-  }, [isFullscreen])
-
-  // Auto-play on mount (no dispose — parent owns engine lifecycle)
-  useEffect(() => {
-    if (autoPlay) handlePlay()
+    createWorkspaceFile(
+      fileIdRef.current,
+      'pattern.strudel',
+      initialCode,
+      'strudel',
+    )
+    setSeeded(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const monoTheme: 'dark' | 'light' =
-    typeof theme === 'string' ? theme : 'dark'
+  // Create runtime once.
+  useEffect(() => {
+    if (!seeded) return
+    const rt = new LiveCodingRuntime(
+      fileIdRef.current,
+      engine,
+      () => getFile(fileIdRef.current)?.content ?? '',
+    )
+    runtimeRef.current = rt
 
-  const handleToggleFullscreen = useCallback(() => {
-    setIsFullscreen(prev => !prev)
+    // Expose engine to parent via engineRef prop.
+    if (engineRefProp) engineRefProp.current = engine
+
+    // Subscribe to runtime events.
+    const unsubError = rt.onError((err) => {
+      setError(err)
+      onError?.(err)
+    })
+    const unsubPlaying = rt.onPlayingChanged((playing) => {
+      setIsPlaying(playing)
+      if (playing) {
+        onPlay?.()
+        setBpm(rt.getBpm())
+        onPostEvaluate?.(engine)
+      } else {
+        onStop?.()
+      }
+    })
+
+    // Dispose on unmount (U3).
+    return () => {
+      unsubError()
+      unsubPlaying()
+      rt.dispose()
+      runtimeRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seeded, engine])
+
+  // Auto-play on mount.
+  const autoPlayedRef = useRef(false)
+  useEffect(() => {
+    if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return
+    autoPlayedRef.current = true
+    runtimeRef.current.play()
+  }, [autoPlay, seeded])
+
+  // -- Controlled prop sync --
+  // When the embedder passes a new `code` prop, sync it into the workspace
+  // file store. Equality guard prevents overwriting in-progress keystrokes.
+  useEffect(() => {
+    if (!isControlled || !seeded) return
+    const file = getFile(fileIdRef.current)
+    if (file && controlledCode !== file.content) {
+      setContent(fileIdRef.current, controlledCode!)
+    }
+  }, [controlledCode, isControlled, seeded])
+
+  // Listen to workspace file changes and propagate to onChange.
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  useEffect(() => {
+    if (!seeded) return
+    return storeSubscribe(fileIdRef.current, () => {
+      const file = getFile(fileIdRef.current)
+      if (file) onChangeRef.current?.(file.content)
+    })
+  }, [seeded])
+
+  // -- Shell chrome wiring --
+  const handlePlay = useCallback(() => {
+    setError(null)
+    runtimeRef.current?.play()
   }, [])
 
-  const showVizPanel = _visualizer !== 'off' && !isFullscreen
+  const handleStop = useCallback(() => {
+    runtimeRef.current?.stop()
+  }, [])
 
-  // No-op export handler for generic toolbar (export is engine-specific)
-  const noopExport = useCallback(() => {}, [])
+  const chromeForTab = useCallback(
+    (tab: WorkspaceTab): React.ReactNode | undefined => {
+      if (tab.kind !== 'editor') return undefined
+      const rt = runtimeRef.current
+      if (!rt) return undefined
+      const provider = getRuntimeProviderForLanguage('strudel')
+      if (!provider) return undefined
+      const ctx: ChromeContext = {
+        runtime: rt,
+        file: getFile(fileIdRef.current)!,
+        isPlaying,
+        error,
+        bpm: bpmProp ?? bpm,
+        onPlay: handlePlay,
+        onStop: handleStop,
+        chromeExtras: toolbarExtra,
+      }
+      return provider.renderChrome(ctx)
+    },
+    [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra],
+  )
+
+  // -- Shell tabs --
+  const initialTabs: WorkspaceTab[] = [
+    { kind: 'editor', id: 'editor-main', fileId: fileIdRef.current },
+  ]
+
+  if (!seeded) return null
 
   return (
-    <div
-      ref={containerRef}
-      data-stave-theme={themeKey}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--background)',
-        border: isFullscreen ? 'none' : '1px solid var(--border)',
-        borderRadius: isFullscreen ? 0 : 8,
-        overflow: 'hidden',
-        fontFamily: 'var(--font-mono)',
-        ...(isFullscreen ? {
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-        } : {}),
-      }}
-    >
-      {showToolbar && (
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{ flex: 1 }}>
-            <Toolbar
-              isPlaying={isPlaying}
-              bpm={bpm}
-              error={errorMsg}
-              isExporting={isExportingProp}
-              onPlay={handlePlay}
-              onStop={handleStop}
-              onExport={onExportProp ?? noopExport}
-            />
-          </div>
-          {toolbarExtra}
-          <button
-            onClick={() => setAutoRefresh(prev => !prev)}
-            title={autoRefresh ? 'Live mode ON — click to disable' : 'Live mode: auto-update on code change while playing'}
-            style={{
-              background: autoRefresh ? 'rgba(196, 181, 253, 0.15)' : 'none',
-              border: autoRefresh ? '1px solid rgba(196, 181, 253, 0.3)' : '1px solid transparent',
-              borderRadius: 4,
-              color: autoRefresh ? '#c4b5fd' : 'var(--text-secondary, rgba(255,255,255,0.5))',
-              cursor: 'pointer',
-              padding: '3px 7px',
-              fontSize: 11,
-              fontFamily: 'inherit',
-              marginRight: 2,
-            }}
-          >
-            {autoRefresh ? '\u27F3 live' : '\u27F3'}
-          </button>
-          <button
-            onClick={handleToggleFullscreen}
-            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary, rgba(255,255,255,0.5))',
-              cursor: 'pointer',
-              padding: '4px 8px',
-              fontSize: 16,
-              lineHeight: 1,
-              marginRight: 4,
-            }}
-          >
-            {isFullscreen ? '\u22A0' : '\u26F6'}
-          </button>
-        </div>
-      )}
-
-      {!isFullscreen && (showVizPicker ?? true) && (
-        <VizDropdown
-          descriptors={allDescriptors}
-          activeId={activeViz}
-          onIdChange={setActiveViz}
-          onNewViz={() => setShowVizEditor(true)}
-          availableComponents={Object.keys(engine.components) as (keyof EngineComponents)[]}
-        />
-      )}
-
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <StrudelMonaco
-          code={code}
-          onChange={handleCodeChange}
-          height={isFullscreen ? '100%' : height}
-          theme={monoTheme}
-          readOnly={readOnly}
-          onMount={handleMonacoMount}
-          soundNames={soundNames}
-          language={language}
-        />
-      </div>
-
-      {showVizPanel && (
-        <>
-          <button
-            onClick={() => setVizCollapsed(prev => !prev)}
-            style={{
-              background: 'var(--surface, rgba(255,255,255,0.03))',
-              border: 'none',
-              borderTop: '1px solid var(--border, rgba(255,255,255,0.1))',
-              color: 'var(--text-secondary, rgba(255,255,255,0.5))',
-              cursor: 'pointer',
-              padding: '4px 12px',
-              fontSize: 11,
-              fontFamily: 'inherit',
-              textAlign: 'left',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <span style={{
-              display: 'inline-block',
-              transform: vizCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-              transition: 'transform 0.15s ease',
-              fontSize: 10,
-            }}>{'\u25BC'}</span>
-            Visualizer — {allDescriptors.find(d => d.id === activeViz)?.label ?? activeViz}
-          </button>
-          {!vizCollapsed && (
-            <>
-              <VizDropdown
-                descriptors={allDescriptors}
-                activeId={activeViz}
-                onIdChange={setActiveViz}
-                onNewViz={() => setShowVizEditor(true)}
-              />
-              <VizPanel
-                key={activeViz}
-                vizHeight={vizHeight}
-                hapStream={hapStream}
-                analyser={analyser}
-                scheduler={patternScheduler}
-                source={allDescriptors.find(d => d.id === activeViz)?.factory ?? allDescriptors[0].factory}
-              />
-            </>
-          )}
-        </>
-      )}
-
-      {showVizEditor && (
-        <>
-          <button
-            onClick={() => setShowVizEditor(false)}
-            style={{
-              background: 'var(--surface)',
-              border: 'none',
-              borderTop: '1px solid var(--border)',
-              color: 'var(--foreground-muted)',
-              cursor: 'pointer',
-              padding: '4px 12px',
-              fontSize: 11,
-              fontFamily: 'inherit',
-              textAlign: 'left',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <span style={{ fontSize: 10 }}>{'\u25BC'}</span>
-            Viz Editor
-            <span style={{ marginLeft: 'auto', fontSize: 10 }}>{'\u00D7'} close</span>
-          </button>
-          <VizEditor
-            components={engine.components}
-            hapStream={hapStream}
-            analyser={analyser}
-            scheduler={patternScheduler}
-            onPresetSaved={handlePresetSaved}
-            height={250}
-            previewHeight={180}
-          />
-        </>
-      )}
-    </div>
+    <WorkspaceShell
+      initialTabs={initialTabs}
+      theme={theme}
+      height={height}
+      chromeForTab={chromeForTab}
+    />
   )
 }

@@ -62,8 +62,8 @@ export { compilePreset } from './visualizers/vizCompiler'
 
 // Visualizers — editor internals (advanced use)
 export { SplitPane } from './visualizers/editor/SplitPane'
-export { EditorGroup } from './visualizers/editor/EditorGroup'
-export type { VizTab, PreviewMode, EditorGroupState } from './visualizers/editor/vizEditorTypes'
+// EditorGroup deleted in Phase 10.2 Task 09 — replaced by WorkspaceShell.
+// VizTab, PreviewMode, EditorGroupState removed — replaced by WorkspaceTab / WorkspaceGroupState.
 
 // Visualizers — individual sketches (for advanced use: manual P5VizRenderer wrapping)
 export { PianorollSketch } from './visualizers/sketches/PianorollSketch'
@@ -71,3 +71,60 @@ export { ScopeSketch } from './visualizers/sketches/ScopeSketch'
 export { SpectrumSketch } from './visualizers/sketches/SpectrumSketch'
 export { SpiralSketch } from './visualizers/sketches/SpiralSketch'
 export { PitchwheelSketch } from './visualizers/sketches/PitchwheelSketch'
+
+// ---------------------------------------------------------------------------
+// Phase 10.2 — Workspace primitives (Tasks 01–08)
+// ---------------------------------------------------------------------------
+
+// WorkspaceShell + views
+export { WorkspaceShell } from './workspace/WorkspaceShell'
+export { EditorView } from './workspace/EditorView'
+export { PreviewView } from './workspace/PreviewView'
+
+// WorkspaceFile store + hook
+export type { WorkspaceFile, WorkspaceLanguage } from './workspace/types'
+export { createWorkspaceFile, getFile, setContent } from './workspace/WorkspaceFile'
+export { useWorkspaceFile } from './workspace/useWorkspaceFile'
+export type { UseWorkspaceFileResult } from './workspace/useWorkspaceFile'
+
+// Audio bus
+export { workspaceAudioBus } from './workspace/WorkspaceAudioBus'
+export type { AudioSourceRef, AudioPayload, WorkspaceAudioBus } from './workspace/types'
+
+// Runtime provider registry + built-ins
+export { LiveCodingRuntime } from './workspace/runtime/LiveCodingRuntime'
+export type {
+  LiveCodingRuntime as LiveCodingRuntimeInterface,
+  LiveCodingRuntimeProvider,
+  ChromeContext,
+} from './workspace/types'
+export {
+  liveCodingRuntimeRegistry,
+  registerRuntimeProvider,
+  getRuntimeProviderForExtension,
+  getRuntimeProviderForLanguage,
+  STRUDEL_RUNTIME,
+  SONICPI_RUNTIME,
+} from './workspace/runtime'
+
+// Preview provider registry + built-ins
+export type { PreviewProvider, PreviewContext } from './workspace/PreviewProvider'
+export {
+  previewProviderRegistry,
+  registerPreviewProvider,
+  getPreviewProviderForExtension,
+  getPreviewProviderForLanguage,
+  HYDRA_VIZ,
+  P5_VIZ,
+  seedFromPreset,
+  seedFromPresetId,
+  flushToPreset,
+} from './workspace/preview'
+
+// Shell types
+export type {
+  WorkspaceTab,
+  WorkspaceGroupState,
+  WorkspaceShellProps,
+  ChromeForTab,
+} from './workspace/types'
