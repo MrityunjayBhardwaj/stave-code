@@ -23,6 +23,12 @@
  * - Types: WorkspaceTab, WorkspaceGroupState, WorkspaceShellProps,
  *          ChromeForTab, LiveCodingRuntimeProviderStub
  * - Shell: WorkspaceShell
+ *
+ * Task 05:
+ * - Types:    LiveCodingRuntime, LiveCodingRuntimeProvider, ChromeContext
+ * - Class:    LiveCodingRuntime (in runtime/)
+ * - Registry: liveCodingRuntimeRegistry, register/get* helpers
+ * - Built-ins: STRUDEL_RUNTIME, SONICPI_RUNTIME
  */
 
 export type { WorkspaceFile, WorkspaceLanguage } from './types'
@@ -44,6 +50,21 @@ export type {
   ChromeForTab,
   LiveCodingRuntimeProviderStub,
 } from './types'
+export type {
+  LiveCodingRuntime as LiveCodingRuntimeInterface,
+  LiveCodingRuntimeProvider,
+  ChromeContext,
+} from './types'
+export {
+  LiveCodingRuntime,
+  extractBpmFromCode,
+  liveCodingRuntimeRegistry,
+  registerRuntimeProvider,
+  getRuntimeProviderForExtension,
+  getRuntimeProviderForLanguage,
+  STRUDEL_RUNTIME,
+  SONICPI_RUNTIME,
+} from './runtime'
 export {
   createWorkspaceFile,
   getFile,

@@ -30,6 +30,7 @@ import type { ReactNode } from 'react'
 import type {
   AudioComponent,
   InlineVizComponent,
+  LiveCodingEngine,
   QueryableComponent,
   StreamingComponent,
 } from '../engine/LiveCodingEngine'
@@ -438,28 +439,191 @@ export interface WorkspaceGroupState {
   readonly backgroundTabId?: string
 }
 
+// ---------------------------------------------------------------------------
+// Task 05 — LiveCodingRuntime + LiveCodingRuntimeProvider + ChromeContext
+// ---------------------------------------------------------------------------
+
 /**
- * Forward-declared runtime provider shape, used as a prop slot type on
- * `WorkspaceShell`. Task 05 fleshes this interface out with the concrete
- * `LiveCodingRuntime` wrapper, `ChromeContext`, engine lifecycle, and
- * `renderChrome` signature. Task 04 only needs the shape-level fields so
- * the shell can iterate a `runtimeProviders` prop and look up a provider
- * by language when a pattern-file editor tab becomes active.
+ * Per-file runtime that wraps a `LiveCodingEngine`. Created by a
+ * `LiveCodingRuntimeProvider.createEngine`-derived factory inside Task 09's
+ * compat shims (and Task 10's app rewire). Owns the engine lifecycle for a
+ * single workspace file id, publishes its component bag to the workspace
+ * audio bus when playing, and unpublishes on stop / dispose.
  *
  * @remarks
- * The `createEngine` and `renderChrome` return types are intentionally
- * `unknown` / `React.ReactNode` here — Task 04 never invokes them. It
- * just stores the array and hands it to `chromeForTab`. Task 05 will
- * move this declaration into its own file and flesh out the context
- * type; the name and `extensions` / `language` / `createEngine` /
- * `renderChrome` slots are stable across the forward.
+ * ## What the runtime is, and is not
+ *
+ * - **Is** a strict passthrough wrapper around an engine plus the bus
+ *   publish/unpublish wiring required to surface the engine's component
+ *   bag to viz consumers and the EditorView (for inline view zones / S7).
+ * - **Is** the elevation point for `BufferedScheduler` (S8) — when an
+ *   engine ships streaming + audio without a native queryable, the
+ *   runtime constructs a `BufferedScheduler` lazily on first `play()` and
+ *   places it on the published payload's `scheduler` slot.
+ * - **Is NOT** a place to install Pattern.prototype interception (PV2 / P2).
+ *   All Strudel Pattern method wrappers are installed inside
+ *   `StrudelEngine.evaluate()`'s setter trap and live nowhere else. The
+ *   runtime never reads, writes, or proxies anything on `Pattern.prototype`.
+ * - **Is NOT** a place to mutate `file.content` before evaluation (P1).
+ *   The runtime passes the file content unchanged into `engine.evaluate`.
+ *
+ * ## Lifecycle (PK1 — STRICT)
+ *
+ * `play()` runs nine ordered steps with no React state writes interleaved
+ * between `engine.evaluate()` resolving and `bus.publish()` firing:
+ *
+ *   1. `await engine.init()` if not already initialized.
+ *   2. `await engine.evaluate(getFileContent())`.
+ *   3. If `error` — fire `onError`, do not publish, do not call play.
+ *   4. SYNCHRONOUSLY read `engine.components` (no awaits between here and
+ *      step 7).
+ *   5. Determine the queryable scheduler. Native if `components.queryable`,
+ *      otherwise elevate via `BufferedScheduler` (S8).
+ *   6. Build the `AudioPayload` with `hapStream`, `analyser`, `scheduler`,
+ *      `inlineViz`, and the full `audio` slot.
+ *   7. `workspaceAudioBus.publish(fileId, payload)` — subscribers fire SYNC.
+ *   8. `engine.play()` — schedules audio.
+ *   9. Fire `onPlayingChanged(true)`.
+ *
+ * The `publish` BEFORE `play` ordering matters: viz consumers and the
+ * EditorView's inline-zone subscription must see the payload before the
+ * first hap event fires. The `publish` AFTER `evaluate` ordering matters
+ * even more: only after `evaluate` resolves does `engine.components`
+ * contain the captured `inlineViz.vizRequests` for the current code.
  */
-export interface LiveCodingRuntimeProviderStub {
-  readonly extensions: readonly string[]
-  readonly language: string
-  createEngine(): unknown
-  renderChrome(ctx: unknown): ReactNode
+export interface LiveCodingRuntime {
+  /** The wrapped engine. Owned by the runtime; never escapes. */
+  readonly engine: LiveCodingEngine
+
+  /** Workspace file id this runtime publishes under on the audio bus. */
+  readonly fileId: string
+
+  /**
+   * Initialize the engine if it has not been initialized yet. Idempotent.
+   * `play()` calls this internally; callers usually do not need to.
+   */
+  init(): Promise<void>
+
+  /**
+   * Evaluate the current file content, publish the engine's component bag
+   * to the bus under `fileId`, then start the engine. Returns the
+   * evaluation error if any (also fires `onError` listeners). On error, the
+   * payload is NOT published and `engine.play()` is NOT called.
+   *
+   * @returns `{ error: null }` on success; `{ error: Error }` if
+   *   `engine.evaluate` returned an error or the runtime caught one
+   *   bridging to the bus.
+   */
+  play(): Promise<{ error: Error | null }>
+
+  /**
+   * Stop the engine and unpublish from the bus. Idempotent — calling
+   * `stop()` twice is safe.
+   */
+  stop(): void
+
+  /**
+   * Dispose the runtime — calls `stop()`, releases the
+   * `BufferedScheduler` if one was elevated, and disposes the underlying
+   * engine. After `dispose()`, the runtime is unusable.
+   */
+  dispose(): void
+
+  /**
+   * Subscribe to runtime errors — fired by `play()` on evaluate failure
+   * AND by the engine's runtime error handler (audio scheduling errors
+   * after `play()` succeeded). Returns an idempotent unsubscribe function.
+   * S7 — the EditorView subscribes to this for `setEvalError` markers,
+   * the chrome subscribes for the error badge.
+   */
+  onError(cb: (err: Error) => void): () => void
+
+  /**
+   * Subscribe to playing-state changes. Fires SYNC after `play()` succeeds
+   * with `true`, after `stop()` with `false`. Returns an idempotent
+   * unsubscribe function. The chrome subscribes to drive its
+   * `isPlaying`-dependent rendering without prop-drilling.
+   */
+  onPlayingChanged(cb: (playing: boolean) => void): () => void
+
+  /**
+   * Read the engine's current BPM, if extractable. The runtime parses
+   * `setcps(...)` from the last evaluated code and converts to BPM
+   * (Strudel) or returns `undefined` for engines that have no analogous
+   * concept. Used by the chrome's BPM display (U8). Returns `undefined`
+   * before the first successful `play()`.
+   */
+  getBpm(): number | undefined
 }
+
+/**
+ * Context object handed to `LiveCodingRuntimeProvider.renderChrome` on every
+ * chrome render. The chrome is a React component (the provider's
+ * `renderChrome` is itself a React functional component), so it can use
+ * hooks to subscribe to `runtime.onError` / `runtime.onPlayingChanged` and
+ * track its own `isPlaying` / `error` state — but for callers that already
+ * have those values in scope (e.g., the compat shims that wire chrome from
+ * outside the provider), passing them through the context avoids a second
+ * subscription.
+ *
+ * Per CONTEXT D-07 + U8.
+ */
+export interface ChromeContext {
+  /** The living runtime instance. The chrome calls `runtime.play()` etc. */
+  readonly runtime: LiveCodingRuntime
+  /** The workspace file the runtime serves. */
+  readonly file: WorkspaceFile
+  /** Current playing state — sourced by the embedder. */
+  readonly isPlaying: boolean
+  /** Current evaluation / runtime error, if any. */
+  readonly error: Error | null
+  /**
+   * Beats-per-minute display value. Built-in per U8 — the runtime extracts
+   * BPM from the engine where available; the chrome only renders. May be
+   * `undefined` if BPM is not yet known or is not applicable.
+   */
+  readonly bpm?: number
+  /** Play handler — usually `() => runtime.play()`. */
+  onPlay(): void
+  /** Stop handler — usually `() => runtime.stop()`. */
+  onStop(): void
+  /**
+   * Optional embedder-injected extras (e.g., the export button surfaced by
+   * the legacy `StrudelEditor` shim in Task 09). Rendered to the right of
+   * the built-in transport controls. Per U8.
+   */
+  readonly chromeExtras?: ReactNode
+}
+
+/**
+ * Per-extension provider for executable file types. Owns engine creation
+ * AND chrome rendering. Registered in the `liveCodingRuntimeRegistry` keyed
+ * by extension. The shell never invokes a provider directly — Task 09's
+ * compat shims and Task 10's app rewire instantiate runtimes from the
+ * provider's `createEngine` and pass `renderChrome(ctx)` into
+ * `WorkspaceShell.chromeForTab`.
+ */
+export interface LiveCodingRuntimeProvider {
+  /** Extensions this provider claims, including the leading dot. */
+  readonly extensions: readonly string[]
+  /** Workspace language id this provider corresponds to. */
+  readonly language: WorkspaceLanguage
+  /** Factory for a fresh engine instance. The runtime owns disposal. */
+  createEngine(): LiveCodingEngine
+  /**
+   * Render the per-tab chrome for an editor of this language. Receives
+   * the live runtime + state. Returns a `ReactNode` that the host
+   * (Task 09 / Task 10) injects into `EditorView.chromeSlot`.
+   */
+  renderChrome(ctx: ChromeContext): ReactNode
+}
+
+/**
+ * Forward-compatible alias retained from Task 04. Resolves to the real
+ * `LiveCodingRuntimeProvider` interface so any consumer that imported the
+ * stub from the barrel keeps compiling without source changes.
+ */
+export type LiveCodingRuntimeProviderStub = LiveCodingRuntimeProvider
 
 /**
  * Signature of the optional callback the shell uses to resolve per-tab
