@@ -264,7 +264,8 @@ export type WorkspaceTheme = 'dark' | 'light' | StrudelTheme
  * - Control over Monaco options (font size, minimap, etc.) — Task 03 hard
  *   codes the same option set the legacy `EditorGroup.tsx` used. Future
  *   phases can open this up if embedders need it.
- * - `onError` — runtime errors belong to the chrome, which Task 05 owns.
+ * - Task 07 added: bus subscription for inline zones + highlighting,
+ *   `error` prop for diagnostics squiggles (S7).
  */
 export interface EditorViewProps {
   /**
@@ -299,6 +300,17 @@ export interface EditorViewProps {
    * layer — typed consumers cast at the call site.
    */
   readonly onMount?: (editor: unknown, monaco: unknown) => void
+
+  /**
+   * Current runtime evaluation error, or `null` when no error is active.
+   * The parent (compat shim or shell integration) manages the runtime's
+   * `onError` subscription and passes the latest error through this prop.
+   * When non-null, `EditorView` calls `setEvalError(monaco, model, error)`
+   * to show a squiggle marker. When cleared to `null`, it calls
+   * `clearEvalErrors(monaco, model)`. S7 — diagnostics driven by prop,
+   * not by direct engine subscription inside EditorView.
+   */
+  readonly error?: Error | null
 }
 
 /**

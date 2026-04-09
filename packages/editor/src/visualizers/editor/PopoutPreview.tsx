@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import type { VizDescriptor } from '../types'
 import type { HapStream } from '../../engine/HapStream'
 import type { PatternScheduler } from '../types'
+import { applyTheme } from '../../theme/tokens'
 
 interface PopoutPreviewProps {
   descriptor: VizDescriptor | null
@@ -9,6 +10,7 @@ interface PopoutPreviewProps {
   analyser: AnalyserNode | null
   scheduler: PatternScheduler | null
   onClose: () => void
+  theme?: 'dark' | 'light'
 }
 
 /**
@@ -22,6 +24,7 @@ export function usePopoutPreview({
   analyser,
   scheduler,
   onClose,
+  theme = 'dark',
 }: PopoutPreviewProps) {
   const windowRef = useRef<Window | null>(null)
   const rendererRef = useRef<ReturnType<VizDescriptor['factory']> | null>(null)
@@ -64,7 +67,6 @@ export function usePopoutPreview({
     popup.document.title = `Viz: ${descriptor.label}`
     popup.document.body.style.margin = '0'
     popup.document.body.style.padding = '0'
-    popup.document.body.style.background = '#090912'
     popup.document.body.style.overflow = 'hidden'
 
     const container = popup.document.createElement('div')
@@ -72,6 +74,13 @@ export function usePopoutPreview({
     container.style.height = '100vh'
     container.style.position = 'relative'
     popup.document.body.appendChild(container)
+
+    // Apply theme via CSS custom properties (S3 / PV6 / P6).
+    // Replaces the hardcoded '#090912' background. The theme tokens set
+    // --background on the container; the popup body inherits via the
+    // container's background style binding.
+    applyTheme(container, theme)
+    popup.document.body.style.background = container.style.getPropertyValue('--background') || '#090912'
 
     // Mount the renderer
     try {

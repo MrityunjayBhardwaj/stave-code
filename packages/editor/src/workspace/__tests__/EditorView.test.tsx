@@ -95,6 +95,22 @@ vi.mock('@monaco-editor/react', () => ({
   },
 }))
 
+// Mock modules imported transitively by EditorView (Task 07 wiring)
+// to avoid loading P5VizRenderer → gifenc (CJS/ESM incompatibility in test).
+vi.mock('../../visualizers/defaultDescriptors', () => ({
+  DEFAULT_VIZ_DESCRIPTORS: [],
+}))
+vi.mock('../../visualizers/viewZones', () => ({
+  addInlineViewZones: vi.fn(() => ({ cleanup: vi.fn(), pause: vi.fn(), resume: vi.fn() })),
+}))
+vi.mock('../../monaco/useHighlighting', () => ({
+  useHighlighting: vi.fn(() => ({ clearAll: vi.fn() })),
+}))
+vi.mock('../../monaco/diagnostics', () => ({
+  setEvalError: vi.fn(),
+  clearEvalErrors: vi.fn(),
+}))
+
 // Import AFTER the mock so `EditorView` picks it up.
 import { EditorView } from '../EditorView'
 import {
