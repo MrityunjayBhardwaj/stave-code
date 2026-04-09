@@ -29,6 +29,12 @@
  * - Class:    LiveCodingRuntime (in runtime/)
  * - Registry: liveCodingRuntimeRegistry, register/get* helpers
  * - Built-ins: STRUDEL_RUNTIME, SONICPI_RUNTIME
+ *
+ * Task 06:
+ * - Registry:   previewProviderRegistry, register/get* helpers
+ * - Built-ins:  HYDRA_VIZ, P5_VIZ (MARKDOWN_HTML deferred per U7)
+ * - Bridge:     seedFromPreset, seedFromPresetId, flushToPreset
+ *               (viz preset ↔ workspace file, per S6)
  */
 
 export type { WorkspaceFile, WorkspaceLanguage } from './types'
@@ -82,6 +88,21 @@ export type {
   PreviewContext,
   PreviewReloadPolicy,
 } from './PreviewProvider'
+export {
+  previewProviderRegistry,
+  registerPreviewProvider,
+  getPreviewProviderForExtension,
+  getPreviewProviderForLanguage,
+  createCompiledVizProvider,
+  HYDRA_VIZ,
+  P5_VIZ,
+  seedFromPreset,
+  seedFromPresetId,
+  flushToPreset,
+  workspaceFileIdForPreset,
+  languageForPresetRenderer,
+  getPresetIdForFile,
+} from './preview'
 export {
   ensureWorkspaceLanguages,
   toMonacoLanguage,
