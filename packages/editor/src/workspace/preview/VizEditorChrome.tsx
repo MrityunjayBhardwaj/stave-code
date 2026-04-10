@@ -23,11 +23,69 @@ import type { AudioSourceRef } from '../types'
 import { workspaceAudioBus } from '../WorkspaceAudioBus'
 import {
   startSampleSound,
-  stopSampleSound,
   isSampleSoundPlaying,
   SAMPLE_SOUND_SOURCE_ID,
   SAMPLE_SOUND_LABEL,
 } from '../sampleSound'
+import {
+  startDrumPattern,
+  isDrumPatternPlaying,
+  DRUM_PATTERN_SOURCE_ID,
+  DRUM_PATTERN_LABEL,
+} from '../drumPattern'
+import {
+  startChordProgression,
+  isChordProgressionPlaying,
+  CHORD_PROGRESSION_SOURCE_ID,
+  CHORD_PROGRESSION_LABEL,
+} from '../chordProgression'
+
+/**
+ * Registry of built-in example audio sources. Each entry describes
+ * a source that's always available in the chrome's source dropdown
+ * alongside user-published patterns. Keeping this as a data-driven
+ * list (rather than three hardcoded `<option>` branches in JSX)
+ * makes it trivial to add more examples later — just append an
+ * entry and the dropdown picks it up automatically.
+ *
+ * `startIfIdle` is the click-handler side effect: lazy-start the
+ * source if it isn't running yet. Called from inside the Play click
+ * handler so the browser's autoplay policy accepts the
+ * AudioContext creation (which needs a user gesture).
+ */
+interface BuiltinExampleSource {
+  readonly sourceId: string
+  readonly label: string
+  readonly startIfIdle: () => void
+}
+
+const BUILTIN_EXAMPLE_SOURCES: readonly BuiltinExampleSource[] = [
+  {
+    sourceId: SAMPLE_SOUND_SOURCE_ID,
+    label: SAMPLE_SOUND_LABEL,
+    startIfIdle: () => {
+      if (!isSampleSoundPlaying()) startSampleSound()
+    },
+  },
+  {
+    sourceId: DRUM_PATTERN_SOURCE_ID,
+    label: DRUM_PATTERN_LABEL,
+    startIfIdle: () => {
+      if (!isDrumPatternPlaying()) startDrumPattern()
+    },
+  },
+  {
+    sourceId: CHORD_PROGRESSION_SOURCE_ID,
+    label: CHORD_PROGRESSION_LABEL,
+    startIfIdle: () => {
+      if (!isChordProgressionPlaying()) startChordProgression()
+    },
+  },
+]
+
+const BUILTIN_SOURCE_IDS = new Set(
+  BUILTIN_EXAMPLE_SOURCES.map((s) => s.sourceId),
+)
 
 const btnStyle: React.CSSProperties = {
   background: 'none',
@@ -122,33 +180,37 @@ export function VizEditorChrome({
   // surface, not a transport" model). Otherwise it opens a fresh preview
   // tab pinned to the current source selection.
   //
-  // Starts the sample sound lazily if the user picked it and it isn't
-  // running yet; the browser's autoplay policy requires this to happen
-  // inside the click handler (user gesture), so we can't do it on
-  // selection change.
+  // If the user picked one of the built-in example sources (sample
+  // sound, drum pattern, chord progression), we lazy-start it here
+  // inside the click handler so the browser's autoplay policy
+  // accepts the AudioContext creation. A `<select>` change event
+  // also counts as a user gesture, but deferring to the Play click
+  // is simpler and matches what users expect: nothing plays until
+  // they hit Preview.
   const handleOpenPreviewClick = useCallback(() => {
-    if (
-      selectedSource.kind === 'file' &&
-      selectedSource.fileId === SAMPLE_SOUND_SOURCE_ID &&
-      !isSampleSoundPlaying()
-    ) {
-      startSampleSound()
+    if (selectedSource.kind === 'file') {
+      const builtin = BUILTIN_EXAMPLE_SOURCES.find(
+        (s) =>
+          selectedSource.kind === 'file' &&
+          s.sourceId === selectedSource.fileId,
+      )
+      if (builtin) builtin.startIfIdle()
     }
     onOpenPreview(selectedSource)
   }, [onOpenPreview, selectedSource])
 
   // Build the list of available audio sources. Order:
   //   1. Default (follow most recent)
-  //   2. Sample sound — always shown so the user can test without a
-  //      real pattern playing
+  //   2. Built-in example sources (sample sound + prebaked schedulers)
+  //      — always shown so users can test without a real pattern
   //   3. Every current bus publisher (file: entries from listSources)
-  //      EXCEPT the sample sound itself (it's already above)
+  //      EXCEPT the built-in example ids (they're already rendered above)
   //   4. None (demo mode)
   // The bus's listSources is read on every render — fresh values each
   // time, no stale cache.
   const busSources = workspaceAudioBus.listSources()
   const patternSources = busSources.filter(
-    (s) => s.sourceId !== SAMPLE_SOUND_SOURCE_ID,
+    (s) => !BUILTIN_SOURCE_IDS.has(s.sourceId),
   )
 
   // Handle source selection change. Parses the string into a ref and
@@ -251,9 +313,16 @@ export function VizEditorChrome({
         }}
       >
         <option value="default">default (follow most recent)</option>
-        <option value={`file:${SAMPLE_SOUND_SOURCE_ID}`}>
-          {SAMPLE_SOUND_LABEL}
-        </option>
+        <optgroup label="built-in examples">
+          {BUILTIN_EXAMPLE_SOURCES.map((src) => (
+            <option
+              key={src.sourceId}
+              value={`file:${src.sourceId}`}
+            >
+              {src.label}
+            </option>
+          ))}
+        </optgroup>
         {patternSources.length > 0 && (
           <optgroup label="playing patterns">
             {patternSources.map((source) => (

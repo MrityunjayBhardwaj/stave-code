@@ -9678,9 +9678,9 @@ var SeededRandom = class _SeededRandom {
     return { mt: new Uint32Array(this.mt), mti: this.mti };
   }
   /** Restore state from snapshot. */
-  setState(state2) {
-    this.mt.set(state2.mt);
-    this.mti = state2.mti;
+  setState(state4) {
+    this.mt.set(state4.mt);
+    this.mti = state4.mti;
   }
   /** Return next value without advancing state. */
   peek() {
@@ -11378,23 +11378,23 @@ async function runProgram(program, ctx, fxCounter) {
             }
             task.outBus = newBus;
             ctx.bridge.flushMessages();
-            const state2 = {
+            const state4 = {
               bus: newBus,
               groupId: fxGroupId,
               nodeId: fxNodeId,
               outBus: prevOutBus
             };
-            ctx.reusableFx.set(fxKey, state2);
+            ctx.reusableFx.set(fxKey, state4);
             for (let rep = 0; rep < reps; rep++) await runProgram(step.body, ctx, fxCounter);
           } finally {
             task.outBus = prevOutBus;
             ctx.bridge.flushMessages();
             const killDelay = step.opts.kill_delay ?? 1;
-            const state2 = ctx.reusableFx.get(fxKey);
-            if (state2) {
-              state2.killTimer = setTimeout(() => {
-                ctx.bridge.freeGroup(state2.groupId);
-                ctx.bridge.freeBus(state2.bus);
+            const state4 = ctx.reusableFx.get(fxKey);
+            if (state4) {
+              state4.killTimer = setTimeout(() => {
+                ctx.bridge.freeGroup(state4.groupId);
+                ctx.bridge.freeBus(state4.bus);
                 ctx.reusableFx.delete(fxKey);
               }, killDelay * 1e3);
             }
@@ -17351,6 +17351,169 @@ var SONICPI_RUNTIME = {
   createEngine: () => new SonicPiEngine2(),
   renderChrome: (ctx) => /* @__PURE__ */ jsx(SonicPiChrome, { ...ctx })
 };
+
+// src/workspace/drumPattern.ts
+var DRUM_PATTERN_SOURCE_ID = "__example_drums__";
+var DRUM_PATTERN_LABEL = "Example: drum pattern";
+var BAR_SECONDS = 2;
+var HIT_DURATION = 0.1;
+var DRUM_PATTERN = [
+  { s: "bd", midi: 36, beatOffsets: [0, 0.5, 1, 1.5] },
+  { s: "sd", midi: 38, beatOffsets: [0.5, 1.5] },
+  {
+    s: "hh",
+    midi: 42,
+    beatOffsets: [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75]
+  },
+  { s: "oh", midi: 46, beatOffsets: [1.75] }
+];
+var DrumPatternScheduler = class {
+  constructor(ctx) {
+    this.ctx = ctx;
+  }
+  now() {
+    return this.ctx.currentTime;
+  }
+  query(begin, end) {
+    if (end <= begin) return [];
+    const events = [];
+    const firstBar = Math.floor(begin / BAR_SECONDS);
+    const lastBar = Math.floor(end / BAR_SECONDS);
+    for (let bar = firstBar; bar <= lastBar; bar++) {
+      const barStart = bar * BAR_SECONDS;
+      for (const hit of DRUM_PATTERN) {
+        for (const offset of hit.beatOffsets) {
+          const noteBegin = barStart + offset;
+          const noteEnd = noteBegin + HIT_DURATION;
+          if (noteEnd <= begin || noteBegin >= end) continue;
+          events.push({
+            begin: noteBegin,
+            end: noteEnd,
+            endClipped: noteEnd,
+            note: hit.midi,
+            freq: 440 * Math.pow(2, (hit.midi - 69) / 12),
+            s: hit.s,
+            type: "sample",
+            gain: 1,
+            velocity: 1,
+            color: null,
+            trackId: hit.s
+          });
+        }
+      }
+    }
+    return events;
+  }
+};
+var state2 = null;
+function startDrumPattern() {
+  if (state2) return;
+  const ctx = new AudioContext();
+  const scheduler = new DrumPatternScheduler(ctx);
+  const hapStream = new HapStream();
+  state2 = { ctx, scheduler, hapStream };
+  const payload = {
+    scheduler,
+    hapStream
+  };
+  workspaceAudioBus.publish(DRUM_PATTERN_SOURCE_ID, payload);
+}
+function isDrumPatternPlaying() {
+  return state2 !== null;
+}
+
+// src/workspace/chordProgression.ts
+var CHORD_PROGRESSION_SOURCE_ID = "__example_chords__";
+var CHORD_PROGRESSION_LABEL = "Example: chord progression (I-vi-IV-V)";
+var CHORD_DURATION = 2;
+var CYCLE_SECONDS = 8;
+var CHORD_PROGRESSION = [
+  { root: "C", notes: [60, 64, 67] },
+  { root: "Am", notes: [57, 60, 64] },
+  { root: "F", notes: [53, 57, 60] },
+  { root: "G", notes: [55, 59, 62] }
+];
+var ChordProgressionScheduler = class {
+  constructor(ctx) {
+    this.ctx = ctx;
+  }
+  now() {
+    return this.ctx.currentTime;
+  }
+  query(begin, end) {
+    if (end <= begin) return [];
+    const events = [];
+    const firstCycle = Math.floor(begin / CYCLE_SECONDS);
+    const lastCycle = Math.floor(end / CYCLE_SECONDS);
+    for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
+      const cycleStart = cycle * CYCLE_SECONDS;
+      for (let i2 = 0; i2 < CHORD_PROGRESSION.length; i2++) {
+        const chord2 = CHORD_PROGRESSION[i2];
+        const chordBegin = cycleStart + i2 * CHORD_DURATION;
+        const chordEnd = chordBegin + CHORD_DURATION;
+        if (chordEnd <= begin || chordBegin >= end) continue;
+        for (const midi of chord2.notes) {
+          events.push({
+            begin: chordBegin,
+            end: chordEnd,
+            endClipped: chordEnd,
+            note: midi,
+            freq: 440 * Math.pow(2, (midi - 69) / 12),
+            s: `chord-${chord2.root}`,
+            type: "synth",
+            gain: 1,
+            velocity: 1,
+            color: null,
+            trackId: `chord-${chord2.root}`
+          });
+        }
+      }
+    }
+    return events;
+  }
+};
+var state3 = null;
+function startChordProgression() {
+  if (state3) return;
+  const ctx = new AudioContext();
+  const scheduler = new ChordProgressionScheduler(ctx);
+  const hapStream = new HapStream();
+  state3 = { ctx, scheduler, hapStream };
+  const payload = {
+    scheduler,
+    hapStream
+  };
+  workspaceAudioBus.publish(CHORD_PROGRESSION_SOURCE_ID, payload);
+}
+function isChordProgressionPlaying() {
+  return state3 !== null;
+}
+var BUILTIN_EXAMPLE_SOURCES = [
+  {
+    sourceId: SAMPLE_SOUND_SOURCE_ID,
+    label: SAMPLE_SOUND_LABEL,
+    startIfIdle: () => {
+      if (!isSampleSoundPlaying()) startSampleSound();
+    }
+  },
+  {
+    sourceId: DRUM_PATTERN_SOURCE_ID,
+    label: DRUM_PATTERN_LABEL,
+    startIfIdle: () => {
+      if (!isDrumPatternPlaying()) startDrumPattern();
+    }
+  },
+  {
+    sourceId: CHORD_PROGRESSION_SOURCE_ID,
+    label: CHORD_PROGRESSION_LABEL,
+    startIfIdle: () => {
+      if (!isChordProgressionPlaying()) startChordProgression();
+    }
+  }
+];
+var BUILTIN_SOURCE_IDS = new Set(
+  BUILTIN_EXAMPLE_SOURCES.map((s) => s.sourceId)
+);
 var btnStyle = {
   background: "none",
   border: "1px solid var(--border)",
@@ -17405,14 +17568,17 @@ function VizEditorChrome({
     return unsub;
   }, []);
   const handleOpenPreviewClick = useCallback(() => {
-    if (selectedSource.kind === "file" && selectedSource.fileId === SAMPLE_SOUND_SOURCE_ID && !isSampleSoundPlaying()) {
-      startSampleSound();
+    if (selectedSource.kind === "file") {
+      const builtin = BUILTIN_EXAMPLE_SOURCES.find(
+        (s) => selectedSource.kind === "file" && s.sourceId === selectedSource.fileId
+      );
+      if (builtin) builtin.startIfIdle();
     }
     onOpenPreview(selectedSource);
   }, [onOpenPreview, selectedSource]);
   const busSources = workspaceAudioBus.listSources();
   const patternSources = busSources.filter(
-    (s) => s.sourceId !== SAMPLE_SOUND_SOURCE_ID
+    (s) => !BUILTIN_SOURCE_IDS.has(s.sourceId)
   );
   const handleSourceChange = useCallback(
     (e) => {
@@ -17493,7 +17659,14 @@ function VizEditorChrome({
             },
             children: [
               /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
-              /* @__PURE__ */ jsx("option", { value: `file:${SAMPLE_SOUND_SOURCE_ID}`, children: SAMPLE_SOUND_LABEL }),
+              /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx(
+                "option",
+                {
+                  value: `file:${src.sourceId}`,
+                  children: src.label
+                },
+                src.sourceId
+              )) }),
               patternSources.length > 0 && /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs(
                 "option",
                 {
