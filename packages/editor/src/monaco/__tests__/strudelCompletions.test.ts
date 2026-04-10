@@ -11,13 +11,47 @@ import type * as Monaco from 'monaco-editor'
 // Minimal Monaco mock factory
 // ---------------------------------------------------------------------------
 
-function makeMonaco(registerCompletionItemProvider = vi.fn(() => ({ dispose: vi.fn() }))) {
+/**
+ * Typed factory for the `registerCompletionItemProvider` spy. Returns a
+ * `vi.fn` whose `mock.calls` tuple is `[languageId, provider]` so the
+ * tests can destructure the registered provider without `as unknown`
+ * casts at every extraction site.
+ */
+function makeRegisterSpy() {
+  return vi.fn<
+    [string, Monaco.languages.CompletionItemProvider],
+    Monaco.IDisposable
+  >(() => ({ dispose: vi.fn() }))
+}
+
+function makeMonaco(registerCompletionItemProvider = makeRegisterSpy()) {
   return {
     languages: {
       registerCompletionItemProvider,
       CompletionItemKind: { Method: 0, Value: 1 },
     },
   } as unknown as typeof Monaco
+}
+
+/**
+ * Invoke `provideCompletionItems` synchronously. The real Monaco
+ * signature takes `(model, position, context, token)` and returns a
+ * `CompletionList | Thenable<…>`; our tests only use providers that
+ * return synchronously, so cast the result down to a bare
+ * `CompletionList`. Dummy context/token stay typed as `any` because
+ * none of our providers inspect them.
+ */
+function invokeCompletion(
+  provider: Monaco.languages.CompletionItemProvider,
+  model: Monaco.editor.ITextModel,
+  position: Monaco.Position,
+): Monaco.languages.CompletionList {
+  return provider.provideCompletionItems(
+    model,
+    position,
+    {} as Monaco.languages.CompletionContext,
+    {} as Monaco.CancellationToken,
+  ) as Monaco.languages.CompletionList
 }
 
 function makeModel(lineContent: string): Monaco.editor.ITextModel {
@@ -64,7 +98,7 @@ describe('generateNoteNames', () => {
 
 describe('registerStrudelDotCompletions', () => {
   it('registers a completion provider for strudel language', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeRegisterSpy()
     const monaco = makeMonaco(spy)
     registerStrudelDotCompletions(monaco)
     expect(spy).toHaveBeenCalledOnce()
@@ -73,33 +107,35 @@ describe('registerStrudelDotCompletions', () => {
 
   it('returns a disposable', () => {
     const dispose = vi.fn()
-    const monaco = makeMonaco(vi.fn(() => ({ dispose })))
+    const spy = makeRegisterSpy()
+    spy.mockImplementation(() => ({ dispose }))
+    const monaco = makeMonaco(spy)
     const d = registerStrudelDotCompletions(monaco)
     d.dispose()
     expect(dispose).toHaveBeenCalledOnce()
   })
 
   it('provides suggestions after closing paren dot', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeRegisterSpy()
     const monaco = makeMonaco(spy)
     registerStrudelDotCompletions(monaco)
 
     const provider = spy.mock.calls[0][1]
     // "note("c4")." — cursor is at col 12 (after the dot, 1-indexed)
     const model = makeModel('note("c4").')
-    const result = provider.provideCompletionItems(model, makePosition(12))
+    const result = invokeCompletion(provider, model, makePosition(12))
     expect(result.suggestions.length).toBeGreaterThan(0)
-    expect(result.suggestions.some((s: { label: string }) => s.label === 'fast')).toBe(true)
+    expect(result.suggestions.some((s) => s.label === 'fast')).toBe(true)
   })
 
   it('returns empty suggestions when no dot context', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeRegisterSpy()
     const monaco = makeMonaco(spy)
     registerStrudelDotCompletions(monaco)
 
     const provider = spy.mock.calls[0][1]
     const model = makeModel('const x = ')
-    const result = provider.provideCompletionItems(model, makePosition(11))
+    const result = invokeCompletion(provider, model, makePosition(11))
     expect(result.suggestions).toHaveLength(0)
   })
 })
@@ -110,44 +146,44 @@ describe('registerStrudelDotCompletions', () => {
 
 describe('registerStrudelNoteCompletions', () => {
   it('registers a completion provider for strudel language', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeRegisterSpy()
     const monaco = makeMonaco(spy)
     registerStrudelNoteCompletions(monaco)
     expect(spy.mock.calls[0][0]).toBe('strudel')
   })
 
   it('provides note name suggestions inside note("...")', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeRegisterSpy()
     const monaco = makeMonaco(spy)
     registerStrudelNoteCompletions(monaco)
 
     const provider = spy.mock.calls[0][1]
     const model = makeModel('note("c')
-    const result = provider.provideCompletionItems(model, makePosition(8))
+    const result = invokeCompletion(provider, model, makePosition(8))
     expect(result.suggestions.length).toBeGreaterThan(0)
-    expect(result.suggestions.some((s: { label: string }) => s.label === 'c4')).toBe(true)
+    expect(result.suggestions.some((s) => s.label === 'c4')).toBe(true)
   })
 
   it('returns empty suggestions outside note() context', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeRegisterSpy()
     const monaco = makeMonaco(spy)
     registerStrudelNoteCompletions(monaco)
 
     const provider = spy.mock.calls[0][1]
     const model = makeModel('s("bd')
-    const result = provider.provideCompletionItems(model, makePosition(6))
+    const result = invokeCompletion(provider, model, makePosition(6))
     expect(result.suggestions).toHaveLength(0)
   })
 
   it('matches .note( chained call', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeRegisterSpy()
     const monaco = makeMonaco(spy)
     registerStrudelNoteCompletions(monaco)
 
     const provider = spy.mock.calls[0][1]
     // 's("bd").note("e' is 15 chars, cursor at col 16
     const model = makeModel('s("bd").note("e')
-    const result = provider.provideCompletionItems(model, makePosition(16))
+    const result = invokeCompletion(provider, model, makePosition(16))
     expect(result.suggestions.length).toBeGreaterThan(0)
   })
 })

@@ -43,6 +43,8 @@ function makeOpts(
       addTab: vi.fn(),
       splitGroupWithTab: vi.fn(),
       updateGroupBackground: vi.fn(),
+      closeTab: vi.fn(),
+      findTabByFileId: vi.fn(() => null),
       openPopoutPreview: vi.fn(),
     },
     getPreviewProvider: (lang) => (lang === 'hydra' ? hydraProvider : undefined),

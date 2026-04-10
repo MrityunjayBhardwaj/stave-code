@@ -32,7 +32,20 @@ describe('STRUDEL_DOCS', () => {
 // registerStrudelHover
 // ---------------------------------------------------------------------------
 
-function makeMonaco(registerHoverProvider = vi.fn(() => ({ dispose: vi.fn() }))) {
+/**
+ * Typed factory for the `registerHoverProvider` spy. Returns a
+ * `vi.fn` whose `mock.calls` tuple is `[languageId, provider]` so
+ * tests can destructure the registered hover provider without
+ * `as unknown` casts at every extraction site.
+ */
+function makeHoverSpy() {
+  return vi.fn<
+    [string, Monaco.languages.HoverProvider],
+    Monaco.IDisposable
+  >(() => ({ dispose: vi.fn() }))
+}
+
+function makeMonaco(registerHoverProvider = makeHoverSpy()) {
   return {
     languages: { registerHoverProvider },
     Range: class {
@@ -46,9 +59,26 @@ function makeMonaco(registerHoverProvider = vi.fn(() => ({ dispose: vi.fn() })))
   } as unknown as typeof Monaco
 }
 
+/**
+ * Invoke `provideHover` synchronously. Real signature is
+ * `(model, position, token)` returning `Hover | Thenable<Hover …>`;
+ * our provider is synchronous, so cast down and pass a dummy token.
+ */
+function invokeHover(
+  provider: Monaco.languages.HoverProvider,
+  model: Monaco.editor.ITextModel,
+  position: Monaco.Position,
+): Monaco.languages.Hover | null {
+  return provider.provideHover(
+    model,
+    position,
+    {} as Monaco.CancellationToken,
+  ) as Monaco.languages.Hover | null
+}
+
 describe('registerStrudelHover', () => {
   it('registers a hover provider for strudel language', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeHoverSpy()
     const monaco = makeMonaco(spy)
     registerStrudelHover(monaco)
     expect(spy).toHaveBeenCalledOnce()
@@ -57,14 +87,16 @@ describe('registerStrudelHover', () => {
 
   it('returns a disposable', () => {
     const dispose = vi.fn()
-    const monaco = makeMonaco(vi.fn(() => ({ dispose })))
+    const spy = makeHoverSpy()
+    spy.mockImplementation(() => ({ dispose }))
+    const monaco = makeMonaco(spy)
     const d = registerStrudelHover(monaco)
     d.dispose()
     expect(dispose).toHaveBeenCalledOnce()
   })
 
   it('returns hover content for a known function', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeHoverSpy()
     const monaco = makeMonaco(spy)
     registerStrudelHover(monaco)
 
@@ -74,14 +106,14 @@ describe('registerStrudelHover', () => {
     } as unknown as Monaco.editor.ITextModel
     const position = { lineNumber: 1, column: 3 } as Monaco.Position
 
-    const result = provider.provideHover(model, position)
+    const result = invokeHover(provider, model, position)
     expect(result).not.toBeNull()
-    expect(result.contents).toHaveLength(3)
-    expect(result.contents[0].value).toContain('fast')
+    expect(result!.contents).toHaveLength(3)
+    expect((result!.contents[0] as { value: string }).value).toContain('fast')
   })
 
   it('returns null for unknown word', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeHoverSpy()
     const monaco = makeMonaco(spy)
     registerStrudelHover(monaco)
 
@@ -90,12 +122,12 @@ describe('registerStrudelHover', () => {
       getWordAtPosition: () => ({ word: 'unknownFn', startColumn: 1, endColumn: 9 }),
     } as unknown as Monaco.editor.ITextModel
 
-    const result = provider.provideHover(model, { lineNumber: 1, column: 1 } as Monaco.Position)
+    const result = invokeHover(provider, model, { lineNumber: 1, column: 1 } as Monaco.Position)
     expect(result).toBeNull()
   })
 
   it('returns null when no word at position', () => {
-    const spy = vi.fn(() => ({ dispose: vi.fn() }))
+    const spy = makeHoverSpy()
     const monaco = makeMonaco(spy)
     registerStrudelHover(monaco)
 
@@ -104,7 +136,7 @@ describe('registerStrudelHover', () => {
       getWordAtPosition: () => null,
     } as unknown as Monaco.editor.ITextModel
 
-    const result = provider.provideHover(model, { lineNumber: 1, column: 1 } as Monaco.Position)
+    const result = invokeHover(provider, model, { lineNumber: 1, column: 1 } as Monaco.Position)
     expect(result).toBeNull()
   })
 })
