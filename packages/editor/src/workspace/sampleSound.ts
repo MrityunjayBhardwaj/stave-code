@@ -86,6 +86,11 @@ import type { AudioPayload } from './types'
 import type { PatternScheduler } from '../visualizers/types'
 import type { IREvent } from '../ir/IREvent'
 import { HapStream } from '../engine/HapStream'
+import {
+  notifyPlaybackStarted,
+  notifyPlaybackStopped,
+  registerPlaybackSource,
+} from './playbackCoordinator'
 
 /** Fixed source id the sample sound publishes under on the workspace bus. */
 export const SAMPLE_SOUND_SOURCE_ID = '__sample__'
@@ -253,6 +258,13 @@ export function startSampleSound(): void {
     },
   }
   workspaceAudioBus.publish(SAMPLE_SOUND_SOURCE_ID, payload)
+
+  // Single-source-at-a-time playback: tell the coordinator this
+  // source just started. Any other currently-registered playback
+  // source (a pattern runtime, a different example source) gets
+  // its stop callback invoked so the user only hears one thing
+  // at a time.
+  notifyPlaybackStarted(SAMPLE_SOUND_SOURCE_ID)
 }
 
 /**
@@ -288,9 +300,21 @@ export function stopSampleSound(): void {
     // close() rejects if already closed — non-fatal.
   }
   state = null
+  notifyPlaybackStopped(SAMPLE_SOUND_SOURCE_ID)
 }
 
 /** Query whether the sample sound is currently running. */
 export function isSampleSoundPlaying(): boolean {
   return state !== null
 }
+
+// Eager registration with the playback coordinator so any OTHER
+// source that starts playing can stop this one. `stopSampleSound`
+// is idempotent (no-op if already stopped), so it's safe to leave
+// registered across the module's lifetime. Module-level singleton
+// → registration is also singleton.
+registerPlaybackSource(
+  SAMPLE_SOUND_SOURCE_ID,
+  stopSampleSound,
+  SAMPLE_SOUND_LABEL,
+)

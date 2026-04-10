@@ -1469,6 +1469,20 @@ interface PreviewEditorChromeContext {
      * Only rendered as a button when `previewOpen === true`.
      */
     readonly onTogglePausePreview?: () => void;
+    /**
+     * Update the audio source of an already-open preview tab without
+     * closing it. When the chrome's source dropdown changes AND a
+     * preview is currently open, the chrome calls this with the new
+     * ref; the shell finds the preview tab for this file and mutates
+     * its `sourceRef` field in place. Task 2's sourceRef-in-React-key
+     * trick remounts the sketch on the swap so `setup()` re-runs
+     * with fresh injected refs.
+     *
+     * If the preview isn't open, the chrome falls back to updating
+     * its own local selection state and waits for the user to click
+     * Preview.
+     */
+    readonly onChangePreviewSource?: (ref: AudioSourceRef) => void;
     /** Toggle the background decoration (viz behind the editor). */
     readonly onToggleBackground: () => void;
     /** Save the file back to its persistent store (VizPresetStore). */
@@ -2973,6 +2987,14 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     private isPlayingState;
     private readonly errorListeners;
     private readonly playingChangedListeners;
+    /**
+     * Unregister callback from the playback coordinator. Called in
+     * `dispose()` to remove this runtime from the registry so its
+     * stop callback can't be invoked after the runtime has been torn
+     * down. Set in the constructor so every instance participates in
+     * single-source playback coordination from birth.
+     */
+    private unregisterFromPlaybackCoordinator;
     private autoRefreshEnabled;
     private autoRefreshUnsub;
     private autoRefreshTimeout;

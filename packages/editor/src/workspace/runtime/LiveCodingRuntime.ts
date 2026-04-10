@@ -105,6 +105,11 @@ import type {
   AudioPayload,
   LiveCodingRuntime as LiveCodingRuntimeInterface,
 } from '../types'
+import {
+  notifyPlaybackStarted,
+  notifyPlaybackStopped,
+  registerPlaybackSource,
+} from '../playbackCoordinator'
 
 /**
  * Debounce window for live-mode re-evaluate. Matches the legacy
@@ -200,6 +205,15 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   private readonly errorListeners = new Set<(err: Error) => void>()
   private readonly playingChangedListeners = new Set<(playing: boolean) => void>()
 
+  /**
+   * Unregister callback from the playback coordinator. Called in
+   * `dispose()` to remove this runtime from the registry so its
+   * stop callback can't be invoked after the runtime has been torn
+   * down. Set in the constructor so every instance participates in
+   * single-source playback coordination from birth.
+   */
+  private unregisterFromPlaybackCoordinator: () => void = () => {}
+
   // Live mode (autoRefresh) state.
   //
   // The subscription is lazily installed the first time `setAutoRefresh(true)`
@@ -236,6 +250,19 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     engine.setRuntimeErrorHandler((err) => {
       this.fireOnError(err)
     })
+
+    // Register with the playback coordinator so other sources can
+    // stop this runtime when they start. The stop callback is
+    // `this.stop` bound to the instance — it's idempotent (checks
+    // `isPlayingState`), so the coordinator can call it even when
+    // we're already stopped. The returned unregister function is
+    // called from `dispose()` to cleanly remove our entry when the
+    // runtime is torn down.
+    this.unregisterFromPlaybackCoordinator = registerPlaybackSource(
+      fileId,
+      () => this.stop(),
+      `LiveCodingRuntime:${fileId}`,
+    )
   }
 
   async init(): Promise<void> {
@@ -350,6 +377,14 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     this.isPlayingState = true
     this.firePlayingChanged(true)
 
+    // Single-source playback coordination — notify AFTER marking
+    // ourselves playing so if one of our listeners queries the
+    // coordinator, it sees a consistent state. Any other
+    // registered source (a different pattern runtime, or one of
+    // the built-in example sources) gets its stop callback
+    // invoked, so the user only hears one source at a time.
+    notifyPlaybackStarted(this.fileId)
+
     // Live mode: the playing-state flip is one of the reconcile triggers.
     // If setAutoRefresh(true) was called before play(), the subscription
     // installs now; if not, this is a no-op.
@@ -375,6 +410,9 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       workspaceAudioBus.unpublish(this.fileId)
       this.isPlayingState = false
       this.firePlayingChanged(false)
+      // Notify the coordinator AFTER we've marked ourselves stopped
+      // so any listeners see a consistent state.
+      notifyPlaybackStopped(this.fileId)
       // Live mode: tear down the subscription but keep autoRefreshEnabled
       // as-is so a subsequent play() re-installs it. Matches the legacy
       // LiveCodingEditor behavior where toggling Stop doesn't flip the
@@ -411,6 +449,14 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     this.errorListeners.clear()
     this.playingChangedListeners.clear()
     this.autoRefreshChangedListeners.clear()
+    // Remove from the playback coordinator so a future
+    // `notifyPlaybackStarted` from another source doesn't try to
+    // call our stop() on a disposed runtime.
+    try {
+      this.unregisterFromPlaybackCoordinator()
+    } catch {
+      // Non-fatal.
+    }
   }
 
   // -------------------------------------------------------------------------

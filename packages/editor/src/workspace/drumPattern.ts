@@ -52,6 +52,11 @@ import type { AudioPayload } from './types'
 import type { PatternScheduler } from '../visualizers/types'
 import type { IREvent } from '../ir/IREvent'
 import { HapStream } from '../engine/HapStream'
+import {
+  notifyPlaybackStarted,
+  notifyPlaybackStopped,
+  registerPlaybackSource,
+} from './playbackCoordinator'
 
 /** Fixed source id. */
 export const DRUM_PATTERN_SOURCE_ID = '__example_drums__'
@@ -328,6 +333,8 @@ export async function startDrumPattern(): Promise<void> {
       audio: { analyser, audioCtx: ctx },
     }
     workspaceAudioBus.publish(DRUM_PATTERN_SOURCE_ID, payload)
+    // Single-source playback coordination — see playbackCoordinator.ts.
+    notifyPlaybackStarted(DRUM_PATTERN_SOURCE_ID)
   } finally {
     starting = false
   }
@@ -360,6 +367,7 @@ export function stopDrumPattern(): void {
     // close() rejects if already closed — non-fatal.
   }
   state = null
+  notifyPlaybackStopped(DRUM_PATTERN_SOURCE_ID)
 }
 
 /**
@@ -371,3 +379,12 @@ export function stopDrumPattern(): void {
 export function isDrumPatternPlaying(): boolean {
   return state !== null || starting
 }
+
+// Eager registration with the playback coordinator — same pattern
+// as `sampleSound`. `stopDrumPattern` is idempotent, so leaving it
+// registered across the module's lifetime is safe.
+registerPlaybackSource(
+  DRUM_PATTERN_SOURCE_ID,
+  stopDrumPattern,
+  DRUM_PATTERN_LABEL,
+)

@@ -722,4 +722,97 @@ describe('LiveCodingRuntime', () => {
       runtime.dispose() // must not throw
     })
   })
+
+  // -------------------------------------------------------------------------
+  // Playback coordinator integration — single-source-at-a-time playback
+  //
+  // When a new runtime's play() fires, every OTHER registered source
+  // (including other LiveCodingRuntime instances) should have its stop
+  // callback invoked. This is the cross-tab exclusive-playback behavior
+  // users expect from a DAW-style editor.
+  // -------------------------------------------------------------------------
+
+  describe('playback coordinator integration', () => {
+    it('play() on one runtime stops another running runtime', async () => {
+      const engineA = createMockEngine()
+      engineA.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      const runtimeA = new LiveCodingRuntime(
+        'file-coord-a',
+        engineA,
+        () => 'note("c3")',
+      )
+      const engineB = createMockEngine()
+      engineB.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      const runtimeB = new LiveCodingRuntime(
+        'file-coord-b',
+        engineB,
+        () => 'note("g3")',
+      )
+
+      // Track A's playing state via the onPlayingChanged listener
+      // — the public observable interface.
+      const playingA: boolean[] = []
+      runtimeA.onPlayingChanged((p) => playingA.push(p))
+      const playingB: boolean[] = []
+      runtimeB.onPlayingChanged((p) => playingB.push(p))
+
+      // A plays first. Coordinator marks A as currently playing.
+      await runtimeA.play()
+      expect(playingA[playingA.length - 1]).toBe(true)
+      expect(engineA.stopFn.mock.calls.length).toBe(0)
+
+      // B plays. Coordinator fires A's stop callback, which runs
+      // engineA.stop() synchronously inside the coordinator call.
+      await runtimeB.play()
+      expect(playingB[playingB.length - 1]).toBe(true)
+      // A should have been stopped via the coordinator's cross-stop.
+      expect(playingA[playingA.length - 1]).toBe(false)
+      expect(engineA.stopFn.mock.calls.length).toBeGreaterThan(0)
+
+      runtimeA.dispose()
+      runtimeB.dispose()
+    })
+
+    it('dispose unregisters the runtime from the coordinator', async () => {
+      const engineA = createMockEngine()
+      engineA.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      const runtimeA = new LiveCodingRuntime(
+        'file-coord-dispose',
+        engineA,
+        () => 'code',
+      )
+      await runtimeA.play()
+      runtimeA.dispose()
+      // After dispose, A's stop callback should no longer fire on
+      // new plays. We verify by checking stopFn's call count
+      // doesn't increase beyond what dispose() itself did.
+      const stopsAfterDispose = engineA.stopFn.mock.calls.length
+
+      // Create an unrelated runtime and start it.
+      const engineB = createMockEngine()
+      engineB.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+      })
+      const runtimeB = new LiveCodingRuntime(
+        'file-coord-dispose-other',
+        engineB,
+        () => 'code',
+      )
+      await runtimeB.play()
+      // A's engine.stop should NOT have been called again — A was
+      // unregistered from the coordinator on dispose.
+      expect(engineA.stopFn.mock.calls.length).toBe(stopsAfterDispose)
+      runtimeB.dispose()
+    })
+  })
 })

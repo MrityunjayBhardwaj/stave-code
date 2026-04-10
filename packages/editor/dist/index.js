@@ -7889,6 +7889,19 @@ function WorkspaceShell({
                       return next;
                     });
                   },
+                  onChangePreviewSource: (nextRef) => {
+                    const current = shellActionsRef.current.findTabByFileId(
+                      tab.fileId,
+                      "preview"
+                    );
+                    if (!current) return;
+                    updateGroup(current.groupId, (g) => ({
+                      ...g,
+                      tabs: g.tabs.map(
+                        (t) => t.id === current.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                      )
+                    }));
+                  },
                   onOpenPreview: (selectedSourceRef) => {
                     const current = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
@@ -8012,12 +8025,23 @@ function WorkspaceShell({
     // chrome's Play button never flips to Stop. editorExtrasForTab and
     // findGroupWithAnyPreview are also added because they were silently
     // missing before.
+    //
+    // `pausedPreviews` must ALSO be a dep — without it, a second-click
+    // Stop → Play transition can't refresh the chrome. The first click
+    // (Preview → Stop) happens to work because `groups` changes (a
+    // preview tab is added), invalidating the callback. The second
+    // click only changes `pausedPreviews`, and without this dep the
+    // callback returns a cached function that reads a stale
+    // `pausedPreviews.has(fileId) === false` via its closure. The
+    // regression test in WorkspaceShell.test.tsx covers this exact
+    // path and fails without `pausedPreviews` in the deps.
     [
       chromeForTab,
       previewProviderFor,
       theme,
       updateGroup,
       groups,
+      pausedPreviews,
       findTabByFileId,
       findGroupWithAnyPreview,
       editorExtrasForTab
@@ -8421,6 +8445,55 @@ var actionBtnStyle = {
   borderRadius: 2
 };
 
+// src/workspace/playbackCoordinator.ts
+var registry2 = /* @__PURE__ */ new Map();
+var changeListeners = /* @__PURE__ */ new Set();
+var currentlyPlaying = null;
+function registerPlaybackSource(sourceId, stop2, label) {
+  registry2.set(sourceId, { stop: stop2, label });
+  return () => {
+    const entry = registry2.get(sourceId);
+    if (entry?.stop === stop2) {
+      registry2.delete(sourceId);
+      if (currentlyPlaying === sourceId) {
+        currentlyPlaying = null;
+        fireChange();
+      }
+    }
+  };
+}
+function notifyPlaybackStarted(sourceId) {
+  if (currentlyPlaying === sourceId) return;
+  for (const [id, src] of registry2) {
+    if (id === sourceId) continue;
+    try {
+      src.stop();
+    } catch (err2) {
+      console.warn(
+        `[playbackCoordinator] stop() threw for source "${id}" (${src.label ?? "unlabeled"}):`,
+        err2
+      );
+    }
+  }
+  currentlyPlaying = sourceId;
+  fireChange();
+}
+function notifyPlaybackStopped(sourceId) {
+  if (currentlyPlaying !== sourceId) return;
+  currentlyPlaying = null;
+  fireChange();
+}
+function fireChange() {
+  if (changeListeners.size === 0) return;
+  const snapshot = Array.from(changeListeners);
+  for (const cb of snapshot) {
+    try {
+      cb(currentlyPlaying);
+    } catch {
+    }
+  }
+}
+
 // src/workspace/runtime/LiveCodingRuntime.ts
 var LIVE_MODE_DEBOUNCE_MS = 500;
 function extractBpmFromCode(code) {
@@ -8452,6 +8525,15 @@ var LiveCodingRuntime = class {
     this.isPlayingState = false;
     this.errorListeners = /* @__PURE__ */ new Set();
     this.playingChangedListeners = /* @__PURE__ */ new Set();
+    /**
+     * Unregister callback from the playback coordinator. Called in
+     * `dispose()` to remove this runtime from the registry so its
+     * stop callback can't be invoked after the runtime has been torn
+     * down. Set in the constructor so every instance participates in
+     * single-source playback coordination from birth.
+     */
+    this.unregisterFromPlaybackCoordinator = () => {
+    };
     // Live mode (autoRefresh) state.
     //
     // The subscription is lazily installed the first time `setAutoRefresh(true)`
@@ -8476,6 +8558,11 @@ var LiveCodingRuntime = class {
     engine.setRuntimeErrorHandler((err2) => {
       this.fireOnError(err2);
     });
+    this.unregisterFromPlaybackCoordinator = registerPlaybackSource(
+      fileId,
+      () => this.stop(),
+      `LiveCodingRuntime:${fileId}`
+    );
   }
   async init() {
     if (this.isInitialized) return;
@@ -8559,6 +8646,7 @@ var LiveCodingRuntime = class {
     this.currentBpm = extractBpmFromCode(code);
     this.isPlayingState = true;
     this.firePlayingChanged(true);
+    notifyPlaybackStarted(this.fileId);
     this.reconcileAutoRefresh();
     return { error: null };
   }
@@ -8574,6 +8662,7 @@ var LiveCodingRuntime = class {
       workspaceAudioBus.unpublish(this.fileId);
       this.isPlayingState = false;
       this.firePlayingChanged(false);
+      notifyPlaybackStopped(this.fileId);
       this.reconcileAutoRefresh();
     }
   }
@@ -8595,6 +8684,10 @@ var LiveCodingRuntime = class {
     this.errorListeners.clear();
     this.playingChangedListeners.clear();
     this.autoRefreshChangedListeners.clear();
+    try {
+      this.unregisterFromPlaybackCoordinator();
+    } catch {
+    }
   }
   // -------------------------------------------------------------------------
   // Live mode (autoRefresh) — setters, getters, listener, reconciliation.
@@ -17112,6 +17205,7 @@ function startSampleSound() {
     }
   };
   workspaceAudioBus.publish(SAMPLE_SOUND_SOURCE_ID, payload);
+  notifyPlaybackStarted(SAMPLE_SOUND_SOURCE_ID);
 }
 function stopSampleSound() {
   if (!state) return;
@@ -17135,10 +17229,16 @@ function stopSampleSound() {
   } catch {
   }
   state = null;
+  notifyPlaybackStopped(SAMPLE_SOUND_SOURCE_ID);
 }
 function isSampleSoundPlaying() {
   return state !== null;
 }
+registerPlaybackSource(
+  SAMPLE_SOUND_SOURCE_ID,
+  stopSampleSound,
+  SAMPLE_SOUND_LABEL
+);
 function LiveModeToggle({
   autoRefresh,
   onToggle
@@ -17566,13 +17666,40 @@ async function startDrumPattern() {
       audio: { analyser, audioCtx: ctx }
     };
     workspaceAudioBus.publish(DRUM_PATTERN_SOURCE_ID, payload);
+    notifyPlaybackStarted(DRUM_PATTERN_SOURCE_ID);
   } finally {
     starting = false;
   }
 }
+function stopDrumPattern() {
+  if (!state2) return;
+  try {
+    state2.source.stop();
+  } catch {
+  }
+  try {
+    state2.source.disconnect();
+    state2.gain.disconnect();
+    state2.analyser.disconnect();
+  } catch {
+  }
+  state2.hapStream.dispose();
+  workspaceAudioBus.unpublish(DRUM_PATTERN_SOURCE_ID);
+  try {
+    void state2.ctx.close();
+  } catch {
+  }
+  state2 = null;
+  notifyPlaybackStopped(DRUM_PATTERN_SOURCE_ID);
+}
 function isDrumPatternPlaying() {
   return state2 !== null || starting;
 }
+registerPlaybackSource(
+  DRUM_PATTERN_SOURCE_ID,
+  stopDrumPattern,
+  DRUM_PATTERN_LABEL
+);
 
 // src/workspace/chordProgression.ts
 var CHORD_PROGRESSION_SOURCE_ID = "__example_chords__";
@@ -17687,13 +17814,40 @@ async function startChordProgression() {
       audio: { analyser, audioCtx: ctx }
     };
     workspaceAudioBus.publish(CHORD_PROGRESSION_SOURCE_ID, payload);
+    notifyPlaybackStarted(CHORD_PROGRESSION_SOURCE_ID);
   } finally {
     starting2 = false;
   }
 }
+function stopChordProgression() {
+  if (!state3) return;
+  try {
+    state3.source.stop();
+  } catch {
+  }
+  try {
+    state3.source.disconnect();
+    state3.gain.disconnect();
+    state3.analyser.disconnect();
+  } catch {
+  }
+  state3.hapStream.dispose();
+  workspaceAudioBus.unpublish(CHORD_PROGRESSION_SOURCE_ID);
+  try {
+    void state3.ctx.close();
+  } catch {
+  }
+  state3 = null;
+  notifyPlaybackStopped(CHORD_PROGRESSION_SOURCE_ID);
+}
 function isChordProgressionPlaying() {
   return state3 !== null || starting2;
 }
+registerPlaybackSource(
+  CHORD_PROGRESSION_SOURCE_ID,
+  stopChordProgression,
+  CHORD_PROGRESSION_LABEL
+);
 var BUILTIN_EXAMPLE_SOURCES = [
   {
     sourceId: SAMPLE_SOUND_SOURCE_ID,
@@ -17763,7 +17917,8 @@ function VizEditorChrome({
   onSave,
   previewOpen,
   previewPaused,
-  onTogglePausePreview
+  onTogglePausePreview,
+  onChangePreviewSource
 }) {
   const ext = file.language === "p5js" ? "p5" : file.language;
   const [selectedSource, setSelectedSource] = useState({
@@ -17798,9 +17953,19 @@ function VizEditorChrome({
   );
   const handleSourceChange = useCallback(
     (e) => {
-      setSelectedSource(stringToRef(e.target.value));
+      const ref = stringToRef(e.target.value);
+      setSelectedSource(ref);
+      if (previewOpen && onChangePreviewSource) {
+        if (ref.kind === "file") {
+          const builtin = BUILTIN_EXAMPLE_SOURCES.find(
+            (s) => s.sourceId === ref.fileId
+          );
+          if (builtin) builtin.startIfIdle();
+        }
+        onChangePreviewSource(ref);
+      }
     },
-    []
+    [previewOpen, onChangePreviewSource]
   );
   return /* @__PURE__ */ jsxs(
     "div",

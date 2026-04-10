@@ -36,6 +36,11 @@ import type { AudioPayload } from './types'
 import type { PatternScheduler } from '../visualizers/types'
 import type { IREvent } from '../ir/IREvent'
 import { HapStream } from '../engine/HapStream'
+import {
+  notifyPlaybackStarted,
+  notifyPlaybackStopped,
+  registerPlaybackSource,
+} from './playbackCoordinator'
 
 /** Fixed source id. */
 export const CHORD_PROGRESSION_SOURCE_ID = '__example_chords__'
@@ -212,6 +217,7 @@ export async function startChordProgression(): Promise<void> {
       audio: { analyser, audioCtx: ctx },
     }
     workspaceAudioBus.publish(CHORD_PROGRESSION_SOURCE_ID, payload)
+    notifyPlaybackStarted(CHORD_PROGRESSION_SOURCE_ID)
   } finally {
     starting = false
   }
@@ -244,9 +250,17 @@ export function stopChordProgression(): void {
     // close() rejects if already closed — non-fatal.
   }
   state = null
+  notifyPlaybackStopped(CHORD_PROGRESSION_SOURCE_ID)
 }
 
 /** Query whether the chord progression source is running or starting. */
 export function isChordProgressionPlaying(): boolean {
   return state !== null || starting
 }
+
+// Eager registration with the playback coordinator.
+registerPlaybackSource(
+  CHORD_PROGRESSION_SOURCE_ID,
+  stopChordProgression,
+  CHORD_PROGRESSION_LABEL,
+)
