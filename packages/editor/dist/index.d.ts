@@ -913,16 +913,102 @@ declare const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[];
  * Resolves a viz ID to a VizDescriptor using the "mode:renderer" convention.
  *
  * Resolution order:
- *   1. Exact match on `descriptor.id`
+ *   1. User-named viz registry — exact name match in the runtime
+ *      `namedVizRegistry` (populated by saved viz presets). User intent
+ *      wins over built-ins, so a user-saved preset named `"pianoroll"`
+ *      shadows the built-in `"pianoroll:hydra"` for their inline usage.
+ *   2. Exact match on `descriptor.id`
  *      e.g. "pianoroll:hydra" → "pianoroll:hydra"
- *   2. Default renderer — append `":${defaultRenderer}"` from config and retry
+ *   3. Default renderer — append `":${defaultRenderer}"` from config and retry
  *      e.g. "pianoroll" + defaultRenderer="hydra" → "pianoroll:hydra"
- *   3. Prefix fallback — bare mode matches first descriptor whose id starts
+ *   4. Prefix fallback — bare mode matches first descriptor whose id starts
  *      with `vizId + ":"` (catches renderer variants not matching the default)
  *
  * Returns undefined if no match is found.
  */
 declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]): VizDescriptor | undefined;
+
+/**
+ * namedVizRegistry — runtime map of user-chosen viz names → descriptors.
+ *
+ * Lets users reference their own viz files from inline patterns by the
+ * `VizPreset.name` they chose, alongside the built-in descriptors:
+ *
+ *     $: note("c e g").viz("Piano Roll")   // user-named preset
+ *     $: note("c e g").viz("pianoroll")    // built-in descriptor
+ *
+ * @remarks
+ * ## How it plugs into the resolver
+ *
+ * `resolveDescriptor` checks this registry first (exact-name match),
+ * then falls through to the passed-in descriptor list (`DEFAULT_VIZ_
+ * DESCRIPTORS` or any embedder override) and runs its existing
+ * "append default renderer" / "prefix" fallbacks. Names registered
+ * here shadow built-ins — if a user saves a preset literally called
+ * `"pianoroll"`, their version wins inside `.viz("pianoroll")`.
+ * That's the right default: user intent is closer to what the user
+ * controls than what ships in the library.
+ *
+ * ## Who writes to the registry
+ *
+ * `vizPresetBridge.seedFromPreset` and `flushToPreset` compile the
+ * preset via `compilePreset()` and call `registerNamedViz(preset.name,
+ * descriptor)` — so every viz file the user opens or saves is
+ * automatically available to inline `.viz("name")` without any manual
+ * registration step.
+ *
+ * If the user renames a preset (future save-as UI), the old name is
+ * unregistered and the new name is registered in the same transaction.
+ * Until that UI lands, a preset rename is a no-op at the registry
+ * level; the stale name keeps working until page reload. Acceptable
+ * for Phase 10.2 MVP — there's no rename UI yet.
+ *
+ * ## Change notifications
+ *
+ * `onNamedVizChanged` lets consumers subscribe to register/unregister
+ * events. Phase 10.2 doesn't wire this to anything, but it's in place
+ * so a future Monaco completion provider can invalidate its suggestion
+ * cache when the registry mutates.
+ */
+
+type Listener = () => void;
+/**
+ * Register a descriptor under a user-chosen name. Idempotent — calling
+ * twice with the same name + descriptor is a no-op and does not fire
+ * listeners. Calling with a new descriptor for an existing name
+ * replaces the entry (and fires listeners) so saves can update a
+ * previously-registered viz in place.
+ */
+declare function registerNamedViz(name: string, descriptor: VizDescriptor): void;
+/**
+ * Unregister a name. Idempotent — unknown names are silent no-ops.
+ * Fires listeners only when an entry is actually removed.
+ */
+declare function unregisterNamedViz(name: string): void;
+/**
+ * Look up a descriptor by name. Returns `undefined` if the name is not
+ * registered. The resolver falls through to the built-in descriptor
+ * list in that case.
+ */
+declare function getNamedViz(name: string): VizDescriptor | undefined;
+/**
+ * List every registered name in insertion order. Used by tests and by
+ * a future Monaco completion provider that wants to surface every
+ * user-defined viz name inside `.viz("...")` autocomplete.
+ */
+declare function listNamedVizNames(): string[];
+/**
+ * List every (name, descriptor) pair. Mostly useful for debugging and
+ * for tests that want to assert the full registry contents.
+ */
+declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
+/**
+ * Subscribe to registry changes. Fires on any register/unregister
+ * transition. Returns an idempotent unsubscribe function. Does not
+ * fire synchronously on subscription — subscribers receive only
+ * future changes.
+ */
+declare function onNamedVizChanged(cb: Listener): () => void;
 
 /**
  * Central configuration for the Stave visualization system.
@@ -1186,71 +1272,6 @@ declare function SpiralSketch(_hapStreamRef: RefObject<HapStream | null>, _analy
 declare function PitchwheelSketch(_hapStreamRef: RefObject<HapStream | null>, _analyserRef: RefObject<AnalyserNode | null>, schedulerRef: RefObject<PatternScheduler | null>): (p: p5__default) => void;
 
 /**
- * PreviewProvider — Phase 10.2 Task 03.
- *
- * The minimal interface that `PreviewView` uses to render visual output for
- * a workspace file. Concrete providers (`HYDRA_VIZ`, `P5_VIZ`, ...) land in
- * Task 06; this file defines the shape they must satisfy and the context
- * object `PreviewView` hands to `provider.render()` on every reload.
- *
- * @remarks
- * ## Why in its own file, not `types.ts`?
- *
- * `types.ts` is the frozen vocabulary for primitive workspace values
- * (`WorkspaceFile`, `AudioPayload`, `AudioSourceRef`). The provider
- * contract is a behavioral interface tied to the concrete provider
- * registry, and it references React types (`React.ReactNode`) that
- * `types.ts` is meant to stay clear of (the comment on `types.ts` is
- * explicit: "No runtime code, no imports that bring in React or DOM
- * APIs"). Hoisting `PreviewProvider` into its own file keeps `types.ts`
- * framework-agnostic and gives Task 06's registry a natural place to
- * import from.
- *
- * ## Contract surface
- *
- * Every provider exposes:
- *
- * - `extensions` — the set of file extensions the provider claims. The
- *   Task 06 registry keys lookups by this set.
- * - `label` — human-readable provider name for UI affordances (dropdown
- *   tooltip, error messages).
- * - `keepRunningWhenHidden` — per CONTEXT D-03. `true` means the provider
- *   wants to keep rendering even when its tab is hidden (e.g., long-lived
- *   audio visualizers that need to track state continuously). `false`
- *   means `PreviewView` pauses the render loop by passing `hidden: true`
- *   through the context AND freezing the debounce timer.
- * - `reload` — per CONTEXT D-07. Three modes:
- *     - `'instant'` — re-render on every file content change, no debounce.
- *     - `'debounced'` — re-render after `debounceMs` of quiescence. Used
- *       for compilation-heavy providers (HYDRA_VIZ, P5_VIZ) where every
- *       keystroke shouldn't trigger a full compile.
- *     - `'manual'` — provider handles its own reload trigger.
- *       `PreviewView` never re-renders on content change; the provider is
- *       responsible for watching the file itself or exposing a reload
- *       button in its rendered output.
- * - `debounceMs` — required when `reload === 'debounced'`. Ignored
- *   otherwise.
- * - `render(ctx)` — returns a `ReactNode` that `PreviewView` mounts. Every
- *   reload replaces the returned node (PreviewView handles the React
- *   reconciliation). Providers that need to preserve state across reloads
- *   must do so inside their returned component via refs/closures; the
- *   `PreviewView` host does not persist anything on their behalf.
- *
- * ## PreviewContext — what the provider sees
- *
- * - `file` — the current `WorkspaceFile` snapshot. Reactive via
- *   `useWorkspaceFile` inside `PreviewView`; every render gets the latest
- *   content.
- * - `audioSource` — the current `AudioPayload | null` for the tab's
- *   `sourceRef`, taken from the bus subscription. `null` means no
- *   publisher matches the ref; the provider is responsible for showing
- *   demo-mode fallback content (P7 — the host must not paper over null
- *   with a placeholder).
- * - `hidden` — true when the tab is hidden AND the provider opted out of
- *   background rendering (`keepRunningWhenHidden === false`).
- */
-
-/**
  * Reload policy per CONTEXT D-07. Encoded as a string literal rather than
  * a boolean so the three states stay distinguishable at call sites:
  *
@@ -1361,16 +1382,52 @@ interface PreviewProvider {
 interface PreviewEditorChromeContext {
     /** The workspace file this editor tab is bound to. */
     readonly file: WorkspaceFile;
-    /** Open the preview for this file in a sibling split group. */
-    readonly onOpenPreview: () => void;
+    /**
+     * Toggle the preview for this file in a sibling split group.
+     *
+     * If no preview tab currently exists for this file, opens a new one
+     * in a split-right group (Cmd+K V behavior). If one already exists,
+     * closes it instead — so a "▶ Play" → "■ Stop" toggle on the chrome
+     * button has coherent semantics for viz files whose "play" means
+     * "show me the rendered canvas."
+     *
+     * The optional `sourceRef` argument pins the new preview tab to a
+     * specific audio source when opening. The chrome's source dropdown
+     * passes the user's selection through this parameter so the preview
+     * subscribes to the chosen publisher (a pattern file, the sample
+     * sound, or `'none'` for demo mode) from the moment it mounts —
+     * avoiding the default-tracking fallback that would otherwise race
+     * the user's pattern-start clicks.
+     *
+     * The chrome reads `previewOpen` below to render the correct label
+     * and icon; it calls this single callback for both open and close.
+     */
+    readonly onOpenPreview: (sourceRef?: AudioSourceRef) => void;
+    /**
+     * Whether a preview tab for this file currently exists in any group.
+     * The chrome uses this to render the primary button as `▶ Play` (no
+     * preview open) or `■ Stop` (preview open). Maintained by the shell
+     * — embedders of `PreviewView` directly (outside the shell) can
+     * leave this as `undefined`, in which case the chrome defaults to
+     * `▶ Play`.
+     */
+    readonly previewOpen?: boolean;
     /** Toggle the background decoration (viz behind the editor). */
     readonly onToggleBackground: () => void;
     /** Save the file back to its persistent store (VizPresetStore). */
     readonly onSave: () => void;
-    /** Whether hot-reload is currently enabled. */
-    readonly hotReload: boolean;
-    /** Toggle hot-reload on/off. */
-    readonly onToggleHotReload: () => void;
+    /**
+     * Whether hot-reload is currently enabled.
+     *
+     * Optional because Phase 10.2 ships a provider-level `reload` policy
+     * (per-provider, not per-tab) so most chromes render this as a static
+     * "live" indicator rather than a toggle. A per-tab toggle would
+     * require threading state through `PreviewView.reload` — scoped to a
+     * follow-up phase.
+     */
+    readonly hotReload?: boolean;
+    /** Toggle hot-reload on/off. Optional — see `hotReload` above. */
+    readonly onToggleHotReload?: () => void;
 }
 
 /**
@@ -1902,6 +1959,26 @@ interface LiveCodingRuntime$1 {
      * before the first successful `play()`.
      */
     getBpm(): number | undefined;
+    /**
+     * Enable or disable live mode (auto-refresh). When enabled and the
+     * runtime is playing, every file content change triggers a
+     * debounced re-`play()` (which re-evaluates the current code) so
+     * the audio stays in sync with the source as you type.
+     *
+     * No-op if the runtime was constructed without a `subscribeToFile`
+     * function (the default in tests) — the flag is still set, but no
+     * subscription is installed.
+     */
+    setAutoRefresh(enabled: boolean): void;
+    /** Current live-mode flag. */
+    isAutoRefreshEnabled(): boolean;
+    /**
+     * Subscribe to live-mode state changes. Fires after every
+     * `setAutoRefresh` mutation with the new enabled value. Returns an
+     * idempotent unsubscribe. Used by the chrome's live-mode toggle to
+     * re-render without polling.
+     */
+    onAutoRefreshChanged(cb: (enabled: boolean) => void): () => void;
 }
 /**
  * Context object handed to `LiveCodingRuntimeProvider.renderChrome` on every
@@ -1940,6 +2017,24 @@ interface ChromeContext {
      * the built-in transport controls. Per U8.
      */
     readonly chromeExtras?: ReactNode;
+    /**
+     * Current live-mode (autoRefresh) state for this runtime. When `true`,
+     * the chrome renders the live toggle button in its active style. When
+     * omitted, the chrome renders the toggle in its inactive style.
+     *
+     * Sourced by the embedder — the app layer typically mirrors
+     * `runtime.isAutoRefreshEnabled()` into React state so changes re-render
+     * the chrome. Provider chromes that subscribe to
+     * `runtime.onAutoRefreshChanged` directly may ignore this field.
+     */
+    readonly autoRefresh?: boolean;
+    /**
+     * Toggle handler for live mode. When supplied, the chrome renders a
+     * live-mode toggle button; when omitted, the button is hidden. This
+     * lets embedders that don't want a live-mode button (tests, kiosk
+     * displays) opt out cleanly.
+     */
+    readonly onToggleAutoRefresh?: () => void;
 }
 /**
  * Per-extension provider for executable file types. Owns engine creation
@@ -2086,6 +2181,20 @@ interface WorkspaceShellProps {
         onStop?: () => void;
         error?: Error | null;
     } | undefined;
+    /**
+     * Host callback for "save this file" — fires when the user presses
+     * Cmd+S / Ctrl+S anywhere in the shell, or clicks the Save button on
+     * the preview-provider's editor chrome (viz files). The shell owns the
+     * keybinding + chrome wiring; the host owns what "save" actually means
+     * for a given file type (e.g., `flushToPreset` for viz files backed by
+     * `VizPresetStore`).
+     *
+     * Fires with the currently-active editor tab. The shell does nothing
+     * if the active tab is a preview tab or no tab is active.
+     */
+    readonly onSaveFile?: (tab: WorkspaceTab & {
+        kind: 'editor';
+    }) => void;
 }
 
 /**
@@ -2195,7 +2304,7 @@ interface WorkspaceShellProps {
  * when child views mount late.
  */
 
-declare function WorkspaceShell({ initialTabs, theme, height, onActiveTabChange, onTabClose, previewProviderFor, chromeForTab, editorExtrasForTab, }: WorkspaceShellProps): React.ReactElement;
+declare function WorkspaceShell({ initialTabs, theme, height, onActiveTabChange, onTabClose, previewProviderFor, chromeForTab, editorExtrasForTab, onSaveFile, }: WorkspaceShellProps): React.ReactElement;
 
 /**
  * EditorView — Phase 10.2 Tasks 03 + 07.
@@ -2386,6 +2495,7 @@ declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, t
  * replacement.
  */
 
+type Subscriber = () => void;
 /**
  * Create a new WorkspaceFile and register it in the store. Safe to call
  * multiple times for the same id — later calls overwrite the earlier
@@ -2428,6 +2538,108 @@ declare function getFile(id: string): WorkspaceFile | undefined;
  *                    model tracks deltas, the store just holds the text.
  */
 declare function setContent(id: string, newContent: string): void;
+/**
+ * Register a subscriber for a specific file id. The returned function
+ * unregisters the subscriber. Safe to call from `useSyncExternalStore`'s
+ * `subscribe` argument.
+ *
+ * @remarks
+ * Subscribers registered here are **not** invoked on initial subscribe —
+ * `useSyncExternalStore` reads the current snapshot via `getSnapshot`
+ * directly when it first mounts. The subscriber only fires on subsequent
+ * changes. This matches the React contract and avoids a redundant initial
+ * render.
+ */
+declare function subscribe(id: string, cb: Subscriber): () => void;
+
+/**
+ * sampleSound — test audio source for viz development.
+ *
+ * A self-contained sawtooth oscillator with an LFO-modulated pitch that
+ * feeds an `AnalyserNode`, whose payload is published to the
+ * `workspaceAudioBus` under the fixed source id `__sample__`. Lets the
+ * user pick "Sample sound" in a viz tab's source dropdown and see their
+ * shader or sketch react to a predictable waveform without needing to
+ * play a real pattern first.
+ *
+ * @remarks
+ * ## Design
+ *
+ * The sample sound is a **singleton** — one shared `AudioContext`,
+ * `OscillatorNode`, `LFO`, `GainNode`, and `AnalyserNode`. Multiple viz
+ * previews pinning to `__sample__` all see the same FFT data, which is
+ * what you want for "test the viz with a known-stable audio source."
+ *
+ * ## Why an LFO-modulated sawtooth, specifically
+ *
+ * A pure sine at one frequency produces a single FFT spike that doesn't
+ * move — the viz looks dead. A sawtooth produces a rich harmonic series
+ * (multiple bins lit up), and modulating its frequency with a slow LFO
+ * makes those bins shift over time. The result is a visibly animated
+ * FFT without needing a complex score.
+ *
+ * ## Audibility
+ *
+ * The output routes to `ctx.destination` with a low gain (0.05) so the
+ * user can actually HEAR the test audio. Most viz developers want to
+ * hear what they're visualizing — muting it would require the user to
+ * trust that audio is "there" purely on visual evidence. Setting a
+ * low gain keeps it audible without being annoying.
+ *
+ * ## Lifecycle (user-driven)
+ *
+ *   - `start()` — lazy-initializes the AudioContext on first call. No-op
+ *     if already playing. Must be called from a user gesture (click
+ *     handler) per browser autoplay policy.
+ *   - `stop()` — disconnects nodes, unpublishes from the bus, closes
+ *     the context. Called when the user selects a different source.
+ *   - `isPlaying()` — query for UI state.
+ *
+ * ## Bus payload shape
+ *
+ * Publishes an `AudioPayload` with:
+ *   - `analyser` — live FFT data from the oscillator
+ *   - `audio: { analyser, audioCtx }` — nested component shape for
+ *     consumers that read from `payload.audio`
+ *   - No `hapStream`, no `scheduler`, no `inlineViz` — the sample sound
+ *     is not a pattern runtime. Viz providers that require streaming
+ *     or queryable will fall back to demo mode when pinned here.
+ *
+ * ## Identity guard interaction (D-01)
+ *
+ * The bus's identity guard (`payloadsEquivalent` in `WorkspaceAudioBus`)
+ * treats same-ref publishes as no-ops. We publish ONCE on `start()`
+ * with a stable payload — the live FFT data updates happen inside the
+ * analyser node, not via re-publishing. Consumers read `analyser`
+ * directly per-frame, so the bus doesn't need to know about the
+ * changing FFT bins.
+ */
+/** Fixed source id the sample sound publishes under on the workspace bus. */
+declare const SAMPLE_SOUND_SOURCE_ID = "__sample__";
+/** Human-readable label for the audio source dropdown. */
+declare const SAMPLE_SOUND_LABEL = "Sample sound (test audio)";
+/**
+ * Start the sample sound. Lazy-initializes the AudioContext, oscillator
+ * graph, and analyser on first call. Publishes a payload to the bus
+ * under `SAMPLE_SOUND_SOURCE_ID` so any preview pinned to that id sees
+ * live FFT data immediately. Safe to call multiple times — second and
+ * later calls are no-ops.
+ *
+ * MUST be called from inside a user gesture handler. Browsers reject
+ * `new AudioContext()` outside of click/touch/keydown handlers under
+ * the autoplay policy, so tests and UI code should only invoke this
+ * in response to a button press.
+ */
+declare function startSampleSound(): void;
+/**
+ * Stop the sample sound. Disconnects the oscillator graph, unpublishes
+ * from the bus, and closes the AudioContext. No-op if not running.
+ * Consumers pinned to `__sample__` receive `null` on their next bus
+ * callback and fall back to demo mode.
+ */
+declare function stopSampleSound(): void;
+/** Query whether the sample sound is currently running. */
+declare function isSampleSoundPlaying(): boolean;
 
 /**
  * useWorkspaceFile — Phase 10.2 Task 01.
@@ -2633,6 +2845,18 @@ declare const workspaceAudioBus: WorkspaceAudioBus;
  */
 
 /**
+ * Subscribe-to-file function shape. Callers supply one if they want the
+ * runtime's live mode (`setAutoRefresh(true)`) to actually do anything —
+ * otherwise live mode is a no-op (useful in tests that don't want to
+ * stand up a full `WorkspaceFile` store).
+ *
+ * The callback fires on EVERY content change for the runtime's file id,
+ * including changes that originate from `play()`'s own `evaluate` call
+ * (which does not write back, so this is fine in practice). The returned
+ * disposer is called by the runtime when it tears down the subscription.
+ */
+type SubscribeToRuntimeFile = (cb: () => void) => () => void;
+/**
  * Constructor argument shape. Kept as a positional triple rather than an
  * options object because the contract is small and stable: a runtime is
  * defined entirely by its file id, the engine it wraps, and the function
@@ -2653,6 +2877,7 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     readonly engine: LiveCodingEngine;
     readonly fileId: string;
     private readonly getFileContent;
+    private readonly subscribeToFile;
     private bufferedSchedulerRef;
     private isInitialized;
     private isDisposed;
@@ -2660,7 +2885,11 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     private isPlayingState;
     private readonly errorListeners;
     private readonly playingChangedListeners;
-    constructor(fileId: string, engine: LiveCodingEngine, getFileContent: () => string);
+    private autoRefreshEnabled;
+    private autoRefreshUnsub;
+    private autoRefreshTimeout;
+    private readonly autoRefreshChangedListeners;
+    constructor(fileId: string, engine: LiveCodingEngine, getFileContent: () => string, subscribeToFile?: SubscribeToRuntimeFile | null);
     init(): Promise<void>;
     /**
      * The nine-step play lifecycle (PK1). See class JSDoc above.
@@ -2673,6 +2902,52 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     }>;
     stop(): void;
     dispose(): void;
+    /**
+     * Enable or disable live mode for this runtime.
+     *
+     * When enabled AND the runtime is currently playing AND a
+     * `subscribeToFile` function was provided at construction time, the
+     * runtime installs a subscription on the workspace file that
+     * debounce-triggers `play()` (which re-evaluates the current content)
+     * on every content change.
+     *
+     * When disabled or stopped, the subscription is torn down and any
+     * pending debounce timeout is cleared — so toggling OFF mid-burst is
+     * immediate, not "finish the pending re-play first."
+     *
+     * Idempotent — calling with the already-set value is a no-op and does
+     * not fire the `onAutoRefreshChanged` listeners. Never throws; disposed
+     * runtimes silently ignore the call.
+     */
+    setAutoRefresh(enabled: boolean): void;
+    /** Current live-mode state. */
+    isAutoRefreshEnabled(): boolean;
+    /**
+     * Subscribe to live-mode state changes. Fires after `setAutoRefresh`
+     * mutations, with the new enabled value. Returns an idempotent
+     * unsubscribe. Used by the chrome to re-render the live-mode toggle
+     * without having to poll.
+     */
+    onAutoRefreshChanged(cb: (enabled: boolean) => void): () => void;
+    /**
+     * Install or tear down the file-content subscription so that its
+     * presence matches `(autoRefreshEnabled && isPlayingState &&
+     * subscribeToFile !== null)`. Called from `setAutoRefresh`, `play`,
+     * `stop`, and `dispose`.
+     *
+     * Installing the subscription is idempotent — calling reconcile while
+     * already subscribed is a no-op. Tearing down is likewise idempotent.
+     */
+    private reconcileAutoRefresh;
+    /**
+     * Debounced re-evaluate trigger. Called by the file subscription
+     * callback on every content change. Cancels any pending timeout and
+     * schedules a new one; when it fires, checks the invariants once more
+     * (dispose/stop/toggle-off may have happened mid-debounce) and calls
+     * `play()` to re-evaluate and re-schedule.
+     */
+    private onLiveModeContentChanged;
+    private fireAutoRefreshChanged;
     onError(cb: (err: Error) => void): () => void;
     onPlayingChanged(cb: (playing: boolean) => void): () => void;
     getBpm(): number | undefined;
@@ -3094,5 +3369,54 @@ declare function seedFromPresetId(presetId: string): Promise<string | undefined>
  * function and keeps the signature type-safe.
  */
 declare function flushToPreset(fileId: string, presetId: string): Promise<void>;
+/**
+ * Read-only helper: given a workspace file, return the preset id it was
+ * seeded from (if any). Useful for tests and for Task 09 when it needs
+ * to know whether a tab is backed by a persisted preset.
+ */
+declare function getPresetIdForFile(file: WorkspaceFile): string | undefined;
 
-export { type AudioPayload, type AudioSourceRef, BUNDLED_PREFIX, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellProps, type WorkspaceTab, applyTheme, bundledPresetId, collect, compilePreset, createVizConfig, createWorkspaceFile, filter, flushToPreset, generateUniquePresetId, getFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, isBundledPresetId, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerPreviewProvider, registerRuntimeProvider, resolveDescriptor, sanitizePresetName, scaleGain, seedFromPreset, seedFromPresetId, setContent, setVizConfig, timestretch, toStrudel, transpose, useWorkspaceFile, workspaceAudioBus };
+/**
+ * namedVizBridge — compile + register helpers for viz presets.
+ *
+ * This is the higher-level wrapper that `vizPresetBridge` deliberately
+ * avoids being. It imports `compilePreset` (which transitively loads
+ * the p5 / hydra renderer stack), so any test or module that wants to
+ * stay decoupled from the renderer pack should import from
+ * `vizPresetBridge` instead.
+ *
+ * @remarks
+ * ## Why a separate file
+ *
+ * The plain `vizPresetBridge` is a pure data utility — tests exercise
+ * it without mocking the renderer chain. Adding `compilePreset` to its
+ * imports broke unit tests by transitively pulling in p5 (which imports
+ * gifenc, which fails in vitest's ESM loader). Keeping the compile +
+ * register combo in a sibling file that only the app layer / compat
+ * shims import preserves the test isolation while still giving
+ * consumers a one-line API for "make this preset resolvable by name."
+ */
+
+/**
+ * Compile a preset into a `VizDescriptor` and register it in the
+ * `namedVizRegistry` under `preset.name`. Subsequent inline lookups
+ * via `resolveDescriptor` (e.g., `.viz("my-preset")`) will resolve to
+ * this compiled descriptor.
+ *
+ * On compile error, unregisters any stale entry for the same name and
+ * returns `false`. Returns `true` on successful registration.
+ *
+ * Callers:
+ *   - App layer `StrudelEditorClient` — after seeding bundled presets
+ *     and after saving via Ctrl+S, so the user's inline references
+ *     keep working across code edits.
+ *   - `VizEditor` compat shim — after `seedFromPreset` loads
+ *     persisted presets from `VizPresetStore`.
+ *
+ * Idempotent for same-preset calls: registering the same descriptor
+ * twice is a no-op. Registering a DIFFERENT descriptor for the same
+ * name replaces the entry (so saves pick up fresh code).
+ */
+declare function registerPresetAsNamedViz(preset: VizPreset): boolean;
+
+export { type AudioPayload, type AudioSourceRef, BUNDLED_PREFIX, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellProps, type WorkspaceTab, applyTheme, bundledPresetId, collect, compilePreset, createVizConfig, createWorkspaceFile, filter, flushToPreset, generateUniquePresetId, getFile, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, isBundledPresetId, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, resolveDescriptor, sanitizePresetName, scaleGain, seedFromPreset, seedFromPresetId, setContent, setVizConfig, startSampleSound, stopSampleSound, subscribe as subscribeToWorkspaceFile, timestretch, toStrudel, transpose, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus };

@@ -5595,6 +5595,69 @@ function applyTheme(el, theme) {
   }
 }
 
+// src/theme/monacoTheme.ts
+function defineStrudelMonacoTheme(monaco) {
+  monaco.editor.defineTheme("stave-dark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "strudel.pattern-start", foreground: "8b5cf6", fontStyle: "bold" },
+      { token: "strudel.tempo", foreground: "a78bfa" },
+      { token: "strudel.function", foreground: "93c5fd" },
+      { token: "strudel.note", foreground: "86efac" },
+      { token: "strudel.mini.note", foreground: "86efac" },
+      { token: "strudel.mini.operator", foreground: "f472b6" },
+      { token: "strudel.mini.number", foreground: "fb923c" },
+      { token: "string", foreground: "fcd34d" },
+      { token: "number", foreground: "fb923c" },
+      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
+      { token: "keyword", foreground: "c4b5fd" },
+      // Sonic Pi tokens
+      { token: "sonicpi.function", foreground: "93c5fd", fontStyle: "bold" },
+      { token: "sonicpi.music", foreground: "a78bfa" },
+      { token: "sonicpi.symbol", foreground: "f472b6" },
+      { token: "sonicpi.note", foreground: "86efac" },
+      { token: "sonicpi.kwarg", foreground: "6ee7b7" }
+    ],
+    colors: {
+      "editor.background": "#090912",
+      "editor.foreground": "#c4b5fd",
+      "editorLineNumber.foreground": "#3d3d5c",
+      "editorCursor.foreground": "#8b5cf6",
+      "editor.selectionBackground": "#8b5cf640",
+      "editor.lineHighlightBackground": "#8b5cf60d",
+      "editorIndentGuide.background": "#ffffff10",
+      "editorWidget.background": "#0f0f1a",
+      "editorSuggestWidget.background": "#0f0f1a",
+      "editorSuggestWidget.border": "#8b5cf640"
+    }
+  });
+  monaco.editor.defineTheme("stave-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "strudel.pattern-start", foreground: "7c3aed", fontStyle: "bold" },
+      { token: "strudel.tempo", foreground: "6d28d9" },
+      { token: "strudel.function", foreground: "1d4ed8" },
+      { token: "strudel.note", foreground: "15803d" },
+      { token: "strudel.mini.note", foreground: "15803d" },
+      { token: "strudel.mini.operator", foreground: "be185d" },
+      { token: "strudel.mini.number", foreground: "c2410c" },
+      { token: "string", foreground: "92400e" },
+      { token: "number", foreground: "c2410c" },
+      { token: "comment", foreground: "9ca3af", fontStyle: "italic" }
+    ],
+    colors: {
+      "editor.background": "#f0eeff",
+      "editor.foreground": "#4c1d95",
+      "editorLineNumber.foreground": "#a5b4fc",
+      "editorCursor.foreground": "#7c3aed",
+      "editor.selectionBackground": "#7c3aed30",
+      "editor.lineHighlightBackground": "#7c3aed08"
+    }
+  });
+}
+
 // src/workspace/WorkspaceFile.ts
 var files = /* @__PURE__ */ new Map();
 var subscribersByFile = /* @__PURE__ */ new Map();
@@ -6391,8 +6454,53 @@ function mountVizRenderer(container, source, components, size, onError) {
   };
 }
 
+// src/visualizers/namedVizRegistry.ts
+var registry = /* @__PURE__ */ new Map();
+var listeners = /* @__PURE__ */ new Set();
+function registerNamedViz(name2, descriptor) {
+  const existing = registry.get(name2);
+  if (existing === descriptor) return;
+  registry.set(name2, descriptor);
+  notifyListeners();
+}
+function unregisterNamedViz(name2) {
+  if (!registry.has(name2)) return;
+  registry.delete(name2);
+  notifyListeners();
+}
+function getNamedViz(name2) {
+  return registry.get(name2);
+}
+function listNamedVizNames() {
+  return Array.from(registry.keys());
+}
+function listNamedVizEntries() {
+  return Array.from(registry.entries());
+}
+function onNamedVizChanged(cb) {
+  listeners.add(cb);
+  let unsubscribed = false;
+  return () => {
+    if (unsubscribed) return;
+    unsubscribed = true;
+    listeners.delete(cb);
+  };
+}
+function notifyListeners() {
+  if (listeners.size === 0) return;
+  const snapshot = Array.from(listeners);
+  for (const cb of snapshot) {
+    try {
+      cb();
+    } catch {
+    }
+  }
+}
+
 // src/visualizers/resolveDescriptor.ts
 function resolveDescriptor(vizId, descriptors) {
+  const named = getNamedViz(vizId);
+  if (named) return named;
   const exact = descriptors.find((d) => d.id === vizId);
   if (exact) return exact;
   const { defaultRenderer } = getVizConfig();
@@ -6554,6 +6662,9 @@ function addInlineViewZones(editor, components, vizDescriptors) {
     }
   };
 }
+function monacoThemeNameFor(theme) {
+  return theme === "light" ? "stave-light" : "stave-dark";
+}
 var MonacoEditor = MonacoEditorRaw__default.default;
 var MONACO_OPTIONS = {
   fontSize: 13,
@@ -6595,6 +6706,11 @@ function EditorView({
   React.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
+  }, [theme]);
+  React.useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco?.editor?.setTheme) return;
+    monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
   React.useEffect(() => {
     if (!fileId) return;
@@ -6642,6 +6758,10 @@ function EditorView({
     editorRef.current = editor;
     monacoRef.current = monaco;
     ensureWorkspaceLanguages(monaco);
+    if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
+      defineStrudelMonacoTheme(monaco);
+      monaco.editor.setTheme(monacoThemeNameFor(theme));
+    }
     if (monaco.KeyMod && monaco.KeyCode && editor.addAction) {
       editor.addAction({
         id: "stave.play",
@@ -7134,6 +7254,60 @@ function getPreviewProviderForLanguage(language) {
   return byLanguage.get(language);
 }
 var previewProviderRegistry = byExtension;
+
+// src/workspace/groupLayout.ts
+function findGroupCoords(layout, groupId) {
+  for (let c = 0; c < layout.length; c++) {
+    const column = layout[c];
+    const r = column.indexOf(groupId);
+    if (r !== -1) return [c, r];
+  }
+  return null;
+}
+function allGroupIds(layout) {
+  const out2 = [];
+  for (const col of layout) {
+    for (const id of col) out2.push(id);
+  }
+  return out2;
+}
+function insertGroup(layout, targetId, direction, newId) {
+  if (direction === "center") return layout;
+  const coords = findGroupCoords(layout, targetId);
+  if (!coords) return layout;
+  const [c, r] = coords;
+  if (direction === "west" || direction === "east") {
+    const newCol = [newId];
+    const insertAt2 = direction === "west" ? c : c + 1;
+    return [
+      ...layout.slice(0, insertAt2),
+      newCol,
+      ...layout.slice(insertAt2)
+    ];
+  }
+  const targetColumn = layout[c];
+  const insertAt = direction === "north" ? r : r + 1;
+  const nextColumn = [
+    ...targetColumn.slice(0, insertAt),
+    newId,
+    ...targetColumn.slice(insertAt)
+  ];
+  return layout.map((col, i2) => i2 === c ? nextColumn : col);
+}
+function insertEdgeGroup(layout, position, newId) {
+  const newCol = [newId];
+  return position === "start" ? [newCol, ...layout] : [...layout, newCol];
+}
+function removeGroup(layout, groupId) {
+  const coords = findGroupCoords(layout, groupId);
+  if (!coords) return layout;
+  const [c] = coords;
+  const nextColumn = layout[c].filter((id) => id !== groupId);
+  if (nextColumn.length === 0) {
+    return layout.filter((_, i2) => i2 !== c);
+  }
+  return layout.map((col, i2) => i2 === c ? nextColumn : col);
+}
 function assertNever(value) {
   throw new Error(
     `WorkspaceShell: unhandled tab kind in dispatch: ${JSON.stringify(value)}`
@@ -7154,7 +7328,7 @@ function createInitialGroupState(initialTabs) {
   };
   const groups = /* @__PURE__ */ new Map();
   groups.set(id, group);
-  return { groups, groupOrder: [id], activeGroupId: id };
+  return { groups, layout: [[id]], activeGroupId: id };
 }
 function WorkspaceShell({
   initialTabs = [],
@@ -7164,20 +7338,25 @@ function WorkspaceShell({
   onTabClose,
   previewProviderFor,
   chromeForTab,
-  editorExtrasForTab
+  editorExtrasForTab,
+  onSaveFile
 }) {
   const shellRootRef = React.useRef(null);
   const initialState = React.useRef(createInitialGroupState(initialTabs));
   const [groups, setGroups] = React.useState(
     () => initialState.current.groups
   );
-  const [groupOrder, setGroupOrder] = React.useState(
-    () => initialState.current.groupOrder
+  const [layout, setLayout] = React.useState(
+    () => initialState.current.layout
   );
   const [activeGroupId, setActiveGroupId] = React.useState(
     () => initialState.current.activeGroupId
   );
-  const [dragOverGroupId, setDragOverGroupId] = React.useState(null);
+  const [dragOverTarget, setDragOverTarget] = React.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React.useState(
+    null
+  );
+  const [tabDragInProgress, setTabDragInProgress] = React.useState(false);
   React.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
@@ -7216,15 +7395,18 @@ function WorkspaceShell({
   const handleTabClose = React.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
+      const existing = groups.get(groupId);
+      const wasLastTab = existing !== void 0 && existing.tabs.length === 1;
+      const canCollapseGroup = wasLastTab && groups.size > 1;
       setGroups((prev) => {
-        const existing = prev.get(groupId);
-        if (!existing) return prev;
-        const idx = existing.tabs.findIndex((t) => t.id === tabId);
+        const cur = prev.get(groupId);
+        if (!cur) return prev;
+        const idx = cur.tabs.findIndex((t) => t.id === tabId);
         if (idx === -1) return prev;
-        closedTab = existing.tabs[idx];
-        const nextTabs = existing.tabs.filter((t) => t.id !== tabId);
-        let nextActive = existing.activeTabId;
-        if (existing.activeTabId === tabId) {
+        closedTab = cur.tabs[idx];
+        const nextTabs = cur.tabs.filter((t) => t.id !== tabId);
+        let nextActive = cur.activeTabId;
+        if (cur.activeTabId === tabId) {
           if (nextTabs.length === 0) {
             nextActive = null;
           } else if (idx < nextTabs.length) {
@@ -7234,38 +7416,56 @@ function WorkspaceShell({
           }
         }
         const next = new Map(prev);
-        next.set(groupId, {
-          ...existing,
-          tabs: nextTabs,
-          activeTabId: nextActive
-        });
+        if (canCollapseGroup) {
+          next.delete(groupId);
+        } else {
+          next.set(groupId, {
+            ...cur,
+            tabs: nextTabs,
+            activeTabId: nextActive
+          });
+        }
         return next;
       });
+      if (canCollapseGroup) {
+        setLayout((prev) => removeGroup(prev, groupId));
+        setActiveGroupId((prev) => {
+          if (prev !== groupId) return prev;
+          const remaining = allGroupIds(removeGroup(layout, groupId));
+          return remaining[0] ?? prev;
+        });
+      }
       if (closedTab) {
         onTabClose?.(closedTab);
       }
     },
-    [onTabClose]
+    [groups, layout, onTabClose]
   );
-  const handleSplit = React.useCallback((groupId) => {
-    const newId = generateGroupId();
-    setGroups((prev) => {
-      const next = new Map(prev);
-      next.set(newId, { id: newId, tabs: [], activeTabId: null });
-      return next;
-    });
-    setGroupOrder((prev) => {
-      const idx = prev.indexOf(groupId);
-      if (idx === -1) return [...prev, newId];
-      return [...prev.slice(0, idx + 1), newId, ...prev.slice(idx + 1)];
-    });
-  }, []);
+  const handleSplit = React.useCallback(
+    (groupId) => {
+      const newId = generateGroupId();
+      setGroups((prev) => {
+        const next = new Map(prev);
+        next.set(newId, { id: newId, tabs: [], activeTabId: null });
+        return next;
+      });
+      setLayout((prev) => insertGroup(prev, groupId, "east", newId));
+    },
+    []
+  );
+  const findNeighborGroupId = React.useCallback(
+    (closingId) => {
+      for (const id of allGroupIds(layout)) {
+        if (id !== closingId) return id;
+      }
+      return null;
+    },
+    [layout]
+  );
   const handleCloseGroup = React.useCallback(
     (groupId) => {
-      if (groupOrder.length <= 1) return;
-      const idx = groupOrder.indexOf(groupId);
-      if (idx === -1) return;
-      const neighborId = idx + 1 < groupOrder.length ? groupOrder[idx + 1] : groupOrder[idx - 1];
+      const neighborId = findNeighborGroupId(groupId);
+      if (!neighborId) return;
       setGroups((prev) => {
         const closing = prev.get(groupId);
         const neighbor = prev.get(neighborId);
@@ -7282,12 +7482,12 @@ function WorkspaceShell({
         });
         return next;
       });
-      setGroupOrder((prev) => prev.filter((g) => g !== groupId));
+      setLayout((prev) => removeGroup(prev, groupId));
       if (activeGroupId === groupId) {
         setActiveGroupId(neighborId);
       }
     },
-    [groupOrder, activeGroupId]
+    [findNeighborGroupId, activeGroupId]
   );
   const splitGroupWithTab = React.useCallback(
     (originGroupId, _direction, newTab) => {
@@ -7301,13 +7501,84 @@ function WorkspaceShell({
         });
         return next;
       });
-      setGroupOrder((prev) => {
-        const idx = prev.indexOf(originGroupId);
-        if (idx === -1) return [...prev, newId];
-        return [...prev.slice(0, idx + 1), newId, ...prev.slice(idx + 1)];
-      });
+      setLayout((prev) => insertGroup(prev, originGroupId, "east", newId));
     },
     []
+  );
+  const moveTabToNewQuadrant = React.useCallback(
+    (sourceGroupId, tabId, targetGroupId, direction) => {
+      const source = groups.get(sourceGroupId);
+      if (!source) return;
+      const movingTab = source.tabs.find((t) => t.id === tabId);
+      if (!movingTab) return;
+      if (!findGroupCoords(layout, targetGroupId)) return;
+      if (sourceGroupId === targetGroupId && source.tabs.length === 1) {
+        return;
+      }
+      const sourceWillCollapse = source.tabs.length === 1;
+      const newId = generateGroupId();
+      setGroups((prev) => {
+        const next = new Map(prev);
+        const srcTabs = source.tabs.filter((t) => t.id !== tabId);
+        const srcActive = source.activeTabId === tabId ? srcTabs[0]?.id ?? null : source.activeTabId;
+        if (srcTabs.length === 0) {
+          next.delete(sourceGroupId);
+        } else {
+          next.set(sourceGroupId, {
+            ...source,
+            tabs: srcTabs,
+            activeTabId: srcActive
+          });
+        }
+        next.set(newId, {
+          id: newId,
+          tabs: [movingTab],
+          activeTabId: movingTab.id
+        });
+        return next;
+      });
+      setLayout((prev) => {
+        const afterRemove = sourceWillCollapse && sourceGroupId !== targetGroupId ? removeGroup(prev, sourceGroupId) : prev;
+        return insertGroup(afterRemove, targetGroupId, direction, newId);
+      });
+      setActiveGroupId(newId);
+    },
+    [groups, layout]
+  );
+  const moveTabToNewEdgeGroup = React.useCallback(
+    (sourceGroupId, tabId, position) => {
+      const source = groups.get(sourceGroupId);
+      if (!source) return;
+      const movingTab = source.tabs.find((t) => t.id === tabId);
+      if (!movingTab) return;
+      const newId = generateGroupId();
+      setGroups((prev) => {
+        const next = new Map(prev);
+        const srcTabs = source.tabs.filter((t) => t.id !== tabId);
+        const srcActive = source.activeTabId === tabId ? srcTabs[0]?.id ?? null : source.activeTabId;
+        if (srcTabs.length === 0) {
+          next.delete(sourceGroupId);
+        } else {
+          next.set(sourceGroupId, {
+            ...source,
+            tabs: srcTabs,
+            activeTabId: srcActive
+          });
+        }
+        next.set(newId, {
+          id: newId,
+          tabs: [movingTab],
+          activeTabId: movingTab.id
+        });
+        return next;
+      });
+      setLayout((prev) => {
+        const afterRemove = source.tabs.length === 1 ? removeGroup(prev, sourceGroupId) : prev;
+        return insertEdgeGroup(afterRemove, position, newId);
+      });
+      setActiveGroupId(newId);
+    },
+    [groups]
   );
   const updateGroupBackground = React.useCallback(
     (groupId, backgroundTabId) => {
@@ -7318,6 +7589,58 @@ function WorkspaceShell({
     },
     [updateGroup]
   );
+  const closeTabById = React.useCallback(
+    (tabId) => {
+      let ownerGroupId = null;
+      for (const [gid, g] of groups.entries()) {
+        if (g.tabs.some((t) => t.id === tabId)) {
+          ownerGroupId = gid;
+          break;
+        }
+      }
+      if (!ownerGroupId) return;
+      handleTabClose(ownerGroupId, tabId);
+      const owner = groups.get(ownerGroupId);
+      const wasLastTab = owner ? owner.tabs.length === 1 : false;
+      const willCollapse = wasLastTab && groups.size > 1;
+      if (willCollapse) {
+        setGroups((prev) => {
+          if (prev.size <= 1) return prev;
+          const next = new Map(prev);
+          next.delete(ownerGroupId);
+          return next;
+        });
+        setLayout((prev) => removeGroup(prev, ownerGroupId));
+        setActiveGroupId((prev) => {
+          if (prev !== ownerGroupId) return prev;
+          const remaining = allGroupIds(
+            removeGroup(layout, ownerGroupId)
+          );
+          return remaining[0] ?? prev;
+        });
+      }
+    },
+    [groups, layout, handleTabClose]
+  );
+  const findTabByFileId = React.useCallback(
+    (fileId, kind) => {
+      for (const [gid, g] of groups.entries()) {
+        for (const t of g.tabs) {
+          if (t.kind === kind && t.fileId === fileId) {
+            return { groupId: gid, tabId: t.id };
+          }
+        }
+      }
+      return null;
+    },
+    [groups]
+  );
+  const findGroupWithAnyPreview = React.useCallback(() => {
+    for (const [gid, g] of groups.entries()) {
+      if (g.tabs.some((t) => t.kind === "preview")) return gid;
+    }
+    return null;
+  }, [groups]);
   const shellActionsRef = React.useRef(null);
   const shellActions = React.useMemo(
     () => ({
@@ -7329,9 +7652,11 @@ function WorkspaceShell({
         }));
       },
       splitGroupWithTab,
-      updateGroupBackground
+      updateGroupBackground,
+      closeTab: closeTabById,
+      findTabByFileId
     }),
-    [splitGroupWithTab, updateGroupBackground, updateGroup]
+    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId]
   );
   shellActionsRef.current = shellActions;
   const getActiveTab = React.useCallback(() => activeTab, [activeTab]);
@@ -7364,18 +7689,100 @@ function WorkspaceShell({
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
+  const handleEdgeDrop = React.useCallback(
+    (e, position) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOverEdge(null);
+      const raw = e.dataTransfer.getData(DRAG_MIME);
+      if (!raw) return;
+      let payload;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      moveTabToNewEdgeGroup(payload.sourceGroupId, payload.tabId, position);
+    },
+    [moveTabToNewEdgeGroup]
+  );
+  const handleEdgeDragOver = React.useCallback(
+    (e, position) => {
+      if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (dragOverEdge !== position) setDragOverEdge(position);
+    },
+    [dragOverEdge]
+  );
+  const handleEdgeDragLeave = React.useCallback(() => {
+    setDragOverEdge(null);
+  }, []);
+  const onSaveFileRef = React.useRef(onSaveFile);
+  onSaveFileRef.current = onSaveFile;
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key !== "s" && e.key !== "S") return;
+      const current = onSaveFileRef.current;
+      if (!current) return;
+      const tab = activeTab;
+      if (!tab || tab.kind !== "editor") return;
+      e.preventDefault();
+      current(tab);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeTab]);
   const handleTabDragStart = React.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
       e.dataTransfer.effectAllowed = "move";
+      setTabDragInProgress(true);
+    },
+    []
+  );
+  React.useEffect(() => {
+    const onDragEnd = () => {
+      setTabDragInProgress(false);
+      setDragOverEdge(null);
+      setDragOverTarget(null);
+    };
+    window.addEventListener("dragend", onDragEnd);
+    window.addEventListener("drop", onDragEnd);
+    return () => {
+      window.removeEventListener("dragend", onDragEnd);
+      window.removeEventListener("drop", onDragEnd);
+    };
+  }, []);
+  const computeQuadrant = React.useCallback(
+    (e, el) => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return "center";
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      if (Number.isNaN(x) || Number.isNaN(y)) return "center";
+      if (x >= 0.3 && x <= 0.7 && y >= 0.3 && y <= 0.7) {
+        return "center";
+      }
+      const distWest = x;
+      const distEast = 1 - x;
+      const distNorth = y;
+      const distSouth = 1 - y;
+      const min = Math.min(distWest, distEast, distNorth, distSouth);
+      if (min === distWest) return "west";
+      if (min === distEast) return "east";
+      if (min === distNorth) return "north";
+      return "south";
     },
     []
   );
   const handleDropOnGroup = React.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
-      setDragOverGroupId(null);
+      e.stopPropagation();
+      setDragOverTarget(null);
       const raw = e.dataTransfer.getData(DRAG_MIME);
       if (!raw) return;
       let payload;
@@ -7385,7 +7792,8 @@ function WorkspaceShell({
         return;
       }
       const { sourceGroupId, tabId } = payload;
-      if (sourceGroupId === targetGroupId) {
+      const direction = computeQuadrant(e, e.currentTarget);
+      if (sourceGroupId === targetGroupId && direction === "center") {
         setGroups((prev) => {
           const g = prev.get(targetGroupId);
           if (!g) return prev;
@@ -7398,33 +7806,46 @@ function WorkspaceShell({
         setActiveGroupId(targetGroupId);
         return;
       }
-      setGroups((prev) => {
-        const source = prev.get(sourceGroupId);
-        const target = prev.get(targetGroupId);
-        if (!source || !target) return prev;
-        const movingTab = source.tabs.find((t) => t.id === tabId);
-        if (!movingTab) return prev;
-        const sourceTabs = source.tabs.filter((t) => t.id !== tabId);
-        let sourceActive = source.activeTabId;
-        if (source.activeTabId === tabId) {
-          sourceActive = sourceTabs.length > 0 ? sourceTabs[0].id : null;
-        }
-        const next = new Map(prev);
-        next.set(sourceGroupId, {
-          ...source,
-          tabs: sourceTabs,
-          activeTabId: sourceActive
+      if (direction === "center") {
+        setGroups((prev) => {
+          const source = prev.get(sourceGroupId);
+          const target = prev.get(targetGroupId);
+          if (!source || !target) return prev;
+          const movingTab = source.tabs.find((t) => t.id === tabId);
+          if (!movingTab) return prev;
+          const sourceTabs = source.tabs.filter((t) => t.id !== tabId);
+          let sourceActive = source.activeTabId;
+          if (source.activeTabId === tabId) {
+            sourceActive = sourceTabs.length > 0 ? sourceTabs[0].id : null;
+          }
+          const next = new Map(prev);
+          if (sourceTabs.length === 0 && prev.size > 1) {
+            next.delete(sourceGroupId);
+          } else {
+            next.set(sourceGroupId, {
+              ...source,
+              tabs: sourceTabs,
+              activeTabId: sourceActive
+            });
+          }
+          next.set(targetGroupId, {
+            ...target,
+            tabs: [...target.tabs, movingTab],
+            activeTabId: tabId
+          });
+          return next;
         });
-        next.set(targetGroupId, {
-          ...target,
-          tabs: [...target.tabs, movingTab],
-          activeTabId: tabId
+        setLayout((prev) => {
+          const source = groups.get(sourceGroupId);
+          if (!source || source.tabs.length !== 1) return prev;
+          return removeGroup(prev, sourceGroupId);
         });
-        return next;
-      });
-      setActiveGroupId(targetGroupId);
+        setActiveGroupId(targetGroupId);
+        return;
+      }
+      moveTabToNewQuadrant(sourceGroupId, tabId, targetGroupId, direction);
     },
-    []
+    [computeQuadrant, groups, moveTabToNewQuadrant]
   );
   const renderTabContent = React.useCallback(
     (tab, groupId, isActive) => {
@@ -7437,19 +7858,45 @@ function WorkspaceShell({
             if (provider?.renderEditorChrome) {
               const file = getFile(tab.fileId);
               if (file) {
+                const existingPreview = findTabByFileId(tab.fileId, "preview");
                 chromeSlot = provider.renderEditorChrome({
                   file,
-                  onOpenPreview: () => {
-                    executeCommand("workspace.openPreviewToSide", {
-                      activeTab: tab,
-                      activeGroupId: groupId,
-                      activeGroup: groups.get(groupId) ?? null,
-                      shell: shellActionsRef.current,
-                      getPreviewProvider: (lang) => {
-                        const pTab = { kind: "preview", id: "", fileId: "", sourceRef: { kind: "default" } };
-                        return previewProviderFor?.({ ...pTab, fileId: tab.fileId }) ?? void 0;
-                      }
-                    });
+                  previewOpen: existingPreview !== null,
+                  onOpenPreview: (selectedSourceRef) => {
+                    const current = shellActionsRef.current.findTabByFileId(
+                      tab.fileId,
+                      "preview"
+                    );
+                    if (current) {
+                      shellActionsRef.current.closeTab(current.tabId);
+                      return;
+                    }
+                    const sourceRef = selectedSourceRef ?? { kind: "default" };
+                    const existingPreviewGroup = findGroupWithAnyPreview();
+                    if (existingPreviewGroup) {
+                      const newTab2 = {
+                        kind: "preview",
+                        id: `preview-${tab.fileId}-${Date.now()}`,
+                        fileId: tab.fileId,
+                        sourceRef
+                      };
+                      shellActionsRef.current.addTab(
+                        existingPreviewGroup,
+                        newTab2
+                      );
+                      return;
+                    }
+                    const newTab = {
+                      kind: "preview",
+                      id: `preview-${tab.fileId}-${Date.now()}`,
+                      fileId: tab.fileId,
+                      sourceRef
+                    };
+                    shellActionsRef.current.splitGroupWithTab(
+                      groupId,
+                      "right",
+                      newTab
+                    );
                   },
                   onToggleBackground: () => {
                     executeCommand("workspace.toggleBackgroundPreview", {
@@ -7464,11 +7911,12 @@ function WorkspaceShell({
                     });
                   },
                   onSave: () => {
-                  },
-                  hotReload: true,
-                  // TODO: per-tab hot-reload state in a future iteration
-                  onToggleHotReload: () => {
+                    onSaveFileRef.current?.(tab);
                   }
+                  // hotReload / onToggleHotReload are optional on the
+                  // PreviewEditorChromeContext interface. Phase 10.2 ships
+                  // a provider-level reload policy (always-on for viz);
+                  // per-tab toggle is a follow-up phase.
                 });
               }
             }
@@ -7513,7 +7961,7 @@ function WorkspaceShell({
               provider,
               sourceRef: tab.sourceRef,
               theme,
-              hidden: !isActive,
+              hidden: false,
               onSourceRefChange: (nextRef) => {
                 updateGroup(groupId, (g) => ({
                   ...g,
@@ -7530,14 +7978,30 @@ function WorkspaceShell({
           return assertNever(tab);
       }
     },
-    [chromeForTab, previewProviderFor, theme, updateGroup]
+    // Issue #2 fix: `groups` and `findTabByFileId` must be in the dep
+    // array so `previewOpen` stays fresh after a preview tab is added.
+    // Without them, renderTabContent holds a stale closure over the
+    // old groups map, findTabByFileId always returns null, and the
+    // chrome's Play button never flips to Stop. editorExtrasForTab and
+    // findGroupWithAnyPreview are also added because they were silently
+    // missing before.
+    [
+      chromeForTab,
+      previewProviderFor,
+      theme,
+      updateGroup,
+      groups,
+      findTabByFileId,
+      findGroupWithAnyPreview,
+      editorExtrasForTab
+    ]
   );
   const renderGroup = React.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
-      const canClose = groupOrder.length > 1;
-      const isDragOver = dragOverGroupId === group.id;
+      const canClose = groups.size > 1;
+      const isDragOver = dragOverTarget?.groupId === group.id;
       return /* @__PURE__ */ jsxRuntime.jsxs(
         "div",
         {
@@ -7547,14 +8011,17 @@ function WorkspaceShell({
             if (e.dataTransfer.types.includes(DRAG_MIME)) {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
-              if (dragOverGroupId !== group.id) {
-                setDragOverGroupId(group.id);
+              const direction = computeQuadrant(e, e.currentTarget);
+              if (dragOverTarget?.groupId !== group.id || dragOverTarget.direction !== direction) {
+                setDragOverTarget({ groupId: group.id, direction });
               }
             }
           },
           onDragLeave: (e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) {
-              setDragOverGroupId((id) => id === group.id ? null : id);
+              setDragOverTarget(
+                (t) => t?.groupId === group.id ? null : t
+              );
             }
           },
           onDrop: (e) => handleDropOnGroup(e, group.id),
@@ -7733,8 +8200,9 @@ function WorkspaceShell({
     },
     [
       activeGroupId,
-      groupOrder.length,
-      dragOverGroupId,
+      groups,
+      dragOverTarget,
+      computeQuadrant,
       handleDropOnGroup,
       handleTabClick,
       handleTabClose,
@@ -7744,11 +8212,11 @@ function WorkspaceShell({
       renderTabContent
     ]
   );
-  const orderedGroups = React.useMemo(
-    () => groupOrder.map((id) => groups.get(id)).filter((g) => g !== void 0),
-    [groupOrder, groups]
+  const totalGroupCount = React.useMemo(
+    () => allGroupIds(layout).length,
+    [layout]
   );
-  return /* @__PURE__ */ jsxRuntime.jsx(
+  return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
       ref: shellRootRef,
@@ -7759,9 +8227,150 @@ function WorkspaceShell({
         width: "100%",
         height,
         background: "var(--background)",
-        color: "var(--foreground)"
+        color: "var(--foreground)",
+        position: "relative"
       },
-      children: orderedGroups.length === 1 ? renderGroup(orderedGroups[0]) : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: orderedGroups.map((g) => /* @__PURE__ */ jsxRuntime.jsx(React__default.default.Fragment, { children: renderGroup(g) }, g.id)) })
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-workspace-edge-drop": "start",
+            onDragOver: (e) => handleEdgeDragOver(e, "start"),
+            onDragLeave: handleEdgeDragLeave,
+            onDrop: (e) => handleEdgeDrop(e, "start"),
+            style: {
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 24,
+              zIndex: 10,
+              pointerEvents: tabDragInProgress ? "auto" : "none",
+              background: dragOverEdge === "start" ? "rgba(139,92,246,0.18)" : "transparent",
+              borderLeft: dragOverEdge === "start" ? "2px solid var(--accent)" : "2px solid transparent",
+              transition: "background 80ms ease, border-color 80ms ease"
+            }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-workspace-edge-drop": "end",
+            onDragOver: (e) => handleEdgeDragOver(e, "end"),
+            onDragLeave: handleEdgeDragLeave,
+            onDrop: (e) => handleEdgeDrop(e, "end"),
+            style: {
+              position: "absolute",
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 24,
+              zIndex: 10,
+              pointerEvents: tabDragInProgress ? "auto" : "none",
+              background: dragOverEdge === "end" ? "rgba(139,92,246,0.18)" : "transparent",
+              borderRight: dragOverEdge === "end" ? "2px solid var(--accent)" : "2px solid transparent",
+              transition: "background 80ms ease, border-color 80ms ease"
+            }
+          }
+        ),
+        totalGroupCount === 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-testid": "workspace-shell-empty",
+            style: {
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--foreground-muted)",
+              fontSize: 12
+            },
+            children: "Drop a tab here"
+          }
+        ) : layout.length === 1 && layout[0].length === 1 ? (() => {
+          const g = groups.get(layout[0][0]);
+          return g ? renderGroup(g) : null;
+        })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
+          if (column.length === 1) {
+            const g = groups.get(column[0]);
+            return /* @__PURE__ */ jsxRuntime.jsx(React__default.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+          }
+          return /* @__PURE__ */ jsxRuntime.jsx(
+            SplitPane,
+            {
+              direction: "vertical",
+              children: column.map((gid) => {
+                const g = groups.get(gid);
+                return /* @__PURE__ */ jsxRuntime.jsx(React__default.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+              })
+            },
+            `col-${colIdx}-${column.join("+")}`
+          );
+        }) }),
+        tabDragInProgress && dragOverTarget && /* @__PURE__ */ jsxRuntime.jsx(
+          QuadrantGuideOverlay,
+          {
+            target: dragOverTarget,
+            shellRootRef
+          }
+        )
+      ]
+    }
+  );
+}
+function QuadrantGuideOverlay({
+  target,
+  shellRootRef
+}) {
+  const shell = shellRootRef.current;
+  if (!shell) return null;
+  const groupEl = shell.querySelector(
+    `[data-workspace-group="${target.groupId}"]`
+  );
+  if (!groupEl) return null;
+  const shellRect = shell.getBoundingClientRect();
+  const groupRect = groupEl.getBoundingClientRect();
+  const relLeft = groupRect.left - shellRect.left;
+  const relTop = groupRect.top - shellRect.top;
+  const w = groupRect.width;
+  const h = groupRect.height;
+  let x = relLeft;
+  let y = relTop;
+  let width = w;
+  let height = h;
+  switch (target.direction) {
+    case "west":
+      width = w / 2;
+      break;
+    case "east":
+      x = relLeft + w / 2;
+      width = w / 2;
+      break;
+    case "north":
+      height = h / 2;
+      break;
+    case "south":
+      y = relTop + h / 2;
+      height = h / 2;
+      break;
+  }
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-workspace-guide-overlay": target.direction,
+      style: {
+        position: "absolute",
+        left: x,
+        top: y,
+        width,
+        height,
+        zIndex: 20,
+        pointerEvents: "none",
+        background: "rgba(139,92,246,0.2)",
+        border: "2px solid var(--accent)",
+        borderRadius: 2,
+        transition: "left 60ms ease, top 60ms ease, width 60ms ease, height 60ms ease"
+      }
     }
   );
 }
@@ -7786,6 +8395,7 @@ var actionBtnStyle = {
 };
 
 // src/workspace/runtime/LiveCodingRuntime.ts
+var LIVE_MODE_DEBOUNCE_MS = 500;
 function extractBpmFromCode(code) {
   const fractionMatch = code.match(
     /setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/
@@ -7807,7 +8417,7 @@ function extractBpmFromCode(code) {
   return void 0;
 }
 var LiveCodingRuntime = class {
-  constructor(fileId, engine, getFileContent) {
+  constructor(fileId, engine, getFileContent, subscribeToFile = null) {
     this.bufferedSchedulerRef = null;
     this.isInitialized = false;
     this.isDisposed = false;
@@ -7815,9 +8425,27 @@ var LiveCodingRuntime = class {
     this.isPlayingState = false;
     this.errorListeners = /* @__PURE__ */ new Set();
     this.playingChangedListeners = /* @__PURE__ */ new Set();
+    // Live mode (autoRefresh) state.
+    //
+    // The subscription is lazily installed the first time `setAutoRefresh(true)`
+    // is called AND the runtime is playing. Every subsequent reconcile
+    // (play/stop/setAutoRefresh/dispose) maintains the invariant
+    //
+    //     (autoRefreshEnabled && isPlayingState && subscribeToFile) <=>
+    //     (autoRefreshUnsub !== null)
+    //
+    // so the subscription lifetime is driven by three independent signals
+    // without leaking between sessions or firing after dispose. The debounce
+    // timeout is tracked separately so setAutoRefresh(false) / stop() can
+    // cancel an in-flight pending re-play.
+    this.autoRefreshEnabled = false;
+    this.autoRefreshUnsub = null;
+    this.autoRefreshTimeout = null;
+    this.autoRefreshChangedListeners = /* @__PURE__ */ new Set();
     this.fileId = fileId;
     this.engine = engine;
     this.getFileContent = getFileContent;
+    this.subscribeToFile = subscribeToFile;
     engine.setRuntimeErrorHandler((err2) => {
       this.fireOnError(err2);
     });
@@ -7904,6 +8532,7 @@ var LiveCodingRuntime = class {
     this.currentBpm = extractBpmFromCode(code);
     this.isPlayingState = true;
     this.firePlayingChanged(true);
+    this.reconcileAutoRefresh();
     return { error: null };
   }
   stop() {
@@ -7918,6 +8547,7 @@ var LiveCodingRuntime = class {
       workspaceAudioBus.unpublish(this.fileId);
       this.isPlayingState = false;
       this.firePlayingChanged(false);
+      this.reconcileAutoRefresh();
     }
   }
   dispose() {
@@ -7926,6 +8556,8 @@ var LiveCodingRuntime = class {
       this.stop();
     } catch {
     }
+    this.autoRefreshEnabled = false;
+    this.reconcileAutoRefresh();
     this.bufferedSchedulerRef?.dispose();
     this.bufferedSchedulerRef = null;
     try {
@@ -7935,6 +8567,110 @@ var LiveCodingRuntime = class {
     this.isDisposed = true;
     this.errorListeners.clear();
     this.playingChangedListeners.clear();
+    this.autoRefreshChangedListeners.clear();
+  }
+  // -------------------------------------------------------------------------
+  // Live mode (autoRefresh) — setters, getters, listener, reconciliation.
+  // -------------------------------------------------------------------------
+  /**
+   * Enable or disable live mode for this runtime.
+   *
+   * When enabled AND the runtime is currently playing AND a
+   * `subscribeToFile` function was provided at construction time, the
+   * runtime installs a subscription on the workspace file that
+   * debounce-triggers `play()` (which re-evaluates the current content)
+   * on every content change.
+   *
+   * When disabled or stopped, the subscription is torn down and any
+   * pending debounce timeout is cleared — so toggling OFF mid-burst is
+   * immediate, not "finish the pending re-play first."
+   *
+   * Idempotent — calling with the already-set value is a no-op and does
+   * not fire the `onAutoRefreshChanged` listeners. Never throws; disposed
+   * runtimes silently ignore the call.
+   */
+  setAutoRefresh(enabled) {
+    if (this.isDisposed) return;
+    if (this.autoRefreshEnabled === enabled) return;
+    this.autoRefreshEnabled = enabled;
+    this.reconcileAutoRefresh();
+    this.fireAutoRefreshChanged(enabled);
+  }
+  /** Current live-mode state. */
+  isAutoRefreshEnabled() {
+    return this.autoRefreshEnabled;
+  }
+  /**
+   * Subscribe to live-mode state changes. Fires after `setAutoRefresh`
+   * mutations, with the new enabled value. Returns an idempotent
+   * unsubscribe. Used by the chrome to re-render the live-mode toggle
+   * without having to poll.
+   */
+  onAutoRefreshChanged(cb) {
+    this.autoRefreshChangedListeners.add(cb);
+    let unsubscribed = false;
+    return () => {
+      if (unsubscribed) return;
+      unsubscribed = true;
+      this.autoRefreshChangedListeners.delete(cb);
+    };
+  }
+  /**
+   * Install or tear down the file-content subscription so that its
+   * presence matches `(autoRefreshEnabled && isPlayingState &&
+   * subscribeToFile !== null)`. Called from `setAutoRefresh`, `play`,
+   * `stop`, and `dispose`.
+   *
+   * Installing the subscription is idempotent — calling reconcile while
+   * already subscribed is a no-op. Tearing down is likewise idempotent.
+   */
+  reconcileAutoRefresh() {
+    const shouldBeActive = this.autoRefreshEnabled && this.isPlayingState && this.subscribeToFile !== null && !this.isDisposed;
+    if (shouldBeActive && !this.autoRefreshUnsub) {
+      this.autoRefreshUnsub = this.subscribeToFile(
+        () => this.onLiveModeContentChanged()
+      );
+      return;
+    }
+    if (!shouldBeActive && this.autoRefreshUnsub) {
+      const unsub = this.autoRefreshUnsub;
+      this.autoRefreshUnsub = null;
+      try {
+        unsub();
+      } catch {
+      }
+      if (this.autoRefreshTimeout) {
+        clearTimeout(this.autoRefreshTimeout);
+        this.autoRefreshTimeout = null;
+      }
+    }
+  }
+  /**
+   * Debounced re-evaluate trigger. Called by the file subscription
+   * callback on every content change. Cancels any pending timeout and
+   * schedules a new one; when it fires, checks the invariants once more
+   * (dispose/stop/toggle-off may have happened mid-debounce) and calls
+   * `play()` to re-evaluate and re-schedule.
+   */
+  onLiveModeContentChanged() {
+    if (this.autoRefreshTimeout) clearTimeout(this.autoRefreshTimeout);
+    this.autoRefreshTimeout = setTimeout(() => {
+      this.autoRefreshTimeout = null;
+      if (this.isDisposed) return;
+      if (!this.autoRefreshEnabled) return;
+      if (!this.isPlayingState) return;
+      void this.play();
+    }, LIVE_MODE_DEBOUNCE_MS);
+  }
+  fireAutoRefreshChanged(enabled) {
+    if (this.autoRefreshChangedListeners.size === 0) return;
+    const snapshot = Array.from(this.autoRefreshChangedListeners);
+    for (const cb of snapshot) {
+      try {
+        cb(enabled);
+      } catch {
+      }
+    }
   }
   onError(cb) {
     this.errorListeners.add(cb);
@@ -8041,6 +8777,7 @@ function LiveCodingEditor({
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [bpm, setBpm] = React.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React.useState(false);
   const fileIdRef = React.useRef(FILE_ID);
   const [seeded, setSeeded] = React.useState(false);
   React.useEffect(() => {
@@ -8057,7 +8794,11 @@ function LiveCodingEditor({
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
       engine,
-      () => getFile(fileIdRef.current)?.content ?? ""
+      () => getFile(fileIdRef.current)?.content ?? "",
+      // Pass the workspace-file subscriber so the runtime can install
+      // its own content-change subscription for live mode. Lazy — only
+      // fires after setAutoRefresh(true).
+      (cb) => subscribe(fileIdRef.current, cb)
     );
     runtimeRef.current = rt;
     if (engineRefProp) engineRefProp.current = engine;
@@ -8075,9 +8816,11 @@ function LiveCodingEditor({
         onStop?.();
       }
     });
+    const unsubAutoRefresh = rt.onAutoRefreshChanged(setAutoRefresh);
     return () => {
       unsubError();
       unsubPlaying();
+      unsubAutoRefresh();
       rt.dispose();
       runtimeRef.current = null;
     };
@@ -8111,6 +8854,11 @@ function LiveCodingEditor({
   const handleStop = React.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
+  const handleToggleAutoRefresh = React.useCallback(() => {
+    const rt = runtimeRef.current;
+    if (!rt) return;
+    rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
+  }, []);
   const chromeForTab = React.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
@@ -8126,11 +8874,13 @@ function LiveCodingEditor({
         bpm: bpmProp ?? bpm,
         onPlay: handlePlay,
         onStop: handleStop,
-        chromeExtras: toolbarExtra
+        chromeExtras: toolbarExtra,
+        autoRefresh,
+        onToggleAutoRefresh: handleToggleAutoRefresh
       };
       return provider.renderChrome(ctx);
     },
-    [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra]
+    [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
   const editorExtrasForTab = React.useCallback(
     () => ({
@@ -8686,15 +9436,21 @@ var VirtualTimeScheduler = class {
   /**
    * Broadcast a cue event. Any tasks waiting via waitForSync
    * are woken and inherit the cuer's virtual time (SV5).
+   *
+   * `taskId` may identify a real scheduler task (normal DSL cue from inside
+   * a live_loop) OR a synthetic external source (e.g. `'__midi__'` from the
+   * MIDI bridge, `'__osc__'` from incoming OSC — #151). When the task does
+   * not exist, fall back to the current audio time so external sources still
+   * wake sync waiters instead of silently returning.
    */
   fireCue(name2, taskId, args2 = []) {
     const task = this.tasks.get(taskId);
-    if (!task) return;
-    this.cueMap.set(name2, { time: task.virtualTime, args: args2 });
+    const cueVirtualTime = task?.virtualTime ?? this.getAudioTime();
+    this.cueMap.set(name2, { time: cueVirtualTime, args: args2 });
     this.emitEvent({
       type: "cue",
       taskId,
-      virtualTime: task.virtualTime,
+      virtualTime: cueVirtualTime,
       audioTime: this.getAudioTime(),
       params: { name: name2, args: args2 }
     });
@@ -8704,7 +9460,7 @@ var VirtualTimeScheduler = class {
       for (const waiter of waiters) {
         const waiterTask = this.tasks.get(waiter.taskId);
         if (waiterTask) {
-          waiterTask.virtualTime = task.virtualTime;
+          waiterTask.virtualTime = cueVirtualTime;
         }
         waiter.resolve(args2);
       }
@@ -8922,9 +9678,9 @@ var SeededRandom = class _SeededRandom {
     return { mt: new Uint32Array(this.mt), mti: this.mti };
   }
   /** Restore state from snapshot. */
-  setState(state) {
-    this.mt.set(state.mt);
-    this.mti = state.mti;
+  setState(state2) {
+    this.mt.set(state2.mt);
+    this.mti = state2.mti;
   }
   /** Return next value without advancing state. */
   peek() {
@@ -10488,6 +11244,9 @@ async function runProgram(program, ctx, fxCounter) {
         const synth = resolveSynthName(step.synth ?? currentSynth);
         const nodeRef = nextNodeRef++;
         if (ctx.bridge) {
+          if ((synth === "sound_in" || synth === "sound_in_stereo") && !ctx.bridge.isLiveAudioStreaming(synth)) {
+            ctx.bridge.startLiveAudio(synth, { stereo: synth === "sound_in_stereo" }).catch((err2) => ctx.printHandler?.(`Mic input failed: ${err2.message}`));
+          }
           step.opts.note = step.note;
           const params = normalizePlayParams(synth, step.opts, currentBpm);
           params.out_bus = task.outBus;
@@ -10619,23 +11378,23 @@ async function runProgram(program, ctx, fxCounter) {
             }
             task.outBus = newBus;
             ctx.bridge.flushMessages();
-            const state = {
+            const state2 = {
               bus: newBus,
               groupId: fxGroupId,
               nodeId: fxNodeId,
               outBus: prevOutBus
             };
-            ctx.reusableFx.set(fxKey, state);
+            ctx.reusableFx.set(fxKey, state2);
             for (let rep = 0; rep < reps; rep++) await runProgram(step.body, ctx, fxCounter);
           } finally {
             task.outBus = prevOutBus;
             ctx.bridge.flushMessages();
             const killDelay = step.opts.kill_delay ?? 1;
-            const state = ctx.reusableFx.get(fxKey);
-            if (state) {
-              state.killTimer = setTimeout(() => {
-                ctx.bridge.freeGroup(state.groupId);
-                ctx.bridge.freeBus(state.bus);
+            const state2 = ctx.reusableFx.get(fxKey);
+            if (state2) {
+              state2.killTimer = setTimeout(() => {
+                ctx.bridge.freeGroup(state2.groupId);
+                ctx.bridge.freeBus(state2.bus);
                 ctx.reusableFx.delete(fxKey);
               }, killDelay * 1e3);
             }
@@ -10959,6 +11718,8 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     this.freeBuses = [];
     /** Live audio (mic/line-in) streams keyed by name */
     this.liveAudioStreams = /* @__PURE__ */ new Map();
+    /** Names whose startLiveAudio getUserMedia is currently in-flight — race lock (#152) */
+    this.pendingLiveAudio = /* @__PURE__ */ new Set();
     /** Per-track AnalyserNodes keyed by track name */
     this.trackAnalysers = /* @__PURE__ */ new Map();
     /** Track name → scsynth bus pair (stereo, starting at bus 2) */
@@ -11350,25 +12111,50 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     return nodeId;
   }
   /**
+   * Returns true if a live audio stream under this name is currently active
+   * OR mid-acquisition. Used by AudioInterpreter to avoid re-starting the
+   * mic on every `synth :sound_in` dispatch inside a live_loop (#152).
+   */
+  isLiveAudioStreaming(name2) {
+    return this.liveAudioStreams.has(name2) || this.pendingLiveAudio.has(name2);
+  }
+  /**
    * Start capturing live audio from the system input (microphone/line-in).
-   * The stream is connected to the master analyser → gain → speakers chain.
-   * Disables browser audio processing for clean pass-through.
+   * The stream is connected to the scsynth AudioWorkletNode so SoundIn.ar
+   * inside the `sonic-pi-sound_in` synthdef can read the mic signal.
+   *
+   * **Idempotent and race-safe** (#152): if a stream already exists under
+   * this name, or a `getUserMedia` call is in-flight for it, returns
+   * immediately. Without this the AudioInterpreter's per-dispatch auto-start
+   * would tear down and re-acquire the mic ~10×/sec inside a live_loop,
+   * making the browser indicator flicker and the audio drop out.
    */
   async startLiveAudio(name2, opts) {
     if (!this.sonic) throw new Error("SuperSonic not initialized");
-    this.stopLiveAudio(name2);
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: opts?.stereo ? 2 : 1
+    if (this.liveAudioStreams.has(name2) || this.pendingLiveAudio.has(name2)) return;
+    this.pendingLiveAudio.add(name2);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: opts?.stereo ? 2 : 1
+        }
+      });
+      if (!this.pendingLiveAudio.has(name2)) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
       }
-    });
-    const audioCtx = this.sonic.audioContext;
-    const source = audioCtx.createMediaStreamSource(stream);
-    source.connect(this.analyserNode ?? audioCtx.destination);
-    this.liveAudioStreams.set(name2, { stream, source });
+      const audioCtx = this.sonic.audioContext;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const nodeWrapper = this.sonic.node;
+      const workletNode = nodeWrapper.input ?? this.sonic.node;
+      source.connect(workletNode);
+      this.liveAudioStreams.set(name2, { stream, source });
+    } finally {
+      this.pendingLiveAudio.delete(name2);
+    }
   }
   /** Stop a named live audio stream and release its resources. */
   stopLiveAudio(name2) {
@@ -11377,6 +12163,21 @@ var _SuperSonicBridge = class _SuperSonicBridge {
       entry.source.disconnect();
       entry.stream.getTracks().forEach((t) => t.stop());
       this.liveAudioStreams.delete(name2);
+    }
+  }
+  /**
+   * Stop every active live audio stream and release mic tracks (#152).
+   * Called on engine stop so the browser's mic indicator clears and the
+   * mic stops feeding scsynth's input channel between runs.
+   *
+   * Also clears pendingLiveAudio so any in-flight getUserMedia call
+   * detects the cancellation after its await and tears down the stream
+   * it just acquired instead of racing past the stop.
+   */
+  stopAllLiveAudio() {
+    this.pendingLiveAudio.clear();
+    for (const name2 of Array.from(this.liveAudioStreams.keys())) {
+      this.stopLiveAudio(name2);
     }
   }
   /**
@@ -11478,9 +12279,7 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     this.sonic?.send("/n_free", nodeId);
   }
   dispose() {
-    for (const name2 of this.liveAudioStreams.keys()) {
-      this.stopLiveAudio(name2);
-    }
+    this.stopAllLiveAudio();
     if (this.masterGainNode) {
       this.masterGainNode.disconnect();
       this.masterGainNode = null;
@@ -14556,6 +15355,14 @@ var SonicPiEngine = class {
         transpiledCode = result.code;
         this.transpileCache.set(code, transpiledCode);
       }
+      if (this.bridge) {
+        const stillUsed = {
+          sound_in: /['"]sound_in['"]/.test(transpiledCode),
+          sound_in_stereo: /['"]sound_in_stereo['"]/.test(transpiledCode)
+        };
+        if (!stillUsed.sound_in) this.bridge.stopLiveAudio("sound_in");
+        if (!stillUsed.sound_in_stereo) this.bridge.stopLiveAudio("sound_in_stereo");
+      }
       let defaultBpm = 60;
       let defaultSynth = "beep";
       const scheduler = this.scheduler;
@@ -14867,7 +15674,16 @@ var SonicPiEngine = class {
       const set = (key, value) => {
         this.globalStore.set(key, value);
       };
-      const get = (key) => this.globalStore.get(key) ?? null;
+      const storeGet = (key) => this.globalStore.get(key) ?? null;
+      const getFn = (key) => storeGet(key);
+      const get = new Proxy(getFn, {
+        get(target, property, receiver) {
+          if (typeof property === "symbol" || property in target) {
+            return Reflect.get(target, property, receiver);
+          }
+          return storeGet(property);
+        }
+      });
       const get_cc = (controller, channel = 1) => this.midiBridge.getCCValue(controller, channel);
       const get_pitch_bend = (channel = 1) => this.midiBridge.getPitchBend(channel);
       const sample_names = () => getSampleNames();
@@ -15163,6 +15979,7 @@ var SonicPiEngine = class {
     this.scheduler?.stop();
     if (this.bridge) {
       this.bridge.freeAllNodes();
+      this.bridge.stopAllLiveAudio();
     }
     this.nodeRefMap.clear();
     this.scheduler?.dispose();
@@ -15987,7 +16804,6 @@ function VizEditor({
 }) {
   const containerRef = React.useRef(null);
   const [initialTabs, setInitialTabs] = React.useState(null);
-  const activeTabRef = React.useRef(null);
   React.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
@@ -16011,29 +16827,20 @@ function VizEditor({
       setInitialTabs(tabs.length > 0 ? tabs : []);
     });
   }, []);
-  React.useEffect(() => {
-    const handleKeydown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault();
-        const tab = activeTabRef.current;
-        if (!tab) return;
-        const file = getFile(tab.fileId);
-        if (!file) return;
-        const presetId = getPresetIdForFile(file);
-        if (!presetId) return;
-        flushToPreset(file.id, presetId).then(() => {
-          VizPresetStore.get(presetId).then((preset) => {
-            if (preset) onPresetSaved?.(preset);
-          });
+  const handleSaveFile = React.useCallback(
+    (tab) => {
+      const file = getFile(tab.fileId);
+      if (!file) return;
+      const presetId = getPresetIdForFile(file);
+      if (!presetId) return;
+      flushToPreset(file.id, presetId).then(() => {
+        VizPresetStore.get(presetId).then((preset) => {
+          if (preset) onPresetSaved?.(preset);
         });
-      }
-    };
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
-  }, [onPresetSaved]);
-  const handleActiveTabChange = React.useCallback((tab) => {
-    activeTabRef.current = tab;
-  }, []);
+      });
+    },
+    [onPresetSaved]
+  );
   const previewProviderFor = React.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
@@ -16061,8 +16868,8 @@ function VizEditor({
           initialTabs,
           theme,
           height: "100%",
-          onActiveTabChange: handleActiveTabChange,
-          previewProviderFor
+          previewProviderFor,
+          onSaveFile: handleSaveFile
         }
       )
     }
@@ -16125,8 +16932,119 @@ function compileP5Code(code) {
     };
   };
 }
+
+// src/workspace/sampleSound.ts
+var SAMPLE_SOUND_SOURCE_ID = "__sample__";
+var SAMPLE_SOUND_LABEL = "Sample sound (test audio)";
+var state = null;
+function startSampleSound() {
+  if (state) return;
+  const ctx = new AudioContext();
+  const osc = ctx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.value = 110;
+  const lfo = ctx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.value = 0.5;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 80;
+  lfo.connect(lfoGain);
+  lfoGain.connect(osc.frequency);
+  const outGain = ctx.createGain();
+  outGain.gain.value = 0.05;
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.8;
+  osc.connect(outGain);
+  outGain.connect(ctx.destination);
+  osc.connect(analyser);
+  osc.start();
+  lfo.start();
+  state = { ctx, osc, lfo, lfoGain, outGain, analyser };
+  const payload = {
+    analyser,
+    audio: {
+      analyser,
+      audioCtx: ctx
+    }
+  };
+  workspaceAudioBus.publish(SAMPLE_SOUND_SOURCE_ID, payload);
+}
+function stopSampleSound() {
+  if (!state) return;
+  try {
+    state.osc.stop();
+    state.lfo.stop();
+  } catch {
+  }
+  try {
+    state.osc.disconnect();
+    state.lfo.disconnect();
+    state.lfoGain.disconnect();
+    state.outGain.disconnect();
+    state.analyser.disconnect();
+  } catch {
+  }
+  workspaceAudioBus.unpublish(SAMPLE_SOUND_SOURCE_ID);
+  try {
+    void state.ctx.close();
+  } catch {
+  }
+  state = null;
+}
+function isSampleSoundPlaying() {
+  return state !== null;
+}
+function LiveModeToggle({
+  autoRefresh,
+  onToggle
+}) {
+  const baseStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "3px 8px",
+    borderRadius: 3,
+    fontSize: 10,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    userSelect: "none"
+  };
+  const activeStyle = {
+    ...baseStyle,
+    background: "rgba(196, 181, 253, 0.15)",
+    color: "#c4b5fd",
+    border: "1px solid rgba(196, 181, 253, 0.3)"
+  };
+  const inactiveStyle = {
+    ...baseStyle,
+    background: "none",
+    color: "var(--foreground-muted)",
+    border: "1px solid var(--border)"
+  };
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "button",
+    {
+      "data-testid": "strudel-chrome-live-toggle",
+      "data-live-mode": autoRefresh ? "on" : "off",
+      onClick: onToggle,
+      title: autoRefresh ? "Live mode ON \u2014 auto re-evaluate on code change while playing" : "Live mode OFF \u2014 click to auto re-evaluate on change",
+      style: autoRefresh ? activeStyle : inactiveStyle,
+      children: autoRefresh ? "\u27F3 live" : "\u27F3"
+    }
+  );
+}
 function StrudelChrome(ctx) {
-  const { isPlaying, error, bpm, onPlay, onStop, chromeExtras } = ctx;
+  const {
+    isPlaying,
+    error,
+    bpm,
+    onPlay,
+    onStop,
+    chromeExtras,
+    autoRefresh,
+    onToggleAutoRefresh
+  } = ctx;
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -16197,6 +17115,13 @@ function StrudelChrome(ctx) {
               border: "1px solid rgba(248,113,113,0.3)"
             },
             children: error.message
+          }
+        ),
+        onToggleAutoRefresh && /* @__PURE__ */ jsxRuntime.jsx(
+          LiveModeToggle,
+          {
+            autoRefresh: autoRefresh ?? false,
+            onToggle: onToggleAutoRefresh
           }
         ),
         chromeExtras && /* @__PURE__ */ jsxRuntime.jsx(
@@ -16319,21 +17244,73 @@ var btnStyle = {
   fontSize: 10,
   fontFamily: "inherit"
 };
-var activeBtnStyle = {
-  ...btnStyle,
-  background: "rgba(117,186,255,0.15)",
-  color: "#75baff",
-  borderColor: "rgba(117,186,255,0.3)"
+var primaryBtnStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "4px 10px",
+  borderRadius: 4,
+  border: "none",
+  cursor: "pointer",
+  fontSize: 11,
+  fontFamily: "var(--font-mono)",
+  background: "var(--accent)",
+  color: "#fff"
 };
+function refToString(ref) {
+  if (ref.kind === "default") return "default";
+  if (ref.kind === "none") return "none";
+  return `file:${ref.fileId}`;
+}
+function stringToRef(value) {
+  if (value === "default") return { kind: "default" };
+  if (value === "none") return { kind: "none" };
+  if (value.startsWith("file:")) {
+    return { kind: "file", fileId: value.slice("file:".length) };
+  }
+  return { kind: "default" };
+}
 function VizEditorChrome({
   file,
   onOpenPreview,
   onToggleBackground,
   onSave,
-  hotReload,
-  onToggleHotReload
+  previewOpen
 }) {
   const ext = file.language === "p5js" ? "p5" : file.language;
+  const isOpen = previewOpen === true;
+  const [selectedSource, setSelectedSource] = React.useState({
+    kind: "default"
+  });
+  const [, forceSourcesRerender] = React.useState(0);
+  React.useEffect(() => {
+    const unsub = workspaceAudioBus.onSourcesChanged(() => {
+      forceSourcesRerender((n) => n + 1);
+    });
+    return unsub;
+  }, []);
+  const stopBtnStyle = {
+    ...primaryBtnStyle,
+    background: "rgba(139,92,246,0.15)",
+    color: "var(--accent)",
+    outline: "1px solid var(--accent)"
+  };
+  const handlePlayClick = React.useCallback(() => {
+    if (selectedSource.kind === "file" && selectedSource.fileId === SAMPLE_SOUND_SOURCE_ID && !isSampleSoundPlaying()) {
+      startSampleSound();
+    }
+    onOpenPreview(selectedSource);
+  }, [onOpenPreview, selectedSource]);
+  const busSources = workspaceAudioBus.listSources();
+  const patternSources = busSources.filter(
+    (s) => s.sourceId !== SAMPLE_SOUND_SOURCE_ID
+  );
+  const handleSourceChange = React.useCallback(
+    (e) => {
+      setSelectedSource(stringToRef(e.target.value));
+    },
+    []
+  );
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -16341,14 +17318,26 @@ function VizEditorChrome({
       style: {
         display: "flex",
         alignItems: "center",
-        gap: 6,
-        padding: "3px 8px",
+        gap: 8,
+        height: 40,
+        padding: "0 12px",
         background: "var(--surface)",
         borderBottom: "1px solid var(--border)",
         fontSize: 11,
         flexShrink: 0
       },
       children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "button",
+          {
+            "data-testid": "viz-chrome-play",
+            "data-preview-open": isOpen ? "true" : "false",
+            onClick: handlePlayClick,
+            title: isOpen ? "Stop \u2014 close preview (Cmd+K V)" : "Play \u2014 open preview to side (Cmd+K V)",
+            style: isOpen ? stopBtnStyle : primaryBtnStyle,
+            children: isOpen ? "\u25A0 Stop" : "\u25B6 Play"
+          }
+        ),
         /* @__PURE__ */ jsxRuntime.jsx(
           "span",
           {
@@ -16366,23 +17355,56 @@ function VizEditorChrome({
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: 1, height: 14, background: "var(--border)" } }),
-        /* @__PURE__ */ jsxRuntime.jsxs(
-          "button",
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "label",
           {
-            onClick: onOpenPreview,
-            title: "Open Preview to Side (Cmd+K V)",
-            style: btnStyle,
-            children: [
-              "\u2B1A",
-              " Preview"
-            ]
+            htmlFor: `viz-chrome-source-${file.id}`,
+            style: { color: "var(--foreground-muted)", fontSize: 10 },
+            children: "source:"
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsxs(
+          "select",
+          {
+            id: `viz-chrome-source-${file.id}`,
+            "data-testid": "viz-chrome-source",
+            value: refToString(selectedSource),
+            onChange: handleSourceChange,
+            style: {
+              background: "var(--surface-elevated)",
+              color: "var(--foreground)",
+              border: "1px solid var(--border)",
+              borderRadius: 3,
+              padding: "2px 6px",
+              fontSize: 10,
+              fontFamily: "inherit",
+              cursor: "pointer"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "default", children: "default (follow most recent)" }),
+              /* @__PURE__ */ jsxRuntime.jsx("option", { value: `file:${SAMPLE_SOUND_SOURCE_ID}`, children: SAMPLE_SOUND_LABEL }),
+              patternSources.length > 0 && /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxRuntime.jsxs(
+                "option",
+                {
+                  value: `file:${source.sourceId}`,
+                  children: [
+                    source.playing ? "\u25CF " : "\u25CB ",
+                    source.label
+                  ]
+                },
+                source.sourceId
+              )) }),
+              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "none", children: "none (demo mode)" })
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: 1, height: 14, background: "var(--border)" } }),
+        /* @__PURE__ */ jsxRuntime.jsxs(
           "button",
           {
+            "data-testid": "viz-chrome-background",
             onClick: onToggleBackground,
-            title: "Toggle Background Preview (Cmd+K B)",
+            title: "Toggle background preview (Cmd+K B)",
             style: btnStyle,
             children: [
               "\u25A2",
@@ -16391,13 +17413,28 @@ function VizEditorChrome({
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } }),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "button",
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "span",
           {
-            onClick: onToggleHotReload,
-            title: hotReload ? "Hot reload ON \u2014 click to disable" : "Hot reload OFF \u2014 click to enable",
-            style: hotReload ? activeBtnStyle : btnStyle,
-            children: hotReload ? "\u27F3 live" : "\u27F3"
+            "data-testid": "viz-chrome-live-indicator",
+            title: "Hot reload is on \u2014 preview updates as you type",
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 8px",
+              borderRadius: 3,
+              fontSize: 10,
+              fontFamily: "inherit",
+              background: "rgba(196, 181, 253, 0.12)",
+              color: "#c4b5fd",
+              border: "1px solid rgba(196, 181, 253, 0.25)",
+              userSelect: "none"
+            },
+            children: [
+              "\u27F3",
+              " live"
+            ]
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsxs(
@@ -16543,6 +17580,14 @@ function CompiledVizMount(props) {
   }, [descriptor]);
   React.useEffect(() => {
     const r = rendererRef.current?.renderer;
+    if (!r || !r.update) return;
+    try {
+      r.update(components);
+    } catch {
+    }
+  }, [components]);
+  React.useEffect(() => {
+    const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
       try {
@@ -16588,6 +17633,18 @@ var P5_VIZ = createCompiledVizProvider({
   renderer: "p5"
 });
 
+// src/workspace/preview/namedVizBridge.ts
+function registerPresetAsNamedViz(preset) {
+  try {
+    const descriptor = compilePreset(preset);
+    registerNamedViz(preset.name, descriptor);
+    return true;
+  } catch {
+    unregisterNamedViz(preset.name);
+    return false;
+  }
+}
+
 exports.BUNDLED_PREFIX = BUNDLED_PREFIX;
 exports.BufferedScheduler = BufferedScheduler;
 exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
@@ -16611,6 +17668,8 @@ exports.PATTERN_IR_SCHEMA_VERSION = PATTERN_IR_SCHEMA_VERSION;
 exports.PianorollSketch = PianorollSketch;
 exports.PitchwheelSketch = PitchwheelSketch;
 exports.PreviewView = PreviewView;
+exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
+exports.SAMPLE_SOUND_SOURCE_ID = SAMPLE_SOUND_SOURCE_ID;
 exports.SONICPI_RUNTIME = SONICPI_RUNTIME;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
 exports.ScopeSketch = ScopeSketch;
@@ -16638,6 +17697,8 @@ exports.filter = filter;
 exports.flushToPreset = flushToPreset;
 exports.generateUniquePresetId = generateUniquePresetId;
 exports.getFile = getFile;
+exports.getNamedViz = getNamedViz;
+exports.getPresetIdForFile = getPresetIdForFile;
 exports.getPreviewProviderForExtension = getPreviewProviderForExtension;
 exports.getPreviewProviderForLanguage = getPreviewProviderForLanguage;
 exports.getRuntimeProviderForExtension = getRuntimeProviderForExtension;
@@ -16647,16 +17708,22 @@ exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;
 exports.isBundledPresetId = isBundledPresetId;
+exports.isSampleSoundPlaying = isSampleSoundPlaying;
+exports.listNamedVizEntries = listNamedVizEntries;
+exports.listNamedVizNames = listNamedVizNames;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.merge = merge;
 exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
+exports.onNamedVizChanged = onNamedVizChanged;
 exports.parseMini = parseMini;
 exports.parseStrudel = parseStrudel;
 exports.patternFromJSON = patternFromJSON;
 exports.patternToJSON = patternToJSON;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.propagate = propagate;
+exports.registerNamedViz = registerNamedViz;
+exports.registerPresetAsNamedViz = registerPresetAsNamedViz;
 exports.registerPreviewProvider = registerPreviewProvider;
 exports.registerRuntimeProvider = registerRuntimeProvider;
 exports.resolveDescriptor = resolveDescriptor;
@@ -16666,9 +17733,13 @@ exports.seedFromPreset = seedFromPreset;
 exports.seedFromPresetId = seedFromPresetId;
 exports.setContent = setContent;
 exports.setVizConfig = setVizConfig;
+exports.startSampleSound = startSampleSound;
+exports.stopSampleSound = stopSampleSound;
+exports.subscribeToWorkspaceFile = subscribe;
 exports.timestretch = timestretch;
 exports.toStrudel = toStrudel;
 exports.transpose = transpose;
+exports.unregisterNamedViz = unregisterNamedViz;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.workspaceAudioBus = workspaceAudioBus;
 //# sourceMappingURL=index.cjs.map
