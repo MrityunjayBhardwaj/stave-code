@@ -828,4 +828,17 @@ export interface WorkspaceShellProps {
     onStop?: () => void
     error?: Error | null
   } | undefined
+
+  /**
+   * Host callback for "save this file" — fires when the user presses
+   * Cmd+S / Ctrl+S anywhere in the shell, or clicks the Save button on
+   * the preview-provider's editor chrome (viz files). The shell owns the
+   * keybinding + chrome wiring; the host owns what "save" actually means
+   * for a given file type (e.g., `flushToPreset` for viz files backed by
+   * `VizPresetStore`).
+   *
+   * Fires with the currently-active editor tab. The shell does nothing
+   * if the active tab is a preview tab or no tab is active.
+   */
+  readonly onSaveFile?: (tab: WorkspaceTab & { kind: 'editor' }) => void
 }

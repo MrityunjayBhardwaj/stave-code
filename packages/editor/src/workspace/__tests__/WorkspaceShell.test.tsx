@@ -32,7 +32,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import React from 'react'
-import { render, fireEvent, act } from '@testing-library/react'
+import { render, fireEvent, createEvent, act } from '@testing-library/react'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
@@ -398,6 +398,70 @@ describe('WorkspaceShell', () => {
       ).not.toBeNull()
     })
 
+    it('auto-collapses a group when closing its last tab (non-only group)', () => {
+      // VS Code parity: closing the × on the last tab of a non-only
+      // group should remove the group entirely — no "Drop a tab here"
+      // placeholder left behind. Previously the user had to hunt
+      // down the tiny group-close × on the chrome bar to dismiss the
+      // area, which was effectively hidden.
+      const tabs = [
+        editorTab('t-a', 'f-strudel'),
+        editorTab('t-b', 'f-hydra'),
+      ]
+      const { container } = render(<WorkspaceShell initialTabs={tabs} />)
+      // Split to create a second empty group so we have 2 groups total.
+      const splitBtn = container.querySelector(
+        '[data-testid^="group-split-"]',
+      ) as HTMLElement
+      fireEvent.click(splitBtn)
+      // Now drag t-b into the second group so it's the only tab there.
+      // Simpler path for the test: just verify the close-last-tab-of-
+      // a-non-only-group behavior by closing t-b first, which leaves
+      // only t-a in the original group PLUS the empty second group.
+      // Close the empty group via its × so we're at a clean 2-group
+      // state with one tab in each? No — simpler: programmatically
+      // arrange via public API.
+      //
+      // The direct test: close t-a while 2 groups exist. t-a is the
+      // last tab of its group → group should collapse.
+      const tabACloseBtn = container.querySelector(
+        '[data-testid="tab-close-t-a"]',
+      ) as HTMLElement
+      // Close t-b first (so the first group has only t-a).
+      const tabBCloseBtn = container.querySelector(
+        '[data-testid="tab-close-t-b"]',
+      ) as HTMLElement
+      fireEvent.click(tabBCloseBtn)
+      // Now the first group has only t-a; the second group (from
+      // split) is still empty. Close t-a → group should collapse AND
+      // leave us with just the empty split group.
+      fireEvent.click(tabACloseBtn)
+      const groupsAfter = container.querySelectorAll(
+        '[data-workspace-group]',
+      )
+      // Exactly one group remains (the empty split one). The
+      // collapse-on-last-tab eliminated the original group.
+      expect(groupsAfter.length).toBe(1)
+    })
+
+    it('leaves the only group intact when closing its last tab', () => {
+      // Edge case: if closing the last tab of the ONLY group, we
+      // cannot remove that group (the shell would have nothing to
+      // render). The group stays, empty. This preserves the
+      // "Drop a tab here" placeholder as the zero-tab fallback.
+      const tabs = [editorTab('t-a', 'f-strudel')]
+      const { container } = render(<WorkspaceShell initialTabs={tabs} />)
+      const tabACloseBtn = container.querySelector(
+        '[data-testid="tab-close-t-a"]',
+      ) as HTMLElement
+      fireEvent.click(tabACloseBtn)
+      const groupsAfter = container.querySelectorAll(
+        '[data-workspace-group]',
+      )
+      // Still one group, but now empty.
+      expect(groupsAfter.length).toBe(1)
+    })
+
     it('ignores close-group when only one group exists', () => {
       const tabs = [editorTab('t-a', 'f-strudel')]
       const { container } = render(<WorkspaceShell initialTabs={tabs} />)
@@ -473,6 +537,162 @@ describe('WorkspaceShell', () => {
           .closest('[data-workspace-group]')
           ?.getAttribute('data-workspace-group'),
       ).toBe(sourceGroupId)
+    })
+
+    it('splits within the same group when dragging a tab to its own directional quadrant', () => {
+      // The common case: all seed tabs start in ONE group. The user
+      // drags a tab to the east quadrant of that same group expecting
+      // a new split to appear. This regression test makes sure the
+      // drop handler does not early-return just because source and
+      // target are the same group.
+      //
+      // Implementation note: React Testing Library's `fireEvent.drop`
+      // with `{ clientX, clientY }` in the init dict does NOT propagate
+      // those values into the React SyntheticEvent reliably. We work
+      // around that by dispatching a native DragEvent directly with
+      // `bubbles: true` so React's delegated root listener picks it
+      // up with the coordinates attached.
+      const tabs = [
+        editorTab('t-a', 'f-strudel'),
+        editorTab('t-b', 'f-hydra'),
+      ]
+      const { container } = render(<WorkspaceShell initialTabs={tabs} />)
+      const groupsBefore = container.querySelectorAll(
+        '[data-workspace-group]',
+      )
+      expect(groupsBefore.length).toBe(1)
+
+      // Mock getBoundingClientRect on the group so computeQuadrant
+      // sees a real 200×200 rect — jsdom otherwise returns zero-size
+      // which makes the defensive path collapse to 'center'.
+      const groupEl = groupsBefore[0] as HTMLElement
+      groupEl.getBoundingClientRect = () =>
+        ({
+          x: 0, y: 0, left: 0, top: 0,
+          width: 200, height: 200,
+          right: 200, bottom: 200,
+          toJSON: () => ({}),
+        }) as DOMRect
+
+      const dataStore: Record<string, string> = {}
+      const dataTransfer = {
+        setData: (type: string, value: string) => {
+          dataStore[type] = value
+        },
+        getData: (type: string) => dataStore[type] ?? '',
+        types: [] as string[],
+        effectAllowed: '',
+        dropEffect: '',
+      }
+
+      const tabB = container.querySelector(
+        '[data-workspace-tab="t-b"]',
+      ) as HTMLElement
+      fireEvent.dragStart(tabB, { dataTransfer })
+      dataTransfer.types.push('application/workspace-tab')
+
+      // React Testing Library's `createEvent.drop` builds a proper
+      // DragEvent that React's delegated listener recognizes. We patch
+      // `clientX`/`clientY` via `defineProperty` because RTL's init
+      // dict path doesn't reliably set them, and fireEvent otherwise
+      // strips them. Same treatment for dragover.
+      const patchCoords = <E extends Event>(ev: E, x: number, y: number): E => {
+        Object.defineProperty(ev, 'clientX', { value: x, configurable: true })
+        Object.defineProperty(ev, 'clientY', { value: y, configurable: true })
+        return ev
+      }
+      const dragOverEvent = patchCoords(
+        createEvent.dragOver(groupEl, { dataTransfer }),
+        180,
+        100,
+      )
+      fireEvent(groupEl, dragOverEvent)
+      const dropEvent = patchCoords(
+        createEvent.drop(groupEl, { dataTransfer }),
+        180,
+        100,
+      )
+      fireEvent(groupEl, dropEvent)
+
+      // After the drop we should have TWO groups — the original (with
+      // t-a still in it) and a new one (with t-b moved into it).
+      const groupsAfter = container.querySelectorAll(
+        '[data-workspace-group]',
+      )
+      expect(groupsAfter.length).toBe(2)
+
+      // t-b should be in a different group than t-a.
+      const tbAfter = container.querySelector(
+        '[data-workspace-tab="t-b"]',
+      ) as HTMLElement
+      const taAfter = container.querySelector(
+        '[data-workspace-tab="t-a"]',
+      ) as HTMLElement
+      const tbGroup = tbAfter.closest('[data-workspace-group]')
+      const taGroup = taAfter.closest('[data-workspace-group]')
+      expect(tbGroup).not.toBe(taGroup)
+    })
+
+    it('is a no-op when dragging the ONLY tab in a single-tab group to its own quadrant', () => {
+      // Degenerate case — splitting a single tab off of its own group
+      // would collapse the source and re-home the tab as the only
+      // tab of a new group, producing a visually identical state. The
+      // drop should be a no-op so the user doesn't see a phantom
+      // reorganization.
+      const tabs = [editorTab('t-a', 'f-strudel')]
+      const { container } = render(<WorkspaceShell initialTabs={tabs} />)
+
+      const groupEl = container.querySelector(
+        '[data-workspace-group]',
+      ) as HTMLElement
+      groupEl.getBoundingClientRect = () =>
+        ({
+          x: 0, y: 0, left: 0, top: 0,
+          width: 200, height: 200,
+          right: 200, bottom: 200,
+          toJSON: () => ({}),
+        }) as DOMRect
+
+      const dataStore: Record<string, string> = {}
+      const dataTransfer = {
+        setData: (type: string, value: string) => {
+          dataStore[type] = value
+        },
+        getData: (type: string) => dataStore[type] ?? '',
+        types: [] as string[],
+        effectAllowed: '',
+        dropEffect: '',
+      }
+
+      const tabA = container.querySelector(
+        '[data-workspace-tab="t-a"]',
+      ) as HTMLElement
+      fireEvent.dragStart(tabA, { dataTransfer })
+      dataTransfer.types.push('application/workspace-tab')
+
+      const patchCoords2 = <E extends Event>(ev: E, x: number, y: number): E => {
+        Object.defineProperty(ev, 'clientX', { value: x, configurable: true })
+        Object.defineProperty(ev, 'clientY', { value: y, configurable: true })
+        return ev
+      }
+      fireEvent(
+        groupEl,
+        patchCoords2(
+          createEvent.dragOver(groupEl, { dataTransfer }),
+          180,
+          100,
+        ),
+      )
+      fireEvent(
+        groupEl,
+        patchCoords2(createEvent.drop(groupEl, { dataTransfer }), 180, 100),
+      )
+
+      // Still exactly one group, t-a still in it.
+      const groupsAfter = container.querySelectorAll(
+        '[data-workspace-group]',
+      )
+      expect(groupsAfter.length).toBe(1)
     })
   })
 

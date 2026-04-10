@@ -10,16 +10,16 @@
  *   2. Seeds a `WorkspaceFile` for each preset via `seedFromPreset`.
  *   3. Mounts `<WorkspaceShell>` with editor + preview tabs per preset.
  *
- * Ctrl+S save:
- *   - Wired via `onTabClose` is not applicable here; the shell's keyboard
- *     command registry handles Cmd+K but Ctrl+S is wired at the window level
- *     in this shim to call `flushToPreset` for the active tab.
+ * Ctrl+S save: the shell's `onSaveFile` prop handles both the Cmd+S
+ * keybinding and the Save button on the viz editor chrome. This shim
+ * supplies a save handler that calls `flushToPreset` for the given tab
+ * and invokes the embedder's `onPresetSaved` callback on success.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizPreset } from './vizPreset'
-import { VizPresetStore, generateUniquePresetId } from './vizPreset'
+import { VizPresetStore } from './vizPreset'
 import type { HapStream } from '../engine/HapStream'
 import type { PatternScheduler } from './types'
 import { applyTheme } from '../theme/tokens'
@@ -28,14 +28,12 @@ import { WorkspaceShell } from '../workspace/WorkspaceShell'
 import {
   seedFromPreset,
   flushToPreset,
-  workspaceFileIdForPreset,
   getPresetIdForFile,
 } from '../workspace/preview/vizPresetBridge'
 import { getPreviewProviderForLanguage } from '../workspace/preview/registry'
 import { getFile } from '../workspace/WorkspaceFile'
 import type { WorkspaceTab } from '../workspace/types'
 import type { PreviewProvider } from '../workspace/PreviewProvider'
-import { HYDRA_TEMPLATE, P5_TEMPLATE } from './editor/vizEditorTypes'
 
 export interface VizEditorProps {
   components: Partial<EngineComponents>
@@ -61,7 +59,6 @@ export function VizEditor({
 }: VizEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [initialTabs, setInitialTabs] = useState<WorkspaceTab[] | null>(null)
-  const activeTabRef = useRef<WorkspaceTab | null>(null)
 
   // Apply theme to wrapper container.
   useEffect(() => {
@@ -90,31 +87,23 @@ export function VizEditor({
     })
   }, [])
 
-  // Ctrl+S save handler at window level.
-  useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault()
-        const tab = activeTabRef.current
-        if (!tab) return
-        const file = getFile(tab.fileId)
-        if (!file) return
-        const presetId = getPresetIdForFile(file)
-        if (!presetId) return
-        flushToPreset(file.id, presetId).then(() => {
-          VizPresetStore.get(presetId).then((preset) => {
-            if (preset) onPresetSaved?.(preset)
-          })
+  // Save handler wired through WorkspaceShell.onSaveFile. The shell owns
+  // the Cmd+S keybinding AND the Save button dispatch; this shim only
+  // owns the persistence bridge + embedder callback.
+  const handleSaveFile = useCallback(
+    (tab: WorkspaceTab & { kind: 'editor' }) => {
+      const file = getFile(tab.fileId)
+      if (!file) return
+      const presetId = getPresetIdForFile(file)
+      if (!presetId) return
+      flushToPreset(file.id, presetId).then(() => {
+        VizPresetStore.get(presetId).then((preset) => {
+          if (preset) onPresetSaved?.(preset)
         })
-      }
-    }
-    window.addEventListener('keydown', handleKeydown)
-    return () => window.removeEventListener('keydown', handleKeydown)
-  }, [onPresetSaved])
-
-  const handleActiveTabChange = useCallback((tab: WorkspaceTab | null) => {
-    activeTabRef.current = tab
-  }, [])
+      })
+    },
+    [onPresetSaved],
+  )
 
   const previewProviderFor = useCallback(
     (tab: WorkspaceTab & { kind: 'preview' }): PreviewProvider | undefined => {
@@ -143,8 +132,8 @@ export function VizEditor({
         initialTabs={initialTabs}
         theme={theme}
         height="100%"
-        onActiveTabChange={handleActiveTabChange}
         previewProviderFor={previewProviderFor}
+        onSaveFile={handleSaveFile}
       />
     </div>
   )
