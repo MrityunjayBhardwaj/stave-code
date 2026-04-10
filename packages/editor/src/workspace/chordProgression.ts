@@ -1,17 +1,18 @@
 /**
- * chordProgression — prebaked example audio source (scheduler-only).
+ * chordProgression — prebaked example audio source.
  *
  * A classic I-vi-IV-V chord progression in C major that viz tabs
- * can query without needing to write a pattern file. Each chord is
- * held for 2 seconds, and each chord is exposed as three
- * simultaneous `IREvent`s (root, third, fifth) so polyphonic viz
- * (chord-wheel displays, harmony analyzers, voice-leading
- * visualizations) have real simultaneous notes to render.
+ * can query AND hear. Each chord is held for 2 seconds, exposed
+ * as three simultaneous `IREvent`s (root, third, fifth) so
+ * polyphonic viz (chord wheels, harmony analyzers, voice-leading
+ * displays) have real simultaneous notes to render.
  *
- * Like `drumPattern`, this source publishes ONLY a scheduler +
- * empty hapStream — no audio graph. It's meant to test
- * scheduler-driven viz against a harmonically rich source. Users
- * who want audio can pick the `sampleSound` source.
+ * Audio is rendered ONCE per source start via `OfflineAudioContext`:
+ * a single 8-second loop containing all four chords is synthesized
+ * with 3 triangle oscillators per chord + ADSR envelopes, then
+ * played on repeat via a looping `AudioBufferSourceNode`. Audio
+ * and scheduler pattern are aligned by construction — both use
+ * the same chord timing and the same MIDI notes.
  *
  * ## Pattern structure
  *
@@ -113,37 +114,128 @@ export class ChordProgressionScheduler implements PatternScheduler {
 
 interface ChordProgressionState {
   ctx: AudioContext
+  source: AudioBufferSourceNode
+  gain: GainNode
+  analyser: AnalyserNode
   scheduler: ChordProgressionScheduler
   hapStream: HapStream
 }
 
 let state: ChordProgressionState | null = null
+/** Race-guard for parallel starts during the offline render window. */
+let starting = false
 
 /**
- * Start the chord progression source. Lazy-initializes an
- * AudioContext just for a stable `currentTime` — no audio graph is
- * built. Must be called from a user gesture per browser autoplay
- * policy. Safe to call multiple times.
+ * Render the 8-second chord progression loop into an `AudioBuffer`
+ * via `OfflineAudioContext`. Each chord is 3 triangle oscillators
+ * (root, third, fifth) with an ADSR envelope: 20ms attack, full
+ * sustain through the chord body, 50ms release crossfading into
+ * the next chord so there's no audible click between changes.
+ *
+ * Triangle waves give a warmer harmonic profile than pure sines
+ * without being as bright as sawtooths, appropriate for sustained
+ * chords that the user will hear for minutes at a time.
  */
-export function startChordProgression(): void {
-  if (state) return
-  const ctx = new AudioContext()
-  const scheduler = new ChordProgressionScheduler(ctx)
-  const hapStream = new HapStream()
-  state = { ctx, scheduler, hapStream }
-  const payload: AudioPayload = {
-    scheduler,
-    hapStream,
+async function renderChordLoopBuffer(): Promise<AudioBuffer> {
+  const sampleRate = 44100
+  const durationSeconds = 8 // matches CYCLE_SECONDS
+  const offline = new OfflineAudioContext(
+    1,
+    sampleRate * durationSeconds,
+    sampleRate,
+  )
+
+  const chordDuration = 2 // seconds per chord
+  const attack = 0.02
+  const release = 0.05
+  const sustainLevel = 0.06 // per-voice gain — three voices sum, so keep low
+
+  for (let i = 0; i < CHORD_PROGRESSION.length; i++) {
+    const chord = CHORD_PROGRESSION[i]
+    const chordStart = i * chordDuration
+    const chordEnd = chordStart + chordDuration
+    for (const midi of chord.notes) {
+      const freq = 440 * Math.pow(2, (midi - 69) / 12)
+      const osc = offline.createOscillator()
+      osc.type = 'triangle'
+      osc.frequency.value = freq
+      const g = offline.createGain()
+      // ADSR: silent → attack up to sustainLevel → hold → release down
+      g.gain.setValueAtTime(0.0001, chordStart)
+      g.gain.linearRampToValueAtTime(sustainLevel, chordStart + attack)
+      g.gain.setValueAtTime(sustainLevel, chordEnd - release)
+      g.gain.linearRampToValueAtTime(0.0001, chordEnd)
+      osc.connect(g).connect(offline.destination)
+      osc.start(chordStart)
+      osc.stop(chordEnd + 0.01)
+    }
   }
-  workspaceAudioBus.publish(CHORD_PROGRESSION_SOURCE_ID, payload)
+
+  return offline.startRendering()
 }
 
 /**
- * Stop the chord progression source. Unpublishes, disposes the
- * hap stream, closes the AudioContext. No-op if not running.
+ * Start the chord progression source. Async — renders the audio
+ * buffer via `OfflineAudioContext.startRendering()` (~30–80ms),
+ * then plays it on repeat via a looping buffer source. Must be
+ * called from a user gesture. Safe to call multiple times — the
+ * `starting` race guard + `state` early-return handle both the
+ * in-flight and already-running cases.
+ */
+export async function startChordProgression(): Promise<void> {
+  if (state || starting) return
+  starting = true
+  try {
+    const ctx = new AudioContext()
+    const buffer = await renderChordLoopBuffer()
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.loop = true
+    const gain = ctx.createGain()
+    gain.gain.value = 0.5
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 2048
+    analyser.smoothingTimeConstant = 0.8
+    source.connect(gain)
+    gain.connect(analyser)
+    analyser.connect(ctx.destination)
+    source.start()
+
+    const scheduler = new ChordProgressionScheduler(ctx)
+    const hapStream = new HapStream()
+    state = { ctx, source, gain, analyser, scheduler, hapStream }
+
+    const payload: AudioPayload = {
+      analyser,
+      scheduler,
+      hapStream,
+      audio: { analyser, audioCtx: ctx },
+    }
+    workspaceAudioBus.publish(CHORD_PROGRESSION_SOURCE_ID, payload)
+  } finally {
+    starting = false
+  }
+}
+
+/**
+ * Stop the chord progression source. Stops the buffer source,
+ * disposes the hap stream, unpublishes, closes the AudioContext.
+ * No-op if not running.
  */
 export function stopChordProgression(): void {
   if (!state) return
+  try {
+    state.source.stop()
+  } catch {
+    // stop() throws if already stopped — non-fatal.
+  }
+  try {
+    state.source.disconnect()
+    state.gain.disconnect()
+    state.analyser.disconnect()
+  } catch {
+    // disconnect() throws if already disconnected — non-fatal.
+  }
   state.hapStream.dispose()
   workspaceAudioBus.unpublish(CHORD_PROGRESSION_SOURCE_ID)
   try {
@@ -154,7 +246,7 @@ export function stopChordProgression(): void {
   state = null
 }
 
-/** Query whether the chord progression source is currently running. */
+/** Query whether the chord progression source is running or starting. */
 export function isChordProgressionPlaying(): boolean {
-  return state !== null
+  return state !== null || starting
 }

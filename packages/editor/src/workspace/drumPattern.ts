@@ -1,20 +1,24 @@
 /**
- * drumPattern — prebaked example audio source (scheduler-only).
+ * drumPattern — prebaked example audio source.
  *
  * A canonical 4-beat / 2-second drum pattern that viz tabs can
- * query without needing to write a pattern file. Unlike `sampleSound`,
- * this source has NO audio graph — it publishes only a scheduler +
- * empty hapStream to the workspace bus. Sketches driven by
- * `stave.scheduler.query()` see a rich multi-track beat pattern; sketches
- * that expect audio (`stave.analyser`) will see `null` and should
- * fall through to their demo/empty state.
+ * query — AND hear. Combines a prebaked `PatternScheduler` (for
+ * scheduler-driven viz like pianoroll) with a real audio graph
+ * (for FFT-driven viz like spectrum analyzers).
  *
- * This is the "advanced example" the source dropdown exposes for
- * viz developers who want to test rhythmic visualizations (beat
- * flashers, step sequencers, drum-grid displays) against a stable
- * source. Cheaper to stand up than a real pattern runtime, more
- * interesting than the single-voice A-minor arpeggio in
- * `sampleSound`.
+ * The audio is synthesized ONCE per source start via
+ * `OfflineAudioContext`: a 2-second drum loop is rendered to an
+ * `AudioBuffer`, then played on repeat through a looping
+ * `AudioBufferSourceNode → GainNode → AnalyserNode → destination`.
+ * The upside of offline rendering is that we get to use proper
+ * envelopes and multiple synthesis stages without real-time
+ * scheduling pain, while keeping the runtime overhead to a single
+ * buffer source node for the lifetime of the source.
+ *
+ * The audio and the scheduler pattern are aligned by construction:
+ * both use the same 2-second bar length and the same beat offsets,
+ * so `stave.analyser.getByteFrequencyData()` rises on the same
+ * frame that `stave.scheduler.query()` returns a kick event.
  *
  * ## Pattern structure
  *
@@ -33,14 +37,14 @@
  *   `trackId` is set to the drum voice name so viz filtering by
  *   track works naturally.
  *
- * ## Why scheduler-only (no audio)
+ * ## Synthesis details (minimal but recognizable)
  *
- * Building a polyphonic drum synth would 4x the code size of this
- * file for a feature that's meant to be a quick test source. Users
- * who want audio in their viz testing can pick the built-in
- * `sampleSound` source, which does have an audible signal. This
- * module is for sketches that query pattern events — the data, not
- * the sound.
+ *   - **Kick**: 100 Hz → 40 Hz sine sweep with exponential gain
+ *     decay over 150 ms. Gives a punchy low thump.
+ *   - **Snare**: white-noise burst through a bandpass filter
+ *     around 2 kHz + a 200 Hz sine hit, both with fast decay.
+ *   - **Closed hat**: high-pass filtered white noise, 30 ms decay.
+ *   - **Open hat**: same high-pass, 200 ms decay (longer tail).
  */
 
 import { workspaceAudioBus } from './WorkspaceAudioBus'
@@ -135,40 +139,219 @@ export class DrumPatternScheduler implements PatternScheduler {
 
 interface DrumPatternState {
   ctx: AudioContext
+  source: AudioBufferSourceNode
+  gain: GainNode
+  analyser: AnalyserNode
   scheduler: DrumPatternScheduler
   hapStream: HapStream
 }
 
 let state: DrumPatternState | null = null
+/**
+ * Race-guard so multiple rapid clicks on Preview don't kick off
+ * parallel offline renders. The async `startDrumPattern` may be
+ * in-flight for ~50ms while the OfflineAudioContext renders the
+ * loop; during that window `state` is still null, so an un-guarded
+ * check `if (state) return` would let a second call re-enter.
+ */
+let starting = false
 
 /**
- * Start the drum pattern source. Lazy-initializes an AudioContext
- * just to get a stable `currentTime` for the scheduler — no audio
- * graph is built, so the context stays idle. Must be called from a
- * user gesture (click handler) per browser autoplay policy, same
- * as `sampleSound`.
+ * Render the 2-second drum loop into an `AudioBuffer` using an
+ * `OfflineAudioContext`. Called ONCE per `startDrumPattern` —
+ * the returned buffer is then played on repeat via a looping
+ * `AudioBufferSourceNode` in the real audio context, so the
+ * synth code doesn't need to do any real-time scheduling.
  *
- * Safe to call multiple times — second and later calls are no-ops.
+ * The offline synthesis exactly mirrors the `DrumPatternScheduler`
+ * pattern: same beat offsets, same bar length. Audio and scheduler
+ * stay in perfect sync by construction — no drift, no timer loop.
  */
-export function startDrumPattern(): void {
-  if (state) return
-  const ctx = new AudioContext()
-  const scheduler = new DrumPatternScheduler(ctx)
-  const hapStream = new HapStream()
-  state = { ctx, scheduler, hapStream }
-  const payload: AudioPayload = {
-    scheduler,
-    hapStream,
+async function renderDrumLoopBuffer(): Promise<AudioBuffer> {
+  const sampleRate = 44100
+  const durationSeconds = 2 // matches BAR_SECONDS
+  const offline = new OfflineAudioContext(
+    1,
+    sampleRate * durationSeconds,
+    sampleRate,
+  )
+
+  // --- Kick: 100 Hz → 40 Hz sine sweep with expo gain decay ---
+  const kickTimes = [0, 0.5, 1, 1.5]
+  for (const t of kickTimes) {
+    const osc = offline.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(100, t)
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.1)
+    const gain = offline.createGain()
+    gain.gain.setValueAtTime(0.001, t)
+    gain.gain.linearRampToValueAtTime(0.9, t + 0.005)
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15)
+    osc.connect(gain).connect(offline.destination)
+    osc.start(t)
+    osc.stop(t + 0.2)
   }
-  workspaceAudioBus.publish(DRUM_PATTERN_SOURCE_ID, payload)
+
+  // --- Snare: bandpass-filtered noise + 200 Hz sine hit ---
+  const snareTimes = [0.5, 1.5]
+  for (const t of snareTimes) {
+    // Noise burst
+    const noiseBuf = offline.createBuffer(
+      1,
+      Math.floor(sampleRate * 0.12),
+      sampleRate,
+    )
+    const noiseData = noiseBuf.getChannelData(0)
+    for (let i = 0; i < noiseData.length; i++) {
+      noiseData[i] = Math.random() * 2 - 1
+    }
+    const noise = offline.createBufferSource()
+    noise.buffer = noiseBuf
+    const bp = offline.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 2000
+    bp.Q.value = 0.8
+    const noiseGain = offline.createGain()
+    noiseGain.gain.setValueAtTime(0.001, t)
+    noiseGain.gain.linearRampToValueAtTime(0.5, t + 0.002)
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1)
+    noise.connect(bp).connect(noiseGain).connect(offline.destination)
+    noise.start(t)
+
+    // Tonal component
+    const tone = offline.createOscillator()
+    tone.type = 'triangle'
+    tone.frequency.value = 200
+    const toneGain = offline.createGain()
+    toneGain.gain.setValueAtTime(0.001, t)
+    toneGain.gain.linearRampToValueAtTime(0.25, t + 0.002)
+    toneGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08)
+    tone.connect(toneGain).connect(offline.destination)
+    tone.start(t)
+    tone.stop(t + 0.1)
+  }
+
+  // --- Closed hats: high-pass filtered noise, 30 ms decay ---
+  const closedHatTimes = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5] // exclude 1.75 (open hat)
+  for (const t of closedHatTimes) {
+    const noiseBuf = offline.createBuffer(
+      1,
+      Math.floor(sampleRate * 0.05),
+      sampleRate,
+    )
+    const noiseData = noiseBuf.getChannelData(0)
+    for (let i = 0; i < noiseData.length; i++) {
+      noiseData[i] = Math.random() * 2 - 1
+    }
+    const noise = offline.createBufferSource()
+    noise.buffer = noiseBuf
+    const hp = offline.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 7000
+    const g = offline.createGain()
+    g.gain.setValueAtTime(0.001, t)
+    g.gain.linearRampToValueAtTime(0.15, t + 0.001)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.03)
+    noise.connect(hp).connect(g).connect(offline.destination)
+    noise.start(t)
+  }
+
+  // --- Open hat: same high-pass, longer 200 ms decay ---
+  const openHatTime = 1.75
+  {
+    const noiseBuf = offline.createBuffer(
+      1,
+      Math.floor(sampleRate * 0.22),
+      sampleRate,
+    )
+    const noiseData = noiseBuf.getChannelData(0)
+    for (let i = 0; i < noiseData.length; i++) {
+      noiseData[i] = Math.random() * 2 - 1
+    }
+    const noise = offline.createBufferSource()
+    noise.buffer = noiseBuf
+    const hp = offline.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 7000
+    const g = offline.createGain()
+    g.gain.setValueAtTime(0.001, openHatTime)
+    g.gain.linearRampToValueAtTime(0.18, openHatTime + 0.002)
+    g.gain.exponentialRampToValueAtTime(0.001, openHatTime + 0.2)
+    noise.connect(hp).connect(g).connect(offline.destination)
+    noise.start(openHatTime)
+  }
+
+  return offline.startRendering()
 }
 
 /**
- * Stop the drum pattern source. Unpublishes from the bus, disposes
- * the hap stream, closes the AudioContext. No-op if not running.
+ * Start the drum pattern source. Async because the audio buffer is
+ * rendered via `OfflineAudioContext.startRendering()` — typically
+ * ~30–80ms on desktop hardware, imperceptible to the user but not
+ * instant. The chrome's click handler fires this as
+ * fire-and-forget; the source appears on the bus once the render
+ * completes and any pinned previews see the payload on their next
+ * bus callback.
+ *
+ * Must be called from a user gesture per browser autoplay policy.
+ * Safe to call multiple times — the `starting` race guard prevents
+ * parallel renders and the `state` early-return handles the
+ * already-running case.
+ */
+export async function startDrumPattern(): Promise<void> {
+  if (state || starting) return
+  starting = true
+  try {
+    const ctx = new AudioContext()
+    const buffer = await renderDrumLoopBuffer()
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.loop = true
+    const gain = ctx.createGain()
+    gain.gain.value = 0.4 // low enough to not be annoying
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 2048
+    analyser.smoothingTimeConstant = 0.7
+    source.connect(gain)
+    gain.connect(analyser)
+    analyser.connect(ctx.destination)
+    source.start()
+
+    const scheduler = new DrumPatternScheduler(ctx)
+    const hapStream = new HapStream()
+    state = { ctx, source, gain, analyser, scheduler, hapStream }
+
+    const payload: AudioPayload = {
+      analyser,
+      scheduler,
+      hapStream,
+      audio: { analyser, audioCtx: ctx },
+    }
+    workspaceAudioBus.publish(DRUM_PATTERN_SOURCE_ID, payload)
+  } finally {
+    starting = false
+  }
+}
+
+/**
+ * Stop the drum pattern source. Stops the buffer source, disposes
+ * the hap stream, unpublishes from the bus, closes the AudioContext.
+ * No-op if not running.
  */
 export function stopDrumPattern(): void {
   if (!state) return
+  try {
+    state.source.stop()
+  } catch {
+    // stop() throws if already stopped — non-fatal.
+  }
+  try {
+    state.source.disconnect()
+    state.gain.disconnect()
+    state.analyser.disconnect()
+  } catch {
+    // disconnect() throws if already disconnected — non-fatal.
+  }
   state.hapStream.dispose()
   workspaceAudioBus.unpublish(DRUM_PATTERN_SOURCE_ID)
   try {
@@ -179,7 +362,12 @@ export function stopDrumPattern(): void {
   state = null
 }
 
-/** Query whether the drum pattern source is currently running. */
+/**
+ * Query whether the drum pattern source is currently running OR
+ * in the middle of starting. The `starting` flag is included so
+ * the chrome's click handler doesn't kick off a second parallel
+ * render while the first is still producing its AudioBuffer.
+ */
 export function isDrumPatternPlaying(): boolean {
-  return state !== null
+  return state !== null || starting
 }
