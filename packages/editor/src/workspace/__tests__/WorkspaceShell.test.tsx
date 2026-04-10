@@ -91,6 +91,44 @@ vi.mock('../../monaco/diagnostics', () => ({
   clearEvalErrors: vi.fn(),
 }))
 
+// Shared mount-renderer spy used by the "stop-button end-to-end"
+// test below. Declared at module level so both the vi.mock factory
+// and the test body can reach it. The pause/resume/destroy fields
+// are fresh `vi.fn()` instances per mount call so a single test
+// can inspect call counts without stale state from earlier tests.
+const mountVizRendererSpy = vi.fn(() => ({
+  renderer: {
+    mount: vi.fn(),
+    update: vi.fn(),
+    resize: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    destroy: vi.fn(),
+  },
+  disconnect: vi.fn(),
+}))
+
+vi.mock('../../visualizers/mountVizRenderer', () => ({
+  mountVizRenderer: (...args: unknown[]) =>
+    (mountVizRendererSpy as unknown as (...a: unknown[]) => unknown)(...args),
+}))
+
+vi.mock('../../visualizers/vizCompiler', () => ({
+  compilePreset: vi.fn((preset: { id: string; renderer: string }) => ({
+    id: `mock-${preset.id}`,
+    label: 'mock',
+    renderer: preset.renderer,
+    factory: () => ({
+      mount: vi.fn(),
+      update: vi.fn(),
+      resize: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      destroy: vi.fn(),
+    }),
+  })),
+}))
+
 import { WorkspaceShell } from '../WorkspaceShell'
 import {
   createWorkspaceFile,
@@ -303,6 +341,86 @@ describe('WorkspaceShell', () => {
       expect(
         container.querySelector('[data-workspace-view="preview"]'),
       ).not.toBeNull()
+    })
+
+    it('Stop click on the REAL viz chrome actually calls renderer.pause() end-to-end', async () => {
+      // Full-chain integration test for the Stop button. Unlike the
+      // stub-chrome regression below, this one uses the REAL
+      // HYDRA_VIZ provider (with mocked mountVizRenderer + compilePreset)
+      // so we can verify the shell → PreviewView → provider →
+      // CompiledVizMount → renderer.pause chain works end-to-end.
+      //
+      // The historical failure mode (commit 6cac6cc fixed it): the
+      // provider's render function built a fresh VizDescriptor on
+      // every invocation, causing CompiledVizMount's mount effect
+      // (dep [descriptor]) to tear down and re-mount the p5 instance
+      // on every paused-prop flip. pause() DID fire, but on a brand-
+      // new p5 instance that hadn't even finished its first draw.
+      // Without this test, the isolated chrome/provider tests can
+      // pass while the browser UX is broken — which is exactly what
+      // happened.
+      mountVizRendererSpy.mockClear()
+      // Dynamic import so the mocks above take effect.
+      const { HYDRA_VIZ } = await import('../preview/hydraViz')
+      const tabs = [editorTab('t-hydra', 'f-hydra')]
+      const { container, getByTestId, findByTestId } = render(
+        <WorkspaceShell
+          initialTabs={tabs}
+          previewProviderFor={() => HYDRA_VIZ}
+        />,
+      )
+
+      // Sanity: the chrome renders and the button is in 'closed'
+      // state.
+      const button = getByTestId('viz-chrome-open-preview')
+      expect(button.getAttribute('data-button-state')).toBe('closed')
+
+      // Click Preview → shell splits off a preview group and
+      // mounts a CompiledVizMount. Wait for the mount effect to
+      // complete (the data-compiled-viz-mount attribute appears
+      // once mountVizRenderer has been called).
+      await act(async () => {
+        fireEvent.click(button)
+      })
+      await findByTestId('compiled-viz-mount-f-hydra')
+      expect(mountVizRendererSpy).toHaveBeenCalled()
+
+      // Grab the renderer reference the compiled mount is using.
+      // The mock returns { renderer, disconnect } and the mount
+      // hands `renderer` directly to the renderer ref.
+      const firstMount = mountVizRendererSpy.mock.results[0].value
+      const pauseSpy = firstMount.renderer.pause as ReturnType<typeof vi.fn>
+      const resumeSpy = firstMount.renderer.resume as ReturnType<typeof vi.fn>
+      pauseSpy.mockClear()
+      resumeSpy.mockClear()
+
+      // Chrome button should now show 'running'.
+      const runningButton = getByTestId('viz-chrome-open-preview')
+      expect(runningButton.getAttribute('data-button-state')).toBe('running')
+
+      // Click Stop → shell flips pausedPreviews → PreviewView
+      // re-renders with paused=true → provider.render threads
+      // paused through ctx → CompiledVizMount's pause effect
+      // fires → renderer.pause() called.
+      await act(async () => {
+        fireEvent.click(runningButton)
+      })
+      const pausedButton = getByTestId('viz-chrome-open-preview')
+      expect(pausedButton.getAttribute('data-button-state')).toBe('paused')
+
+      // THE critical assertion: pause was actually called on the
+      // renderer that was mounted on Preview click. Mount count
+      // should still be 1 — no teardown/remount cascade.
+      expect(pauseSpy).toHaveBeenCalled()
+      expect(mountVizRendererSpy).toHaveBeenCalledTimes(1)
+
+      // Click Play → resume on the same renderer instance.
+      pauseSpy.mockClear()
+      await act(async () => {
+        fireEvent.click(pausedButton)
+      })
+      expect(resumeSpy).toHaveBeenCalled()
+      expect(mountVizRendererSpy).toHaveBeenCalledTimes(1)
     })
 
     it('editor tab chrome flips Preview → Stop → Play through real shell state (regression)', async () => {
