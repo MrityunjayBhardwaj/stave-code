@@ -39,7 +39,7 @@ import { describe, it, expect, vi } from 'vitest'
 // through P5VizRenderer, which breaks the vitest ESM loader.
 import { compileP5Code, isFullLifecycleSketch } from '../p5Compiler'
 import type { HapStream } from '../../engine/HapStream'
-import type { PatternScheduler } from '../types'
+import type { PatternScheduler, ContainerSize } from '../types'
 import type { RefObject } from 'react'
 
 // ---------------------------------------------------------------------------
@@ -101,14 +101,16 @@ function makeFakeP5() {
  * directly to simulate the renderer updating the refs on source
  * changes / payload swaps.
  */
-function makeRefs() {
+function makeRefs(initialSize: ContainerSize = { w: 800, h: 600 }) {
   const hapStreamRef: { current: HapStream | null } = { current: null }
   const analyserRef: { current: AnalyserNode | null } = { current: null }
   const schedulerRef: { current: PatternScheduler | null } = { current: null }
+  const containerSizeRef: { current: ContainerSize } = { current: initialSize }
   return {
     hapStreamRef: hapStreamRef as unknown as RefObject<HapStream | null>,
     analyserRef: analyserRef as unknown as RefObject<AnalyserNode | null>,
     schedulerRef: schedulerRef as unknown as RefObject<PatternScheduler | null>,
+    containerSizeRef: containerSizeRef as unknown as RefObject<ContainerSize>,
   }
 }
 
@@ -125,6 +127,7 @@ function compileAndMount(userCode: string) {
     refs.hapStreamRef,
     refs.analyserRef,
     refs.schedulerRef,
+    refs.containerSizeRef,
   )
   const { p, calls } = makeFakeP5()
   sketchFn(p)
@@ -345,6 +348,100 @@ describe('compileP5Code — stave namespace', () => {
     // Next draw should see the NEW analyser, not a cached A.
     ;(p.draw as () => void)()
     expect(p.seenAnalyser).toBe(analyserB)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Container size — stave.width / stave.height
+// ---------------------------------------------------------------------------
+
+describe('compileP5Code — stave.width / stave.height', () => {
+  it('exposes the container size via stave.width and stave.height', () => {
+    // The canvas-size fix: user sketches write
+    // `createCanvas(stave.width, stave.height)` instead of
+    // `windowWidth/windowHeight` so the canvas matches the preview
+    // pane, not the browser window. The compiler reads from the
+    // container size ref the renderer passes in.
+    const source = `
+      function setup() {
+        createCanvas(stave.width, stave.height)
+      }
+      function draw() {}
+    `
+    const factory = compileP5Code(source)
+    const refs = makeRefs({ w: 640, h: 480 })
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+    )
+    const { p, calls } = makeFakeP5()
+    sketchFn(p)
+    ;(p.setup as () => void)()
+
+    const createCanvasCall = calls.find((c) => c.method === 'createCanvas')
+    expect(createCanvasCall?.args).toEqual([640, 480])
+  })
+
+  it('stave.width / stave.height are LIVE — ref updates are visible on the next read', () => {
+    // ResizeObserver in the mounter updates the containerSizeRef on
+    // every resize. If a draw() call reads `stave.width` each frame,
+    // it must see the updated value without a re-mount.
+    const source = `
+      function draw() {
+        p.seenWidth = stave.width
+        p.seenHeight = stave.height
+      }
+    `
+    const factory = compileP5Code(source)
+    const refs = makeRefs({ w: 100, h: 200 })
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+    )
+    const { p } = makeFakeP5()
+    sketchFn(p)
+
+    ;(p.draw as () => void)()
+    expect(p.seenWidth).toBe(100)
+    expect(p.seenHeight).toBe(200)
+
+    // Simulate ResizeObserver → renderer.resize(w, h) → ref update.
+    ;(refs.containerSizeRef as unknown as { current: ContainerSize })
+      .current = { w: 800, h: 500 }
+
+    ;(p.draw as () => void)()
+    expect(p.seenWidth).toBe(800)
+    expect(p.seenHeight).toBe(500)
+  })
+
+  it('falls back to 400x300 when the factory is called without a container size ref', () => {
+    // Backwards compat: if a caller doesn't thread a container-size
+    // ref (e.g., a test or an older embedder), stave.width/height
+    // should still return usable defaults rather than crash.
+    const source = `
+      function draw() {
+        p.seenWidth = stave.width
+        p.seenHeight = stave.height
+      }
+    `
+    const factory = compileP5Code(source)
+    const refs = makeRefs()
+    // Invoke WITHOUT the fourth arg — the compiler's default
+    // fallback container size ref kicks in.
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+    )
+    const { p } = makeFakeP5()
+    sketchFn(p)
+    ;(p.draw as () => void)()
+    expect(p.seenWidth).toBe(400)
+    expect(p.seenHeight).toBe(300)
   })
 })
 

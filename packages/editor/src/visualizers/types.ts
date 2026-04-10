@@ -56,11 +56,27 @@ export interface VizDescriptor {
 }
 
 /**
+ * Live container size handed to user sketches via `stave.width` /
+ * `stave.height`. The ref is maintained by `P5VizRenderer` — its
+ * `current` field is updated on mount (from the container's initial
+ * clientRect) and on every `resize(w, h)` call. User sketches read
+ * these values inside `setup()` so `createCanvas(stave.width,
+ * stave.height)` always matches the preview pane, regardless of the
+ * browser window size or p5's internal `windowWidth` / `windowHeight`
+ * globals.
+ */
+export interface ContainerSize {
+  w: number
+  h: number
+}
+
+/**
  * Internal type alias for the existing p5 sketch factory signature.
  * Used only by P5VizRenderer — NOT exported from the package.
  */
 export type P5SketchFactory = (
   hapStreamRef: RefObject<HapStream | null>,
   analyserRef: RefObject<AnalyserNode | null>,
-  schedulerRef: RefObject<PatternScheduler | null>
+  schedulerRef: RefObject<PatternScheduler | null>,
+  containerSizeRef: RefObject<ContainerSize>
 ) => (p: import('p5').default) => void

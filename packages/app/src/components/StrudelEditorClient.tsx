@@ -92,6 +92,11 @@ const PIANOROLL_P5_CODE = `// Stave p5 viz — Piano Roll
 //                       waveform data for any audio source.
 //   stave.hapStream   — HapStream | null. Event-driven feed of
 //                       currently-firing haps.
+//   stave.width       — preview pane width in pixels.
+//   stave.height      — preview pane height in pixels. Use these
+//                       in createCanvas — NOT the built-in p5
+//                       windowWidth/windowHeight, which track the
+//                       browser window rather than the preview pane.
 //
 // p5 globals (createCanvas, background, width, height, mouseX, HSB,
 // etc.) work exactly like the p5js editor. Read stave.* INSIDE
@@ -101,7 +106,7 @@ const PIANOROLL_P5_CODE = `// Stave p5 viz — Piano Roll
 let playhead
 
 function setup() {
-  createCanvas(windowWidth, windowHeight)
+  createCanvas(stave.width, stave.height)
   colorMode(HSB, 360, 100, 100, 1)
   noStroke()
   playhead = 0.75 // x position of the "now" line, as fraction of width

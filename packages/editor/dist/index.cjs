@@ -4509,16 +4509,21 @@ var P5VizRenderer = class {
     this.hapStreamRef = { current: null };
     this.analyserRef = { current: null };
     this.schedulerRef = { current: null };
+    this.containerSizeRef = {
+      current: { w: 400, h: 300 }
+    };
   }
   mount(container, components, size, onError) {
     try {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null;
       this.analyserRef.current = components.audio?.analyser ?? null;
       this.schedulerRef.current = components.queryable?.scheduler ?? null;
+      this.containerSizeRef.current = { w: size.w, h: size.h };
       const sketchFn = this.sketch(
         this.hapStreamRef,
         this.analyserRef,
-        this.schedulerRef
+        this.schedulerRef,
+        this.containerSizeRef
       );
       this.instance = new p5__default.default(sketchFn, container);
       this.instance.resizeCanvas(size.w, size.h);
@@ -4533,6 +4538,7 @@ var P5VizRenderer = class {
     this.schedulerRef.current = components.queryable?.scheduler ?? null;
   }
   resize(w, h) {
+    this.containerSizeRef.current = { w, h };
     this.instance?.resizeCanvas(w, h);
   }
   pause() {
@@ -16883,7 +16889,9 @@ function isFullLifecycleSketch(code) {
   return /\bfunction\s+draw\s*\(/.test(code);
 }
 function compileP5Code(code) {
-  return (hapStreamRef, analyserRef, schedulerRef) => {
+  return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
+    current: { w: 400, h: 300 }
+  }) => {
     const body2 = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
     return (p) => {
       const stave = {
@@ -16895,6 +16903,12 @@ function compileP5Code(code) {
         },
         get hapStream() {
           return hapStreamRef.current;
+        },
+        get width() {
+          return containerSizeRef.current?.w ?? 400;
+        },
+        get height() {
+          return containerSizeRef.current?.h ?? 300;
         }
       };
       let lifecycle;

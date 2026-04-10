@@ -516,10 +516,24 @@ interface VizDescriptor {
     factory: () => VizRenderer;
 }
 /**
+ * Live container size handed to user sketches via `stave.width` /
+ * `stave.height`. The ref is maintained by `P5VizRenderer` — its
+ * `current` field is updated on mount (from the container's initial
+ * clientRect) and on every `resize(w, h)` call. User sketches read
+ * these values inside `setup()` so `createCanvas(stave.width,
+ * stave.height)` always matches the preview pane, regardless of the
+ * browser window size or p5's internal `windowWidth` / `windowHeight`
+ * globals.
+ */
+interface ContainerSize {
+    w: number;
+    h: number;
+}
+/**
  * Internal type alias for the existing p5 sketch factory signature.
  * Used only by P5VizRenderer — NOT exported from the package.
  */
-type P5SketchFactory = (hapStreamRef: RefObject<HapStream | null>, analyserRef: RefObject<AnalyserNode | null>, schedulerRef: RefObject<PatternScheduler | null>) => (p: p5.default) => void;
+type P5SketchFactory = (hapStreamRef: RefObject<HapStream | null>, analyserRef: RefObject<AnalyserNode | null>, schedulerRef: RefObject<PatternScheduler | null>, containerSizeRef: RefObject<ContainerSize>) => (p: p5.default) => void;
 
 type HapHandler = (event: HapEvent) => void;
 /**
@@ -824,6 +838,14 @@ declare function noteToMidi(note: unknown): number | null;
  * Bridges the component bag (Partial<EngineComponents>) to the individual ref
  * objects that P5SketchFactory expects. Refs are stored as instance fields so
  * update() can refresh them for live React rendering.
+ *
+ * `containerSizeRef` is maintained by the renderer and exposed to user
+ * sketches via `stave.width` / `stave.height` (through the compiler).
+ * It's initialized from the size passed to `mount()` and updated on
+ * every `resize(w, h)` call, so a user's `createCanvas(stave.width,
+ * stave.height)` always gets the live preview-pane dimensions — no
+ * mismatches with `windowWidth` / `windowHeight` which track the
+ * browser window rather than the container.
  */
 declare class P5VizRenderer implements VizRenderer {
     private sketch;
@@ -831,6 +853,7 @@ declare class P5VizRenderer implements VizRenderer {
     private hapStreamRef;
     private analyserRef;
     private schedulerRef;
+    private containerSizeRef;
     constructor(sketch: P5SketchFactory);
     mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;

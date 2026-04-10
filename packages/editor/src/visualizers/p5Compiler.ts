@@ -11,18 +11,27 @@
  */
 
 import type { HapStream } from '../engine/HapStream'
-import type { PatternScheduler } from './types'
+import type { PatternScheduler, ContainerSize } from './types'
 import type { RefObject } from 'react'
 
 /**
  * The live `stave` namespace handed to user p5 sketches. Fields are
  * implemented as getters over the renderer refs so reads always see
  * the current value.
+ *
+ * `width` and `height` expose the preview container's current
+ * dimensions (NOT `window.innerWidth` / `innerHeight`, which is what
+ * p5's built-in `windowWidth` / `windowHeight` track). Sketches
+ * should use `createCanvas(stave.width, stave.height)` in setup so
+ * the canvas matches the preview pane regardless of the browser
+ * window size.
  */
 interface StaveContext {
   readonly scheduler: PatternScheduler | null
   readonly analyser: AnalyserNode | null
   readonly hapStream: HapStream | null
+  readonly width: number
+  readonly height: number
 }
 
 /**
@@ -87,11 +96,18 @@ export function isFullLifecycleSketch(code: string): boolean {
  * code.
  */
 export function compileP5Code(code: string) {
-  // P5SketchFactory signature
+  // P5SketchFactory signature — fourth arg is the container-size ref
+  // maintained by the renderer so `stave.width` / `stave.height`
+  // expose the preview pane dimensions. Optional (and defaulted) so
+  // callers that don't wire the ref still get a usable stave,
+  // falling back to window.innerWidth / innerHeight.
   return (
     hapStreamRef: RefObject<HapStream | null>,
     analyserRef: RefObject<AnalyserNode | null>,
     schedulerRef: RefObject<PatternScheduler | null>,
+    containerSizeRef: RefObject<ContainerSize> = {
+      current: { w: 400, h: 300 },
+    } as RefObject<ContainerSize>,
   ) => {
     // Build the body ONCE per sketch instance. The compiled function
     // is then reused for every mount of this sketch (p5 calls it
@@ -115,6 +131,12 @@ export function compileP5Code(code: string) {
         },
         get hapStream(): HapStream | null {
           return hapStreamRef.current
+        },
+        get width(): number {
+          return containerSizeRef.current?.w ?? 400
+        },
+        get height(): number {
+          return containerSizeRef.current?.h ?? 300
         },
       }
 
