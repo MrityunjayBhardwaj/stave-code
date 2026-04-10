@@ -1124,6 +1124,31 @@ export function WorkspaceShell({
                       return next
                     })
                   },
+                  onChangePreviewSource: (nextRef) => {
+                    // Find the open preview tab for this file and
+                    // update its sourceRef in place. Task 2's
+                    // sourceRef-keyed React tree triggers a remount
+                    // on the swap, so setup() re-runs with the
+                    // fresh injected refs and any stale module-
+                    // level caches get reset. If no preview is
+                    // open (shouldn't happen because the chrome
+                    // guards on previewOpen before calling this),
+                    // silently no-op.
+                    const current =
+                      shellActionsRef.current.findTabByFileId(
+                        tab.fileId,
+                        'preview',
+                      )
+                    if (!current) return
+                    updateGroup(current.groupId, (g) => ({
+                      ...g,
+                      tabs: g.tabs.map((t) =>
+                        t.id === current.tabId && t.kind === 'preview'
+                          ? { ...t, sourceRef: nextRef }
+                          : t,
+                      ),
+                    }))
+                  },
                   onOpenPreview: (selectedSourceRef) => {
                     // Idempotent open: if a preview tab for this file
                     // already exists anywhere in the shell, return
@@ -1289,12 +1314,23 @@ export function WorkspaceShell({
     // chrome's Play button never flips to Stop. editorExtrasForTab and
     // findGroupWithAnyPreview are also added because they were silently
     // missing before.
+    //
+    // `pausedPreviews` must ALSO be a dep — without it, a second-click
+    // Stop → Play transition can't refresh the chrome. The first click
+    // (Preview → Stop) happens to work because `groups` changes (a
+    // preview tab is added), invalidating the callback. The second
+    // click only changes `pausedPreviews`, and without this dep the
+    // callback returns a cached function that reads a stale
+    // `pausedPreviews.has(fileId) === false` via its closure. The
+    // regression test in WorkspaceShell.test.tsx covers this exact
+    // path and fails without `pausedPreviews` in the deps.
     [
       chromeForTab,
       previewProviderFor,
       theme,
       updateGroup,
       groups,
+      pausedPreviews,
       findTabByFileId,
       findGroupWithAnyPreview,
       editorExtrasForTab,

@@ -101,6 +101,7 @@ import { __resetWorkspaceAudioBusForTests } from '../WorkspaceAudioBus'
 import type {
   PreviewProvider,
   PreviewContext,
+  PreviewEditorChromeContext,
 } from '../PreviewProvider'
 import type { WorkspaceTab } from '../types'
 
@@ -302,6 +303,83 @@ describe('WorkspaceShell', () => {
       expect(
         container.querySelector('[data-workspace-view="preview"]'),
       ).not.toBeNull()
+    })
+
+    it('editor tab chrome flips Preview → Stop → Play through real shell state (regression)', async () => {
+      // Integration regression for the three-state chrome button.
+      // The chrome should show:
+      //   - "▶ Preview" when no preview tab exists for the file
+      //   - "■ Stop"    after clicking Preview (preview now open)
+      //   - "▶ Play"    after clicking Stop  (preview now paused)
+      //
+      // This exercises the full shell → chrome → click → shell-state
+      // → chrome re-render loop that the isolated hydraViz chrome
+      // tests can't cover (they call renderEditorChrome directly
+      // with hand-crafted context objects). If the shell fails to
+      // thread previewOpen / previewPaused into the chrome after
+      // state updates, this test catches it.
+      const provider: PreviewProvider = {
+        extensions: ['hydra'],
+        label: 'Chrome Test',
+        keepRunningWhenHidden: false,
+        reload: 'instant',
+        render: () => <div data-testid="stub-preview-output" />,
+        renderEditorChrome: (ctx: PreviewEditorChromeContext) => (
+          <div
+            data-testid="chrome-stub"
+            data-button-state={
+              !ctx.previewOpen
+                ? 'closed'
+                : ctx.previewPaused
+                  ? 'paused'
+                  : 'running'
+            }
+            onClick={() => {
+              if (ctx.previewOpen && ctx.onTogglePausePreview) {
+                ctx.onTogglePausePreview()
+              } else {
+                ctx.onOpenPreview()
+              }
+            }}
+          />
+        ),
+      }
+      const tabs = [editorTab('t-hydra', 'f-hydra')]
+      const { getByTestId } = render(
+        <WorkspaceShell
+          initialTabs={tabs}
+          previewProviderFor={() => provider}
+        />,
+      )
+
+      // Initial: chrome should be in 'closed' state (no preview tab).
+      const chromeClosed = getByTestId('chrome-stub')
+      expect(chromeClosed.getAttribute('data-button-state')).toBe('closed')
+
+      // Click Preview → shell splits off a preview group. After the
+      // state update propagates, the chrome should re-render in
+      // 'running' state.
+      await act(async () => {
+        fireEvent.click(chromeClosed)
+      })
+      const chromeRunning = getByTestId('chrome-stub')
+      expect(chromeRunning.getAttribute('data-button-state')).toBe('running')
+
+      // Click Stop → pausedPreviews gains an entry for f-hydra. Chrome
+      // re-renders in 'paused' state.
+      await act(async () => {
+        fireEvent.click(chromeRunning)
+      })
+      const chromePaused = getByTestId('chrome-stub')
+      expect(chromePaused.getAttribute('data-button-state')).toBe('paused')
+
+      // Click Play → pausedPreviews entry removed. Back to 'running'.
+      await act(async () => {
+        fireEvent.click(chromePaused)
+      })
+      expect(
+        getByTestId('chrome-stub').getAttribute('data-button-state'),
+      ).toBe('running')
     })
 
     it('preview-kind with no provider renders the no-provider message', () => {
