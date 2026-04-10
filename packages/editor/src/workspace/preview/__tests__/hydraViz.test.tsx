@@ -199,6 +199,50 @@ describe('HYDRA_VIZ render path', () => {
     expect(components.queryable?.scheduler).toBe(payload.scheduler)
   })
 
+  it('calls renderer.pause() when paused flips from false to true (chrome Stop button)', () => {
+    // Integration test for the viz chrome Stop button. The chrome
+    // flips a shell-level `pausedPreviews` set, which threads
+    // through PreviewView → provider ctx → CompiledVizMount.
+    // CompiledVizMount should call `renderer.pause()` on its
+    // [paused, hidden] effect. Without this test, a regression
+    // like "paused prop forgotten somewhere on the chain" would
+    // only surface in the running browser.
+    const file = makeFile('f-pause', 's.osc().out()')
+    const { rerender } = render(
+      HYDRA_VIZ.render({ file, audioSource: null, hidden: false, paused: false }) as React.ReactElement,
+    )
+
+    const mountMock = mountVizRenderer as unknown as ReturnType<typeof vi.fn>
+    const fakeRenderer = mountMock.mock.results[0].value.renderer
+    const pauseSpy = fakeRenderer.pause as ReturnType<typeof vi.fn>
+    const resumeSpy = fakeRenderer.resume as ReturnType<typeof vi.fn>
+
+    // On initial mount with paused=false and hidden=false, the
+    // paused effect runs and takes the else-branch → calls
+    // resume(). That's fine (resume is idempotent for a sketch
+    // that's already running). Clear the spies to establish a
+    // fresh baseline for the Stop click.
+    pauseSpy.mockClear()
+    resumeSpy.mockClear()
+
+    // Rerender with paused=true — simulates the chrome Stop click
+    // propagating through the shell → PreviewView → ctx chain.
+    rerender(
+      HYDRA_VIZ.render({ file, audioSource: null, hidden: false, paused: true }) as React.ReactElement,
+    )
+    expect(pauseSpy).toHaveBeenCalled()
+    expect(resumeSpy).not.toHaveBeenCalled()
+
+    // Rerender with paused=false — the Play click resumes.
+    pauseSpy.mockClear()
+    resumeSpy.mockClear()
+    rerender(
+      HYDRA_VIZ.render({ file, audioSource: null, hidden: false, paused: false }) as React.ReactElement,
+    )
+    expect(resumeSpy).toHaveBeenCalled()
+    expect(pauseSpy).not.toHaveBeenCalled()
+  })
+
   it('calls renderer.update() when audioSource changes within a mount (defense-in-depth)', () => {
     // Defense against a regression where PreviewView's re-mount key
     // fails to fire but the component bag has changed: the update effect

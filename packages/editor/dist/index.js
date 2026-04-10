@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import p5 from 'p5';
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw from '@monaco-editor/react';
@@ -18127,47 +18127,11 @@ function createCompiledVizProvider(opts) {
     debounceMs: 300,
     // D-07
     render: (ctx) => {
-      let descriptor = null;
-      let compileError = null;
-      try {
-        const preset = {
-          id: ctx.file.id,
-          name: ctx.file.path,
-          renderer: opts.renderer,
-          code: ctx.file.content,
-          requires: [],
-          createdAt: 0,
-          updatedAt: 0
-        };
-        descriptor = compilePreset(preset);
-      } catch (err2) {
-        compileError = err2 instanceof Error ? err2.message : String(err2);
-      }
-      if (compileError !== null) {
-        return /* @__PURE__ */ jsx(
-          "div",
-          {
-            "data-testid": `compiled-viz-error-${ctx.file.id}`,
-            "data-compiled-viz-error": "true",
-            style: {
-              padding: 12,
-              color: "#ff6b6b",
-              fontSize: 12,
-              whiteSpace: "pre-wrap",
-              fontFamily: "var(--font-mono)",
-              background: "rgba(255,107,107,0.05)",
-              height: "100%",
-              boxSizing: "border-box",
-              overflow: "auto"
-            },
-            children: compileError
-          }
-        );
-      }
       return /* @__PURE__ */ jsx(
         CompiledVizMount,
         {
-          descriptor,
+          file: ctx.file,
+          rendererType: opts.renderer,
           audioSource: ctx.audioSource,
           hidden: ctx.hidden,
           paused: ctx.paused ?? false,
@@ -18181,7 +18145,26 @@ function createCompiledVizProvider(opts) {
   };
 }
 function CompiledVizMount(props) {
-  const { descriptor, audioSource, hidden, paused, fileId } = props;
+  const { file, rendererType, audioSource, hidden, paused, fileId } = props;
+  const { descriptor, compileError } = useMemo(() => {
+    try {
+      const preset = {
+        id: file.id,
+        name: file.path,
+        renderer: rendererType,
+        code: file.content,
+        requires: [],
+        createdAt: 0,
+        updatedAt: 0
+      };
+      return { descriptor: compilePreset(preset), compileError: null };
+    } catch (err2) {
+      return {
+        descriptor: null,
+        compileError: err2 instanceof Error ? err2.message : String(err2)
+      };
+    }
+  }, [file.id, file.content, file.language, rendererType]);
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
   const components = useMemo(() => {
@@ -18207,6 +18190,7 @@ function CompiledVizMount(props) {
     return bag;
   }, [audioSource]);
   useEffect(() => {
+    if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
     const size = {
@@ -18280,13 +18264,34 @@ function CompiledVizMount(props) {
       }
     }
   }, [paused, hidden]);
+  if (compileError !== null) {
+    return /* @__PURE__ */ jsx(
+      "div",
+      {
+        "data-testid": `compiled-viz-error-${fileId}`,
+        "data-compiled-viz-error": "true",
+        style: {
+          padding: 12,
+          color: "#ff6b6b",
+          fontSize: 12,
+          whiteSpace: "pre-wrap",
+          fontFamily: "var(--font-mono)",
+          background: "rgba(255,107,107,0.05)",
+          height: "100%",
+          boxSizing: "border-box",
+          overflow: "auto"
+        },
+        children: compileError
+      }
+    );
+  }
   return /* @__PURE__ */ jsx(
     "div",
     {
       ref: containerRef,
       "data-testid": `compiled-viz-mount-${fileId}`,
       "data-compiled-viz-mount": "true",
-      "data-renderer": descriptor.renderer ?? "unknown",
+      "data-renderer": descriptor?.renderer ?? "unknown",
       style: {
         width: "100%",
         height: "100%",

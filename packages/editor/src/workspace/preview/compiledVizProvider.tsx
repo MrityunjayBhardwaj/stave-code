@@ -128,53 +128,25 @@ export function createCompiledVizProvider(
     reload: 'debounced', // D-07
     debounceMs: 300, // D-07
     render: (ctx: PreviewContext): React.ReactNode => {
-      // Build a synthetic preset from the current file content and compile
-      // it. Compilation is synchronous (the `new Function()` path) so any
-      // syntax errors surface immediately and we can switch to the error
-      // panel without waiting on async state.
-      let descriptor: VizDescriptor | null = null
-      let compileError: string | null = null
-      try {
-        const preset: VizPreset = {
-          id: ctx.file.id,
-          name: ctx.file.path,
-          renderer: opts.renderer,
-          code: ctx.file.content,
-          requires: [],
-          createdAt: 0,
-          updatedAt: 0,
-        }
-        descriptor = compilePreset(preset)
-      } catch (err) {
-        compileError = err instanceof Error ? err.message : String(err)
-      }
-
-      if (compileError !== null) {
-        return (
-          <div
-            data-testid={`compiled-viz-error-${ctx.file.id}`}
-            data-compiled-viz-error="true"
-            style={{
-              padding: 12,
-              color: '#ff6b6b',
-              fontSize: 12,
-              whiteSpace: 'pre-wrap',
-              fontFamily: 'var(--font-mono)',
-              background: 'rgba(255,107,107,0.05)',
-              height: '100%',
-              boxSizing: 'border-box',
-              overflow: 'auto',
-            }}
-          >
-            {compileError}
-          </div>
-        )
-      }
-
-      // descriptor is non-null below by virtue of the error branch above.
+      // Compilation used to happen HERE, but that meant every call to
+      // `render()` (once per provider re-render — and PreviewView
+      // re-renders on every audio payload change, paused toggle, etc.)
+      // built a fresh `VizDescriptor` with a new factory closure. The
+      // downstream `CompiledVizMount`'s mount effect depended on
+      // `[descriptor]`, so any provider re-render destroyed the p5
+      // instance and built a brand new one. The user's Stop button
+      // couldn't "stop" anything because by the time the paused effect
+      // fired, a freshly-mounted p5 instance was already back at work.
+      //
+      // Fix: hand `CompiledVizMount` the FILE + renderer type and let
+      // it do the compile itself, memoized on the file content. The
+      // descriptor then stays stable across re-renders that don't
+      // actually change the source, and the mount effect runs only on
+      // real compilation boundaries (content edit, debounced reload).
       return (
         <CompiledVizMount
-          descriptor={descriptor as VizDescriptor}
+          file={ctx.file}
+          rendererType={opts.renderer}
           audioSource={ctx.audioSource}
           hidden={ctx.hidden}
           paused={ctx.paused ?? false}
@@ -193,7 +165,19 @@ export function createCompiledVizProvider(
 // ---------------------------------------------------------------------------
 
 interface CompiledVizMountProps {
-  readonly descriptor: VizDescriptor
+  /**
+   * The workspace file whose content is compiled into the
+   * descriptor. Compilation lives inside the component (not the
+   * provider) so the descriptor can be memoized on file content
+   * — this is the fix for the "pause toggle re-mounts the
+   * sketch" bug: without memoization, every re-render of the
+   * parent built a fresh descriptor and the mount effect
+   * destroyed + recreated the p5 instance on every state
+   * change.
+   */
+  readonly file: PreviewContext['file']
+  /** Which renderer the provider wraps ('hydra' | 'p5'). */
+  readonly rendererType: 'hydra' | 'p5'
   readonly audioSource: PreviewContext['audioSource']
   readonly hidden: boolean
   /**
@@ -225,7 +209,42 @@ interface CompiledVizMountProps {
  * teardown.
  */
 function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
-  const { descriptor, audioSource, hidden, paused, fileId } = props
+  const { file, rendererType, audioSource, hidden, paused, fileId } = props
+
+  // Compile ONCE per file-content change. This is the memoization
+  // boundary that keeps the descriptor stable across re-renders
+  // that don't actually change the source (pause toggles, source
+  // swaps, audio payload refreshes). The `[file.content,
+  // file.language, rendererType]` dep set is the minimum that
+  // uniquely identifies the compiled output — file.id alone isn't
+  // enough because the user may edit the same file.
+  //
+  // Errors are captured into state via the try/catch so a syntax
+  // error in user code doesn't unmount the component; instead the
+  // component renders a distinguishable error panel.
+  const { descriptor, compileError } = useMemo<{
+    descriptor: VizDescriptor | null
+    compileError: string | null
+  }>(() => {
+    try {
+      const preset: VizPreset = {
+        id: file.id,
+        name: file.path,
+        renderer: rendererType,
+        code: file.content,
+        requires: [],
+        createdAt: 0,
+        updatedAt: 0,
+      }
+      return { descriptor: compilePreset(preset), compileError: null }
+    } catch (err) {
+      return {
+        descriptor: null,
+        compileError: err instanceof Error ? err.message : String(err),
+      }
+    }
+  }, [file.id, file.content, file.language, rendererType])
+
   const containerRef = useRef<HTMLDivElement>(null)
   // Track the live renderer across effect invocations so the hidden-flip
   // effect can call pause/resume without tearing down the mount.
@@ -270,6 +289,7 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
   // include `components` in the deps because they come from the same
   // audioSource that's also bound to PreviewView's key.
   useEffect(() => {
+    if (!descriptor) return
     const el = containerRef.current
     if (!el) return
     const size = {
@@ -381,12 +401,39 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     }
   }, [paused, hidden])
 
+  // Compile error panel — a syntax error in the user's source
+  // renders here instead of unmounting the component. Keeping the
+  // component mounted preserves the audio subscription so a
+  // subsequent fix-and-save fires the debounced reload without
+  // having to re-subscribe.
+  if (compileError !== null) {
+    return (
+      <div
+        data-testid={`compiled-viz-error-${fileId}`}
+        data-compiled-viz-error="true"
+        style={{
+          padding: 12,
+          color: '#ff6b6b',
+          fontSize: 12,
+          whiteSpace: 'pre-wrap',
+          fontFamily: 'var(--font-mono)',
+          background: 'rgba(255,107,107,0.05)',
+          height: '100%',
+          boxSizing: 'border-box',
+          overflow: 'auto',
+        }}
+      >
+        {compileError}
+      </div>
+    )
+  }
+
   return (
     <div
       ref={containerRef}
       data-testid={`compiled-viz-mount-${fileId}`}
       data-compiled-viz-mount="true"
-      data-renderer={descriptor.renderer ?? 'unknown'}
+      data-renderer={descriptor?.renderer ?? 'unknown'}
       style={{
         width: '100%',
         height: '100%',
