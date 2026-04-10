@@ -153,6 +153,7 @@ export function VizEditorChrome({
   previewOpen,
   previewPaused,
   onTogglePausePreview,
+  onChangePreviewSource,
 }: PreviewEditorChromeContext): React.ReactElement {
   const ext = file.language === 'p5js' ? 'p5' : file.language
 
@@ -238,17 +239,32 @@ export function VizEditorChrome({
     (s) => !BUILTIN_SOURCE_IDS.has(s.sourceId),
   )
 
-  // Handle source selection change. Parses the string into a ref and
-  // stores it; if the user selected "sample sound", we DON'T start it
-  // here — we wait until Play is clicked because browser autoplay
-  // policy rejects AudioContext creation outside of a user gesture on
-  // a clickable element, and a <select> change event does count but
-  // it's safer to defer.
+  // Handle source selection change. Parses the string into a ref
+  // and stores it in the chrome's local state. If a preview is
+  // ALREADY open for this file AND the shell supplied an
+  // `onChangePreviewSource` handler, we also dispatch the new ref
+  // so the live preview tab swaps its source without the user
+  // having to close and reopen it.
+  //
+  // When the new source is a built-in example (sample sound, drum
+  // pattern, chord progression) we lazy-start it here — the
+  // `<select>` change event IS a user gesture as far as browser
+  // autoplay policy is concerned, so this is safe.
   const handleSourceChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setSelectedSource(stringToRef(e.target.value))
+      const ref = stringToRef(e.target.value)
+      setSelectedSource(ref)
+      if (previewOpen && onChangePreviewSource) {
+        if (ref.kind === 'file') {
+          const builtin = BUILTIN_EXAMPLE_SOURCES.find(
+            (s) => s.sourceId === ref.fileId,
+          )
+          if (builtin) builtin.startIfIdle()
+        }
+        onChangePreviewSource(ref)
+      }
     },
-    [],
+    [previewOpen, onChangePreviewSource],
   )
 
   return (
