@@ -89,6 +89,15 @@ export {
   setContent,
   subscribe as subscribeToWorkspaceFile,
 } from './workspace/WorkspaceFile'
+
+// Sample sound (test audio source for viz development)
+export {
+  startSampleSound,
+  stopSampleSound,
+  isSampleSoundPlaying,
+  SAMPLE_SOUND_SOURCE_ID,
+  SAMPLE_SOUND_LABEL,
+} from './workspace/sampleSound'
 export { useWorkspaceFile } from './workspace/useWorkspaceFile'
 export type { UseWorkspaceFileResult } from './workspace/useWorkspaceFile'
 

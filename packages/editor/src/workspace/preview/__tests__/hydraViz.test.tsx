@@ -199,6 +199,97 @@ describe('HYDRA_VIZ render path', () => {
     expect(components.queryable?.scheduler).toBe(payload.scheduler)
   })
 
+  it('calls renderer.update() when audioSource changes within a mount (defense-in-depth)', () => {
+    // Defense against a regression where PreviewView's re-mount key
+    // fails to fire but the component bag has changed: the update effect
+    // in CompiledVizMount runs `renderer.update(components)` on every
+    // audioSource change so live-ref analyser swaps still reach the
+    // renderer without a full rebuild.
+    //
+    // We pin the descriptor across renders so the mount effect does NOT
+    // re-run — that isolates the update-effect path. In real usage,
+    // descriptors DO change between renders (compilePreset returns a
+    // fresh object), but the re-mount path is tested separately via
+    // PreviewView's key formula. This test exercises the narrower
+    // scenario where only `audioSource` drifts and `descriptor` is
+    // reference-stable.
+    const stableDescriptor: VizDescriptor = {
+      id: 'mock-stable',
+      label: 'mock',
+      renderer: 'hydra',
+      factory: () => ({
+        mount: vi.fn(),
+        update: vi.fn(),
+        resize: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        destroy: vi.fn(),
+      }),
+    } as unknown as VizDescriptor
+    ;(compilePreset as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
+      stableDescriptor,
+    )
+
+    const file = makeFile('f-update', 's.osc().out()')
+    const { rerender } = render(
+      HYDRA_VIZ.render(makeCtx(file, null)) as React.ReactElement,
+    )
+
+    const mountMock = mountVizRenderer as unknown as ReturnType<typeof vi.fn>
+    const rendererUpdate = mountMock.mock.results[0].value.renderer.update
+    const initialUpdateCalls = rendererUpdate.mock.calls.length
+
+    const fakeAnalyser = {
+      context: {} as unknown,
+    } as unknown as AnalyserNode
+    const payload = {
+      hapStream: { id: 'hs' } as unknown as AudioPayload['hapStream'],
+      analyser: fakeAnalyser,
+      scheduler: { id: 's' } as unknown as AudioPayload['scheduler'],
+    } as AudioPayload
+
+    rerender(HYDRA_VIZ.render(makeCtx(file, payload)) as React.ReactElement)
+
+    // The mount effect should NOT have re-run because descriptor is
+    // pinned — only one mountVizRenderer call.
+    expect(mountMock.mock.calls.length).toBe(1)
+
+    // The update effect SHOULD have fired with the new bag.
+    expect(rendererUpdate.mock.calls.length).toBeGreaterThan(initialUpdateCalls)
+    const lastCall = rendererUpdate.mock.calls[rendererUpdate.mock.calls.length - 1]
+    expect(lastCall[0].audio?.analyser).toBe(fakeAnalyser)
+  })
+
+  it('chrome renders ▶ Play when previewOpen is false/omitted', () => {
+    const file = makeFile('f-play', 's.osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground: vi.fn(),
+      onSave: vi.fn(),
+      previewOpen: false,
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-play')
+    expect(btn.getAttribute('data-preview-open')).toBe('false')
+    expect(btn.textContent).toContain('Play')
+  })
+
+  it('chrome renders ■ Stop when previewOpen is true', () => {
+    const file = makeFile('f-stop', 's.osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      onOpenPreview: vi.fn(),
+      onToggleBackground: vi.fn(),
+      onSave: vi.fn(),
+      previewOpen: true,
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-play')
+    expect(btn.getAttribute('data-preview-open')).toBe('true')
+    expect(btn.textContent).toContain('Stop')
+  })
+
   it('renders an error panel when compilePreset throws (invalid code)', () => {
     ;(compilePreset as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
       () => {

@@ -306,6 +306,26 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [descriptor])
 
+  // Defense-in-depth for audio reactivity: observe the components bag and
+  // call `renderer.update()` whenever it changes within a single mount
+  // lifetime. PreviewView's key formula is SUPPOSED to force unmount when
+  // publisher identity changes (which rebuilds the component bag via
+  // `components = useMemo([audioSource])`), but if any path ever skips
+  // the re-mount — e.g., a publisher repubishes the same id with new
+  // refs (D-01 identity guard path), or an edge case in payloadKey's
+  // staleness window — this update() call catches the live-ref change
+  // without a full rebuild. Cheap no-op when the refs haven't changed.
+  useEffect(() => {
+    const r = rendererRef.current?.renderer
+    if (!r || !r.update) return
+    try {
+      r.update(components)
+    } catch {
+      // Non-fatal — renderer update is a live-ref refresh, not a hard
+      // dependency. A broken update() must not crash the mount.
+    }
+  }, [components])
+
   // Pause/resume on hidden flip — no teardown. Cheap state change.
   useEffect(() => {
     const r = rendererRef.current?.renderer

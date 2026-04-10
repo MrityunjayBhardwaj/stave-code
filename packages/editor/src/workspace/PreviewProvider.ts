@@ -188,14 +188,50 @@ export interface PreviewProvider {
 export interface PreviewEditorChromeContext {
   /** The workspace file this editor tab is bound to. */
   readonly file: WorkspaceFile
-  /** Open the preview for this file in a sibling split group. */
-  readonly onOpenPreview: () => void
+  /**
+   * Toggle the preview for this file in a sibling split group.
+   *
+   * If no preview tab currently exists for this file, opens a new one
+   * in a split-right group (Cmd+K V behavior). If one already exists,
+   * closes it instead — so a "▶ Play" → "■ Stop" toggle on the chrome
+   * button has coherent semantics for viz files whose "play" means
+   * "show me the rendered canvas."
+   *
+   * The optional `sourceRef` argument pins the new preview tab to a
+   * specific audio source when opening. The chrome's source dropdown
+   * passes the user's selection through this parameter so the preview
+   * subscribes to the chosen publisher (a pattern file, the sample
+   * sound, or `'none'` for demo mode) from the moment it mounts —
+   * avoiding the default-tracking fallback that would otherwise race
+   * the user's pattern-start clicks.
+   *
+   * The chrome reads `previewOpen` below to render the correct label
+   * and icon; it calls this single callback for both open and close.
+   */
+  readonly onOpenPreview: (sourceRef?: import('./types').AudioSourceRef) => void
+  /**
+   * Whether a preview tab for this file currently exists in any group.
+   * The chrome uses this to render the primary button as `▶ Play` (no
+   * preview open) or `■ Stop` (preview open). Maintained by the shell
+   * — embedders of `PreviewView` directly (outside the shell) can
+   * leave this as `undefined`, in which case the chrome defaults to
+   * `▶ Play`.
+   */
+  readonly previewOpen?: boolean
   /** Toggle the background decoration (viz behind the editor). */
   readonly onToggleBackground: () => void
   /** Save the file back to its persistent store (VizPresetStore). */
   readonly onSave: () => void
-  /** Whether hot-reload is currently enabled. */
-  readonly hotReload: boolean
-  /** Toggle hot-reload on/off. */
-  readonly onToggleHotReload: () => void
+  /**
+   * Whether hot-reload is currently enabled.
+   *
+   * Optional because Phase 10.2 ships a provider-level `reload` policy
+   * (per-provider, not per-tab) so most chromes render this as a static
+   * "live" indicator rather than a toggle. A per-tab toggle would
+   * require threading state through `PreviewView.reload` — scoped to a
+   * follow-up phase.
+   */
+  readonly hotReload?: boolean
+  /** Toggle hot-reload on/off. Optional — see `hotReload` above. */
+  readonly onToggleHotReload?: () => void
 }
