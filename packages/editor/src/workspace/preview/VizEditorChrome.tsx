@@ -150,6 +150,9 @@ export function VizEditorChrome({
   onOpenPreview,
   onToggleBackground,
   onSave,
+  previewOpen,
+  previewPaused,
+  onTogglePausePreview,
 }: PreviewEditorChromeContext): React.ReactElement {
   const ext = file.language === 'p5js' ? 'p5' : file.language
 
@@ -174,20 +177,23 @@ export function VizEditorChrome({
     return unsub
   }, [])
 
-  // Handle "Open Preview" click. The shell's handler is idempotent —
-  // if a preview tab for this file already exists anywhere in the shell,
-  // this call is a no-op (matching the "viz file = persistent editing
-  // surface, not a transport" model). Otherwise it opens a fresh preview
-  // tab pinned to the current source selection.
+  // Primary-button click handler. Three states drive the behavior:
   //
-  // If the user picked one of the built-in example sources (sample
-  // sound, drum pattern, chord progression), we lazy-start it here
-  // inside the click handler so the browser's autoplay policy
-  // accepts the AudioContext creation. A `<select>` change event
-  // also counts as a user gesture, but deferring to the Play click
-  // is simpler and matches what users expect: nothing plays until
-  // they hit Preview.
-  const handleOpenPreviewClick = useCallback(() => {
+  //   (1) Preview closed         → open it (idempotent).
+  //   (2) Preview open & playing → pause renderer (Stop click).
+  //   (3) Preview open & paused  → resume renderer (Play click).
+  //
+  // In state (1) we also lazy-start whichever built-in example
+  // source the dropdown selection points to (sample sound, drum
+  // pattern, chord progression), inside this click handler so the
+  // browser's autoplay policy accepts the AudioContext creation.
+  // In states (2)/(3) we delegate to `onTogglePausePreview` which
+  // the shell wires to its `pausedPreviews` state.
+  const handlePrimaryButtonClick = useCallback(() => {
+    if (previewOpen && onTogglePausePreview) {
+      onTogglePausePreview()
+      return
+    }
     if (selectedSource.kind === 'file') {
       const builtin = BUILTIN_EXAMPLE_SOURCES.find(
         (s) =>
@@ -197,7 +203,26 @@ export function VizEditorChrome({
       if (builtin) builtin.startIfIdle()
     }
     onOpenPreview(selectedSource)
-  }, [onOpenPreview, selectedSource])
+  }, [onOpenPreview, onTogglePausePreview, previewOpen, selectedSource])
+
+  // Derive the button's visual state from the two flags. The
+  // three label/title combinations map 1:1 to the three states
+  // above — keeping the derivation in one place avoids drift
+  // between the label, the title, and the click handler.
+  const buttonState: 'closed' | 'paused' | 'running' =
+    !previewOpen ? 'closed' : previewPaused ? 'paused' : 'running'
+  const buttonLabel =
+    buttonState === 'closed'
+      ? '\u25B6 Preview'
+      : buttonState === 'paused'
+        ? '\u25B6 Play'
+        : '\u25A0 Stop'
+  const buttonTitle =
+    buttonState === 'closed'
+      ? 'Open preview to side (Cmd+K V)'
+      : buttonState === 'paused'
+        ? 'Resume preview rendering'
+        : 'Pause preview rendering (tab stays open)'
 
   // Build the list of available audio sources. Order:
   //   1. Default (follow most recent)
@@ -242,20 +267,24 @@ export function VizEditorChrome({
       }}
     >
       {/*
-       * Open Preview — primary action. Idempotent: the shell's handler
-       * returns early if a preview tab for this file already exists
-       * anywhere in the shell, so clicking again is harmless. The
-       * preview tab is closed by its own ✕ button, not by a chrome
-       * Stop action, because a viz file is a persistent editing
-       * surface rather than a transport.
+       * Primary action — three states:
+       *   - closed  → "▶ Preview" opens a new preview tab
+       *   - running → "■ Stop"    pauses the render loop
+       *   - paused  → "▶ Play"    resumes the render loop
+       *
+       * The preview tab is ONLY closed by its own ✕ button — Stop
+       * does not destroy the tab, it only freezes the canvas.
+       * A viz file is a persistent editing surface, not a
+       * transport.
        */}
       <button
         data-testid="viz-chrome-open-preview"
-        onClick={handleOpenPreviewClick}
-        title="Open preview to side (Cmd+K V)"
+        data-button-state={buttonState}
+        onClick={handlePrimaryButtonClick}
+        title={buttonTitle}
         style={primaryBtnStyle}
       >
-        {'\u25B6'} Preview
+        {buttonLabel}
       </button>
 
       {/* File type badge */}

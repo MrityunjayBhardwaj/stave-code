@@ -1345,6 +1345,18 @@ interface PreviewContext {
      * catch-up reload when the tab becomes visible again.
      */
     readonly hidden: boolean;
+    /**
+     * `true` when the user has explicitly paused this preview via the
+     * chrome's Stop button. Unlike `hidden` (which tracks visibility),
+     * `paused` is a user-initiated command — the preview tab is still
+     * visible, but the provider should halt its animation loop so the
+     * canvas freezes on the current frame. Providers handle this by
+     * calling `renderer.pause()` (which, for p5, maps to
+     * `p5.noLoop()`) when `paused` goes `true` and `renderer.resume()`
+     * when it goes `false`. Optional because not every consumer of
+     * `PreviewContext` sits behind a pause-able chrome.
+     */
+    readonly paused?: boolean;
 }
 /**
  * The provider contract. Every extension module exports one or more
@@ -1427,11 +1439,36 @@ interface PreviewEditorChromeContext {
      * avoiding the default-tracking fallback that would otherwise race
      * the user's pattern-start clicks.
      *
-     * Viz tabs intentionally do NOT have a Stop action — a viz file is
-     * a persistent editing surface, not a transport. The preview is
-     * closed by its own tab ✕ button when the user is done.
+     * The preview tab is closed by its own ✕ button, NOT by a chrome
+     * action. Clicking Stop on the chrome (when a preview is open)
+     * calls `onTogglePausePreview` below to pause the render loop
+     * instead of tearing down the tab.
      */
     readonly onOpenPreview: (sourceRef?: AudioSourceRef) => void;
+    /**
+     * Whether a preview tab for this file currently exists in any
+     * group. Drives the chrome's primary-button label: closed →
+     * "▶ Preview", open → "■ Stop" or "▶ Play" depending on
+     * `previewPaused`. Maintained by the shell — embedders of
+     * `PreviewView` directly (outside the shell) can omit this and
+     * the chrome will fall back to always showing "▶ Preview".
+     */
+    readonly previewOpen?: boolean;
+    /**
+     * Whether the open preview is currently paused (user clicked
+     * Stop). Only meaningful when `previewOpen === true`. When true,
+     * the chrome shows "▶ Play" and clicking resumes; when false,
+     * the chrome shows "■ Stop" and clicking pauses.
+     */
+    readonly previewPaused?: boolean;
+    /**
+     * Toggle the paused state of the open preview. The shell's
+     * handler flips its internal `pausedPreviews` set, which
+     * propagates through PreviewView → provider ctx → the compiled
+     * viz mount, which calls `renderer.pause()` / `renderer.resume()`.
+     * Only rendered as a button when `previewOpen === true`.
+     */
+    readonly onTogglePausePreview?: () => void;
     /** Toggle the background decoration (viz behind the editor). */
     readonly onToggleBackground: () => void;
     /** Save the file back to its persistent store (VizPresetStore). */
@@ -1809,6 +1846,16 @@ interface PreviewViewProps {
      * that arrived while hidden.
      */
     readonly hidden?: boolean;
+    /**
+     * User-initiated pause state. When `true`, the view threads
+     * `paused: true` into the provider render context so compiled
+     * viz mounts can call `renderer.pause()` (p5.noLoop / hydra
+     * stop) and freeze the canvas. Unlike `hidden`, this is an
+     * explicit user action via the chrome's Stop button — the tab
+     * stays visible but the animation loop halts. Click Play to
+     * resume.
+     */
+    readonly paused?: boolean;
 }
 /**
  * A single tab inside the workspace shell. Tabs are the user-visible units
@@ -2459,7 +2506,7 @@ declare function EditorView({ fileId, theme, chromeSlot, onMount, error, onPlay,
  * Task 04 / Task 05 may dress it up further.
  */
 
-declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, theme, hidden, }: PreviewViewProps): React.ReactElement;
+declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, theme, hidden, paused, }: PreviewViewProps): React.ReactElement;
 
 /**
  * WorkspaceFile store — Phase 10.2 Task 01.

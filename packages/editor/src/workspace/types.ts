@@ -405,6 +405,17 @@ export interface PreviewViewProps {
    * that arrived while hidden.
    */
   readonly hidden?: boolean
+
+  /**
+   * User-initiated pause state. When `true`, the view threads
+   * `paused: true` into the provider render context so compiled
+   * viz mounts can call `renderer.pause()` (p5.noLoop / hydra
+   * stop) and freeze the canvas. Unlike `hidden`, this is an
+   * explicit user action via the chrome's Stop button — the tab
+   * stays visible but the animation loop halts. Click Play to
+   * resume.
+   */
+  readonly paused?: boolean
 }
 
 // ---------------------------------------------------------------------------

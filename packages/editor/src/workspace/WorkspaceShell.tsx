@@ -249,6 +249,22 @@ export function WorkspaceShell({
   // (drop outside the shell, ESC) also reset state.
   const [tabDragInProgress, setTabDragInProgress] = useState(false)
 
+  /**
+   * Set of file ids whose preview tab's render loop is currently
+   * paused (user clicked the chrome's Stop button). The chrome
+   * reads `previewPaused = pausedPreviews.has(fileId)` and
+   * `PreviewView` receives `paused={…}` which threads through to
+   * the compiled viz mount, which calls `renderer.pause()` /
+   * `renderer.resume()` on state change.
+   *
+   * Keyed by FILE id (not tab id) because the pause state should
+   * survive drag-dropping a preview tab to a new group — the
+   * underlying viz file is the same, just rehoused.
+   */
+  const [pausedPreviews, setPausedPreviews] = useState<Set<string>>(
+    () => new Set(),
+  )
+
   // Theme application — PV6 / PK6. Effect, not render.
   useEffect(() => {
     if (!shellRootRef.current) return
@@ -381,6 +397,20 @@ export function WorkspaceShell({
       }
 
       if (closedTab) {
+        // If the closed tab was a preview, clean up its pause
+        // state. Keyed by file id because preview tabs can be
+        // re-opened from the editor chrome and a stale `paused`
+        // entry would freeze the fresh render loop immediately.
+        const maybePreview = closedTab as WorkspaceTab
+        if (maybePreview.kind === 'preview') {
+          const fileId = maybePreview.fileId
+          setPausedPreviews((prev) => {
+            if (!prev.has(fileId)) return prev
+            const next = new Set(prev)
+            next.delete(fileId)
+            return next
+          })
+        }
         onTabClose?.(closedTab)
       }
     },
@@ -1077,8 +1107,23 @@ export function WorkspaceShell({
             if (provider?.renderEditorChrome) {
               const file = getFile(tab.fileId)
               if (file) {
+                const existingPreview = findTabByFileId(tab.fileId, 'preview')
                 chromeSlot = provider.renderEditorChrome({
                   file,
+                  previewOpen: existingPreview !== null,
+                  previewPaused: pausedPreviews.has(tab.fileId),
+                  onTogglePausePreview: () => {
+                    // Flip the file's entry in the pausedPreviews
+                    // set. The resulting state change propagates
+                    // through PreviewView → provider ctx →
+                    // CompiledVizMount's pause/resume effect.
+                    setPausedPreviews((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(tab.fileId)) next.delete(tab.fileId)
+                      else next.add(tab.fileId)
+                      return next
+                    })
+                  },
                   onOpenPreview: (selectedSourceRef) => {
                     // Idempotent open: if a preview tab for this file
                     // already exists anywhere in the shell, return
@@ -1216,6 +1261,7 @@ export function WorkspaceShell({
               // tab-switched-away case, which the shell handles by
               // simply not rendering inactive tabs at all.
               hidden={false}
+              paused={pausedPreviews.has(tab.fileId)}
               onSourceRefChange={(nextRef) => {
                 // Update the tab's sourceRef in place. Tab id is stable,
                 // so we replace the tab object inside the group while

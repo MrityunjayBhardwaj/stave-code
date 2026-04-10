@@ -177,6 +177,7 @@ export function createCompiledVizProvider(
           descriptor={descriptor as VizDescriptor}
           audioSource={ctx.audioSource}
           hidden={ctx.hidden}
+          paused={ctx.paused ?? false}
           fileId={ctx.file.id}
         />
       )
@@ -195,6 +196,14 @@ interface CompiledVizMountProps {
   readonly descriptor: VizDescriptor
   readonly audioSource: PreviewContext['audioSource']
   readonly hidden: boolean
+  /**
+   * User-initiated pause state from the chrome's Stop button.
+   * When true, we call `renderer.pause()` (p5.noLoop / hydra
+   * stop) to freeze the canvas. When false, `renderer.resume()`
+   * restarts the loop. Independent of `hidden` — hidden is
+   * visibility-driven, paused is user-intent-driven.
+   */
+  readonly paused: boolean
   readonly fileId: string
 }
 
@@ -216,7 +225,7 @@ interface CompiledVizMountProps {
  * teardown.
  */
 function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
-  const { descriptor, audioSource, hidden, fileId } = props
+  const { descriptor, audioSource, hidden, paused, fileId } = props
   const containerRef = useRef<HTMLDivElement>(null)
   // Track the live renderer across effect invocations so the hidden-flip
   // effect can call pause/resume without tearing down the mount.
@@ -344,6 +353,33 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
       }
     }
   }, [hidden])
+
+  // Pause/resume on user-initiated pause (chrome Stop button). Same
+  // cheap state change as the `hidden` effect — no teardown, just
+  // flips the renderer's animation loop. The two effects compose
+  // naturally: if either `hidden` OR `paused` is true, the renderer
+  // ends up paused; the latest transition wins until the next flip.
+  useEffect(() => {
+    const r = rendererRef.current?.renderer
+    if (!r) return
+    if (paused) {
+      try {
+        r.pause()
+      } catch {
+        // Non-fatal.
+      }
+    } else if (!hidden) {
+      // Only resume if we're not also hidden — don't undo the
+      // hidden-pause by clearing a separate paused flag. The
+      // `hidden` effect will pick up where it left off when the
+      // tab is un-hidden.
+      try {
+        r.resume()
+      } catch {
+        // Non-fatal.
+      }
+    }
+  }, [paused, hidden])
 
   return (
     <div

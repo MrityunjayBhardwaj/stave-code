@@ -6861,7 +6861,8 @@ function PreviewView({
   sourceRef,
   onSourceRefChange,
   theme = "dark",
-  hidden = false
+  hidden = false,
+  paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
   const containerRef = React.useRef(null);
@@ -6947,9 +6948,10 @@ function PreviewView({
     return provider.render({
       file,
       audioSource: audioPayload,
-      hidden: effectivelyHidden
+      hidden: effectivelyHidden,
+      paused
     });
-  }, [file, provider, audioPayload, effectivelyHidden, reloadTick]);
+  }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick]);
   const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
@@ -7368,6 +7370,9 @@ function WorkspaceShell({
     null
   );
   const [tabDragInProgress, setTabDragInProgress] = React.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React.useState(
+    () => /* @__PURE__ */ new Set()
+  );
   React.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
@@ -7447,6 +7452,16 @@ function WorkspaceShell({
         });
       }
       if (closedTab) {
+        const maybePreview = closedTab;
+        if (maybePreview.kind === "preview") {
+          const fileId = maybePreview.fileId;
+          setPausedPreviews((prev) => {
+            if (!prev.has(fileId)) return prev;
+            const next = new Set(prev);
+            next.delete(fileId);
+            return next;
+          });
+        }
         onTabClose?.(closedTab);
       }
     },
@@ -7869,8 +7884,19 @@ function WorkspaceShell({
             if (provider?.renderEditorChrome) {
               const file = getFile(tab.fileId);
               if (file) {
+                const existingPreview = findTabByFileId(tab.fileId, "preview");
                 chromeSlot = provider.renderEditorChrome({
                   file,
+                  previewOpen: existingPreview !== null,
+                  previewPaused: pausedPreviews.has(tab.fileId),
+                  onTogglePausePreview: () => {
+                    setPausedPreviews((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(tab.fileId)) next.delete(tab.fileId);
+                      else next.add(tab.fileId);
+                      return next;
+                    });
+                  },
                   onOpenPreview: (selectedSourceRef) => {
                     const current = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
@@ -7970,6 +7996,7 @@ function WorkspaceShell({
               sourceRef: tab.sourceRef,
               theme,
               hidden: false,
+              paused: pausedPreviews.has(tab.fileId),
               onSourceRefChange: (nextRef) => {
                 updateGroup(groupId, (g) => ({
                   ...g,
@@ -17414,20 +17441,145 @@ var DrumPatternScheduler = class {
   }
 };
 var state2 = null;
-function startDrumPattern() {
-  if (state2) return;
-  const ctx = new AudioContext();
-  const scheduler = new DrumPatternScheduler(ctx);
-  const hapStream = new HapStream();
-  state2 = { ctx, scheduler, hapStream };
-  const payload = {
-    scheduler,
-    hapStream
-  };
-  workspaceAudioBus.publish(DRUM_PATTERN_SOURCE_ID, payload);
+var starting = false;
+async function renderDrumLoopBuffer() {
+  const sampleRate = 44100;
+  const durationSeconds = 2;
+  const offline = new OfflineAudioContext(
+    1,
+    sampleRate * durationSeconds,
+    sampleRate
+  );
+  const kickTimes = [0, 0.5, 1, 1.5];
+  for (const t of kickTimes) {
+    const osc = offline.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(100, t);
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+    const gain = offline.createGain();
+    gain.gain.setValueAtTime(1e-3, t);
+    gain.gain.linearRampToValueAtTime(0.9, t + 5e-3);
+    gain.gain.exponentialRampToValueAtTime(1e-3, t + 0.15);
+    osc.connect(gain).connect(offline.destination);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+  const snareTimes = [0.5, 1.5];
+  for (const t of snareTimes) {
+    const noiseBuf = offline.createBuffer(
+      1,
+      Math.floor(sampleRate * 0.12),
+      sampleRate
+    );
+    const noiseData = noiseBuf.getChannelData(0);
+    for (let i2 = 0; i2 < noiseData.length; i2++) {
+      noiseData[i2] = Math.random() * 2 - 1;
+    }
+    const noise = offline.createBufferSource();
+    noise.buffer = noiseBuf;
+    const bp = offline.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2e3;
+    bp.Q.value = 0.8;
+    const noiseGain = offline.createGain();
+    noiseGain.gain.setValueAtTime(1e-3, t);
+    noiseGain.gain.linearRampToValueAtTime(0.5, t + 2e-3);
+    noiseGain.gain.exponentialRampToValueAtTime(1e-3, t + 0.1);
+    noise.connect(bp).connect(noiseGain).connect(offline.destination);
+    noise.start(t);
+    const tone = offline.createOscillator();
+    tone.type = "triangle";
+    tone.frequency.value = 200;
+    const toneGain = offline.createGain();
+    toneGain.gain.setValueAtTime(1e-3, t);
+    toneGain.gain.linearRampToValueAtTime(0.25, t + 2e-3);
+    toneGain.gain.exponentialRampToValueAtTime(1e-3, t + 0.08);
+    tone.connect(toneGain).connect(offline.destination);
+    tone.start(t);
+    tone.stop(t + 0.1);
+  }
+  const closedHatTimes = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5];
+  for (const t of closedHatTimes) {
+    const noiseBuf = offline.createBuffer(
+      1,
+      Math.floor(sampleRate * 0.05),
+      sampleRate
+    );
+    const noiseData = noiseBuf.getChannelData(0);
+    for (let i2 = 0; i2 < noiseData.length; i2++) {
+      noiseData[i2] = Math.random() * 2 - 1;
+    }
+    const noise = offline.createBufferSource();
+    noise.buffer = noiseBuf;
+    const hp = offline.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 7e3;
+    const g = offline.createGain();
+    g.gain.setValueAtTime(1e-3, t);
+    g.gain.linearRampToValueAtTime(0.15, t + 1e-3);
+    g.gain.exponentialRampToValueAtTime(1e-3, t + 0.03);
+    noise.connect(hp).connect(g).connect(offline.destination);
+    noise.start(t);
+  }
+  const openHatTime = 1.75;
+  {
+    const noiseBuf = offline.createBuffer(
+      1,
+      Math.floor(sampleRate * 0.22),
+      sampleRate
+    );
+    const noiseData = noiseBuf.getChannelData(0);
+    for (let i2 = 0; i2 < noiseData.length; i2++) {
+      noiseData[i2] = Math.random() * 2 - 1;
+    }
+    const noise = offline.createBufferSource();
+    noise.buffer = noiseBuf;
+    const hp = offline.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 7e3;
+    const g = offline.createGain();
+    g.gain.setValueAtTime(1e-3, openHatTime);
+    g.gain.linearRampToValueAtTime(0.18, openHatTime + 2e-3);
+    g.gain.exponentialRampToValueAtTime(1e-3, openHatTime + 0.2);
+    noise.connect(hp).connect(g).connect(offline.destination);
+    noise.start(openHatTime);
+  }
+  return offline.startRendering();
+}
+async function startDrumPattern() {
+  if (state2 || starting) return;
+  starting = true;
+  try {
+    const ctx = new AudioContext();
+    const buffer = await renderDrumLoopBuffer();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.4;
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.7;
+    source.connect(gain);
+    gain.connect(analyser);
+    analyser.connect(ctx.destination);
+    source.start();
+    const scheduler = new DrumPatternScheduler(ctx);
+    const hapStream = new HapStream();
+    state2 = { ctx, source, gain, analyser, scheduler, hapStream };
+    const payload = {
+      analyser,
+      scheduler,
+      hapStream,
+      audio: { analyser, audioCtx: ctx }
+    };
+    workspaceAudioBus.publish(DRUM_PATTERN_SOURCE_ID, payload);
+  } finally {
+    starting = false;
+  }
 }
 function isDrumPatternPlaying() {
-  return state2 !== null;
+  return state2 !== null || starting;
 }
 
 // src/workspace/chordProgression.ts
@@ -17481,20 +17633,74 @@ var ChordProgressionScheduler = class {
   }
 };
 var state3 = null;
-function startChordProgression() {
-  if (state3) return;
-  const ctx = new AudioContext();
-  const scheduler = new ChordProgressionScheduler(ctx);
-  const hapStream = new HapStream();
-  state3 = { ctx, scheduler, hapStream };
-  const payload = {
-    scheduler,
-    hapStream
-  };
-  workspaceAudioBus.publish(CHORD_PROGRESSION_SOURCE_ID, payload);
+var starting2 = false;
+async function renderChordLoopBuffer() {
+  const sampleRate = 44100;
+  const durationSeconds = 8;
+  const offline = new OfflineAudioContext(
+    1,
+    sampleRate * durationSeconds,
+    sampleRate
+  );
+  const chordDuration = 2;
+  const attack = 0.02;
+  const release = 0.05;
+  const sustainLevel = 0.06;
+  for (let i2 = 0; i2 < CHORD_PROGRESSION.length; i2++) {
+    const chord2 = CHORD_PROGRESSION[i2];
+    const chordStart = i2 * chordDuration;
+    const chordEnd = chordStart + chordDuration;
+    for (const midi of chord2.notes) {
+      const freq = 440 * Math.pow(2, (midi - 69) / 12);
+      const osc = offline.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = freq;
+      const g = offline.createGain();
+      g.gain.setValueAtTime(1e-4, chordStart);
+      g.gain.linearRampToValueAtTime(sustainLevel, chordStart + attack);
+      g.gain.setValueAtTime(sustainLevel, chordEnd - release);
+      g.gain.linearRampToValueAtTime(1e-4, chordEnd);
+      osc.connect(g).connect(offline.destination);
+      osc.start(chordStart);
+      osc.stop(chordEnd + 0.01);
+    }
+  }
+  return offline.startRendering();
+}
+async function startChordProgression() {
+  if (state3 || starting2) return;
+  starting2 = true;
+  try {
+    const ctx = new AudioContext();
+    const buffer = await renderChordLoopBuffer();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.5;
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(gain);
+    gain.connect(analyser);
+    analyser.connect(ctx.destination);
+    source.start();
+    const scheduler = new ChordProgressionScheduler(ctx);
+    const hapStream = new HapStream();
+    state3 = { ctx, source, gain, analyser, scheduler, hapStream };
+    const payload = {
+      analyser,
+      scheduler,
+      hapStream,
+      audio: { analyser, audioCtx: ctx }
+    };
+    workspaceAudioBus.publish(CHORD_PROGRESSION_SOURCE_ID, payload);
+  } finally {
+    starting2 = false;
+  }
 }
 function isChordProgressionPlaying() {
-  return state3 !== null;
+  return state3 !== null || starting2;
 }
 var BUILTIN_EXAMPLE_SOURCES = [
   {
@@ -17562,7 +17768,10 @@ function VizEditorChrome({
   file,
   onOpenPreview,
   onToggleBackground,
-  onSave
+  onSave,
+  previewOpen,
+  previewPaused,
+  onTogglePausePreview
 }) {
   const ext = file.language === "p5js" ? "p5" : file.language;
   const [selectedSource, setSelectedSource] = React.useState({
@@ -17575,7 +17784,11 @@ function VizEditorChrome({
     });
     return unsub;
   }, []);
-  const handleOpenPreviewClick = React.useCallback(() => {
+  const handlePrimaryButtonClick = React.useCallback(() => {
+    if (previewOpen && onTogglePausePreview) {
+      onTogglePausePreview();
+      return;
+    }
     if (selectedSource.kind === "file") {
       const builtin = BUILTIN_EXAMPLE_SOURCES.find(
         (s) => selectedSource.kind === "file" && s.sourceId === selectedSource.fileId
@@ -17583,7 +17796,10 @@ function VizEditorChrome({
       if (builtin) builtin.startIfIdle();
     }
     onOpenPreview(selectedSource);
-  }, [onOpenPreview, selectedSource]);
+  }, [onOpenPreview, onTogglePausePreview, previewOpen, selectedSource]);
+  const buttonState = !previewOpen ? "closed" : previewPaused ? "paused" : "running";
+  const buttonLabel = buttonState === "closed" ? "\u25B6 Preview" : buttonState === "paused" ? "\u25B6 Play" : "\u25A0 Stop";
+  const buttonTitle = buttonState === "closed" ? "Open preview to side (Cmd+K V)" : buttonState === "paused" ? "Resume preview rendering" : "Pause preview rendering (tab stays open)";
   const busSources = workspaceAudioBus.listSources();
   const patternSources = busSources.filter(
     (s) => !BUILTIN_SOURCE_IDS.has(s.sourceId)
@@ -17610,17 +17826,15 @@ function VizEditorChrome({
         flexShrink: 0
       },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsxs(
+        /* @__PURE__ */ jsxRuntime.jsx(
           "button",
           {
             "data-testid": "viz-chrome-open-preview",
-            onClick: handleOpenPreviewClick,
-            title: "Open preview to side (Cmd+K V)",
+            "data-button-state": buttonState,
+            onClick: handlePrimaryButtonClick,
+            title: buttonTitle,
             style: primaryBtnStyle,
-            children: [
-              "\u25B6",
-              " Preview"
-            ]
+            children: buttonLabel
           }
         ),
         /* @__PURE__ */ jsxRuntime.jsx(
@@ -17799,6 +18013,7 @@ function createCompiledVizProvider(opts) {
           descriptor,
           audioSource: ctx.audioSource,
           hidden: ctx.hidden,
+          paused: ctx.paused ?? false,
           fileId: ctx.file.id
         }
       );
@@ -17809,7 +18024,7 @@ function createCompiledVizProvider(opts) {
   };
 }
 function CompiledVizMount(props) {
-  const { descriptor, audioSource, hidden, fileId } = props;
+  const { descriptor, audioSource, hidden, paused, fileId } = props;
   const containerRef = React.useRef(null);
   const rendererRef = React.useRef(null);
   const components = React.useMemo(() => {
@@ -17893,6 +18108,21 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
+  React.useEffect(() => {
+    const r = rendererRef.current?.renderer;
+    if (!r) return;
+    if (paused) {
+      try {
+        r.pause();
+      } catch {
+      }
+    } else if (!hidden) {
+      try {
+        r.resume();
+      } catch {
+      }
+    }
+  }, [paused, hidden]);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {

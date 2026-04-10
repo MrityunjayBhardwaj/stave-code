@@ -260,30 +260,81 @@ describe('HYDRA_VIZ render path', () => {
     expect(lastCall[0].audio?.analyser).toBe(fakeAnalyser)
   })
 
-  it('chrome renders an idempotent "Preview" button — no Stop state', () => {
-    // Viz tabs are persistent editing surfaces, not transports. The
-    // chrome's primary button only opens the preview — it never
-    // closes one. Closing is driven by the preview tab's own ✕. The
-    // shell handler makes the open idempotent (no-op if a preview
-    // tab for the file already exists), so the chrome doesn't need
-    // to track preview state and there is no Stop variant to test.
+  it('chrome primary button: closed → Preview → calls onOpenPreview', () => {
+    // Three-state button: closed → "▶ Preview" → click opens the
+    // preview tab. No previewOpen / previewPaused in the ctx means
+    // the button is in the 'closed' state.
     const onOpenPreview = vi.fn()
-    const file = makeFile('f-preview', 's.osc().out()')
+    const onTogglePausePreview = vi.fn()
+    const file = makeFile('f-preview-closed', 's.osc().out()')
     const chrome = HYDRA_VIZ.renderEditorChrome!({
       file,
       onOpenPreview,
+      onTogglePausePreview,
       onToggleBackground: vi.fn(),
       onSave: vi.fn(),
     })
     const { getByTestId } = render(chrome as React.ReactElement)
     const btn = getByTestId('viz-chrome-open-preview')
+    expect(btn.getAttribute('data-button-state')).toBe('closed')
     expect(btn.textContent).toContain('Preview')
-    // Clicking calls onOpenPreview with the current source selection
-    // (default: { kind: 'default' }). The shell handler is what
-    // decides whether to actually open a tab — the chrome is dumb.
     fireEvent.click(btn)
     expect(onOpenPreview).toHaveBeenCalledTimes(1)
     expect(onOpenPreview.mock.calls[0][0]).toEqual({ kind: 'default' })
+    // Stop toggle must NOT fire on a closed-state click.
+    expect(onTogglePausePreview).not.toHaveBeenCalled()
+  })
+
+  it('chrome primary button: running → Stop → calls onTogglePausePreview', () => {
+    // previewOpen=true, previewPaused=false → button shows "■ Stop"
+    // and clicks toggle pause instead of opening a new preview.
+    const onOpenPreview = vi.fn()
+    const onTogglePausePreview = vi.fn()
+    const file = makeFile('f-preview-running', 's.osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      previewOpen: true,
+      previewPaused: false,
+      onOpenPreview,
+      onTogglePausePreview,
+      onToggleBackground: vi.fn(),
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-open-preview')
+    expect(btn.getAttribute('data-button-state')).toBe('running')
+    expect(btn.textContent).toContain('Stop')
+    fireEvent.click(btn)
+    expect(onTogglePausePreview).toHaveBeenCalledTimes(1)
+    // Open should NOT have fired — we're in stop-toggle mode.
+    expect(onOpenPreview).not.toHaveBeenCalled()
+  })
+
+  it('chrome primary button: paused → Play → calls onTogglePausePreview', () => {
+    // previewOpen=true, previewPaused=true → button shows "▶ Play"
+    // and clicks resume the renderer via onTogglePausePreview.
+    const onOpenPreview = vi.fn()
+    const onTogglePausePreview = vi.fn()
+    const file = makeFile('f-preview-paused', 's.osc().out()')
+    const chrome = HYDRA_VIZ.renderEditorChrome!({
+      file,
+      previewOpen: true,
+      previewPaused: true,
+      onOpenPreview,
+      onTogglePausePreview,
+      onToggleBackground: vi.fn(),
+      onSave: vi.fn(),
+    })
+    const { getByTestId } = render(chrome as React.ReactElement)
+    const btn = getByTestId('viz-chrome-open-preview')
+    expect(btn.getAttribute('data-button-state')).toBe('paused')
+    // "Play" label (not "Preview") distinguishes the paused resume
+    // state from the closed open state — both use a triangle icon
+    // but the word makes the semantic difference explicit.
+    expect(btn.textContent).toContain('Play')
+    fireEvent.click(btn)
+    expect(onTogglePausePreview).toHaveBeenCalledTimes(1)
+    expect(onOpenPreview).not.toHaveBeenCalled()
   })
 
   it('renders an error panel when compilePreset throws (invalid code)', () => {
