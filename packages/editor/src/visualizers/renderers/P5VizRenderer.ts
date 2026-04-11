@@ -99,7 +99,58 @@ export class P5VizRenderer implements VizRenderer {
   }
 
   destroy(): void {
-    this.instance?.remove()
+    if (this.instance) {
+      // p5 v2 defers its `#_setup()` chain to the next animation
+      // frame (PV5 / PK2). #_setup is `async` and contains FOUR
+      // things that need cancelling if we destroy mid-flight:
+      //
+      //   1. `await _runLifecycleHook('presetup')`
+      //   2. `this.createCanvas(100, 100, P2D)` — UNCONDITIONAL
+      //      default canvas creation
+      //   3. `await context.setup()` — user setup
+      //   4. `await _runLifecycleHook('postsetup')`
+      //
+      // If React StrictMode's dev double-invoke runs the effect
+      // cleanup BEFORE p5's first rAF fires, calling
+      // `instance.remove()` cancels the draw loop schedule but
+      // does NOT cancel the async #_setup chain. The chain still
+      // fires, the default 100×100 canvas is appended to our
+      // container, then the user setup creates a second canvas
+      // sized to stave.width×stave.height, the draw loop starts
+      // running… on a "destroyed" instance whose remove() call
+      // was a no-op because no canvas existed yet at the moment
+      // of removal.
+      //
+      // Multiple defenses (belt-and-suspenders) — any one of
+      // these alone might not fully cover all p5 internal
+      // paths, but together they guarantee the destroyed
+      // instance never produces visible output:
+      //
+      //   - `hitCriticalError = true`: p5's #_setup checks this
+      //     after each await and bails out early (line 72530 of
+      //     p5.js v2.2.3).
+      //   - No-op user `setup`/`draw`/`preload`: even if the
+      //     critical-error early-return is bypassed, the user
+      //     code never runs.
+      //   - No-op `createCanvas`: if the unconditional default
+      //     canvas creation runs anyway, we silently swallow
+      //     it instead of appending a 100×100 orphan to the
+      //     container.
+      //   - `_setupDone = true`: makes p5's draw scheduler
+      //     consider setup complete so it doesn't keep waiting.
+      //
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pi = this.instance as any
+      pi.hitCriticalError = true
+      pi.setup = function () {}
+      pi.draw = function () {}
+      pi.preload = function () {}
+      pi.createCanvas = function () {
+        return null
+      }
+      pi._setupDone = true
+      this.instance.remove()
+    }
     this.instance = null
   }
 }
