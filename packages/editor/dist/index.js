@@ -4540,7 +4540,21 @@ var P5VizRenderer = class {
     this.instance?.loop();
   }
   destroy() {
-    this.instance?.remove();
+    if (this.instance) {
+      const pi = this.instance;
+      pi.hitCriticalError = true;
+      pi.setup = function() {
+      };
+      pi.draw = function() {
+      };
+      pi.preload = function() {
+      };
+      pi.createCanvas = function() {
+        return null;
+      };
+      pi._setupDone = true;
+      this.instance.remove();
+    }
     this.instance = null;
   }
 };
