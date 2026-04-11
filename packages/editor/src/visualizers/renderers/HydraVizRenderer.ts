@@ -64,7 +64,27 @@ class HapEnergyEnvelope {
  *   2. HapStream energy envelope (synthetic FFT from note events — per-track)
  *   3. Global AnalyserNode (real FFT, but reacts to ALL tracks — fallback)
  *
- * Reads `hydraAudioBins` and `hydraAutoLoop` from the active VizConfig.
+ * Reads `hydraAudioBins` from the active VizConfig.
+ *
+ * ## Pause / loop ownership
+ *
+ * Hydra is constructed with `autoLoop: false` so the renderer (not
+ * hydra) owns the animation loop. Our `pumpAudio` rAF callback both
+ * polls the FFT data into `s.a.fft[]` AND calls `hydra.tick(time)` to
+ * advance the shader by exactly one frame. This single-loop ownership
+ * is what makes `pause()` actually pause:
+ *   - With `autoLoop: true` (the old behavior), hydra's internal rAF
+ *     keeps running independently. Setting our `paused` flag would
+ *     stop FFT polling but hydra would keep rendering its last shader
+ *     state, so the canvas never visibly froze. The user-visible
+ *     symptom: the Stop button did nothing on hydra previews.
+ *   - With `autoLoop: false`, cancelling our rAF in `pause()` halts
+ *     the only path that ticks hydra. Resume re-arms the rAF and
+ *     hydra picks up where it left off.
+ *
+ * The `hydraAutoLoop` config flag is no longer read — pause requires
+ * us to own the loop. The flag is left in `vizConfig.ts` for now and
+ * will be removed in a follow-up cleanup.
  */
 export class HydraVizRenderer implements VizRenderer {
   private hydra: any = null
@@ -73,6 +93,7 @@ export class HydraVizRenderer implements VizRenderer {
   private freqData: Uint8Array<ArrayBuffer> | null = null
   private rafId: number | null = null
   private paused = false
+  private destroyed = false
   private hapStream: HapStream | null = null
   private envelope: HapEnergyEnvelope | null = null
   private hapHandler: ((e: HapEvent) => void) | null = null
@@ -124,7 +145,7 @@ export class HydraVizRenderer implements VizRenderer {
     const { default: Hydra } = await import('hydra-synth')
     const config = getVizConfig()
 
-    if (!this.canvas) return // destroyed before load finished
+    if (!this.canvas || this.destroyed) return // destroyed before load finished
 
     this.hydra = new Hydra({
       canvas: this.canvas,
@@ -132,7 +153,10 @@ export class HydraVizRenderer implements VizRenderer {
       height: size.h,
       detectAudio: false,
       makeGlobal: false,
-      autoLoop: config.hydraAutoLoop,
+      // We OWN the animation loop (see class jsdoc) — hydra must
+      // not run its own rAF, or pause() can't actually halt the
+      // shader render. `pumpAudio` calls `hydra.tick(time)` itself.
+      autoLoop: false,
     })
 
     const synth = this.hydra.synth
@@ -157,7 +181,13 @@ export class HydraVizRenderer implements VizRenderer {
       this.defaultPattern(synth)
     }
 
-    this.pumpAudio()
+    // Schedule the first rAF — don't tick hydra synchronously here.
+    // The next animation frame draws the first shader output. This
+    // way pause() is observable from frame 1: if pause() runs before
+    // the first rAF fires, no tick ever happens.
+    if (!this.paused && !this.destroyed && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.pumpAudio)
+    }
   }
 
   private defaultPattern(s: any): void {
@@ -168,9 +198,19 @@ export class HydraVizRenderer implements VizRenderer {
       .out()
   }
 
-  private pumpAudio = (): void => {
+  private pumpAudio = (now?: number): void => {
+    // Defensive: if pause() ran between scheduling this rAF and the
+    // browser firing it, bail out without re-scheduling. (pause()
+    // sets rafId=null and would normally have already called
+    // cancelAnimationFrame, but the browser may have already queued
+    // the callback at that point — this guard makes the cancellation
+    // race-free.)
+    if (this.paused || this.destroyed) {
+      this.rafId = null
+      return
+    }
     const a = this.hydra?.synth?.a
-    if (!this.paused && a?.fft) {
+    if (a?.fft) {
       if (this.useEnvelope && this.envelope) {
         // Per-track: synthetic energy from hap events
         this.envelope.tick()
@@ -190,6 +230,20 @@ export class HydraVizRenderer implements VizRenderer {
           }
           a.fft[i] = sum / (binSize * 255)
         }
+      }
+    }
+    // We own the loop — tick hydra exactly once per rAF. Without
+    // this call hydra would never advance its shader because we
+    // construct it with `autoLoop: false`. The `tick(time)`
+    // signature matches what hydra-synth uses internally when
+    // `autoLoop: true` mode runs the loop on its own.
+    if (this.hydra && typeof this.hydra.tick === 'function') {
+      try {
+        this.hydra.tick(now ?? performance.now())
+      } catch {
+        // Non-fatal — a broken shader shouldn't tear down the
+        // renderer; the error will already have surfaced via
+        // hydra's onError path or as a console message.
       }
     }
     this.rafId = requestAnimationFrame(this.pumpAudio)
@@ -217,13 +271,28 @@ export class HydraVizRenderer implements VizRenderer {
 
   pause(): void {
     this.paused = true
+    // Cancel the animation loop synchronously so hydra stops
+    // rendering on the next frame. The pumpAudio guard at the top
+    // also bails if `paused` is true, in case the browser already
+    // queued the callback before cancelAnimationFrame could run.
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId)
+      this.rafId = null
+    }
   }
 
   resume(): void {
     this.paused = false
+    // Re-arm the loop. Idempotent: if a callback is already
+    // scheduled (e.g., resume() called twice), the second call is
+    // a no-op because rafId is non-null.
+    if (this.rafId == null && !this.destroyed) {
+      this.rafId = requestAnimationFrame(this.pumpAudio)
+    }
   }
 
   destroy(): void {
+    this.destroyed = true
     if (this.rafId != null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
