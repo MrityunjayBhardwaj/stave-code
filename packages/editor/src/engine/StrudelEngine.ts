@@ -12,6 +12,57 @@ import type { IREvent } from '../ir/IREvent'
 type HapHandler = (event: HapEvent) => void
 
 /**
+ * Reconstruct a literal viz name from whatever the user passed to
+ * `.viz(...)` after Strudel's transpiler has reified it.
+ *
+ * Strudel runs every string argument through `reify()` which parses
+ * it as mini-notation. The mini-notation tokenizer treats spaces as
+ * sequence operators and `:` as the sample-index operator, so a
+ * literal name like `"Piano Roll"` ends up as a 2-step Pattern, and
+ * `"pianoroll:hydra"` ends up as a 1-step Pattern whose value is the
+ * array `["pianoroll", "hydra"]`. We undo both transformations to
+ * recover the user's original string.
+ *
+ * Exported (and pure) so it can be unit-tested without booting the
+ * full Strudel runtime.
+ *
+ * @remarks
+ * Names that contain other mini-notation operators (`*`, `[`, `<`,
+ * `,`, `?`, etc.) won't roundtrip cleanly — those characters change
+ * the Pattern shape in ways we can't unambiguously reverse. The
+ * documented allowed character set for viz names is alphanumerics +
+ * spaces + `:`.
+ */
+export function extractVizName(rawArg: unknown): string | undefined {
+  if (typeof rawArg === 'string') return rawArg || undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pat = rawArg as any
+  if (!pat || !pat._Pattern || typeof pat.queryArc !== 'function') {
+    return undefined
+  }
+  const renderHapValue = (v: unknown): string => {
+    if (typeof v === 'string') return v
+    if (Array.isArray(v)) return v.join(':')
+    if (v == null) return ''
+    return String(v)
+  }
+  let haps: Array<{ value: unknown }>
+  try {
+    haps = pat.queryArc(0, 1)
+  } catch {
+    return undefined
+  }
+  if (haps.length === 0) return undefined
+  if (haps.length === 1) {
+    const out = renderHapValue(haps[0].value)
+    return out === '' ? undefined : out
+  }
+  // Multi-token sequence — rejoin with spaces.
+  const out = haps.map((h) => renderHapValue(h.value)).join(' ')
+  return out === '' ? undefined : out
+}
+
+/**
  * Single source of truth for audio in Stave.
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
  *
@@ -192,29 +243,10 @@ export class StrudelEngine implements LiveCodingEngine {
           configurable: true,
           writable: true,
           value: function(this: any, vizName: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-            // Extract viz name — Strudel's transpiler reifies string args into Patterns.
-            // Mini-notation `:` is the sample-index operator, so "pianoroll:hydra" gets
-            // split into an array: hap.value = ["pianoroll", "hydra"]. We reconstruct
-            // the original "mode:renderer" ID by joining the array with `:`.
-            let resolvedName: string | undefined
-            if (typeof vizName === 'string') {
-              resolvedName = vizName
-            } else if (vizName && vizName._Pattern) {
-              try {
-                const haps = vizName.queryArc(0, 1)
-                if (haps.length > 0) {
-                  const v = haps[0].value
-                  if (typeof v === 'string') {
-                    resolvedName = v
-                  } else if (Array.isArray(v)) {
-                    // Reified "mode:renderer" — colon became array separator
-                    resolvedName = v.join(':')
-                  } else if (v != null) {
-                    resolvedName = String(v)
-                  }
-                }
-              } catch { /* ignore query errors */ }
-            }
+            // Extract viz name — see `extractVizName` for the full
+            // explanation of Strudel's reify-induced shapes. Pure
+            // helper exported for unit testing.
+            const resolvedName = extractVizName(vizName)
             // Chain to Strudel's .viz() if it exists
             const result = strudelViz ? strudelViz.call(this, vizName) : this
             // Tag the RETURNED pattern with the resolved viz name
