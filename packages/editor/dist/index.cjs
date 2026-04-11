@@ -4233,25 +4233,27 @@ var StrudelEngine = class {
           configurable: true,
           writable: true,
           value: function(vizName) {
+            const renderHapValue = (v) => {
+              if (typeof v === "string") return v;
+              if (Array.isArray(v)) return v.join(":");
+              if (v == null) return "";
+              return String(v);
+            };
             let resolvedName;
             if (typeof vizName === "string") {
               resolvedName = vizName;
             } else if (vizName && vizName._Pattern) {
               try {
                 const haps = vizName.queryArc(0, 1);
-                if (haps.length > 0) {
-                  const v = haps[0].value;
-                  if (typeof v === "string") {
-                    resolvedName = v;
-                  } else if (Array.isArray(v)) {
-                    resolvedName = v.join(":");
-                  } else if (v != null) {
-                    resolvedName = String(v);
-                  }
+                if (haps.length === 1) {
+                  resolvedName = renderHapValue(haps[0].value);
+                } else if (haps.length > 1) {
+                  resolvedName = haps.map((h) => renderHapValue(h.value)).join(" ");
                 }
               } catch {
               }
             }
+            if (resolvedName === "") resolvedName = void 0;
             const result = strudelViz ? strudelViz.call(this, vizName) : this;
             if (resolvedName) {
               result._pendingViz = resolvedName;
@@ -6520,6 +6522,7 @@ function notifyListeners() {
 // src/visualizers/resolveDescriptor.ts
 function resolveDescriptor(vizId, descriptors) {
   const named = getNamedViz(vizId);
+  console.log("[viz-dbg-resolve] vizId=" + JSON.stringify(vizId) + " namedHit=" + !!named);
   if (named) return named;
   const exact = descriptors.find((d) => d.id === vizId);
   if (exact) return exact;
