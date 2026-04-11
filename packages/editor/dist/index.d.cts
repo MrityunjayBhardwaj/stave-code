@@ -872,9 +872,21 @@ type HydraPatternFn = (synth: any) => void;
  * Lazily loads hydra-synth on first mount to avoid bloating the main bundle.
  *
  * Audio source priority:
- *   1. Per-track AnalyserNode (real FFT, if per-track routing exists)
- *   2. HapStream energy envelope (synthetic FFT from note events — per-track)
- *   3. Global AnalyserNode (real FFT, but reacts to ALL tracks — fallback)
+ *   1. AnalyserNode (real FFT) — always preferred when available.
+ *   2. HapStream energy envelope (synthetic FFT from note events) —
+ *      ONLY used as a fallback when no analyser is published. The
+ *      envelope is only useful when there's no shared audio routing
+ *      (e.g., a future runtime that emits hap events without exposing
+ *      an analyser); in every current source — Strudel, the built-in
+ *      examples, the (future) Sonic Pi runtime — an analyser is
+ *      published and takes priority.
+ *
+ * The historical priority was (hapStream → envelope) → (analyser),
+ * which broke audio reactivity for every built-in example source
+ * because those sources published a HapStream that they never
+ * actually emitted on. The renderer would lock onto the silent
+ * envelope and ignore the working analyser, leaving s.a.fft[] at
+ * all-zero forever and the shader visually unresponsive. Issue #7.
  *
  * Reads `hydraAudioBins` from the active VizConfig.
  *

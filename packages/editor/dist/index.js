@@ -4659,13 +4659,7 @@ var HydraVizRenderer = class {
       }
       const a = this.hydra?.synth?.a;
       if (a?.fft) {
-        if (this.useEnvelope && this.envelope) {
-          this.envelope.tick();
-          const numBins = getVizConfig().hydraAudioBins;
-          for (let i2 = 0; i2 < numBins; i2++) {
-            a.fft[i2] = this.envelope.bins[i2];
-          }
-        } else if (this.analyser && this.freqData) {
+        if (this.analyser && this.freqData) {
           this.analyser.getByteFrequencyData(this.freqData);
           const numBins = getVizConfig().hydraAudioBins;
           const binSize = Math.floor(this.freqData.length / numBins);
@@ -4675,6 +4669,12 @@ var HydraVizRenderer = class {
               sum += this.freqData[i2 * binSize + j];
             }
             a.fft[i2] = sum / (binSize * 255);
+          }
+        } else if (this.useEnvelope && this.envelope) {
+          this.envelope.tick();
+          const numBins = getVizConfig().hydraAudioBins;
+          for (let i2 = 0; i2 < numBins; i2++) {
+            a.fft[i2] = this.envelope.bins[i2];
           }
         }
       }
@@ -4692,14 +4692,14 @@ var HydraVizRenderer = class {
       const config = getVizConfig();
       this.analyser = components.audio?.analyser ?? null;
       this.hapStream = components.streaming?.hapStream ?? null;
-      if (this.hapStream) {
+      if (this.analyser) {
+        this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+        this.useEnvelope = false;
+      } else if (this.hapStream) {
         this.envelope = new HapEnergyEnvelope(config.hydraAudioBins);
         this.hapHandler = (e) => this.envelope?.onHap(e);
         this.hapStream.on(this.hapHandler);
         this.useEnvelope = true;
-      }
-      if (this.analyser && !this.useEnvelope) {
-        this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
       }
       this.canvas = document.createElement("canvas");
       this.canvas.width = size.w;
@@ -4755,8 +4755,9 @@ var HydraVizRenderer = class {
     const newAnalyser = components.audio?.analyser ?? null;
     if (newAnalyser !== this.analyser) {
       this.analyser = newAnalyser;
-      if (!this.useEnvelope) {
-        this.freqData = newAnalyser ? new Uint8Array(newAnalyser.frequencyBinCount) : null;
+      this.freqData = newAnalyser ? new Uint8Array(newAnalyser.frequencyBinCount) : null;
+      if (newAnalyser) {
+        this.useEnvelope = false;
       }
     }
   }
