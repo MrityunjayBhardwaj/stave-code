@@ -60,9 +60,21 @@ class HapEnergyEnvelope {
  * Lazily loads hydra-synth on first mount to avoid bloating the main bundle.
  *
  * Audio source priority:
- *   1. Per-track AnalyserNode (real FFT, if per-track routing exists)
- *   2. HapStream energy envelope (synthetic FFT from note events — per-track)
- *   3. Global AnalyserNode (real FFT, but reacts to ALL tracks — fallback)
+ *   1. AnalyserNode (real FFT) — always preferred when available.
+ *   2. HapStream energy envelope (synthetic FFT from note events) —
+ *      ONLY used as a fallback when no analyser is published. The
+ *      envelope is only useful when there's no shared audio routing
+ *      (e.g., a future runtime that emits hap events without exposing
+ *      an analyser); in every current source — Strudel, the built-in
+ *      examples, the (future) Sonic Pi runtime — an analyser is
+ *      published and takes priority.
+ *
+ * The historical priority was (hapStream → envelope) → (analyser),
+ * which broke audio reactivity for every built-in example source
+ * because those sources published a HapStream that they never
+ * actually emitted on. The renderer would lock onto the silent
+ * envelope and ignore the working analyser, leaving s.a.fft[] at
+ * all-zero forever and the shader visually unresponsive. Issue #7.
  *
  * Reads `hydraAudioBins` from the active VizConfig.
  *
@@ -110,23 +122,27 @@ export class HydraVizRenderer implements VizRenderer {
     try {
       const config = getVizConfig()
 
-      // Determine audio source: prefer per-track analyser, then hap envelope, then global
+      // Audio source resolution — see class jsdoc for the priority
+      // rationale (issue #7).
       this.analyser = components.audio?.analyser ?? null
-
-      // If the streaming component is a per-track HapStream (inline zone scenario),
-      // use event-driven energy instead of global FFT
       this.hapStream = components.streaming?.hapStream ?? null
-      if (this.hapStream) {
+
+      if (this.analyser) {
+        // Real-FFT path. Allocate the byte buffer once; pumpAudio
+        // reads into it on every frame.
+        this.freqData = new Uint8Array(this.analyser.frequencyBinCount)
+        this.useEnvelope = false
+      } else if (this.hapStream) {
+        // Fallback: synthesize FFT from hap events. Used only when
+        // no analyser is published.
         this.envelope = new HapEnergyEnvelope(config.hydraAudioBins)
         this.hapHandler = (e: HapEvent) => this.envelope?.onHap(e)
         this.hapStream.on(this.hapHandler)
-        // Use envelope for inline zones (per-track), global analyser for panel
         this.useEnvelope = true
       }
-
-      if (this.analyser && !this.useEnvelope) {
-        this.freqData = new Uint8Array(this.analyser.frequencyBinCount)
-      }
+      // If neither is present we fall through with all flags false;
+      // pumpAudio will still tick hydra (the shader's time-driven
+      // baseline animates regardless), but s.a.fft[] stays at zero.
 
       this.canvas = document.createElement('canvas')
       this.canvas.width = size.w
@@ -211,15 +227,10 @@ export class HydraVizRenderer implements VizRenderer {
     }
     const a = this.hydra?.synth?.a
     if (a?.fft) {
-      if (this.useEnvelope && this.envelope) {
-        // Per-track: synthetic energy from hap events
-        this.envelope.tick()
-        const numBins = getVizConfig().hydraAudioBins
-        for (let i = 0; i < numBins; i++) {
-          a.fft[i] = this.envelope.bins[i]
-        }
-      } else if (this.analyser && this.freqData) {
-        // Global: real FFT from AnalyserNode
+      // Real-FFT path takes priority when an analyser is published
+      // (issue #7). The envelope path is only used when no analyser
+      // is available — see mount() for the resolution logic.
+      if (this.analyser && this.freqData) {
         this.analyser.getByteFrequencyData(this.freqData)
         const numBins = getVizConfig().hydraAudioBins
         const binSize = Math.floor(this.freqData.length / numBins)
@@ -229,6 +240,13 @@ export class HydraVizRenderer implements VizRenderer {
             sum += this.freqData[i * binSize + j]
           }
           a.fft[i] = sum / (binSize * 255)
+        }
+      } else if (this.useEnvelope && this.envelope) {
+        // Fallback: synthetic energy from hap events.
+        this.envelope.tick()
+        const numBins = getVizConfig().hydraAudioBins
+        for (let i = 0; i < numBins; i++) {
+          a.fft[i] = this.envelope.bins[i]
         }
       }
     }
@@ -253,10 +271,15 @@ export class HydraVizRenderer implements VizRenderer {
     const newAnalyser = components.audio?.analyser ?? null
     if (newAnalyser !== this.analyser) {
       this.analyser = newAnalyser
-      if (!this.useEnvelope) {
-        this.freqData = newAnalyser
-          ? new Uint8Array(newAnalyser.frequencyBinCount)
-          : null
+      // Real-FFT path always wins when an analyser arrives (issue
+      // #7). Re-allocate freqData for the new analyser, and flip
+      // off the envelope path so future frames pull from the real
+      // analyser instead of the (possibly empty) envelope.
+      this.freqData = newAnalyser
+        ? new Uint8Array(newAnalyser.frequencyBinCount)
+        : null
+      if (newAnalyser) {
+        this.useEnvelope = false
       }
     }
   }

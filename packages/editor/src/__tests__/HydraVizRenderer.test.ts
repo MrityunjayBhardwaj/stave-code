@@ -131,6 +131,35 @@ function makeComponents(): Partial<EngineComponents> {
   return {}
 }
 
+interface FakeAnalyser {
+  frequencyBinCount: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getByteFrequencyData: any
+}
+
+/**
+ * Build a fake AnalyserNode that returns deterministic byte values
+ * so pumpAudio can populate s.a.fft[] without needing a real
+ * Web Audio context.
+ */
+function makeAnalyserComponents(fillByte: number): Partial<EngineComponents> {
+  const getByteFrequencyData = vi.fn((arr: Uint8Array) => {
+    arr.fill(fillByte)
+  })
+  const analyser: FakeAnalyser = {
+    frequencyBinCount: 64,
+    getByteFrequencyData,
+  }
+  return {
+    audio: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      analyser: analyser as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      audioCtx: {} as any,
+    },
+  }
+}
+
 async function mountAndWait(renderer: HydraVizRenderer, container: HTMLDivElement) {
   renderer.mount(container, makeComponents(), { w: 400, h: 300 }, vi.fn())
   // initHydra() is async (it awaits a dynamic `import('hydra-synth')`).
@@ -250,6 +279,91 @@ describe('HydraVizRenderer pause/resume/destroy contract (issue #6)', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(hydraInstances.length).toBe(0)
+  })
+
+  // ---- Audio source priority (issue #7) ---------------------------------
+
+  it('uses analyser FFT when both analyser AND hapStream are present (issue #7)', async () => {
+    // Regression: the historical priority was hapStream → envelope,
+    // even when an analyser was also published. Built-in example
+    // sources publish a HapStream they never emit on, so the
+    // envelope locked onto an empty stream and s.a.fft[] stayed at
+    // zero forever — visually unresponsive shader.
+    //
+    // The fix: analyser ALWAYS wins when present.
+    const analyserComponents = makeAnalyserComponents(200) // bytes 0..255
+    // Add a hapStream too, to simulate the built-in source case
+    // where both are published.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fakeHapStream = { on: vi.fn(), off: vi.fn() } as any
+    const components: Partial<EngineComponents> = {
+      ...analyserComponents,
+      streaming: { hapStream: fakeHapStream },
+    }
+    const renderer = new HydraVizRenderer()
+    renderer.mount(makeContainer(), components, { w: 400, h: 300 }, vi.fn())
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0))
+    }
+    // Fire one rAF tick.
+    flushRaf()
+
+    // The analyser's getByteFrequencyData should have been called —
+    // proving the renderer pulled FFT from the real analyser, not
+    // the (silent) envelope.
+    const analyser = analyserComponents.audio!.analyser as unknown as FakeAnalyser
+    expect(analyser.getByteFrequencyData).toHaveBeenCalled()
+    // And s.a.fft[i] should be non-zero (200 / 255 ≈ 0.78).
+    const fft = hydraInstances[0].synth.a.fft
+    expect(fft.every((v) => v > 0)).toBe(true)
+  })
+
+  it('falls back to hap envelope only when no analyser is published', async () => {
+    // The envelope path is still useful for any future runtime that
+    // emits hap events but doesn't expose an analyser. Verify it
+    // engages when only hapStream is present.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fakeHapStream = { on: vi.fn(), off: vi.fn() } as any
+    const components: Partial<EngineComponents> = {
+      streaming: { hapStream: fakeHapStream },
+    }
+    const renderer = new HydraVizRenderer()
+    renderer.mount(makeContainer(), components, { w: 400, h: 300 }, vi.fn())
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0))
+    }
+    // The hapStream's `on` should have been called — the envelope is
+    // subscribed, so the fallback path is engaged.
+    expect(fakeHapStream.on).toHaveBeenCalled()
+  })
+
+  it('update() with a new analyser switches OFF the envelope path mid-mount', async () => {
+    // A live source swap can introduce an analyser where there
+    // wasn't one before. The renderer must flip from envelope to
+    // analyser-FFT in that case, otherwise the new audio source's
+    // FFT would be ignored.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fakeHapStream = { on: vi.fn(), off: vi.fn() } as any
+    const renderer = new HydraVizRenderer()
+    renderer.mount(
+      makeContainer(),
+      { streaming: { hapStream: fakeHapStream } },
+      { w: 400, h: 300 },
+      vi.fn(),
+    )
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0))
+    }
+
+    // Now an analyser arrives.
+    const analyserComponents = makeAnalyserComponents(150)
+    renderer.update(analyserComponents)
+
+    flushRaf()
+    const analyser = analyserComponents.audio!.analyser as unknown as FakeAnalyser
+    expect(analyser.getByteFrequencyData).toHaveBeenCalled()
+    const fft = hydraInstances[0].synth.a.fft
+    expect(fft.every((v) => v > 0)).toBe(true)
   })
 
   it('paused state survives across destroy + new instance (no leaked rAF)', async () => {
