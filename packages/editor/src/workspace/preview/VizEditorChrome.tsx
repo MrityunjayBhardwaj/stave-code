@@ -211,6 +211,17 @@ export function VizEditorChrome({
   // `<select>` change event IS a user gesture as far as browser
   // autoplay policy is concerned, so this is safe.
   //
+  // EXCEPT when the preview is currently paused. Picking a new
+  // source while paused must NOT auto-start the new source's
+  // audio — that creates the "music plays but viz stays frozen"
+  // asymmetry the user reported as a bug. Instead, the dropdown
+  // change just updates the pinned sourceRef and leaves the
+  // preview paused. When the user clicks Play, the shell's
+  // onTogglePausePreview reads the freshly-updated sourceRef and
+  // starts the new built-in then. (The existing shell-side
+  // un-pause path already dispatches startIfIdle on the open
+  // preview tab's sourceRef — no extra wiring needed.)
+  //
   // Symmetric stop side effect: if the PREVIOUS selection was a
   // built-in example and the user is moving away from it (to a
   // pattern, to "default", to "none", or to a different built-in),
@@ -218,7 +229,15 @@ export function VizEditorChrome({
   // built-in→built-in case via `notifyPlaybackStarted`, but
   // built-in→none and built-in→default need this explicit
   // dispatch — without it, picking "none" leaves the previous
-  // built-in looping forever in the background.
+  // built-in looping forever in the background. The stop dispatch
+  // runs regardless of pause state because the previous source
+  // may still be in a started state from BEFORE the most recent
+  // Stop click (e.g., user picks chord while paused after having
+  // picked drum while running and then clicked Stop — the
+  // playback coordinator already silenced drum when chord was
+  // about to start, but if a future code path stops dispatching
+  // through the coordinator, this idempotent stop is the safety
+  // net).
   const handleSourceChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const ref = stringToRef(e.target.value)
@@ -232,23 +251,16 @@ export function VizEditorChrome({
           : undefined
       setSelectedSource(ref)
       if (previewOpen && onChangePreviewSource) {
-        if (nextBuiltin) {
+        if (nextBuiltin && !previewPaused) {
           nextBuiltin.startIfIdle()
         }
-        // Stop the previous built-in if we're moving AWAY from it
-        // (covers built-in→none, built-in→default, and
-        // built-in→different-built-in: in the last case the new
-        // source's `notifyPlaybackStarted` would also fire the
-        // coordinator path, but calling stopIfRunning explicitly
-        // is idempotent and avoids relying on cross-module event
-        // ordering).
         if (prevBuiltin && prevBuiltin !== nextBuiltin) {
           prevBuiltin.stopIfRunning()
         }
         onChangePreviewSource(ref)
       }
     },
-    [previewOpen, onChangePreviewSource, selectedSource],
+    [previewOpen, previewPaused, onChangePreviewSource, selectedSource],
   )
 
   return (

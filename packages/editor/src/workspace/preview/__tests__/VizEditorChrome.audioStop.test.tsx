@@ -44,7 +44,7 @@ const {
 vi.mock('../../builtinExampleSources', () => {
   const SAMPLE_ID = '__example_sample__'
   const DRUM_ID = '__example_drums__'
-  const CHORD_ID = '__example_chord_progression__'
+  const CHORD_ID = '__example_chords__'
   const sources = [
     {
       sourceId: SAMPLE_ID,
@@ -192,7 +192,7 @@ describe('VizEditorChrome — built-in source stop wiring (issue #3)', () => {
     const { getByTestId } = render(<VizEditorChrome {...ctx} />)
     pickSource(getByTestId, 'file:__example_drums__')
     vi.clearAllMocks()
-    pickSource(getByTestId, 'file:__example_chord_progression__')
+    pickSource(getByTestId, 'file:__example_chords__')
 
     expect(drumStopSpy).toHaveBeenCalledTimes(1)
     expect(chordStartSpy).toHaveBeenCalledTimes(1)
@@ -221,5 +221,54 @@ describe('VizEditorChrome — built-in source stop wiring (issue #3)', () => {
     expect(sampleStopSpy).not.toHaveBeenCalled()
     expect(drumStopSpy).not.toHaveBeenCalled()
     expect(chordStopSpy).not.toHaveBeenCalled()
+  })
+
+  it('Dropdown change while PAUSED does NOT auto-start the new built-in', () => {
+    // The user reported: "switch between examples in the dropdown
+    // while everything is stopped — the music runs but the viz
+    // stays still." Picking a new source while paused must NOT
+    // auto-start its audio, because the viz is frozen and the
+    // resulting "audible-but-frozen" asymmetry is confusing.
+    //
+    // Expected behavior: dropdown change while paused just pins
+    // the new sourceRef. The user must click Play to engage. The
+    // shell's onTogglePausePreview reads the freshly-pinned
+    // sourceRef and starts the source then.
+    const ctx = makeCtx({
+      previewOpen: true,
+      previewPaused: true, // viz is currently paused
+    })
+    const { getByTestId } = render(<VizEditorChrome {...ctx} />)
+    pickSource(getByTestId, 'file:__example_drums__')
+    vi.clearAllMocks()
+    pickSource(getByTestId, 'file:__example_chords__')
+
+    // The new source must NOT have been auto-started.
+    expect(chordStartSpy).not.toHaveBeenCalled()
+    // The previous source's stop dispatch is fine — it's idempotent
+    // and a no-op when the source is already stopped.
+    // The shell still gets notified of the source change via
+    // onChangePreviewSource so the preview tab's sourceRef is
+    // updated for the next Play click.
+    expect(ctx.onChangePreviewSource).toHaveBeenCalledWith({
+      kind: 'file',
+      fileId: '__example_chords__',
+    })
+  })
+
+  it('Dropdown change while NOT paused DOES auto-start the new built-in', () => {
+    // Sanity check that the running case still auto-starts (no
+    // regression from the paused-state guard).
+    const ctx = makeCtx({
+      previewOpen: true,
+      previewPaused: false, // viz is currently running
+    })
+    const { getByTestId } = render(<VizEditorChrome {...ctx} />)
+    pickSource(getByTestId, 'file:__example_drums__')
+    vi.clearAllMocks()
+    pickSource(getByTestId, 'file:__example_chords__')
+
+    expect(chordStartSpy).toHaveBeenCalledTimes(1)
+    expect(drumStopSpy).toHaveBeenCalledTimes(1)
   })
 })

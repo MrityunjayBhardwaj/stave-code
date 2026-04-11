@@ -164,7 +164,7 @@ vi.mock('../builtinExampleSources', () => {
       stopIfRunning: builtinDrumStopSpy,
     },
     {
-      sourceId: '__example_chord_progression__',
+      sourceId: '__example_chords__',
       label: 'chord',
       startIfIdle: builtinChordStartSpy,
       stopIfRunning: builtinChordStopSpy,
@@ -664,7 +664,7 @@ describe('WorkspaceShell', () => {
               ...t,
               sourceRef: {
                 kind: 'file' as const,
-                fileId: '__example_chord_progression__',
+                fileId: '__example_chords__',
               },
             }
           : t,
