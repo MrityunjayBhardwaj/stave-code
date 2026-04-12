@@ -2,7 +2,7 @@
   "name": "@stave/editor",
   "version": "0.1.0",
   "description": "Engine-agnostic live coding editor — any engine, any viz, any synth",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -44,7 +44,9 @@
     "@types/p5": "1.7.7",
     "hydra-synth": "^1.4.0",
     "monaco-editor": "^0.50.0",
-    "p5": "2.2.3"
+    "p5": "2.2.3",
+    "y-indexeddb": "^9.0.12",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",

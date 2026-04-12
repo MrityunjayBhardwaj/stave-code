@@ -93,10 +93,12 @@ export { PreviewView } from './workspace/PreviewView'
 export type { WorkspaceFile, WorkspaceLanguage } from './workspace/types'
 export {
   createWorkspaceFile,
+  seedWorkspaceFile,
   getFile,
   setContent,
   subscribe as subscribeToWorkspaceFile,
 } from './workspace/WorkspaceFile'
+export { initProjectDoc, initProjectDocSync, isDocReady } from './workspace/projectDoc'
 
 // Sample sound (test audio source for viz development)
 export {

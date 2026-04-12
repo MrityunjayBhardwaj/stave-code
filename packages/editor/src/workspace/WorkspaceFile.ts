@@ -1,88 +1,122 @@
 /**
- * WorkspaceFile store — Phase 10.2 Task 01.
+ * WorkspaceFile store — Yjs-backed (PM Phase 1).
  *
- * The in-memory source of truth for file content during Phase 10.2. Every
- * editor view writes through `setContent`, every preview view reads through
- * `getFile` (usually via the `useWorkspaceFile` hook). No React context, no
- * prop drilling — one module-level singleton.
+ * Replaces the Phase 10.2 in-memory Map with a Yjs Y.Doc backing.
+ * The public API is IDENTICAL to the original:
  *
- * @remarks
- * ## Snapshot identity contract
+ *   createWorkspaceFile, getFile, setContent, subscribe
  *
- * This store is consumed from React via `useSyncExternalStore`. That hook
- * requires `getSnapshot` to return a **reference-stable** value across calls
- * when the underlying state has not changed — returning a fresh object each
- * call causes React to throw "getSnapshot should be cached" and, worse,
- * causes infinite re-render loops in components that depend on the returned
- * value as an effect dep.
+ * plus a new `seedWorkspaceFile` for persistence-aware create-or-load.
  *
- * The invariant this store upholds:
+ * ## How persistence works
  *
- *    `getFile(id) === getFile(id)` — unless `setContent(id, …)` was called
- *    in between.
+ * Each file is a Y.Map inside the doc's top-level "files" Y.Map.
+ * Content is stored as Y.Text (ready for Phase 3 multiplayer).
+ * A cached `WorkspaceFile` snapshot is maintained per file for
+ * reference-stability (required by useSyncExternalStore).
  *
- * This is achieved by **replacing**, not mutating, the entry in the map:
+ * Two init modes:
+ * - Real app: call `initProjectDoc(id)` (async, IDB-backed) BEFORE
+ *   mounting components. Files loaded from IDB are available after.
+ * - Tests: no init needed — the store lazy-inits an in-memory Y.Doc
+ *   on first access via `ensureDoc()`.
  *
- * ```ts
- * const prev = files.get(id)
- * files.set(id, { ...prev, content: newContent }) // new reference
- * ```
+ * ## Snapshot identity contract (unchanged from Phase 10.2)
  *
- * Consumers subscribed to *other* file ids get the same reference on every
- * `getFile` call because nothing in their slot of the map moved. This is
- * the mechanism by which typing into file "a" does not re-render a
- * component reading file "b".
- *
- * ## Single-writer assumption
- *
- * Phase 10.2 assumes **one editor view per file id** is writing to any
- * given file at a time. Multi-writer support — e.g., two split panes
- * editing the same file with cursor coordination — is deferred to Phase
- * 10.3's VirtualFileSystem layer, which will need operational-transform or
- * CRDT machinery that does not belong in an in-memory Map.
- *
- * A test asserts the single-writer case. Multi-writer is explicitly out of
- * scope.
- *
- * ## Phase 10.3 stability
- *
- * The public API — `createWorkspaceFile`, `getFile`, `setContent`,
- * `subscribe` — is the contract the Phase 10.3 VirtualFileSystem replacement
- * must honor. Hooks built on top (`useWorkspaceFile`) are stable across the
- * replacement.
+ * `getFile(id) === getFile(id)` — unless content changed in between.
+ * Achieved by caching snapshots and only rebuilding on Y.Text changes.
  */
 
+import * as Y from 'yjs'
+import { ensureDoc, getFilesMap, destroyProjectDoc } from './projectDoc'
 import type { WorkspaceFile, WorkspaceLanguage } from './types'
 
 type Subscriber = () => void
 
-/**
- * Module-level map of file id → current snapshot. Replaced, never mutated.
- */
-const files = new Map<string, WorkspaceFile>()
+// ── Cache layer ──────────────────────────────────────────────────────
+// Cached WorkspaceFile snapshots for reference stability.
+const cachedSnapshots = new Map<string, WorkspaceFile>()
 
-/**
- * Subscribers are keyed by file id so that a content change on file "a"
- * only wakes up the subscribers of "a". A single global subscriber set
- * would cause every `useSyncExternalStore` consumer to run `getSnapshot`
- * on every keystroke anywhere in the workspace, which is cheap per
- * invocation but scales poorly with tab count.
- */
+// Per-file subscriber sets (same pattern as Phase 10.2).
 const subscribersByFile = new Map<string, Set<Subscriber>>()
 
+// Track Y.Text observers so we can clean up on reset/project switch.
+const textObservers = new Map<string, { ytext: Y.Text; handler: () => void }>()
+
+// ── Snapshot rebuild ─────────────────────────────────────────────────
+
+function rebuildSnapshot(id: string): void {
+  const filesMap = getFilesMap()
+  const fileMap = filesMap.get(id) as Y.Map<unknown> | undefined
+  if (!fileMap) {
+    cachedSnapshots.delete(id)
+    return
+  }
+  const ytext = fileMap.get('content') as Y.Text
+  cachedSnapshots.set(id, {
+    id: fileMap.get('id') as string,
+    path: fileMap.get('path') as string,
+    content: ytext.toString(),
+    language: fileMap.get('language') as WorkspaceLanguage,
+    meta: fileMap.get('meta') as Readonly<Record<string, unknown>> | undefined,
+  })
+}
+
+// ── Y.Text observer wiring ──────────────────────────────────────────
+
+function wireTextObserver(id: string, ytext: Y.Text): void {
+  // Remove existing observer if any (idempotent)
+  unwireTextObserver(id)
+
+  const handler = () => {
+    rebuildSnapshot(id)
+    notify(id)
+  }
+  ytext.observe(handler)
+  textObservers.set(id, { ytext, handler })
+}
+
+function unwireTextObserver(id: string): void {
+  const entry = textObservers.get(id)
+  if (entry) {
+    entry.ytext.unobserve(entry.handler)
+    textObservers.delete(id)
+  }
+}
+
+// ── Y.Map observer (structural: file added/removed) ─────────────────
+
+let filesMapObserverWired = false
+
+function ensureFilesMapObserver(): void {
+  if (filesMapObserverWired) return
+  const filesMap = getFilesMap()
+  filesMap.observe((event) => {
+    for (const [key, change] of event.changes.keys) {
+      if (change.action === 'add' || change.action === 'update') {
+        const fileMap = filesMap.get(key) as Y.Map<unknown>
+        const ytext = fileMap.get('content') as Y.Text
+        rebuildSnapshot(key)
+        wireTextObserver(key, ytext)
+        notify(key)
+      } else if (change.action === 'delete') {
+        unwireTextObserver(key)
+        cachedSnapshots.delete(key)
+        notify(key)
+      }
+    }
+  })
+  filesMapObserverWired = true
+}
+
+// ── Public API (unchanged signatures) ────────────────────────────────
+
 /**
- * Create a new WorkspaceFile and register it in the store. Safe to call
- * multiple times for the same id — later calls overwrite the earlier
- * snapshot AND notify subscribers (useful for reload / external source
- * changes, e.g., viz preset reload in Phase 10.2 Task 10).
+ * Create a new WorkspaceFile. Always overwrites if the file already exists.
+ * Safe to call multiple times for the same id.
  *
- * @param id          Stable unique id. App code is responsible for
- *                    uniqueness; the store does not generate ids.
- * @param path        Display path. Purely metadata — does not drive any
- *                    filesystem lookup in Phase 10.2.
- * @param content     Initial content string.
- * @param language    Monaco language id.
- * @param meta        Optional metadata bag (see `WorkspaceFile.meta`).
+ * For persistence-aware "create only if not in IDB" semantics, use
+ * `seedWorkspaceFile` instead (LiveCodingEditor uses that).
  */
 export function createWorkspaceFile(
   id: string,
@@ -91,60 +125,96 @@ export function createWorkspaceFile(
   language: WorkspaceLanguage,
   meta?: Record<string, unknown>,
 ): WorkspaceFile {
-  const file: WorkspaceFile = { id, path, content, language, meta }
-  files.set(id, file)
-  notify(id)
-  return file
+  ensureDoc()
+  ensureFilesMapObserver()
+  const filesMap = getFilesMap()
+  const doc = ensureDoc()
+
+  doc.transact(() => {
+    const fileMap = new Y.Map<unknown>()
+    fileMap.set('id', id)
+    fileMap.set('path', path)
+    fileMap.set('language', language)
+    if (meta !== undefined) fileMap.set('meta', meta)
+    const ytext = new Y.Text()
+    ytext.insert(0, content)
+    fileMap.set('content', ytext)
+    // Setting on filesMap triggers the Y.Map observer which wires
+    // the Y.Text observer, rebuilds the snapshot, and notifies.
+    filesMap.set(id, fileMap)
+  })
+
+  return cachedSnapshots.get(id) ?? { id, path, content, language, meta }
 }
 
 /**
- * Return the current snapshot for a file id, or `undefined` if the id is
- * not registered.
+ * Persistence-aware create-or-load. If the file already exists in the
+ * Y.Doc (loaded from IDB), returns the persisted version without
+ * overwriting. If the file does not exist, creates it with the given
+ * seed content.
  *
- * @remarks
- * The returned reference is stable across calls as long as `setContent`
- * has not been called for this id. Do not mutate the returned object.
+ * Use this from components that seed files on mount (LiveCodingEditor,
+ * WorkspaceShell) to avoid overwriting persisted user work on refresh.
+ */
+export function seedWorkspaceFile(
+  id: string,
+  path: string,
+  content: string,
+  language: WorkspaceLanguage,
+  meta?: Record<string, unknown>,
+): WorkspaceFile {
+  ensureDoc()
+  ensureFilesMapObserver()
+  const filesMap = getFilesMap()
+  const existing = filesMap.get(id) as Y.Map<unknown> | undefined
+
+  if (existing) {
+    // File already in Y.Doc — persisted from previous session.
+    // Ensure snapshot cache is populated and observer is wired.
+    if (!cachedSnapshots.has(id)) {
+      rebuildSnapshot(id)
+    }
+    const ytext = existing.get('content') as Y.Text
+    if (!textObservers.has(id)) {
+      wireTextObserver(id, ytext)
+    }
+    return cachedSnapshots.get(id)!
+  }
+
+  // File not in Y.Doc — create with seed content.
+  return createWorkspaceFile(id, path, content, language, meta)
+}
+
+/**
+ * Return the current snapshot for a file id, or `undefined` if the id
+ * is not registered. Reference-stable across calls.
  */
 export function getFile(id: string): WorkspaceFile | undefined {
-  return files.get(id)
+  return cachedSnapshots.get(id)
 }
 
 /**
- * Replace the content of a file. The replacement preserves every other
- * field of the existing snapshot (path, language, meta) and produces a new
- * object reference so that `useSyncExternalStore` consumers correctly
- * detect the change.
- *
- * Writing to an unknown id is a **no-op** and does not notify anyone. This
- * is intentional — the editor view should never reach this path for an
- * unregistered file, and silently swallowing the write here protects
- * against phantom subscribers on ids that were unregistered mid-keystroke
- * (e.g., tab closed while the IME was composing).
- *
- * @param id          Target file id.
- * @param newContent  New content string. Replaces the entire content; this
- *                    store does not support partial edits — the Monaco
- *                    model tracks deltas, the store just holds the text.
+ * Replace the content of a file. Writing to an unknown id is a no-op.
  */
 export function setContent(id: string, newContent: string): void {
-  const prev = files.get(id)
-  if (!prev) return
-  if (prev.content === newContent) return // no-op, preserve identity
-  files.set(id, { ...prev, content: newContent })
-  notify(id)
+  const filesMap = getFilesMap()
+  const fileMap = filesMap.get(id) as Y.Map<unknown> | undefined
+  if (!fileMap) return
+
+  const ytext = fileMap.get('content') as Y.Text
+  const currentContent = ytext.toString()
+  if (currentContent === newContent) return // no-op, preserve identity
+
+  const doc = ensureDoc()
+  doc.transact(() => {
+    ytext.delete(0, ytext.length)
+    ytext.insert(0, newContent)
+  })
+  // Y.Text observer fires → rebuildSnapshot → notify
 }
 
 /**
- * Register a subscriber for a specific file id. The returned function
- * unregisters the subscriber. Safe to call from `useSyncExternalStore`'s
- * `subscribe` argument.
- *
- * @remarks
- * Subscribers registered here are **not** invoked on initial subscribe —
- * `useSyncExternalStore` reads the current snapshot via `getSnapshot`
- * directly when it first mounts. The subscriber only fires on subsequent
- * changes. This matches the React contract and avoids a redundant initial
- * render.
+ * Register a subscriber for a specific file id. Returns unsubscribe fn.
  */
 export function subscribe(id: string, cb: Subscriber): () => void {
   let set = subscribersByFile.get(id)
@@ -163,27 +233,28 @@ export function subscribe(id: string, cb: Subscriber): () => void {
   }
 }
 
-/**
- * Notify every subscriber of a given file id. Internal — called by
- * `createWorkspaceFile` and `setContent`. Exported for tests that need to
- * drive the notification path directly without going through `setContent`.
- */
+// ── Internal helpers ─────────────────────────────────────────────────
+
 function notify(id: string): void {
   const set = subscribersByFile.get(id)
   if (!set) return
-  // Copy before iterating — a subscriber may unsubscribe itself during
-  // the callback (React 18 dev mode's StrictMode double-invoke patterns
-  // can exercise this path).
   const snapshot = Array.from(set)
   for (const cb of snapshot) cb()
 }
 
 /**
- * TESTING ONLY — reset the entire store. Used by unit tests to ensure
- * isolation between cases. Not exported from the package barrel; tests
- * import it directly from this module.
+ * TESTING ONLY — reset the entire store. Destroys the Y.Doc and clears
+ * all caches and observers. The next store access lazy-inits a fresh
+ * in-memory doc.
  */
 export function __resetWorkspaceFilesForTests(): void {
-  files.clear()
+  // Unwire all Y.Text observers
+  for (const [id] of textObservers) {
+    unwireTextObserver(id)
+  }
+  textObservers.clear()
+  cachedSnapshots.clear()
   subscribersByFile.clear()
+  filesMapObserverWired = false
+  destroyProjectDoc()
 }

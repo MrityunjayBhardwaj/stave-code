@@ -26,7 +26,7 @@ import { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
 import type { LiveCodingEngine } from './engine/LiveCodingEngine'
 import { WorkspaceShell } from './workspace/WorkspaceShell'
 import { LiveCodingRuntime } from './workspace/runtime/LiveCodingRuntime'
-import { createWorkspaceFile, getFile, setContent, subscribe as storeSubscribe } from './workspace/WorkspaceFile'
+import { seedWorkspaceFile, getFile, setContent, subscribe as storeSubscribe } from './workspace/WorkspaceFile'
 import { getRuntimeProviderForLanguage } from './workspace/runtime/registry'
 import type { WorkspaceTab, ChromeContext } from './workspace/types'
 
@@ -120,7 +120,7 @@ export function LiveCodingEditor({
   const fileIdRef = useRef(FILE_ID)
   const [seeded, setSeeded] = useState(false)
   useEffect(() => {
-    createWorkspaceFile(
+    seedWorkspaceFile(
       fileIdRef.current,
       'pattern.strudel',
       initialCode,

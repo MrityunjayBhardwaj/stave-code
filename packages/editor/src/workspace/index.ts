@@ -80,10 +80,16 @@ export {
 } from './runtime'
 export {
   createWorkspaceFile,
+  seedWorkspaceFile,
   getFile,
   setContent,
   subscribe,
 } from './WorkspaceFile'
+export {
+  initProjectDoc,
+  initProjectDocSync,
+  isDocReady,
+} from './projectDoc'
 export { useWorkspaceFile } from './useWorkspaceFile'
 export type { UseWorkspaceFileResult } from './useWorkspaceFile'
 export { workspaceAudioBus } from './WorkspaceAudioBus'
