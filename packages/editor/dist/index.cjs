@@ -4,7 +4,7 @@ var React = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
-var Y = require('yjs');
+var Y2 = require('yjs');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
@@ -29,7 +29,7 @@ function _interopNamespace(e) {
 var React__default = /*#__PURE__*/_interopDefault(React);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
-var Y__namespace = /*#__PURE__*/_interopNamespace(Y);
+var Y2__namespace = /*#__PURE__*/_interopNamespace(Y2);
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -5742,7 +5742,7 @@ async function initProjectDoc(projectId) {
   if (activeDoc) {
     activeDoc.destroy();
   }
-  activeDoc = new Y__namespace.Doc();
+  activeDoc = new Y2__namespace.Doc();
   docReady = false;
   const { IndexeddbPersistence } = await import('y-indexeddb');
   activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
@@ -5758,7 +5758,7 @@ function initProjectDocSync() {
   if (activeDoc) {
     activeDoc.destroy();
   }
-  activeDoc = new Y__namespace.Doc();
+  activeDoc = new Y2__namespace.Doc();
   docReady = true;
 }
 function ensureDoc() {
@@ -5816,6 +5816,23 @@ function unwireTextObserver(id) {
     textObservers.delete(id);
   }
 }
+var folderOrderObserverWired = false;
+var folderOrderSubscribers = /* @__PURE__ */ new Set();
+function notifyFolderOrder() {
+  const snapshot = Array.from(folderOrderSubscribers);
+  for (const cb of snapshot) cb();
+}
+function getFolderOrderMap() {
+  return ensureDoc().getMap("fileOrder");
+}
+function ensureFolderOrderObserver() {
+  if (folderOrderObserverWired) return;
+  const map = getFolderOrderMap();
+  map.observeDeep(() => {
+    notifyFolderOrder();
+  });
+  folderOrderObserverWired = true;
+}
 var filesMapObserverWired = false;
 function ensureFilesMapObserver() {
   if (filesMapObserverWired) return;
@@ -5847,12 +5864,12 @@ function createWorkspaceFile(id, path, content, language, meta) {
   const filesMap = getFilesMap();
   const doc = ensureDoc();
   doc.transact(() => {
-    const fileMap = new Y__namespace.Map();
+    const fileMap = new Y2__namespace.Map();
     fileMap.set("id", id);
     fileMap.set("path", path);
     fileMap.set("language", language);
     if (meta !== void 0) fileMap.set("meta", meta);
-    const ytext = new Y__namespace.Text();
+    const ytext = new Y2__namespace.Text();
     ytext.insert(0, content);
     fileMap.set("content", ytext);
     filesMap.set(id, fileMap);
@@ -5958,6 +5975,31 @@ function renameWorkspaceFile(id, newPath) {
   notify(id);
   notifyFileList();
 }
+function getFolderOrder(folderPath) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getFolderOrderMap();
+  const arr = map.get(folderPath);
+  return arr ? arr.toArray() : [];
+}
+function setFolderOrder(folderPath, orderedIds) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getFolderOrderMap();
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const next = new Y2__namespace.Array();
+    next.push(orderedIds);
+    map.set(folderPath, next);
+  });
+}
+function subscribeToFolderOrder(cb) {
+  ensureFolderOrderObserver();
+  folderOrderSubscribers.add(cb);
+  return () => {
+    folderOrderSubscribers.delete(cb);
+  };
+}
 function notify(id) {
   const set = subscribersByFile.get(id);
   if (!set) return;
@@ -5972,7 +6014,9 @@ function resetFileStore() {
   cachedSnapshots.clear();
   subscribersByFile.clear();
   filesMapObserverWired = false;
+  folderOrderObserverWired = false;
   notifyFileList();
+  notifyFolderOrder();
 }
 
 // src/workspace/useWorkspaceFile.ts
@@ -18852,6 +18896,7 @@ exports.flushToPreset = flushToPreset;
 exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveProjectId = getActiveProjectId;
 exports.getFile = getFile;
+exports.getFolderOrder = getFolderOrder;
 exports.getLastOpenedProject = getLastOpenedProject;
 exports.getNamedViz = getNamedViz;
 exports.getPresetIdForFile = getPresetIdForFile;
@@ -18898,10 +18943,12 @@ exports.seedFromPreset = seedFromPreset;
 exports.seedFromPresetId = seedFromPresetId;
 exports.seedWorkspaceFile = seedWorkspaceFile;
 exports.setContent = setContent;
+exports.setFolderOrder = setFolderOrder;
 exports.setVizConfig = setVizConfig;
 exports.startSampleSound = startSampleSound;
 exports.stopSampleSound = stopSampleSound;
 exports.subscribeToFileList = subscribeToFileList;
+exports.subscribeToFolderOrder = subscribeToFolderOrder;
 exports.subscribeToWorkspaceFile = subscribe;
 exports.switchProject = switchProject;
 exports.timestretch = timestretch;
