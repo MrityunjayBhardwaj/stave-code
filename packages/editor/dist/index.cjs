@@ -4,12 +4,32 @@ var React = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
+var Y = require('yjs');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
+
+function _interopNamespace(e) {
+  if (e && e.__esModule) return e;
+  var n = Object.create(null);
+  if (e) {
+    Object.keys(e).forEach(function (k) {
+      if (k !== 'default') {
+        var d = Object.getOwnPropertyDescriptor(e, k);
+        Object.defineProperty(n, k, d.get ? d : {
+          enumerable: true,
+          get: function () { return e[k]; }
+        });
+      }
+    });
+  }
+  n.default = e;
+  return Object.freeze(n);
+}
 
 var React__default = /*#__PURE__*/_interopDefault(React);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
+var Y__namespace = /*#__PURE__*/_interopNamespace(Y);
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -5710,25 +5730,155 @@ function defineStrudelMonacoTheme(monaco) {
     }
   });
 }
+var activeDoc = null;
+var activeProvider = null;
+var docReady = false;
+async function initProjectDoc(projectId) {
+  if (activeProvider) {
+    activeProvider.destroy();
+    activeProvider = null;
+  }
+  if (activeDoc) {
+    activeDoc.destroy();
+  }
+  activeDoc = new Y__namespace.Doc();
+  docReady = false;
+  const { IndexeddbPersistence } = await import('y-indexeddb');
+  activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
+  await activeProvider.whenSynced;
+  docReady = true;
+}
+function initProjectDocSync() {
+  if (activeProvider) {
+    activeProvider.destroy();
+    activeProvider = null;
+  }
+  if (activeDoc) {
+    activeDoc.destroy();
+  }
+  activeDoc = new Y__namespace.Doc();
+  docReady = true;
+}
+function ensureDoc() {
+  if (!activeDoc) {
+    initProjectDocSync();
+  }
+  return activeDoc;
+}
+function getFilesMap() {
+  return ensureDoc().getMap("files");
+}
+function isDocReady() {
+  return docReady;
+}
 
 // src/workspace/WorkspaceFile.ts
-var files = /* @__PURE__ */ new Map();
+var cachedSnapshots = /* @__PURE__ */ new Map();
 var subscribersByFile = /* @__PURE__ */ new Map();
+var textObservers = /* @__PURE__ */ new Map();
+function rebuildSnapshot(id) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(id);
+  if (!fileMap) {
+    cachedSnapshots.delete(id);
+    return;
+  }
+  const ytext = fileMap.get("content");
+  cachedSnapshots.set(id, {
+    id: fileMap.get("id"),
+    path: fileMap.get("path"),
+    content: ytext.toString(),
+    language: fileMap.get("language"),
+    meta: fileMap.get("meta")
+  });
+}
+function wireTextObserver(id, ytext) {
+  unwireTextObserver(id);
+  const handler = () => {
+    rebuildSnapshot(id);
+    notify(id);
+  };
+  ytext.observe(handler);
+  textObservers.set(id, { ytext, handler });
+}
+function unwireTextObserver(id) {
+  const entry = textObservers.get(id);
+  if (entry) {
+    entry.ytext.unobserve(entry.handler);
+    textObservers.delete(id);
+  }
+}
+var filesMapObserverWired = false;
+function ensureFilesMapObserver() {
+  if (filesMapObserverWired) return;
+  const filesMap = getFilesMap();
+  filesMap.observe((event) => {
+    for (const [key, change] of event.changes.keys) {
+      if (change.action === "add" || change.action === "update") {
+        const fileMap = filesMap.get(key);
+        const ytext = fileMap.get("content");
+        rebuildSnapshot(key);
+        wireTextObserver(key, ytext);
+        notify(key);
+      } else if (change.action === "delete") {
+        unwireTextObserver(key);
+        cachedSnapshots.delete(key);
+        notify(key);
+      }
+    }
+  });
+  filesMapObserverWired = true;
+}
 function createWorkspaceFile(id, path, content, language, meta) {
-  const file = { id, path, content, language, meta };
-  files.set(id, file);
-  notify(id);
-  return file;
+  ensureDoc();
+  ensureFilesMapObserver();
+  const filesMap = getFilesMap();
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const fileMap = new Y__namespace.Map();
+    fileMap.set("id", id);
+    fileMap.set("path", path);
+    fileMap.set("language", language);
+    if (meta !== void 0) fileMap.set("meta", meta);
+    const ytext = new Y__namespace.Text();
+    ytext.insert(0, content);
+    fileMap.set("content", ytext);
+    filesMap.set(id, fileMap);
+  });
+  return cachedSnapshots.get(id) ?? { id, path, content, language, meta };
+}
+function seedWorkspaceFile(id, path, content, language, meta) {
+  ensureDoc();
+  ensureFilesMapObserver();
+  const filesMap = getFilesMap();
+  const existing = filesMap.get(id);
+  if (existing) {
+    if (!cachedSnapshots.has(id)) {
+      rebuildSnapshot(id);
+    }
+    const ytext = existing.get("content");
+    if (!textObservers.has(id)) {
+      wireTextObserver(id, ytext);
+    }
+    return cachedSnapshots.get(id);
+  }
+  return createWorkspaceFile(id, path, content, language, meta);
 }
 function getFile(id) {
-  return files.get(id);
+  return cachedSnapshots.get(id);
 }
 function setContent(id, newContent) {
-  const prev = files.get(id);
-  if (!prev) return;
-  if (prev.content === newContent) return;
-  files.set(id, { ...prev, content: newContent });
-  notify(id);
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(id);
+  if (!fileMap) return;
+  const ytext = fileMap.get("content");
+  const currentContent = ytext.toString();
+  if (currentContent === newContent) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    ytext.delete(0, ytext.length);
+    ytext.insert(0, newContent);
+  });
 }
 function subscribe(id, cb) {
   let set = subscribersByFile.get(id);
@@ -9510,7 +9660,7 @@ function LiveCodingEditor({
   const fileIdRef = React.useRef(FILE_ID);
   const [seeded, setSeeded] = React.useState(false);
   React.useEffect(() => {
-    createWorkspaceFile(
+    seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
       initialCode,
@@ -18486,7 +18636,10 @@ exports.getVizConfig = getVizConfig;
 exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;
+exports.initProjectDoc = initProjectDoc;
+exports.initProjectDocSync = initProjectDocSync;
 exports.isBundledPresetId = isBundledPresetId;
+exports.isDocReady = isDocReady;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
 exports.listNamedVizEntries = listNamedVizEntries;
 exports.listNamedVizNames = listNamedVizNames;
@@ -18510,6 +18663,7 @@ exports.sanitizePresetName = sanitizePresetName;
 exports.scaleGain = scaleGain;
 exports.seedFromPreset = seedFromPreset;
 exports.seedFromPresetId = seedFromPresetId;
+exports.seedWorkspaceFile = seedWorkspaceFile;
 exports.setContent = setContent;
 exports.setVizConfig = setVizConfig;
 exports.startSampleSound = startSampleSound;

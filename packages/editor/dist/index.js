@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExtern
 import p5 from 'p5';
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw from '@monaco-editor/react';
+import * as Y from 'yjs';
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -5702,25 +5703,155 @@ function defineStrudelMonacoTheme(monaco) {
     }
   });
 }
+var activeDoc = null;
+var activeProvider = null;
+var docReady = false;
+async function initProjectDoc(projectId) {
+  if (activeProvider) {
+    activeProvider.destroy();
+    activeProvider = null;
+  }
+  if (activeDoc) {
+    activeDoc.destroy();
+  }
+  activeDoc = new Y.Doc();
+  docReady = false;
+  const { IndexeddbPersistence } = await import('y-indexeddb');
+  activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
+  await activeProvider.whenSynced;
+  docReady = true;
+}
+function initProjectDocSync() {
+  if (activeProvider) {
+    activeProvider.destroy();
+    activeProvider = null;
+  }
+  if (activeDoc) {
+    activeDoc.destroy();
+  }
+  activeDoc = new Y.Doc();
+  docReady = true;
+}
+function ensureDoc() {
+  if (!activeDoc) {
+    initProjectDocSync();
+  }
+  return activeDoc;
+}
+function getFilesMap() {
+  return ensureDoc().getMap("files");
+}
+function isDocReady() {
+  return docReady;
+}
 
 // src/workspace/WorkspaceFile.ts
-var files = /* @__PURE__ */ new Map();
+var cachedSnapshots = /* @__PURE__ */ new Map();
 var subscribersByFile = /* @__PURE__ */ new Map();
+var textObservers = /* @__PURE__ */ new Map();
+function rebuildSnapshot(id) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(id);
+  if (!fileMap) {
+    cachedSnapshots.delete(id);
+    return;
+  }
+  const ytext = fileMap.get("content");
+  cachedSnapshots.set(id, {
+    id: fileMap.get("id"),
+    path: fileMap.get("path"),
+    content: ytext.toString(),
+    language: fileMap.get("language"),
+    meta: fileMap.get("meta")
+  });
+}
+function wireTextObserver(id, ytext) {
+  unwireTextObserver(id);
+  const handler = () => {
+    rebuildSnapshot(id);
+    notify(id);
+  };
+  ytext.observe(handler);
+  textObservers.set(id, { ytext, handler });
+}
+function unwireTextObserver(id) {
+  const entry = textObservers.get(id);
+  if (entry) {
+    entry.ytext.unobserve(entry.handler);
+    textObservers.delete(id);
+  }
+}
+var filesMapObserverWired = false;
+function ensureFilesMapObserver() {
+  if (filesMapObserverWired) return;
+  const filesMap = getFilesMap();
+  filesMap.observe((event) => {
+    for (const [key, change] of event.changes.keys) {
+      if (change.action === "add" || change.action === "update") {
+        const fileMap = filesMap.get(key);
+        const ytext = fileMap.get("content");
+        rebuildSnapshot(key);
+        wireTextObserver(key, ytext);
+        notify(key);
+      } else if (change.action === "delete") {
+        unwireTextObserver(key);
+        cachedSnapshots.delete(key);
+        notify(key);
+      }
+    }
+  });
+  filesMapObserverWired = true;
+}
 function createWorkspaceFile(id, path, content, language, meta) {
-  const file = { id, path, content, language, meta };
-  files.set(id, file);
-  notify(id);
-  return file;
+  ensureDoc();
+  ensureFilesMapObserver();
+  const filesMap = getFilesMap();
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const fileMap = new Y.Map();
+    fileMap.set("id", id);
+    fileMap.set("path", path);
+    fileMap.set("language", language);
+    if (meta !== void 0) fileMap.set("meta", meta);
+    const ytext = new Y.Text();
+    ytext.insert(0, content);
+    fileMap.set("content", ytext);
+    filesMap.set(id, fileMap);
+  });
+  return cachedSnapshots.get(id) ?? { id, path, content, language, meta };
+}
+function seedWorkspaceFile(id, path, content, language, meta) {
+  ensureDoc();
+  ensureFilesMapObserver();
+  const filesMap = getFilesMap();
+  const existing = filesMap.get(id);
+  if (existing) {
+    if (!cachedSnapshots.has(id)) {
+      rebuildSnapshot(id);
+    }
+    const ytext = existing.get("content");
+    if (!textObservers.has(id)) {
+      wireTextObserver(id, ytext);
+    }
+    return cachedSnapshots.get(id);
+  }
+  return createWorkspaceFile(id, path, content, language, meta);
 }
 function getFile(id) {
-  return files.get(id);
+  return cachedSnapshots.get(id);
 }
 function setContent(id, newContent) {
-  const prev = files.get(id);
-  if (!prev) return;
-  if (prev.content === newContent) return;
-  files.set(id, { ...prev, content: newContent });
-  notify(id);
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(id);
+  if (!fileMap) return;
+  const ytext = fileMap.get("content");
+  const currentContent = ytext.toString();
+  if (currentContent === newContent) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    ytext.delete(0, ytext.length);
+    ytext.insert(0, newContent);
+  });
 }
 function subscribe(id, cb) {
   let set = subscribersByFile.get(id);
@@ -9502,7 +9633,7 @@ function LiveCodingEditor({
   const fileIdRef = useRef(FILE_ID);
   const [seeded, setSeeded] = useState(false);
   useEffect(() => {
-    createWorkspaceFile(
+    seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
       initialCode,
@@ -18416,6 +18547,6 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
-export { BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyTheme, bundledPresetId, collect, compilePreset, createVizConfig, createWorkspaceFile, filter, flushToPreset, generateUniquePresetId, getFile, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, isBundledPresetId, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, resolveDescriptor, sanitizePresetName, scaleGain, seedFromPreset, seedFromPresetId, setContent, setVizConfig, startSampleSound, stopSampleSound, subscribe as subscribeToWorkspaceFile, timestretch, toStrudel, transpose, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus };
+export { BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyTheme, bundledPresetId, collect, compilePreset, createVizConfig, createWorkspaceFile, filter, flushToPreset, generateUniquePresetId, getFile, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, resolveDescriptor, sanitizePresetName, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setVizConfig, startSampleSound, stopSampleSound, subscribe as subscribeToWorkspaceFile, timestretch, toStrudel, transpose, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

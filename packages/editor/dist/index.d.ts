@@ -2556,115 +2556,99 @@ declare function EditorView({ fileId, theme, chromeSlot, onMount, error, onPlay,
 declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, theme, hidden, paused, }: PreviewViewProps): React.ReactElement;
 
 /**
- * WorkspaceFile store — Phase 10.2 Task 01.
+ * WorkspaceFile store — Yjs-backed (PM Phase 1).
  *
- * The in-memory source of truth for file content during Phase 10.2. Every
- * editor view writes through `setContent`, every preview view reads through
- * `getFile` (usually via the `useWorkspaceFile` hook). No React context, no
- * prop drilling — one module-level singleton.
+ * Replaces the Phase 10.2 in-memory Map with a Yjs Y.Doc backing.
+ * The public API is IDENTICAL to the original:
  *
- * @remarks
- * ## Snapshot identity contract
+ *   createWorkspaceFile, getFile, setContent, subscribe
  *
- * This store is consumed from React via `useSyncExternalStore`. That hook
- * requires `getSnapshot` to return a **reference-stable** value across calls
- * when the underlying state has not changed — returning a fresh object each
- * call causes React to throw "getSnapshot should be cached" and, worse,
- * causes infinite re-render loops in components that depend on the returned
- * value as an effect dep.
+ * plus a new `seedWorkspaceFile` for persistence-aware create-or-load.
  *
- * The invariant this store upholds:
+ * ## How persistence works
  *
- *    `getFile(id) === getFile(id)` — unless `setContent(id, …)` was called
- *    in between.
+ * Each file is a Y.Map inside the doc's top-level "files" Y.Map.
+ * Content is stored as Y.Text (ready for Phase 3 multiplayer).
+ * A cached `WorkspaceFile` snapshot is maintained per file for
+ * reference-stability (required by useSyncExternalStore).
  *
- * This is achieved by **replacing**, not mutating, the entry in the map:
+ * Two init modes:
+ * - Real app: call `initProjectDoc(id)` (async, IDB-backed) BEFORE
+ *   mounting components. Files loaded from IDB are available after.
+ * - Tests: no init needed — the store lazy-inits an in-memory Y.Doc
+ *   on first access via `ensureDoc()`.
  *
- * ```ts
- * const prev = files.get(id)
- * files.set(id, { ...prev, content: newContent }) // new reference
- * ```
+ * ## Snapshot identity contract (unchanged from Phase 10.2)
  *
- * Consumers subscribed to *other* file ids get the same reference on every
- * `getFile` call because nothing in their slot of the map moved. This is
- * the mechanism by which typing into file "a" does not re-render a
- * component reading file "b".
- *
- * ## Single-writer assumption
- *
- * Phase 10.2 assumes **one editor view per file id** is writing to any
- * given file at a time. Multi-writer support — e.g., two split panes
- * editing the same file with cursor coordination — is deferred to Phase
- * 10.3's VirtualFileSystem layer, which will need operational-transform or
- * CRDT machinery that does not belong in an in-memory Map.
- *
- * A test asserts the single-writer case. Multi-writer is explicitly out of
- * scope.
- *
- * ## Phase 10.3 stability
- *
- * The public API — `createWorkspaceFile`, `getFile`, `setContent`,
- * `subscribe` — is the contract the Phase 10.3 VirtualFileSystem replacement
- * must honor. Hooks built on top (`useWorkspaceFile`) are stable across the
- * replacement.
+ * `getFile(id) === getFile(id)` — unless content changed in between.
+ * Achieved by caching snapshots and only rebuilding on Y.Text changes.
  */
 
 type Subscriber = () => void;
 /**
- * Create a new WorkspaceFile and register it in the store. Safe to call
- * multiple times for the same id — later calls overwrite the earlier
- * snapshot AND notify subscribers (useful for reload / external source
- * changes, e.g., viz preset reload in Phase 10.2 Task 10).
+ * Create a new WorkspaceFile. Always overwrites if the file already exists.
+ * Safe to call multiple times for the same id.
  *
- * @param id          Stable unique id. App code is responsible for
- *                    uniqueness; the store does not generate ids.
- * @param path        Display path. Purely metadata — does not drive any
- *                    filesystem lookup in Phase 10.2.
- * @param content     Initial content string.
- * @param language    Monaco language id.
- * @param meta        Optional metadata bag (see `WorkspaceFile.meta`).
+ * For persistence-aware "create only if not in IDB" semantics, use
+ * `seedWorkspaceFile` instead (LiveCodingEditor uses that).
  */
 declare function createWorkspaceFile(id: string, path: string, content: string, language: WorkspaceLanguage, meta?: Record<string, unknown>): WorkspaceFile;
 /**
- * Return the current snapshot for a file id, or `undefined` if the id is
- * not registered.
+ * Persistence-aware create-or-load. If the file already exists in the
+ * Y.Doc (loaded from IDB), returns the persisted version without
+ * overwriting. If the file does not exist, creates it with the given
+ * seed content.
  *
- * @remarks
- * The returned reference is stable across calls as long as `setContent`
- * has not been called for this id. Do not mutate the returned object.
+ * Use this from components that seed files on mount (LiveCodingEditor,
+ * WorkspaceShell) to avoid overwriting persisted user work on refresh.
+ */
+declare function seedWorkspaceFile(id: string, path: string, content: string, language: WorkspaceLanguage, meta?: Record<string, unknown>): WorkspaceFile;
+/**
+ * Return the current snapshot for a file id, or `undefined` if the id
+ * is not registered. Reference-stable across calls.
  */
 declare function getFile(id: string): WorkspaceFile | undefined;
 /**
- * Replace the content of a file. The replacement preserves every other
- * field of the existing snapshot (path, language, meta) and produces a new
- * object reference so that `useSyncExternalStore` consumers correctly
- * detect the change.
- *
- * Writing to an unknown id is a **no-op** and does not notify anyone. This
- * is intentional — the editor view should never reach this path for an
- * unregistered file, and silently swallowing the write here protects
- * against phantom subscribers on ids that were unregistered mid-keystroke
- * (e.g., tab closed while the IME was composing).
- *
- * @param id          Target file id.
- * @param newContent  New content string. Replaces the entire content; this
- *                    store does not support partial edits — the Monaco
- *                    model tracks deltas, the store just holds the text.
+ * Replace the content of a file. Writing to an unknown id is a no-op.
  */
 declare function setContent(id: string, newContent: string): void;
 /**
- * Register a subscriber for a specific file id. The returned function
- * unregisters the subscriber. Safe to call from `useSyncExternalStore`'s
- * `subscribe` argument.
- *
- * @remarks
- * Subscribers registered here are **not** invoked on initial subscribe —
- * `useSyncExternalStore` reads the current snapshot via `getSnapshot`
- * directly when it first mounts. The subscriber only fires on subsequent
- * changes. This matches the React contract and avoids a redundant initial
- * render.
+ * Register a subscriber for a specific file id. Returns unsubscribe fn.
  */
 declare function subscribe(id: string, cb: Subscriber): () => void;
+
+/**
+ * projectDoc — PM Phase 1 (local persistence).
+ *
+ * Manages the active Yjs document that backs the WorkspaceFile store.
+ * Each project is a single Y.Doc persisted to IndexedDB via y-indexeddb.
+ *
+ * Two init paths:
+ * - `initProjectDoc(id)` — async, wires y-indexeddb, awaits IDB sync.
+ *   Used by the real app. Files loaded from IDB are available after resolve.
+ * - `initProjectDocSync()` — sync, in-memory only, no IDB.
+ *   Used by tests and as a lazy fallback if no explicit init was called.
+ *
+ * The store (WorkspaceFile.ts) calls `ensureDoc()` which lazy-inits
+ * in-memory if no explicit init happened — making tests work without
+ * any async ceremony while the real app gets persistence.
+ */
+
+/**
+ * Async init with IndexedDB persistence. Resolves after IDB sync
+ * completes — all persisted files are in the Y.Doc when this returns.
+ *
+ * Must be called BEFORE any createWorkspaceFile / seedWorkspaceFile
+ * calls to avoid the seed-vs-persisted race condition.
+ */
+declare function initProjectDoc(projectId: string): Promise<void>;
+/**
+ * Sync init without persistence. Used by tests and as a lazy fallback.
+ * The Y.Doc lives only in memory — lost on refresh.
+ */
+declare function initProjectDocSync(): void;
+/** Whether the doc has finished loading from IDB (always true for sync init). */
+declare function isDocReady(): boolean;
 
 /**
  * sampleSound — test audio source for viz development.
@@ -3562,4 +3546,4 @@ declare function getPresetIdForFile(file: WorkspaceFile): string | undefined;
  */
 declare function registerPresetAsNamedViz(preset: VizPreset): boolean;
 
-export { type AudioPayload, type AudioSourceRef, BUNDLED_PREFIX, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellProps, type WorkspaceTab, applyTheme, bundledPresetId, collect, compilePreset, createVizConfig, createWorkspaceFile, filter, flushToPreset, generateUniquePresetId, getFile, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, isBundledPresetId, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, resolveDescriptor, sanitizePresetName, scaleGain, seedFromPreset, seedFromPresetId, setContent, setVizConfig, startSampleSound, stopSampleSound, subscribe as subscribeToWorkspaceFile, timestretch, toStrudel, transpose, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus };
+export { type AudioPayload, type AudioSourceRef, BUNDLED_PREFIX, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellProps, type WorkspaceTab, applyTheme, bundledPresetId, collect, compilePreset, createVizConfig, createWorkspaceFile, filter, flushToPreset, generateUniquePresetId, getFile, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, resolveDescriptor, sanitizePresetName, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setVizConfig, startSampleSound, stopSampleSound, subscribe as subscribeToWorkspaceFile, timestretch, toStrudel, transpose, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus };
