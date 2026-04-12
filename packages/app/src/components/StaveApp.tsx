@@ -9,7 +9,12 @@ import {
   touchProject,
   switchProject,
   resetFileStore,
+  saveSnapshot,
+  listSnapshots,
+  deleteSnapshot,
+  restoreSnapshot,
   type ProjectMeta,
+  type SnapshotMeta,
   type WorkspaceShellHandle,
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
@@ -18,6 +23,7 @@ import { MenuBar } from "./MenuBar";
 import { FileTree } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
+import { SnapshotModal } from "./SnapshotModal";
 import StrudelEditorClient from "./StrudelEditorClient";
 
 interface StaveAppProps {
@@ -48,6 +54,32 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
+  const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
+
+  const refreshSnapshots = useCallback(async (projectId: string) => {
+    setSnapshots(await listSnapshots(projectId));
+  }, []);
+
+  const openSnapshotModal = useCallback(async () => {
+    await refreshSnapshots(activeProject.id);
+    setSnapshotModalOpen(true);
+  }, [activeProject.id, refreshSnapshots]);
+
+  const handleSaveSnapshot = useCallback(async (label: string) => {
+    await saveSnapshot(activeProject.id, label);
+    await refreshSnapshots(activeProject.id);
+  }, [activeProject.id, refreshSnapshots]);
+
+  const handleDeleteSnapshot = useCallback(async (id: string) => {
+    await deleteSnapshot(id);
+    await refreshSnapshots(activeProject.id);
+  }, [activeProject.id, refreshSnapshots]);
+
+  const handleRestoreSnapshot = useCallback(async (id: string) => {
+    await restoreSnapshot(id);
+    resetFileStore();
+  }, []);
 
   // Bidirectional sync between FileTree ↔ WorkspaceShell.
   //
@@ -163,6 +195,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             alert("Export failed — see console for details.");
           });
         }}
+        onVersionHistory={openSnapshotModal}
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         sidebarCollapsed={sidebarCollapsed}
       />
@@ -213,6 +246,16 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onSelect={doSwitchProject}
         onRename={handleRenameProjectFromSwitcher}
         onDelete={handleDeleteProjectFromSwitcher}
+      />
+
+      <SnapshotModal
+        open={snapshotModalOpen}
+        projectName={activeProject.name}
+        snapshots={snapshots}
+        onClose={() => setSnapshotModalOpen(false)}
+        onSaveNew={handleSaveSnapshot}
+        onRestore={handleRestoreSnapshot}
+        onDelete={handleDeleteSnapshot}
       />
     </div>
   );
