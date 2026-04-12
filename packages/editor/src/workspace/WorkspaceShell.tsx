@@ -214,6 +214,14 @@ export interface WorkspaceShellHandle {
    * group and focuses it. No-op if already focused.
    */
   openOrFocusFile(fileId: string): void
+
+  /**
+   * Close every tab (editor + preview) that targets the given file id,
+   * in any group. Used when a file is deleted from the sidebar so its
+   * orphan tabs vanish without remounting the shell. No-op if no tabs
+   * reference the file.
+   */
+  closeTabsForFile(fileId: string): void
 }
 
 export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellProps>(function WorkspaceShell({
@@ -1706,8 +1714,22 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           return next
         })
       },
+      closeTabsForFile: (fileId: string) => {
+        const targets: string[] = []
+        for (const g of groups.values()) {
+          for (const t of g.tabs) {
+            if (
+              (t.kind === 'editor' || t.kind === 'preview') &&
+              t.fileId === fileId
+            ) {
+              targets.push(t.id)
+            }
+          }
+        }
+        for (const tid of targets) closeTabById(tid)
+      },
     }),
-    [groups, activeGroupId],
+    [groups, activeGroupId, closeTabById],
   )
 
   return (
