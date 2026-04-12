@@ -13,6 +13,7 @@ import {
   type WorkspaceShellHandle,
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
+import { exportProjectAsZip } from "../exportProject";
 import { MenuBar } from "./MenuBar";
 import { FileTree } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
@@ -156,7 +157,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onNewProject={() => setTemplateModalOpen(true)}
         onOpenProject={() => setSwitcherModalOpen(true)}
         onRenameProject={handleRenameActiveProject}
-        onExportProject={() => alert("Export as .zip — coming in PM-5")}
+        onExportProject={() => {
+          exportProjectAsZip(activeProject).catch((err) => {
+            console.error("[stave] export failed:", err);
+            alert("Export failed — see console for details.");
+          });
+        }}
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         sidebarCollapsed={sidebarCollapsed}
       />

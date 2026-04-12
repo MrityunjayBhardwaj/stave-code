@@ -58,7 +58,7 @@ export function MenuBar({
         <MenuDivider />
         <MenuItem label="Rename Project..." onClick={() => clickItem(onRenameProject)} />
         <MenuDivider />
-        <MenuItem label="Export as .zip" onClick={() => clickItem(onExportProject)} disabled />
+        <MenuItem label="Export as .zip" onClick={() => clickItem(onExportProject)} />
       </MenuButton>
 
       <MenuButton label="Edit" open={openMenu === "edit"} onClick={() => setOpenMenu(openMenu === "edit" ? null : "edit")}>
