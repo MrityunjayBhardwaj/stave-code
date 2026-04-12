@@ -2730,6 +2730,49 @@ declare function getActiveProjectId(): string | null;
 declare function switchProject(projectId: string): Promise<void>;
 
 /**
+ * SnapshotStore — PM Phase 4 (version history, MVP).
+ *
+ * IDB-backed store for project Y.Doc snapshots. One shared database
+ * keyed by `${projectId}:${snapshotId}` — each value is a serialized
+ * Y.Doc update (Uint8Array) captured via Y.encodeStateAsUpdate.
+ *
+ * MVP scope: manual save only, no auto-snapshot. Restore replaces the
+ * current doc state by constructing a fresh Y.Doc from the snapshot
+ * bytes and transferring its file-map contents into the active doc.
+ */
+interface SnapshotMeta {
+    readonly id: string;
+    readonly projectId: string;
+    readonly label: string;
+    readonly createdAt: number;
+}
+/**
+ * Capture the active Y.Doc as a snapshot tied to the given project.
+ * Returns the saved metadata.
+ */
+declare function saveSnapshot(projectId: string, label: string): Promise<SnapshotMeta>;
+/**
+ * List all snapshots for a project, newest first. Bytes are omitted —
+ * callers must call `loadSnapshot` to fetch the payload.
+ */
+declare function listSnapshots(projectId: string): Promise<SnapshotMeta[]>;
+/**
+ * Delete a snapshot by id. No-op if the id doesn't exist.
+ */
+declare function deleteSnapshot(id: string): Promise<void>;
+/**
+ * Restore a snapshot into the currently active Y.Doc. The snapshot's
+ * file set REPLACES the current file set. Implementation: rehydrate a
+ * temporary Y.Doc from bytes, then in one transaction on the active
+ * doc (a) delete all existing files and (b) recreate each file from
+ * the snapshot.
+ *
+ * Callers must refresh UI state via `resetFileStore()` after this
+ * returns so cached snapshots re-sync with the new doc contents.
+ */
+declare function restoreSnapshot(id: string): Promise<void>;
+
+/**
  * ProjectRegistry — PM Phase 2.
  *
  * IDB-backed metadata store for the project list. Each project's actual
@@ -3672,4 +3715,4 @@ declare function getPresetIdForFile(file: WorkspaceFile): string | undefined;
  */
 declare function registerPresetAsNamedViz(preset: VizPreset): boolean;
 
-export { type AudioPayload, type AudioSourceRef, BUNDLED_PREFIX, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyTheme, bundledPresetId, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, deleteProject, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resolveDescriptor, sanitizePresetName, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setFolderOrder, setVizConfig, startSampleSound, stopSampleSound, subscribeToFileList, subscribeToFolderOrder, subscribe as subscribeToWorkspaceFile, switchProject, timestretch, toStrudel, touchProject, transpose, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus, workspaceFileIdForPreset };
+export { type AudioPayload, type AudioSourceRef, BUNDLED_PREFIX, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyTheme, bundledPresetId, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resolveDescriptor, restoreSnapshot, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setFolderOrder, setVizConfig, startSampleSound, stopSampleSound, subscribeToFileList, subscribeToFolderOrder, subscribe as subscribeToWorkspaceFile, switchProject, timestretch, toStrudel, touchProject, transpose, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus, workspaceFileIdForPreset };

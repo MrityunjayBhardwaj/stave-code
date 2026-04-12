@@ -4,7 +4,7 @@ var React = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
-var Y2 = require('yjs');
+var Y3 = require('yjs');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
@@ -29,7 +29,7 @@ function _interopNamespace(e) {
 var React__default = /*#__PURE__*/_interopDefault(React);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
-var Y2__namespace = /*#__PURE__*/_interopNamespace(Y2);
+var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -5742,7 +5742,7 @@ async function initProjectDoc(projectId) {
   if (activeDoc) {
     activeDoc.destroy();
   }
-  activeDoc = new Y2__namespace.Doc();
+  activeDoc = new Y3__namespace.Doc();
   docReady = false;
   const { IndexeddbPersistence } = await import('y-indexeddb');
   activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
@@ -5758,7 +5758,7 @@ function initProjectDocSync() {
   if (activeDoc) {
     activeDoc.destroy();
   }
-  activeDoc = new Y2__namespace.Doc();
+  activeDoc = new Y3__namespace.Doc();
   docReady = true;
 }
 function ensureDoc() {
@@ -5766,6 +5766,9 @@ function ensureDoc() {
     initProjectDocSync();
   }
   return activeDoc;
+}
+function getActiveDoc() {
+  return ensureDoc();
 }
 function getFilesMap() {
   return ensureDoc().getMap("files");
@@ -5864,12 +5867,12 @@ function createWorkspaceFile(id, path, content, language, meta) {
   const filesMap = getFilesMap();
   const doc = ensureDoc();
   doc.transact(() => {
-    const fileMap = new Y2__namespace.Map();
+    const fileMap = new Y3__namespace.Map();
     fileMap.set("id", id);
     fileMap.set("path", path);
     fileMap.set("language", language);
     if (meta !== void 0) fileMap.set("meta", meta);
-    const ytext = new Y2__namespace.Text();
+    const ytext = new Y3__namespace.Text();
     ytext.insert(0, content);
     fileMap.set("content", ytext);
     filesMap.set(id, fileMap);
@@ -5988,7 +5991,7 @@ function setFolderOrder(folderPath, orderedIds) {
   const map = getFolderOrderMap();
   const doc = ensureDoc();
   doc.transact(() => {
-    const next = new Y2__namespace.Array();
+    const next = new Y3__namespace.Array();
     next.push(orderedIds);
     map.set(folderPath, next);
   });
@@ -18056,26 +18059,22 @@ function compileHydraCode(code) {
     fn(s);
   };
 }
-
-// src/workspace/projectRegistry.ts
-var DB_NAME3 = "stave-projects";
+var DB_NAME3 = "stave-snapshots";
 var DB_VERSION3 = 1;
-var STORE_NAME3 = "projects";
+var STORE_NAME3 = "snapshots";
 function openDb2() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME3, DB_VERSION3);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_NAME3)) {
-        db.createObjectStore(STORE_NAME3, { keyPath: "id" });
+        const store = db.createObjectStore(STORE_NAME3, { keyPath: "id" });
+        store.createIndex("byProject", "projectId", { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
-}
-function tx2(db, mode) {
-  return db.transaction(STORE_NAME3, mode).objectStore(STORE_NAME3);
 }
 function wrap2(req) {
   return new Promise((resolve, reject) => {
@@ -18083,15 +18082,111 @@ function wrap2(req) {
     req.onerror = () => reject(req.error);
   });
 }
-async function listProjects() {
+async function saveSnapshot(projectId, label) {
+  const doc = getActiveDoc();
+  const bytes = Y3__namespace.encodeStateAsUpdate(doc);
+  const meta = {
+    id: crypto.randomUUID(),
+    projectId,
+    label: label.trim() || "Untitled snapshot",
+    createdAt: Date.now()
+  };
+  const record = { ...meta, bytes };
   const db = await openDb2();
-  const all = await wrap2(tx2(db, "readonly").getAll());
+  await wrap2(
+    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).put(record)
+  );
+  db.close();
+  return meta;
+}
+async function listSnapshots(projectId) {
+  const db = await openDb2();
+  const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+  const all = await wrap2(index.getAll(projectId));
+  db.close();
+  return all.map(({ bytes: _bytes, ...meta }) => meta).sort((a, b) => b.createdAt - a.createdAt);
+}
+async function deleteSnapshot(id) {
+  const db = await openDb2();
+  await wrap2(
+    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).delete(id)
+  );
+  db.close();
+}
+async function restoreSnapshot(id) {
+  const db = await openDb2();
+  const stored = await wrap2(
+    db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).get(id)
+  );
+  db.close();
+  if (!stored) throw new Error(`snapshot ${id} not found`);
+  const snapDoc = new Y3__namespace.Doc();
+  Y3__namespace.applyUpdate(snapDoc, stored.bytes);
+  const snapFiles = snapDoc.getMap("files");
+  const snapOrder = snapDoc.getMap("fileOrder");
+  const activeDoc2 = getActiveDoc();
+  const activeFiles = activeDoc2.getMap("files");
+  const activeOrder = activeDoc2.getMap("fileOrder");
+  activeDoc2.transact(() => {
+    for (const key of Array.from(activeFiles.keys())) activeFiles.delete(key);
+    for (const key of Array.from(activeOrder.keys())) activeOrder.delete(key);
+    for (const [fid, snapFile] of snapFiles.entries()) {
+      const clone = new Y3__namespace.Map();
+      clone.set("id", snapFile.get("id"));
+      clone.set("path", snapFile.get("path"));
+      clone.set("language", snapFile.get("language"));
+      const meta = snapFile.get("meta");
+      if (meta !== void 0) clone.set("meta", meta);
+      const content = new Y3__namespace.Text();
+      const srcText = snapFile.get("content");
+      content.insert(0, srcText.toString());
+      clone.set("content", content);
+      activeFiles.set(fid, clone);
+    }
+    for (const [folder, arr] of snapOrder.entries()) {
+      const next = new Y3__namespace.Array();
+      next.push(arr.toArray());
+      activeOrder.set(folder, next);
+    }
+  });
+  snapDoc.destroy();
+}
+
+// src/workspace/projectRegistry.ts
+var DB_NAME4 = "stave-projects";
+var DB_VERSION4 = 1;
+var STORE_NAME4 = "projects";
+function openDb3() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME4, DB_VERSION4);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME4)) {
+        db.createObjectStore(STORE_NAME4, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function tx2(db, mode) {
+  return db.transaction(STORE_NAME4, mode).objectStore(STORE_NAME4);
+}
+function wrap3(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function listProjects() {
+  const db = await openDb3();
+  const all = await wrap3(tx2(db, "readonly").getAll());
   db.close();
   return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 }
 async function getProject(id) {
-  const db = await openDb2();
-  const result = await wrap2(tx2(db, "readonly").get(id));
+  const db = await openDb3();
+  const result = await wrap3(tx2(db, "readonly").get(id));
   db.close();
   return result;
 }
@@ -18106,32 +18201,32 @@ async function createProject(name2) {
     createdAt: Date.now(),
     lastOpenedAt: Date.now()
   };
-  const db = await openDb2();
-  await wrap2(tx2(db, "readwrite").put(meta));
+  const db = await openDb3();
+  await wrap3(tx2(db, "readwrite").put(meta));
   db.close();
   return meta;
 }
 async function touchProject(id) {
-  const db = await openDb2();
+  const db = await openDb3();
   const store = tx2(db, "readwrite");
-  const existing = await wrap2(store.get(id));
+  const existing = await wrap3(store.get(id));
   if (existing) {
-    await wrap2(store.put({ ...existing, lastOpenedAt: Date.now() }));
+    await wrap3(store.put({ ...existing, lastOpenedAt: Date.now() }));
   }
   db.close();
 }
 async function renameProject(id, name2) {
-  const db = await openDb2();
+  const db = await openDb3();
   const store = tx2(db, "readwrite");
-  const existing = await wrap2(store.get(id));
+  const existing = await wrap3(store.get(id));
   if (existing) {
-    await wrap2(store.put({ ...existing, name: name2 }));
+    await wrap3(store.put({ ...existing, name: name2 }));
   }
   db.close();
 }
 async function deleteProject(id) {
-  const db = await openDb2();
-  await wrap2(tx2(db, "readwrite").delete(id));
+  const db = await openDb3();
+  await wrap3(tx2(db, "readwrite").delete(id));
   db.close();
   return new Promise((resolve, reject) => {
     const req = indexedDB.deleteDatabase(`stave-${id}`);
@@ -18889,6 +18984,7 @@ exports.createProject = createProject;
 exports.createVizConfig = createVizConfig;
 exports.createWorkspaceFile = createWorkspaceFile;
 exports.deleteProject = deleteProject;
+exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
 exports.duplicateProject = duplicateProject;
 exports.filter = filter;
@@ -18917,6 +19013,7 @@ exports.isSampleSoundPlaying = isSampleSoundPlaying;
 exports.listNamedVizEntries = listNamedVizEntries;
 exports.listNamedVizNames = listNamedVizNames;
 exports.listProjects = listProjects;
+exports.listSnapshots = listSnapshots;
 exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.merge = merge;
@@ -18937,7 +19034,9 @@ exports.renameProject = renameProject;
 exports.renameWorkspaceFile = renameWorkspaceFile;
 exports.resetFileStore = resetFileStore;
 exports.resolveDescriptor = resolveDescriptor;
+exports.restoreSnapshot = restoreSnapshot;
 exports.sanitizePresetName = sanitizePresetName;
+exports.saveSnapshot = saveSnapshot;
 exports.scaleGain = scaleGain;
 exports.seedFromPreset = seedFromPreset;
 exports.seedFromPresetId = seedFromPresetId;
