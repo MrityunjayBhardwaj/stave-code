@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   WorkspaceShell,
+  type WorkspaceShellHandle,
   getFile,
   subscribeToWorkspaceFile,
   listWorkspaceFiles,
@@ -47,7 +48,15 @@ function ensureProviders() {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function StrudelEditorClient() {
+interface StrudelEditorClientProps {
+  shellRef?: React.RefObject<WorkspaceShellHandle | null>;
+  onActiveFileChange?: (fileId: string | null) => void;
+}
+
+export default function StrudelEditorClient({
+  shellRef,
+  onActiveFileChange,
+}: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
 
@@ -329,6 +338,7 @@ export default function StrudelEditorClient() {
   return (
     <WorkspaceShell
       key={shellKey}
+      ref={shellRef}
       initialTabs={initialTabs}
       theme="dark"
       height={560}
@@ -337,6 +347,13 @@ export default function StrudelEditorClient() {
       previewProviderFor={previewProviderFor}
       onTabClose={handleTabClose}
       onSaveFile={handleSaveFile}
+      onActiveTabChange={(tab) =>
+        onActiveFileChange?.(
+          tab && (tab.kind === "editor" || tab.kind === "preview")
+            ? tab.fileId
+            : null,
+        )
+      }
     />
   );
 }

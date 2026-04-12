@@ -114,6 +114,7 @@ export { workspaceAudioBus } from './WorkspaceAudioBus'
 export { EditorView } from './EditorView'
 export { PreviewView } from './PreviewView'
 export { WorkspaceShell } from './WorkspaceShell'
+export type { WorkspaceShellHandle } from './WorkspaceShell'
 export type {
   PreviewProvider,
   PreviewContext,

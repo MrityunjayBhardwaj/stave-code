@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   listProjects,
   createProject,
@@ -10,6 +10,7 @@ import {
   switchProject,
   resetFileStore,
   type ProjectMeta,
+  type WorkspaceShellHandle,
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
 import { MenuBar } from "./MenuBar";
@@ -47,11 +48,16 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
 
-  // Open-file tracking passed to FileTree for visual highlight.
-  // In PM Phase 2.5 the shell opens tabs for ALL files on mount, so we
-  // seed this as the full file list. A future phase (controlled tabs or
-  // imperative API) will make this dynamic.
-  const [openFileIds] = useState<Set<string>>(new Set());
+  // Bidirectional sync between FileTree ↔ WorkspaceShell.
+  //
+  // - `shellRef` — imperative handle into the shell. FileTree clicks call
+  //   shellRef.current.openOrFocusFile(fileId) to open/focus a tab.
+  // - `activeFileId` — the currently-active tab's fileId (null if no tab
+  //   active or active tab has no fileId). Updated by the shell via
+  //   onActiveTabChange. Passed to FileTree so it highlights the active
+  //   file in the tree.
+  const shellRef = useRef<WorkspaceShellHandle | null>(null);
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
   const refreshProjects = useCallback(async () => {
     setProjects(await listProjects());
@@ -136,13 +142,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     await refreshProjects();
   }, [activeProject.id, projects, refreshProjects]);
 
-  // ── Tab tracking ────────────────────────────────────────────────────
+  // ── Tab ↔ Tree sync ─────────────────────────────────────────────────
 
-  const handleOpenFile = useCallback((_fileId: string) => {
-    // PM 2.5: all files are already open as tabs on mount, so clicking
-    // a file in the tree is a no-op for tab opening. A future phase
-    // will add controlled tabs or an imperative shell API for
-    // click-to-focus and re-open-closed-tab.
+  const handleOpenFile = useCallback((fileId: string) => {
+    // Ask the shell to open or focus the editor tab for this file.
+    shellRef.current?.openOrFocusFile(fileId);
   }, []);
 
   return (
@@ -162,7 +166,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           <FileTree
             projectName={activeProject.name}
             onOpenFile={handleOpenFile}
-            openFileIds={openFileIds}
+            activeFileId={activeFileId}
             onToggleCollapse={() => setSidebarCollapsed(true)}
           />
         )}
@@ -171,7 +175,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           {switching ? (
             <div style={styles.switchingOverlay}>Loading project...</div>
           ) : (
-            <StrudelEditorClient key={activeProject.id} />
+            <StrudelEditorClient
+              key={activeProject.id}
+              shellRef={shellRef}
+              onActiveFileChange={setActiveFileId}
+            />
           )}
         </div>
       </div>

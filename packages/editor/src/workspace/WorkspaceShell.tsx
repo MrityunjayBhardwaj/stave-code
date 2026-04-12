@@ -106,8 +106,10 @@
  */
 
 import React, {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -196,7 +198,25 @@ function createInitialGroupState(
   return { groups, layout: [[id]], activeGroupId: id }
 }
 
-export function WorkspaceShell({
+/**
+ * Imperative handle exposed via `ref` on `WorkspaceShell`.
+ *
+ * Lets parent components programmatically control tab state without
+ * going through the `initialTabs` prop (which is read once on mount).
+ * Used by the PM Phase 2.5+ file tree to open/focus a file's tab when
+ * the user clicks it in the sidebar.
+ */
+export interface WorkspaceShellHandle {
+  /**
+   * Open or focus the editor tab for the given file id. If a tab with
+   * `kind: 'editor'` and matching `fileId` already exists (in any group),
+   * focuses it. Otherwise creates a new editor tab in the currently active
+   * group and focuses it. No-op if already focused.
+   */
+  openOrFocusFile(fileId: string): void
+}
+
+export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellProps>(function WorkspaceShell({
   initialTabs = [],
   theme = 'dark',
   height = '100%',
@@ -206,7 +226,7 @@ export function WorkspaceShell({
   chromeForTab,
   editorExtrasForTab,
   onSaveFile,
-}: WorkspaceShellProps): React.ReactElement {
+}, forwardedRef) {
   const shellRootRef = useRef<HTMLDivElement>(null)
 
   // One-shot seeding — `initialTabs` is read exactly once on mount. This
@@ -1634,6 +1654,62 @@ export function WorkspaceShell({
     [layout],
   )
 
+  // Expose imperative handle — lets parent call openOrFocusFile(fileId)
+  // to programmatically open/focus a file's editor tab. Used by the file
+  // tree sidebar so clicking a file opens its tab.
+  useImperativeHandle(
+    forwardedRef,
+    () => ({
+      openOrFocusFile: (fileId: string) => {
+        // Search every group for an existing editor tab with this fileId.
+        let foundGroupId: string | null = null
+        let foundTabId: string | null = null
+        for (const [gid, group] of groups) {
+          const hit = group.tabs.find(
+            (t) => t.kind === 'editor' && t.fileId === fileId,
+          )
+          if (hit) {
+            foundGroupId = gid
+            foundTabId = hit.id
+            break
+          }
+        }
+        if (foundGroupId && foundTabId) {
+          // Existing tab — activate it.
+          const targetGid = foundGroupId
+          const targetTid = foundTabId
+          setGroups((prev) => {
+            const existing = prev.get(targetGid)
+            if (!existing || existing.activeTabId === targetTid) return prev
+            const next = new Map(prev)
+            next.set(targetGid, { ...existing, activeTabId: targetTid })
+            return next
+          })
+          setActiveGroupId(targetGid)
+          return
+        }
+        // No existing tab — create a new editor tab in the active group.
+        const newTab: WorkspaceTab = {
+          kind: 'editor',
+          id: `tab-${fileId}-${Date.now()}`,
+          fileId,
+        }
+        setGroups((prev) => {
+          const existing = prev.get(activeGroupId)
+          if (!existing) return prev
+          const next = new Map(prev)
+          next.set(activeGroupId, {
+            ...existing,
+            tabs: [...existing.tabs, newTab],
+            activeTabId: newTab.id,
+          })
+          return next
+        })
+      },
+    }),
+    [groups, activeGroupId],
+  )
+
   return (
     <div
       ref={shellRootRef}
@@ -1796,7 +1872,7 @@ export function WorkspaceShell({
       )}
     </div>
   )
-}
+})
 
 /**
  * Shell-level overlay that draws a translucent rectangle showing where

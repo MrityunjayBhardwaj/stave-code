@@ -13,7 +13,7 @@ import {
 interface FileTreeProps {
   projectName: string;
   onOpenFile: (fileId: string) => void;
-  openFileIds: Set<string>;
+  activeFileId: string | null;
   onToggleCollapse: () => void;
 }
 
@@ -73,7 +73,7 @@ function buildTree(files: WorkspaceFile[]): TreeNode[] {
 // ── Main component ──────────────────────────────────────────────────
 
 export function FileTree({
-  projectName, onOpenFile, openFileIds, onToggleCollapse,
+  projectName, onOpenFile, activeFileId, onToggleCollapse,
 }: FileTreeProps) {
   // Subscribe to file list changes
   const [, forceUpdate] = useState(0);
@@ -85,6 +85,29 @@ export function FileTree({
   const tree = useMemo(() => buildTree(files), [files]);
 
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+
+  // When the active file changes, ensure all its parent folders are
+  // expanded so the highlighted file is actually visible in the tree.
+  useEffect(() => {
+    if (!activeFileId) return;
+    const file = files.find((f) => f.id === activeFileId);
+    if (!file) return;
+    const segments = file.path.split("/");
+    if (segments.length <= 1) return; // file is at root, nothing to expand
+    setCollapsedFolders((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      let pathSoFar = "";
+      for (let i = 0; i < segments.length - 1; i++) {
+        pathSoFar = pathSoFar ? `${pathSoFar}/${segments[i]}` : segments[i];
+        if (next.has(pathSoFar)) {
+          next.delete(pathSoFar);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [activeFileId, files]);
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [contextMenu, setContextMenu] = useState<{
@@ -230,7 +253,7 @@ export function FileTree({
             collapsedFolders={collapsedFolders}
             onToggleFolder={toggleFolder}
             onOpenFile={onOpenFile}
-            openFileIds={openFileIds}
+            activeFileId={activeFileId}
             editingFileId={editingFileId}
             editValue={editValue}
             setEditValue={setEditValue}
@@ -278,7 +301,7 @@ interface TreeItemProps {
   collapsedFolders: Set<string>;
   onToggleFolder: (path: string) => void;
   onOpenFile: (fileId: string) => void;
-  openFileIds: Set<string>;
+  activeFileId: string | null;
   editingFileId: string | null;
   editValue: string;
   setEditValue: (v: string) => void;
@@ -320,15 +343,17 @@ function TreeItem(props: TreeItemProps) {
   // File
   const file = node.file!;
   const isEditing = props.editingFileId === file.id;
-  const isOpen = props.openFileIds.has(file.id);
+  const isActive = props.activeFileId === file.id;
   // Hide .keep placeholder files
   if (node.name === ".keep") return null;
 
   return (
     <div
+      data-file-tree-item={file.id}
+      data-active-file={isActive ? "true" : "false"}
       style={{
         ...styles.item,
-        ...(isOpen ? styles.itemOpen : {}),
+        ...(isActive ? styles.itemActive : {}),
         paddingLeft: 8 + depth * 12,
       }}
       onClick={() => {
@@ -465,9 +490,11 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     fontSize: 13,
   },
-  itemOpen: {
+  itemActive: {
     background: "#2a2a4a",
     color: "#e8e8f0",
+    borderLeft: "2px solid #6a6ac8",
+    paddingLeft: 6, // compensate for the border
   },
   chevron: {
     fontSize: 10,

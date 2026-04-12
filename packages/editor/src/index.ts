@@ -86,6 +86,7 @@ export { PitchwheelSketch } from './visualizers/sketches/PitchwheelSketch'
 
 // WorkspaceShell + views
 export { WorkspaceShell } from './workspace/WorkspaceShell'
+export type { WorkspaceShellHandle } from './workspace/WorkspaceShell'
 export { EditorView } from './workspace/EditorView'
 export { PreviewView } from './workspace/PreviewView'
 
