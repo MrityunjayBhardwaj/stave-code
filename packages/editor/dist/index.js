@@ -9165,9 +9165,20 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
           });
           return next;
         });
+      },
+      closeTabsForFile: (fileId) => {
+        const targets = [];
+        for (const g of groups.values()) {
+          for (const t of g.tabs) {
+            if ((t.kind === "editor" || t.kind === "preview") && t.fileId === fileId) {
+              targets.push(t.id);
+            }
+          }
+        }
+        for (const tid of targets) closeTabById(tid);
       }
     }),
-    [groups, activeGroupId]
+    [groups, activeGroupId, closeTabById]
   );
   return /* @__PURE__ */ jsxs(
     "div",

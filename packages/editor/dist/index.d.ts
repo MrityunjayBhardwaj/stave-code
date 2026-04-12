@@ -2434,6 +2434,13 @@ interface WorkspaceShellHandle {
      * group and focuses it. No-op if already focused.
      */
     openOrFocusFile(fileId: string): void;
+    /**
+     * Close every tab (editor + preview) that targets the given file id,
+     * in any group. Used when a file is deleted from the sidebar so its
+     * orphan tabs vanish without remounting the shell. No-op if no tabs
+     * reference the file.
+     */
+    closeTabsForFile(fileId: string): void;
 }
 declare const WorkspaceShell: React.ForwardRefExoticComponent<WorkspaceShellProps & React.RefAttributes<WorkspaceShellHandle>>;
 
