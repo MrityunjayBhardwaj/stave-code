@@ -5782,6 +5782,18 @@ function getActiveProjectId() {
 async function switchProject(projectId) {
   await initProjectDoc(projectId);
 }
+function subscribeToDocUpdate(cb, options) {
+  const doc = ensureDoc();
+  const localOnly = options?.localOnly ?? false;
+  const handler = (_update, _origin, _doc, tr) => {
+    if (localOnly && !tr.local) return;
+    cb();
+  };
+  doc.on("update", handler);
+  return () => {
+    doc.off("update", handler);
+  };
+}
 
 // src/workspace/WorkspaceFile.ts
 var cachedSnapshots = /* @__PURE__ */ new Map();
@@ -18083,6 +18095,7 @@ function compileHydraCode(code) {
 var DB_NAME3 = "stave-snapshots";
 var DB_VERSION3 = 1;
 var STORE_NAME3 = "snapshots";
+var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
 function openDb2() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME3, DB_VERSION3);
@@ -18103,20 +18116,34 @@ function wrap2(req) {
     req.onerror = () => reject(req.error);
   });
 }
-async function saveSnapshot(projectId, label) {
+var MAX_AUTO_SNAPSHOTS = 10;
+async function saveSnapshot(projectId, label, kind = "manual") {
   const doc = getActiveDoc();
   const bytes = Y3__namespace.encodeStateAsUpdate(doc);
   const meta = {
     id: crypto.randomUUID(),
     projectId,
     label: label.trim() || "Untitled snapshot",
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    kind
   };
   const record = { ...meta, bytes };
   const db = await openDb2();
   await wrap2(
     db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).put(record)
   );
+  if (kind === "auto") {
+    const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+    const all = await wrap2(index.getAll(projectId));
+    const autos = all.filter(
+      (r) => r.kind === "auto" || r.label.startsWith(AUTO_SNAPSHOT_PREFIX)
+    ).sort((a, b) => b.createdAt - a.createdAt);
+    const toDelete = autos.slice(MAX_AUTO_SNAPSHOTS);
+    if (toDelete.length > 0) {
+      const wstore = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      for (const r of toDelete) await wrap2(wstore.delete(r.id));
+    }
+  }
   db.close();
   return meta;
 }
@@ -18963,6 +18990,7 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
+exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
 exports.BUNDLED_PREFIX = BUNDLED_PREFIX;
 exports.BufferedScheduler = BufferedScheduler;
 exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
@@ -19077,6 +19105,7 @@ exports.setSubfolderOrder = setSubfolderOrder;
 exports.setVizConfig = setVizConfig;
 exports.startSampleSound = startSampleSound;
 exports.stopSampleSound = stopSampleSound;
+exports.subscribeToDocUpdate = subscribeToDocUpdate;
 exports.subscribeToFileList = subscribeToFileList;
 exports.subscribeToFolderOrder = subscribeToFolderOrder;
 exports.subscribeToWorkspaceFile = subscribe;
