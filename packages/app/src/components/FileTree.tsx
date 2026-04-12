@@ -211,6 +211,113 @@ export function FileTree({
     createWorkspaceFile(id, path, "", "markdown");
   }, []);
 
+  // ── Drag-drop move (files + folders) ────────────────────────────────
+
+  // Drop target state — which folder (or root) is currently being hovered
+  // over with a dragged item. Drives the visual highlight. `null` = none.
+  const [dropTarget, setDropTarget] = useState<string | "__root__" | null>(null);
+
+  // Move a file into a folder (or root if targetFolderPath is ""). No-op
+  // if the file is already directly in that folder.
+  const moveFileToFolder = useCallback(
+    (fileId: string, targetFolderPath: string) => {
+      const file = files.find((f) => f.id === fileId);
+      if (!file) return;
+      const fileName = file.path.split("/").pop()!;
+      const newPath = targetFolderPath
+        ? `${targetFolderPath}/${fileName}`
+        : fileName;
+      if (newPath === file.path) return;
+      renameWorkspaceFile(fileId, newPath);
+    },
+    [files],
+  );
+
+  // Move a folder (and all its contents) into another folder. Preserves
+  // hierarchy: "sketches/foo.strudel" dropped onto "assets/" becomes
+  // "assets/sketches/foo.strudel". Prevents dropping a folder into itself
+  // or any of its descendants.
+  const moveFolderToFolder = useCallback(
+    (sourceFolderPath: string, targetFolderPath: string) => {
+      if (
+        targetFolderPath === sourceFolderPath ||
+        targetFolderPath.startsWith(sourceFolderPath + "/")
+      ) {
+        return; // can't drop into self or descendant
+      }
+      const folderName = sourceFolderPath.split("/").pop()!;
+      const newPrefix = targetFolderPath
+        ? `${targetFolderPath}/${folderName}`
+        : folderName;
+      if (newPrefix === sourceFolderPath) return; // no-op
+      const affected = files.filter(
+        (f) => f.path === sourceFolderPath || f.path.startsWith(sourceFolderPath + "/"),
+      );
+      for (const f of affected) {
+        const suffix = f.path.slice(sourceFolderPath.length); // keeps leading "/..."
+        const newPath = `${newPrefix}${suffix}`;
+        renameWorkspaceFile(f.id, newPath);
+      }
+    },
+    [files],
+  );
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, payload: { kind: "file"; fileId: string } | { kind: "folder"; folderPath: string }) => {
+      e.dataTransfer.setData(
+        "application/stave-tree-item",
+        JSON.stringify(payload),
+      );
+      e.dataTransfer.effectAllowed = "move";
+    },
+    [],
+  );
+
+  const handleDragOverFolder = useCallback(
+    (e: React.DragEvent, folderPath: string) => {
+      // Accept only if the drag contains our MIME type.
+      if (!e.dataTransfer.types.includes("application/stave-tree-item")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDropTarget(folderPath);
+    },
+    [],
+  );
+
+  const handleDragOverRoot = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("application/stave-tree-item")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropTarget("__root__");
+  }, []);
+
+  const handleDragLeaveTree = useCallback(() => {
+    setDropTarget(null);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent, targetFolderPath: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const raw = e.dataTransfer.getData("application/stave-tree-item");
+      if (!raw) return;
+      try {
+        const payload = JSON.parse(raw) as
+          | { kind: "file"; fileId: string }
+          | { kind: "folder"; folderPath: string };
+        if (payload.kind === "file") {
+          moveFileToFolder(payload.fileId, targetFolderPath);
+        } else if (payload.kind === "folder") {
+          moveFolderToFolder(payload.folderPath, targetFolderPath);
+        }
+      } catch {
+        /* ignore malformed payload */
+      }
+      setDropTarget(null);
+    },
+    [moveFileToFolder, moveFolderToFolder],
+  );
+
   return (
     <div style={styles.sidebar}>
       <div style={styles.header}>
@@ -240,7 +347,20 @@ export function FileTree({
         </div>
       </div>
 
-      <div style={styles.list}>
+      <div
+        style={{
+          ...styles.list,
+          ...(dropTarget === "__root__" ? styles.listDropActive : {}),
+        }}
+        onDragOver={handleDragOverRoot}
+        onDragLeave={(e) => {
+          // Only clear when leaving the list (not when moving between children)
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            handleDragLeaveTree();
+          }
+        }}
+        onDrop={(e) => handleDrop(e, "")}
+      >
         {tree.length === 0 && (
           <div style={styles.empty}>
             <div>Empty project</div>
@@ -265,6 +385,10 @@ export function FileTree({
             inputRef={inputRef}
             onNewFile={handleNewFile}
             onNewFolder={handleNewFolder}
+            dropTarget={dropTarget}
+            onDragStart={handleDragStart}
+            onDragOverFolder={handleDragOverFolder}
+            onDropOnFolder={handleDrop}
           />
         ))}
       </div>
@@ -313,6 +437,16 @@ interface TreeItemProps {
   inputRef: React.RefObject<HTMLInputElement | null>;
   onNewFile: (folderPath?: string) => void;
   onNewFolder: (parentPath?: string) => void;
+  // Drag-drop
+  dropTarget: string | "__root__" | null;
+  onDragStart: (
+    e: React.DragEvent,
+    payload:
+      | { kind: "file"; fileId: string }
+      | { kind: "folder"; folderPath: string },
+  ) => void;
+  onDragOverFolder: (e: React.DragEvent, folderPath: string) => void;
+  onDropOnFolder: (e: React.DragEvent, targetFolderPath: string) => void;
 }
 
 function TreeItem(props: TreeItemProps) {
@@ -320,10 +454,26 @@ function TreeItem(props: TreeItemProps) {
 
   if (node.kind === "folder") {
     const collapsed = props.collapsedFolders.has(node.path);
+    const isDropTarget = props.dropTarget === node.path;
     return (
       <div>
         <div
-          style={{ ...styles.item, paddingLeft: 8 + depth * 12 }}
+          data-folder-path={node.path}
+          draggable
+          onDragStart={(e) => {
+            e.stopPropagation();
+            props.onDragStart(e, { kind: "folder", folderPath: node.path });
+          }}
+          onDragOver={(e) => {
+            e.stopPropagation();
+            props.onDragOverFolder(e, node.path);
+          }}
+          onDrop={(e) => props.onDropOnFolder(e, node.path)}
+          style={{
+            ...styles.item,
+            ...(isDropTarget ? styles.dropTarget : {}),
+            paddingLeft: 8 + depth * 12,
+          }}
           onClick={() => props.onToggleFolder(node.path)}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -353,6 +503,11 @@ function TreeItem(props: TreeItemProps) {
     <div
       data-file-tree-item={file.id}
       data-active-file={isActive ? "true" : "false"}
+      draggable={!isEditing}
+      onDragStart={(e) => {
+        e.stopPropagation();
+        props.onDragStart(e, { kind: "file", fileId: file.id });
+      }}
       style={{
         ...styles.item,
         ...(isActive ? styles.itemActive : {}),
@@ -497,6 +652,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#e8e8f0",
     borderLeft: "2px solid #6a6ac8",
     paddingLeft: 6, // compensate for the border
+  },
+  dropTarget: {
+    background: "#3a3a5a",
+    outline: "1px dashed #6a6ac8",
+    outlineOffset: "-1px",
+  },
+  listDropActive: {
+    background: "#22223a",
+    outline: "1px dashed #6a6ac8",
+    outlineOffset: "-2px",
   },
   chevron: {
     fontSize: 10,
