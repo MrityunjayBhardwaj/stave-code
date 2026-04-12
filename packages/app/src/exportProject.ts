@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import {
   listWorkspaceFiles,
   getFolderOrder,
+  getSubfolderOrder,
   type ProjectMeta,
 } from "@stave/editor";
 
@@ -10,6 +11,7 @@ interface StaveManifest {
   project: { id: string; name: string; exportedAt: number };
   files: Array<{ id: string; path: string; language: string }>;
   fileOrder: Record<string, string[]>;
+  subfolderOrder: Record<string, string[]>;
 }
 
 export async function exportProjectAsZip(project: ProjectMeta): Promise<void> {
@@ -28,9 +30,21 @@ export async function exportProjectAsZip(project: ProjectMeta): Promise<void> {
     folderPaths.add(i < 0 ? "" : f.path.slice(0, i));
   }
   const fileOrder: Record<string, string[]> = {};
+  const subfolderOrder: Record<string, string[]> = {};
+  // Subfolder order is keyed by PARENT path, so gather every parent that
+  // has at least one subfolder. Root ("") is always a candidate parent.
+  const parentPaths = new Set<string>([""]);
   for (const fp of folderPaths) {
     const order = getFolderOrder(fp);
     if (order.length > 0) fileOrder[fp] = order;
+    if (!fp) continue;
+    // Each folder's parent contributes one subfolder entry.
+    const i = fp.lastIndexOf("/");
+    parentPaths.add(i < 0 ? "" : fp.slice(0, i));
+  }
+  for (const pp of parentPaths) {
+    const order = getSubfolderOrder(pp);
+    if (order.length > 0) subfolderOrder[pp] = order;
   }
 
   const manifest: StaveManifest = {
@@ -42,6 +56,7 @@ export async function exportProjectAsZip(project: ProjectMeta): Promise<void> {
     },
     files: files.map((f) => ({ id: f.id, path: f.path, language: f.language })),
     fileOrder,
+    subfolderOrder,
   };
   zip.file("stave.json", JSON.stringify(manifest, null, 2));
 

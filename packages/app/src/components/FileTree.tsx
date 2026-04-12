@@ -10,6 +10,8 @@ import {
   getFolderOrder,
   setFolderOrder,
   subscribeToFolderOrder,
+  getSubfolderOrder,
+  setSubfolderOrder,
   type WorkspaceFile,
 } from "@stave/editor";
 
@@ -74,44 +76,65 @@ function buildTree(files: WorkspaceFile[]): TreeNode[] {
 }
 
 /**
- * Apply fileOrder to a freshly-built alphabetical tree. For each folder
- * (including root, keyed as ""), we read the explicit file-id order and
- * sort the folder's FILE children by it — unknown ids go to the end in
- * their current alphabetical positions. Folders are never reordered;
- * they stay alphabetical (PM-3 scope is file-level reorder only).
+ * Apply fileOrder and subfolderOrder to a freshly-built alphabetical
+ * tree. For each folder (including root, keyed as ""), we partition
+ * children into folders + files, then:
+ *   - folders are reordered per subfolderOrder (immediate child names).
+ *     Unknown names stay alphabetical at the tail.
+ *   - files are reordered per fileOrder (file ids). Unknown ids stay
+ *     alphabetical at the tail.
+ * Final render is `folders first, then files` (VS Code convention).
  */
 function applyFolderOrder(
   nodes: TreeNode[],
   folderPath: string,
-  getOrder: (path: string) => string[],
+  getFileOrderFn: (path: string) => string[],
+  getSubOrderFn: (path: string) => string[],
 ): void {
-  const order = getOrder(folderPath);
-  if (order.length > 0) {
-    const orderIndex = new Map<string, number>();
-    order.forEach((id, i) => orderIndex.set(id, i));
-    // Stable partition: ordered files first (by order index), then
-    // unordered files (alphabetical, i.e. current order), then folders
-    // interleaved alphabetically by mixing into the sorted tail.
-    const ordered: TreeNode[] = [];
-    const unordered: TreeNode[] = [];
-    const folders: TreeNode[] = [];
-    for (const n of nodes) {
-      if (n.kind === "folder") folders.push(n);
-      else if (n.file && orderIndex.has(n.file.id)) ordered.push(n);
-      else unordered.push(n);
-    }
-    ordered.sort(
-      (a, b) => orderIndex.get(a.file!.id)! - orderIndex.get(b.file!.id)!,
-    );
-    // Rebuild: folders first (alphabetical), then ordered files, then
-    // unordered files. Folders first keeps the familiar VS Code look.
-    nodes.length = 0;
-    nodes.push(...folders, ...ordered, ...unordered);
+  const folders: TreeNode[] = [];
+  const files: TreeNode[] = [];
+  for (const n of nodes) {
+    if (n.kind === "folder") folders.push(n);
+    else files.push(n);
   }
-  // Recurse
+
+  const fileOrder = getFileOrderFn(folderPath);
+  if (fileOrder.length > 0) {
+    const idx = new Map<string, number>();
+    fileOrder.forEach((id, i) => idx.set(id, i));
+    const ordered: TreeNode[] = [];
+    const rest: TreeNode[] = [];
+    for (const n of files) {
+      if (n.file && idx.has(n.file.id)) ordered.push(n);
+      else rest.push(n);
+    }
+    ordered.sort((a, b) => idx.get(a.file!.id)! - idx.get(b.file!.id)!);
+    files.length = 0;
+    files.push(...ordered, ...rest);
+  }
+
+  const subOrder = getSubOrderFn(folderPath);
+  if (subOrder.length > 0) {
+    const idx = new Map<string, number>();
+    subOrder.forEach((name, i) => idx.set(name, i));
+    const ordered: TreeNode[] = [];
+    const rest: TreeNode[] = [];
+    for (const n of folders) {
+      if (idx.has(n.name)) ordered.push(n);
+      else rest.push(n);
+    }
+    ordered.sort((a, b) => idx.get(a.name)! - idx.get(b.name)!);
+    folders.length = 0;
+    folders.push(...ordered, ...rest);
+  }
+
+  nodes.length = 0;
+  nodes.push(...folders, ...files);
+
+  // Recurse into each folder with that folder's own path as parent.
   for (const n of nodes) {
     if (n.kind === "folder" && n.children) {
-      applyFolderOrder(n.children, n.path, getOrder);
+      applyFolderOrder(n.children, n.path, getFileOrderFn, getSubOrderFn);
     }
   }
 }
@@ -136,7 +159,12 @@ export function FileTree({
   const files = useMemo(() => listWorkspaceFiles(), [fileListRev]);
   const tree = useMemo(() => {
     const t = buildTree(files);
-    applyFolderOrder(t, "", (path) => getFolderOrder(path));
+    applyFolderOrder(
+      t,
+      "",
+      (path) => getFolderOrder(path),
+      (path) => getSubfolderOrder(path),
+    );
     return t;
     // folderOrderRev is a trigger-only dep — the lookup closes over the
     // store's live state and re-reads on every tree rebuild.
@@ -341,6 +369,14 @@ export function FileTree({
     position: "above" | "below";
   } | null>(null);
 
+  // Between-folder drop target for folder reorder (#14). Activated when
+  // dragging a folder over another folder at the same parent level and
+  // the cursor is in the top- or bottom- edge zone (25%).
+  const [betweenFolderTarget, setBetweenFolderTarget] = useState<{
+    folderPath: string;
+    position: "above" | "below";
+  } | null>(null);
+
   // Move a file into a folder (or root if targetFolderPath is ""). No-op
   // if the file is already directly in that folder. Also migrates the
   // file's fileOrder entry from the source folder's order array to the
@@ -419,8 +455,26 @@ export function FileTree({
       // Accept only if the drag contains our MIME type.
       if (!e.dataTransfer.types.includes("application/stave-tree-item")) return;
       e.preventDefault();
+      e.stopPropagation();
       e.dataTransfer.dropEffect = "move";
-      setDropTarget(folderPath);
+      // Zone detection: top 25% = insert above, bottom 25% = insert below,
+      // middle 50% = drop INTO the folder. Only activate between-zones for
+      // folder-folder drags; we can't read payload here (dragover), so
+      // we speculatively set betweenFolderTarget + dropTarget and let the
+      // drop handler pick the right action from payload kind.
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const third = rect.height / 4;
+      if (y < third) {
+        setBetweenFolderTarget({ folderPath, position: "above" });
+        setDropTarget(null);
+      } else if (y > rect.height - third) {
+        setBetweenFolderTarget({ folderPath, position: "below" });
+        setDropTarget(null);
+      } else {
+        setBetweenFolderTarget(null);
+        setDropTarget(folderPath);
+      }
     },
     [],
   );
@@ -435,6 +489,7 @@ export function FileTree({
   const handleDragLeaveTree = useCallback(() => {
     setDropTarget(null);
     setBetweenTarget(null);
+    setBetweenFolderTarget(null);
   }, []);
 
   // Dragover on a FILE row — decide whether this is a reorder (within
@@ -463,6 +518,65 @@ export function FileTree({
     const i = filePath.lastIndexOf("/");
     return i < 0 ? "" : filePath.slice(0, i);
   }, []);
+
+  // Reorder a folder within its parent. `sourceFolderPath` is the drag
+  // source; `anchorFolderPath` is the folder being hovered over; `position`
+  // = where the source should land relative to the anchor. Both folders
+  // must share the same parent. No-op otherwise.
+  const reorderFolderWithin = useCallback(
+    (
+      sourceFolderPath: string,
+      anchorFolderPath: string,
+      position: "above" | "below",
+    ) => {
+      if (sourceFolderPath === anchorFolderPath) return;
+      const parentOf = (p: string) => {
+        const i = p.lastIndexOf("/");
+        return i < 0 ? "" : p.slice(0, i);
+      };
+      const nameOf = (p: string) => {
+        const i = p.lastIndexOf("/");
+        return i < 0 ? p : p.slice(i + 1);
+      };
+      const parent = parentOf(sourceFolderPath);
+      if (parent !== parentOf(anchorFolderPath)) return;
+      const sourceName = nameOf(sourceFolderPath);
+      const anchorName = nameOf(anchorFolderPath);
+      // Seed an order from the alphabetical list of siblings (derived
+      // from current files — each unique immediate-child folder under
+      // `parent`).
+      const prefix = parent ? parent + "/" : "";
+      const siblingNames = new Set<string>();
+      for (const f of files) {
+        if (!f.path.startsWith(prefix)) continue;
+        const rest = f.path.slice(prefix.length);
+        const slash = rest.indexOf("/");
+        if (slash < 0) continue; // file, not a folder
+        siblingNames.add(rest.slice(0, slash));
+      }
+      const existing = getSubfolderOrder(parent).filter((n) => siblingNames.has(n));
+      const base =
+        existing.length > 0
+          ? [
+              ...existing,
+              ...[...siblingNames]
+                .filter((n) => !existing.includes(n))
+                .sort(),
+            ]
+          : [...siblingNames].sort();
+      const without = base.filter((n) => n !== sourceName);
+      const anchorIdx = without.indexOf(anchorName);
+      if (anchorIdx < 0) return;
+      const insertAt = position === "above" ? anchorIdx : anchorIdx + 1;
+      const next = [
+        ...without.slice(0, insertAt),
+        sourceName,
+        ...without.slice(insertAt),
+      ];
+      setSubfolderOrder(parent, next);
+    },
+    [files],
+  );
 
   // Reorder `fileId` within its parent folder relative to `anchorId`.
   // Cross-folder drops are NOT handled here — those still go through
@@ -545,11 +659,27 @@ export function FileTree({
       e.preventDefault();
       e.stopPropagation();
       const raw = e.dataTransfer.getData("application/stave-tree-item");
+      const pendingBetween = betweenFolderTarget;
+      setBetweenFolderTarget(null);
       if (!raw) return;
       try {
         const payload = JSON.parse(raw) as
           | { kind: "file"; fileId: string }
           | { kind: "folder"; folderPath: string };
+        // Folder-on-folder drop AND between-zone active → reorder.
+        if (
+          payload.kind === "folder" &&
+          pendingBetween &&
+          pendingBetween.folderPath === targetFolderPath
+        ) {
+          reorderFolderWithin(
+            payload.folderPath,
+            targetFolderPath,
+            pendingBetween.position,
+          );
+          setDropTarget(null);
+          return;
+        }
         if (payload.kind === "file") {
           moveFileToFolder(payload.fileId, targetFolderPath);
         } else if (payload.kind === "folder") {
@@ -560,7 +690,7 @@ export function FileTree({
       }
       setDropTarget(null);
     },
-    [moveFileToFolder, moveFolderToFolder],
+    [moveFileToFolder, moveFolderToFolder, betweenFolderTarget, reorderFolderWithin],
   );
 
   return (
@@ -639,6 +769,7 @@ export function FileTree({
             onNewFolder={handleNewFolder}
             dropTarget={dropTarget}
             betweenTarget={betweenTarget}
+            betweenFolderTarget={betweenFolderTarget}
             onDragStart={handleDragStart}
             onDragOverFolder={handleDragOverFolder}
             onDropOnFolder={handleDrop}
@@ -711,6 +842,7 @@ interface TreeItemProps {
   // Drag-drop
   dropTarget: string | "__root__" | null;
   betweenTarget: { fileId: string; position: "above" | "below" } | null;
+  betweenFolderTarget: { folderPath: string; position: "above" | "below" } | null;
   onDragStart: (
     e: React.DragEvent,
     payload:
@@ -729,6 +861,9 @@ function TreeItem(props: TreeItemProps) {
   if (node.kind === "folder") {
     const collapsed = props.collapsedFolders.has(node.path);
     const isDropTarget = props.dropTarget === node.path;
+    const bf = props.betweenFolderTarget;
+    const showFAbove = bf?.folderPath === node.path && bf.position === "above";
+    const showFBelow = bf?.folderPath === node.path && bf.position === "below";
     return (
       <div>
         <div
@@ -747,6 +882,11 @@ function TreeItem(props: TreeItemProps) {
             ...styles.item,
             ...(isDropTarget ? styles.dropTarget : {}),
             paddingLeft: 8 + depth * 12,
+            boxShadow: showFAbove
+              ? "inset 0 2px 0 0 #7c7cff"
+              : showFBelow
+              ? "inset 0 -2px 0 0 #7c7cff"
+              : undefined,
           }}
           onClick={() => props.onToggleFolder(node.path)}
           onContextMenu={(e) => {
