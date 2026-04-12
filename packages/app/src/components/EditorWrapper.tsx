@@ -16,8 +16,15 @@ function HidePreloader() {
 
 export const StrudelEditorDynamic = dynamic(
   () =>
-    import("./StrudelEditorClient").then((mod) => {
-      // Return a wrapper that hides the preloader on mount
+    Promise.all([
+      import("./StrudelEditorClient"),
+      // Init the Yjs project doc + load persisted files from IndexedDB
+      // BEFORE the editor component mounts. This ensures seedWorkspaceFile
+      // sees persisted content and doesn't overwrite it with defaults.
+      import("@stave/editor").then(({ initProjectDoc }) =>
+        initProjectDoc("default"),
+      ),
+    ]).then(([mod]) => {
       const Original = mod.default;
       return function EditorWithPreloaderDismiss(props: Record<string, unknown>) {
         return (

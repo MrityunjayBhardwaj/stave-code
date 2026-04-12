@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   WorkspaceShell,
   createWorkspaceFile,
+  seedWorkspaceFile,
   getFile,
   subscribeToWorkspaceFile,
   registerRuntimeProvider,
@@ -213,13 +214,16 @@ function ensureProviders() {
 // ---------------------------------------------------------------------------
 
 function seedWorkspaceFiles(p5PresetId: string, hydraPresetId: string) {
-  createWorkspaceFile(
+  // Pattern files — persistence-aware: if the user edited code last session
+  // and it was saved to IndexedDB via the Yjs doc, seedWorkspaceFile returns
+  // the persisted version instead of overwriting with the bundled default.
+  seedWorkspaceFile(
     "pattern.strudel",
     "pattern.strudel",
     STRUDEL_CODE,
     "strudel",
   );
-  createWorkspaceFile(
+  seedWorkspaceFile(
     "pattern.sonicpi",
     "pattern.sonicpi",
     SONIC_PI_CODE,
