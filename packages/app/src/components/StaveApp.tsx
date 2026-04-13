@@ -33,8 +33,10 @@ import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
 import { SnapshotModal } from "./SnapshotModal";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchPalette } from "./WorkspaceSearchPalette";
+import { ActivityBar } from "./ActivityBar";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
+import { registerPanel } from "../panels/registry";
 import { listWorkspaceFiles } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 
@@ -61,7 +63,17 @@ interface StaveAppProps {
 export function StaveApp({ initialProject }: StaveAppProps) {
   const [activeProject, setActiveProject] = useState<ProjectMeta>(initialProject);
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // activePanelId drives which registered side-panel is visible. null =
+  // activity bar only, no panel. 'explorer' is the legacy file-tree view.
+  const [activePanelId, setActivePanelId] = useState<string | null>("explorer");
+  const sidebarCollapsed = activePanelId === null;
+  const setSidebarCollapsed = useCallback((updater: boolean | ((c: boolean) => boolean)) => {
+    setActivePanelId((current) => {
+      const collapsed = current === null;
+      const next = typeof updater === "function" ? updater(collapsed) : updater;
+      return next ? null : (current ?? "explorer");
+    });
+  }, []);
   const [switching, setSwitching] = useState(false);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -332,6 +344,32 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       keybinding: "mod+shift+f",
       run: () => setWorkspaceSearchOpen(true),
     }));
+    // Activity-bar panel registry — the panel body itself is rendered
+    // by StaveApp via activePanelId; registering here just gives the
+    // activity bar a button for it. The `render` callback is a stub
+    // that the dispatcher currently ignores in favour of inline JSX
+    // below — kept for future extension (external panel contributors).
+    unregs.push(registerPanel({
+      id: "explorer",
+      title: "Explorer",
+      icon: "▢",
+      order: 10,
+      render: () => null,
+    }));
+    unregs.push(registerPanel({
+      id: "search",
+      title: "Search",
+      icon: "⌕",
+      order: 20,
+      render: () => null,
+    }));
+    unregs.push(registerPanel({
+      id: "snapshots",
+      title: "Version History",
+      icon: "⟳",
+      order: 30,
+      render: () => null,
+    }));
     return () => { for (const u of unregs) u(); };
   }, [activeProject, handleRenameActiveProject, openSnapshotModal]);
 
@@ -378,22 +416,47 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       />
 
       <div style={styles.main}>
-        {!sidebarCollapsed ? (
+        <ActivityBar
+          activePanelId={activePanelId}
+          onSelect={setActivePanelId}
+        />
+        {activePanelId === "explorer" && (
           <FileTree
             projectName={activeProject.name}
             onOpenFile={handleOpenFile}
             activeFileId={activeFileId}
-            onToggleCollapse={() => setSidebarCollapsed(true)}
+            onToggleCollapse={() => setActivePanelId(null)}
           />
-        ) : (
-          <button
-            style={styles.collapsedStrip}
-            onClick={() => setSidebarCollapsed(false)}
-            title="Expand sidebar"
-            aria-label="Expand sidebar"
-          >
-            ▸
-          </button>
+        )}
+        {activePanelId === "search" && (
+          <div style={styles.panelRoot}>
+            <div style={styles.panelHeader}>SEARCH</div>
+            <div style={styles.panelBody}>
+              <div style={styles.panelHint}>Press ⌘⇧F to open full-screen search</div>
+              <button
+                style={styles.panelBtn}
+                onClick={() => setWorkspaceSearchOpen(true)}
+              >
+                Search in Files…
+              </button>
+            </div>
+          </div>
+        )}
+        {activePanelId === "snapshots" && (
+          <div style={styles.panelRoot}>
+            <div style={styles.panelHeader}>VERSION HISTORY</div>
+            <div style={styles.panelBody}>
+              <div style={styles.panelHint}>
+                Auto-saves every 60s.
+              </div>
+              <button
+                style={styles.panelBtn}
+                onClick={openSnapshotModal}
+              >
+                Manage Snapshots…
+              </button>
+            </div>
+          </div>
         )}
 
         <div style={styles.editorArea}>
@@ -504,5 +567,45 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#8888aa",
     fontFamily: "system-ui, -apple-system, sans-serif",
     fontSize: 14,
+  },
+  panelRoot: {
+    width: 240,
+    height: "100%",
+    background: "#14142a",
+    borderRight: "1px solid #2a2a4a",
+    display: "flex",
+    flexDirection: "column",
+    fontFamily: "system-ui, -apple-system, sans-serif",
+  },
+  panelHeader: {
+    padding: "10px 14px",
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: 0.8,
+    color: "#9a9ac0",
+    borderBottom: "1px solid #2a2a4a",
+  },
+  panelBody: {
+    padding: "12px 14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    flex: 1,
+  },
+  panelHint: {
+    fontSize: 11,
+    color: "#8888aa",
+    lineHeight: 1.5,
+  },
+  panelBtn: {
+    background: "#2a2a55",
+    border: "1px solid #3a3a5a",
+    borderRadius: 4,
+    color: "#e8e8f0",
+    padding: "6px 12px",
+    fontSize: 12,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    alignSelf: "flex-start",
   },
 };
