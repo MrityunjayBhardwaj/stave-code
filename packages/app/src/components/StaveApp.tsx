@@ -297,6 +297,24 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
 
+  const handleRuntimeStateChange = useCallback(
+    (s: { isPlaying: boolean; bpm?: number; error: string | null } | null) => {
+      setActiveRuntime((prev) => {
+        if (!s) return prev === null ? prev : null;
+        if (
+          prev &&
+          prev.isPlaying === s.isPlaying &&
+          prev.bpm === s.bpm &&
+          prev.error === s.error
+        ) {
+          return prev; // same values — skip re-render
+        }
+        return { isPlaying: s.isPlaying, bpm: s.bpm, error: s.error };
+      });
+    },
+    [],
+  );
+
   const refreshProjects = useCallback(async () => {
     setProjects(await listProjects());
   }, []);
@@ -720,9 +738,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 key={activeProject.id}
                 shellRef={shellRef}
                 onActiveFileChange={setActiveFileId}
-                onActiveRuntimeStateChange={(s) =>
-                  setActiveRuntime(s ? { isPlaying: s.isPlaying, bpm: s.bpm, error: s.error } : null)
-                }
+                onActiveRuntimeStateChange={handleRuntimeStateChange}
                 onTabContextMenu={(tab, x, y) => {
                   const fileId =
                     tab.kind === "editor" || tab.kind === "preview"
