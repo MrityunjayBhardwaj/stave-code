@@ -177,10 +177,17 @@ export function addInlineViewZones(
         trackScheduler = buffered
       }
 
+      // Prefer the per-track AnalyserNode published by the engine. If it's
+      // missing (producer not wired for this engine, e.g. Sonic Pi today — see
+      // .planning/phases/T-track-analyser/T-03-PARKED-sonic-pi.md), fall back
+      // to the global master-mix analyser so the viz still reacts to SOMETHING
+      // rather than sitting dead. Previous code returned `undefined` whenever
+      // a trackStream existed without a trackAnalyser, which silently severed
+      // audio for every Sonic Pi inline viz.
       const trackAnalyser = components.audio?.trackAnalysers?.get(trackKey)
       const zoneAudio = trackAnalyser && audioCtx
         ? { analyser: trackAnalyser, audioCtx, trackAnalysers: components.audio?.trackAnalysers }
-        : (trackStream ? undefined : components.audio)
+        : components.audio
 
       const zoneComponents: Partial<EngineComponents> = {
         ...components,

@@ -7744,7 +7744,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions) {
         trackScheduler = buffered;
       }
       const trackAnalyser = components.audio?.trackAnalysers?.get(trackKey);
-      const zoneAudio = trackAnalyser && audioCtx ? { analyser: trackAnalyser, audioCtx, trackAnalysers: components.audio?.trackAnalysers } : trackStream ? void 0 : components.audio;
+      const zoneAudio = trackAnalyser && audioCtx ? { analyser: trackAnalyser, audioCtx, trackAnalysers: components.audio?.trackAnalysers } : components.audio;
       const zoneComponents = {
         ...components,
         ...trackStream ? { streaming: { hapStream: trackStream } } : {},
