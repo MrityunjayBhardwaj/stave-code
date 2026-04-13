@@ -983,8 +983,24 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
       >
         {tree.length === 0 && (
           <div style={styles.empty}>
-            <div>Empty project</div>
-            <div style={styles.emptyHint}>Click + to add a file</div>
+            <div style={styles.emptyTitle}>This project is empty</div>
+            <div style={styles.emptyHint}>
+              Press <Kbd>⌘N</Kbd> for a new project, or drop files to start.
+            </div>
+            <div style={styles.emptyActions}>
+              <button
+                style={styles.emptyAction}
+                onClick={() => handleNewFile("")}
+              >
+                + New file
+              </button>
+              <button
+                style={styles.emptyAction}
+                onClick={() => handleNewFolder("")}
+              >
+                + New folder
+              </button>
+            </div>
           </div>
         )}
         {tree.map((node) => (
@@ -1283,6 +1299,24 @@ function ensureCtxMenuStyle() {
   ctxMenuStyleInjected = true;
 }
 
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd
+      style={{
+        background: "var(--bg-input)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 3,
+        padding: "1px 5px",
+        fontSize: 10,
+        fontFamily: '"JetBrains Mono", monospace',
+        color: "var(--text-secondary)",
+      }}
+    >
+      {children}
+    </kbd>
+  );
+}
+
 function ContextMenu(props: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x: props.state.x, y: props.state.y });
@@ -1473,15 +1507,41 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "4px 0",
   },
   empty: {
-    padding: "20px 12px",
+    padding: "28px 16px",
     textAlign: "center" as const,
     color: "var(--text-muted)",
     fontSize: 12,
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--text-secondary)",
   },
   emptyHint: {
-    marginTop: 4,
     fontSize: 11,
-    color: "var(--border-separator)",
+    color: "var(--text-muted)",
+    lineHeight: 1.5,
+  },
+  emptyActions: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
+    marginTop: 6,
+    width: "100%",
+  },
+  emptyAction: {
+    background: "var(--bg-active)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: 4,
+    color: "var(--text-primary)",
+    padding: "6px 10px",
+    fontSize: 12,
+    cursor: "pointer",
+    fontFamily: "inherit",
   },
   item: {
     padding: "4px 8px",
