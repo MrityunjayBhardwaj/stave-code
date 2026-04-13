@@ -457,6 +457,20 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       run: () => { cycleEditorTheme(); },
     }));
     unregs.push(registerCommand({
+      id: "stave.view.splitRight",
+      title: "Split Editor Right",
+      category: "View",
+      keybinding: "mod+\\",
+      run: () => { shellRef.current?.splitActiveGroup?.("east"); },
+    }));
+    unregs.push(registerCommand({
+      id: "stave.view.splitDown",
+      title: "Split Editor Down",
+      category: "View",
+      keybinding: "mod+shift+\\",
+      run: () => { shellRef.current?.splitActiveGroup?.("south"); },
+    }));
+    unregs.push(registerCommand({
       id: "stave.view.shortcuts",
       title: "Keyboard Shortcuts",
       category: "View",

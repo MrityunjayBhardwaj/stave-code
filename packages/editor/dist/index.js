@@ -8922,14 +8922,14 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
     [groups, layout, onTabClose]
   );
   const handleSplit = useCallback(
-    (groupId) => {
+    (groupId, direction = "east") => {
       const newId = generateGroupId();
       setGroups((prev) => {
         const next = new Map(prev);
         next.set(newId, { id: newId, tabs: [], activeTabId: null });
         return next;
       });
-      setLayout((prev) => insertGroup(prev, groupId, "east", newId));
+      setLayout((prev) => insertGroup(prev, groupId, direction, newId));
     },
     []
   );
@@ -9675,10 +9675,20 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                           "button",
                           {
                             "data-testid": `group-split-${group.id}`,
-                            onClick: () => handleSplit(group.id),
-                            title: "Split right",
+                            onClick: () => handleSplit(group.id, "east"),
+                            title: "Split right (\u2318\\\\)",
                             style: actionBtnStyle,
                             children: "\u2502"
+                          }
+                        ),
+                        /* @__PURE__ */ jsx(
+                          "button",
+                          {
+                            "data-testid": `group-split-down-${group.id}`,
+                            onClick: () => handleSplit(group.id, "south"),
+                            title: "Split down (\u2318\u21E7\\\\)",
+                            style: actionBtnStyle,
+                            children: "\u2500"
                           }
                         ),
                         canClose && /* @__PURE__ */ jsx(
@@ -9939,9 +9949,13 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
         if (!ownerGroup) return;
         const victims = ownerGroup.tabs.map((t) => t.id);
         for (const tid of victims) closeTabById(tid);
+      },
+      splitActiveGroup: (direction = "east") => {
+        if (!activeGroupId) return;
+        handleSplit(activeGroupId, direction);
       }
     }),
-    [groups, activeGroupId, closeTabById]
+    [groups, activeGroupId, closeTabById, handleSplit]
   );
   return /* @__PURE__ */ jsxs(
     "div",

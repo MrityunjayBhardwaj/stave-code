@@ -257,6 +257,14 @@ export interface WorkspaceShellHandle {
 
   /** Close every tab in the tab's group. */
   closeAllTabsInGroup(tabId: string): void
+
+  /**
+   * Split the currently active group by inserting a new empty group in
+   * the given direction (east = right, south = below). Focus stays on
+   * the original group; the new group is a drop target for dragged
+   * tabs. No-op if there is no active group.
+   */
+  splitActiveGroup(direction?: 'east' | 'south'): void
 }
 
 export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellProps>(function WorkspaceShell({
@@ -511,14 +519,14 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
    * group; the new group becomes available as a drop target.
    */
   const handleSplit = useCallback(
-    (groupId: string) => {
+    (groupId: string, direction: 'east' | 'south' = 'east') => {
       const newId = generateGroupId()
       setGroups((prev) => {
         const next = new Map(prev)
         next.set(newId, { id: newId, tabs: [], activeTabId: null })
         return next
       })
-      setLayout((prev) => layoutInsertGroup(prev, groupId, 'east', newId))
+      setLayout((prev) => layoutInsertGroup(prev, groupId, direction, newId))
     },
     [],
   )
@@ -1635,11 +1643,19 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             >
               <button
                 data-testid={`group-split-${group.id}`}
-                onClick={() => handleSplit(group.id)}
-                title="Split right"
+                onClick={() => handleSplit(group.id, 'east')}
+                title="Split right (⌘\\)"
                 style={actionBtnStyle}
               >
                 {'\u2502'}
+              </button>
+              <button
+                data-testid={`group-split-down-${group.id}`}
+                onClick={() => handleSplit(group.id, 'south')}
+                title="Split down (⌘⇧\\)"
+                style={actionBtnStyle}
+              >
+                {'\u2500'}
               </button>
               {canClose && (
                 <button
@@ -1918,8 +1934,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         const victims = ownerGroup.tabs.map((t) => t.id)
         for (const tid of victims) closeTabById(tid)
       },
+      splitActiveGroup: (direction: 'east' | 'south' = 'east') => {
+        if (!activeGroupId) return
+        handleSplit(activeGroupId, direction)
+      },
     }),
-    [groups, activeGroupId, closeTabById],
+    [groups, activeGroupId, closeTabById, handleSplit],
   )
 
   return (

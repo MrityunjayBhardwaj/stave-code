@@ -2475,6 +2475,13 @@ interface WorkspaceShellHandle {
     closeOtherTabs(tabId: string): void;
     /** Close every tab in the tab's group. */
     closeAllTabsInGroup(tabId: string): void;
+    /**
+     * Split the currently active group by inserting a new empty group in
+     * the given direction (east = right, south = below). Focus stays on
+     * the original group; the new group is a drop target for dragged
+     * tabs. No-op if there is no active group.
+     */
+    splitActiveGroup(direction?: 'east' | 'south'): void;
 }
 declare const WorkspaceShell: React.ForwardRefExoticComponent<WorkspaceShellProps & React.RefAttributes<WorkspaceShellHandle>>;
 
