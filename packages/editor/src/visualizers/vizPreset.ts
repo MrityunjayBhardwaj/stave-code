@@ -27,6 +27,11 @@ export interface VizPreset {
    *  relative to the full canvas. When set, the inline zone shows only
    *  this sub-region (scaled to fill). */
   cropRegion?: CropRegion
+  /** Native canvas dimensions the sketch renders at. If absent, the
+   *  default (1200×600) is used. Set this when your sketch calls
+   *  createCanvas(W, H) with specific values you want the inline viz
+   *  to respect — the crop region is interpreted in these coords. */
+  nativeSize?: { w: number; h: number }
 }
 
 // ---------------------------------------------------------------------------

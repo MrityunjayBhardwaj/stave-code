@@ -7322,27 +7322,6 @@ function clearEvalErrors(monaco, model) {
   monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
 }
 
-// src/visualizers/mountVizRenderer.ts
-function mountVizRenderer(container, source, components, size, onError) {
-  const renderer = typeof source === "function" ? source() : source;
-  renderer.mount(container, components, size, onError);
-  let lastW = size.w;
-  let lastH = size.h;
-  const ro = new ResizeObserver((entries) => {
-    const { width, height } = entries[0].contentRect;
-    if (width > 0 && height > 0 && (Math.abs(width - lastW) > 1 || Math.abs(height - lastH) > 1)) {
-      lastW = width;
-      lastH = height;
-      renderer.resize(width, height);
-    }
-  });
-  ro.observe(container);
-  return {
-    renderer,
-    disconnect: () => ro.disconnect()
-  };
-}
-
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
 var listeners = /* @__PURE__ */ new Set();
@@ -7541,24 +7520,49 @@ var VizPresetStore = {
 };
 
 // src/visualizers/viewZones.ts
-function applyCropRegion(container, crop, zoneHeight, contentWidth) {
-  const wrapper = container.querySelector("[data-viz-crop-wrapper]");
-  if (wrapper) {
-    const scaleX2 = 1 / crop.w;
-    const scaleY2 = 1 / crop.h;
-    wrapper.style.transform = `translate(${-crop.x * contentWidth * scaleX2}px, ${-crop.y * zoneHeight * scaleY2}px) scale(${scaleX2}, ${scaleY2})`;
-    wrapper.style.transformOrigin = "0 0";
-    return;
+var DEFAULT_NATIVE = { w: 1200, h: 600 };
+var MAX_ZONE_HEIGHT = 600;
+var MIN_ZONE_HEIGHT = 80;
+function nativeSizeFor(preset) {
+  const s = preset?.nativeSize;
+  if (s && s.w > 0 && s.h > 0) return { w: s.w, h: s.h };
+  return DEFAULT_NATIVE;
+}
+function computeLayout(contentW, native, crop) {
+  const cropW = Math.max(0.01, crop.w);
+  const cropH = Math.max(0.01, crop.h);
+  const scale2 = contentW / (cropW * native.w);
+  let zoneH = cropH * native.h * scale2;
+  if (zoneH > MAX_ZONE_HEIGHT) {
+    const clamped = MAX_ZONE_HEIGHT / (cropH * native.h);
+    return {
+      zoneH: MAX_ZONE_HEIGHT,
+      scale: clamped,
+      tx: -crop.x * native.w * clamped,
+      ty: -crop.y * native.h * clamped
+    };
   }
-  const cropWrapper = document.createElement("div");
-  cropWrapper.setAttribute("data-viz-crop-wrapper", "");
-  cropWrapper.style.cssText = `position:absolute;inset:0;overflow:hidden;transform-origin:0 0;`;
-  const scaleX = 1 / crop.w;
-  const scaleY = 1 / crop.h;
-  cropWrapper.style.transform = `translate(${-crop.x * contentWidth * scaleX}px, ${-crop.y * zoneHeight * scaleY}px) scale(${scaleX}, ${scaleY})`;
-  while (container.firstChild) cropWrapper.appendChild(container.firstChild);
-  container.style.position = "relative";
-  container.appendChild(cropWrapper);
+  if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT;
+  return {
+    zoneH,
+    scale: scale2,
+    tx: -crop.x * native.w * scale2,
+    ty: -crop.y * native.h * scale2
+  };
+}
+function applyLayout(container, canvas, layout) {
+  container.style.height = `${layout.zoneH ?? container.style.height}`;
+  let wrapper = container.querySelector("[data-viz-canvas-wrap]");
+  if (!wrapper && canvas) {
+    wrapper = document.createElement("div");
+    wrapper.setAttribute("data-viz-canvas-wrap", "");
+    wrapper.style.cssText = `position:absolute;top:0;left:0;transform-origin:0 0;`;
+    canvas.parentElement?.insertBefore(wrapper, canvas);
+    wrapper.appendChild(canvas);
+  }
+  if (wrapper) {
+    wrapper.style.transform = `translate(${layout.tx}px, ${layout.ty}px) scale(${layout.scale})`;
+  }
 }
 function createFloatingActionBar(editorDom) {
   const bar = document.createElement("div");
@@ -7612,6 +7616,7 @@ function createFloatingActionBar(editorDom) {
   guard.appendChild(bar);
   return bar;
 }
+var FULL_CROP = { x: 0, y: 0, w: 1, h: 1 };
 function addInlineViewZones(editor, components, vizDescriptors, actions) {
   const vizRequests = components.inlineViz?.vizRequests;
   if (!vizRequests || vizRequests.size === 0) {
@@ -7620,14 +7625,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions) {
     }, resume: () => {
     } };
   }
-  const zoneIds = [];
   const renderers = [];
-  const disconnects = [];
   const bufferedSchedulers = [];
   const zoneEntries = [];
-  const contentWidth = editor.getLayoutInfo().contentWidth;
   const audioCtx = components.audio?.audioCtx;
-  const zoneHeight = getVizConfig().inlineZoneHeight;
   editor.changeViewZones((accessor) => {
     for (const [trackKey, { vizId, afterLine }] of vizRequests) {
       const descriptor = resolveDescriptor(vizId, vizDescriptors);
@@ -7653,45 +7654,82 @@ function addInlineViewZones(editor, components, vizDescriptors, actions) {
           trackSchedulers: components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map()
         }
       };
+      const native = DEFAULT_NATIVE;
+      const crop = FULL_CROP;
+      const contentW = editor.getLayoutInfo().contentWidth || 400;
+      const layout = computeLayout(contentW, native, crop);
       const container = document.createElement("div");
       container.setAttribute("data-viz-zone", "");
-      container.style.cssText = `overflow:hidden;height:${zoneHeight}px;position:relative;width:${contentWidth || 400}px;`;
+      container.style.cssText = `overflow:hidden;height:${layout.zoneH}px;position:relative;`;
       const zoneId = accessor.addZone({
         afterLineNumber: afterLine,
-        heightInPx: zoneHeight,
+        heightInPx: layout.zoneH,
         domNode: container,
         suppressMouseDown: true
       });
-      zoneIds.push(zoneId);
-      const { renderer, disconnect } = mountVizRenderer(
-        container,
-        descriptor.factory,
-        zoneComponents,
-        { w: contentWidth || 400, h: zoneHeight },
-        console.error
-      );
+      const renderer = typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory;
+      try {
+        renderer.mount(container, zoneComponents, { w: native.w, h: native.h }, console.error);
+      } catch (e) {
+        console.error("[stave] viz mount failed:", e);
+      }
       renderers.push(renderer);
-      disconnects.push(disconnect);
-      zoneEntries.push({ afterLine, container, vizId, presetId: null });
+      const canvas = container.querySelector("canvas");
+      applyLayout(container, canvas, layout);
+      requestAnimationFrame(() => {
+        applyLayout(container, container.querySelector("canvas"), layout);
+      });
+      zoneEntries.push({
+        zoneId,
+        afterLine,
+        container,
+        canvas,
+        vizId,
+        presetId: null,
+        native,
+        crop
+      });
     }
   });
   const normalize = (s) => s.toLowerCase().replace(/[\s\-_]/g, "");
   void (async () => {
     try {
       const presets = await VizPresetStore.getAll();
-      for (const entry of zoneEntries) {
-        const normViz = normalize(entry.vizId);
-        const preset = presets.find((p) => normalize(p.name) === normViz);
-        if (preset) {
+      editor.changeViewZones((accessor) => {
+        for (const entry of zoneEntries) {
+          const normViz = normalize(entry.vizId);
+          const preset = presets.find((p) => normalize(p.name) === normViz) ?? null;
+          if (!preset) continue;
           entry.presetId = preset.id;
-          if (preset.cropRegion) {
-            applyCropRegion(entry.container, preset.cropRegion, zoneHeight, contentWidth || 400);
-          }
+          entry.native = nativeSizeFor(preset);
+          entry.crop = preset.cropRegion ?? FULL_CROP;
+          const contentW = editor.getLayoutInfo().contentWidth || 400;
+          const layout = computeLayout(contentW, entry.native, entry.crop);
+          entry.container.style.height = `${layout.zoneH}px`;
+          accessor.layoutZone(entry.zoneId);
+          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
         }
+      });
+      for (const entry of zoneEntries) {
+        const contentW = editor.getLayoutInfo().contentWidth || 400;
+        const layout = computeLayout(contentW, entry.native, entry.crop);
+        entry.container.style.height = `${layout.zoneH}px`;
+        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
       }
     } catch {
     }
   })();
+  const layoutChangeDisposable = editor.onDidLayoutChange?.(() => {
+    editor.changeViewZones((accessor) => {
+      for (const entry of zoneEntries) {
+        const contentW = editor.getLayoutInfo().contentWidth || 400;
+        const layout = computeLayout(contentW, entry.native, entry.crop);
+        entry.container.style.height = `${layout.zoneH}px`;
+        accessor.layoutZone(entry.zoneId);
+        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+      }
+    });
+  });
   const editorDom = editor.getDomNode?.();
   let floatingBar = null;
   let mouseMoveDisposable = null;
@@ -7746,13 +7784,13 @@ function addInlineViewZones(editor, components, vizDescriptors, actions) {
   return {
     cleanup() {
       mouseMoveDisposable?.dispose?.();
+      layoutChangeDisposable?.dispose?.();
       editorDom?.removeEventListener("mouseleave", mouseLeaveHandler);
       floatingBar?.remove();
-      disconnects.forEach((fn) => fn());
       renderers.forEach((r) => r.destroy());
       bufferedSchedulers.forEach((s) => s.dispose());
       editor.changeViewZones((accessor) => {
-        zoneIds.forEach((id) => accessor.removeZone(id));
+        zoneEntries.forEach((e) => accessor.removeZone(e.zoneId));
       });
     },
     pause() {
@@ -18350,6 +18388,29 @@ var SonicPiEngine2 = class {
     return bag;
   }
 };
+
+// src/visualizers/mountVizRenderer.ts
+function mountVizRenderer(container, source, components, size, onError) {
+  const renderer = typeof source === "function" ? source() : source;
+  renderer.mount(container, components, size, onError);
+  let lastW = size.w;
+  let lastH = size.h;
+  const ro = new ResizeObserver((entries) => {
+    const { width, height } = entries[0].contentRect;
+    if (width > 0 && height > 0 && (Math.abs(width - lastW) > 1 || Math.abs(height - lastH) > 1)) {
+      lastW = width;
+      lastH = height;
+      renderer.resize(width, height);
+    }
+  });
+  ro.observe(container);
+  return {
+    renderer,
+    disconnect: () => ro.disconnect()
+  };
+}
+
+// src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   const rendererRef = React.useRef(null);
   const components = {};

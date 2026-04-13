@@ -26,9 +26,18 @@ vi.mock('../visualizers/mountVizRenderer', () => ({
   })),
 }))
 
+// Shared mock renderer so tests can assert pause/resume calls across
+// all instances produced by the factory.
+const mockRenderer = {
+  mount: vi.fn(), update: vi.fn(), resize: vi.fn(),
+  pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(),
+}
+const mockPianorollFactory = vi.fn(() => mockRenderer)
+const mockScopeFactory = vi.fn(() => mockRenderer)
+
 const mockVizDescriptors = [
-  { id: 'pianoroll', label: 'Piano Roll', requires: ['streaming', 'queryable'] as (keyof EngineComponents)[], factory: () => ({ mount: vi.fn(), update: vi.fn(), resize: vi.fn(), pause: vi.fn(), resume: vi.fn(), destroy: vi.fn() }) },
-  { id: 'scope', label: 'Scope', requires: ['audio'] as (keyof EngineComponents)[], factory: () => ({ mount: vi.fn(), update: vi.fn(), resize: vi.fn(), pause: vi.fn(), resume: vi.fn(), destroy: vi.fn() }) },
+  { id: 'pianoroll', label: 'Piano Roll', requires: ['streaming', 'queryable'] as (keyof EngineComponents)[], factory: mockPianorollFactory },
+  { id: 'scope', label: 'Scope', requires: ['audio'] as (keyof EngineComponents)[], factory: mockScopeFactory },
 ]
 
 function makeEditor() {
@@ -93,7 +102,7 @@ describe('addInlineViewZones', () => {
     expect(changeViewZones).toHaveBeenCalled()
   })
 
-  it('adds a zone for each vizRequest with heightInPx 150', () => {
+  it('adds a zone for each vizRequest with computed height', () => {
     const { editor, addedZones } = makeEditor()
     const components = makeComponents(
       new Map([
@@ -105,9 +114,11 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addInlineViewZones(editor as any, components, mockVizDescriptors as any)
 
+    // Default native 1200×600, contentWidth 800, full crop →
+    // zoneH = 800 * (600/1200) = 400
     expect(addedZones).toHaveLength(2)
-    expect(addedZones[0].heightInPx).toBe(150)
-    expect(addedZones[1].heightInPx).toBe(150)
+    expect(addedZones[0].heightInPx).toBe(400)
+    expect(addedZones[1].heightInPx).toBe(400)
   })
 
   it('returns no-op InlineZoneHandle when no vizRequests', () => {
@@ -206,13 +217,8 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addInlineViewZones(editor as any, components, mockVizDescriptors as any)
 
-    expect(mountVizRenderer).toHaveBeenCalledWith(
-      expect.any(HTMLDivElement),
-      mockVizDescriptors[0].factory,
-      expect.any(Object),
-      expect.any(Object),
-      expect.any(Function)
-    )
+    expect(mockPianorollFactory).toHaveBeenCalled()
+    expect(mockRenderer.mount).toHaveBeenCalled()
   })
 
   it('resolves track-scoped scheduler from trackSchedulers', () => {
@@ -230,13 +236,13 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addInlineViewZones(editor as any, components, mockVizDescriptors as any)
 
-    // mountVizRenderer called twice; first call should have queryable.scheduler === mockScheduler
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const firstCallComponents = (mountVizRenderer as any).mock.calls[0][2]
-    expect(firstCallComponents.queryable.scheduler).toBe(mockScheduler)
+    // mount called per zone; first call's second arg (components)
+    // should carry the track-scoped scheduler.
+    const firstMountCall = (mockRenderer.mount as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(firstMountCall[1].queryable.scheduler).toBe(mockScheduler)
   })
 
-  it('uses editor.getLayoutInfo().contentWidth for initial size', () => {
+  it('passes native canvas size (not contentWidth) to renderer.mount', () => {
     const { editor } = makeEditor()
     const components = makeComponents(
       new Map([['$0', { vizId: 'pianoroll', afterLine: 1 }]])
@@ -245,8 +251,9 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addInlineViewZones(editor as any, components, mockVizDescriptors as any)
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((mountVizRenderer as any).mock.calls[0][3]).toEqual({ w: 800, h: 150 })
+    // Default native size is 1200×600
+    const firstMountCall = (mockRenderer.mount as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(firstMountCall[2]).toEqual({ w: 1200, h: 600 })
   })
 
   it('handle.pause() calls renderer.pause() on all renderers', () => {
@@ -261,9 +268,6 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle = addInlineViewZones(editor as any, components, mockVizDescriptors as any)
     handle.pause()
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockRenderer = (mountVizRenderer as any).mock.results[0].value.renderer
     expect(mockRenderer.pause).toHaveBeenCalled()
   })
 
@@ -279,9 +283,6 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle = addInlineViewZones(editor as any, components, mockVizDescriptors as any)
     handle.resume()
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mockRenderer = (mountVizRenderer as any).mock.results[0].value.renderer
     expect(mockRenderer.resume).toHaveBeenCalled()
   })
 
