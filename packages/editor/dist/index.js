@@ -9302,6 +9302,40 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
     () => allGroupIds(layout).length,
     [layout]
   );
+  const previewTabIds = useMemo(() => {
+    const out2 = [];
+    for (const g of groups.values()) {
+      for (const t of g.tabs) {
+        if (t.kind === "editor" && t.preview === true) {
+          out2.push({ tabId: t.id, fileId: t.fileId });
+        }
+      }
+    }
+    return out2;
+  }, [groups]);
+  useEffect(() => {
+    const unsubs = previewTabIds.map(
+      ({ tabId, fileId }) => subscribe(fileId, () => {
+        setGroups((prev) => {
+          let changed = false;
+          const next = new Map(prev);
+          for (const [gid, g] of prev) {
+            const nextTabs = g.tabs.map((t) => {
+              if (t.id !== tabId) return t;
+              if (t.kind !== "editor" || !t.preview) return t;
+              changed = true;
+              return { ...t, preview: false };
+            });
+            if (changed) next.set(gid, { ...g, tabs: nextTabs });
+          }
+          return changed ? next : prev;
+        });
+      })
+    );
+    return () => {
+      for (const u of unsubs) u();
+    };
+  }, [previewTabIds]);
   useImperativeHandle(
     forwardedRef,
     () => ({
