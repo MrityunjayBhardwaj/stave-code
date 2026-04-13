@@ -4175,6 +4175,12 @@ var StrudelEngine = class {
     // Reference to superdough audio controller (set during init)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.audioController = null;
+    // Per-track AnalyserNodes keyed by captureId, side-tapped off the
+    // superdough Orbit each captured pattern plays through.
+    this.trackAnalysers = /* @__PURE__ */ new Map();
+    // The orbit each tracked analyser is tapped from — lets re-evaluate reuse
+    // existing analysers when the captureId/orbit pair hasn't changed.
+    this.trackOrbit = /* @__PURE__ */ new Map();
     // Code from the last successful evaluate() — used by buildVizRequestsWithLines
     this.lastEvaluatedCode = "";
     // Pattern IR from the last successful evaluate() — derived by propagation
@@ -4322,6 +4328,7 @@ var StrudelEngine = class {
           });
         }
         this.vizRequests = capturedVizRequests;
+        this.rebuildTrackAnalysers(capturedPatterns);
         const irBag = propagate(
           { strudelCode: code },
           [StrudelParseSystem, IREventCollectSystem]
@@ -4358,7 +4365,11 @@ var StrudelEngine = class {
       streaming: { hapStream: this.hapStream }
     };
     if (this.analyserNode && this.audioCtx) {
-      bag.audio = { analyser: this.analyserNode, audioCtx: this.audioCtx };
+      bag.audio = {
+        analyser: this.analyserNode,
+        audioCtx: this.audioCtx,
+        trackAnalysers: this.trackAnalysers.size > 0 ? this.trackAnalysers : void 0
+      };
     }
     bag.queryable = {
       scheduler: this.getPatternScheduler(),
@@ -4499,8 +4510,97 @@ var StrudelEngine = class {
     this.repl?.scheduler?.stop();
     this.hapStream.dispose();
     this.analyserNode?.disconnect();
+    for (const analyser of this.trackAnalysers.values()) {
+      try {
+        analyser.disconnect();
+      } catch {
+      }
+    }
+    this.trackAnalysers.clear();
+    this.trackOrbit.clear();
     this.initialized = false;
     this.repl = null;
+  }
+  /**
+   * Query a pattern for its first non-silent hap within [0, lookahead) cycles
+   * and return the orbit it uses. Default orbit is 1 (superdough's default).
+   * Returns 1 for silent patterns — falls back to orbit 1 just like superdough.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolveOrbit(pattern) {
+    const tryArc = (begin, end) => {
+      try {
+        const haps = pattern.queryArc(begin, end);
+        for (const h of haps) {
+          const o = h?.value?.orbit;
+          if (typeof o === "number") return o;
+        }
+      } catch {
+      }
+      return null;
+    };
+    return tryArc(0, 1) ?? tryArc(0, 4) ?? 1;
+  }
+  /**
+   * Reconcile trackAnalysers against capturedPatterns.
+   * - Creates analysers for new captureIds, tapped off their orbit's GainNode.
+   * - Reuses analysers when (captureId, orbit) is unchanged.
+   * - Rewires when a captureId's orbit changed (disconnect old, tap new).
+   * - Removes+disconnects analysers for captureIds no longer present.
+   *
+   * Safe to call repeatedly. No-op if audioController isn't available yet.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rebuildTrackAnalysers(capturedPatterns) {
+    if (!this.audioController || !this.audioCtx) return;
+    const seen = /* @__PURE__ */ new Set();
+    for (const [captureId, pattern] of capturedPatterns) {
+      seen.add(captureId);
+      const orbit = this.resolveOrbit(pattern);
+      const existingOrbit = this.trackOrbit.get(captureId);
+      const existingAnalyser = this.trackAnalysers.get(captureId);
+      if (existingAnalyser && existingOrbit === orbit) continue;
+      let orbitNode = null;
+      try {
+        orbitNode = this.audioController.getOrbit(orbit, [0, 1]);
+      } catch (err2) {
+        console.warn(`[stave] Could not resolve superdough orbit ${orbit} for "${captureId}":`, err2);
+      }
+      const orbitOutput = orbitNode?.output;
+      if (!orbitOutput) {
+        continue;
+      }
+      const analyser = existingAnalyser ?? this.audioCtx.createAnalyser();
+      if (!existingAnalyser) {
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.8;
+      } else {
+        try {
+          analyser.disconnect();
+        } catch {
+        }
+      }
+      try {
+        orbitOutput.connect(analyser);
+      } catch (err2) {
+        console.warn(`[stave] Could not tap orbit ${orbit} for "${captureId}":`, err2);
+        continue;
+      }
+      this.trackAnalysers.set(captureId, analyser);
+      this.trackOrbit.set(captureId, orbit);
+    }
+    for (const captureId of [...this.trackAnalysers.keys()]) {
+      if (seen.has(captureId)) continue;
+      const a = this.trackAnalysers.get(captureId);
+      if (a) {
+        try {
+          a.disconnect();
+        } catch {
+        }
+      }
+      this.trackAnalysers.delete(captureId);
+      this.trackOrbit.delete(captureId);
+    }
   }
 };
 var P5VizRenderer = class {

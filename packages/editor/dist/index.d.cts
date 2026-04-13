@@ -555,6 +555,8 @@ declare class StrudelEngine implements LiveCodingEngine {
     private trackSchedulers;
     private vizRequests;
     private audioController;
+    private trackAnalysers;
+    private trackOrbit;
     private lastEvaluatedCode;
     private lastPatternIR;
     private lastIREvents;
@@ -603,6 +605,22 @@ declare class StrudelEngine implements LiveCodingEngine {
     /** Returns all sound names registered after init() — useful for editor autocompletion. */
     getSoundNames(): string[];
     dispose(): void;
+    /**
+     * Query a pattern for its first non-silent hap within [0, lookahead) cycles
+     * and return the orbit it uses. Default orbit is 1 (superdough's default).
+     * Returns 1 for silent patterns — falls back to orbit 1 just like superdough.
+     */
+    private resolveOrbit;
+    /**
+     * Reconcile trackAnalysers against capturedPatterns.
+     * - Creates analysers for new captureIds, tapped off their orbit's GainNode.
+     * - Reuses analysers when (captureId, orbit) is unchanged.
+     * - Rewires when a captureId's orbit changed (disconnect old, tap new).
+     * - Removes+disconnects analysers for captureIds no longer present.
+     *
+     * Safe to call repeatedly. No-op if audioController isn't available yet.
+     */
+    private rebuildTrackAnalysers;
 }
 
 /**
