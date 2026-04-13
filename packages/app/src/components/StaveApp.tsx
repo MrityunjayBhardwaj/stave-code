@@ -34,6 +34,7 @@ import { SnapshotModal } from "./SnapshotModal";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchPalette } from "./WorkspaceSearchPalette";
 import { ActivityBar } from "./ActivityBar";
+import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
@@ -166,6 +167,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   //   file in the tree.
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
+  const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
 
   const refreshProjects = useCallback(async () => {
     setProjects(await listProjects());
@@ -467,6 +469,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
               key={activeProject.id}
               shellRef={shellRef}
               onActiveFileChange={setActiveFileId}
+              onActiveRuntimeStateChange={(s) =>
+                setActiveRuntime(s ? { isPlaying: s.isPlaying, bpm: s.bpm, error: s.error } : null)
+              }
             />
           )}
         </div>
@@ -496,6 +501,18 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onSaveNew={handleSaveSnapshot}
         onRestore={handleRestoreSnapshot}
         onDelete={handleDeleteSnapshot}
+      />
+
+      <StatusBar
+        projectName={activeProject.name}
+        activeFilePath={
+          activeFileId
+            ? listWorkspaceFiles().find((f) => f.id === activeFileId)?.path ?? null
+            : null
+        }
+        runtime={activeRuntime}
+        canUndo={undoState.canUndo}
+        canRedo={undoState.canRedo}
       />
 
       <CommandPalette

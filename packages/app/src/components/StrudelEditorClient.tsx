@@ -51,11 +51,23 @@ function ensureProviders() {
 interface StrudelEditorClientProps {
   shellRef?: React.RefObject<WorkspaceShellHandle | null>;
   onActiveFileChange?: (fileId: string | null) => void;
+  /**
+   * Reports the runtime state (playing / bpm / error) for the currently
+   * active editor tab, or null when the active tab has no runtime (viz
+   * editor, markdown, unknown). StaveApp uses this to drive the status bar.
+   */
+  onActiveRuntimeStateChange?: (state: {
+    fileId: string;
+    isPlaying: boolean;
+    bpm?: number;
+    error: string | null;
+  } | null) => void;
 }
 
 export default function StrudelEditorClient({
   shellRef,
   onActiveFileChange,
+  onActiveRuntimeStateChange,
 }: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
@@ -346,6 +358,28 @@ export default function StrudelEditorClient({
     });
   }, [shellRef]);
 
+  // Whenever runtimeStates change for the currently-active fileId, push
+  // the fresh state up to the status bar. Tracked separately from tab
+  // switches because `play` / `stop` / error events mutate runtimeStates
+  // without changing the active tab.
+  const activeFileIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!onActiveRuntimeStateChange) return;
+    const fid = activeFileIdRef.current;
+    if (!fid) return;
+    const st = runtimeStates.get(fid);
+    onActiveRuntimeStateChange(
+      st
+        ? {
+            fileId: fid,
+            isPlaying: st.isPlaying,
+            bpm: st.bpm,
+            error: st.error ? st.error.message : null,
+          }
+        : null,
+    );
+  }, [runtimeStates, onActiveRuntimeStateChange]);
+
   return (
     <WorkspaceShell
       ref={shellRef}
@@ -357,13 +391,30 @@ export default function StrudelEditorClient({
       previewProviderFor={previewProviderFor}
       onTabClose={handleTabClose}
       onSaveFile={handleSaveFile}
-      onActiveTabChange={(tab) =>
-        onActiveFileChange?.(
+      onActiveTabChange={(tab) => {
+        const fid =
           tab && (tab.kind === "editor" || tab.kind === "preview")
             ? tab.fileId
+            : null;
+        activeFileIdRef.current = fid;
+        onActiveFileChange?.(fid);
+        if (!onActiveRuntimeStateChange) return;
+        if (!fid) {
+          onActiveRuntimeStateChange(null);
+          return;
+        }
+        const st = runtimeStates.get(fid);
+        onActiveRuntimeStateChange(
+          st
+            ? {
+                fileId: fid,
+                isPlaying: st.isPlaying,
+                bpm: st.bpm,
+                error: st.error ? st.error.message : null,
+              }
             : null,
-        )
-      }
+        );
+      }}
     />
   );
 }
