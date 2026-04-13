@@ -49,6 +49,7 @@ import {
 } from "@stave/editor";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 import { EditorSettingsModal } from "./EditorSettingsModal";
+import { CropPopup } from "./CropPopup";
 import { DialogHost } from "./DialogHost";
 import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
@@ -106,6 +107,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
+  const [cropTarget, setCropTarget] = useState<{ vizId: string; presetId: string } | null>(null);
 
   // Apply persisted theme on first mount so the user's choice survives
   // reloads. Runs once — later theme changes go through toggleEditorTheme.
@@ -762,8 +764,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                   showToast(`Viz file "${vizId}" not found in workspace`, "error");
                 }}
                 onCropViz={(vizId, presetId) => {
-                  // TODO: open crop popup (phase 2 of this feature)
-                  showToast(`Crop for "${vizId}" — coming soon`, "info");
+                  if (presetId) {
+                    setCropTarget({ vizId, presetId });
+                  } else {
+                    showToast(`No preset found for "${vizId}" — save it first`, "error");
+                  }
                 }}
               />
             )}
@@ -872,6 +877,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         open={editorSettingsOpen}
         onClose={() => setEditorSettingsOpen(false)}
       />
+
+      {cropTarget && (
+        <CropPopup
+          vizId={cropTarget.vizId}
+          presetId={cropTarget.presetId}
+          onClose={() => setCropTarget(null)}
+        />
+      )}
 
       <DialogHost />
 
