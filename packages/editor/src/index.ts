@@ -117,6 +117,7 @@ export {
   canRedo,
   subscribeToUndoState,
   resetUndoManager,
+  withStructBatch,
 } from './workspace/undoManager'
 export {
   saveSnapshot,

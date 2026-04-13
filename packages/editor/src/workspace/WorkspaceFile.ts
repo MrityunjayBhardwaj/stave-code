@@ -123,20 +123,45 @@ let filesMapObserverWired = false
 function ensureFilesMapObserver(): void {
   if (filesMapObserverWired) return
   const filesMap = getFilesMap()
-  filesMap.observe((event) => {
+  // observeDeep so nested changes (inner fileMap's path/meta keys
+  // mutating — e.g. after an undo that reverts a rename) also trigger
+  // snapshot rebuild + notify. Without deep observation, Y.Doc state
+  // would flip but the cached snapshot and UI would stay stale.
+  filesMap.observeDeep((events) => {
     let anyStructuralChange = false
-    for (const [key, change] of event.changes.keys) {
-      if (change.action === 'add' || change.action === 'update') {
-        const fileMap = filesMap.get(key) as Y.Map<unknown>
-        const ytext = fileMap.get('content') as Y.Text
-        rebuildSnapshot(key)
-        wireTextObserver(key, ytext)
-        notify(key)
-        anyStructuralChange = true
-      } else if (change.action === 'delete') {
-        unwireTextObserver(key)
-        cachedSnapshots.delete(key)
-        notify(key)
+    for (const event of events) {
+      if (event.target === filesMap) {
+        // Structural change on the top-level map.
+        const mapEvent = event as Y.YMapEvent<Y.Map<unknown>>
+        for (const [key, change] of mapEvent.changes.keys) {
+          if (change.action === 'add' || change.action === 'update') {
+            const fileMap = filesMap.get(key) as Y.Map<unknown>
+            const ytext = fileMap.get('content') as Y.Text
+            rebuildSnapshot(key)
+            wireTextObserver(key, ytext)
+            notify(key)
+            anyStructuralChange = true
+          } else if (change.action === 'delete') {
+            unwireTextObserver(key)
+            cachedSnapshots.delete(key)
+            notify(key)
+            anyStructuralChange = true
+          }
+        }
+        continue
+      }
+      // Skip Y.Text change events — wireTextObserver already handles
+      // those and tests assert a single notification per content change.
+      if (event.target instanceof Y.Text) continue
+      // Nested change — an inner fileMap's field (path / meta) was
+      // mutated. Walk the path to find the owning fileId so we can
+      // invalidate just that snapshot.
+      const path = event.path
+      const ownerId = path.length > 0 ? String(path[0]) : null
+      if (!ownerId) continue
+      if (filesMap.has(ownerId)) {
+        rebuildSnapshot(ownerId)
+        notify(ownerId)
         anyStructuralChange = true
       }
     }

@@ -17,6 +17,20 @@ import { getActiveDoc } from './projectDoc'
 /** Sentinel origin for structural transactions — pass as second arg to doc.transact. */
 export const STRUCT_ORIGIN = Symbol.for('stave:struct')
 
+/**
+ * Run `fn` inside a single structural transaction so every store
+ * mutation it triggers (rename + folder-order updates, etc.) collapses
+ * into ONE undo stack item instead of fanning into N items. Nested
+ * transacts piggyback on the outer one — callers just call the
+ * existing store functions as usual.
+ */
+export function withStructBatch<T>(fn: () => T): T {
+  const doc = getActiveDoc()
+  let out: T | undefined
+  doc.transact(() => { out = fn() }, STRUCT_ORIGIN)
+  return out as T
+}
+
 type Listener = () => void
 
 let active: {
@@ -31,10 +45,28 @@ function ensureUndoManager(): Y.UndoManager {
   const files = doc.getMap('files') as Y.Map<Y.Map<unknown>>
   const fileOrder = doc.getMap('fileOrder') as Y.Map<Y.Array<string>>
   const subfolderOrder = doc.getMap('subfolderOrder') as Y.Map<Y.Array<string>>
+  // Include every existing inner file-map in the scope so deep changes
+  // to a file's `path` / `meta` fields are captured too. Y.UndoManager's
+  // scope check compares `transaction.changedParentTypes` against
+  // `scope` by direct match — ancestors don't auto-bubble — so we have
+  // to track inner maps explicitly.
   const um = new Y.UndoManager([files, fileOrder, subfolderOrder], {
     trackedOrigins: new Set([STRUCT_ORIGIN]),
     captureTimeout: 300,
   })
+  for (const inner of files.values()) {
+    if (inner instanceof Y.Map) um.addToScope(inner)
+  }
+  // Track new file maps as they appear.
+  const filesObserver = (event: Y.YMapEvent<Y.Map<unknown>>) => {
+    for (const [key, change] of event.changes.keys) {
+      if (change.action === 'add' || change.action === 'update') {
+        const val = files.get(key)
+        if (val instanceof Y.Map) um.addToScope(val)
+      }
+    }
+  }
+  files.observe(filesObserver)
   const listeners = new Set<Listener>()
   const notify = () => {
     for (const l of listeners) l()
@@ -52,6 +84,7 @@ function ensureUndoManager(): Y.UndoManager {
       um.off('stack-item-added', onStackItemAdded)
       um.off('stack-item-popped', onStackItemPopped)
       um.off('stack-cleared', onStackCleared)
+      files.unobserve(filesObserver)
       um.destroy()
     },
   }

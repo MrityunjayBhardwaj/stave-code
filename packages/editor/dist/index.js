@@ -5768,6 +5768,14 @@ function subscribeToDocUpdate(cb, options) {
   };
 }
 var STRUCT_ORIGIN = /* @__PURE__ */ Symbol.for("stave:struct");
+function withStructBatch(fn) {
+  const doc = getActiveDoc();
+  let out2;
+  doc.transact(() => {
+    out2 = fn();
+  }, STRUCT_ORIGIN);
+  return out2;
+}
 var active = null;
 function ensureUndoManager() {
   if (active) return active.um;
@@ -5779,6 +5787,18 @@ function ensureUndoManager() {
     trackedOrigins: /* @__PURE__ */ new Set([STRUCT_ORIGIN]),
     captureTimeout: 300
   });
+  for (const inner of files.values()) {
+    if (inner instanceof Y4.Map) um.addToScope(inner);
+  }
+  const filesObserver = (event) => {
+    for (const [key, change] of event.changes.keys) {
+      if (change.action === "add" || change.action === "update") {
+        const val = files.get(key);
+        if (val instanceof Y4.Map) um.addToScope(val);
+      }
+    }
+  };
+  files.observe(filesObserver);
   const listeners2 = /* @__PURE__ */ new Set();
   const notify2 = () => {
     for (const l of listeners2) l();
@@ -5796,6 +5816,7 @@ function ensureUndoManager() {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
       um.off("stack-cleared", onStackCleared);
+      files.unobserve(filesObserver);
       um.destroy();
     }
   };
@@ -5894,20 +5915,35 @@ var filesMapObserverWired = false;
 function ensureFilesMapObserver() {
   if (filesMapObserverWired) return;
   const filesMap = getFilesMap();
-  filesMap.observe((event) => {
+  filesMap.observeDeep((events) => {
     let anyStructuralChange = false;
-    for (const [key, change] of event.changes.keys) {
-      if (change.action === "add" || change.action === "update") {
-        const fileMap = filesMap.get(key);
-        const ytext = fileMap.get("content");
-        rebuildSnapshot(key);
-        wireTextObserver(key, ytext);
-        notify(key);
-        anyStructuralChange = true;
-      } else if (change.action === "delete") {
-        unwireTextObserver(key);
-        cachedSnapshots.delete(key);
-        notify(key);
+    for (const event of events) {
+      if (event.target === filesMap) {
+        const mapEvent = event;
+        for (const [key, change] of mapEvent.changes.keys) {
+          if (change.action === "add" || change.action === "update") {
+            const fileMap = filesMap.get(key);
+            const ytext = fileMap.get("content");
+            rebuildSnapshot(key);
+            wireTextObserver(key, ytext);
+            notify(key);
+            anyStructuralChange = true;
+          } else if (change.action === "delete") {
+            unwireTextObserver(key);
+            cachedSnapshots.delete(key);
+            notify(key);
+            anyStructuralChange = true;
+          }
+        }
+        continue;
+      }
+      if (event.target instanceof Y4.Text) continue;
+      const path = event.path;
+      const ownerId = path.length > 0 ? String(path[0]) : null;
+      if (!ownerId) continue;
+      if (filesMap.has(ownerId)) {
+        rebuildSnapshot(ownerId);
+        notify(ownerId);
         anyStructuralChange = true;
       }
     }
@@ -19147,6 +19183,6 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyTheme, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setFolderOrder, setSubfolderOrder, setVizConfig, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, switchProject, timestretch, toStrudel, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyTheme, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setFolderOrder, setSubfolderOrder, setVizConfig, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, switchProject, timestretch, toStrudel, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

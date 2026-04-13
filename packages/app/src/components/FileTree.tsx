@@ -12,6 +12,7 @@ import {
   subscribeToFolderOrder,
   getSubfolderOrder,
   setSubfolderOrder,
+  withStructBatch,
   type WorkspaceFile,
 } from "@stave/editor";
 
@@ -344,12 +345,14 @@ export function FileTree({
       return;
     }
     const newPath = parentPath ? `${parentPath}/${newName.trim()}` : newName.trim();
-    for (const f of files) {
-      if (f.path === oldPath || f.path.startsWith(oldPath + "/")) {
-        const suffix = f.path.slice(oldPath.length);
-        renameWorkspaceFile(f.id, `${newPath}${suffix}`);
+    withStructBatch(() => {
+      for (const f of files) {
+        if (f.path === oldPath || f.path.startsWith(oldPath + "/")) {
+          const suffix = f.path.slice(oldPath.length);
+          renameWorkspaceFile(f.id, `${newPath}${suffix}`);
+        }
       }
-    }
+    });
     setContextMenu(null);
   }, [files]);
 
@@ -367,7 +370,9 @@ export function FileTree({
       ? `Delete empty folder "${path}"?`
       : `Delete "${path}" and ${visible} file${visible === 1 ? "" : "s"}?`;
     if (confirm(msg)) {
-      for (const f of doomed) deleteWorkspaceFile(f.id);
+      withStructBatch(() => {
+        for (const f of doomed) deleteWorkspaceFile(f.id);
+      });
     }
     setContextMenu(null);
   }, [files]);
@@ -438,18 +443,21 @@ export function FileTree({
       const oldFolder = file.path.includes("/")
         ? file.path.slice(0, file.path.lastIndexOf("/"))
         : "";
-      renameWorkspaceFile(fileId, newPath);
-      if (oldFolder === targetFolderPath) return; // same folder — no order change
-      // Remove from source folder order (if present).
-      const sourceOrder = getFolderOrder(oldFolder);
-      if (sourceOrder.includes(fileId)) {
-        setFolderOrder(oldFolder, sourceOrder.filter((id) => id !== fileId));
-      }
-      // Append to target folder order (creating / extending).
-      const targetOrder = getFolderOrder(targetFolderPath);
-      if (!targetOrder.includes(fileId)) {
-        setFolderOrder(targetFolderPath, [...targetOrder, fileId]);
-      }
+      // Batch all three mutations into ONE transaction so undo reverts
+      // the cross-folder move as a single step (instead of 3 separate
+      // ones).
+      withStructBatch(() => {
+        renameWorkspaceFile(fileId, newPath);
+        if (oldFolder === targetFolderPath) return;
+        const sourceOrder = getFolderOrder(oldFolder);
+        if (sourceOrder.includes(fileId)) {
+          setFolderOrder(oldFolder, sourceOrder.filter((id) => id !== fileId));
+        }
+        const targetOrder = getFolderOrder(targetFolderPath);
+        if (!targetOrder.includes(fileId)) {
+          setFolderOrder(targetFolderPath, [...targetOrder, fileId]);
+        }
+      });
     },
     [files],
   );
@@ -474,11 +482,14 @@ export function FileTree({
       const affected = files.filter(
         (f) => f.path === sourceFolderPath || f.path.startsWith(sourceFolderPath + "/"),
       );
-      for (const f of affected) {
-        const suffix = f.path.slice(sourceFolderPath.length); // keeps leading "/..."
-        const newPath = `${newPrefix}${suffix}`;
-        renameWorkspaceFile(f.id, newPath);
-      }
+      // Batch so the whole folder move is ONE undo step.
+      withStructBatch(() => {
+        for (const f of affected) {
+          const suffix = f.path.slice(sourceFolderPath.length);
+          const newPath = `${newPrefix}${suffix}`;
+          renameWorkspaceFile(f.id, newPath);
+        }
+      });
     },
     [files],
   );
