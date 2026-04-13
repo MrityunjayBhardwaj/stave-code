@@ -34,7 +34,10 @@ class MockPattern {
   queryArc(begin: number, end: number) {
     return [{
       whole: { begin, end },
-      value: { note: `note_${this.instanceId}`, s: `inst_${this.instanceId}` },
+      // `orbit` field is read by StrudelEngine.resolveOrbit() to decide which
+      // superdough orbit to side-tap for per-track analysers. Using instanceId
+      // gives each pattern a distinct orbit in tests.
+      value: { note: `note_${this.instanceId}`, s: `inst_${this.instanceId}`, orbit: this.instanceId },
     }]
   }
 }
@@ -131,13 +134,24 @@ vi.mock('@strudel/webaudio', () => {
     webaudioOutput: vi.fn(),
     registerSynthSounds: vi.fn(),
     registerZZFXSounds: vi.fn(),
-    getSuperdoughAudioController: vi.fn(() => ({
-      output: {
-        destinationGain: {
-          connect: vi.fn(),
-        },
-      },
-    })),
+    // Real superdough returns the SAME SuperdoughAudioController singleton on
+    // every call. The mock memoizes so tests can inspect the same getOrbit spy
+    // the engine itself used during init().
+    getSuperdoughAudioController: (() => {
+      const orbits = new Map<number, { output: { connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> } }>()
+      const controller = {
+        output: { destinationGain: { connect: vi.fn() } },
+        getOrbit: vi.fn((n: number) => {
+          let orbit = orbits.get(n)
+          if (!orbit) {
+            orbit = { output: { connect: vi.fn(), disconnect: vi.fn() } }
+            orbits.set(n, orbit)
+          }
+          return orbit
+        }),
+      }
+      return vi.fn(() => controller)
+    })(),
     samples: vi.fn().mockResolvedValue(undefined),
     soundMap: { get: vi.fn(() => ({})) },
   }
@@ -285,6 +299,83 @@ describe('StrudelEngine.getTrackSchedulers', () => {
     expect(map.has('$0')).toBe(true)
     expect(map.has('d1')).toBe(true)
     expect(map.size).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Per-track AnalyserNode producer (T-02, issue #19)
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine per-track analysers', () => {
+  beforeEach(() => { patternInstanceCounter = 0 })
+
+  it('populates audio.trackAnalysers after evaluate — one per captured pattern', async () => {
+    evalBehavior = 'two-anon'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('two-anon')
+    const { audio } = engine.components
+    expect(audio?.trackAnalysers).toBeDefined()
+    expect(audio!.trackAnalysers!.size).toBe(2)
+    expect(audio!.trackAnalysers!.has('$0')).toBe(true)
+    expect(audio!.trackAnalysers!.has('$1')).toBe(true)
+    // Distinct analyser instances per track.
+    const a = audio!.trackAnalysers!.get('$0')
+    const b = audio!.trackAnalysers!.get('$1')
+    expect(a).not.toBe(b)
+  })
+
+  it('analysers are side-taps — no destination wiring, just orbit.output.connect(analyser)', async () => {
+    evalBehavior = 'one-named'
+    const { getSuperdoughAudioController } = await import('@strudel/webaudio') as any
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-named')
+    const controller = getSuperdoughAudioController()
+    // getOrbit was invoked to resolve each captured pattern's orbit
+    expect(controller.getOrbit).toHaveBeenCalled()
+    // The orbit's output GainNode received a .connect(analyser) call
+    const analyser = engine.components.audio!.trackAnalysers!.get('d1')!
+    // Find the orbit the engine tapped (any orbit whose output.connect was called with this analyser)
+    const connectCalls = (controller.getOrbit as any).mock.results
+      .flatMap((r: any) => (r.value.output.connect as any).mock.calls)
+    expect(connectCalls.some((c: any[]) => c[0] === analyser)).toBe(true)
+  })
+
+  it('reuses existing analyser when re-evaluating identical code (no churn)', async () => {
+    evalBehavior = 'one-named'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-named')
+    const first = engine.components.audio!.trackAnalysers!.get('d1')!
+    await engine.evaluate('one-named')
+    const second = engine.components.audio!.trackAnalysers!.get('d1')!
+    expect(second).toBe(first)
+  })
+
+  it('removes + disconnects analyser when its track disappears on re-evaluate', async () => {
+    evalBehavior = 'two-anon'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('two-anon')
+    const stale = engine.components.audio!.trackAnalysers!.get('$1')!
+    expect(engine.components.audio!.trackAnalysers!.size).toBe(2)
+    evalBehavior = 'one-track'
+    await engine.evaluate('one-track')
+    expect(engine.components.audio!.trackAnalysers!.size).toBe(1)
+    expect(stale.disconnect).toHaveBeenCalled()
+  })
+
+  it('dispose() disconnects all per-track analysers and clears the map', async () => {
+    evalBehavior = 'two-anon'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('two-anon')
+    const a = engine.components.audio!.trackAnalysers!.get('$0')!
+    const b = engine.components.audio!.trackAnalysers!.get('$1')!
+    engine.dispose()
+    expect(a.disconnect).toHaveBeenCalled()
+    expect(b.disconnect).toHaveBeenCalled()
   })
 })
 

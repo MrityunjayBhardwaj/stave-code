@@ -89,6 +89,12 @@ export class StrudelEngine implements LiveCodingEngine {
   // Reference to superdough audio controller (set during init)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private audioController: any = null
+  // Per-track AnalyserNodes keyed by captureId, side-tapped off the
+  // superdough Orbit each captured pattern plays through.
+  private trackAnalysers: Map<string, AnalyserNode> = new Map()
+  // The orbit each tracked analyser is tapped from — lets re-evaluate reuse
+  // existing analysers when the captureId/orbit pair hasn't changed.
+  private trackOrbit: Map<string, number> = new Map()
   // Code from the last successful evaluate() — used by buildVizRequestsWithLines
   private lastEvaluatedCode: string = ''
   // Pattern IR from the last successful evaluate() — derived by propagation
@@ -324,6 +330,13 @@ export class StrudelEngine implements LiveCodingEngine {
         }
         this.vizRequests = capturedVizRequests
 
+        // Per-track analyser side-taps: for each captured pattern, discover the
+        // orbit it plays through and connect the orbit's output GainNode to a
+        // dedicated AnalyserNode. Lets inline .viz() show per-track FFT instead
+        // of the master mix. Reuses existing analysers when (captureId, orbit)
+        // persists across re-evaluates — avoids reconnect churn + flicker.
+        this.rebuildTrackAnalysers(capturedPatterns)
+
         // Run propagation pipeline: code → PatternIR → IREvent[]
         // Uses the ORIGINAL user code string (not transpiled) so the parser
         // sees idiomatic Strudel patterns rather than reified output.
@@ -371,7 +384,11 @@ export class StrudelEngine implements LiveCodingEngine {
       streaming: { hapStream: this.hapStream },
     }
     if (this.analyserNode && this.audioCtx) {
-      bag.audio = { analyser: this.analyserNode, audioCtx: this.audioCtx }
+      bag.audio = {
+        analyser: this.analyserNode,
+        audioCtx: this.audioCtx,
+        trackAnalysers: this.trackAnalysers.size > 0 ? this.trackAnalysers : undefined,
+      }
     }
     bag.queryable = {
       scheduler: this.getPatternScheduler(),
@@ -553,7 +570,104 @@ export class StrudelEngine implements LiveCodingEngine {
     this.repl?.scheduler?.stop()
     this.hapStream.dispose()
     this.analyserNode?.disconnect()
+    for (const analyser of this.trackAnalysers.values()) {
+      try { analyser.disconnect() } catch { /* already disconnected */ }
+    }
+    this.trackAnalysers.clear()
+    this.trackOrbit.clear()
     this.initialized = false
     this.repl = null
+  }
+
+  /**
+   * Query a pattern for its first non-silent hap within [0, lookahead) cycles
+   * and return the orbit it uses. Default orbit is 1 (superdough's default).
+   * Returns 1 for silent patterns — falls back to orbit 1 just like superdough.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private resolveOrbit(pattern: any): number {
+    const tryArc = (begin: number, end: number): number | null => {
+      try {
+        const haps = pattern.queryArc(begin, end) as Array<{ value?: { orbit?: number } }>
+        for (const h of haps) {
+          const o = h?.value?.orbit
+          if (typeof o === 'number') return o
+        }
+      } catch { /* pattern may throw on empty/invalid arcs */ }
+      return null
+    }
+    return tryArc(0, 1) ?? tryArc(0, 4) ?? 1
+  }
+
+  /**
+   * Reconcile trackAnalysers against capturedPatterns.
+   * - Creates analysers for new captureIds, tapped off their orbit's GainNode.
+   * - Reuses analysers when (captureId, orbit) is unchanged.
+   * - Rewires when a captureId's orbit changed (disconnect old, tap new).
+   * - Removes+disconnects analysers for captureIds no longer present.
+   *
+   * Safe to call repeatedly. No-op if audioController isn't available yet.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private rebuildTrackAnalysers(capturedPatterns: Map<string, any>): void {
+    if (!this.audioController || !this.audioCtx) return
+
+    const seen = new Set<string>()
+    for (const [captureId, pattern] of capturedPatterns) {
+      seen.add(captureId)
+      const orbit = this.resolveOrbit(pattern)
+      const existingOrbit = this.trackOrbit.get(captureId)
+      const existingAnalyser = this.trackAnalysers.get(captureId)
+
+      if (existingAnalyser && existingOrbit === orbit) continue // reuse — same tap
+
+      // Force-create orbit if it doesn't exist yet — superdough lazy-creates
+      // orbits on first hap, but we need the GainNode available NOW to tap.
+      let orbitNode: { output?: AudioNode } | null = null
+      try {
+        orbitNode = this.audioController.getOrbit(orbit, [0, 1])
+      } catch (err) {
+        console.warn(`[stave] Could not resolve superdough orbit ${orbit} for "${captureId}":`, err)
+      }
+      const orbitOutput = orbitNode?.output
+      if (!orbitOutput) {
+        // No orbit available — if we had an analyser, keep it for now; consumer's
+        // last value is better than suddenly null. Do not pollute the map.
+        continue
+      }
+
+      // Reuse the existing AnalyserNode when the track persists but its orbit
+      // changed. This keeps the AnalyserNode identity stable across
+      // re-evaluates — consumers can hold references without flicker. We just
+      // rewire the tap: disconnect old orbit source, connect new.
+      const analyser = existingAnalyser ?? this.audioCtx.createAnalyser()
+      if (!existingAnalyser) {
+        analyser.fftSize = 2048
+        analyser.smoothingTimeConstant = 0.8
+      } else {
+        // Source changed — drop incoming connections so the analyser only hears
+        // the new orbit. disconnect() with no args is fine on AnalyserNode; the
+        // downstream consumers (viz canvases) read via getByteFrequencyData and
+        // have no graph connection to sever.
+        try { analyser.disconnect() } catch { /* noop */ }
+      }
+      try {
+        orbitOutput.connect(analyser)
+      } catch (err) {
+        console.warn(`[stave] Could not tap orbit ${orbit} for "${captureId}":`, err)
+        continue
+      }
+      this.trackAnalysers.set(captureId, analyser)
+      this.trackOrbit.set(captureId, orbit)
+    }
+
+    // Purge analysers for captureIds no longer present.
+    for (const captureId of [...this.trackAnalysers.keys()]) {
+      if (seen.has(captureId)) continue
+      const a = this.trackAnalysers.get(captureId)
+      if (a) { try { a.disconnect() } catch { /* noop */ } }
+      this.trackAnalysers.delete(captureId)
+      this.trackOrbit.delete(captureId)
+    }
   }
 }
