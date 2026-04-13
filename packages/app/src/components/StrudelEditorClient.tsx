@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useVizRefWatcher } from "../useVizRefWatcher";
 import {
   WorkspaceShell,
   getResolvedTheme,
@@ -84,6 +85,10 @@ export default function StrudelEditorClient({
     typeof window === "undefined" ? "dark" : getResolvedTheme(),
   );
   useEffect(() => onThemeChange(setResolvedTheme), []);
+
+  // Track active file for the viz-ref watcher hook.
+  const [watchedFileId, setWatchedFileId] = useState<string | null>(null);
+  useVizRefWatcher(watchedFileId);
 
   // Bundled preset IDs (used for the preset-seeding effect + named-viz
   // registration). Files themselves are seeded by templates.ts at
@@ -411,6 +416,7 @@ export default function StrudelEditorClient({
             ? tab.fileId
             : null;
         activeFileIdRef.current = fid;
+        setWatchedFileId(fid);
         onActiveFileChange?.(fid);
         if (!onActiveRuntimeStateChange) return;
         if (!fid) {

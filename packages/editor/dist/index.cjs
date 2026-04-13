@@ -7591,6 +7591,7 @@ function EditorView({
   const editorRef = React.useRef(null);
   const monacoRef = React.useRef(null);
   const viewZoneHandleRef = React.useRef(null);
+  const lastPayloadRef = React.useRef(null);
   const [hapStream, setHapStream] = React.useState(null);
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -7607,6 +7608,7 @@ function EditorView({
       { kind: "file", fileId },
       (payload) => {
         setHapStream(payload?.hapStream ?? null);
+        lastPayloadRef.current = payload;
         if (payload?.inlineViz?.vizRequests?.size && editorRef.current) {
           viewZoneHandleRef.current?.cleanup();
           viewZoneHandleRef.current = addInlineViewZones(
@@ -7622,9 +7624,25 @@ function EditorView({
     );
     return () => {
       unsub();
+      lastPayloadRef.current = null;
       viewZoneHandleRef.current?.cleanup();
       viewZoneHandleRef.current = null;
     };
+  }, [fileId]);
+  React.useEffect(() => {
+    if (!fileId) return;
+    const unsub = onNamedVizChanged(() => {
+      const payload = lastPayloadRef.current;
+      if (!payload?.inlineViz?.vizRequests?.size || !editorRef.current) return;
+      viewZoneHandleRef.current?.cleanup();
+      viewZoneHandleRef.current = addInlineViewZones(
+        editorRef.current,
+        payload.engineComponents ?? payload,
+        DEFAULT_VIZ_DESCRIPTORS
+      );
+      viewZoneHandleRef.current?.resume();
+    });
+    return unsub;
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   React.useEffect(() => {

@@ -41,6 +41,7 @@ import { useHighlighting } from '../monaco/useHighlighting'
 import { registerEditor, unregisterEditor, applyPersistedEditorOptions, registerMonacoNamespace } from './editorRegistry'
 import { setEvalError, clearEvalErrors } from '../monaco/diagnostics'
 import { addInlineViewZones } from '../visualizers/viewZones'
+import { onNamedVizChanged } from '../visualizers/namedVizRegistry'
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
 import type { EditorViewProps } from './types'
 import type { AudioPayload } from './types'
@@ -112,6 +113,10 @@ export function EditorView({
 
   // Inline view zone handle — owned by the bus subscription effect.
   const viewZoneHandleRef = useRef<InlineZoneHandle | null>(null)
+  // Keep the last engine payload so we can remount viz zones when a
+  // referenced viz preset is re-saved (hot reload).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lastPayloadRef = useRef<any>(null)
 
   // HapStream from the bus payload — drives useHighlighting.
   const [hapStream, setHapStream] = useState<HapStream | null>(null)
@@ -155,6 +160,7 @@ export function EditorView({
       (payload: AudioPayload | null) => {
         // Drive highlighting via hapStream state.
         setHapStream(payload?.hapStream ?? null)
+        lastPayloadRef.current = payload
 
         if (
           payload?.inlineViz?.vizRequests?.size &&
@@ -181,9 +187,35 @@ export function EditorView({
 
     return () => {
       unsub()
+      lastPayloadRef.current = null
       viewZoneHandleRef.current?.cleanup()
       viewZoneHandleRef.current = null
     }
+  }, [fileId])
+
+  // ----------------------------------------------------------------
+  // Viz hot-reload — remount inline zones when a named viz preset
+  // is re-saved. The registry fires `onNamedVizChanged` after
+  // `registerPresetAsNamedViz`; we use the stored payload to
+  // rebuild the zones with the fresh descriptor.
+  // ----------------------------------------------------------------
+  useEffect(() => {
+    if (!fileId) return
+    const unsub = onNamedVizChanged(() => {
+      const payload = lastPayloadRef.current
+      if (
+        !payload?.inlineViz?.vizRequests?.size ||
+        !editorRef.current
+      ) return
+      viewZoneHandleRef.current?.cleanup()
+      viewZoneHandleRef.current = addInlineViewZones(
+        editorRef.current,
+        payload.engineComponents ?? payload,
+        DEFAULT_VIZ_DESCRIPTORS,
+      )
+      viewZoneHandleRef.current?.resume()
+    })
+    return unsub
   }, [fileId])
 
   // Active highlighting (S5) — driven by hapStream from bus subscription.
