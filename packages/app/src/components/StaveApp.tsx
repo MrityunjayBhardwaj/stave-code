@@ -593,6 +593,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             onOpenFile={handleOpenFile}
             activeFileId={activeFileId}
             onToggleCollapse={() => setActivePanelId(null)}
+            onImportZipProject={handleImportZip}
           />
         )}
         {!zenMode && activePanelId === "search" && (

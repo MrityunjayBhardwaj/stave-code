@@ -22,6 +22,9 @@ interface FileTreeProps {
   onOpenFile: (fileId: string, intent?: { preview?: boolean }) => void;
   activeFileId: string | null;
   onToggleCollapse: () => void;
+  /** Called when a user drops a single .zip onto the sidebar. If set,
+   *  the tree skips the normal file-by-file import and delegates. */
+  onImportZipProject?: (file: File) => void;
 }
 
 export interface FileTreeHandle {
@@ -150,7 +153,7 @@ function applyFolderOrder(
 // ── Main component ──────────────────────────────────────────────────
 
 export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({
-  projectName, onOpenFile, activeFileId, onToggleCollapse,
+  projectName, onOpenFile, activeFileId, onToggleCollapse, onImportZipProject,
 }, forwardedRef) {
   // Subscribe to file list changes — re-list whenever a file is added,
   // removed, or renamed. `fileListRev` is the dep that forces the memo
@@ -676,7 +679,21 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
   // extensions are rejected with a toast per file. Creates workspace
   // files under `targetFolderPath` (use "" for root).
   const importNativeFiles = useCallback(async (files: FileList, targetFolderPath: string) => {
-    for (const f of Array.from(files)) {
+    const arr = Array.from(files);
+    // A single .zip drop → project import (when the caller wired it).
+    if (arr.length === 1 && arr[0].name.toLowerCase().endsWith(".zip")) {
+      if (onImportZipProject) {
+        onImportZipProject(arr[0]);
+      } else {
+        showToast("Drop a .zip onto the sidebar to import a project.", "error");
+      }
+      return;
+    }
+    for (const f of arr) {
+      if (f.name.toLowerCase().endsWith(".zip")) {
+        showToast(`Skipped "${f.name}" — drop a single .zip to import as a project.`, "error");
+        continue;
+      }
       const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
       const language = extensionToLanguage(ext);
       if (!language) {
@@ -688,7 +705,7 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
       const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       createWorkspaceFile(id, path, text, language);
     }
-  }, []);
+  }, [onImportZipProject]);
 
   const handleDragLeaveTree = useCallback(() => {
     setDropTarget(null);
