@@ -8821,6 +8821,12 @@ function createInitialGroupState(initialTabs) {
   groups.set(id, group);
   return { groups, layout: [[id]], activeGroupId: id };
 }
+function tabFileName(tab) {
+  const file = getFile(tab.fileId);
+  if (!file) return tab.fileId;
+  const parts2 = file.path.split("/");
+  return parts2[parts2.length - 1];
+}
 var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
   initialTabs = [],
   theme = "dark",
@@ -9676,7 +9682,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
                         },
                         children: [
                           /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 9, opacity: 0.5 }, children: tab.kind === "editor" ? "\u25A1" : "\u25CE" }),
-                          /* @__PURE__ */ jsxRuntime.jsx("span", { children: tab.fileId }),
+                          /* @__PURE__ */ jsxRuntime.jsx("span", { children: tabFileName(tab) }),
                           /* @__PURE__ */ jsxRuntime.jsx(
                             "button",
                             {

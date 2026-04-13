@@ -267,6 +267,14 @@ export interface WorkspaceShellHandle {
   splitActiveGroup(direction?: 'east' | 'south'): void
 }
 
+/** Resolve a tab's display name from the file store. Falls back to fileId. */
+function tabFileName(tab: WorkspaceTab): string {
+  const file = getFile(tab.fileId)
+  if (!file) return tab.fileId
+  const parts = file.path.split('/')
+  return parts[parts.length - 1]
+}
+
 export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellProps>(function WorkspaceShell({
   initialTabs = [],
   theme = 'dark',
@@ -1617,7 +1625,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   <span style={{ fontSize: 9, opacity: 0.5 }}>
                     {tab.kind === 'editor' ? '\u25A1' : '\u25CE'}
                   </span>
-                  <span>{tab.fileId}</span>
+                  <span>{tabFileName(tab)}</span>
                   <button
                     data-testid={`tab-close-${tab.id}`}
                     onClick={(e) => {
