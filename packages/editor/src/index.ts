@@ -57,7 +57,7 @@ export { VizEditor } from './visualizers/VizEditor'
 export type { VizEditorProps } from './visualizers/VizEditor'
 
 // Visualizers — preset system
-export type { VizPreset } from './visualizers/vizPreset'
+export type { VizPreset, CropRegion } from './visualizers/vizPreset'
 export {
   VizPresetStore,
   BUNDLED_PREFIX,

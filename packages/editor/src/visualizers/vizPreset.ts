@@ -4,6 +4,17 @@ import type { EngineComponents } from '../engine/LiveCodingEngine'
  * A user-authored visualization saved to IndexedDB.
  * Compiled to a VizDescriptor at runtime for use with .viz("name").
  */
+export interface CropRegion {
+  /** Fractional offset from left (0–1). */
+  x: number
+  /** Fractional offset from top (0–1). */
+  y: number
+  /** Fractional width (0–1). */
+  w: number
+  /** Fractional height (0–1). */
+  h: number
+}
+
 export interface VizPreset {
   id: string
   name: string
@@ -12,6 +23,10 @@ export interface VizPreset {
   requires: (keyof EngineComponents)[]
   createdAt: number
   updatedAt: number
+  /** Optional crop region for inline viz display. Fractional 0–1 coords
+   *  relative to the full canvas. When set, the inline zone shows only
+   *  this sub-region (scaled to fill). */
+  cropRegion?: CropRegion
 }
 
 // ---------------------------------------------------------------------------

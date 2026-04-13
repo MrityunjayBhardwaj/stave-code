@@ -7446,8 +7446,143 @@ var BufferedScheduler = class {
   }
 };
 
+// src/visualizers/vizPreset.ts
+var DB_NAME = "stave-viz-presets";
+var DB_VERSION = 1;
+var STORE_NAME = "presets";
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function tx(db, mode) {
+  return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME);
+}
+function wrap(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+var BUNDLED_PREFIX = "__bundled_";
+function sanitizePresetName(name2) {
+  const slug = name2.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return slug || "untitled";
+}
+function bundledPresetId(name2, renderer) {
+  return `${BUNDLED_PREFIX}${sanitizePresetName(name2)}_${renderer}__`;
+}
+function isBundledPresetId(id) {
+  return id.startsWith(BUNDLED_PREFIX);
+}
+function generateUniquePresetId(name2, renderer, existingIds) {
+  const slug = sanitizePresetName(name2);
+  const used = new Set(existingIds);
+  let n = 1;
+  let id = `${slug}_${renderer}_v${n}`;
+  while (used.has(id)) {
+    n++;
+    id = `${slug}_${renderer}_v${n}`;
+  }
+  return id;
+}
+var VizPresetStore = {
+  async getAll() {
+    const db = await openDb();
+    return wrap(tx(db, "readonly").getAll());
+  },
+  async get(id) {
+    const db = await openDb();
+    return wrap(tx(db, "readonly").get(id));
+  },
+  async put(preset) {
+    const db = await openDb();
+    await wrap(tx(db, "readwrite").put(preset));
+  },
+  async delete(id) {
+    const db = await openDb();
+    await wrap(tx(db, "readwrite").delete(id));
+  }
+};
+
 // src/visualizers/viewZones.ts
-function addInlineViewZones(editor, components, vizDescriptors) {
+function applyCropRegion(container, crop, zoneHeight, contentWidth) {
+  const wrapper = container.querySelector("[data-viz-crop-wrapper]");
+  if (wrapper) {
+    const scaleX2 = 1 / crop.w;
+    const scaleY2 = 1 / crop.h;
+    const tx4 = -crop.x * contentWidth * scaleX2;
+    const ty2 = -crop.y * zoneHeight * scaleY2;
+    wrapper.style.transform = `translate(${tx4}px, ${ty2}px) scale(${scaleX2}, ${scaleY2})`;
+    wrapper.style.transformOrigin = "0 0";
+    return;
+  }
+  const cropWrapper = document.createElement("div");
+  cropWrapper.setAttribute("data-viz-crop-wrapper", "");
+  cropWrapper.style.cssText = `
+    position: absolute; inset: 0; overflow: hidden;
+    transform-origin: 0 0;
+  `;
+  const scaleX = 1 / crop.w;
+  const scaleY = 1 / crop.h;
+  const tx3 = -crop.x * contentWidth * scaleX;
+  const ty = -crop.y * zoneHeight * scaleY;
+  cropWrapper.style.transform = `translate(${tx3}px, ${ty}px) scale(${scaleX}, ${scaleY})`;
+  while (container.firstChild) {
+    cropWrapper.appendChild(container.firstChild);
+  }
+  container.style.position = "relative";
+  container.appendChild(cropWrapper);
+}
+function createActionBar(vizId, presetId, actions) {
+  const bar = document.createElement("div");
+  bar.style.cssText = `
+    position: absolute; top: 4px; right: 8px; z-index: 10;
+    display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s;
+    pointer-events: none;
+  `;
+  const btnStyle2 = `
+    background: var(--bg-elevated, #1e1e38);
+    border: 1px solid var(--border-strong, #3a3a5a);
+    border-radius: 3px; padding: 2px 6px;
+    color: var(--text-primary, #e8e8f0);
+    font-size: 11px; cursor: pointer;
+    font-family: system-ui, sans-serif;
+    pointer-events: auto;
+  `;
+  if (actions.onEdit) {
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "\u270E";
+    editBtn.title = "Edit viz file";
+    editBtn.style.cssText = btnStyle2;
+    editBtn.onclick = (e) => {
+      e.stopPropagation();
+      actions.onEdit(vizId);
+    };
+    bar.appendChild(editBtn);
+  }
+  if (actions.onCrop) {
+    const cropBtn = document.createElement("button");
+    cropBtn.textContent = "\u2702";
+    cropBtn.title = "Crop inline region";
+    cropBtn.style.cssText = btnStyle2;
+    cropBtn.onclick = (e) => {
+      e.stopPropagation();
+      actions.onCrop(vizId, presetId);
+    };
+    bar.appendChild(cropBtn);
+  }
+  return bar;
+}
+function addInlineViewZones(editor, components, vizDescriptors, actions) {
   const vizRequests = components.inlineViz?.vizRequests;
   if (!vizRequests || vizRequests.size === 0) {
     return { cleanup: () => {
@@ -7488,7 +7623,7 @@ function addInlineViewZones(editor, components, vizDescriptors) {
         }
       };
       const container = document.createElement("div");
-      container.style.cssText = `overflow:hidden;height:${zoneHeight}px;`;
+      container.style.cssText = `overflow:hidden;height:${zoneHeight}px;position:relative;`;
       const zoneId = accessor.addZone({
         afterLineNumber: afterLine,
         heightInPx: zoneHeight,
@@ -7505,6 +7640,38 @@ function addInlineViewZones(editor, components, vizDescriptors) {
       );
       renderers.push(renderer);
       disconnects.push(disconnect);
+      getNamedViz(vizId);
+      const presetName = vizId;
+      void (async () => {
+        try {
+          const presets = await VizPresetStore.getAll();
+          const preset = presets.find((p) => p.name === presetName);
+          if (preset?.cropRegion) {
+            applyCropRegion(container, preset.cropRegion, zoneHeight, contentWidth || 400);
+          }
+          if (actions && (actions.onEdit || actions.onCrop)) {
+            const bar = createActionBar(vizId, preset?.id ?? null, actions);
+            container.appendChild(bar);
+            container.addEventListener("mouseenter", () => {
+              bar.style.opacity = "1";
+            });
+            container.addEventListener("mouseleave", () => {
+              bar.style.opacity = "0";
+            });
+          }
+        } catch {
+          if (actions && (actions.onEdit || actions.onCrop)) {
+            const bar = createActionBar(vizId, null, actions);
+            container.appendChild(bar);
+            container.addEventListener("mouseenter", () => {
+              bar.style.opacity = "1";
+            });
+            container.addEventListener("mouseleave", () => {
+              bar.style.opacity = "0";
+            });
+          }
+        }
+      })();
     }
   });
   return {
@@ -7557,7 +7724,9 @@ function EditorView({
   onMount,
   error,
   onPlay,
-  onStop
+  onStop,
+  onEditViz,
+  onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
   const containerRef = useRef(null);
@@ -7587,7 +7756,8 @@ function EditorView({
           viewZoneHandleRef.current = addInlineViewZones(
             editorRef.current,
             payload.engineComponents ?? payload,
-            DEFAULT_VIZ_DESCRIPTORS
+            DEFAULT_VIZ_DESCRIPTORS,
+            { onEdit: onEditViz, onCrop: onCropViz }
           );
           viewZoneHandleRef.current?.resume();
         } else if (payload === null) {
@@ -7611,7 +7781,8 @@ function EditorView({
       viewZoneHandleRef.current = addInlineViewZones(
         editorRef.current,
         payload.engineComponents ?? payload,
-        DEFAULT_VIZ_DESCRIPTORS
+        DEFAULT_VIZ_DESCRIPTORS,
+        { onEdit: onEditViz, onCrop: onCropViz }
       );
       viewZoneHandleRef.current?.resume();
     });
@@ -8828,7 +8999,9 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
   chromeForTab,
   editorExtrasForTab,
   onSaveFile,
-  onTabContextMenu
+  onTabContextMenu,
+  onEditViz,
+  onCropViz
 }, forwardedRef) {
   const shellRootRef = useRef(null);
   const initialState = useRef(createInitialGroupState(initialTabs));
@@ -9482,7 +9655,9 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
               theme,
               onPlay: extras?.onPlay,
               onStop: extras?.onStop,
-              error: extras?.error
+              error: extras?.error,
+              onEditViz,
+              onCropViz
             },
             tab.id
           );
@@ -16965,16 +17140,16 @@ function getSampleNames() {
 }
 
 // ../../../sonicPiWeb/src/engine/CustomSampleStore.ts
-var DB_NAME = "spw-custom-samples";
-var DB_VERSION = 1;
-var STORE_NAME = "samples";
+var DB_NAME2 = "spw-custom-samples";
+var DB_VERSION2 = 1;
+var STORE_NAME2 = "samples";
 function openDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(DB_NAME2, DB_VERSION2);
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "name" });
+      if (!db.objectStoreNames.contains(STORE_NAME2)) {
+        db.createObjectStore(STORE_NAME2, { keyPath: "name" });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -16984,8 +17159,8 @@ function openDB() {
 async function loadAllCustomSamples() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx3 = db.transaction(STORE_NAME, "readonly");
-    const request = tx3.objectStore(STORE_NAME).getAll();
+    const tx3 = db.transaction(STORE_NAME2, "readonly");
+    const request = tx3.objectStore(STORE_NAME2).getAll();
     request.onsuccess = () => {
       db.close();
       resolve(request.result);
@@ -18474,73 +18649,6 @@ function VizDropdown({
     }
   );
 }
-
-// src/visualizers/vizPreset.ts
-var DB_NAME2 = "stave-viz-presets";
-var DB_VERSION2 = 1;
-var STORE_NAME2 = "presets";
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME2)) {
-        db.createObjectStore(STORE_NAME2, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-function tx(db, mode) {
-  return db.transaction(STORE_NAME2, mode).objectStore(STORE_NAME2);
-}
-function wrap(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-var BUNDLED_PREFIX = "__bundled_";
-function sanitizePresetName(name2) {
-  const slug = name2.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  return slug || "untitled";
-}
-function bundledPresetId(name2, renderer) {
-  return `${BUNDLED_PREFIX}${sanitizePresetName(name2)}_${renderer}__`;
-}
-function isBundledPresetId(id) {
-  return id.startsWith(BUNDLED_PREFIX);
-}
-function generateUniquePresetId(name2, renderer, existingIds) {
-  const slug = sanitizePresetName(name2);
-  const used = new Set(existingIds);
-  let n = 1;
-  let id = `${slug}_${renderer}_v${n}`;
-  while (used.has(id)) {
-    n++;
-    id = `${slug}_${renderer}_v${n}`;
-  }
-  return id;
-}
-var VizPresetStore = {
-  async getAll() {
-    const db = await openDb();
-    return wrap(tx(db, "readonly").getAll());
-  },
-  async get(id) {
-    const db = await openDb();
-    return wrap(tx(db, "readonly").get(id));
-  },
-  async put(preset) {
-    const db = await openDb();
-    await wrap(tx(db, "readwrite").put(preset));
-  },
-  async delete(id) {
-    const db = await openDb();
-    await wrap(tx(db, "readwrite").delete(id));
-  }
-};
 
 // src/workspace/preview/vizPresetBridge.ts
 function workspaceFileIdForPreset(presetId) {

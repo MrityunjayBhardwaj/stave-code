@@ -67,6 +67,10 @@ interface StrudelEditorClientProps {
     error: string | null;
   } | null) => void;
   onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void;
+  /** Navigate to a viz file when the user clicks the edit icon on an inline viz. */
+  onEditViz?: (vizId: string) => void;
+  /** Open crop popup when the user clicks the crop icon on an inline viz. */
+  onCropViz?: (vizId: string, presetId: string | null) => void;
 }
 
 export default function StrudelEditorClient({
@@ -74,6 +78,8 @@ export default function StrudelEditorClient({
   onActiveFileChange,
   onActiveRuntimeStateChange,
   onTabContextMenu,
+  onEditViz,
+  onCropViz,
 }: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
@@ -410,6 +416,8 @@ export default function StrudelEditorClient({
       onTabClose={handleTabClose}
       onSaveFile={handleSaveFile}
       onTabContextMenu={onTabContextMenu}
+      onEditViz={onEditViz}
+      onCropViz={onCropViz}
       onActiveTabChange={(tab) => {
         const fid =
           tab && (tab.kind === "editor" || tab.kind === "preview")

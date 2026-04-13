@@ -174,6 +174,7 @@ describe('EditorView bus wiring (Task 07)', () => {
       stubEditor,
       payload,
       expect.any(Array),
+      expect.any(Object),
     )
     expect(mockZoneHandle.resume).toHaveBeenCalled()
   })

@@ -101,6 +101,8 @@ export function EditorView({
   error,
   onPlay,
   onStop,
+  onEditViz,
+  onCropViz,
 }: EditorViewProps): React.ReactElement {
   const { file, setContent } = useWorkspaceFile(fileId)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -175,6 +177,7 @@ export function EditorView({
             editorRef.current,
             payload.engineComponents ?? payload as any,
             DEFAULT_VIZ_DESCRIPTORS,
+            { onEdit: onEditViz, onCrop: onCropViz },
           )
           viewZoneHandleRef.current?.resume()
         } else if (payload === null) {
@@ -212,6 +215,7 @@ export function EditorView({
         editorRef.current,
         payload.engineComponents ?? payload,
         DEFAULT_VIZ_DESCRIPTORS,
+        { onEdit: onEditViz, onCrop: onCropViz },
       )
       viewZoneHandleRef.current?.resume()
     })

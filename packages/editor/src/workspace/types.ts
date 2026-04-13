@@ -335,6 +335,16 @@ export interface EditorViewProps {
    * keybinding is not registered.
    */
   readonly onStop?: () => void
+
+  /** Called when the user clicks the "edit" icon on an inline viz zone.
+   *  Receives the viz name (e.g., "Piano Roll"). The host should navigate
+   *  to the corresponding viz file. */
+  readonly onEditViz?: (vizId: string) => void
+
+  /** Called when the user clicks the "crop" icon on an inline viz zone.
+   *  Receives the viz name and the preset id (for persistence). The host
+   *  should open a crop popup. */
+  readonly onCropViz?: (vizId: string, presetId: string | null) => void
 }
 
 /**
@@ -875,4 +885,10 @@ export interface WorkspaceShellProps {
     x: number,
     y: number,
   ) => void
+
+  /** Inline viz "edit" icon clicked — navigate to the viz file. */
+  readonly onEditViz?: (vizId: string) => void
+
+  /** Inline viz "crop" icon clicked — open crop popup. */
+  readonly onCropViz?: (vizId: string, presetId: string | null) => void
 }

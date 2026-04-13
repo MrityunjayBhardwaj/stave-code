@@ -286,6 +286,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   editorExtrasForTab,
   onSaveFile,
   onTabContextMenu,
+  onEditViz,
+  onCropViz,
 }, forwardedRef) {
   const shellRootRef = useRef<HTMLDivElement>(null)
 
@@ -1399,6 +1401,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               onPlay={extras?.onPlay}
               onStop={extras?.onStop}
               error={extras?.error}
+              onEditViz={onEditViz}
+              onCropViz={onCropViz}
             />
           )
         }

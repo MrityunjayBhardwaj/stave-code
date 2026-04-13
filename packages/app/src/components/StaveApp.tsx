@@ -746,6 +746,25 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                       : null;
                   setTabContextMenu({ tabId: tab.id, fileId, x, y });
                 }}
+                onEditViz={(vizId) => {
+                  // Resolve viz name to a workspace file and open it
+                  const allFiles = listWorkspaceFiles();
+                  for (const f of allFiles) {
+                    const baseName = f.path.replace(/\.[^.]+$/, "");
+                    const lastSeg = baseName.split("/").pop() ?? "";
+                    if (lastSeg === vizId || baseName === vizId) {
+                      handleOpenFile(f.id);
+                      setActivePanelId("explorer");
+                      setTimeout(() => fileTreeRef.current?.revealFile(f.id), 50);
+                      return;
+                    }
+                  }
+                  showToast(`Viz file "${vizId}" not found in workspace`, "error");
+                }}
+                onCropViz={(vizId, presetId) => {
+                  // TODO: open crop popup (phase 2 of this feature)
+                  showToast(`Crop for "${vizId}" — coming soon`, "info");
+                }}
               />
             )}
           </div>
