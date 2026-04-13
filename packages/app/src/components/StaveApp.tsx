@@ -33,7 +33,11 @@ import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
 import { SnapshotView } from "./SnapshotView";
 import { OutlineView } from "./OutlineView";
-import { revealLineInFile } from "@stave/editor";
+import {
+  revealLineInFile,
+  bumpEditorFontSize,
+  toggleEditorMinimap,
+} from "@stave/editor";
 import { DialogHost } from "./DialogHost";
 import { showPrompt, showToast } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
@@ -415,6 +419,26 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       description: "Hide menu bar, activity bar, and status bar. Esc to exit.",
       keybinding: "mod+alt+z",
       run: () => setZenMode((z) => !z),
+    }));
+    unregs.push(registerCommand({
+      id: "stave.view.fontUp",
+      title: "Increase Editor Font Size",
+      category: "View",
+      keybinding: "mod+=",
+      run: () => bumpEditorFontSize(1),
+    }));
+    unregs.push(registerCommand({
+      id: "stave.view.fontDown",
+      title: "Decrease Editor Font Size",
+      category: "View",
+      keybinding: "mod+-",
+      run: () => bumpEditorFontSize(-1),
+    }));
+    unregs.push(registerCommand({
+      id: "stave.view.toggleMinimap",
+      title: "Toggle Minimap",
+      category: "View",
+      run: () => toggleEditorMinimap(),
     }));
     unregs.push(registerCommand({
       id: "stave.quickOpen",

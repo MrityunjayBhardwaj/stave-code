@@ -6466,6 +6466,261 @@ function registerStrudelLanguage(monaco) {
   });
 }
 
+// src/monaco/strudelDocs.ts
+var STRUDEL_DOCS = {
+  note: {
+    signature: "note(pattern: string)",
+    description: "Play notes from a mini-notation pattern. Accepts note names (c4, eb3) or MIDI numbers.",
+    example: 'note("c4 e4 g4 b4")'
+  },
+  s: {
+    signature: "s(pattern: string)",
+    description: "Select a sound or synth. Accepts sample names or synth identifiers.",
+    example: 's("bd sd hh sd")'
+  },
+  stack: {
+    signature: "stack(...patterns)",
+    description: "Play multiple patterns simultaneously (vertical stack).",
+    example: 'stack(note("c3 e3"), s("bd sd"))'
+  },
+  cat: {
+    signature: "cat(...patterns)",
+    description: "Concatenate patterns sequentially \u2014 each plays for one cycle then moves to the next.",
+    example: 'cat(note("c4 e4"), note("g4 b4"))'
+  },
+  fast: {
+    signature: ".fast(n)",
+    description: "Speed up the pattern by factor n.",
+    example: 'note("c4 e4").fast(2)'
+  },
+  slow: {
+    signature: ".slow(n)",
+    description: "Slow down the pattern by factor n.",
+    example: 'note("c4 e4 g4").slow(2)'
+  },
+  rev: {
+    signature: ".rev()",
+    description: "Reverse the pattern.",
+    example: 'note("c4 d4 e4 f4").rev()'
+  },
+  every: {
+    signature: ".every(n, fn)",
+    description: "Apply fn to the pattern every n cycles.",
+    example: 'note("c4 e4 g4").every(4, x => x.rev())'
+  },
+  sometimes: {
+    signature: ".sometimes(fn)",
+    description: "Apply fn to events 50% of the time at random.",
+    example: 'note("c4 e4 g4").sometimes(x => x.fast(2))'
+  },
+  degradeBy: {
+    signature: ".degradeBy(amount)",
+    description: "Randomly remove events. amount is 0\u20131 (0 = keep all, 1 = remove all).",
+    example: 'note("c4 d4 e4 f4").degradeBy(0.3)'
+  },
+  gain: {
+    signature: ".gain(amount)",
+    description: "Set the volume. 1 is unity gain; values above 1 amplify.",
+    example: 'note("c4 e4").gain(0.7)'
+  },
+  pan: {
+    signature: ".pan(value)",
+    description: "Set stereo panning. -1 is hard left, 0 is center, 1 is hard right.",
+    example: 'note("c4 e4 g4").pan(sine)'
+  },
+  room: {
+    signature: ".room(amount)",
+    description: "Add reverb. 0 is dry, 1 is fully wet.",
+    example: 'note("c4 e4").room(0.4)'
+  },
+  delay: {
+    signature: ".delay(amount)",
+    description: "Add delay/echo effect.",
+    example: 'note("c4 e4").delay(0.3)'
+  },
+  jux: {
+    signature: ".jux(fn)",
+    description: "Apply fn to a copy of the pattern playing in the right channel, original in left.",
+    example: 'note("c4 e4 g4").jux(rev)'
+  },
+  off: {
+    signature: ".off(timeOffset, fn)",
+    description: "Play an offset copy of the pattern with fn applied, layered over the original.",
+    example: 'note("c4 e4 g4").off(0.25, x => x.gain(0.5))'
+  },
+  layer: {
+    signature: ".layer(...fns)",
+    description: "Apply multiple functions to copies of the pattern and stack all results.",
+    example: 'note("c4 e4 g4").layer(x => x.fast(2), rev)'
+  },
+  struct: {
+    signature: ".struct(pattern)",
+    description: "Impose a rhythmic structure on the pattern from a boolean/euclid pattern.",
+    example: 'note("c4").struct("t f t t f t t f")'
+  },
+  mask: {
+    signature: ".mask(pattern)",
+    description: "Filter events by a boolean pattern \u2014 only play where the mask is true.",
+    example: 'note("c4 d4 e4 f4").mask("t t f t")'
+  },
+  euclid: {
+    signature: ".euclid(steps, total)",
+    description: "Euclidean rhythm: distribute steps evenly across total slots.",
+    example: 's("bd").euclid(3, 8)'
+  },
+  iter: {
+    signature: ".iter(n)",
+    description: "Iterate through n rotations of the pattern over n cycles.",
+    example: 'note("c4 d4 e4 f4").iter(4)'
+  },
+  chunk: {
+    signature: ".chunk(n, fn)",
+    description: "Divide pattern into n chunks, applying fn to one chunk per cycle in rotation.",
+    example: 'note("c4 d4 e4 f4").chunk(4, x => x.fast(2))'
+  },
+  cutoff: {
+    signature: ".cutoff(freq)",
+    description: "Low-pass filter cutoff frequency in Hz.",
+    example: 'note("c4 e4").s("sawtooth").cutoff(800)'
+  },
+  resonance: {
+    signature: ".resonance(amount)",
+    description: "Filter resonance (Q). Higher values create a more pronounced peak.",
+    example: 'note("c4 e4").s("sawtooth").cutoff(sine.range(200,2000)).resonance(8)'
+  },
+  hpf: {
+    signature: ".hpf(freq)",
+    description: "High-pass filter \u2014 removes frequencies below the cutoff.",
+    example: 's("amen").hpf(400)'
+  },
+  lpf: {
+    signature: ".lpf(freq)",
+    description: "Low-pass filter \u2014 alias for cutoff.",
+    example: 'note("c4 e4").lpf(1200)'
+  },
+  release: {
+    signature: ".release(seconds)",
+    description: "Envelope release time in seconds.",
+    example: 'note("c4 e4 g4").release(0.5)'
+  },
+  sustain: {
+    signature: ".sustain(seconds)",
+    description: "Envelope sustain duration in seconds.",
+    example: 'note("c4").sustain(0.1).release(0.3)'
+  },
+  speed: {
+    signature: ".speed(rate)",
+    description: "Sample playback rate. 1 is normal, 2 is double speed (up one octave), -1 is reversed.",
+    example: 's("amen").speed(0.5)'
+  },
+  vowel: {
+    signature: ".vowel(v)",
+    description: 'Vowel formant filter. Accepts "a", "e", "i", "o", "u".',
+    example: 'note("c4 d4 e4").vowel("<a e i o>")'
+  },
+  orbit: {
+    signature: ".orbit(n)",
+    description: "Route to audio effect bus n. Patterns on the same orbit share effects.",
+    example: 'note("c4 e4").room(0.5).orbit(1)'
+  }
+};
+function registerStrudelHover(monaco) {
+  return monaco.languages.registerHoverProvider("strudel", {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const doc = STRUDEL_DOCS[word.word];
+      if (!doc) return null;
+      const contents = [
+        { value: `\`\`\`typescript
+${doc.signature}
+\`\`\`` },
+        { value: doc.description },
+        { value: `**Example:** \`${doc.example}\`` }
+      ];
+      return {
+        range: new monaco.Range(
+          position.lineNumber,
+          word.startColumn,
+          position.lineNumber,
+          word.endColumn
+        ),
+        contents
+      };
+    }
+  });
+}
+
+// src/monaco/strudelCompletions.ts
+var NOTE_ROOTS = ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"];
+var SHARP_ROOTS = ["c#", "d#", "f#", "g#", "a#"];
+function generateNoteNames() {
+  const names = [];
+  for (let oct = 0; oct <= 7; oct++) {
+    for (const root of NOTE_ROOTS) names.push(`${root}${oct}`);
+    for (const root of SHARP_ROOTS) names.push(`${root}${oct}`);
+  }
+  return names;
+}
+var NOTE_NAMES = generateNoteNames();
+function registerStrudelDotCompletions(monaco) {
+  return monaco.languages.registerCompletionItemProvider("strudel", {
+    triggerCharacters: ["."],
+    provideCompletionItems(model, position) {
+      const textBefore = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
+      if (!/[)\]"'`\w]\.$/.test(textBefore)) {
+        return { suggestions: [] };
+      }
+      const word = model.getWordUntilPosition(position);
+      const range2 = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      };
+      return {
+        suggestions: Object.entries(STRUDEL_DOCS).map(([name2, doc]) => ({
+          label: name2,
+          kind: monaco.languages.CompletionItemKind.Method,
+          insertText: name2,
+          detail: doc.signature,
+          documentation: { value: `${doc.description}
+
+**Example:** \`${doc.example}\`` },
+          range: range2
+        }))
+      };
+    }
+  });
+}
+function registerStrudelNoteCompletions(monaco) {
+  return monaco.languages.registerCompletionItemProvider("strudel", {
+    triggerCharacters: ['"', "'", " "],
+    provideCompletionItems(model, position) {
+      const lineContent = model.getLineContent(position.lineNumber);
+      const textBefore = lineContent.substring(0, position.column - 1);
+      if (!/(?:^|[\s,(.])note\(["']([^"']*)$/.test(textBefore)) {
+        return { suggestions: [] };
+      }
+      const word = model.getWordUntilPosition(position);
+      const range2 = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      };
+      return {
+        suggestions: NOTE_NAMES.map((name2) => ({
+          label: name2,
+          kind: monaco.languages.CompletionItemKind.Value,
+          insertText: name2,
+          range: range2
+        }))
+      };
+    }
+  });
+}
+
 // src/workspace/languages.ts
 var hydraRegistered = false;
 var p5jsRegistered = false;
@@ -6551,6 +6806,18 @@ function ensureWorkspaceLanguages(monaco) {
   registerSonicPiLanguage(monaco);
   registerHydraLanguage(monaco);
   registerP5JsLanguage(monaco);
+  ensureStrudelProviders(monaco);
+}
+var strudelProvidersRegistered = false;
+function ensureStrudelProviders(monaco) {
+  if (strudelProvidersRegistered) return;
+  if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
+    return;
+  }
+  strudelProvidersRegistered = true;
+  registerStrudelDotCompletions(monaco);
+  registerStrudelNoteCompletions(monaco);
+  registerStrudelHover(monaco);
 }
 function toMonacoLanguage(lang) {
   switch (lang) {
@@ -6852,6 +7119,61 @@ function revealLineInFile(fileId, line2) {
   } catch {
     return false;
   }
+}
+var DEFAULT_FONT_SIZE = 14;
+var FONT_SIZE_STORAGE = "stave:editorFontSize";
+var MINIMAP_STORAGE = "stave:editorMinimap";
+function safeLocalStorage() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+function readFontSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_FONT_SIZE;
+  const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
+}
+function readMinimap() {
+  const ls = safeLocalStorage();
+  return ls?.getItem(MINIMAP_STORAGE) === "1";
+}
+function writeFontSize(size) {
+  safeLocalStorage()?.setItem(FONT_SIZE_STORAGE, String(size));
+}
+function writeMinimap(on) {
+  safeLocalStorage()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
+}
+function applyOptionsToEditor(editor) {
+  const fontSize = readFontSize();
+  const minimap = readMinimap();
+  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
+}
+function getEditorFontSize() {
+  return readFontSize();
+}
+function getEditorMinimap() {
+  return readMinimap();
+}
+function setEditorFontSize(size) {
+  const clamped = Math.max(8, Math.min(40, Math.round(size)));
+  writeFontSize(clamped);
+  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
+}
+function bumpEditorFontSize(delta) {
+  setEditorFontSize(readFontSize() + delta);
+}
+function toggleEditorMinimap() {
+  const next = !readMinimap();
+  writeMinimap(next);
+  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
+}
+function applyPersistedEditorOptions(editor) {
+  applyOptionsToEditor(editor);
 }
 
 // src/monaco/diagnostics.ts
@@ -7215,6 +7537,7 @@ function EditorView({
     editorRef.current = editor;
     monacoRef.current = monaco;
     registerEditor(fileId, editor);
+    applyPersistedEditorOptions(editor);
     ensureWorkspaceLanguages(monaco);
     if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
       defineStrudelMonacoTheme(monaco);
@@ -11037,7 +11360,7 @@ var A4_MIDI = 69;
 var A4_FREQ_HZ = 440;
 var MIDDLE_C_MIDI = 60;
 var DEFAULT_OCTAVE = 4;
-var NOTE_NAMES = {
+var NOTE_NAMES2 = {
   c: 0,
   d: 2,
   e: 4,
@@ -11054,7 +11377,7 @@ function noteToMidi2(note2) {
   const match = str.match(/^([a-g])(s|b|#)?(\d+)?$/);
   if (!match) return MIDDLE_C_MIDI;
   const [, letter, accidental, octaveStr] = match;
-  const base = NOTE_NAMES[letter];
+  const base = NOTE_NAMES2[letter];
   const octave = octaveStr !== void 0 ? parseInt(octaveStr) : DEFAULT_OCTAVE;
   let midi = (octave + 1) * SEMITONES_PER_OCTAVE + base;
   if (accidental === "s" || accidental === "#") midi += 1;
@@ -19241,6 +19564,6 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyTheme, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setFolderOrder, setSubfolderOrder, setVizConfig, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, switchProject, timestretch, toStrudel, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyTheme, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getEditorFontSize, getEditorMinimap, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, normalizeStrudelHap, noteToMidi, onNamedVizChanged, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setContent, setEditorFontSize, setFolderOrder, setSubfolderOrder, setVizConfig, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

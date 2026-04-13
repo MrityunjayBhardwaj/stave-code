@@ -44,3 +44,75 @@ export function revealLineInFile(fileId: string, line: number): boolean {
     return false
   }
 }
+
+// ── Global editor options ──────────────────────────────────────────
+
+const DEFAULT_FONT_SIZE = 14
+const FONT_SIZE_STORAGE = 'stave:editorFontSize'
+const MINIMAP_STORAGE = 'stave:editorMinimap'
+
+function safeLocalStorage(): Storage | null {
+  try {
+    if (typeof window === 'undefined') return null
+    if (typeof window.localStorage?.getItem !== 'function') return null
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+function readFontSize(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_FONT_SIZE
+  const saved = Number(ls.getItem(FONT_SIZE_STORAGE))
+  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE
+}
+
+function readMinimap(): boolean {
+  const ls = safeLocalStorage()
+  return ls?.getItem(MINIMAP_STORAGE) === '1'
+}
+
+function writeFontSize(size: number): void {
+  safeLocalStorage()?.setItem(FONT_SIZE_STORAGE, String(size))
+}
+
+function writeMinimap(on: boolean): void {
+  safeLocalStorage()?.setItem(MINIMAP_STORAGE, on ? '1' : '0')
+}
+
+function applyOptionsToEditor(editor: MonacoEditor): void {
+  const fontSize = readFontSize()
+  const minimap = readMinimap()
+  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } })
+}
+
+/** Get the current global editor font size (px). */
+export function getEditorFontSize(): number { return readFontSize() }
+
+/** Get the current global minimap visibility flag. */
+export function getEditorMinimap(): boolean { return readMinimap() }
+
+/** Set the font size (clamped 8–40) and apply to every open editor. */
+export function setEditorFontSize(size: number): void {
+  const clamped = Math.max(8, Math.min(40, Math.round(size)))
+  writeFontSize(clamped)
+  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped })
+}
+
+/** Bump font size by delta (positive / negative). */
+export function bumpEditorFontSize(delta: number): void {
+  setEditorFontSize(readFontSize() + delta)
+}
+
+/** Toggle minimap visibility across every open editor. */
+export function toggleEditorMinimap(): void {
+  const next = !readMinimap()
+  writeMinimap(next)
+  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } })
+}
+
+/** Called by EditorView on mount to seed the editor with saved options. */
+export function applyPersistedEditorOptions(editor: MonacoEditor): void {
+  applyOptionsToEditor(editor)
+}

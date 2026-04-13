@@ -46,6 +46,11 @@ import {
   registerStrudelLanguage,
   registerSonicPiLanguage,
 } from '../monaco/language'
+import {
+  registerStrudelDotCompletions,
+  registerStrudelNoteCompletions,
+} from '../monaco/strudelCompletions'
+import { registerStrudelHover } from '../monaco/strudelDocs'
 import type { WorkspaceLanguage } from './types'
 
 /**
@@ -154,6 +159,26 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
   registerSonicPiLanguage(monaco)
   registerHydraLanguage(monaco)
   registerP5JsLanguage(monaco)
+  ensureStrudelProviders(monaco)
+}
+
+// Completion + hover providers for strudel. Monaco's provider registry
+// is append-only per invocation, so we guard with a module-level flag
+// to avoid fan-out when multiple EditorView instances mount. Tests use
+// a thin Monaco mock — skip when the required APIs are absent.
+let strudelProvidersRegistered = false
+function ensureStrudelProviders(monaco: typeof Monaco): void {
+  if (strudelProvidersRegistered) return
+  if (
+    typeof monaco.languages?.registerCompletionItemProvider !== 'function' ||
+    typeof monaco.languages?.registerHoverProvider !== 'function'
+  ) {
+    return
+  }
+  strudelProvidersRegistered = true
+  registerStrudelDotCompletions(monaco)
+  registerStrudelNoteCompletions(monaco)
+  registerStrudelHover(monaco)
 }
 
 /**

@@ -38,7 +38,7 @@ import { useWorkspaceFile } from './useWorkspaceFile'
 import { ensureWorkspaceLanguages, toMonacoLanguage } from './languages'
 import { workspaceAudioBus } from './WorkspaceAudioBus'
 import { useHighlighting } from '../monaco/useHighlighting'
-import { registerEditor, unregisterEditor } from './editorRegistry'
+import { registerEditor, unregisterEditor, applyPersistedEditorOptions } from './editorRegistry'
 import { setEvalError, clearEvalErrors } from '../monaco/diagnostics'
 import { addInlineViewZones } from '../visualizers/viewZones'
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
@@ -231,6 +231,7 @@ export function EditorView({
     editorRef.current = editor
     monacoRef.current = monaco
     registerEditor(fileId, editor)
+    applyPersistedEditorOptions(editor)
     ensureWorkspaceLanguages(monaco)
 
     // Register the Stave Monaco theme (syntax rules + editor colors)
