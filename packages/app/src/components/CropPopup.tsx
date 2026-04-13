@@ -6,6 +6,7 @@ import {
   compilePreset,
   mountVizRenderer,
   workspaceAudioBus,
+  registerPresetAsNamedViz,
   type CropRegion,
   type VizPreset,
   type VizRenderer,
@@ -92,6 +93,9 @@ export function CropPopup({ vizId, presetId, onClose }: CropPopupProps) {
     if (!preset) return;
     const updated = { ...preset, cropRegion: crop, updatedAt: Date.now() };
     await VizPresetStore.put(updated);
+    // Re-register so onNamedVizChanged fires → EditorView remounts
+    // inline zones with the fresh cropRegion from IDB.
+    registerPresetAsNamedViz(updated);
     showToast(`Crop saved for "${vizId}"`, "info");
     onClose();
   }, [preset, crop, vizId, onClose]);
@@ -101,6 +105,7 @@ export function CropPopup({ vizId, presetId, onClose }: CropPopupProps) {
     const { cropRegion: _, ...rest } = preset;
     const updated = { ...rest, updatedAt: Date.now() } as VizPreset;
     await VizPresetStore.put(updated);
+    registerPresetAsNamedViz(updated);
     setCrop({ x: 0, y: 0, w: 1, h: 1 });
     showToast(`Crop cleared for "${vizId}"`, "info");
   }, [preset, vizId]);
