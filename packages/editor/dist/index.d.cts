@@ -1936,6 +1936,12 @@ type WorkspaceTab = {
     readonly kind: 'editor';
     readonly id: string;
     readonly fileId: string;
+    /**
+     * Preview tabs render in italic and are replaced when another file
+     * is opened in preview mode. Promoted to pinned (preview=false) on
+     * double-click or on first edit. Matches VSCode's preview-tab UX.
+     */
+    readonly preview?: boolean;
 } | {
     readonly kind: 'preview';
     readonly id: string;
@@ -2432,8 +2438,21 @@ interface WorkspaceShellHandle {
      * `kind: 'editor'` and matching `fileId` already exists (in any group),
      * focuses it. Otherwise creates a new editor tab in the currently active
      * group and focuses it. No-op if already focused.
+     *
+     * When `options.preview` is true, the tab is marked preview — a single
+     * preview slot per group is reused across successive preview opens,
+     * matching VSCode's single-click-to-preview behaviour. Promotion to a
+     * pinned tab happens on double-click or the first content edit.
      */
-    openOrFocusFile(fileId: string): void;
+    openOrFocusFile(fileId: string, options?: {
+        preview?: boolean;
+    }): void;
+    /**
+     * Promote the given tab out of preview mode — it becomes pinned and
+     * stops being eligible for replacement by the next preview open. No-op
+     * if the tab doesn't exist or was already pinned.
+     */
+    promoteTab(tabId: string): void;
     /**
      * Close every tab (editor + preview) that targets the given file id,
      * in any group. Used when a file is deleted from the sidebar so its

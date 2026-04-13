@@ -9125,15 +9125,31 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                 children: [
                   group.tabs.map((tab) => {
                     const isActive = tab.id === group.activeTabId;
+                    const isPreview = tab.kind === "editor" && tab.preview === true;
                     return /* @__PURE__ */ jsxs(
                       "div",
                       {
                         "data-workspace-tab": tab.id,
                         "data-tab-kind": tab.kind,
                         "data-tab-active": isActive ? "true" : "false",
+                        "data-tab-preview": isPreview ? "true" : "false",
                         draggable: true,
                         onDragStart: (e) => handleTabDragStart(e, group.id, tab),
                         onClick: () => handleTabClick(group.id, tab.id),
+                        onDoubleClick: () => {
+                          if (isPreview) {
+                            setGroups((prev) => {
+                              const g = prev.get(group.id);
+                              if (!g) return prev;
+                              const nextTabs = g.tabs.map(
+                                (t) => t.id === tab.id && t.kind === "editor" ? { ...t, preview: false } : t
+                              );
+                              const nx = new Map(prev);
+                              nx.set(group.id, { ...g, tabs: nextTabs });
+                              return nx;
+                            });
+                          }
+                        },
                         style: {
                           display: "flex",
                           alignItems: "center",
@@ -9145,6 +9161,7 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                           borderRight: "1px solid var(--border)",
                           color: isActive ? "var(--foreground)" : "var(--foreground-muted)",
                           fontSize: 11,
+                          fontStyle: isPreview ? "italic" : "normal",
                           whiteSpace: "nowrap",
                           userSelect: "none"
                         },
@@ -9288,7 +9305,8 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
   useImperativeHandle(
     forwardedRef,
     () => ({
-      openOrFocusFile: (fileId) => {
+      openOrFocusFile: (fileId, options) => {
+        const preview = options?.preview === true;
         let foundGroupId = null;
         let foundTabId = null;
         for (const [gid, group] of groups) {
@@ -9306,18 +9324,49 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
           const targetTid = foundTabId;
           setGroups((prev) => {
             const existing = prev.get(targetGid);
-            if (!existing || existing.activeTabId === targetTid) return prev;
+            if (!existing) return prev;
             const next = new Map(prev);
-            next.set(targetGid, { ...existing, activeTabId: targetTid });
+            const nextTabs = existing.tabs.map((t) => {
+              if (t.id !== targetTid) return t;
+              if (t.kind !== "editor") return t;
+              if (!preview && t.preview) return { ...t, preview: false };
+              return t;
+            });
+            next.set(targetGid, {
+              ...existing,
+              tabs: nextTabs,
+              activeTabId: targetTid
+            });
             return next;
           });
           setActiveGroupId(targetGid);
           return;
         }
+        if (preview) {
+          const existing = groups.get(activeGroupId);
+          const slot = existing?.tabs.find(
+            (t) => t.kind === "editor" && t.preview === true
+          );
+          if (existing && slot) {
+            const slotId = slot.id;
+            setGroups((prev) => {
+              const g = prev.get(activeGroupId);
+              if (!g) return prev;
+              const nextTabs = g.tabs.map(
+                (t) => t.id === slotId && t.kind === "editor" ? { ...t, fileId, preview: true } : t
+              );
+              const nx = new Map(prev);
+              nx.set(activeGroupId, { ...g, tabs: nextTabs, activeTabId: slotId });
+              return nx;
+            });
+            return;
+          }
+        }
         const newTab = {
           kind: "editor",
           id: `tab-${fileId}-${Date.now()}`,
-          fileId
+          fileId,
+          ...preview ? { preview: true } : {}
         };
         setGroups((prev) => {
           const existing = prev.get(activeGroupId);
@@ -9329,6 +9378,22 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
             activeTabId: newTab.id
           });
           return next;
+        });
+      },
+      promoteTab: (tabId) => {
+        setGroups((prev) => {
+          let changed = false;
+          const next = /* @__PURE__ */ new Map();
+          for (const [gid, g] of prev) {
+            const nextTabs = g.tabs.map((t) => {
+              if (t.id !== tabId) return t;
+              if (t.kind !== "editor" || !t.preview) return t;
+              changed = true;
+              return { ...t, preview: false };
+            });
+            next.set(gid, changed ? { ...g, tabs: nextTabs } : g);
+          }
+          return changed ? next : prev;
         });
       },
       closeTabsForFile: (fileId) => {
