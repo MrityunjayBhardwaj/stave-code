@@ -46,6 +46,7 @@ export function ProjectSwitcherModal({
           {projects.map((p) => (
             <div
               key={p.id}
+              data-stave-menu-item
               style={{
                 ...styles.row,
                 ...(p.id === activeProjectId ? styles.rowActive : {}),

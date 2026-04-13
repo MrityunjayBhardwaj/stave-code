@@ -781,6 +781,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           >
             <button
               data-stave-ctx-item
+              data-stave-menu-item
               style={styles.menuItem}
               onClick={() => {
                 shellRef.current?.closeTabsForFile(
@@ -791,6 +792,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             >Close</button>
             <button
               data-stave-ctx-item
+              data-stave-menu-item
               style={styles.menuItem}
               onClick={() => {
                 shellRef.current?.closeOtherTabs(tabContextMenu.tabId);
@@ -799,6 +801,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             >Close Others</button>
             <button
               data-stave-ctx-item
+              data-stave-menu-item
               style={styles.menuItem}
               onClick={() => {
                 shellRef.current?.closeAllTabsInGroup(tabContextMenu.tabId);

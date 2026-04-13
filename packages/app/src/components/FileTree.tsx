@@ -1285,19 +1285,6 @@ type MenuEntry =
   | { label: string; onClick: () => void; danger?: boolean }
   | null;
 
-// Inject a one-time hover-highlight rule for context-menu items.
-let ctxMenuStyleInjected = false;
-function ensureCtxMenuStyle() {
-  if (ctxMenuStyleInjected) return;
-  if (typeof document === "undefined") return;
-  const el = document.createElement("style");
-  el.setAttribute("data-stave-style", "context-menu");
-  el.textContent =
-    '[data-stave-ctx-item]:hover{background:var(--bg-active);}' +
-    '[data-stave-ctx-item][data-danger="true"]:hover{background:var(--danger-hover);}';
-  document.head.appendChild(el);
-  ctxMenuStyleInjected = true;
-}
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -1320,7 +1307,6 @@ function Kbd({ children }: { children: React.ReactNode }) {
 function ContextMenu(props: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x: props.state.x, y: props.state.y });
-  useEffect(() => { ensureCtxMenuStyle(); }, []);
 
   // After mount, clamp to viewport so the menu never spills off the
   // right or bottom edge (VS Code behaviour).
@@ -1397,6 +1383,7 @@ function ContextMenu(props: ContextMenuProps) {
           <button
             key={entry.label}
             data-stave-ctx-item
+            data-stave-menu-item
             data-danger={entry.danger ? "true" : "false"}
             style={{ ...styles.menuItem, ...(entry.danger ? styles.menuItemDanger : {}) }}
             onClick={entry.onClick}

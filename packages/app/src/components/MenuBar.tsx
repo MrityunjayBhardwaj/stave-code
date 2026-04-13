@@ -155,6 +155,7 @@ function MenuItem({
 }) {
   return (
     <button
+      data-stave-menu-item
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       style={{ ...styles.menuItem, ...(disabled ? styles.menuItemDisabled : {}) }}

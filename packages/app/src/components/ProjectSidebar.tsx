@@ -146,6 +146,7 @@ export function ProjectSidebar({
           }}
         >
           <button
+            data-stave-menu-item
             style={styles.menuItem}
             onClick={() => {
               const proj = projects.find((p) => p.id === contextMenu.id);
@@ -155,6 +156,7 @@ export function ProjectSidebar({
             Rename
           </button>
           <button
+            data-stave-menu-item
             style={styles.menuItem}
             onClick={() => {
               onDuplicateProject(contextMenu.id);
@@ -165,6 +167,8 @@ export function ProjectSidebar({
           </button>
           {projects.length > 1 && (
             <button
+              data-stave-menu-item
+              data-danger="true"
               style={{ ...styles.menuItem, color: "var(--danger-fg)" }}
               onClick={() => {
                 onDeleteProject(contextMenu.id);

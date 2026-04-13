@@ -128,3 +128,13 @@ body {
   background: var(--bg-app);
   color: var(--text-body);
 }
+
+/* Shared hover for all dropdown / context menu items.
+   !important overrides inline style={{ background: "none" }}. */
+[data-stave-menu-item]:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  cursor: pointer;
+}
+[data-stave-menu-item][data-danger="true"]:hover:not(:disabled) {
+  background: var(--danger-hover) !important;
+}
