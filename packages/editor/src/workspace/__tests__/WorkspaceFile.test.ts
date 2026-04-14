@@ -14,13 +14,16 @@
  *   (this is the load-bearing invariant for useSyncExternalStore)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   createWorkspaceFile,
   getFile,
   setContent,
   subscribe,
   __resetWorkspaceFilesForTests,
+  setZoneCropOverride,
+  pruneZoneOverrides,
+  subscribeToZoneOverrides,
 } from '../WorkspaceFile'
 
 describe('WorkspaceFile store', () => {
@@ -156,6 +159,37 @@ describe('WorkspaceFile store', () => {
     expect(second).not.toBe(first)
     expect(getFile('a')?.content).toBe('new')
     expect(calls).toBe(1)
+  })
+
+  // Regression for #30 — pruneZoneOverrides must NOT fire override
+  // subscribers. Firing them during an in-flight zone-mount caused the
+  // mount to re-enter itself and leak orphan zones in Monaco.
+  it('pruneZoneOverrides does not notify zone-override subscribers (prevents reentrant mount)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    // Plant a stale override: vizId "old" on track "$0".
+    setZoneCropOverride('f1', '$0', { x: 0, y: 0, w: 0.5, h: 0.5 }, 'old')
+
+    const overrideCb = vi.fn()
+    const unsub = subscribeToZoneOverrides('f1', overrideCb)
+
+    // currentViz has a DIFFERENT vizId for the same trackKey → prune
+    // should remove the stale override.
+    pruneZoneOverrides('f1', new Map([['$0', 'new']]))
+
+    // The override is gone, but subscribers MUST NOT be fired — this
+    // mutation is internal bookkeeping, not a user-driven change.
+    expect(overrideCb).not.toHaveBeenCalled()
+    unsub()
+  })
+
+  it('setZoneCropOverride still notifies subscribers (user-driven path unaffected)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    const overrideCb = vi.fn()
+    const unsub = subscribeToZoneOverrides('f1', overrideCb)
+
+    setZoneCropOverride('f1', '$0', { x: 0, y: 0, w: 1, h: 1 }, 'viz')
+    expect(overrideCb).toHaveBeenCalledTimes(1)
+    unsub()
   })
 
   it('a subscriber can unsubscribe itself during its own callback', () => {

@@ -6252,6 +6252,7 @@ function notify(id) {
 }
 var zoneOverrideSubscribers = /* @__PURE__ */ new Map();
 var wiredZoneObservers = /* @__PURE__ */ new Set();
+var PRUNE_ZONE_OVERRIDES_ORIGIN = /* @__PURE__ */ Symbol("prune-zone-overrides");
 function ensureZoneOverridesMap(fileId) {
   const filesMap = getFilesMap();
   const fileMap = filesMap.get(fileId);
@@ -6262,7 +6263,8 @@ function ensureZoneOverridesMap(fileId) {
     fileMap.set("zoneOverrides", overrides);
   }
   if (!wiredZoneObservers.has(fileId)) {
-    overrides.observeDeep(() => {
+    overrides.observeDeep((events) => {
+      if (events[0]?.transaction.origin === PRUNE_ZONE_OVERRIDES_ORIGIN) return;
       const subs = zoneOverrideSubscribers.get(fileId);
       if (subs) for (const cb of subs) cb();
     });
@@ -6308,7 +6310,7 @@ function pruneZoneOverrides(fileId, currentViz) {
   if (stale.length === 0) return;
   doc.transact(() => {
     for (const key of stale) overrides.delete(key);
-  }, STRUCT_ORIGIN);
+  }, PRUNE_ZONE_OVERRIDES_ORIGIN);
 }
 function subscribeToZoneOverrides(fileId, cb) {
   ensureDoc();

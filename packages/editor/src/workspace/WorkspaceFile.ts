@@ -539,6 +539,14 @@ export interface ZoneOverride {
 const zoneOverrideSubscribers = new Map<string, Set<Subscriber>>()
 const wiredZoneObservers = new Set<string>()
 
+/**
+ * Transaction origin for prune mutations. The observer skips subscriber
+ * notification when it sees this origin — prune is internal bookkeeping,
+ * not a user-visible override change, and firing subscribers during an
+ * active zone-mount would re-trigger the mount reentrantly (see #30).
+ */
+const PRUNE_ZONE_OVERRIDES_ORIGIN = Symbol('prune-zone-overrides')
+
 function ensureZoneOverridesMap(fileId: string): Y.Map<unknown> | null {
   const filesMap = getFilesMap()
   const fileMap = filesMap.get(fileId) as Y.Map<unknown> | undefined
@@ -551,7 +559,9 @@ function ensureZoneOverridesMap(fileId: string): Y.Map<unknown> | null {
   // Wire observer once per file. Yjs deliveres events for nested Y.Map
   // mutations via observeDeep — one subscription watches the tree.
   if (!wiredZoneObservers.has(fileId)) {
-    overrides.observeDeep(() => {
+    overrides.observeDeep((events) => {
+      // Skip prune-originated mutations — see PRUNE_ZONE_OVERRIDES_ORIGIN.
+      if (events[0]?.transaction.origin === PRUNE_ZONE_OVERRIDES_ORIGIN) return
       const subs = zoneOverrideSubscribers.get(fileId)
       if (subs) for (const cb of subs) cb()
     })
@@ -626,7 +636,7 @@ export function pruneZoneOverrides(
   if (stale.length === 0) return
   doc.transact(() => {
     for (const key of stale) overrides.delete(key)
-  }, STRUCT_ORIGIN)
+  }, PRUNE_ZONE_OVERRIDES_ORIGIN)
 }
 
 /**
