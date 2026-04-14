@@ -7935,7 +7935,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     } catch {
     }
   })();
-  const layoutChangeDisposable = editor.onDidLayoutChange?.(() => {
+  const recomputeAllZones = () => {
     editor.changeViewZones((accessor) => {
       for (const entry of zoneEntries) {
         const contentW = editor.getLayoutInfo().contentWidth || 400;
@@ -7945,7 +7945,9 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
       }
     });
-  });
+  };
+  const layoutChangeDisposable = editor.onDidLayoutChange?.(recomputeAllZones);
+  const scrollDisposable = editor.onDidScrollChange?.(recomputeAllZones);
   const editorDom = editor.getDomNode?.();
   let floatingBar = null;
   let mouseMoveDisposable = null;
@@ -8003,6 +8005,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     cleanup() {
       mouseMoveDisposable?.dispose?.();
       layoutChangeDisposable?.dispose?.();
+      scrollDisposable?.dispose?.();
       editorDom?.removeEventListener("mouseleave", mouseLeaveHandler);
       floatingBar?.remove();
       renderers.forEach((r) => r.destroy());

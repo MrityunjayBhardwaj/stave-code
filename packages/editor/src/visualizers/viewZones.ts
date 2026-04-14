@@ -372,8 +372,11 @@ export function addInlineViewZones(
     } catch { /* ignore */ }
   })()
 
-  // ── Editor layout changes: recompute transform + zone height ──
-  const layoutChangeDisposable = editor.onDidLayoutChange?.(() => {
+  // ── Recompute on layout + scroll ──
+  // Monaco re-applies the original addZone heightInPx when a zone
+  // re-enters the viewport after scrolling away. We must re-assert the
+  // crop-adjusted height whenever layout changes OR the user scrolls.
+  const recomputeAllZones = () => {
     editor.changeViewZones((accessor) => {
       for (const entry of zoneEntries) {
         const contentW = editor.getLayoutInfo().contentWidth || 400
@@ -383,7 +386,9 @@ export function addInlineViewZones(
         applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
       }
     })
-  })
+  }
+  const layoutChangeDisposable = editor.onDidLayoutChange?.(recomputeAllZones)
+  const scrollDisposable = editor.onDidScrollChange?.(recomputeAllZones)
 
   // ── Floating action bar (unchanged from before) ──
   const editorDom = editor.getDomNode?.()
@@ -448,6 +453,7 @@ export function addInlineViewZones(
     cleanup() {
       mouseMoveDisposable?.dispose?.()
       layoutChangeDisposable?.dispose?.()
+      scrollDisposable?.dispose?.()
       editorDom?.removeEventListener('mouseleave', mouseLeaveHandler)
       floatingBar?.remove()
       renderers.forEach(r => r.destroy())
