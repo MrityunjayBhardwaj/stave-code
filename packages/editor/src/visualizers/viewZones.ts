@@ -41,34 +41,34 @@ function nativeSizeFor(preset: VizPreset | null): { w: number; h: number } {
 }
 
 /**
- * Compute the inline zone height + canvas transform for a given content
- * width + native canvas size + crop region.
+ * Compute the inline zone height + canvas transform.
  *
- * Uniform scale preserves aspect ratio. Zone height is derived from the
- * crop's native-pixel aspect so the displayed viz matches exactly what
- * the user picked in the crop popup (WYSIWYG).
+ * **Model:** the canvas ALWAYS renders at full native width, scaled to fill
+ * contentW. The crop is a viewport onto that full-width canvas — its
+ * rectangle's aspect drives the zone's height; its x/y shift the canvas
+ * inside the zone so the cropped portion aligns to (0, 0).
+ *
+ *   scale = contentW / nativeW        (constant, independent of crop size)
+ *   zoneH = cropH * nativeH * scale   (vertical slice of the full-width render)
+ *   tx    = -cropX * nativeW * scale  (horizontal offset)
+ *   ty    = -cropY * nativeH * scale  (vertical offset)
+ *
+ * Why this and not "zoom-the-crop-to-fill-width": that model magnified
+ * content when cropW < 1 (a 40%-wide crop displayed at 2.5× the intended
+ * zoom), making the crop dialog's preview not match what the inline zone
+ * showed. This keeps the viz at its native pixel density regardless of how
+ * the user crops — pure WYSIWYG.
  */
 function computeLayout(
   contentW: number,
   native: { w: number; h: number },
   crop: CropRegion,
 ): { zoneH: number; scale: number; tx: number; ty: number } {
-  const cropW = Math.max(0.01, crop.w)
   const cropH = Math.max(0.01, crop.h)
-  // scale so the cropped region's width fills contentW
-  const scale = contentW / (cropW * native.w)
+  const scale = contentW / native.w
   let zoneH = cropH * native.h * scale
-  // Clamp to reasonable bounds
-  if (zoneH > MAX_ZONE_HEIGHT) {
-    const clamped = MAX_ZONE_HEIGHT / (cropH * native.h)
-    return {
-      zoneH: MAX_ZONE_HEIGHT,
-      scale: clamped,
-      tx: -crop.x * native.w * clamped,
-      ty: -crop.y * native.h * clamped,
-    }
-  }
-  if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT
+  if (zoneH > MAX_ZONE_HEIGHT) zoneH = MAX_ZONE_HEIGHT
+  else if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT
   return {
     zoneH,
     scale,
@@ -77,37 +77,13 @@ function computeLayout(
   }
 }
 
-/**
- * Read the canvas's actual intrinsic dimensions. p5 sketches call
- * createCanvas(W, H) asynchronously after mount, often with dimensions that
- * differ from whatever we set on the preset (e.g. pianoroll calls
- * createCanvas(stave.width, stave.height) which now resolves to the 1200×600
- * default but the sketch was authored for 1400×200). The transform math
- * MUST use the canvas's actual size or the viz overflows the zone.
- *
- * Returns null if the canvas hasn't been created yet (first-frame pre-rAF).
- */
-function readCanvasNative(container: HTMLElement): { w: number; h: number } | null {
-  const canvas = container.querySelector<HTMLCanvasElement>('canvas')
-  if (!canvas) return null
-  const w = canvas.width | 0
-  const h = canvas.height | 0
-  if (w <= 0 || h <= 0) return null
-  return { w, h }
-}
-
-/** Apply the computed transform to the canvas inside the container.
- *  `zoneH` is optional — when provided, the container height is re-asserted
- *  in case Monaco reflowed it; otherwise the caller's pre-set height stands.
- */
+/** Apply the computed transform to the canvas inside the container. */
 function applyLayout(
   container: HTMLElement,
   canvas: HTMLElement | null,
-  layout: { scale: number; tx: number; ty: number; zoneH?: number },
+  layout: { scale: number; tx: number; ty: number },
 ): void {
-  if (typeof layout.zoneH === 'number') {
-    container.style.height = `${layout.zoneH}px`
-  }
+  container.style.height = `${layout.zoneH ?? container.style.height}`
   // The canvas (or its wrapper) gets the transform. We wrap the canvas
   // in a positioned div so we can transform it without fighting any
   // inline styles the renderer might set.
@@ -278,38 +254,9 @@ export function addInlineViewZones(
         applyLayout(container, container.querySelector('canvas'), layout)
       })
 
-      const entry: ZoneEntry = {
+      zoneEntries.push({
         zoneId, afterLine, container, canvas, trackKey, vizId, presetId: null, native, crop,
-      }
-      zoneEntries.push(entry)
-
-      // p5's createCanvas(W, H) may pick dimensions that differ from the
-      // preset's declared nativeSize (e.g. pianoroll uses stave.width/height
-      // which resolves at runtime, not our default 1200×600). The transform
-      // math MUST use the canvas's ACTUAL intrinsic size or the viz
-      // overflows its zone. Poll via rAF for up to ~10 frames — once the
-      // canvas appears and has non-zero dims, refine entry.native and
-      // recompute layout. 10 frames is ~170ms which comfortably covers p5's
-      // normal startup lag.
-      let refineAttempts = 0
-      const tryRefine = () => {
-        refineAttempts++
-        const actual = readCanvasNative(entry.container)
-        if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
-          entry.native = actual
-          entry.canvas = entry.container.querySelector<HTMLCanvasElement>('canvas')
-          const contentW = editor.getLayoutInfo().contentWidth || 400
-          const refined = computeLayout(contentW, entry.native, entry.crop)
-          editor.changeViewZones((acc) => {
-            entry.container.style.height = `${refined.zoneH}px`
-            acc.layoutZone(entry.zoneId)
-          })
-          applyLayout(entry.container, entry.container.querySelector('canvas'), refined)
-          return
-        }
-        if (refineAttempts < 10) requestAnimationFrame(tryRefine)
-      }
-      requestAnimationFrame(tryRefine)
+      })
     }
   })
 
@@ -324,12 +271,7 @@ export function addInlineViewZones(
           const preset = presets.find(p => normalize(p.name) === normViz) ?? null
           if (!preset) continue
           entry.presetId = preset.id
-          // Prefer the canvas's actual intrinsic size if it's already been
-          // created — sketches author their own dimensions via createCanvas()
-          // and those are what the transform math must use. Preset nativeSize
-          // is the fallback when the canvas hasn't appeared yet.
-          const actual = readCanvasNative(entry.container)
-          entry.native = actual ?? nativeSizeFor(preset)
+          entry.native = nativeSizeFor(preset)
           // Per-instance override on the file wins; preset.cropRegion is a
           // legacy fallback (retained so existing user presets still show a
           // crop until the user edits per-instance). FULL_CROP is the ultimate
