@@ -204,7 +204,9 @@ function scanStrudelBlockAfterLines(code: string): number[] {
     for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim()
       if (next.startsWith('$:') || next.startsWith('setcps')) break
-      if (next !== '') lastLineIdx = j
+      // `//` comments count as empty so trailing commented-out code doesn't
+      // drag the zone anchor past the real end of the pattern block.
+      if (next !== '' && !next.startsWith('//')) lastLineIdx = j
     }
     result.push(lastLineIdx + 1)
   }

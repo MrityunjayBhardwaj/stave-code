@@ -4460,7 +4460,7 @@ var StrudelEngine = class {
       for (let j = i2 + 1; j < lines.length; j++) {
         const next = lines[j].trim();
         if (next.startsWith("$:") || next.startsWith("setcps")) break;
-        if (next !== "") lastLineIdx = j;
+        if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
       }
       result.set(key, { vizId, afterLine: lastLineIdx + 1 });
     }
@@ -7838,7 +7838,7 @@ function scanStrudelBlockAfterLines(code) {
     for (let j = i2 + 1; j < lines.length; j++) {
       const next = lines[j].trim();
       if (next.startsWith("$:") || next.startsWith("setcps")) break;
-      if (next !== "") lastLineIdx = j;
+      if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
     }
     result.push(lastLineIdx + 1);
   }

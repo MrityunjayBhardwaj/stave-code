@@ -343,6 +343,38 @@ describe('addInlineViewZones', () => {
     expect(addedZones[1].afterLineNumber).toBe(5)
   })
 
+  // Regression for #27 — trailing `//` comments must not drag the anchor.
+  it('re-anchors zone immediately after .viz() even with trailing // comments', () => {
+    const initial =
+      '$: stack(\n' +
+      '  note("c4 e4").s("saw")\n' +
+      ').viz("p5test")\n'
+    const { editor, addedZones, setCode } = makeEditor(initial)
+    const components = makeComponents(
+      new Map([['$0', { vizId: 'pianoroll', afterLine: 3 }]])
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addInlineViewZones(editor as any, components, mockVizDescriptors as any)
+    expect(addedZones[0].afterLineNumber).toBe(3)
+
+    // User adds a blank line and a multi-line // comment block after the .viz.
+    // Expected: zone stays anchored at line 3 — trailing comments don't move it.
+    setCode(
+      initial +
+      '\n' +
+      '// $: stack(\n' +
+      '//   s("hh*2").gain(0.3)\n' +
+      '// )\n'
+    )
+
+    // No re-anchor fired — afterLine was already correct. Verify we did NOT
+    // produce a second zone at a later line (that would indicate the scanner
+    // walked into the comments).
+    const latestAfterLine = addedZones[addedZones.length - 1].afterLineNumber
+    expect(latestAfterLine).toBe(3)
+  })
+
   it('does not re-anchor when block count changes (defers to next eval)', () => {
     const { editor, addedZones, removedIds, setCode } = makeEditor(
       '$: s("bd*4").viz("pianoroll")\n'

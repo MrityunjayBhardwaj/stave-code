@@ -478,8 +478,10 @@ export class StrudelEngine implements LiveCodingEngine {
         const next = lines[j].trim()
         // New block starts — stop here
         if (next.startsWith('$:') || next.startsWith('setcps')) break
-        // Track the last non-empty line as the block end
-        if (next !== '') lastLineIdx = j
+        // Track the last non-empty, non-comment line as the block end.
+        // `//` lines count as empty so a trailing comment block doesn't
+        // pull the zone anchor past the real end of the pattern.
+        if (next !== '' && !next.startsWith('//')) lastLineIdx = j
       }
 
       result.set(key, { vizId, afterLine: lastLineIdx + 1 }) // 1-indexed
