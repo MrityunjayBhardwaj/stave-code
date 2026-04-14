@@ -220,6 +220,27 @@ export class StrudelEngine implements LiveCodingEngine {
     const capturedPatterns = new Map<string, any>() // eslint-disable-line @typescript-eslint/no-explicit-any
     const capturedVizRequests = new Map<string, string>()
     let anonIndex = 0
+    // Auto-orbit counter: each captured $: block with a .viz() request but no
+    // explicit .orbit(N) gets its own unique orbit number starting high enough
+    // that it won't collide with user-set orbits (typically 1..8). Without this
+    // every viz defaults to orbit 1 and every inline viz shows the master mix
+    // rather than its own track. Numbers ≥ 100 + captureId keep the mapping
+    // stable across evaluates.
+    let autoOrbitNext = 100
+    const probeExplicitOrbit = (pat: any): boolean => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      try {
+        const haps = pat.queryArc(0, 1)
+        for (const h of haps) {
+          if (h?.value?.orbit !== undefined) return true
+        }
+        // Also check a longer window — slow patterns may not have a hap in the first cycle.
+        const more = pat.queryArc(0, 4)
+        for (const h of more) {
+          if (h?.value?.orbit !== undefined) return true
+        }
+      } catch { /* silent patterns throw or return empty */ }
+      return false
+    }
 
     // Dynamic import — Pattern is from @strudel/core which is already loaded after init()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -290,13 +311,29 @@ export class StrudelEngine implements LiveCodingEngine {
                 captureId = `$${anonIndex}`
                 anonIndex++
               }
-              capturedPatterns.set(captureId, this)
 
-              // Resolve pending .viz() request — .viz() fires BEFORE .p() in chain
+              // Resolve pending .viz() request — .viz() fires BEFORE .p() in chain.
+              let vizName: string = ''
               if (this._pendingViz && typeof this._pendingViz === 'string') {
-                capturedVizRequests.set(captureId, this._pendingViz)
+                vizName = this._pendingViz
+                capturedVizRequests.set(captureId, vizName)
                 delete this._pendingViz
               }
+
+              // Per-track audio isolation: strudel's default orbit is 1, so every
+              // $: block without an explicit .orbit(N) call lands on the SAME
+              // superdough Orbit. That makes every inline viz see the master mix
+              // rather than its own track. For captured blocks that have a .viz()
+              // request and NO user-set orbit, wrap the pattern with a unique
+              // auto-orbit so it routes through its own Orbit node — which is
+              // what StrudelEngine.rebuildTrackAnalysers() side-taps.
+              let effectivePattern = this
+              if (vizName && typeof this.orbit === 'function' && !probeExplicitOrbit(this)) {
+                const autoOrbit = autoOrbitNext++
+                try { effectivePattern = this.orbit(autoOrbit) } catch { /* fall back to this */ }
+              }
+              capturedPatterns.set(captureId, effectivePattern)
+              return strudelFn.call(effectivePattern, id)
             }
             return strudelFn.call(this, id)
           },

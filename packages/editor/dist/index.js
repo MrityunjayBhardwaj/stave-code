@@ -4244,6 +4244,21 @@ var StrudelEngine = class {
     const capturedPatterns = /* @__PURE__ */ new Map();
     const capturedVizRequests = /* @__PURE__ */ new Map();
     let anonIndex = 0;
+    let autoOrbitNext = 100;
+    const probeExplicitOrbit = (pat) => {
+      try {
+        const haps = pat.queryArc(0, 1);
+        for (const h of haps) {
+          if (h?.value?.orbit !== void 0) return true;
+        }
+        const more = pat.queryArc(0, 4);
+        for (const h of more) {
+          if (h?.value?.orbit !== void 0) return true;
+        }
+      } catch {
+      }
+      return false;
+    };
     const { Pattern } = await import('@strudel/core');
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, "viz");
@@ -4290,11 +4305,22 @@ var StrudelEngine = class {
                 captureId = `$${anonIndex}`;
                 anonIndex++;
               }
-              capturedPatterns.set(captureId, this);
+              let vizName = "";
               if (this._pendingViz && typeof this._pendingViz === "string") {
-                capturedVizRequests.set(captureId, this._pendingViz);
+                vizName = this._pendingViz;
+                capturedVizRequests.set(captureId, vizName);
                 delete this._pendingViz;
               }
+              let effectivePattern = this;
+              if (vizName && typeof this.orbit === "function" && !probeExplicitOrbit(this)) {
+                const autoOrbit = autoOrbitNext++;
+                try {
+                  effectivePattern = this.orbit(autoOrbit);
+                } catch {
+                }
+              }
+              capturedPatterns.set(captureId, effectivePattern);
+              return strudelFn.call(effectivePattern, id);
             }
             return strudelFn.call(this, id);
           }
@@ -13800,6 +13826,154 @@ function encodeBundle(ntpTime, messages) {
   return new Uint8Array(MULTI_BUF, 0, off);
 }
 
+// ../../../sonicPiWeb/src/engine/buildTrackMonitorSynthDef.ts
+var RATE_CONTROL = 1;
+var RATE_AUDIO = 2;
+var BINOP_MULTIPLY = 2;
+function writePstring(view, offset, s) {
+  view.setUint8(offset, s.length);
+  offset += 1;
+  for (let i2 = 0; i2 < s.length; i2++) {
+    view.setUint8(offset + i2, s.charCodeAt(i2));
+  }
+  return offset + s.length;
+}
+function writeUGen(view, offset, name2, rate, inputs, numOutputs, outputRate, special = 0) {
+  offset = writePstring(view, offset, name2);
+  view.setInt8(offset, rate);
+  offset += 1;
+  view.setInt16(offset, inputs.length, false);
+  offset += 2;
+  view.setInt16(offset, numOutputs, false);
+  offset += 2;
+  view.setInt16(offset, special, false);
+  offset += 2;
+  for (const [ugenIdx, outIdx] of inputs) {
+    view.setInt16(offset, ugenIdx, false);
+    offset += 2;
+    view.setInt16(offset, outIdx, false);
+    offset += 2;
+  }
+  for (let i2 = 0; i2 < numOutputs; i2++) {
+    view.setInt8(offset, outputRate);
+    offset += 1;
+  }
+  return offset;
+}
+function writeParamName(view, offset, name2, index) {
+  offset = writePstring(view, offset, name2);
+  view.setInt16(offset, index, false);
+  return offset + 2;
+}
+function buildTrackMonitorSynthDef() {
+  const buf = new ArrayBuffer(246);
+  const view = new DataView(buf);
+  let o = 0;
+  view.setUint8(o, 83);
+  o += 1;
+  view.setUint8(o, 67);
+  o += 1;
+  view.setUint8(o, 103);
+  o += 1;
+  view.setUint8(o, 102);
+  o += 1;
+  view.setInt32(o, 1, false);
+  o += 4;
+  view.setInt16(o, 1, false);
+  o += 2;
+  o = writePstring(view, o, "sonic_pi_track_monitor");
+  view.setInt16(o, 0, false);
+  o += 2;
+  view.setInt16(o, 4, false);
+  o += 2;
+  view.setFloat32(o, 0, false);
+  o += 4;
+  view.setFloat32(o, 0, false);
+  o += 4;
+  view.setFloat32(o, 0, false);
+  o += 4;
+  view.setFloat32(o, 1, false);
+  o += 4;
+  view.setInt16(o, 4, false);
+  o += 2;
+  o = writeParamName(view, o, "in_bus", 0);
+  o = writeParamName(view, o, "out_bus_master", 1);
+  o = writeParamName(view, o, "out_bus_track", 2);
+  o = writeParamName(view, o, "amp", 3);
+  view.setInt16(o, 6, false);
+  o += 2;
+  o = writeUGen(
+    view,
+    o,
+    "Control",
+    RATE_CONTROL,
+    [],
+    // no inputs
+    4,
+    RATE_CONTROL
+  );
+  o = writeUGen(
+    view,
+    o,
+    "In",
+    RATE_AUDIO,
+    [[0, 0]],
+    // input: Control.in_bus
+    2,
+    RATE_AUDIO
+  );
+  o = writeUGen(
+    view,
+    o,
+    "BinaryOpUGen",
+    RATE_AUDIO,
+    [[1, 0], [0, 3]],
+    // In.L, Control.amp
+    1,
+    RATE_AUDIO,
+    BINOP_MULTIPLY
+  );
+  o = writeUGen(
+    view,
+    o,
+    "BinaryOpUGen",
+    RATE_AUDIO,
+    [[1, 1], [0, 3]],
+    // In.R, Control.amp
+    1,
+    RATE_AUDIO,
+    BINOP_MULTIPLY
+  );
+  o = writeUGen(
+    view,
+    o,
+    "Out",
+    RATE_AUDIO,
+    [[0, 1], [2, 0], [3, 0]],
+    // Control.out_bus_master, scaled_L, scaled_R
+    0,
+    RATE_AUDIO
+  );
+  o = writeUGen(
+    view,
+    o,
+    "Out",
+    RATE_AUDIO,
+    [[0, 2], [2, 0], [3, 0]],
+    // Control.out_bus_track, scaled_L, scaled_R
+    0,
+    RATE_AUDIO
+  );
+  view.setInt16(o, 0, false);
+  o += 2;
+  if (o !== 246) {
+    throw new Error(
+      `SynthDef binary size mismatch: wrote ${o} bytes, expected 246. This is a bug in buildTrackMonitorSynthDef().`
+    );
+  }
+  return new Uint8Array(buf);
+}
+
 // ../../../sonicPiWeb/src/engine/SuperSonicBridge.ts
 function formatOscTrace(address, args2, audioTime) {
   if (address === "/s_new" && args2.length >= 4) {
@@ -13879,6 +14053,10 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     this.splitter = null;
     this.masterMerger = null;
     this.masterGainNode = null;
+    /** Per-loop monitor state: loopBus (internal routing) + monitorNodeId (scsynth node) */
+    this.loopMonitors = /* @__PURE__ */ new Map();
+    /** Whether the track-monitor SynthDef has been loaded via /d_recv */
+    this.monitorSynthDefLoaded = false;
     /** scsynth mixer node ID — for controlling master volume via /n_set */
     this.mixerNodeId = 0;
     /** Optional callback for OSC trace logging — receives formatted trace strings like desktop Sonic Pi. */
@@ -13925,8 +14103,11 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     }
     const mixerGroupId = this.sonic.nextNodeId();
     this.sonic.send("/g_new", mixerGroupId, 0, 0);
-    this.sonic.send("/g_new", 101, 2, mixerGroupId);
+    this.sonic.send("/g_new", 102, 2, mixerGroupId);
+    this.sonic.send("/g_new", 101, 2, 102);
     this.sonic.send("/g_new", 100, 2, 101);
+    this.sonic.send("/d_recv", buildTrackMonitorSynthDef());
+    this.monitorSynthDefLoaded = true;
     await this.sonic.loadSynthDef("sonic-pi-mixer");
     const mixerBus = this.allocateBus();
     this.mixerNodeId = this.sonic.nextNodeId();
@@ -14366,6 +14547,82 @@ var _SuperSonicBridge = class _SuperSonicBridge {
   getAllTrackAnalysers() {
     return this.trackAnalysers;
   }
+  // ── Per-loop audio isolation (monitor synths) ────────────────
+  //
+  // Each live_loop gets:
+  //   1. A loopBus (internal scsynth bus, from the 128-bus pool)
+  //   2. A monitor synth in group 102 (reads loopBus, writes to
+  //      bus 0 for the mixer AND to a trackBus output channel
+  //      for the per-track AnalyserNode)
+  //
+  // task.outBus is set to loopBus so all synths + FX in that loop
+  // write there. The monitor fans out post-FX.
+  //
+  // Bare code (no live_loop) keeps outBus = 0, no monitor.
+  /**
+   * Create a per-loop monitor synth. Returns the loopBus number that
+   * the loop's synths should write to (via task.outBus).
+   *
+   * If a monitor already exists for this name (hot-swap), reuses it.
+   * The monitor persists across loop iterations (SP11 pattern — same
+   * lifecycle as persistentFx).
+   */
+  createLoopMonitor(name2) {
+    const existing = this.loopMonitors.get(name2);
+    if (existing) return existing.loopBus;
+    if (!this.sonic || !this.monitorSynthDefLoaded) return 0;
+    const loopBus = this.allocateBus();
+    const trackBus = this.allocateTrackBus(name2);
+    const monitorNodeId = this.sonic.nextNodeId();
+    this.sonic.send(
+      "/s_new",
+      "sonic_pi_track_monitor",
+      monitorNodeId,
+      1,
+      102,
+      "in_bus",
+      loopBus,
+      "out_bus_master",
+      0,
+      "out_bus_track",
+      trackBus,
+      "amp",
+      1
+    );
+    this.loopMonitors.set(name2, { loopBus, monitorNodeId });
+    return loopBus;
+  }
+  /**
+   * Get the loopBus for a named loop (0 if no monitor exists).
+   * The engine uses this to set task.outBus.
+   */
+  getLoopBus(name2) {
+    return this.loopMonitors.get(name2)?.loopBus ?? 0;
+  }
+  /**
+   * Free a specific loop's monitor synth and return its bus to the pool.
+   * Called when a loop is removed during hot-swap.
+   */
+  freeLoopMonitor(name2) {
+    const monitor = this.loopMonitors.get(name2);
+    if (!monitor) return;
+    this.sonic?.send("/n_free", monitor.monitorNodeId);
+    this.freeBus(monitor.loopBus);
+    this.loopMonitors.delete(name2);
+  }
+  /**
+   * Free all monitor synths (called on stop / re-evaluate).
+   * The loopBus numbers are returned to the pool so they can be
+   * reused on the next run. Monitor synths are also freed via
+   * /g_freeAll 102 in freeAllNodes(), but we clean the map here
+   * so createLoopMonitor() knows to recreate them.
+   */
+  clearLoopMonitors() {
+    for (const [, { loopBus }] of this.loopMonitors) {
+      this.freeBus(loopBus);
+    }
+    this.loopMonitors.clear();
+  }
   /** Allocate a private audio bus for FX routing. */
   allocateBus() {
     if (this.freeBuses.length > 0) return this.freeBuses.pop();
@@ -14400,11 +14657,13 @@ var _SuperSonicBridge = class _SuperSonicBridge {
   getSampleDuration(name2) {
     return this.sampleDurations.get(name2);
   }
-  /** Free all synth and FX nodes (clean slate for re-evaluate). */
+  /** Free all synth, FX, and monitor nodes (clean slate for re-evaluate). */
   freeAllNodes() {
     if (!this.sonic) return;
     this.sonic.send("/g_freeAll", 100);
     this.sonic.send("/g_freeAll", 101);
+    this.sonic.send("/g_freeAll", 102);
+    this.clearLoopMonitors();
   }
   /** Create a new group inside the FX group (101). Returns group ID. */
   createFxGroup() {
@@ -17643,7 +17902,7 @@ var SonicPiEngine = class {
           syncTarget = builderFnOrOpts.sync ?? null;
           builderFn = maybeFn;
         }
-        this.bridge?.allocateTrackBus(name2);
+        const loopBus = this.bridge?.createLoopMonitor(name2) ?? 0;
         this.loopBuilders.set(name2, builderFn);
         if (!this.loopSeeds.has(name2)) {
           let hash = 0;
@@ -17723,7 +17982,7 @@ var SonicPiEngine = class {
           if (task) {
             task.bpm = defaultBpm;
             task.currentSynth = defaultSynth;
-            task.outBus = 0;
+            task.outBus = loopBus;
           }
         }
       };
@@ -18104,7 +18363,7 @@ var SonicPiEngine = class {
           if (task) {
             task.bpm = defaults.bpm;
             task.currentSynth = defaults.synth;
-            task.outBus = 0;
+            task.outBus = this.bridge?.getLoopBus(name2) ?? 0;
           }
         }
         scheduler.resumeTick();
