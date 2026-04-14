@@ -7714,9 +7714,7 @@ function computeLayout(contentW, native, crop) {
       zoneH: MAX_ZONE_HEIGHT,
       scale: clamped,
       tx: -crop.x * native.w * clamped,
-      ty: -crop.y * native.h * clamped,
-      nativeW: native.w,
-      nativeH: native.h
+      ty: -crop.y * native.h * clamped
     };
   }
   if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT;
@@ -7724,10 +7722,16 @@ function computeLayout(contentW, native, crop) {
     zoneH,
     scale: scale2,
     tx: -crop.x * native.w * scale2,
-    ty: -crop.y * native.h * scale2,
-    nativeW: native.w,
-    nativeH: native.h
+    ty: -crop.y * native.h * scale2
   };
+}
+function readCanvasNative(container) {
+  const canvas = container.querySelector("canvas");
+  if (!canvas) return null;
+  const w = canvas.width | 0;
+  const h = canvas.height | 0;
+  if (w <= 0 || h <= 0) return null;
+  return { w, h };
 }
 function applyLayout(container, canvas, layout) {
   if (typeof layout.zoneH === "number") {
@@ -7742,18 +7746,7 @@ function applyLayout(container, canvas, layout) {
     wrapper.appendChild(canvas);
   }
   if (wrapper) {
-    const nw = layout.nativeW ?? wrapper.offsetWidth;
-    const nh = layout.nativeH ?? wrapper.offsetHeight;
-    if (nw > 0 && nh > 0) {
-      wrapper.style.width = `${nw}px`;
-      wrapper.style.height = `${nh}px`;
-    }
     wrapper.style.transform = `translate(${layout.tx}px, ${layout.ty}px) scale(${layout.scale})`;
-    const c = wrapper.querySelector("canvas");
-    if (c) {
-      c.style.width = "100%";
-      c.style.height = "100%";
-    }
   }
 }
 function createFloatingActionBar(editorDom) {
@@ -7883,18 +7876,25 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         crop
       };
       zoneEntries.push(entry);
-      let stretchAttempts = 0;
-      const tryStretch = () => {
-        stretchAttempts++;
-        const c = entry.container.querySelector("canvas");
-        if (c) {
-          entry.canvas = c;
-          applyLayout(entry.container, c, layout);
+      let refineAttempts = 0;
+      const tryRefine = () => {
+        refineAttempts++;
+        const actual = readCanvasNative(entry.container);
+        if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
+          entry.native = actual;
+          entry.canvas = entry.container.querySelector("canvas");
+          const contentW2 = editor.getLayoutInfo().contentWidth || 400;
+          const refined = computeLayout(contentW2, entry.native, entry.crop);
+          editor.changeViewZones((acc) => {
+            entry.container.style.height = `${refined.zoneH}px`;
+            acc.layoutZone(entry.zoneId);
+          });
+          applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
           return;
         }
-        if (stretchAttempts < 10) requestAnimationFrame(tryStretch);
+        if (refineAttempts < 10) requestAnimationFrame(tryRefine);
       };
-      requestAnimationFrame(tryStretch);
+      requestAnimationFrame(tryRefine);
     }
   });
   if (fileId) {
@@ -7914,7 +7914,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           const preset = presets.find((p) => normalize(p.name) === normViz) ?? null;
           if (!preset) continue;
           entry.presetId = preset.id;
-          entry.native = nativeSizeFor(preset);
+          const actual = readCanvasNative(entry.container);
+          entry.native = actual ?? nativeSizeFor(preset);
           const override = fileId ? getZoneCropOverride(fileId, entry.trackKey) : void 0;
           entry.crop = override ?? preset.cropRegion ?? FULL_CROP;
           const contentW = editor.getLayoutInfo().contentWidth || 400;
