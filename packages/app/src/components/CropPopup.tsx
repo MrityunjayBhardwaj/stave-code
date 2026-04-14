@@ -67,23 +67,52 @@ export function CropPopup({ vizId, presetId, fileId, trackKey, onClose }: CropPo
       return; // compile error — show placeholder only
     }
 
-    // Subscribe to the default audio bus to get engine components
+    // Pin to the file that owns the zone being cropped, not the default
+    // (most-recent) publisher — otherwise the popup reacts to whichever file
+    // published most recently, which may not be this zone's file.
     let unsub: (() => void) | null = null;
     let mounted = false;
 
     unsub = workspaceAudioBus.subscribe(
-      { kind: "default" },
+      { kind: "file", fileId },
       (payload) => {
         if (mounted || !canvasContainerRef.current) return;
         mounted = true;
 
-        // Build minimal engine components from the payload
-        const components = payload?.engineComponents ?? payload ?? {};
+        // Narrow engineComponents down to THIS track, mirroring the inline
+        // zone's wiring in viewZones.ts: prefer the per-track AnalyserNode /
+        // scheduler / hapStream keyed by `trackKey`, fall back to master
+        // when no per-track analyser is published (e.g. Sonic Pi today).
+        const components = (payload?.engineComponents ?? payload ?? {}) as any;
+        const audioCtx = components.audio?.audioCtx;
+        const trackAnalyser = components.audio?.trackAnalysers?.get(trackKey);
+        const trackStream = components.inlineViz?.trackStreams?.get(trackKey);
+        const trackScheduler =
+          components.queryable?.trackSchedulers?.get(trackKey) ?? null;
+
+        const zoneAudio = trackAnalyser && audioCtx
+          ? {
+              analyser: trackAnalyser,
+              audioCtx,
+              trackAnalysers: components.audio?.trackAnalysers,
+            }
+          : components.audio;
+
+        const zoneComponents = {
+          ...components,
+          ...(trackStream ? { streaming: { hapStream: trackStream } } : {}),
+          audio: zoneAudio,
+          queryable: {
+            scheduler: trackScheduler,
+            trackSchedulers:
+              components.queryable?.trackSchedulers ?? new Map(),
+          },
+        };
 
         rendererRef.current = mountVizRenderer(
           canvasContainerRef.current! as HTMLDivElement,
           descriptor.factory,
-          components,
+          zoneComponents,
           { w: PREVIEW_W, h: PREVIEW_H },
           console.error,
         );
@@ -99,7 +128,7 @@ export function CropPopup({ vizId, presetId, fileId, trackKey, onClose }: CropPo
         rendererRef.current = null;
       }
     };
-  }, [preset]);
+  }, [preset, fileId, trackKey]);
 
   const handleSave = useCallback(() => {
     // Save the crop as a per-instance override on the WORKSPACE FILE, not on
