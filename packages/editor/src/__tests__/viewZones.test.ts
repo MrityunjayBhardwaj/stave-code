@@ -40,7 +40,7 @@ const mockVizDescriptors = [
   { id: 'scope', label: 'Scope', requires: ['audio'] as (keyof EngineComponents)[], factory: mockScopeFactory },
 ]
 
-function makeEditor() {
+function makeEditor(initialCode = '') {
   const zoneIds: string[] = []
   let idCounter = 0
   const addedZones: Array<{ afterLineNumber: number; heightInPx: number }> = []
@@ -63,12 +63,28 @@ function makeEditor() {
     cb(accessor)
   })
 
+  let code = initialCode
+  const contentChangeListeners: Array<() => void> = []
+
   const editor = {
     changeViewZones,
     getLayoutInfo: vi.fn(() => ({ contentWidth: 800 })),
+    getModel: () => ({ getValue: () => code }),
+    onDidChangeModelContent: vi.fn((cb: () => void) => {
+      contentChangeListeners.push(cb)
+      return { dispose: () => {
+        const i = contentChangeListeners.indexOf(cb)
+        if (i >= 0) contentChangeListeners.splice(i, 1)
+      } }
+    }),
   }
 
-  return { editor, accessor, addedZones, removedIds, changeViewZones }
+  const setCode = (newCode: string) => {
+    code = newCode
+    for (const cb of contentChangeListeners) cb()
+  }
+
+  return { editor, accessor, addedZones, removedIds, changeViewZones, setCode }
 }
 
 function makeComponents(
@@ -294,6 +310,57 @@ describe('addInlineViewZones', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addInlineViewZones(editor as any, components, mockVizDescriptors as any)
+    expect(addedZones).toHaveLength(1)
+  })
+
+  // Regression for #25 — zone re-anchors as the user edits between evals.
+  it('re-anchors zone to new block-end line when code grows without re-eval', () => {
+    const { editor, addedZones, removedIds, setCode } = makeEditor(
+      '$: s("bd*4").viz("pianoroll")\n' // 1 line — zone after line 1
+    )
+    const components = makeComponents(
+      new Map([['$0', { vizId: 'pianoroll', afterLine: 1 }]])
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addInlineViewZones(editor as any, components, mockVizDescriptors as any)
+    expect(addedZones).toHaveLength(1)
+    expect(addedZones[0].afterLineNumber).toBe(1)
+
+    // User types: same block, now 5 lines. Block-end shifts from 1 to 5.
+    setCode(
+      '$: stack(\n' +
+      '  s("hh*8").gain(0.3),\n' +
+      '  s("bd [~ bd] ~ bd").gain(0.5),\n' +
+      '  s("~ sd ~ [sd cp]").gain(0.4)\n' +
+      ').viz("pianoroll")\n'
+    )
+
+    // Zone removed + re-added with new afterLineNumber; same domNode preserved
+    // by the entry (we only check the wire-level move here).
+    expect(removedIds).toContain('zone-1')
+    expect(addedZones).toHaveLength(2)
+    expect(addedZones[1].afterLineNumber).toBe(5)
+  })
+
+  it('does not re-anchor when block count changes (defers to next eval)', () => {
+    const { editor, addedZones, removedIds, setCode } = makeEditor(
+      '$: s("bd*4").viz("pianoroll")\n'
+    )
+    const components = makeComponents(
+      new Map([['$0', { vizId: 'pianoroll', afterLine: 1 }]])
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addInlineViewZones(editor as any, components, mockVizDescriptors as any)
+    expect(addedZones).toHaveLength(1)
+
+    // User deletes the only $: block — block count drops to zero.
+    // The existing zone's trackKey $0 no longer has a matching block.
+    // Don't touch it; the next eval will republish and rebuild.
+    setCode('// nothing\n')
+
+    expect(removedIds).toHaveLength(0)
     expect(addedZones).toHaveLength(1)
   })
 

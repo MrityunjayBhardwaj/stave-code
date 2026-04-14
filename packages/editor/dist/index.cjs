@@ -7829,6 +7829,21 @@ function createFloatingActionBar(editorDom) {
   return bar;
 }
 var FULL_CROP = { x: 0, y: 0, w: 1, h: 1 };
+function scanStrudelBlockAfterLines(code) {
+  const lines = code.split("\n");
+  const result = [];
+  for (let i2 = 0; i2 < lines.length; i2++) {
+    if (!lines[i2].trim().startsWith("$:")) continue;
+    let lastLineIdx = i2;
+    for (let j = i2 + 1; j < lines.length; j++) {
+      const next = lines[j].trim();
+      if (next.startsWith("$:") || next.startsWith("setcps")) break;
+      if (next !== "") lastLineIdx = j;
+    }
+    result.push(lastLineIdx + 1);
+  }
+  return result;
+}
 function addInlineViewZones(editor, components, vizDescriptors, actions, fileId) {
   const vizRequests = components.inlineViz?.vizRequests;
   if (!vizRequests || vizRequests.size === 0) {
@@ -7981,6 +7996,32 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
   };
   const layoutChangeDisposable = editor.onDidLayoutChange?.(recomputeAllZones);
   const scrollDisposable = editor.onDidScrollChange?.(recomputeAllZones);
+  const reAnchorZones = () => {
+    const model = editor.getModel?.();
+    if (!model) return;
+    const afterLines = scanStrudelBlockAfterLines(model.getValue());
+    const changed = [];
+    for (const entry of zoneEntries) {
+      const m = entry.trackKey.match(/^\$(\d+)$/);
+      if (!m) continue;
+      const idx = parseInt(m[1], 10);
+      if (idx >= afterLines.length) continue;
+      const newAfterLine = afterLines[idx];
+      if (newAfterLine !== entry.afterLine) {
+        entry.afterLine = newAfterLine;
+        entry.zoneDesc.afterLineNumber = newAfterLine;
+        changed.push(entry);
+      }
+    }
+    if (changed.length === 0) return;
+    editor.changeViewZones((accessor) => {
+      for (const entry of changed) {
+        accessor.removeZone(entry.zoneId);
+        entry.zoneId = accessor.addZone(entry.zoneDesc);
+      }
+    });
+  };
+  const contentChangeDisposable = editor.onDidChangeModelContent?.(reAnchorZones);
   const editorDom = editor.getDomNode?.();
   let floatingBar = null;
   let mouseMoveDisposable = null;
@@ -8048,6 +8089,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       scrollHitTestDisposable?.dispose?.();
       layoutChangeDisposable?.dispose?.();
       scrollDisposable?.dispose?.();
+      contentChangeDisposable?.dispose?.();
       editorDom?.removeEventListener("mouseleave", mouseLeaveHandler);
       floatingBar?.remove();
       renderers.forEach((r) => r.destroy());

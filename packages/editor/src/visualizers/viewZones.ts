@@ -189,6 +189,28 @@ interface ZoneEntry {
 
 const FULL_CROP: CropRegion = { x: 0, y: 0, w: 1, h: 1 }
 
+/**
+ * Mirror of StrudelEngine.buildVizRequestsWithLines' block scanner, run
+ * against the live editor buffer. Returns an ordered array where index N
+ * is the 1-indexed afterLine for the Nth `$:` block. Used to re-anchor
+ * zones as the user edits between evaluations.
+ */
+function scanStrudelBlockAfterLines(code: string): number[] {
+  const lines = code.split('\n')
+  const result: number[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim().startsWith('$:')) continue
+    let lastLineIdx = i
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j].trim()
+      if (next.startsWith('$:') || next.startsWith('setcps')) break
+      if (next !== '') lastLineIdx = j
+    }
+    result.push(lastLineIdx + 1)
+  }
+  return result
+}
+
 export function addInlineViewZones(
   editor: Monaco.editor.IStandaloneCodeEditor,
   components: Partial<EngineComponents>,
@@ -398,6 +420,43 @@ export function addInlineViewZones(
   const layoutChangeDisposable = editor.onDidLayoutChange?.(recomputeAllZones)
   const scrollDisposable = editor.onDidScrollChange?.(recomputeAllZones)
 
+  // ── Live re-anchor on content edits ──
+  // The engine computes `afterLine` from `lastEvaluatedCode`, so between
+  // evaluations zones stay pinned to stale line numbers. As the user types
+  // above/inside a $: block, its last line shifts but the zone stays put.
+  // On every content change, rescan the model for $: block ends and move
+  // any zone whose block has grown or shrunk. Matched by anonymous index
+  // ($0/$1/…) against the existing trackKey — stable as long as block count
+  // doesn't change, which is the common edit-within-block case. Block
+  // count changes defer to the next evaluate (engine re-keys the map).
+  const reAnchorZones = () => {
+    const model = editor.getModel?.()
+    if (!model) return
+    const afterLines = scanStrudelBlockAfterLines(model.getValue())
+
+    const changed: ZoneEntry[] = []
+    for (const entry of zoneEntries) {
+      const m = entry.trackKey.match(/^\$(\d+)$/)
+      if (!m) continue
+      const idx = parseInt(m[1], 10)
+      if (idx >= afterLines.length) continue
+      const newAfterLine = afterLines[idx]
+      if (newAfterLine !== entry.afterLine) {
+        entry.afterLine = newAfterLine
+        entry.zoneDesc.afterLineNumber = newAfterLine
+        changed.push(entry)
+      }
+    }
+    if (changed.length === 0) return
+    editor.changeViewZones((accessor) => {
+      for (const entry of changed) {
+        accessor.removeZone(entry.zoneId)
+        entry.zoneId = accessor.addZone(entry.zoneDesc)
+      }
+    })
+  }
+  const contentChangeDisposable = editor.onDidChangeModelContent?.(reAnchorZones)
+
   // ── Floating action bar (unchanged from before) ──
   const editorDom = editor.getDomNode?.()
   let floatingBar: HTMLElement | null = null
@@ -476,6 +535,7 @@ export function addInlineViewZones(
       scrollHitTestDisposable?.dispose?.()
       layoutChangeDisposable?.dispose?.()
       scrollDisposable?.dispose?.()
+      contentChangeDisposable?.dispose?.()
       editorDom?.removeEventListener('mouseleave', mouseLeaveHandler)
       floatingBar?.remove()
       renderers.forEach(r => r.destroy())
