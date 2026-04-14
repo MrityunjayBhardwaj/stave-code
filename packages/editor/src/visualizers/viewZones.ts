@@ -91,8 +91,12 @@ function computeLayout(
 function readCanvasNative(container: HTMLElement): { w: number; h: number } | null {
   const canvas = container.querySelector<HTMLCanvasElement>('canvas')
   if (!canvas) return null
-  const w = canvas.width | 0
-  const h = canvas.height | 0
+  // Use CSS display dimensions, NOT canvas.width/height (buffer size).
+  // On HiDPI/Retina (devicePixelRatio > 1), p5 doubles the buffer for
+  // sharp rendering: canvas.width = CSS_width × DPR. Transform math must
+  // use the CSS size — buffer size halves the visual width on Retina.
+  const w = canvas.offsetWidth | 0
+  const h = canvas.offsetHeight | 0
   if (w <= 0 || h <= 0) return null
   return { w, h }
 }

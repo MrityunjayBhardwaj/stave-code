@@ -7755,8 +7755,8 @@ function computeLayout(contentW, native, crop) {
 function readCanvasNative(container) {
   const canvas = container.querySelector("canvas");
   if (!canvas) return null;
-  const w = canvas.width | 0;
-  const h = canvas.height | 0;
+  const w = canvas.offsetWidth | 0;
+  const h = canvas.offsetHeight | 0;
   if (w <= 0 || h <= 0) return null;
   return { w, h };
 }
