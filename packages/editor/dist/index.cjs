@@ -7731,12 +7731,15 @@ function nativeSizeFor(preset) {
   return DEFAULT_NATIVE;
 }
 function computeLayout(contentW, native, crop) {
+  const cropW = Math.max(0.01, crop.w);
   const cropH = Math.max(0.01, crop.h);
   const scale2 = contentW / native.w;
+  const clipW = cropW * contentW;
   let zoneH = cropH * native.h * scale2;
   if (zoneH > MAX_ZONE_HEIGHT) zoneH = MAX_ZONE_HEIGHT;
   else if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT;
   return {
+    clipW,
     zoneH,
     scale: scale2,
     tx: -crop.x * native.w * scale2,
@@ -7749,7 +7752,21 @@ function applyLayout(container, canvas, layout) {
   if (typeof layout.zoneH === "number") {
     container.style.height = `${layout.zoneH}px`;
   }
-  let wrapper = container.querySelector("[data-viz-canvas-wrap]");
+  let clip = container.querySelector("[data-viz-clip]");
+  if (!clip) {
+    clip = document.createElement("div");
+    clip.setAttribute("data-viz-clip", "");
+    clip.style.cssText = "overflow:hidden;position:relative;";
+    while (container.firstChild) clip.appendChild(container.firstChild);
+    container.appendChild(clip);
+  }
+  if (typeof layout.clipW === "number") {
+    clip.style.width = `${layout.clipW}px`;
+  }
+  if (typeof layout.zoneH === "number") {
+    clip.style.height = `${layout.zoneH}px`;
+  }
+  let wrapper = clip.querySelector("[data-viz-canvas-wrap]");
   if (!wrapper && canvas) {
     wrapper = document.createElement("div");
     wrapper.setAttribute("data-viz-canvas-wrap", "");
