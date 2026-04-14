@@ -41,43 +41,33 @@ function nativeSizeFor(preset: VizPreset | null): { w: number; h: number } {
 }
 
 /**
- * Compute the inline zone dimensions + canvas transform.
+ * Compute the inline zone height + canvas transform.
  *
- * **Model — 1:1 mapping with the crop popup preview:**
+ * **Model:**
+ * - Zone ALWAYS fills full contentW (Monaco view zones are full-width).
+ * - Canvas renders at full native width, scaled to fill contentW:
+ *     scale = contentW / nativeW  (constant — native pixel density)
+ * - Zone HEIGHT tracks the crop's vertical fraction:
+ *     zoneH = cropH × nativeH × scale
+ * - Crop x/y shift the canvas via translate so the cropped portion
+ *   aligns to (0, 0). Horizontal crop clips via overflow:hidden.
  *
- * The popup shows the full canvas. The user drags a visor to pick a
- * sub-rectangle. That visor's width/height, as a fraction of the full
- * preview, maps DIRECTLY onto the inline zone:
- *
- *   scale     = contentW / nativeW           (constant — 1 native pixel = 1 display pixel at this factor)
- *   baselineH = nativeH × scale              (full-canvas height at display scale)
- *   canvasW   = cropW × contentW             (visor width mapped to inline)
- *   canvasH   = cropH × baselineH            (visor height mapped to inline)
- *   zoneW     = canvasW                      (zone clips to canvas; Monaco owns the full contentW)
- *   zoneH     = canvasH                      (zone shrinks to fit canvas)
- *   tx        = -cropX × nativeW × scale     (shift canvas left so crop region aligns to (0,0))
- *   ty        = -cropY × nativeH × scale     (shift canvas up)
- *
- * Full crop (1×1) → canvasW = contentW, canvasH = baselineH → full canvas.
- * Narrow crop → narrower + shorter canvas inside the zone, no zoom.
- * The scale is ALWAYS the same — content appears at native density
- * regardless of crop, matching the popup preview 1:1.
+ * Full crop → zone = full baseline (contentW × nativeH × scale).
+ * Vertical-only crop → zone shorter, canvas still full-width.
+ * Horizontal crop → canvas shifted, clipped at zone edges.
+ * Scale never changes — no zoom distortion. 1:1 with popup preview.
  */
 function computeLayout(
   contentW: number,
   native: { w: number; h: number },
   crop: CropRegion,
-): { zoneW: number; zoneH: number; scale: number; tx: number; ty: number } {
-  const cropW = Math.max(0.01, crop.w)
+): { zoneH: number; scale: number; tx: number; ty: number } {
   const cropH = Math.max(0.01, crop.h)
   const scale = contentW / native.w
-  const baselineH = native.h * scale
-  let zoneW = cropW * contentW
-  let zoneH = cropH * baselineH
+  let zoneH = cropH * native.h * scale
   if (zoneH > MAX_ZONE_HEIGHT) zoneH = MAX_ZONE_HEIGHT
   else if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT
   return {
-    zoneW,
     zoneH,
     scale,
     tx: -crop.x * native.w * scale,
@@ -102,20 +92,17 @@ function readCanvasNative(container: HTMLElement): { w: number; h: number } | nu
   return { w, h }
 }
 
-/** Apply the computed transform + dimensions to the canvas container.
- *  `zoneW`/`zoneH` are optional — when provided the container's clip
- *  dimensions are re-asserted; otherwise the caller's pre-set values stand.
+/** Apply the computed transform to the canvas inside the container.
+ *  `zoneH` is optional — when provided, the container height is re-asserted
+ *  in case Monaco reflowed it; otherwise the caller's pre-set height stands.
  */
 function applyLayout(
   container: HTMLElement,
   canvas: HTMLElement | null,
-  layout: { scale: number; tx: number; ty: number; zoneW?: number; zoneH?: number },
+  layout: { scale: number; tx: number; ty: number; zoneH?: number },
 ): void {
   if (typeof layout.zoneH === 'number') {
     container.style.height = `${layout.zoneH}px`
-  }
-  if (typeof layout.zoneW === 'number') {
-    container.style.width = `${layout.zoneW}px`
   }
   // The canvas (or its wrapper) gets the transform. We wrap the canvas
   // in a positioned div so we can transform it without fighting any
@@ -257,7 +244,7 @@ export function addInlineViewZones(
 
       const container = document.createElement('div')
       container.setAttribute('data-viz-zone', '')
-      container.style.cssText = `overflow:hidden;width:${layout.zoneW}px;height:${layout.zoneH}px;position:relative;`
+      container.style.cssText = `overflow:hidden;height:${layout.zoneH}px;position:relative;`
 
       const zoneId = accessor.addZone({
         afterLineNumber: afterLine,

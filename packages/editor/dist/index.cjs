@@ -7711,16 +7711,12 @@ function nativeSizeFor(preset) {
   return DEFAULT_NATIVE;
 }
 function computeLayout(contentW, native, crop) {
-  const cropW = Math.max(0.01, crop.w);
   const cropH = Math.max(0.01, crop.h);
   const scale2 = contentW / native.w;
-  const baselineH = native.h * scale2;
-  let zoneW = cropW * contentW;
-  let zoneH = cropH * baselineH;
+  let zoneH = cropH * native.h * scale2;
   if (zoneH > MAX_ZONE_HEIGHT) zoneH = MAX_ZONE_HEIGHT;
   else if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT;
   return {
-    zoneW,
     zoneH,
     scale: scale2,
     tx: -crop.x * native.w * scale2,
@@ -7738,9 +7734,6 @@ function readCanvasNative(container) {
 function applyLayout(container, canvas, layout) {
   if (typeof layout.zoneH === "number") {
     container.style.height = `${layout.zoneH}px`;
-  }
-  if (typeof layout.zoneW === "number") {
-    container.style.width = `${layout.zoneW}px`;
   }
   let wrapper = container.querySelector("[data-viz-canvas-wrap]");
   if (!wrapper && canvas) {
@@ -7850,7 +7843,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const layout = computeLayout(contentW, native, crop);
       const container = document.createElement("div");
       container.setAttribute("data-viz-zone", "");
-      container.style.cssText = `overflow:hidden;width:${layout.zoneW}px;height:${layout.zoneH}px;position:relative;`;
+      container.style.cssText = `overflow:hidden;height:${layout.zoneH}px;position:relative;`;
       const zoneId = accessor.addZone({
         afterLineNumber: afterLine,
         heightInPx: layout.zoneH,
