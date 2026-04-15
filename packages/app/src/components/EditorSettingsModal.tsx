@@ -76,7 +76,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               <span>{minimap ? "Enabled" : "Disabled"}</span>
             </label>
           </Row>
-          <Row label="Breadcrumbs">
+          <Row label="File path bar">
             <label style={s.switchLabel}>
               <input
                 type="checkbox"
