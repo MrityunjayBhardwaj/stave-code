@@ -20,8 +20,6 @@ import {
   canUndo,
   canRedo,
   subscribeToUndoState,
-  getEditorBreadcrumbs,
-  onBreadcrumbsChange,
   type ProjectMeta,
   type SnapshotMeta,
   type WorkspaceShellHandle,
@@ -59,7 +57,6 @@ import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
-import { Breadcrumbs } from "./Breadcrumbs";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
@@ -110,11 +107,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
-  const [breadcrumbsOn, setBreadcrumbsOn] = useState(false);
-  useEffect(() => {
-    setBreadcrumbsOn(getEditorBreadcrumbs());
-    return onBreadcrumbsChange(setBreadcrumbsOn);
-  }, []);
   const [cropTarget, setCropTarget] = useState<
     | { vizId: string; presetId: string; fileId: string; trackKey: string }
     | null
@@ -734,15 +726,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         )}
 
         <div style={styles.editorArea}>
-          {!zenMode && breadcrumbsOn && (
-            <Breadcrumbs
-              path={
-                activeFileId
-                  ? listWorkspaceFiles().find((f) => f.id === activeFileId)?.path ?? null
-                  : null
-              }
-            />
-          )}
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
             {switching ? (
               <div style={styles.switchingOverlay}>Loading project...</div>

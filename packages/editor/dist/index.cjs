@@ -7365,7 +7365,6 @@ function revealLineInFile(fileId, line2) {
 var DEFAULT_FONT_SIZE = 14;
 var FONT_SIZE_STORAGE = "stave:editorFontSize";
 var MINIMAP_STORAGE = "stave:editorMinimap";
-var BREADCRUMBS_STORAGE = "stave:editorBreadcrumbs";
 var DEFAULT_UI_ICON_SIZE = 25;
 var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
 var UI_ICON_SIZE_VAR = "--ui-icon-size";
@@ -7417,30 +7416,6 @@ function toggleEditorMinimap() {
   const next = !readMinimap();
   writeMinimap(next);
   for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
-}
-var breadcrumbsListeners = /* @__PURE__ */ new Set();
-function readBreadcrumbs() {
-  const ls = safeLocalStorage();
-  return ls?.getItem(BREADCRUMBS_STORAGE) === "1";
-}
-function writeBreadcrumbs(on) {
-  safeLocalStorage()?.setItem(BREADCRUMBS_STORAGE, on ? "1" : "0");
-}
-function getEditorBreadcrumbs() {
-  return readBreadcrumbs();
-}
-function setEditorBreadcrumbs(on) {
-  writeBreadcrumbs(on);
-  for (const cb of Array.from(breadcrumbsListeners)) cb(on);
-}
-function toggleEditorBreadcrumbs() {
-  setEditorBreadcrumbs(!readBreadcrumbs());
-}
-function onBreadcrumbsChange(cb) {
-  breadcrumbsListeners.add(cb);
-  return () => {
-    breadcrumbsListeners.delete(cb);
-  };
 }
 var uiIconSizeListeners = /* @__PURE__ */ new Set();
 function readUiIconSize() {
@@ -20510,7 +20485,6 @@ exports.flushToPreset = flushToPreset;
 exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveProjectId = getActiveProjectId;
 exports.getChildOrder = getChildOrder;
-exports.getEditorBreadcrumbs = getEditorBreadcrumbs;
 exports.getEditorFontSize = getEditorFontSize;
 exports.getEditorMinimap = getEditorMinimap;
 exports.getEditorTheme = getEditorTheme;
@@ -20547,7 +20521,6 @@ exports.merge = merge;
 exports.mountVizRenderer = mountVizRenderer;
 exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
-exports.onBreadcrumbsChange = onBreadcrumbsChange;
 exports.onNamedVizChanged = onNamedVizChanged;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
@@ -20578,7 +20551,6 @@ exports.seedFromPresetId = seedFromPresetId;
 exports.seedWorkspaceFile = seedWorkspaceFile;
 exports.setChildOrder = setChildOrder;
 exports.setContent = setContent;
-exports.setEditorBreadcrumbs = setEditorBreadcrumbs;
 exports.setEditorFontSize = setEditorFontSize;
 exports.setEditorTheme = setEditorTheme;
 exports.setEditorUiIconSize = setEditorUiIconSize;
@@ -20597,7 +20569,6 @@ exports.subscribeToZoneOverrides = subscribeToZoneOverrides;
 exports.switchProject = switchProject;
 exports.timestretch = timestretch;
 exports.toStrudel = toStrudel;
-exports.toggleEditorBreadcrumbs = toggleEditorBreadcrumbs;
 exports.toggleEditorMinimap = toggleEditorMinimap;
 exports.touchProject = touchProject;
 exports.transpose = transpose;

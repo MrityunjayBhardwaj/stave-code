@@ -6,8 +6,6 @@ import {
   setEditorFontSize,
   getEditorMinimap,
   toggleEditorMinimap,
-  getEditorBreadcrumbs,
-  toggleEditorBreadcrumbs,
   getEditorUiIconSize,
   setEditorUiIconSize,
   getEditorTheme,
@@ -29,7 +27,6 @@ const THEME_OPTIONS: { value: EditorTheme; label: string }[] = [
 export function EditorSettingsModal({ open, onClose }: Props) {
   const [fontSize, setFontSize] = useState(14);
   const [minimap, setMinimap] = useState(false);
-  const [breadcrumbs, setBreadcrumbs] = useState(false);
   const [iconSize, setIconSize] = useState(25);
   const [theme, setTheme] = useState<EditorTheme>("dark");
 
@@ -37,7 +34,6 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     if (!open) return;
     setFontSize(getEditorFontSize());
     setMinimap(getEditorMinimap());
-    setBreadcrumbs(getEditorBreadcrumbs());
     setIconSize(getEditorUiIconSize());
     setTheme(getEditorTheme());
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -94,16 +90,6 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               style={s.range}
             />
             <span style={s.value}>{iconSize}px</span>
-          </Row>
-          <Row label="File path bar">
-            <label style={s.switchLabel}>
-              <input
-                type="checkbox"
-                checked={breadcrumbs}
-                onChange={() => { toggleEditorBreadcrumbs(); setBreadcrumbs((v) => !v); }}
-              />
-              <span>{breadcrumbs ? "Shown" : "Hidden"}</span>
-            </label>
           </Row>
           <Row label="Theme">
             <select
