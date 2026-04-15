@@ -1626,7 +1626,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     userSelect: 'none',
                   }}
                 >
-                  <span>{tabFileName(tab)}</span>
+                  <span>
+                    {tab.kind === 'preview' ? '\uD83C\uDFA5 ' : ''}
+                    {tabFileName(tab)}
+                  </span>
                   <button
                     data-testid={`tab-close-${tab.id}`}
                     onClick={(e) => {

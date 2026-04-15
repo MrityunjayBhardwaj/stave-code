@@ -8478,28 +8478,6 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const handleSourceChange = useCallback(
-    (e) => {
-      const value = e.target.value;
-      if (value === "default") {
-        onSourceRefChange({ kind: "default" });
-        return;
-      }
-      if (value === "none") {
-        onSourceRefChange({ kind: "none" });
-        return;
-      }
-      const colonIdx = value.indexOf(":");
-      if (colonIdx !== -1 && value.slice(0, colonIdx) === "file") {
-        onSourceRefChange({
-          kind: "file",
-          fileId: value.slice(colonIdx + 1)
-        });
-      }
-    },
-    [onSourceRefChange]
-  );
-  const selectorValue = sourceRef.kind === "default" ? "default" : sourceRef.kind === "none" ? "none" : `file:${sourceRef.fileId}`;
   const providerNode = React.useMemo(() => {
     if (!file) return null;
     return provider.render({
@@ -8510,7 +8488,7 @@ function PreviewView({
     });
   }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick]);
   const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
-  return /* @__PURE__ */ jsxs(
+  return /* @__PURE__ */ jsx(
     "div",
     {
       ref: containerRef,
@@ -8524,94 +8502,30 @@ function PreviewView({
         background: "var(--background)",
         color: "var(--foreground)"
       },
-      children: [
-        /* @__PURE__ */ jsxs(
-          "div",
-          {
-            "data-workspace-view-slot": "preview-chrome",
-            style: {
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "4px 8px",
-              flexShrink: 0,
-              borderBottom: "1px solid var(--border)",
-              background: "var(--surface)",
-              fontSize: 11,
-              color: "var(--foreground-muted)"
-            },
-            children: [
-              /* @__PURE__ */ jsx("label", { htmlFor: `preview-source-${fileId}`, children: "Source:" }),
-              /* @__PURE__ */ jsxs(
-                "select",
-                {
-                  id: `preview-source-${fileId}`,
-                  "data-testid": `preview-source-select-${fileId}`,
-                  value: selectorValue,
-                  onChange: handleSourceChange,
-                  style: {
-                    background: "var(--surface-elevated)",
-                    color: "var(--foreground)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 3,
-                    padding: "2px 4px",
-                    fontSize: 11
-                  },
-                  children: [
-                    /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
-                    /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" }),
-                    workspaceAudioBus.listSources().map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
-                      source.playing ? "\u25CF " : "\u25CB ",
-                      source.label
-                    ] }, source.sourceId))
-                  ]
-                }
-              ),
-              audioPayload === null ? /* @__PURE__ */ jsx(
-                "span",
-                {
-                  "data-testid": `preview-demo-badge-${fileId}`,
-                  style: {
-                    marginLeft: "auto",
-                    padding: "1px 4px",
-                    borderRadius: 2,
-                    background: "var(--accent-dim)",
-                    color: "var(--accent)",
-                    fontSize: 9,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.3
-                  },
-                  children: "demo"
-                }
-              ) : null
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: file ? /* @__PURE__ */ jsx(
-          "div",
-          {
-            "data-testid": `preview-provider-mount-${fileId}`,
-            "data-provider-key": providerKey,
-            style: { width: "100%", height: "100%" },
-            children: providerNode
+      children: /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: file ? /* @__PURE__ */ jsx(
+        "div",
+        {
+          "data-testid": `preview-provider-mount-${fileId}`,
+          "data-provider-key": providerKey,
+          style: { width: "100%", height: "100%" },
+          children: providerNode
+        },
+        providerKey
+      ) : /* @__PURE__ */ jsx(
+        "div",
+        {
+          "data-workspace-view-state": "loading",
+          style: {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: "var(--foreground-muted)",
+            fontSize: 12
           },
-          providerKey
-        ) : /* @__PURE__ */ jsx(
-          "div",
-          {
-            "data-workspace-view-state": "loading",
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "100%",
-              color: "var(--foreground-muted)",
-              fontSize: 12
-            },
-            children: "Loading\u2026"
-          }
-        ) })
-      ]
+          children: "Loading\u2026"
+        }
+      ) })
     }
   );
 }
@@ -10351,7 +10265,10 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                           userSelect: "none"
                         },
                         children: [
-                          /* @__PURE__ */ jsx("span", { children: tabFileName(tab) }),
+                          /* @__PURE__ */ jsxs("span", { children: [
+                            tab.kind === "preview" ? "\u{1F3A5} " : "",
+                            tabFileName(tab)
+                          ] }),
                           /* @__PURE__ */ jsx(
                             "button",
                             {

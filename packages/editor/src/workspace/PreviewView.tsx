@@ -97,7 +97,7 @@
  * Task 04 / Task 05 may dress it up further.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { applyTheme } from '../theme/tokens'
 import { useWorkspaceFile } from './useWorkspaceFile'
 import { workspaceAudioBus } from './WorkspaceAudioBus'
@@ -279,39 +279,6 @@ export function PreviewView({
     }
   }, [effectivelyHidden])
 
-  // Source selector change handler. Parses the string value and hands
-  // the corresponding `AudioSourceRef` to the controlled callback.
-  const handleSourceChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = e.target.value
-      if (value === 'default') {
-        onSourceRefChange({ kind: 'default' })
-        return
-      }
-      if (value === 'none') {
-        onSourceRefChange({ kind: 'none' })
-        return
-      }
-      // `file:<id>` form — everything after the first colon is the file id.
-      const colonIdx = value.indexOf(':')
-      if (colonIdx !== -1 && value.slice(0, colonIdx) === 'file') {
-        onSourceRefChange({
-          kind: 'file',
-          fileId: value.slice(colonIdx + 1),
-        })
-      }
-    },
-    [onSourceRefChange],
-  )
-
-  // Current selector option value string — mirrors the parsing above.
-  const selectorValue: string =
-    sourceRef.kind === 'default'
-      ? 'default'
-      : sourceRef.kind === 'none'
-        ? 'none'
-        : `file:${sourceRef.fileId}`
-
   // Provider render. The loading placeholder mirrors `EditorView` for
   // consistency. Once the file exists, we hand the provider a fresh
   // ctx and let it return its tree. The two re-mount triggers (payload
@@ -360,64 +327,6 @@ export function PreviewView({
         color: 'var(--foreground)',
       }}
     >
-      {/* Source selector chrome. Rendered above the provider output. */}
-      <div
-        data-workspace-view-slot="preview-chrome"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '4px 8px',
-          flexShrink: 0,
-          borderBottom: '1px solid var(--border)',
-          background: 'var(--surface)',
-          fontSize: 11,
-          color: 'var(--foreground-muted)',
-        }}
-      >
-        <label htmlFor={`preview-source-${fileId}`}>Source:</label>
-        <select
-          id={`preview-source-${fileId}`}
-          data-testid={`preview-source-select-${fileId}`}
-          value={selectorValue}
-          onChange={handleSourceChange}
-          style={{
-            background: 'var(--surface-elevated)',
-            color: 'var(--foreground)',
-            border: '1px solid var(--border)',
-            borderRadius: 3,
-            padding: '2px 4px',
-            fontSize: 11,
-          }}
-        >
-          <option value="default">default (follow most recent)</option>
-          <option value="none">none (demo mode)</option>
-          {workspaceAudioBus.listSources().map((source) => (
-            <option key={source.sourceId} value={`file:${source.sourceId}`}>
-              {source.playing ? '● ' : '○ '}
-              {source.label}
-            </option>
-          ))}
-        </select>
-        {audioPayload === null ? (
-          <span
-            data-testid={`preview-demo-badge-${fileId}`}
-            style={{
-              marginLeft: 'auto',
-              padding: '1px 4px',
-              borderRadius: 2,
-              background: 'var(--accent-dim)',
-              color: 'var(--accent)',
-              fontSize: 9,
-              textTransform: 'uppercase',
-              letterSpacing: 0.3,
-            }}
-          >
-            demo
-          </span>
-        ) : null}
-      </div>
-
       {/*
         Provider output area. Keyed on `${publisherId}:${reloadTick}` so
         every reload trigger forces a fresh mount — the provider's

@@ -446,44 +446,10 @@ describe('PreviewView', () => {
     expect(mountCount.current).toBeGreaterThan(mountsWhileHidden)
   })
 
-  it('calls onSourceRefChange with the selected ref from the dropdown', () => {
-    createWorkspaceFile('v', 'v.hydra', 'v0', 'hydra')
-    const { provider } = makeRecordingProvider()
-    const onChange = vi.fn()
-    // Publish a pattern so the dropdown has a file:<id> option.
-    workspaceAudioBus.publish('pattern-a', makePayload('a'))
-
-    const { getByTestId } = render(
-      <PreviewView
-        fileId="v"
-        provider={provider}
-        sourceRef={{ kind: 'default' }}
-        onSourceRefChange={onChange}
-      />,
-    )
-
-    const select = getByTestId('preview-source-select-v') as HTMLSelectElement
-
-    // Switch to a pinned file ref.
-    fireEvent.change(select, { target: { value: 'file:pattern-a' } })
-    expect(onChange).toHaveBeenCalledWith({
-      kind: 'file',
-      fileId: 'pattern-a',
-    })
-
-    // Switch to demo mode.
-    fireEvent.change(select, { target: { value: 'none' } })
-    expect(onChange).toHaveBeenCalledWith({ kind: 'none' })
-
-    // Switch back to default.
-    fireEvent.change(select, { target: { value: 'default' } })
-    expect(onChange).toHaveBeenCalledWith({ kind: 'default' })
-  })
-
   it("passes null payload through in demo mode (P7 — provider, not host, owns the fallback)", () => {
     createWorkspaceFile('v', 'v.hydra', 'v0', 'hydra')
     const { provider, calls } = makeRecordingProvider()
-    const { getByTestId } = render(
+    render(
       <PreviewView
         fileId="v"
         provider={provider}
@@ -495,8 +461,6 @@ describe('PreviewView', () => {
     // placeholder on null payload.
     expect(calls.length).toBeGreaterThanOrEqual(1)
     expect(calls[calls.length - 1].audioSource).toBeNull()
-    // And the demo badge is visible in the chrome.
-    expect(getByTestId('preview-demo-badge-v')).toBeTruthy()
   })
 
   it('applies the dark theme to the container (PV6 / P6 guard)', () => {
