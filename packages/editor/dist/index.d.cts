@@ -892,7 +892,25 @@ declare class P5VizRenderer implements VizRenderer {
     destroy(): void;
 }
 
-type HydraPatternFn = (synth: any) => void;
+/**
+ * Stave-specific bag exposed to `.hydra` sketches as the second
+ * function argument. Mirrors the `stave` namespace convention
+ * already used by p5 sketches (see `p5Compiler.ts`). Stays present
+ * across re-evaluations — `HydraVizRenderer.update()` rebinds the
+ * fields on the same object so long-lived closures inside the
+ * user sketch observe live references, not stale snapshots.
+ *
+ * `scheduler` / `tracks` are `null` / empty when no pattern runtime
+ * is publishing — sketches must optional-chain (consistent with the
+ * demo-mode path in `compiledVizProvider`).
+ */
+interface HydraStaveBag {
+    /** Combined pattern scheduler. Has `now()` and `query(begin, end)`. */
+    scheduler: IRPattern | null;
+    /** Per-track schedulers keyed by trackId (e.g. "$0", "drums"). */
+    tracks: Map<string, IRPattern>;
+}
+type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
 /**
  * VizRenderer that uses hydra-synth for audio-reactive WebGL visuals.
  * Lazily loads hydra-synth on first mount to avoid bloating the main bundle.
@@ -949,6 +967,14 @@ declare class HydraVizRenderer implements VizRenderer {
     private envelope;
     private hapHandler;
     private useEnvelope;
+    /**
+     * Live `stave` bag handed to the user's sketch function. Built once
+     * per mount; `update()` mutates its fields in place so sketches that
+     * capture `scheduler` or `tracks` in a per-frame closure observe the
+     * latest refs without needing a re-compile. This is the same
+     * live-ref idiom the p5 sketch bag uses.
+     */
+    private staveBag;
     constructor(pattern?: HydraPatternFn | undefined);
     mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
@@ -1315,7 +1341,11 @@ declare function VizEditor({ components: _components, hapStream: _hapStream, ana
  * Compiles user-authored viz code into a VizDescriptor.
  *
  * Hydra code: evaluated in a function scope with the hydra synth
- *   object as the implicit `s` parameter. Uses `new Function()`.
+ *   object as `s` and a `stave` namespace mirroring the p5 convention:
+ *     - `stave.scheduler` — IRPattern | null (combined pattern scheduler)
+ *     - `stave.tracks`    — Map<trackId, IRPattern> (per-track)
+ *   Sketches that reference only `s` keep working — the `stave` arg
+ *   is additive. Uses `new Function()`.
  *
  * p5 code: evaluated as a full p5 sketch script. Users write real
  *   `function preload/setup/draw` declarations and access injected

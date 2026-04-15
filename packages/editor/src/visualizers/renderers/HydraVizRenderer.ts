@@ -1,9 +1,29 @@
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { HapStream, HapEvent } from '../../engine/HapStream'
+import type { IRPattern } from '../../ir/IRPattern'
 import type { VizRenderer } from '../types'
 import { getVizConfig } from '../vizConfig'
 
-export type HydraPatternFn = (synth: any) => void
+/**
+ * Stave-specific bag exposed to `.hydra` sketches as the second
+ * function argument. Mirrors the `stave` namespace convention
+ * already used by p5 sketches (see `p5Compiler.ts`). Stays present
+ * across re-evaluations — `HydraVizRenderer.update()` rebinds the
+ * fields on the same object so long-lived closures inside the
+ * user sketch observe live references, not stale snapshots.
+ *
+ * `scheduler` / `tracks` are `null` / empty when no pattern runtime
+ * is publishing — sketches must optional-chain (consistent with the
+ * demo-mode path in `compiledVizProvider`).
+ */
+export interface HydraStaveBag {
+  /** Combined pattern scheduler. Has `now()` and `query(begin, end)`. */
+  scheduler: IRPattern | null
+  /** Per-track schedulers keyed by trackId (e.g. "$0", "drums"). */
+  tracks: Map<string, IRPattern>
+}
+
+export type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void
 
 /**
  * Energy envelope derived from HapStream events.
@@ -110,6 +130,14 @@ export class HydraVizRenderer implements VizRenderer {
   private envelope: HapEnergyEnvelope | null = null
   private hapHandler: ((e: HapEvent) => void) | null = null
   private useEnvelope = false
+  /**
+   * Live `stave` bag handed to the user's sketch function. Built once
+   * per mount; `update()` mutates its fields in place so sketches that
+   * capture `scheduler` or `tracks` in a per-frame closure observe the
+   * latest refs without needing a re-compile. This is the same
+   * live-ref idiom the p5 sketch bag uses.
+   */
+  private staveBag: HydraStaveBag = { scheduler: null, tracks: new Map() }
 
   constructor(private pattern?: HydraPatternFn) {}
 
@@ -126,6 +154,15 @@ export class HydraVizRenderer implements VizRenderer {
       // rationale (issue #7).
       this.analyser = components.audio?.analyser ?? null
       this.hapStream = components.streaming?.hapStream ?? null
+
+      // Scheduler + per-track schedulers — forwarded verbatim to the
+      // `stave` bag so user sketches can read pattern state via the
+      // IRPattern interface (`scheduler.now()`, `scheduler.query()`).
+      // Issue #32: without this, hydra sketches were FFT-reactive only
+      // — no path for pattern values to drive shader uniforms.
+      this.staveBag.scheduler = components.queryable?.scheduler ?? null
+      this.staveBag.tracks =
+        components.queryable?.trackSchedulers ?? new Map()
 
       if (this.analyser) {
         // Real-FFT path. Allocate the byte buffer once; pumpAudio
@@ -192,7 +229,7 @@ export class HydraVizRenderer implements VizRenderer {
     }
 
     if (this.pattern) {
-      this.pattern(synth)
+      this.pattern(synth, this.staveBag)
     } else {
       this.defaultPattern(synth)
     }
@@ -282,6 +319,14 @@ export class HydraVizRenderer implements VizRenderer {
         this.useEnvelope = false
       }
     }
+
+    // Rebind scheduler fields in place. User sketch closures hold a
+    // reference to `this.staveBag`; mutating fields is what makes the
+    // live-ref work without re-compiling. Identity-guard unnecessary
+    // — a re-assign is free when the source is already the same ref.
+    this.staveBag.scheduler = components.queryable?.scheduler ?? null
+    this.staveBag.tracks =
+      components.queryable?.trackSchedulers ?? this.staveBag.tracks
   }
 
   resize(w: number, h: number): void {
@@ -332,5 +377,7 @@ export class HydraVizRenderer implements VizRenderer {
     this.freqData = null
     this.envelope = null
     this.hapStream = null
+    this.staveBag.scheduler = null
+    this.staveBag.tracks = new Map()
   }
 }

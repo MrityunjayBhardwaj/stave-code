@@ -4806,6 +4806,14 @@ var HydraVizRenderer = class {
     this.envelope = null;
     this.hapHandler = null;
     this.useEnvelope = false;
+    /**
+     * Live `stave` bag handed to the user's sketch function. Built once
+     * per mount; `update()` mutates its fields in place so sketches that
+     * capture `scheduler` or `tracks` in a per-frame closure observe the
+     * latest refs without needing a re-compile. This is the same
+     * live-ref idiom the p5 sketch bag uses.
+     */
+    this.staveBag = { scheduler: null, tracks: /* @__PURE__ */ new Map() };
     this.pumpAudio = (now) => {
       if (this.paused || this.destroyed) {
         this.rafId = null;
@@ -4846,6 +4854,8 @@ var HydraVizRenderer = class {
       const config = getVizConfig();
       this.analyser = components.audio?.analyser ?? null;
       this.hapStream = components.streaming?.hapStream ?? null;
+      this.staveBag.scheduler = components.queryable?.scheduler ?? null;
+      this.staveBag.tracks = components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map();
       if (this.analyser) {
         this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
         this.useEnvelope = false;
@@ -4894,7 +4904,7 @@ var HydraVizRenderer = class {
       synth.a = { fft: new Array(config.hydraAudioBins).fill(0) };
     }
     if (this.pattern) {
-      this.pattern(synth);
+      this.pattern(synth, this.staveBag);
     } else {
       this.defaultPattern(synth);
     }
@@ -4914,6 +4924,8 @@ var HydraVizRenderer = class {
         this.useEnvelope = false;
       }
     }
+    this.staveBag.scheduler = components.queryable?.scheduler ?? null;
+    this.staveBag.tracks = components.queryable?.trackSchedulers ?? this.staveBag.tracks;
   }
   resize(w, h) {
     if (this.canvas) {
@@ -4952,6 +4964,8 @@ var HydraVizRenderer = class {
     this.freqData = null;
     this.envelope = null;
     this.hapStream = null;
+    this.staveBag.scheduler = null;
+    this.staveBag.tracks = /* @__PURE__ */ new Map();
   }
 };
 
@@ -19762,6 +19776,14 @@ function installErrorSketch(p, message) {
   };
 }
 
+// src/visualizers/hydraCompiler.ts
+function compileHydraCode(code) {
+  return (s, stave) => {
+    const fn = new Function("s", "stave", code);
+    fn(s, stave);
+  };
+}
+
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name: name2, renderer, code, requires } = preset;
@@ -19784,12 +19806,6 @@ function compilePreset(preset) {
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
-}
-function compileHydraCode(code) {
-  return (s) => {
-    const fn = new Function("s", code);
-    fn(s);
-  };
 }
 var DB_NAME3 = "stave-snapshots";
 var DB_VERSION3 = 1;
