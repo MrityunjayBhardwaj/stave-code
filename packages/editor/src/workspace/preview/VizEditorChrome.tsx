@@ -173,31 +173,31 @@ export function VizEditorChrome({
        */}
       <button
         data-testid="viz-chrome-live-toggle"
-        data-live={liveOn ? 'on' : 'off'}
+        data-live-mode={liveOn ? 'on' : 'off'}
         onClick={() => toggleVizLive(file.id)}
         title={
           liveOn
-            ? 'Hot reload is ON — click to freeze preview updates'
-            : 'Hot reload is OFF — click to resume live updates'
+            ? 'Live mode ON — preview re-renders on edit'
+            : 'Live mode OFF — click to resume live updates'
         }
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: 4,
-          padding: '2px 8px',
+          padding: '3px 8px',
           borderRadius: 3,
           fontSize: 10,
           fontFamily: 'inherit',
-          background: liveOn ? 'var(--accent-dim)' : 'transparent',
+          cursor: 'pointer',
+          userSelect: 'none',
+          background: liveOn ? 'var(--accent-dim)' : 'none',
           color: liveOn
             ? 'var(--accent-strong, var(--accent))'
             : 'var(--foreground-muted)',
           border: `1px solid ${liveOn ? 'var(--accent-dim)' : 'var(--border)'}`,
-          cursor: 'pointer',
-          userSelect: 'none',
         }}
       >
-        {liveOn ? '\u27F3 live' : '\u2225 frozen'}
+        {liveOn ? '\u27F3 live' : '\u27F3'}
       </button>
     </div>
   )
