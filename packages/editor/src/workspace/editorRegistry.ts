@@ -61,6 +61,12 @@ const DEFAULT_FONT_SIZE = 14
 const FONT_SIZE_STORAGE = 'stave:editorFontSize'
 const MINIMAP_STORAGE = 'stave:editorMinimap'
 const BREADCRUMBS_STORAGE = 'stave:editorBreadcrumbs'
+const DEFAULT_UI_ICON_SIZE = 16
+const UI_ICON_SIZE_STORAGE = 'stave:uiIconSize'
+/** CSS variable that scales every chrome-level icon glyph (menu gear,
+ *  activity bar, inline viz bar, etc.). Applied to documentElement on
+ *  mount and on every change. */
+export const UI_ICON_SIZE_VAR = '--ui-icon-size'
 
 function safeLocalStorage(): Storage | null {
   try {
@@ -149,6 +155,46 @@ export function toggleEditorBreadcrumbs(): void {
 export function onBreadcrumbsChange(cb: (on: boolean) => void): () => void {
   breadcrumbsListeners.add(cb)
   return () => { breadcrumbsListeners.delete(cb) }
+}
+
+// ── UI icon size (scales chrome glyphs: ⚙, ▢, ✎, etc.) ─────────────
+const uiIconSizeListeners = new Set<(size: number) => void>()
+
+function readUiIconSize(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_UI_ICON_SIZE
+  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE))
+  return Number.isFinite(saved) && saved >= 10 && saved <= 40
+    ? saved
+    : DEFAULT_UI_ICON_SIZE
+}
+
+function writeUiIconSize(size: number): void {
+  safeLocalStorage()?.setItem(UI_ICON_SIZE_STORAGE, String(size))
+}
+
+function applyUiIconSizeVar(size: number): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`)
+}
+
+export function getEditorUiIconSize(): number { return readUiIconSize() }
+
+export function setEditorUiIconSize(size: number): void {
+  const clamped = Math.max(10, Math.min(40, Math.round(size)))
+  writeUiIconSize(clamped)
+  applyUiIconSizeVar(clamped)
+  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped)
+}
+
+export function onUiIconSizeChange(cb: (size: number) => void): () => void {
+  uiIconSizeListeners.add(cb)
+  return () => { uiIconSizeListeners.delete(cb) }
+}
+
+/** Apply the persisted icon size to the document root on first mount. */
+export function applyPersistedUiIconSize(): void {
+  applyUiIconSizeVar(readUiIconSize())
 }
 
 /** Called by EditorView on mount to seed the editor with saved options. */

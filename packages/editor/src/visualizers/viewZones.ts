@@ -145,7 +145,7 @@ function createFloatingActionBar(editorDom: HTMLElement): HTMLElement {
     border:1px solid var(--border-strong,#3a3a5a);
     border-radius:3px;padding:2px 6px;
     color:var(--text-primary,#e8e8f0);
-    font-size:11px;cursor:pointer;
+    font-size:var(--ui-icon-size,11px);cursor:pointer;
     font-family:system-ui,sans-serif;
     pointer-events:auto;
   `

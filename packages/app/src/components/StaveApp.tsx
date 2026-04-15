@@ -48,6 +48,7 @@ import {
   toggleEditorMinimap,
   cycleEditorTheme,
   applyPersistedTheme,
+  applyPersistedUiIconSize,
 } from "@stave/editor";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 import { EditorSettingsModal } from "./EditorSettingsModal";
@@ -121,7 +122,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   // Apply persisted theme on first mount so the user's choice survives
   // reloads. Runs once — later theme changes go through toggleEditorTheme.
-  useEffect(() => { applyPersistedTheme(); }, []);
+  useEffect(() => { applyPersistedTheme(); applyPersistedUiIconSize(); }, []);
   const [zenMode, setZenMode] = useState(false);
   const searchViewRef = useRef<WorkspaceSearchViewHandle | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);

@@ -7366,6 +7366,9 @@ var DEFAULT_FONT_SIZE = 14;
 var FONT_SIZE_STORAGE = "stave:editorFontSize";
 var MINIMAP_STORAGE = "stave:editorMinimap";
 var BREADCRUMBS_STORAGE = "stave:editorBreadcrumbs";
+var DEFAULT_UI_ICON_SIZE = 16;
+var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
+var UI_ICON_SIZE_VAR = "--ui-icon-size";
 function safeLocalStorage() {
   try {
     if (typeof window === "undefined") return null;
@@ -7438,6 +7441,38 @@ function onBreadcrumbsChange(cb) {
   return () => {
     breadcrumbsListeners.delete(cb);
   };
+}
+var uiIconSizeListeners = /* @__PURE__ */ new Set();
+function readUiIconSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_UI_ICON_SIZE;
+  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
+}
+function writeUiIconSize(size) {
+  safeLocalStorage()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
+}
+function applyUiIconSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
+}
+function getEditorUiIconSize() {
+  return readUiIconSize();
+}
+function setEditorUiIconSize(size) {
+  const clamped = Math.max(10, Math.min(40, Math.round(size)));
+  writeUiIconSize(clamped);
+  applyUiIconSizeVar(clamped);
+  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
+}
+function onUiIconSizeChange(cb) {
+  uiIconSizeListeners.add(cb);
+  return () => {
+    uiIconSizeListeners.delete(cb);
+  };
+}
+function applyPersistedUiIconSize() {
+  applyUiIconSizeVar(readUiIconSize());
 }
 function applyPersistedEditorOptions(editor) {
   applyOptionsToEditor(editor);
@@ -7817,7 +7852,7 @@ function createFloatingActionBar(editorDom) {
     border:1px solid var(--border-strong,#3a3a5a);
     border-radius:3px;padding:2px 6px;
     color:var(--text-primary,#e8e8f0);
-    font-size:11px;cursor:pointer;
+    font-size:var(--ui-icon-size,11px);cursor:pointer;
     font-family:system-ui,sans-serif;
     pointer-events:auto;
   `;
@@ -20610,6 +20645,7 @@ exports.SplitPane = SplitPane;
 exports.StrudelEditor = StrudelEditor;
 exports.StrudelEngine = StrudelEngine;
 exports.StrudelParseSystem = StrudelParseSystem;
+exports.UI_ICON_SIZE_VAR = UI_ICON_SIZE_VAR;
 exports.VizDropdown = VizDropdown;
 exports.VizEditor = VizEditor;
 exports.VizPanel = VizPanel;
@@ -20618,6 +20654,7 @@ exports.VizPresetStore = VizPresetStore;
 exports.WavEncoder = WavEncoder;
 exports.WorkspaceShell = WorkspaceShell;
 exports.applyPersistedTheme = applyPersistedTheme;
+exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyTheme = applyTheme;
 exports.bumpEditorFontSize = bumpEditorFontSize;
 exports.bundledPresetId = bundledPresetId;
@@ -20642,6 +20679,7 @@ exports.getEditorBreadcrumbs = getEditorBreadcrumbs;
 exports.getEditorFontSize = getEditorFontSize;
 exports.getEditorMinimap = getEditorMinimap;
 exports.getEditorTheme = getEditorTheme;
+exports.getEditorUiIconSize = getEditorUiIconSize;
 exports.getFile = getFile;
 exports.getFolderOrder = getFolderOrder;
 exports.getLastOpenedProject = getLastOpenedProject;
@@ -20677,6 +20715,7 @@ exports.noteToMidi = noteToMidi;
 exports.onBreadcrumbsChange = onBreadcrumbsChange;
 exports.onNamedVizChanged = onNamedVizChanged;
 exports.onThemeChange = onThemeChange;
+exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.parseMini = parseMini;
 exports.parseStrudel = parseStrudel;
 exports.patternFromJSON = patternFromJSON;
@@ -20707,6 +20746,7 @@ exports.setContent = setContent;
 exports.setEditorBreadcrumbs = setEditorBreadcrumbs;
 exports.setEditorFontSize = setEditorFontSize;
 exports.setEditorTheme = setEditorTheme;
+exports.setEditorUiIconSize = setEditorUiIconSize;
 exports.setFolderOrder = setFolderOrder;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setVizConfig = setVizConfig;

@@ -247,7 +247,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "none",
     color: "var(--text-icon)",
     cursor: "pointer",
-    fontSize: 16,
+    fontSize: "var(--ui-icon-size, 16px)",
     padding: "0 12px",
     height: "100%",
     lineHeight: 1,

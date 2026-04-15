@@ -7339,6 +7339,9 @@ var DEFAULT_FONT_SIZE = 14;
 var FONT_SIZE_STORAGE = "stave:editorFontSize";
 var MINIMAP_STORAGE = "stave:editorMinimap";
 var BREADCRUMBS_STORAGE = "stave:editorBreadcrumbs";
+var DEFAULT_UI_ICON_SIZE = 16;
+var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
+var UI_ICON_SIZE_VAR = "--ui-icon-size";
 function safeLocalStorage() {
   try {
     if (typeof window === "undefined") return null;
@@ -7411,6 +7414,38 @@ function onBreadcrumbsChange(cb) {
   return () => {
     breadcrumbsListeners.delete(cb);
   };
+}
+var uiIconSizeListeners = /* @__PURE__ */ new Set();
+function readUiIconSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_UI_ICON_SIZE;
+  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
+}
+function writeUiIconSize(size) {
+  safeLocalStorage()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
+}
+function applyUiIconSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
+}
+function getEditorUiIconSize() {
+  return readUiIconSize();
+}
+function setEditorUiIconSize(size) {
+  const clamped = Math.max(10, Math.min(40, Math.round(size)));
+  writeUiIconSize(clamped);
+  applyUiIconSizeVar(clamped);
+  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
+}
+function onUiIconSizeChange(cb) {
+  uiIconSizeListeners.add(cb);
+  return () => {
+    uiIconSizeListeners.delete(cb);
+  };
+}
+function applyPersistedUiIconSize() {
+  applyUiIconSizeVar(readUiIconSize());
 }
 function applyPersistedEditorOptions(editor) {
   applyOptionsToEditor(editor);
@@ -7790,7 +7825,7 @@ function createFloatingActionBar(editorDom) {
     border:1px solid var(--border-strong,#3a3a5a);
     border-radius:3px;padding:2px 6px;
     color:var(--text-primary,#e8e8f0);
-    font-size:11px;cursor:pointer;
+    font-size:var(--ui-icon-size,11px);cursor:pointer;
     font-family:system-ui,sans-serif;
     pointer-events:auto;
   `;
@@ -20547,6 +20582,6 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedTheme, applyTheme, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getChildOrder, getEditorBreadcrumbs, getEditorFontSize, getEditorMinimap, getEditorTheme, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBreadcrumbsChange, onNamedVizChanged, onThemeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setChildOrder, setContent, setEditorBreadcrumbs, setEditorFontSize, setEditorTheme, setFolderOrder, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorBreadcrumbs, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getChildOrder, getEditorBreadcrumbs, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBreadcrumbsChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setChildOrder, setContent, setEditorBreadcrumbs, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorBreadcrumbs, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
