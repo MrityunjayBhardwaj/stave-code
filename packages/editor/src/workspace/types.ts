@@ -458,9 +458,9 @@ export interface PreviewViewProps {
  * entangled editor and preview concerns. The whole point of Phase 10.2 is
  * to dissolve that entanglement — a preview tab is a first-class tab,
  * dispatched by `kind`, not a rendering mode on top of an editor. Any
- * future "background decoration" support is shaped as a SECOND tab id
- * stored on `WorkspaceGroupState.backgroundTabId` (Task 08 wires that;
- * Task 04 reserves the slot), NOT as a mode on the tab itself.
+ * future "background decoration" support is shaped as a file id on
+ * `WorkspaceGroupState.backgroundFileId` (promote-to-backdrop flow),
+ * NOT as a mode on the tab itself.
  */
 export type WorkspaceTab =
   | {
@@ -495,17 +495,19 @@ export type WorkspaceTab =
  * - `activeTabId` — which tab is visible inside this group. `null` when
  *   the group is empty. Closing the active tab selects the next adjacent
  *   tab (previous if one exists, else first).
- * - `backgroundTabId` — Task 08's reservation slot for the `Cmd+K B`
- *   background-decoration feature. Task 04 declares the field as optional
- *   for forward-compat so Task 08 can populate it without a shape change
- *   to this interface. Task 04 itself does NOT render anything based on
- *   this field.
+ * - `backgroundFileId` — id of the viz file pinned as this group's
+ *   backdrop (promote-to-backdrop / `Cmd+K B`). Independent of
+ *   `activeTabId` — the backdrop survives tab switches; the active
+ *   editor renders on top. Absent when no backdrop is set. Field is
+ *   the FILE id (not a tab id) so a single source of truth survives
+ *   tab churn — tabs come and go, but the promoted file reference is
+ *   durable.
  */
 export interface WorkspaceGroupState {
   readonly id: string
   readonly tabs: readonly WorkspaceTab[]
   readonly activeTabId: string | null
-  readonly backgroundTabId?: string
+  readonly backgroundFileId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -769,7 +771,7 @@ export type ChromeForTab = (tab: WorkspaceTab) => ReactNode | undefined
  *   callback to resolve the provider at render time so the shell is
  *   testable in isolation with a stub.
  * - No `Cmd+K B` background decoration rendering. The field is reserved
- *   on `WorkspaceGroupState.backgroundTabId` but Task 04 does not render
+ *   on `WorkspaceGroupState.backgroundFileId` but Task 04 does not render
  *   anything based on it.
  */
 export interface WorkspaceShellProps {

@@ -764,14 +764,16 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   )
 
   /**
-   * Toggle the background decoration on a group. Set `backgroundTabId` to
-   * show a preview layer behind the editor, or `null` to hide it.
+   * Toggle the background decoration on a group. Pass a FILE id to pin
+   * that file's preview behind the editor; `null` clears the backdrop.
+   * The file id is stored directly (not tab-scoped) so the backdrop
+   * survives tab switches and lifts cleanly when the file is deleted.
    */
   const updateGroupBackground = useCallback(
-    (groupId: string, backgroundTabId: string | null) => {
+    (groupId: string, backgroundFileId: string | null) => {
       updateGroup(groupId, (g) => ({
         ...g,
-        backgroundTabId: backgroundTabId ?? undefined,
+        backgroundFileId: backgroundFileId ?? undefined,
       }))
     },
     [updateGroup],
@@ -1793,18 +1795,28 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             data-workspace-group-content={group.id}
             style={{ flex: 1, minHeight: 0, position: 'relative' }}
           >
-            {/* Task 08 — Background decoration (Cmd+K B) */}
-            {group.backgroundTabId && activeTabObj?.kind === 'editor' && (() => {
+            {/* Backdrop — promote-to-background / Cmd+K B.
+                Renders the pinned FILE's preview, independent of the
+                active tab. The pinned file id lives on
+                `group.backgroundFileId`; the app's `previewProviderFor`
+                resolves its language via the file registry, so the
+                shell doesn't need to know file→language mapping
+                directly. Survives tab switches; silently drops when
+                the promoted file is deleted (provider lookup returns
+                undefined). */}
+            {group.backgroundFileId && (() => {
+              const bgFileId = group.backgroundFileId
               const bgProvider = previewProviderFor?.({
                 kind: 'preview',
-                id: group.backgroundTabId!,
-                fileId: activeTabObj.fileId,
+                id: `bg-${bgFileId}`,
+                fileId: bgFileId,
                 sourceRef: { kind: 'default' },
               })
               if (!bgProvider) return null
               return (
                 <div
                   data-workspace-background={group.id}
+                  data-background-file-id={bgFileId}
                   style={{
                     position: 'absolute',
                     inset: 0,
@@ -1814,7 +1826,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   }}
                 >
                   <PreviewView
-                    fileId={activeTabObj.fileId}
+                    fileId={bgFileId}
                     provider={bgProvider}
                     sourceRef={{ kind: 'default' }}
                     theme={theme}

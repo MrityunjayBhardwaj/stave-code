@@ -8718,11 +8718,10 @@ function registerBuiltinCommands() {
         warnOnceDisabled("workspace.toggleBackgroundPreview", language);
         return;
       }
-      const bgTabId = `bg-${activeTab.fileId}`;
-      if (activeGroup.backgroundTabId === bgTabId) {
+      if (activeGroup.backgroundFileId === activeTab.fileId) {
         shell.updateGroupBackground(activeGroupId, null);
       } else {
-        shell.updateGroupBackground(activeGroupId, bgTabId);
+        shell.updateGroupBackground(activeGroupId, activeTab.fileId);
       }
     }
   });
@@ -9787,10 +9786,10 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
     [groups]
   );
   const updateGroupBackground = useCallback(
-    (groupId, backgroundTabId) => {
+    (groupId, backgroundFileId) => {
       updateGroup(groupId, (g) => ({
         ...g,
-        backgroundTabId: backgroundTabId ?? void 0
+        backgroundFileId: backgroundFileId ?? void 0
       }));
     },
     [updateGroup]
@@ -10525,11 +10524,12 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                 "data-workspace-group-content": group.id,
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
-                  group.backgroundTabId && activeTabObj?.kind === "editor" && (() => {
+                  group.backgroundFileId && (() => {
+                    const bgFileId = group.backgroundFileId;
                     const bgProvider = previewProviderFor?.({
                       kind: "preview",
-                      id: group.backgroundTabId,
-                      fileId: activeTabObj.fileId,
+                      id: `bg-${bgFileId}`,
+                      fileId: bgFileId,
                       sourceRef: { kind: "default" }
                     });
                     if (!bgProvider) return null;
@@ -10537,6 +10537,7 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                       "div",
                       {
                         "data-workspace-background": group.id,
+                        "data-background-file-id": bgFileId,
                         style: {
                           position: "absolute",
                           inset: 0,
@@ -10547,7 +10548,7 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                         children: /* @__PURE__ */ jsx(
                           PreviewView,
                           {
-                            fileId: activeTabObj.fileId,
+                            fileId: bgFileId,
                             provider: bgProvider,
                             sourceRef: { kind: "default" },
                             theme,

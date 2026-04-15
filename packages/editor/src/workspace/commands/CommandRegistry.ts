@@ -40,7 +40,7 @@ export interface WorkspaceShellActions {
     newTab: WorkspaceTab,
   ): void
   /** Toggle the background decoration tab id on a group. */
-  updateGroupBackground(groupId: string, backgroundTabId: string | null): void
+  updateGroupBackground(groupId: string, backgroundFileId: string | null): void
   /**
    * Close a specific tab by id. Imperative counterpart to the tab's
    * ✕ button; commands can use this to close the preview for the
@@ -221,12 +221,14 @@ function registerBuiltinCommands(): void {
         return
       }
 
-      // Toggle: if background is already set for this file, clear it; otherwise set it.
-      const bgTabId = `bg-${activeTab.fileId}`
-      if (activeGroup.backgroundTabId === bgTabId) {
+      // Toggle: if background is already this file, clear it; otherwise
+      // pin the active file. The field holds the FILE id directly — the
+      // backdrop is durable across tab switches, unlike the old
+      // mirror-active-editor model that derived from the active tab.
+      if (activeGroup.backgroundFileId === activeTab.fileId) {
         shell.updateGroupBackground(activeGroupId, null)
       } else {
-        shell.updateGroupBackground(activeGroupId, bgTabId)
+        shell.updateGroupBackground(activeGroupId, activeTab.fileId)
       }
     },
   })
