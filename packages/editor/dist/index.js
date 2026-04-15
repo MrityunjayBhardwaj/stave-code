@@ -2511,14 +2511,14 @@ var require_tree_sitter = __commonJS({
                             }
                           }
                           captureName = steps[1].name;
-                          const values = steps.slice(2).map((s) => s.value);
+                          const values2 = steps.slice(2).map((s) => s.value);
                           textPredicates[i2].push((captures) => {
                             const nodes = [];
                             for (const c of captures) {
                               if (c.name === captureName) nodes.push(c.node.text);
                             }
                             if (nodes.length === 0) return !isPositive;
-                            return nodes.every((text) => values.includes(text)) === isPositive;
+                            return nodes.every((text) => values2.includes(text)) === isPositive;
                           });
                           break;
                         default:
@@ -5909,9 +5909,9 @@ function ensureUndoManager() {
     }
   };
   files.observe(filesObserver);
-  const listeners2 = /* @__PURE__ */ new Set();
+  const listeners3 = /* @__PURE__ */ new Set();
   const notify2 = () => {
-    for (const l of listeners2) l();
+    for (const l of listeners3) l();
   };
   const onStackItemAdded = () => notify2();
   const onStackItemPopped = () => notify2();
@@ -5921,7 +5921,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners2,
+    listeners: listeners3,
     cleanup: () => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -5958,10 +5958,10 @@ function canRedo() {
 }
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners2 = active.listeners;
-  listeners2.add(cb);
+  const listeners3 = active.listeners;
+  listeners3.add(cb);
   return () => {
-    listeners2.delete(cb);
+    listeners3.delete(cb);
   };
 }
 
@@ -8397,6 +8397,55 @@ function EditorView({
     }
   );
 }
+
+// src/workspace/preview/vizLiveToggle.ts
+var STORAGE_PREFIX = "stave:vizLive:";
+function safeLocalStorage2() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+var values = /* @__PURE__ */ new Map();
+var listeners2 = /* @__PURE__ */ new Map();
+function keyFor(fileId) {
+  return `${STORAGE_PREFIX}${fileId}`;
+}
+function getVizLive(fileId) {
+  const cached = values.get(fileId);
+  if (cached !== void 0) return cached;
+  const ls = safeLocalStorage2();
+  const raw = ls?.getItem(keyFor(fileId));
+  const on = raw === "0" ? false : true;
+  values.set(fileId, on);
+  return on;
+}
+function setVizLive(fileId, on) {
+  const prev = getVizLive(fileId);
+  if (prev === on) return;
+  values.set(fileId, on);
+  safeLocalStorage2()?.setItem(keyFor(fileId), on ? "1" : "0");
+  const set = listeners2.get(fileId);
+  if (set) for (const cb of Array.from(set)) cb(on);
+}
+function toggleVizLive(fileId) {
+  setVizLive(fileId, !getVizLive(fileId));
+}
+function onVizLiveChange(fileId, cb) {
+  let set = listeners2.get(fileId);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    listeners2.set(fileId, set);
+  }
+  set.add(cb);
+  return () => {
+    set.delete(cb);
+    if (set.size === 0) listeners2.delete(fileId);
+  };
+}
 function payloadKey(ref, payload) {
   if (payload === null) return "none";
   if (ref.kind === "file") return `file:${ref.fileId}`;
@@ -8427,6 +8476,11 @@ function PreviewView({
   const [reloadTick, setReloadTick] = useState(0);
   const [, forceSourcesRerender] = useState(0);
   const catchUpNeededRef = useRef(false);
+  const [liveOn, setLiveOn] = useState(() => getVizLive(fileId));
+  useEffect(() => {
+    setLiveOn(getVizLive(fileId));
+    return onVizLiveChange(fileId, setLiveOn);
+  }, [fileId]);
   useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
@@ -8447,6 +8501,10 @@ function PreviewView({
   useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
+    if (!liveOn) {
+      catchUpNeededRef.current = true;
+      return;
+    }
     if (effectivelyHidden) {
       catchUpNeededRef.current = true;
       return;
@@ -8467,6 +8525,7 @@ function PreviewView({
     provider.reload,
     provider.debounceMs,
     effectivelyHidden,
+    liveOn,
     file
   ]);
   const prevEffectivelyHiddenRef = useRef(effectivelyHidden);
@@ -8478,6 +8537,15 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
+  const prevLiveOnRef = useRef(liveOn);
+  useEffect(() => {
+    const wasOff = !prevLiveOnRef.current;
+    prevLiveOnRef.current = liveOn;
+    if (wasOff && liveOn && catchUpNeededRef.current) {
+      catchUpNeededRef.current = false;
+      setReloadTick((n) => n + 1);
+    }
+  }, [liveOn]);
   const providerNode = React.useMemo(() => {
     if (!file) return null;
     return provider.render({
@@ -12279,8 +12347,8 @@ var Ring = class _Ring {
     return this.items[Symbol.iterator]();
   }
 };
-function ring(...values) {
-  return new Ring(values);
+function ring(...values2) {
+  return new Ring(values2);
 }
 function knit(...args2) {
   const result = [];
@@ -12806,10 +12874,10 @@ var ProgramBuilder = class _ProgramBuilder {
     this.steps.push({ tag: "thread", body: inner.build() });
     return this;
   }
-  at(times, values, buildFn) {
+  at(times, values2, buildFn) {
     for (let i2 = 0; i2 < times.length; i2++) {
       const offset = times[i2];
-      const val = values ? values[i2 % values.length] : i2;
+      const val = values2 ? values2[i2 % values2.length] : i2;
       const inner = new _ProgramBuilder(this.rng.next() * 4294967295);
       inner.currentSynth = this.currentSynth;
       inner.densityFactor = this.densityFactor;
@@ -13072,8 +13140,8 @@ var ProgramBuilder = class _ProgramBuilder {
    * Create a ring of booleans from 0/1 values.
    * `bools(1,0,1,0)` → Ring([true, false, true, false])
    */
-  bools(...values) {
-    return new Ring(values.map((v) => v !== 0));
+  bools(...values2) {
+    return new Ring(values2.map((v) => v !== 0));
   }
   /**
    * Play a sequence of notes with timed intervals.
@@ -18289,10 +18357,10 @@ var SonicPiEngine = class {
           b.stop();
         });
       };
-      const topLevelAt = (times, values, fn) => {
+      const topLevelAt = (times, values2, fn) => {
         for (let i2 = 0; i2 < times.length; i2++) {
           const t = times[i2];
-          const v = values ? values[i2] : void 0;
+          const v = values2 ? values2[i2] : void 0;
           const name2 = `__at_${Date.now()}_${i2}_${randomSuffix()}`;
           fxAwareWrappedLiveLoop(name2, (b) => {
             if (t > 0) b.sleep(t);
@@ -20058,11 +20126,17 @@ var primaryBtnStyle = {
   color: "#fff"
 };
 function VizEditorChrome({
+  file,
   onOpenPreview,
   previewOpen,
   previewPaused,
   onTogglePausePreview
 }) {
+  const [liveOn, setLiveOn] = useState(() => getVizLive(file.id));
+  useEffect(() => {
+    setLiveOn(getVizLive(file.id));
+    return onVizLiveChange(file.id, setLiveOn);
+  }, [file.id]);
   const selectedSource = { kind: "default" };
   const handlePrimaryButtonClick = useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
@@ -20102,11 +20176,13 @@ function VizEditorChrome({
           }
         ),
         /* @__PURE__ */ jsx("div", { style: { flex: 1 } }),
-        /* @__PURE__ */ jsxs(
-          "span",
+        /* @__PURE__ */ jsx(
+          "button",
           {
-            "data-testid": "viz-chrome-live-indicator",
-            title: "Hot reload is on \u2014 preview updates as you type",
+            "data-testid": "viz-chrome-live-toggle",
+            "data-live": liveOn ? "on" : "off",
+            onClick: () => toggleVizLive(file.id),
+            title: liveOn ? "Hot reload is ON \u2014 click to freeze preview updates" : "Hot reload is OFF \u2014 click to resume live updates",
             style: {
               display: "inline-flex",
               alignItems: "center",
@@ -20115,15 +20191,13 @@ function VizEditorChrome({
               borderRadius: 3,
               fontSize: 10,
               fontFamily: "inherit",
-              background: "var(--accent-dim)",
-              color: "var(--accent-strong, var(--accent))",
-              border: "1px solid var(--accent-dim)",
+              background: liveOn ? "var(--accent-dim)" : "transparent",
+              color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+              border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`,
+              cursor: "pointer",
               userSelect: "none"
             },
-            children: [
-              "\u27F3",
-              " live"
-            ]
+            children: liveOn ? "\u27F3 live" : "\u2225 frozen"
           }
         )
       ]

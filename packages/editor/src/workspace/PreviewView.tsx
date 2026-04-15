@@ -101,6 +101,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { applyTheme } from '../theme/tokens'
 import { useWorkspaceFile } from './useWorkspaceFile'
 import { workspaceAudioBus } from './WorkspaceAudioBus'
+import { getVizLive, onVizLiveChange } from './preview/vizLiveToggle'
 import type {
   AudioPayload,
   AudioSourceRef,
@@ -196,6 +197,16 @@ export function PreviewView({
   // `true` whenever file content changes while hidden + effectively-paused.
   const catchUpNeededRef = useRef(false)
 
+  // Per-file hot-reload toggle. When off, skip the reload dispatch so
+  // the compiled preview freezes on its last state while the user keeps
+  // editing. Subscribe so flipping the chrome's button takes effect
+  // without remounting.
+  const [liveOn, setLiveOn] = useState<boolean>(() => getVizLive(fileId))
+  useEffect(() => {
+    setLiveOn(getVizLive(fileId))
+    return onVizLiveChange(fileId, setLiveOn)
+  }, [fileId])
+
   // Theme application — PV6 / PK6. Effect, not render.
   useEffect(() => {
     if (!containerRef.current) return
@@ -235,6 +246,12 @@ export function PreviewView({
   useEffect(() => {
     if (!file) return
     if (provider.reload === 'manual') return
+    // User-facing hot-reload toggle: treat as 'manual' while off so the
+    // compiled preview freezes on its last state across content edits.
+    if (!liveOn) {
+      catchUpNeededRef.current = true
+      return
+    }
 
     if (effectivelyHidden) {
       catchUpNeededRef.current = true
@@ -263,6 +280,7 @@ export function PreviewView({
     provider.reload,
     provider.debounceMs,
     effectivelyHidden,
+    liveOn,
     file,
   ])
 
@@ -278,6 +296,19 @@ export function PreviewView({
       setReloadTick((n) => n + 1)
     }
   }, [effectivelyHidden])
+
+  // Catch-up on live-toggle flip off → on. Same mechanic as un-hide:
+  // the user edited while frozen, flipping the toggle resumes live
+  // updates AND pulls in any missed edits via a single reload bump.
+  const prevLiveOnRef = useRef(liveOn)
+  useEffect(() => {
+    const wasOff = !prevLiveOnRef.current
+    prevLiveOnRef.current = liveOn
+    if (wasOff && liveOn && catchUpNeededRef.current) {
+      catchUpNeededRef.current = false
+      setReloadTick((n) => n + 1)
+    }
+  }, [liveOn])
 
   // Provider render. The loading placeholder mirrors `EditorView` for
   // consistency. Once the file exists, we hand the provider a fresh

@@ -17,8 +17,13 @@
  * keep their own Play/Stop (real audio transport) via StrudelChrome.
  */
 
-import React, { useCallback } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import type { PreviewEditorChromeContext } from '../PreviewProvider'
+import {
+  getVizLive,
+  onVizLiveChange,
+  toggleVizLive,
+} from './vizLiveToggle'
 
 /**
  * Primary action button style — matches the Play button on the pattern
@@ -40,11 +45,19 @@ const primaryBtnStyle: React.CSSProperties = {
 }
 
 export function VizEditorChrome({
+  file,
   onOpenPreview,
   previewOpen,
   previewPaused,
   onTogglePausePreview,
 }: PreviewEditorChromeContext): React.ReactElement {
+  // Subscribe to the per-file hot-reload toggle so other surfaces
+  // (command palette, future settings) stay in sync with the button.
+  const [liveOn, setLiveOn] = useState<boolean>(() => getVizLive(file.id))
+  useEffect(() => {
+    setLiveOn(getVizLive(file.id))
+    return onVizLiveChange(file.id, setLiveOn)
+  }, [file.id])
   // The source selector chrome was removed, so we always open a preview
   // with the default ref (follow most recent publisher). Kept as a local
   // so future bring-back of a source picker stays cheap.
@@ -152,17 +165,21 @@ export function VizEditorChrome({
       <div style={{ flex: 1 }} />
 
       {/*
-       * Hot reload: static "live" badge.
-       *
-       * The viz provider's `reload` policy drives auto-recompile cadence
-       * (debounced 300ms for HYDRA/P5 — see workspace/preview/hydraViz.tsx
-       * and p5Viz.tsx). A per-tab toggle would require threading state
-       * through PreviewView's reload effect — out of Phase 10.2 scope.
-       * This stays as an indicator, not a control.
+       * Hot reload: togglable badge. On → preview rebuilds on every
+       * debounced content change (default). Off → the preview is
+       * frozen on its last compiled state; the user can keep editing
+       * without seeing intermediate frames. PreviewView observes the
+       * per-file flag and short-circuits its reload effect.
        */}
-      <span
-        data-testid="viz-chrome-live-indicator"
-        title="Hot reload is on — preview updates as you type"
+      <button
+        data-testid="viz-chrome-live-toggle"
+        data-live={liveOn ? 'on' : 'off'}
+        onClick={() => toggleVizLive(file.id)}
+        title={
+          liveOn
+            ? 'Hot reload is ON — click to freeze preview updates'
+            : 'Hot reload is OFF — click to resume live updates'
+        }
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -171,14 +188,17 @@ export function VizEditorChrome({
           borderRadius: 3,
           fontSize: 10,
           fontFamily: 'inherit',
-          background: 'var(--accent-dim)',
-          color: 'var(--accent-strong, var(--accent))',
-          border: '1px solid var(--accent-dim)',
+          background: liveOn ? 'var(--accent-dim)' : 'transparent',
+          color: liveOn
+            ? 'var(--accent-strong, var(--accent))'
+            : 'var(--foreground-muted)',
+          border: `1px solid ${liveOn ? 'var(--accent-dim)' : 'var(--border)'}`,
+          cursor: 'pointer',
           userSelect: 'none',
         }}
       >
-        {'\u27F3'} live
-      </span>
+        {liveOn ? '\u27F3 live' : '\u2225 frozen'}
+      </button>
     </div>
   )
 }
