@@ -71,6 +71,11 @@ interface StrudelEditorClientProps {
   onEditViz?: (vizId: string) => void;
   /** Open crop popup when the user clicks the crop icon on an inline viz. */
   onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void;
+  /** Pass-through of the shell's backdrop change callback — fires on any
+   *  group's backgroundFileId transition. StaveApp uses this to mirror
+   *  the pinned backdrop into its own React state for the FileTree
+   *  context-menu label. */
+  onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
 }
 
 export default function StrudelEditorClient({
@@ -80,6 +85,7 @@ export default function StrudelEditorClient({
   onTabContextMenu,
   onEditViz,
   onCropViz,
+  onBackgroundFileChange,
 }: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
@@ -475,6 +481,7 @@ export default function StrudelEditorClient({
       onTabContextMenu={onTabContextMenu}
       onEditViz={onEditViz}
       onCropViz={onCropViz}
+      onBackgroundFileChange={onBackgroundFileChange}
       onActiveTabChange={(tab) => {
         const fid =
           tab && (tab.kind === "editor" || tab.kind === "preview")

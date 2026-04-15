@@ -131,6 +131,16 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     y: number;
   } | null>(null);
 
+  // Mirror of the active group's backdrop fileId so the file-tree can
+  // render "Set as Background" vs. "Clear Background" in the context
+  // menu without subscribing to every shell state change. Updated by
+  // handleSetAsBackground below — the single write site — and read
+  // into the FileTree prop. Survives tab switches because the shell
+  // stores it on group state, not on the active tab.
+  const [backgroundFileId, setBackgroundFileId] = useState<string | null>(
+    null,
+  );
+
   const handleImportZip = useCallback(async (file: File) => {
     try {
       const meta = await importProjectFromZip(file);
@@ -328,6 +338,20 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
+
+  /**
+   * Promote a viz file to the active group's backdrop, or clear with
+   * `null`. The shell's `setBackgroundFile` mutates group state; we
+   * mirror the new value into React state so the FileTree menu label
+   * (Set ↔ Clear) updates without a second round-trip. The command
+   * palette / `Cmd+K B` path drives the shell directly — those writes
+   * need to propagate here too (handled by the backdrop-sync effect
+   * below, once wired).
+   */
+  const handleSetAsBackground = useCallback((fileId: string | null) => {
+    shellRef.current?.setBackgroundFile?.(fileId);
+    setBackgroundFileId(fileId);
+  }, []);
 
   const handleRuntimeStateChange = useCallback(
     (s: { isPlaying: boolean; bpm?: number; error: string | null } | null) => {
@@ -709,6 +733,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             activeFileId={activeFileId}
             onToggleCollapse={() => setActivePanelId(null)}
             onImportZipProject={handleImportZip}
+            onSetAsBackground={handleSetAsBackground}
+            backgroundFileId={backgroundFileId}
           />
         )}
         {!zenMode && activePanelId === "search" && (
@@ -762,6 +788,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 shellRef={shellRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
+                onBackgroundFileChange={(_groupId, fileId) =>
+                  setBackgroundFileId(fileId)
+                }
                 onTabContextMenu={(tab, x, y) => {
                   const fileId =
                     tab.kind === "editor" || tab.kind === "preview"

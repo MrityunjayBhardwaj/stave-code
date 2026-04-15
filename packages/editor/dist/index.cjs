@@ -9542,6 +9542,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
   theme = "dark",
   height = "100%",
   onActiveTabChange,
+  onBackgroundFileChange,
   onTabClose,
   previewProviderFor,
   chromeForTab,
@@ -9814,12 +9815,15 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
   );
   const updateGroupBackground = React.useCallback(
     (groupId, backgroundFileId) => {
+      const prev = groups.get(groupId)?.backgroundFileId ?? null;
+      if (prev === backgroundFileId) return;
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? void 0
       }));
+      onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [updateGroup]
+    [groups, updateGroup, onBackgroundFileChange]
   );
   const closeTabById = React.useCallback(
     (tabId) => {
@@ -10793,9 +10797,19 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
       splitActiveGroup: (direction = "east") => {
         if (!activeGroupId) return;
         handleSplit(activeGroupId, direction);
+      },
+      setBackgroundFile: (fileId, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupBackground(gid, fileId);
+      },
+      getBackgroundFileId: (groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return void 0;
+        return groups.get(gid)?.backgroundFileId;
       }
     }),
-    [groups, activeGroupId, closeTabById, handleSplit]
+    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground]
   );
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",

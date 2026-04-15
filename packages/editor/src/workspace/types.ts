@@ -810,6 +810,19 @@ export interface WorkspaceShellProps {
   readonly onActiveTabChange?: (tab: WorkspaceTab | null) => void
 
   /**
+   * Fires when any group's `backgroundFileId` changes — either set
+   * (pinned a file) or cleared (null). `groupId` identifies the
+   * affected group. Used by the app to mirror backdrop state into
+   * local React state (for the file-tree "Set ↔ Clear" label) and
+   * to persist per-project. Fires once per real change; no initial-
+   * state fire since an unset backdrop is the default.
+   */
+  readonly onBackgroundFileChange?: (
+    groupId: string,
+    fileId: string | null,
+  ) => void
+
+  /**
    * Fires when a tab is closed by the user. Runtime disposal hooks
    * (Task 05 / Task 07) plug in here to call `runtime.dispose()` on
    * the closed tab's pattern file. The callback receives the tab that

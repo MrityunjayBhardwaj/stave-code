@@ -2373,6 +2373,15 @@ interface WorkspaceShellProps {
      */
     readonly onActiveTabChange?: (tab: WorkspaceTab | null) => void;
     /**
+     * Fires when any group's `backgroundFileId` changes — either set
+     * (pinned a file) or cleared (null). `groupId` identifies the
+     * affected group. Used by the app to mirror backdrop state into
+     * local React state (for the file-tree "Set ↔ Clear" label) and
+     * to persist per-project. Fires once per real change; no initial-
+     * state fire since an unset backdrop is the default.
+     */
+    readonly onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
+    /**
      * Fires when a tab is closed by the user. Runtime disposal hooks
      * (Task 05 / Task 07) plug in here to call `runtime.dispose()` on
      * the closed tab's pattern file. The callback receives the tab that
@@ -2611,6 +2620,20 @@ interface WorkspaceShellHandle {
      * tabs. No-op if there is no active group.
      */
     splitActiveGroup(direction?: 'east' | 'south'): void;
+    /**
+     * Pin a FILE as the backdrop for a group. Pass `null` to clear.
+     * `groupId` defaults to the active group. The pinned file's preview
+     * renders behind the active editor and survives tab switches.
+     * Called by the file-tree context menu and by `Cmd+K B`.
+     */
+    setBackgroundFile(fileId: string | null, groupId?: string): void;
+    /**
+     * Read the current backdrop fileId for a group (default: active
+     * group). Returns `undefined` when no backdrop is pinned. Useful for
+     * UI that needs to render a "Clear" vs "Set" label without
+     * subscribing to every shell state change.
+     */
+    getBackgroundFileId(groupId?: string): string | undefined;
 }
 declare const WorkspaceShell: React.ForwardRefExoticComponent<WorkspaceShellProps & React.RefAttributes<WorkspaceShellHandle>>;
 

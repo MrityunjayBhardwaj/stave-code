@@ -265,6 +265,22 @@ export interface WorkspaceShellHandle {
    * tabs. No-op if there is no active group.
    */
   splitActiveGroup(direction?: 'east' | 'south'): void
+
+  /**
+   * Pin a FILE as the backdrop for a group. Pass `null` to clear.
+   * `groupId` defaults to the active group. The pinned file's preview
+   * renders behind the active editor and survives tab switches.
+   * Called by the file-tree context menu and by `Cmd+K B`.
+   */
+  setBackgroundFile(fileId: string | null, groupId?: string): void
+
+  /**
+   * Read the current backdrop fileId for a group (default: active
+   * group). Returns `undefined` when no backdrop is pinned. Useful for
+   * UI that needs to render a "Clear" vs "Set" label without
+   * subscribing to every shell state change.
+   */
+  getBackgroundFileId(groupId?: string): string | undefined
 }
 
 /** Resolve a tab's display name from the file store. Falls back to fileId. */
@@ -280,6 +296,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   theme = 'dark',
   height = '100%',
   onActiveTabChange,
+  onBackgroundFileChange,
   onTabClose,
   previewProviderFor,
   chromeForTab,
@@ -771,12 +788,18 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
    */
   const updateGroupBackground = useCallback(
     (groupId: string, backgroundFileId: string | null) => {
+      // Check current value before writing so the callback only fires
+      // on real changes — keeps the notification stream tight for
+      // persistence consumers that would otherwise see echoes.
+      const prev = groups.get(groupId)?.backgroundFileId ?? null
+      if (prev === backgroundFileId) return
       updateGroup(groupId, (g) => ({
         ...g,
         backgroundFileId: backgroundFileId ?? undefined,
       }))
+      onBackgroundFileChange?.(groupId, backgroundFileId)
     },
-    [updateGroup],
+    [groups, updateGroup, onBackgroundFileChange],
   )
 
   /**
@@ -2068,8 +2091,21 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         if (!activeGroupId) return
         handleSplit(activeGroupId, direction)
       },
+      setBackgroundFile: (
+        fileId: string | null,
+        groupId?: string,
+      ) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupBackground(gid, fileId)
+      },
+      getBackgroundFileId: (groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return undefined
+        return groups.get(gid)?.backgroundFileId
+      },
     }),
-    [groups, activeGroupId, closeTabById, handleSplit],
+    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground],
   )
 
   return (

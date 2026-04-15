@@ -28,6 +28,19 @@ interface FileTreeProps {
   /** Called when a user drops a single .zip onto the sidebar. If set,
    *  the tree skips the normal file-by-file import and delegates. */
   onImportZipProject?: (file: File) => void;
+  /**
+   * Pin a viz file as the active group's backdrop, or clear with
+   * `null`. Only surfaced in the context menu for viz files (`.p5`,
+   * `.hydra`). When omitted, the "Set as Background" item is hidden.
+   */
+  onSetAsBackground?: (fileId: string | null) => void;
+  /**
+   * Current pinned backdrop file id for the active group (if any).
+   * Drives the context-menu label — "Set as Background" flips to
+   * "Clear Background" when the right-clicked file IS the active
+   * backdrop. Omit if the app doesn't track backdrop state.
+   */
+  backgroundFileId?: string | null;
 }
 
 export interface FileTreeHandle {
@@ -186,6 +199,7 @@ function applyFolderOrder(
 
 export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({
   projectName, onOpenFile, activeFileId, onToggleCollapse, onImportZipProject,
+  onSetAsBackground, backgroundFileId,
 }, forwardedRef) {
   // Subscribe to file list changes — re-list whenever a file is added,
   // removed, or renamed. `fileListRev` is the dep that forces the memo
@@ -1141,6 +1155,9 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
           collapsedFolders={collapsedFolders}
           onRenameFolder={handleRenameFolder}
           onDeleteFolder={handleDeleteFolder}
+          onSetAsBackground={onSetAsBackground}
+          backgroundFileId={backgroundFileId}
+          files={files}
         />
       )}
 
@@ -1363,6 +1380,12 @@ interface ContextMenuProps {
   collapsedFolders: Set<string>;
   onRenameFolder: (folderPath: string) => void;
   onDeleteFolder: (folderPath: string) => void;
+  /** Viz-file-only — pin/clear the file as the active group's backdrop. */
+  onSetAsBackground?: (fileId: string | null) => void;
+  /** Current backdrop fileId so the label can flip Set ↔ Clear. */
+  backgroundFileId?: string | null;
+  /** File list used to resolve the right-clicked file's language. */
+  files: WorkspaceFile[];
 }
 
 // Split nested labels — "New File..." is one item, but we want a
@@ -1427,11 +1450,38 @@ function ContextMenu(props: ContextMenuProps) {
                 onClick: () => props.onBulkDelete() },
             ];
           }
+          // Viz-file gate: only surface "Set as Background" for
+          // files the backdrop layer can actually render. Hydra + p5
+          // are the current two. Other languages don't get the menu
+          // entry at all (keeps the menu clean vs. disabled-looking).
+          const file = props.files.find((f) => f.id === fileId);
+          const isVizFile =
+            file?.language === "hydra" || file?.language === "p5";
+          const isCurrentBackdrop =
+            props.backgroundFileId != null &&
+            props.backgroundFileId === fileId;
+
+          const bgEntry: MenuEntry | null =
+            isVizFile && props.onSetAsBackground
+              ? {
+                  label: isCurrentBackdrop
+                    ? "Clear Background"
+                    : "Set as Background",
+                  onClick: () => {
+                    props.onSetAsBackground!(
+                      isCurrentBackdrop ? null : fileId,
+                    );
+                    props.onClose();
+                  },
+                }
+              : null;
+
           return [
             { label: "Open", onClick: () => { props.onOpenFile(fileId); props.onClose(); } },
             null,
             { label: "Duplicate", onClick: () => props.onDuplicateFile(fileId) },
             { label: "Copy Path", onClick: () => props.onCopyPath(fileId) },
+            ...(bgEntry ? [null, bgEntry] : []),
             null,
             { label: "Rename...", onClick: () => { props.onRenameFile(fileId); props.onClose(); } },
             { label: "Delete", danger: true, onClick: () => props.onDeleteFile(fileId) },
