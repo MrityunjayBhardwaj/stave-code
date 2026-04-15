@@ -245,6 +245,7 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState(false);
+  const [resizeHover, setResizeHover] = useState(false);
 
   // During a drag, track mouse globally (user can drag outside the
   // sidebar). Using window listeners instead of React events so the
@@ -1085,15 +1086,22 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
 
       {/* Resize handle — 5px wide strip on the right edge. Cursor is
           col-resize; mousedown enters resize mode and window-level
-          listeners (see effect above) drive the width update. */}
+          listeners (see effect above) drive the width update. Hover
+          previews the accent at reduced intensity; drag shows it fully.*/}
       <div
         onMouseDown={(e) => {
           e.preventDefault();
           setResizing(true);
         }}
+        onMouseEnter={() => setResizeHover(true)}
+        onMouseLeave={() => setResizeHover(false)}
         style={{
           ...styles.resizeHandle,
-          ...(resizing ? styles.resizeHandleActive : {}),
+          ...(resizing
+            ? styles.resizeHandleActive
+            : resizeHover
+              ? styles.resizeHandleHover
+              : {}),
         }}
         title="Drag to resize sidebar"
         aria-label="Resize sidebar"
@@ -1470,10 +1478,14 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "col-resize",
     zIndex: 10,
     background: "transparent",
-    transition: "background 0.1s",
+    transition: "background 260ms ease-out",
+  },
+  resizeHandleHover: {
+    background: "color-mix(in srgb, var(--accent-strong) 45%, transparent)",
   },
   resizeHandleActive: {
-    background: "var(--accent)",
+    background: "var(--accent-strong)",
+    transition: "background 80ms ease-out",
   },
   header: {
     display: "flex",
