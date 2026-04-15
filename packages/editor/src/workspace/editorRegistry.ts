@@ -63,9 +63,17 @@ const MINIMAP_STORAGE = 'stave:editorMinimap'
 const DEFAULT_UI_ICON_SIZE = 25
 const UI_ICON_SIZE_STORAGE = 'stave:uiIconSize'
 /** CSS variable that scales every chrome-level icon glyph (menu gear,
- *  activity bar, inline viz bar, etc.). Applied to documentElement on
- *  mount and on every change. */
+ *  activity bar, etc.). Applied to documentElement on mount and on
+ *  every change. */
 export const UI_ICON_SIZE_VAR = '--ui-icon-size'
+
+const DEFAULT_INLINE_VIZ_ACTION_SIZE = 11
+const INLINE_VIZ_ACTION_SIZE_STORAGE = 'stave:inlineVizActionSize'
+/** Separate CSS variable for the floating action buttons (edit / crop)
+ *  attached to inline `.viz()` zones. They sit inside the canvas area
+ *  and tend to need a tighter scale than the rest of the chrome —
+ *  hence their own slider, independent of the main UI icon size. */
+export const INLINE_VIZ_ACTION_SIZE_VAR = '--inline-viz-action-size'
 
 function safeLocalStorage(): Storage | null {
   try {
@@ -166,6 +174,52 @@ export function onUiIconSizeChange(cb: (size: number) => void): () => void {
 /** Apply the persisted icon size to the document root on first mount. */
 export function applyPersistedUiIconSize(): void {
   applyUiIconSizeVar(readUiIconSize())
+}
+
+// ── Inline-viz action button size (edit / crop on viz zones) ────────
+const inlineVizActionSizeListeners = new Set<(size: number) => void>()
+
+function readInlineVizActionSize(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE
+  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE))
+  return Number.isFinite(saved) && saved >= 8 && saved <= 28
+    ? saved
+    : DEFAULT_INLINE_VIZ_ACTION_SIZE
+}
+
+function writeInlineVizActionSize(size: number): void {
+  safeLocalStorage()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size))
+}
+
+function applyInlineVizActionSizeVar(size: number): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty(
+    INLINE_VIZ_ACTION_SIZE_VAR,
+    `${size}px`,
+  )
+}
+
+export function getInlineVizActionSize(): number {
+  return readInlineVizActionSize()
+}
+
+export function setInlineVizActionSize(size: number): void {
+  const clamped = Math.max(8, Math.min(28, Math.round(size)))
+  writeInlineVizActionSize(clamped)
+  applyInlineVizActionSizeVar(clamped)
+  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped)
+}
+
+export function onInlineVizActionSizeChange(
+  cb: (size: number) => void,
+): () => void {
+  inlineVizActionSizeListeners.add(cb)
+  return () => { inlineVizActionSizeListeners.delete(cb) }
+}
+
+export function applyPersistedInlineVizActionSize(): void {
+  applyInlineVizActionSizeVar(readInlineVizActionSize())
 }
 
 /** Called by EditorView on mount to seed the editor with saved options. */

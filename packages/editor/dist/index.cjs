@@ -7368,6 +7368,9 @@ var MINIMAP_STORAGE = "stave:editorMinimap";
 var DEFAULT_UI_ICON_SIZE = 25;
 var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
 var UI_ICON_SIZE_VAR = "--ui-icon-size";
+var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
+var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
+var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
 function safeLocalStorage() {
   try {
     if (typeof window === "undefined") return null;
@@ -7448,6 +7451,41 @@ function onUiIconSizeChange(cb) {
 }
 function applyPersistedUiIconSize() {
   applyUiIconSizeVar(readUiIconSize());
+}
+var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
+function readInlineVizActionSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
+  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
+}
+function writeInlineVizActionSize(size) {
+  safeLocalStorage()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
+}
+function applyInlineVizActionSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    INLINE_VIZ_ACTION_SIZE_VAR,
+    `${size}px`
+  );
+}
+function getInlineVizActionSize() {
+  return readInlineVizActionSize();
+}
+function setInlineVizActionSize(size) {
+  const clamped = Math.max(8, Math.min(28, Math.round(size)));
+  writeInlineVizActionSize(clamped);
+  applyInlineVizActionSizeVar(clamped);
+  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
+}
+function onInlineVizActionSizeChange(cb) {
+  inlineVizActionSizeListeners.add(cb);
+  return () => {
+    inlineVizActionSizeListeners.delete(cb);
+  };
+}
+function applyPersistedInlineVizActionSize() {
+  applyInlineVizActionSizeVar(readInlineVizActionSize());
 }
 function applyPersistedEditorOptions(editor) {
   applyOptionsToEditor(editor);
@@ -7827,7 +7865,7 @@ function createFloatingActionBar(editorDom) {
     border:1px solid var(--border-strong,#3a3a5a);
     border-radius:3px;padding:2px 6px;
     color:var(--text-primary,#e8e8f0);
-    font-size:var(--ui-icon-size,25px);cursor:pointer;
+    font-size:var(--inline-viz-action-size,11px);cursor:pointer;
     font-family:system-ui,sans-serif;
     pointer-events:auto;
   `;
@@ -20430,6 +20468,7 @@ exports.EditorView = EditorView;
 exports.HYDRA_VIZ = HYDRA_VIZ;
 exports.HapStream = HapStream;
 exports.HydraVizRenderer = HydraVizRenderer;
+exports.INLINE_VIZ_ACTION_SIZE_VAR = INLINE_VIZ_ACTION_SIZE_VAR;
 exports.IR = IR;
 exports.IREventCollectSystem = IREventCollectSystem;
 exports.LIGHT_THEME_TOKENS = LIGHT_THEME_TOKENS;
@@ -20463,6 +20502,7 @@ exports.VizPicker = VizPicker;
 exports.VizPresetStore = VizPresetStore;
 exports.WavEncoder = WavEncoder;
 exports.WorkspaceShell = WorkspaceShell;
+exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
 exports.applyPersistedTheme = applyPersistedTheme;
 exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyTheme = applyTheme;
@@ -20491,6 +20531,7 @@ exports.getEditorTheme = getEditorTheme;
 exports.getEditorUiIconSize = getEditorUiIconSize;
 exports.getFile = getFile;
 exports.getFolderOrder = getFolderOrder;
+exports.getInlineVizActionSize = getInlineVizActionSize;
 exports.getLastOpenedProject = getLastOpenedProject;
 exports.getNamedViz = getNamedViz;
 exports.getPresetIdForFile = getPresetIdForFile;
@@ -20521,6 +20562,7 @@ exports.merge = merge;
 exports.mountVizRenderer = mountVizRenderer;
 exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
+exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
 exports.onNamedVizChanged = onNamedVizChanged;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
@@ -20555,6 +20597,7 @@ exports.setEditorFontSize = setEditorFontSize;
 exports.setEditorTheme = setEditorTheme;
 exports.setEditorUiIconSize = setEditorUiIconSize;
 exports.setFolderOrder = setFolderOrder;
+exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setVizConfig = setVizConfig;
 exports.setZoneCropOverride = setZoneCropOverride;
