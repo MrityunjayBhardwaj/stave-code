@@ -215,6 +215,28 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [zenMode]);
 
+  // Drive the browser's Fullscreen API alongside zen mode so the URL
+  // bar / tab strip / window chrome all disappear. Browsers require a
+  // user gesture to enter fullscreen, which this effect inherits because
+  // zenMode is only ever flipped by a click or shortcut. If the user
+  // exits fullscreen via the browser's own affordance (F11, Esc on
+  // some browsers), keep the React state in sync via fullscreenchange.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const fsEl = () => document.fullscreenElement;
+    if (zenMode && !fsEl()) {
+      // Best-effort — Safari throws if the gesture isn't trusted.
+      void document.documentElement.requestFullscreen?.().catch(() => {});
+    } else if (!zenMode && fsEl()) {
+      void document.exitFullscreen?.().catch(() => {});
+    }
+    const sync = () => {
+      if (!fsEl() && zenMode) setZenMode(false);
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, [zenMode]);
+
   // Subscribe to the structural undo manager so Edit menu items can
   // enable/disable reactively.
   useEffect(() => {
@@ -665,6 +687,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           onVersionHistory={openSnapshotPanel}
           onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
           sidebarCollapsed={sidebarCollapsed}
+          onToggleZenMode={() => setZenMode((z) => !z)}
+          zenMode={zenMode}
           onUndo={() => { undo(); }}
           onRedo={() => { redo(); }}
           canUndo={undoState.canUndo}

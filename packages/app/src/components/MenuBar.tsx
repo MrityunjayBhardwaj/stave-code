@@ -16,6 +16,8 @@ interface MenuBarProps {
   onVersionHistory: () => void;
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
+  onToggleZenMode: () => void;
+  zenMode: boolean;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
@@ -37,6 +39,8 @@ export function MenuBar({
   onVersionHistory,
   onToggleSidebar,
   sidebarCollapsed,
+  onToggleZenMode,
+  zenMode,
   onUndo,
   onRedo,
   canUndo,
@@ -96,6 +100,11 @@ export function MenuBar({
           label={sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
           shortcut="⌘B"
           onClick={() => clickItem(onToggleSidebar)}
+        />
+        <MenuItem
+          label={zenMode ? "Exit Zen Mode" : "Zen Mode (Fullscreen)"}
+          shortcut="⌘K Z"
+          onClick={() => clickItem(onToggleZenMode)}
         />
       </MenuButton>
 
