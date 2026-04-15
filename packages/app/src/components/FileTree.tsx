@@ -18,6 +18,7 @@ import {
   type WorkspaceFile,
 } from "@stave/editor";
 import { showPrompt, showConfirm, showToast } from "../dialogs/host";
+import { Icon } from "./Icon";
 
 interface FileTreeProps {
   projectName: string;
@@ -246,6 +247,10 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState(false);
   const [resizeHover, setResizeHover] = useState(false);
+  // Sidebar hover state — drives VS Code-style hover-only header
+  // actions (New file / New folder appear only while the cursor is
+  // inside the panel).
+  const [sidebarHover, setSidebarHover] = useState(false);
   // Mid-drag collapse intent. While true, the sidebar visually folds to
   // zero width but stays mounted so the window-level drag listeners keep
   // running — that's how VS Code lets the user pull the edge back past
@@ -999,6 +1004,8 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
   return (
     <div
       ref={sidebarRef}
+      onMouseEnter={() => setSidebarHover(true)}
+      onMouseLeave={() => setSidebarHover(false)}
       style={{
         ...styles.sidebar,
         width: renderedWidth,
@@ -1008,20 +1015,27 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     >
       <div style={styles.header}>
         <span style={styles.title} title={projectName}>{projectName}</span>
-        <div style={styles.headerActions}>
+        <div
+          style={{
+            ...styles.headerActions,
+            opacity: sidebarHover ? 1 : 0,
+            pointerEvents: sidebarHover ? "auto" : "none",
+            transition: "opacity 160ms ease-out",
+          }}
+        >
           <button
             style={styles.iconBtn}
             title="New file"
             onClick={() => handleNewFile("")}
           >
-            +
+            <Icon name="new-file" size={14} />
           </button>
           <button
             style={styles.iconBtn}
             title="New folder"
             onClick={() => handleNewFolder("")}
           >
-            📁
+            <Icon name="new-folder" size={14} />
           </button>
         </div>
       </div>

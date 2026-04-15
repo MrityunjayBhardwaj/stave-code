@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Icon } from "./Icon";
 
 interface MenuBarProps {
   projectName: string;
@@ -110,7 +111,9 @@ export function MenuBar({
           onClick={() => setOpenMenu(openMenu === "settings" ? null : "settings")}
           title="Settings"
           aria-label="Settings"
-        >⚙</button>
+        >
+          <Icon name="settings-gear" size="var(--ui-icon-size, 25px)" />
+        </button>
         {openMenu === "settings" && (
           <div style={{ ...styles.dropdown, right: 0, left: "auto" }}>
             <MenuItem label="Editor Settings..." onClick={() => clickItem(onOpenEditorSettings)} />

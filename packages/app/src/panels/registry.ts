@@ -17,7 +17,9 @@ export interface PanelContext {
 export interface Panel {
   readonly id: string;
   readonly title: string;
-  /** Single-char label or emoji rendered in the activity bar. */
+  /** Codicon name (without the `codicon-` prefix) rendered in the
+   *  activity bar via the shared `Icon` component. See
+   *  https://microsoft.github.io/vscode-codicons/dist/codicon.html */
   readonly icon: string;
   /** Sort order in the activity bar — lower values render first. */
   readonly order: number;

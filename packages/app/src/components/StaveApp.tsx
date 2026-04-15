@@ -596,28 +596,28 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     unregs.push(registerPanel({
       id: "explorer",
       title: "Explorer",
-      icon: "▢",
+      icon: "files",
       order: 10,
       render: () => null,
     }));
     unregs.push(registerPanel({
       id: "search",
       title: "Search",
-      icon: "⌕",
+      icon: "search",
       order: 20,
       render: () => null,
     }));
     unregs.push(registerPanel({
       id: "snapshots",
       title: "Version History",
-      icon: "⟳",
+      icon: "history",
       order: 30,
       render: () => null,
     }));
     unregs.push(registerPanel({
       id: "outline",
       title: "Outline",
-      icon: "≡",
+      icon: "symbol-class",
       order: 40,
       render: () => null,
     }));

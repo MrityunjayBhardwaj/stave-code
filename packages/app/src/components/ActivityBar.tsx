@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { listPanels, subscribeToPanels, type Panel } from "../panels/registry";
+import { Icon } from "./Icon";
 
 interface ActivityBarProps {
   activePanelId: string | null;
@@ -33,7 +34,9 @@ export function ActivityBar({ activePanelId, onSelect }: ActivityBarProps) {
             onMouseEnter={() => setHoveredId(p.id)}
             onMouseLeave={() => setHoveredId((cur) => (cur === p.id ? null : cur))}
           >
-            <span style={styles.icon}>{p.icon}</span>
+            <span style={styles.icon}>
+              <Icon name={p.icon} size="var(--ui-icon-size, 25px)" />
+            </span>
             <span style={{ ...styles.activeBar, opacity: edgeOpacity }} />
           </button>
         );
