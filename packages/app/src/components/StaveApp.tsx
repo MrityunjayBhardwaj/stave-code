@@ -54,7 +54,7 @@ import {
 } from "@stave/editor";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 import { EditorSettingsModal } from "./EditorSettingsModal";
-import { CropPopup } from "./CropPopup";
+import { CropPopup, createBackdropCropAdapter } from "./CropPopup";
 import { DialogHost } from "./DialogHost";
 import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
@@ -64,7 +64,7 @@ import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
-import { listWorkspaceFiles } from "@stave/editor";
+import { listWorkspaceFiles, subscribeToFileList } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 
 interface StaveAppProps {
@@ -112,7 +112,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<
-    | { vizId: string; presetId: string; fileId: string; trackKey: string }
+    | { mode: "inline"; vizId: string; presetId: string; fileId: string; trackKey: string }
+    | { mode: "backdrop"; adapter: import("./CropPopup").CropAdapter }
     | null
   >(null);
 
@@ -143,6 +144,25 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // stores it on group state, not on the active tab.
   const [backgroundFileId, setBackgroundFileId] = useState<string | null>(
     null,
+  );
+  // Backdrop crop — mirrors ProjectMeta.backgroundCrop. Restored on
+  // project load alongside backgroundFileId; persisted on Save in
+  // the crop popup. `null` means full-rect (default).
+  const [backgroundCrop, setBackgroundCropState] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+
+  // File-list revision counter — bumps whenever the workspace
+  // file list mutates (add / remove / rename). Read by the MenuBar's
+  // backdrop dropdown so it sees fresh viz files without us having
+  // to lift the entire file list into React state.
+  const [fileListRev, setFileListRev] = useState(0);
+  useEffect(
+    () => subscribeToFileList(() => setFileListRev((n) => n + 1)),
+    [],
   );
 
   // Cinema Mode — Zen + Backdrop composed into one toggle (#43).
@@ -417,7 +437,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       const files = listWorkspaceFiles();
       const pick =
         files.find((f) => f.language === "hydra") ??
-        files.find((f) => f.language === "p5");
+        files.find((f) => f.language === "p5js");
       if (pick) {
         handleSetAsBackground(pick.id);
         autoPinned = true;
@@ -487,6 +507,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         }
         shellRef.current?.setBackgroundFile?.(stored);
         setBackgroundFileId(stored);
+        // Restore per-project backdrop crop — null means full-rect
+        // (default). Rendering applies in the shell wrapper.
+        setBackgroundCropState(meta?.backgroundCrop ?? null);
       });
     })().catch((err) =>
       console.warn("[stave] backdrop restore failed:", err),
@@ -845,6 +868,44 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   return (
     <div style={styles.root}>
       <MenuBar
+        // Resolve backdrop file id → display name. Re-derived each
+        // render; cheap (list is in memory) and picks up renames
+        // without a separate subscription.
+        backgroundFileName={(() => {
+          if (!backgroundFileId) return null;
+          const f = listWorkspaceFiles().find(
+            (x) => x.id === backgroundFileId,
+          );
+          if (!f) return null;
+          const parts = f.path.split("/");
+          return parts[parts.length - 1].replace(/\.[^.]+$/, "");
+        })()}
+        backgroundFileId={backgroundFileId}
+        vizFiles={listWorkspaceFiles()
+          .filter((f) => f.language === "hydra" || f.language === "p5js")
+          .map((f) => ({
+            id: f.id,
+            name: f.path
+              .split("/")
+              .pop()!
+              .replace(/\.[^.]+$/, ""),
+          }))}
+        onSetBackdrop={(id) => handleSetAsBackground(id)}
+        onRevealBackground={() => {
+          if (backgroundFileId) handleOpenFile(backgroundFileId);
+        }}
+        onCropBackground={() => {
+          if (!backgroundFileId) return;
+          setCropTarget({
+            mode: "backdrop",
+            adapter: createBackdropCropAdapter({
+              projectId: activeProject.id,
+              fileId: backgroundFileId,
+              initialCrop: backgroundCrop,
+              onChange: (c) => setBackgroundCropState(c),
+            }),
+          });
+        }}
         projectName={activeProject.name}
         onOpenEditorSettings={() => setEditorSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
@@ -940,6 +1001,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 shellRef={shellRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
+                backgroundCrop={backgroundCrop}
                 onBackgroundFileChange={(_groupId, fileId) => {
                   setBackgroundFileId(fileId);
                   // Same persistence as handleSetAsBackground — this
@@ -992,7 +1054,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                     showToast("Open an editor file before cropping", "error");
                     return;
                   }
-                  setCropTarget({ vizId, presetId, fileId, trackKey });
+                  setCropTarget({ mode: "inline", vizId, presetId, fileId, trackKey });
                 }}
               />
             )}
@@ -1102,12 +1164,18 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onClose={() => setEditorSettingsOpen(false)}
       />
 
-      {cropTarget && (
+      {cropTarget?.mode === "inline" && (
         <CropPopup
           vizId={cropTarget.vizId}
           presetId={cropTarget.presetId}
           fileId={cropTarget.fileId}
           trackKey={cropTarget.trackKey}
+          onClose={() => setCropTarget(null)}
+        />
+      )}
+      {cropTarget?.mode === "backdrop" && (
+        <CropPopup
+          adapter={cropTarget.adapter}
           onClose={() => setCropTarget(null)}
         />
       )}

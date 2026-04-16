@@ -152,6 +152,9 @@ export {
   onBackdropQualityChange,
   backdropQualityFactor,
   type BackdropQuality,
+  getBackdropOpacity,
+  setBackdropOpacity,
+  onBackdropOpacityChange,
   getEditorTheme,
   getResolvedTheme,
   setEditorTheme,
@@ -178,6 +181,7 @@ export {
   deleteProject,
   duplicateProject,
   setProjectBackgroundFileId,
+  setProjectBackgroundCrop,
   type ProjectMeta,
 } from './workspace/projectRegistry'
 

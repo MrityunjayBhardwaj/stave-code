@@ -76,6 +76,8 @@ interface StrudelEditorClientProps {
    *  the pinned backdrop into its own React state for the FileTree
    *  context-menu label. */
   onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
+  /** Crop region applied to the pinned backdrop. `null` = full rect. */
+  backgroundCrop?: { x: number; y: number; w: number; h: number } | null;
 }
 
 export default function StrudelEditorClient({
@@ -86,6 +88,7 @@ export default function StrudelEditorClient({
   onEditViz,
   onCropViz,
   onBackgroundFileChange,
+  backgroundCrop,
 }: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
@@ -482,6 +485,7 @@ export default function StrudelEditorClient({
       onEditViz={onEditViz}
       onCropViz={onCropViz}
       onBackgroundFileChange={onBackgroundFileChange}
+      backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
         const fid =
           tab && (tab.kind === "editor" || tab.kind === "preview")

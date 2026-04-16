@@ -15,6 +15,8 @@ import {
   getBackdropQuality,
   setBackdropQuality,
   type BackdropQuality,
+  getBackdropOpacity,
+  setBackdropOpacity,
   getEditorTheme,
   setEditorTheme,
   type EditorTheme,
@@ -39,6 +41,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   const [backdropBlur, setBackdropBlur] = useState(8);
   const [backdropQuality, setBackdropQualityLocal] =
     useState<BackdropQuality>("half");
+  const [backdropOpacity, setBackdropOpacityLocal] = useState(1);
   const [theme, setTheme] = useState<EditorTheme>("dark");
 
   useEffect(() => {
@@ -49,6 +52,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setVizActionSize(getInlineVizActionSize());
     setBackdropBlur(getEditorBackdropBlur());
     setBackdropQualityLocal(getBackdropQuality());
+    setBackdropOpacityLocal(getBackdropOpacity());
     setTheme(getEditorTheme());
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -120,36 +124,9 @@ export function EditorSettingsModal({ open, onClose }: Props) {
             />
             <span style={s.value}>{vizActionSize}px</span>
           </Row>
-          <Row label="Code surface blur">
-            <input
-              type="range"
-              min={0}
-              max={24}
-              value={backdropBlur}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setBackdropBlur(v);
-                setEditorBackdropBlur(v);
-              }}
-              style={s.range}
-            />
-            <span style={s.value}>{backdropBlur}px</span>
-          </Row>
-          <Row label="Backdrop quality">
-            <select
-              style={s.select}
-              value={backdropQuality}
-              onChange={(e) => {
-                const v = e.target.value as BackdropQuality;
-                setBackdropQualityLocal(v);
-                setBackdropQuality(v);
-              }}
-            >
-              <option value="full">Full</option>
-              <option value="half">Half (default)</option>
-              <option value="quarter">Quarter</option>
-            </select>
-          </Row>
+          {/* Backdrop blur / opacity / quality moved to the
+              backdrop popover (click the bg indicator in the
+              menubar). Settings stays for editor-level prefs only. */}
           <Row label="Theme">
             <select
               style={s.select}

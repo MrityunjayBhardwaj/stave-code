@@ -823,6 +823,21 @@ export interface WorkspaceShellProps {
   ) => void
 
   /**
+   * Crop region applied to the pinned backdrop — 0–1 fractional
+   * `{x, y, w, h}`. Absent means render the full viz rect. The
+   * shell's backdrop wrapper scales/positions its inner div so
+   * only the cropped sub-rect fills the viewport, preserving the
+   * quality-ladder transform math. Purely presentational; app
+   * owns persistence via ProjectMeta.backgroundCrop.
+   */
+  readonly backgroundCrop?: {
+    readonly x: number
+    readonly y: number
+    readonly w: number
+    readonly h: number
+  } | null
+
+  /**
    * Fires when a tab is closed by the user. Runtime disposal hooks
    * (Task 05 / Task 07) plug in here to call `runtime.dispose()` on
    * the closed tab's pattern file. The callback receives the tab that

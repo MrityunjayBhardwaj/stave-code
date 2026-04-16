@@ -265,6 +265,41 @@ export function applyPersistedBackdropBlur(): void {
   applyBackdropBlurVar(readBackdropBlur())
 }
 
+// ── Backdrop viz opacity — user-facing dim control ──────────────────
+const DEFAULT_BACKDROP_OPACITY = 1
+const BACKDROP_OPACITY_STORAGE = 'stave:backdropOpacity'
+const backdropOpacityListeners = new Set<(o: number) => void>()
+
+function readBackdropOpacity(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_BACKDROP_OPACITY
+  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE))
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1
+    ? saved
+    : DEFAULT_BACKDROP_OPACITY
+}
+
+function writeBackdropOpacity(o: number): void {
+  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o))
+}
+
+export function getBackdropOpacity(): number {
+  return readBackdropOpacity()
+}
+
+export function setBackdropOpacity(o: number): void {
+  const clamped = Math.max(0, Math.min(1, o))
+  writeBackdropOpacity(clamped)
+  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped)
+}
+
+export function onBackdropOpacityChange(
+  cb: (o: number) => void,
+): () => void {
+  backdropOpacityListeners.add(cb)
+  return () => { backdropOpacityListeners.delete(cb) }
+}
+
 // ── Backdrop quality ladder (Full / Half / Quarter) #41 ─────────────
 export type BackdropQuality = 'full' | 'half' | 'quarter'
 const DEFAULT_BACKDROP_QUALITY: BackdropQuality = 'half'

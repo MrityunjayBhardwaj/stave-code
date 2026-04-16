@@ -153,7 +153,56 @@ body {
    runtime. The halo softens the edge where the code panel meets
    the viz, keeping text legible without hiding the backdrop. */
 [data-stave-code-panel][data-stave-backdrop="on"] {
-  backdrop-filter: blur(var(--stave-backdrop-blur, 8px));
-  -webkit-backdrop-filter: blur(var(--stave-backdrop-blur, 8px));
+  /* Translucent wash so the viz behind shows through while keeping
+     syntax-highlighted text legible. 45% app-bg is the legibility
+     vs. visibility compromise. Tunable via
+     --stave-backdrop-surface-opacity for future user control. */
+  background: color-mix(
+    in srgb,
+    var(--bg-app) var(--stave-backdrop-surface-opacity, 45%),
+    transparent
+  );
   box-shadow: 0 0 var(--stave-backdrop-halo, 40px) var(--bg-app);
+}
+
+/* EditorView's wrapper paints `var(--background)` opaque so the
+   editor surface stays VS Code-parity in normal sessions. When a
+   backdrop is on, neutralise it — otherwise it covers the viz
+   even though Monaco's inner layers are transparent. */
+[data-stave-code-panel][data-stave-backdrop="on"] [data-workspace-view="editor"] {
+  background: transparent !important;
+}
+
+/* Monaco paints opaque fills on many of its internal layers
+   (`.monaco-editor`, `.monaco-editor-background`, `.margin`,
+   `.minimap`, `.view-overlays`, `.monaco-scrollable-element`,
+   etc.). Enumerating them all is fragile — we blanket every
+   descendant bg to transparent when backdrop is active. Token /
+   selection / diagnostic highlights remain (they paint via
+   borders + text colours, not backgrounds, inside spans). */
+[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor,
+[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor * {
+  background-color: transparent !important;
+}
+
+/* Viz chrome + pattern runtime chrome + tab bar sit inside the same
+   code-panel. Keep them SEMI-opaque so buttons stay legible while
+   the viz subtly shows through the edges. */
+[data-stave-code-panel][data-stave-backdrop="on"] [data-workspace-chrome="viz"],
+[data-stave-code-panel][data-stave-backdrop="on"] [data-strudel-runtime-chrome="root"] {
+  background: color-mix(in srgb, var(--surface) 85%, transparent) !important;
+}
+
+/* Pulse animation for the MenuBar backdrop REC indicator. Mimics
+   a recording light — low-key while idle, stronger peak at ~1.6s
+   cadence so it is readable as "live" without being distracting. */
+@keyframes stave-bg-rec-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    opacity: 0.55;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.9);
+  }
 }

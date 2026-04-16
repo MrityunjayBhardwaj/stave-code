@@ -7513,6 +7513,32 @@ function setEditorBackdropBlur(size) {
 function applyPersistedBackdropBlur() {
   applyBackdropBlurVar(readBackdropBlur());
 }
+var DEFAULT_BACKDROP_OPACITY = 1;
+var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
+var backdropOpacityListeners = /* @__PURE__ */ new Set();
+function readBackdropOpacity() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_OPACITY;
+  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
+}
+function writeBackdropOpacity(o) {
+  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
+}
+function getBackdropOpacity() {
+  return readBackdropOpacity();
+}
+function setBackdropOpacity(o) {
+  const clamped = Math.max(0, Math.min(1, o));
+  writeBackdropOpacity(clamped);
+  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
+}
+function onBackdropOpacityChange(cb) {
+  backdropOpacityListeners.add(cb);
+  return () => {
+    backdropOpacityListeners.delete(cb);
+  };
+}
 var DEFAULT_BACKDROP_QUALITY = "half";
 var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
 var backdropQualityListeners = /* @__PURE__ */ new Set();
@@ -9573,6 +9599,7 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
   height = "100%",
   onActiveTabChange,
   onBackgroundFileChange,
+  backgroundCrop,
   onTabClose,
   previewProviderFor,
   chromeForTab,
@@ -9606,6 +9633,13 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
   );
   useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
+    []
+  );
+  const [backdropOpacity, setBackdropOpacityState] = useState(
+    () => getBackdropOpacity()
+  );
+  useEffect(
+    () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
   useEffect(() => {
@@ -10603,7 +10637,16 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                     });
                     if (!bgProvider) return null;
                     const qf = backdropQualityFactor(backdropQuality);
+                    const crop = backgroundCrop ?? null;
+                    const cx = crop?.x ?? 0;
+                    const cy = crop?.y ?? 0;
+                    const cw = crop?.w ?? 1;
+                    const ch = crop?.h ?? 1;
+                    const scaleX = qf / cw;
+                    const scaleY = qf / ch;
                     const innerSizePct = qf === 1 ? 100 : 100 / qf;
+                    const translateX = -cx * 100;
+                    const translateY = -cy * 100;
                     return /* @__PURE__ */ jsx(
                       "div",
                       {
@@ -10614,7 +10657,10 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                           position: "absolute",
                           inset: 0,
                           zIndex: 0,
-                          opacity: 0.4,
+                          // Viz renders at user-set opacity. Stacks with
+                          // the code-panel wash in globals.css — both
+                          // dim the viz behind the code. Defaults to 1.
+                          opacity: backdropOpacity,
                           pointerEvents: "none",
                           overflow: "hidden"
                         },
@@ -10624,7 +10670,12 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                             style: {
                               width: `${innerSizePct}%`,
                               height: `${innerSizePct}%`,
-                              transform: qf === 1 ? void 0 : `scale(${qf})`,
+                              // Build the transform string conditionally so
+                              // `transform: none` beats anything undefined
+                              // leaving the node unscaled when we DO want
+                              // scale(1). Crop translate is expressed in %
+                              // of the inner's post-scale viewport.
+                              transform: crop || qf !== 1 ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)` : void 0,
                               transformOrigin: "top left"
                             },
                             children: /* @__PURE__ */ jsx(
@@ -10695,7 +10746,16 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
       handleTabDragStart,
       handleSplit,
       handleCloseGroup,
-      renderTabContent
+      renderTabContent,
+      // Backdrop props — without these, renderGroup keeps a stale
+      // closure and never re-reads the crop / quality / provider,
+      // so Save-in-crop-popup + quality-picker + theme-flip never
+      // reach the render.
+      backgroundCrop,
+      backdropQuality,
+      backdropOpacity,
+      previewProviderFor,
+      theme
     ]
   );
   const totalGroupCount = useMemo(
@@ -20086,8 +20146,19 @@ async function setProjectBackgroundFileId(id, fileId) {
   const store = tx2(db, "readwrite");
   const existing = await wrap3(store.get(id));
   if (existing) {
-    const { backgroundFileId: _unused, ...rest } = existing;
+    const { backgroundFileId: _unusedFile, backgroundCrop: _unusedCrop, ...rest } = existing;
     const next = fileId == null ? rest : { ...rest, backgroundFileId: fileId };
+    await wrap3(store.put(next));
+  }
+  db.close();
+}
+async function setProjectBackgroundCrop(id, crop) {
+  const db = await openDb3();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap3(store.get(id));
+  if (existing) {
+    const { backgroundCrop: _unused, ...rest } = existing;
+    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
     await wrap3(store.put(next));
   }
   db.close();
@@ -20771,6 +20842,6 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

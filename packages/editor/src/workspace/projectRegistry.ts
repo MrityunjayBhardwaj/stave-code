@@ -24,6 +24,18 @@ export interface ProjectMeta {
    * sync across collaborators when multi-user arrives.
    */
   readonly backgroundFileId?: string
+  /**
+   * Per-project crop region for the pinned backdrop. All values 0–1
+   * fractional of the viz's full viewport. Absent when the backdrop
+   * should render full-rect (default). Same storage rationale as
+   * `backgroundFileId` — per-user view preference.
+   */
+  readonly backgroundCrop?: {
+    readonly x: number
+    readonly y: number
+    readonly w: number
+    readonly h: number
+  }
 }
 
 // ── IDB helpers ──────────────────────────────────────────────────────
@@ -110,6 +122,8 @@ export async function touchProject(id: string): Promise<void> {
  * Pin or clear this project's backdrop file id. `null` removes the
  * field (project has no backdrop). No-op when the project doesn't
  * exist — caller is expected to have resolved a real project id.
+ * Clearing the backdrop also clears any stored crop (a crop is
+ * meaningless without the file it's cropping).
  */
 export async function setProjectBackgroundFileId(
   id: string,
@@ -119,14 +133,35 @@ export async function setProjectBackgroundFileId(
   const store = tx(db, 'readwrite')
   const existing = await wrap<ProjectMeta | undefined>(store.get(id))
   if (existing) {
-    // Using a rest-strip so the field disappears when cleared —
-    // keeping the on-disk shape minimal and making "no backdrop"
-    // interchangeable with "never set a backdrop."
-    const { backgroundFileId: _unused, ...rest } = existing
+    const { backgroundFileId: _unusedFile, backgroundCrop: _unusedCrop, ...rest } =
+      existing
     const next: ProjectMeta =
       fileId == null
         ? (rest as ProjectMeta)
         : { ...rest, backgroundFileId: fileId }
+    await wrap(store.put(next))
+  }
+  db.close()
+}
+
+/**
+ * Save or clear the backdrop crop region. `null` removes the field
+ * (backdrop renders full-rect). No-op when the project doesn't
+ * exist or has no backdrop file pinned.
+ */
+export async function setProjectBackgroundCrop(
+  id: string,
+  crop: { x: number; y: number; w: number; h: number } | null,
+): Promise<void> {
+  const db = await openDb()
+  const store = tx(db, 'readwrite')
+  const existing = await wrap<ProjectMeta | undefined>(store.get(id))
+  if (existing) {
+    const { backgroundCrop: _unused, ...rest } = existing
+    const next: ProjectMeta =
+      crop == null
+        ? (rest as ProjectMeta)
+        : { ...rest, backgroundCrop: crop }
     await wrap(store.put(next))
   }
   db.close()
