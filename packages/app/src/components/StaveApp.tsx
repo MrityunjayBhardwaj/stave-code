@@ -111,7 +111,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<
-    | { mode: "inline"; vizId: string; presetId: string; fileId: string; trackKey: string }
+    | { mode: "inline"; vizId: string; presetId: string; fileId: string; trackKey: string; renderSize?: { w: number; h: number } }
     | { mode: "backdrop"; adapter: import("./CropPopup").CropAdapter }
     | null
   >(null);
@@ -803,6 +803,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         }}
         onCropBackground={() => {
           if (!backgroundFileId) return;
+          // Read the actual backdrop container size so the crop
+          // preview renders at the same dimensions as the live viz.
+          const bgEl = document.querySelector("[data-workspace-background]");
+          const rect = bgEl?.getBoundingClientRect();
+          const renderSize = rect && rect.width > 0
+            ? { w: Math.round(rect.width), h: Math.round(rect.height) }
+            : undefined;
           setCropTarget({
             mode: "backdrop",
             adapter: createBackdropCropAdapter({
@@ -810,6 +817,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
               fileId: backgroundFileId,
               initialCrop: backgroundCrop,
               onChange: (c) => setBackgroundCropState(c),
+              renderSize,
             }),
           });
         }}
@@ -950,16 +958,21 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                     showToast(`No preset found for "${vizId}" — save it first`, "error");
                     return;
                   }
-                  // Fall back to the first opened editor tab if activeFileId
-                  // isn't tracked yet (e.g. initial load before any tab
-                  // selection event fires). The floating bar only shows for
-                  // an editor that's mounted, so an editor tab exists.
                   const fileId = activeFileId ?? listWorkspaceFiles().find(f => f.language === 'strudel' || f.language === 'sonicpi')?.id ?? null;
                   if (!fileId) {
                     showToast("Open an editor file before cropping", "error");
                     return;
                   }
-                  setCropTarget({ mode: "inline", vizId, presetId, fileId, trackKey });
+                  // Read the live inline viz canvas dimensions so the
+                  // crop preview renders at the same native size.
+                  // Query by trackKey to find the specific zone being cropped.
+                  const vizCanvas = document.querySelector(
+                    `[data-viz-zone-track="${trackKey}"] canvas`
+                  ) as HTMLCanvasElement | null;
+                  const renderSize = vizCanvas
+                    ? { w: vizCanvas.offsetWidth, h: vizCanvas.offsetHeight }
+                    : undefined;
+                  setCropTarget({ mode: "inline", vizId, presetId, fileId, trackKey, renderSize });
                 }}
               />
             )}
@@ -1075,6 +1088,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           presetId={cropTarget.presetId}
           fileId={cropTarget.fileId}
           trackKey={cropTarget.trackKey}
+          renderSize={cropTarget.renderSize}
           onClose={() => setCropTarget(null)}
         />
       )}

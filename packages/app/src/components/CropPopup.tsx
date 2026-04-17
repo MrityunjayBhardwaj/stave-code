@@ -45,6 +45,10 @@ export interface CropAdapter {
   clearCrop: () => void;
   onSaved?: () => void;
   onCleared?: () => void;
+  /** If set, the viz renders at this size (matching the real container)
+   *  and is CSS-scaled down to fit the preview area. Preserves the
+   *  exact layout the user sees in the editor. */
+  renderSize?: { w: number; h: number };
 }
 
 /**
@@ -113,8 +117,9 @@ export function createBackdropCropAdapter(opts: {
   fileId: string;
   initialCrop: CropRegion | null;
   onChange?: (crop: CropRegion | null) => void;
+  renderSize?: { w: number; h: number };
 }): CropAdapter {
-  const { projectId, fileId, initialCrop, onChange } = opts;
+  const { projectId, fileId, initialCrop, onChange, renderSize } = opts;
   const displayName = (() => {
     const f = getFile(fileId);
     if (!f) return "Backdrop";
@@ -141,6 +146,7 @@ export function createBackdropCropAdapter(opts: {
     sourceRef: { kind: "default" },
     narrowComponents: (components) => components,
     initialCrop: initialCrop ?? { x: 0, y: 0, w: 1, h: 1 },
+    renderSize,
     saveCrop: (crop) => {
       setProjectBackgroundCrop(projectId, crop).catch((err) =>
         // eslint-disable-next-line no-console
@@ -172,6 +178,7 @@ type CropPopupProps =
       presetId: string;
       fileId: string;
       trackKey: string;
+      renderSize?: { w: number; h: number };
       onClose: () => void;
     }
   | {
@@ -191,12 +198,14 @@ export function CropPopup(props: CropPopupProps) {
   // so a useMemo on the relevant keys keeps the adapter ref stable.
   const adapter = useMemo<CropAdapter>(() => {
     if ("adapter" in props) return props.adapter;
-    return createInlineCropAdapter({
+    const a = createInlineCropAdapter({
       vizId: props.vizId,
       presetId: props.presetId,
       fileId: props.fileId,
       trackKey: props.trackKey,
     });
+    if (props.renderSize) a.renderSize = props.renderSize;
+    return a;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     "adapter" in props ? props.adapter : null,
@@ -207,6 +216,20 @@ export function CropPopup(props: CropPopupProps) {
   ]);
 
   const onClose = props.onClose;
+
+  // When renderSize is set, the preview area preserves that aspect
+  // ratio. Fit it within the max preview bounds (PREVIEW_W × PREVIEW_H).
+  const renderW = adapter.renderSize?.w ?? PREVIEW_W;
+  const renderH = adapter.renderSize?.h ?? PREVIEW_H;
+  const aspect = renderW / renderH;
+  const previewW = aspect >= PREVIEW_W / PREVIEW_H
+    ? PREVIEW_W
+    : Math.round(PREVIEW_H * aspect);
+  const previewH = aspect >= PREVIEW_W / PREVIEW_H
+    ? Math.round(PREVIEW_W / aspect)
+    : PREVIEW_H;
+  const canvasScaleX = previewW / renderW;
+  const canvasScaleY = previewH / renderH;
 
   const [preset, setPreset] = useState<VizPreset | null>(null);
   const [crop, setCrop] = useState<CropRegion>(() => adapter.initialCrop);
@@ -251,27 +274,35 @@ export function CropPopup(props: CropPopupProps) {
       return; // compile error — show placeholder only
     }
 
-    let unsub: (() => void) | null = null;
-    let mounted = false;
-
-    unsub = workspaceAudioBus.subscribe(adapter.sourceRef, (payload) => {
-      if (mounted || !canvasContainerRef.current) return;
-      mounted = true;
+    // Subscribe fires synchronously with the current payload (if
+    // any). Capture it, then mount once with either the real
+    // components or empty fallback — so the viz always renders with
+    // the same inputs the live editor sees.
+    const container = canvasContainerRef.current!;
+    let initialComponents: Partial<EngineComponents> = {};
+    const unsub = workspaceAudioBus.subscribe(adapter.sourceRef, (payload) => {
+      if (!payload) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const components = (payload?.engineComponents ?? payload ?? {}) as Partial<EngineComponents>;
-      const narrowed = adapter.narrowComponents(components);
-      rendererRef.current = mountVizRenderer(
-        canvasContainerRef.current! as HTMLDivElement,
-        descriptor.factory,
-        narrowed,
-        { w: PREVIEW_W, h: PREVIEW_H },
-        console.error,
-      );
-      rendererRef.current.renderer.resume?.();
+      initialComponents = (payload.engineComponents ?? payload ?? {}) as Partial<EngineComponents>;
     });
 
+    // If the adapter specifies a renderSize, render the viz at those
+    // dimensions (matching the real container) — the CSS transform on
+    // the canvas container scales it down to the preview area.
+    const renderW = adapter.renderSize?.w ?? PREVIEW_W;
+    const renderH = adapter.renderSize?.h ?? PREVIEW_H;
+    const narrowed = adapter.narrowComponents(initialComponents);
+    rendererRef.current = mountVizRenderer(
+      container,
+      descriptor.factory,
+      narrowed,
+      { w: renderW, h: renderH },
+      console.error,
+    );
+    rendererRef.current.renderer.resume?.();
+
     return () => {
-      unsub?.();
+      unsub();
       if (rendererRef.current) {
         rendererRef.current.renderer.destroy();
         rendererRef.current.disconnect();
@@ -303,8 +334,8 @@ export function CropPopup(props: CropPopupProps) {
   useEffect(() => {
     if (!dragging) return;
     const handleMove = (e: MouseEvent) => {
-      const dx = (e.clientX - dragging.startX) / PREVIEW_W;
-      const dy = (e.clientY - dragging.startY) / PREVIEW_H;
+      const dx = (e.clientX - dragging.startX) / previewW;
+      const dy = (e.clientY - dragging.startY) / previewH;
       const orig = dragging.origCrop;
 
       if (dragging.kind === "move") {
@@ -411,16 +442,16 @@ export function CropPopup(props: CropPopupProps) {
    * Compute the closest handle to the cursor, within PROXIMITY_PX.
    * Returns null if nothing is near. Used by the preview container's
    * `onMouseMove` to arm the right handle while the user explores
-   * the edge. Coords are in container pixels (0..PREVIEW_W/H).
+   * the edge. Coords are in container pixels (0..previewW/H).
    */
   const proximityEdge = (px: number, py: number): string | null => {
     const PROXIMITY_PX = 22;
     // Corners first (point targets, higher precedence).
     const corners: Array<[string, number, number]> = [
-      ["nw", crop.x * PREVIEW_W, crop.y * PREVIEW_H],
-      ["ne", (crop.x + crop.w) * PREVIEW_W, crop.y * PREVIEW_H],
-      ["sw", crop.x * PREVIEW_W, (crop.y + crop.h) * PREVIEW_H],
-      ["se", (crop.x + crop.w) * PREVIEW_W, (crop.y + crop.h) * PREVIEW_H],
+      ["nw", crop.x * previewW, crop.y * previewH],
+      ["ne", (crop.x + crop.w) * previewW, crop.y * previewH],
+      ["sw", crop.x * previewW, (crop.y + crop.h) * previewH],
+      ["se", (crop.x + crop.w) * previewW, (crop.y + crop.h) * previewH],
     ];
     let best: { edge: string; d: number } | null = null;
     for (const [edge, cx, cy] of corners) {
@@ -438,26 +469,23 @@ export function CropPopup(props: CropPopupProps) {
     // is a reasonable proxy for the user's "I'm near this edge"
     // intent).
     const edges: Array<[string, number, number]> = [
-      ["n", (crop.x + crop.w / 2) * PREVIEW_W, crop.y * PREVIEW_H],
-      ["s", (crop.x + crop.w / 2) * PREVIEW_W, (crop.y + crop.h) * PREVIEW_H],
-      ["w", crop.x * PREVIEW_W, (crop.y + crop.h / 2) * PREVIEW_H],
-      ["e", (crop.x + crop.w) * PREVIEW_W, (crop.y + crop.h / 2) * PREVIEW_H],
+      ["n", (crop.x + crop.w / 2) * previewW, crop.y * previewH],
+      ["s", (crop.x + crop.w / 2) * previewW, (crop.y + crop.h) * previewH],
+      ["w", crop.x * previewW, (crop.y + crop.h / 2) * previewH],
+      ["e", (crop.x + crop.w) * previewW, (crop.y + crop.h / 2) * previewH],
     ];
     for (const [edge, ex, ey] of edges) {
-      // For horizontal edges, gate on y-distance + x-range; for
-      // vertical edges, x-distance + y-range. Keeps drag-from-far
-      // from accidentally arming an edge when user is nowhere near.
       let d: number;
       if (edge === "n" || edge === "s") {
         const outsideX =
-          px < (crop.x + 0.1 * crop.w) * PREVIEW_W ||
-          px > (crop.x + 0.9 * crop.w) * PREVIEW_W;
+          px < (crop.x + 0.1 * crop.w) * previewW ||
+          px > (crop.x + 0.9 * crop.w) * previewW;
         if (outsideX) continue;
         d = Math.abs(py - ey);
       } else {
         const outsideY =
-          py < (crop.y + 0.1 * crop.h) * PREVIEW_H ||
-          py > (crop.y + 0.9 * crop.h) * PREVIEW_H;
+          py < (crop.y + 0.1 * crop.h) * previewH ||
+          py > (crop.y + 0.9 * crop.h) * previewH;
         if (outsideY) continue;
         d = Math.abs(px - ex);
       }
@@ -493,20 +521,29 @@ export function CropPopup(props: CropPopupProps) {
             }}
             style={{
               position: "relative",
-              width: PREVIEW_W,
-              height: PREVIEW_H,
+              width: previewW,
+              height: previewH,
               background: "var(--bg-input, #0f0f1e)",
               borderRadius: 4,
               overflow: "hidden",
               border: "1px solid var(--border-strong, #3a3a5a)",
             }}
           >
-            {/* Live viz canvas */}
+            {/* Live viz canvas — rendered at renderSize, CSS-scaled
+                down to the preview area so the layout matches exactly
+                what the user sees in the editor. */}
             <div
               ref={canvasContainerRef}
               style={{
                 position: "absolute",
-                inset: 0,
+                top: 0,
+                left: 0,
+                width: renderW,
+                height: renderH,
+                transform: adapter.renderSize
+                  ? `scale(${canvasScaleX}, ${canvasScaleY})`
+                  : undefined,
+                transformOrigin: "top left",
                 overflow: "hidden",
               }}
             />

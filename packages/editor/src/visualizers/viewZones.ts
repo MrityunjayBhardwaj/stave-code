@@ -306,6 +306,8 @@ export function addInlineViewZones(
 
       const container = document.createElement('div')
       container.setAttribute('data-viz-zone', '')
+      container.setAttribute('data-viz-zone-track', trackKey)
+      container.setAttribute('data-viz-zone-id', vizId)
       container.style.cssText = `overflow:hidden;height:${layout.zoneH}px;position:relative;`
 
       const zoneDesc = {
