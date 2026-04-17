@@ -177,11 +177,10 @@ body {
    (`.monaco-editor`, `.monaco-editor-background`, `.margin`,
    `.minimap`, `.view-overlays`, `.monaco-scrollable-element`,
    etc.). Enumerating them all is fragile — we blanket every
-   descendant bg to transparent when backdrop is active. Token /
-   selection / diagnostic highlights remain (they paint via
-   borders + text colours, not backgrounds, inside spans). */
+   descendant bg to transparent when backdrop is active, EXCEPT
+   selection / highlight decorations which paint via background-color. */
 [data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor,
-[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor * {
+[data-stave-code-panel][data-stave-backdrop="on"] .monaco-editor *:not(.selected-text):not(.selectionHighlight):not(.current-line-margin):not(.current-line) {
   background-color: transparent !important;
 }
 
