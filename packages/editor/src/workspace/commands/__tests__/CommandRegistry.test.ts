@@ -168,7 +168,7 @@ describe('CommandRegistry', () => {
   })
 
   describe('workspace.toggleBackgroundPreview', () => {
-    it('sets backgroundTabId on first toggle', () => {
+    it('sets backgroundFileId to the active file on first toggle', () => {
       const shell = makeShellActions()
       const group: WorkspaceGroupState = {
         id: 'g1',
@@ -182,16 +182,21 @@ describe('CommandRegistry', () => {
         getPreviewProvider: (lang) => (lang === 'hydra' ? hydraProvider : undefined),
       })
       executeCommand('workspace.toggleBackgroundPreview', ctx)
-      expect(shell.updateGroupBackground).toHaveBeenCalledWith('g1', 'bg-pianoroll.hydra')
+      // File id goes through verbatim — no 'bg-' prefix. Old-model
+      // artifact retired so tab/file namespaces don't mix.
+      expect(shell.updateGroupBackground).toHaveBeenCalledWith(
+        'g1',
+        'pianoroll.hydra',
+      )
     })
 
-    it('clears backgroundTabId on second toggle', () => {
+    it('clears backgroundFileId on second toggle', () => {
       const shell = makeShellActions()
       const group: WorkspaceGroupState = {
         id: 'g1',
         tabs: [editorTab('pianoroll.hydra')],
         activeTabId: 'tab-pianoroll.hydra',
-        backgroundTabId: 'bg-pianoroll.hydra',
+        backgroundFileId: 'pianoroll.hydra',
       }
       const ctx = makeCtx({
         activeTab: editorTab('pianoroll.hydra'),

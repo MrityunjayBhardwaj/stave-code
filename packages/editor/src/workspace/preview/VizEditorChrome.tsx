@@ -73,6 +73,8 @@ export function VizEditorChrome({
   previewPaused,
   onTogglePausePreview,
   onChangePreviewSource,
+  onToggleBackground,
+  isBackground,
 }: PreviewEditorChromeContext): React.ReactElement {
   // Subscribe to the per-file hot-reload toggle so other surfaces
   // (command palette, future settings) stay in sync with the button.
@@ -266,6 +268,44 @@ export function VizEditorChrome({
       </select>
 
       <div style={{ flex: 1 }} />
+
+      {/*
+       * Set-as-Background toggle. Pins / unpins this viz file as the
+       * active group's backdrop. Mirrors the Cmd+K B keybind but is
+       * discoverable without keyboard muscle memory. Active (accent-
+       * filled) when this file IS the group's backdrop; inactive
+       * (outline) otherwise.
+       */}
+      <button
+        data-testid="viz-chrome-bg-toggle"
+        data-bg-mode={isBackground ? 'on' : 'off'}
+        onClick={onToggleBackground}
+        title={
+          isBackground
+            ? 'This file is the group backdrop — click to clear (Cmd+K B)'
+            : 'Set as background for this group (Cmd+K B)'
+        }
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '3px 8px',
+          borderRadius: 3,
+          fontSize: 10,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+          userSelect: 'none',
+          background: isBackground ? 'var(--accent-dim)' : 'none',
+          color: isBackground
+            ? 'var(--accent-strong, var(--accent))'
+            : 'var(--foreground-muted)',
+          border: `1px solid ${
+            isBackground ? 'var(--accent-dim)' : 'var(--border)'
+          }`,
+        }}
+      >
+        {isBackground ? '\u25A0 bg' : '\u25A0'}
+      </button>
 
       {/*
        * Hot reload: togglable badge. On → preview rebuilds on every

@@ -122,6 +122,14 @@ import { useKeyboardCommands } from './commands/useKeyboardCommands'
 import { executeCommand } from './commands/CommandRegistry'
 import { getPreviewProviderForLanguage } from './preview/registry'
 import { getFile, subscribe as subscribeToWorkspaceFile } from './WorkspaceFile'
+import {
+  getBackdropQuality,
+  onBackdropQualityChange,
+  backdropQualityFactor,
+  getBackdropOpacity,
+  onBackdropOpacityChange,
+  type BackdropQuality,
+} from './editorRegistry'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
   WorkspaceGroupState,
@@ -265,6 +273,22 @@ export interface WorkspaceShellHandle {
    * tabs. No-op if there is no active group.
    */
   splitActiveGroup(direction?: 'east' | 'south'): void
+
+  /**
+   * Pin a FILE as the backdrop for a group. Pass `null` to clear.
+   * `groupId` defaults to the active group. The pinned file's preview
+   * renders behind the active editor and survives tab switches.
+   * Called by the file-tree context menu and by `Cmd+K B`.
+   */
+  setBackgroundFile(fileId: string | null, groupId?: string): void
+
+  /**
+   * Read the current backdrop fileId for a group (default: active
+   * group). Returns `undefined` when no backdrop is pinned. Useful for
+   * UI that needs to render a "Clear" vs "Set" label without
+   * subscribing to every shell state change.
+   */
+  getBackgroundFileId(groupId?: string): string | undefined
 }
 
 /** Resolve a tab's display name from the file store. Falls back to fileId. */
@@ -280,6 +304,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   theme = 'dark',
   height = '100%',
   onActiveTabChange,
+  onBackgroundFileChange,
+  backgroundCrop,
   onTabClose,
   previewProviderFor,
   chromeForTab,
@@ -346,6 +372,29 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
    */
   const [pausedPreviews, setPausedPreviews] = useState<Set<string>>(
     () => new Set(),
+  )
+
+  // Backdrop quality — subscribed so the render reacts when the user
+  // flips Full / Half / Quarter in settings. Lives at the shell so
+  // all group backdrops update together (simple policy — a future
+  // per-backdrop override can overlay on top).
+  const [backdropQuality, setBackdropQualityState] = useState<BackdropQuality>(
+    () => getBackdropQuality(),
+  )
+  useEffect(
+    () => onBackdropQualityChange(setBackdropQualityState),
+    [],
+  )
+
+  // Backdrop opacity — same subscribe pattern. Applied as inline
+  // opacity on the backdrop wrapper so the user can dim the viz
+  // without touching the code-panel wash.
+  const [backdropOpacity, setBackdropOpacityState] = useState<number>(
+    () => getBackdropOpacity(),
+  )
+  useEffect(
+    () => onBackdropOpacityChange(setBackdropOpacityState),
+    [],
   )
 
   // Theme application — PV6 / PK6. Effect, not render.
@@ -764,17 +813,25 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   )
 
   /**
-   * Toggle the background decoration on a group. Set `backgroundTabId` to
-   * show a preview layer behind the editor, or `null` to hide it.
+   * Toggle the background decoration on a group. Pass a FILE id to pin
+   * that file's preview behind the editor; `null` clears the backdrop.
+   * The file id is stored directly (not tab-scoped) so the backdrop
+   * survives tab switches and lifts cleanly when the file is deleted.
    */
   const updateGroupBackground = useCallback(
-    (groupId: string, backgroundTabId: string | null) => {
+    (groupId: string, backgroundFileId: string | null) => {
+      // Check current value before writing so the callback only fires
+      // on real changes — keeps the notification stream tight for
+      // persistence consumers that would otherwise see echoes.
+      const prev = groups.get(groupId)?.backgroundFileId ?? null
+      if (prev === backgroundFileId) return
       updateGroup(groupId, (g) => ({
         ...g,
-        backgroundTabId: backgroundTabId ?? undefined,
+        backgroundFileId: backgroundFileId ?? undefined,
       }))
+      onBackgroundFileChange?.(groupId, backgroundFileId)
     },
-    [updateGroup],
+    [groups, updateGroup, onBackgroundFileChange],
   )
 
   /**
@@ -1475,6 +1532,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                       },
                     })
                   },
+                  isBackground:
+                    groups.get(groupId)?.backgroundFileId === tab.fileId,
                   onSave: () => {
                     // Bridge to the host-supplied save callback. The host
                     // owns the persistence layer (e.g., flushToPreset for
@@ -1793,39 +1852,121 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             data-workspace-group-content={group.id}
             style={{ flex: 1, minHeight: 0, position: 'relative' }}
           >
-            {/* Task 08 — Background decoration (Cmd+K B) */}
-            {group.backgroundTabId && activeTabObj?.kind === 'editor' && (() => {
+            {/* Backdrop — promote-to-background / Cmd+K B.
+                Renders the pinned FILE's preview, independent of the
+                active tab. The pinned file id lives on
+                `group.backgroundFileId`; the app's `previewProviderFor`
+                resolves its language via the file registry, so the
+                shell doesn't need to know file→language mapping
+                directly. Survives tab switches; silently drops when
+                the promoted file is deleted (provider lookup returns
+                undefined). */}
+            {group.backgroundFileId && (() => {
+              const bgFileId = group.backgroundFileId
               const bgProvider = previewProviderFor?.({
                 kind: 'preview',
-                id: group.backgroundTabId!,
-                fileId: activeTabObj.fileId,
+                id: `bg-${bgFileId}`,
+                fileId: bgFileId,
                 sourceRef: { kind: 'default' },
               })
               if (!bgProvider) return null
+              // Quality ladder (#41): the inner wrapper is sized at
+              // (1/factor) × viewport and scaled back by `factor` —
+              // renderer sees a smaller container, CSS stretches the
+              // result. factor=1 → full; 0.5 → half (default, quartered
+              // pixel budget); 0.25 → quarter (1/16 budget).
+              const qf = backdropQualityFactor(backdropQuality)
+              // Crop (#40): when set, the sub-rect {x,y,w,h} of the
+              // full viz should fill the viewport. We upscale the
+              // inner wrapper by 1/crop.w (horiz) and 1/crop.h
+              // (vert) and shift its origin up-left by crop.x /
+              // crop.y so the desired sub-rect lands at (0,0).
+              // Compose this with the quality transform — both use
+              // transform-origin top-left so they stack cleanly.
+              const crop = backgroundCrop ?? null
+              const cx = crop?.x ?? 0
+              const cy = crop?.y ?? 0
+              const cw = crop?.w ?? 1
+              const ch = crop?.h ?? 1
+              const scaleX = qf / cw
+              const scaleY = qf / ch
+              // Size the inner to (1/qf) viewport first so after
+              // quality down-scale alone it fills the viewport; then
+              // crop-scale multiplies the area and the translate
+              // picks the sub-rect. Using two dimensions because
+              // crop aspect may not match viewport aspect.
+              const innerSizePct = qf === 1 ? 100 : 100 / qf
+              // Translate is in % of the inner element's own box
+              // (CSS translate%). To map the point (cx, cy) in the
+              // viz to the element origin we need translate = -cx *
+              // 100%, -cy * 100% — no 1/cw factor because CSS
+              // translate% is relative to pre-scale box size, not
+              // post-scale rendered width.
+              const translateX = -cx * 100
+              const translateY = -cy * 100
               return (
                 <div
                   data-workspace-background={group.id}
+                  data-background-file-id={bgFileId}
+                  data-backdrop-quality={backdropQuality}
                   style={{
                     position: 'absolute',
                     inset: 0,
                     zIndex: 0,
-                    opacity: 0.4,
+                    // Viz renders at user-set opacity. Stacks with
+                    // the code-panel wash in globals.css — both
+                    // dim the viz behind the code. Defaults to 1.
+                    opacity: backdropOpacity,
                     pointerEvents: 'none',
+                    overflow: 'hidden',
                   }}
                 >
-                  <PreviewView
-                    fileId={activeTabObj.fileId}
-                    provider={bgProvider}
-                    sourceRef={{ kind: 'default' }}
-                    theme={theme}
-                    hidden={false}
-                    onSourceRefChange={() => {}}
-                  />
+                  <div
+                    style={{
+                      width: `${innerSizePct}%`,
+                      height: `${innerSizePct}%`,
+                      // Build the transform string conditionally so
+                      // `transform: none` beats anything undefined
+                      // leaving the node unscaled when we DO want
+                      // scale(1). Crop translate is expressed in %
+                      // of the inner's post-scale viewport.
+                      transform:
+                        crop || qf !== 1
+                          ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)`
+                          : undefined,
+                      transformOrigin: 'top left',
+                    }}
+                  >
+                    <PreviewView
+                      fileId={bgFileId}
+                      provider={bgProvider}
+                      sourceRef={{ kind: 'default' }}
+                      theme={theme}
+                      hidden={false}
+                      onSourceRefChange={() => {}}
+                    />
+                  </div>
                 </div>
               )
             })()}
             {activeTabObj ? (
-              <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>
+              <div
+                data-stave-code-panel="true"
+                data-stave-backdrop={
+                  group.backgroundFileId ? 'on' : 'off'
+                }
+                style={{
+                  position: 'relative',
+                  zIndex: 1,
+                  height: '100%',
+                  // Blur / halo only kick in when the data attribute
+                  // flips to 'on' via the CSS rule in globals.css.
+                  // Shipping the rule on the wrapper (not on a global
+                  // selector) keeps the effect local to this group
+                  // so split panes with different backdrops stay
+                  // independent.
+                }}
+              >
                 {renderTabContent(activeTabObj, group.id, isShellActiveGroup)}
               </div>
             ) : (
@@ -1859,6 +2000,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       handleSplit,
       handleCloseGroup,
       renderTabContent,
+      // Backdrop props — without these, renderGroup keeps a stale
+      // closure and never re-reads the crop / quality / provider,
+      // so Save-in-crop-popup + quality-picker + theme-flip never
+      // reach the render.
+      backgroundCrop,
+      backdropQuality,
+      backdropOpacity,
+      previewProviderFor,
+      theme,
     ],
   )
 
@@ -2056,8 +2206,21 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         if (!activeGroupId) return
         handleSplit(activeGroupId, direction)
       },
+      setBackgroundFile: (
+        fileId: string | null,
+        groupId?: string,
+      ) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupBackground(gid, fileId)
+      },
+      getBackgroundFileId: (groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return undefined
+        return groups.get(gid)?.backgroundFileId
+      },
     }),
-    [groups, activeGroupId, closeTabById, handleSplit],
+    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground],
   )
 
   return (

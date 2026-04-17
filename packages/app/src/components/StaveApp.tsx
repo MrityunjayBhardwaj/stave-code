@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  setProjectBackgroundFileId,
+  getProject,
   listProjects,
   createProject,
   renameProject,
@@ -48,10 +50,11 @@ import {
   applyPersistedTheme,
   applyPersistedUiIconSize,
   applyPersistedInlineVizActionSize,
+  applyPersistedBackdropBlur,
 } from "@stave/editor";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 import { EditorSettingsModal } from "./EditorSettingsModal";
-import { CropPopup } from "./CropPopup";
+import { CropPopup, createBackdropCropAdapter } from "./CropPopup";
 import { DialogHost } from "./DialogHost";
 import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
@@ -61,7 +64,7 @@ import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
-import { listWorkspaceFiles } from "@stave/editor";
+import { listWorkspaceFiles, subscribeToFileList } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 
 interface StaveAppProps {
@@ -109,7 +112,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<
-    | { vizId: string; presetId: string; fileId: string; trackKey: string }
+    | { mode: "inline"; vizId: string; presetId: string; fileId: string; trackKey: string }
+    | { mode: "backdrop"; adapter: import("./CropPopup").CropAdapter }
     | null
   >(null);
 
@@ -119,6 +123,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     applyPersistedTheme();
     applyPersistedUiIconSize();
     applyPersistedInlineVizActionSize();
+    applyPersistedBackdropBlur();
   }, []);
   const [zenMode, setZenMode] = useState(false);
   const searchViewRef = useRef<WorkspaceSearchViewHandle | null>(null);
@@ -129,6 +134,47 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     fileId: string | null;
     x: number;
     y: number;
+  } | null>(null);
+
+  // Mirror of the active group's backdrop fileId so the file-tree can
+  // render "Set as Background" vs. "Clear Background" in the context
+  // menu without subscribing to every shell state change. Updated by
+  // handleSetAsBackground below — the single write site — and read
+  // into the FileTree prop. Survives tab switches because the shell
+  // stores it on group state, not on the active tab.
+  const [backgroundFileId, setBackgroundFileId] = useState<string | null>(
+    null,
+  );
+  // Backdrop crop — mirrors ProjectMeta.backgroundCrop. Restored on
+  // project load alongside backgroundFileId; persisted on Save in
+  // the crop popup. `null` means full-rect (default).
+  const [backgroundCrop, setBackgroundCropState] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+
+  // File-list revision counter — bumps whenever the workspace
+  // file list mutates (add / remove / rename). Read by the MenuBar's
+  // backdrop dropdown so it sees fresh viz files without us having
+  // to lift the entire file list into React state.
+  const [fileListRev, setFileListRev] = useState(0);
+  useEffect(
+    () => subscribeToFileList(() => setFileListRev((n) => n + 1)),
+    [],
+  );
+
+  // Cinema Mode — Zen + Backdrop composed into one toggle (#43).
+  // Entering: remember prior zen + backdrop, force zen on, auto-pin a
+  // viz file as backdrop if none is set. Exiting: restore prior state,
+  // unpinning only the auto-pinned backdrop (user-pinned backdrops
+  // survive exit — explicit promotions shouldn't vanish on Cmd+K F).
+  const [cinemaMode, setCinemaMode] = useState(false);
+  const cinemaPrior = useRef<{
+    zen: boolean;
+    bgFileId: string | null;
+    autoPinned: boolean;
   } | null>(null);
 
   const handleImportZip = useCallback(async (file: File) => {
@@ -328,6 +374,150 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
+
+  /**
+   * Promote a viz file to the active group's backdrop, or clear with
+   * `null`. The shell's `setBackgroundFile` mutates group state; we
+   * mirror the new value into React state so the FileTree menu label
+   * (Set ↔ Clear) updates without a second round-trip, and persist
+   * to project metadata so the choice survives reload / project
+   * switch. Cmd+K B paths inside the shell route through
+   * `onBackgroundFileChange` below — same write site.
+   */
+  const handleSetAsBackground = useCallback(
+    (fileId: string | null) => {
+      shellRef.current?.setBackgroundFile?.(fileId);
+      setBackgroundFileId(fileId);
+      // Fire-and-forget; the IDB write is best-effort. A failure
+      // here doesn't roll back the React state — user still sees
+      // the backdrop on screen, it just won't survive reload.
+      setProjectBackgroundFileId(activeProject.id, fileId).catch((err) =>
+        console.warn("[stave] backdrop persist failed:", err),
+      );
+    },
+    [activeProject.id],
+  );
+
+  /**
+   * Cinema Mode toggle (#43). On enter, saves the prior zen +
+   * backdrop state, forces zen on, and auto-pins the first available
+   * viz file as backdrop if none is set. On exit, restores prior
+   * zen state and — only if we auto-pinned — clears the backdrop
+   * (user-pinned backdrops survive Cinema exit).
+   *
+   * `listWorkspaceFiles` is consulted at call time, not subscription-
+   * style — this avoids re-running on every file-list change and
+   * keeps cinema-mode's React surface small. The auto-pick prefers
+   * `.hydra`, falls back to `.p5`, because backdrop hydra sketches
+   * are the marquee case.
+   */
+  const handleToggleCinemaMode = useCallback(() => {
+    if (cinemaMode) {
+      // Exit — restore prior state.
+      const prior = cinemaPrior.current;
+      cinemaPrior.current = null;
+      setCinemaMode(false);
+      if (!prior) {
+        // Defensive: somehow entered without saving prior. Turn zen
+        // off as a safe default.
+        setZenMode(false);
+        return;
+      }
+      setZenMode(prior.zen);
+      if (prior.autoPinned) {
+        // Only undo OUR pin — leave user-set backdrops alone.
+        handleSetAsBackground(prior.bgFileId);
+      }
+      return;
+    }
+    // Enter — capture state, then apply.
+    let autoPinned = false;
+    const priorBg = backgroundFileId;
+    if (!backgroundFileId) {
+      const files = listWorkspaceFiles();
+      const pick =
+        files.find((f) => f.language === "hydra") ??
+        files.find((f) => f.language === "p5js");
+      if (pick) {
+        handleSetAsBackground(pick.id);
+        autoPinned = true;
+      }
+    }
+    cinemaPrior.current = {
+      zen: zenMode,
+      bgFileId: priorBg,
+      autoPinned,
+    };
+    setZenMode(true);
+    setCinemaMode(true);
+  }, [cinemaMode, zenMode, backgroundFileId, handleSetAsBackground]);
+
+  // Cinema cleanup: when zen drops (Esc, browser exits fullscreen,
+  // direct Zen-mode toggle while Cinema was on), tear down Cinema
+  // state — restore the prior backdrop if we were the ones who auto-
+  // pinned it. Lives in its own effect so handleSetAsBackground is
+  // in lexical scope at dep-array time (the fullscreen sync effect
+  // runs earlier and would hit a TDZ otherwise).
+  useEffect(() => {
+    if (zenMode || !cinemaMode) return;
+    const prior = cinemaPrior.current;
+    cinemaPrior.current = null;
+    setCinemaMode(false);
+    if (prior?.autoPinned) {
+      handleSetAsBackground(prior.bgFileId);
+    }
+  }, [zenMode, cinemaMode, handleSetAsBackground]);
+
+  // Restore the persisted backdrop when the active project changes.
+  // Reads the stored fileId from project metadata and pushes it into
+  // the shell + local state. Skips the push when nothing is stored or
+  // the stored file no longer exists in this project (e.g., user
+  // deleted it before re-opening). The shell remount on
+  // `key={activeProject.id}` guarantees the imperative call lands on
+  // the new shell, not the previous one.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const meta = await getProject(activeProject.id);
+      if (cancelled) return;
+      const stored = meta?.backgroundFileId ?? null;
+      // Wait one tick for the shell + file store to be ready —
+      // shellRef is set after WorkspaceShell's first render, and the
+      // file store needs to have switched to the new project before
+      // we ask the shell to render the backdrop.
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        // Validate the file still exists; otherwise drop silently
+        // and clear persistence so a stale id doesn't keep getting
+        // re-applied on every reload.
+        if (stored) {
+          const exists = listWorkspaceFiles().some((f) => f.id === stored);
+          if (!exists) {
+            setProjectBackgroundFileId(activeProject.id, null).catch(
+              (err) =>
+                console.warn(
+                  "[stave] backdrop stale-clean failed:",
+                  err,
+                ),
+            );
+            shellRef.current?.setBackgroundFile?.(null);
+            setBackgroundFileId(null);
+            return;
+          }
+        }
+        shellRef.current?.setBackgroundFile?.(stored);
+        setBackgroundFileId(stored);
+        // Restore per-project backdrop crop — null means full-rect
+        // (default). Rendering applies in the shell wrapper.
+        setBackgroundCropState(meta?.backgroundCrop ?? null);
+      });
+    })().catch((err) =>
+      console.warn("[stave] backdrop restore failed:", err),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProject.id]);
 
   const handleRuntimeStateChange = useCallback(
     (s: { isPlaying: boolean; bpm?: number; error: string | null } | null) => {
@@ -538,6 +728,15 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       run: () => setZenMode((z) => !z),
     }));
     unregs.push(registerCommand({
+      id: "stave.view.cinema",
+      title: "Toggle Cinema Mode",
+      category: "View",
+      description:
+        "Zen + Backdrop together. Hides chrome and pins a viz as the backdrop.",
+      keybinding: "mod+k f",
+      run: () => handleToggleCinemaMode(),
+    }));
+    unregs.push(registerCommand({
       id: "stave.view.fontUp",
       title: "Increase Editor Font Size",
       category: "View",
@@ -644,7 +843,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       render: () => null,
     }));
     return () => { for (const u of unregs) u(); };
-  }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject]);
+  }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject, handleToggleCinemaMode]);
 
   // Build file rows for QuickOpen — memoised so mount of the palette
   // has a stable array. Rebuilt when the file list changes.
@@ -669,6 +868,44 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   return (
     <div style={styles.root}>
       <MenuBar
+        // Resolve backdrop file id → display name. Re-derived each
+        // render; cheap (list is in memory) and picks up renames
+        // without a separate subscription.
+        backgroundFileName={(() => {
+          if (!backgroundFileId) return null;
+          const f = listWorkspaceFiles().find(
+            (x) => x.id === backgroundFileId,
+          );
+          if (!f) return null;
+          const parts = f.path.split("/");
+          return parts[parts.length - 1].replace(/\.[^.]+$/, "");
+        })()}
+        backgroundFileId={backgroundFileId}
+        vizFiles={listWorkspaceFiles()
+          .filter((f) => f.language === "hydra" || f.language === "p5js")
+          .map((f) => ({
+            id: f.id,
+            name: f.path
+              .split("/")
+              .pop()!
+              .replace(/\.[^.]+$/, ""),
+          }))}
+        onSetBackdrop={(id) => handleSetAsBackground(id)}
+        onRevealBackground={() => {
+          if (backgroundFileId) handleOpenFile(backgroundFileId);
+        }}
+        onCropBackground={() => {
+          if (!backgroundFileId) return;
+          setCropTarget({
+            mode: "backdrop",
+            adapter: createBackdropCropAdapter({
+              projectId: activeProject.id,
+              fileId: backgroundFileId,
+              initialCrop: backgroundCrop,
+              onChange: (c) => setBackgroundCropState(c),
+            }),
+          });
+        }}
         projectName={activeProject.name}
         onOpenEditorSettings={() => setEditorSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
@@ -688,6 +925,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         sidebarCollapsed={sidebarCollapsed}
         onToggleZenMode={() => setZenMode((z) => !z)}
         zenMode={zenMode}
+        onToggleCinemaMode={handleToggleCinemaMode}
+        cinemaMode={cinemaMode}
         onUndo={() => { undo(); }}
         onRedo={() => { redo(); }}
         canUndo={undoState.canUndo}
@@ -762,6 +1001,20 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 shellRef={shellRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
+                backgroundCrop={backgroundCrop}
+                onBackgroundFileChange={(_groupId, fileId) => {
+                  setBackgroundFileId(fileId);
+                  // Same persistence as handleSetAsBackground — this
+                  // path covers the Cmd+K B keybind which writes
+                  // through the shell directly without going via the
+                  // file-tree callback.
+                  setProjectBackgroundFileId(
+                    activeProject.id,
+                    fileId,
+                  ).catch((err) =>
+                    console.warn("[stave] backdrop persist failed:", err),
+                  );
+                }}
                 onTabContextMenu={(tab, x, y) => {
                   const fileId =
                     tab.kind === "editor" || tab.kind === "preview"
@@ -801,7 +1054,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                     showToast("Open an editor file before cropping", "error");
                     return;
                   }
-                  setCropTarget({ vizId, presetId, fileId, trackKey });
+                  setCropTarget({ mode: "inline", vizId, presetId, fileId, trackKey });
                 }}
               />
             )}
@@ -911,12 +1164,18 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onClose={() => setEditorSettingsOpen(false)}
       />
 
-      {cropTarget && (
+      {cropTarget?.mode === "inline" && (
         <CropPopup
           vizId={cropTarget.vizId}
           presetId={cropTarget.presetId}
           fileId={cropTarget.fileId}
           trackKey={cropTarget.trackKey}
+          onClose={() => setCropTarget(null)}
+        />
+      )}
+      {cropTarget?.mode === "backdrop" && (
+        <CropPopup
+          adapter={cropTarget.adapter}
           onClose={() => setCropTarget(null)}
         />
       )}

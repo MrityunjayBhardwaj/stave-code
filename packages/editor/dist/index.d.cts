@@ -892,7 +892,38 @@ declare class P5VizRenderer implements VizRenderer {
     destroy(): void;
 }
 
-type HydraPatternFn = (synth: any) => void;
+/**
+ * Stave-specific bag exposed to `.hydra` sketches as the second
+ * function argument. Mirrors the `stave` namespace convention
+ * already used by p5 sketches (see `p5Compiler.ts`). Stays present
+ * across re-evaluations — `HydraVizRenderer.update()` rebinds the
+ * fields on the same object so long-lived closures inside the
+ * user sketch observe live references, not stale snapshots.
+ *
+ * `scheduler` / `tracks` are `null` / empty when no pattern runtime
+ * is publishing — sketches must optional-chain (consistent with the
+ * demo-mode path in `compiledVizProvider`).
+ */
+interface HydraStaveBag {
+    /** Combined pattern scheduler. Has `now()` and `query(begin, end)`. */
+    scheduler: IRPattern | null;
+    /** Per-track schedulers keyed by trackId (e.g. "$0", "drums"). */
+    tracks: Map<string, IRPattern>;
+    /**
+     * Strudel-style pattern-to-hydra sugar. Returns a function Hydra can
+     * call per frame:
+     *
+     *   osc(() => stave.H('drums')() * 10).out(o0)
+     *
+     * Equivalent Strudel idiom is `osc(H('drums')).out(o0)`. The outer
+     * call picks the track; the inner call samples the track's current
+     * event and reads `field` (default: `gain`). Returns `0` when no
+     * event is active or the track doesn't exist — so sketches never
+     * NaN a shader uniform even during silence.
+     */
+    H: (trackId: string, field?: keyof IREvent) => () => number;
+}
+type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
 /**
  * VizRenderer that uses hydra-synth for audio-reactive WebGL visuals.
  * Lazily loads hydra-synth on first mount to avoid bloating the main bundle.
@@ -949,6 +980,19 @@ declare class HydraVizRenderer implements VizRenderer {
     private envelope;
     private hapHandler;
     private useEnvelope;
+    /**
+     * Live `stave` bag handed to the user's sketch function. Built once
+     * per mount; `update()` mutates its fields in place so sketches that
+     * capture `scheduler` or `tracks` in a per-frame closure observe the
+     * latest refs without needing a re-compile. This is the same
+     * live-ref idiom the p5 sketch bag uses.
+     *
+     * `H` closes over `this.staveBag` (the object, not the current field
+     * values) so each per-frame invocation reads the current scheduler
+     * / tracks — survives `update()` re-assignments. No rebuild needed
+     * when the pattern runtime swaps underneath.
+     */
+    private staveBag;
     constructor(pattern?: HydraPatternFn | undefined);
     mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
@@ -1315,7 +1359,11 @@ declare function VizEditor({ components: _components, hapStream: _hapStream, ana
  * Compiles user-authored viz code into a VizDescriptor.
  *
  * Hydra code: evaluated in a function scope with the hydra synth
- *   object as the implicit `s` parameter. Uses `new Function()`.
+ *   object as `s` and a `stave` namespace mirroring the p5 convention:
+ *     - `stave.scheduler` — IRPattern | null (combined pattern scheduler)
+ *     - `stave.tracks`    — Map<trackId, IRPattern> (per-track)
+ *   Sketches that reference only `s` keep working — the `stave` arg
+ *   is additive. Uses `new Function()`.
  *
  * p5 code: evaluated as a full p5 sketch script. Users write real
  *   `function preload/setup/draw` declarations and access injected
@@ -1581,6 +1629,15 @@ interface PreviewEditorChromeContext {
     readonly onChangePreviewSource?: (ref: AudioSourceRef) => void;
     /** Toggle the background decoration (viz behind the editor). */
     readonly onToggleBackground: () => void;
+    /**
+     * Whether this chrome's file is the active group's pinned backdrop.
+     * The VizEditorChrome uses it to render the Set/Clear BG button as
+     * an active (on) or inactive (off) toggle — no round-trip through
+     * the shell on every render. Optional for callers that don't track
+     * backdrop state (the button still works via onToggleBackground;
+     * the label just can't flip).
+     */
+    readonly isBackground?: boolean;
     /** Save the file back to its persistent store (VizPresetStore). */
     readonly onSave: () => void;
     /**
@@ -2001,9 +2058,9 @@ interface PreviewViewProps {
  * entangled editor and preview concerns. The whole point of Phase 10.2 is
  * to dissolve that entanglement — a preview tab is a first-class tab,
  * dispatched by `kind`, not a rendering mode on top of an editor. Any
- * future "background decoration" support is shaped as a SECOND tab id
- * stored on `WorkspaceGroupState.backgroundTabId` (Task 08 wires that;
- * Task 04 reserves the slot), NOT as a mode on the tab itself.
+ * future "background decoration" support is shaped as a file id on
+ * `WorkspaceGroupState.backgroundFileId` (promote-to-backdrop flow),
+ * NOT as a mode on the tab itself.
  */
 type WorkspaceTab = {
     readonly kind: 'editor';
@@ -2035,17 +2092,19 @@ type WorkspaceTab = {
  * - `activeTabId` — which tab is visible inside this group. `null` when
  *   the group is empty. Closing the active tab selects the next adjacent
  *   tab (previous if one exists, else first).
- * - `backgroundTabId` — Task 08's reservation slot for the `Cmd+K B`
- *   background-decoration feature. Task 04 declares the field as optional
- *   for forward-compat so Task 08 can populate it without a shape change
- *   to this interface. Task 04 itself does NOT render anything based on
- *   this field.
+ * - `backgroundFileId` — id of the viz file pinned as this group's
+ *   backdrop (promote-to-backdrop / `Cmd+K B`). Independent of
+ *   `activeTabId` — the backdrop survives tab switches; the active
+ *   editor renders on top. Absent when no backdrop is set. Field is
+ *   the FILE id (not a tab id) so a single source of truth survives
+ *   tab churn — tabs come and go, but the promoted file reference is
+ *   durable.
  */
 interface WorkspaceGroupState {
     readonly id: string;
     readonly tabs: readonly WorkspaceTab[];
     readonly activeTabId: string | null;
-    readonly backgroundTabId?: string;
+    readonly backgroundFileId?: string;
 }
 /**
  * Per-file runtime that wraps a `LiveCodingEngine`. Created by a
@@ -2288,7 +2347,7 @@ type ChromeForTab = (tab: WorkspaceTab) => ReactNode | undefined;
  *   callback to resolve the provider at render time so the shell is
  *   testable in isolation with a stub.
  * - No `Cmd+K B` background decoration rendering. The field is reserved
- *   on `WorkspaceGroupState.backgroundTabId` but Task 04 does not render
+ *   on `WorkspaceGroupState.backgroundFileId` but Task 04 does not render
  *   anything based on it.
  */
 interface WorkspaceShellProps {
@@ -2322,6 +2381,29 @@ interface WorkspaceShellProps {
      * `null`) so late subscribers see the initial state.
      */
     readonly onActiveTabChange?: (tab: WorkspaceTab | null) => void;
+    /**
+     * Fires when any group's `backgroundFileId` changes — either set
+     * (pinned a file) or cleared (null). `groupId` identifies the
+     * affected group. Used by the app to mirror backdrop state into
+     * local React state (for the file-tree "Set ↔ Clear" label) and
+     * to persist per-project. Fires once per real change; no initial-
+     * state fire since an unset backdrop is the default.
+     */
+    readonly onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
+    /**
+     * Crop region applied to the pinned backdrop — 0–1 fractional
+     * `{x, y, w, h}`. Absent means render the full viz rect. The
+     * shell's backdrop wrapper scales/positions its inner div so
+     * only the cropped sub-rect fills the viewport, preserving the
+     * quality-ladder transform math. Purely presentational; app
+     * owns persistence via ProjectMeta.backgroundCrop.
+     */
+    readonly backgroundCrop?: {
+        readonly x: number;
+        readonly y: number;
+        readonly w: number;
+        readonly h: number;
+    } | null;
     /**
      * Fires when a tab is closed by the user. Runtime disposal hooks
      * (Task 05 / Task 07) plug in here to call `runtime.dispose()` on
@@ -2561,6 +2643,20 @@ interface WorkspaceShellHandle {
      * tabs. No-op if there is no active group.
      */
     splitActiveGroup(direction?: 'east' | 'south'): void;
+    /**
+     * Pin a FILE as the backdrop for a group. Pass `null` to clear.
+     * `groupId` defaults to the active group. The pinned file's preview
+     * renders behind the active editor and survives tab switches.
+     * Called by the file-tree context menu and by `Cmd+K B`.
+     */
+    setBackgroundFile(fileId: string | null, groupId?: string): void;
+    /**
+     * Read the current backdrop fileId for a group (default: active
+     * group). Returns `undefined` when no backdrop is pinned. Useful for
+     * UI that needs to render a "Clear" vs "Set" label without
+     * subscribing to every shell state change.
+     */
+    getBackgroundFileId(groupId?: string): string | undefined;
 }
 declare const WorkspaceShell: React.ForwardRefExoticComponent<WorkspaceShellProps & React.RefAttributes<WorkspaceShellHandle>>;
 
@@ -2964,6 +3060,23 @@ declare function getInlineVizActionSize(): number;
 declare function setInlineVizActionSize(size: number): void;
 declare function onInlineVizActionSizeChange(cb: (size: number) => void): () => void;
 declare function applyPersistedInlineVizActionSize(): void;
+/** CSS variable read by the shell's code-panel blur rule (see
+ *  globals.css). 0 disables the blur entirely; higher values push
+ *  more toward frosted-glass legibility. */
+declare const BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
+declare function getEditorBackdropBlur(): number;
+declare function setEditorBackdropBlur(size: number): void;
+declare function applyPersistedBackdropBlur(): void;
+declare function getBackdropOpacity(): number;
+declare function setBackdropOpacity(o: number): void;
+declare function onBackdropOpacityChange(cb: (o: number) => void): () => void;
+type BackdropQuality = 'full' | 'half' | 'quarter';
+declare function getBackdropQuality(): BackdropQuality;
+declare function setBackdropQuality(q: BackdropQuality): void;
+declare function onBackdropQualityChange(cb: (q: BackdropQuality) => void): () => void;
+/** Resolution factor applied to the backdrop — render at factor×
+ *  viewport size, CSS-stretch to fill. Lower = cheaper GPU. */
+declare function backdropQualityFactor(q: BackdropQuality): number;
 type EditorTheme = 'dark' | 'light' | 'system';
 type ResolvedTheme = 'dark' | 'light';
 type ThemeListener = (t: ResolvedTheme) => void;
@@ -3039,6 +3152,26 @@ interface ProjectMeta {
     readonly name: string;
     readonly createdAt: number;
     readonly lastOpenedAt: number;
+    /**
+     * File id of the viz file pinned as this project's backdrop
+     * (promote-to-backdrop, #38). Absent when no backdrop is set. Kept
+     * on project metadata (not in the Y.Doc) because the backdrop is a
+     * per-user view preference rather than authored content — shouldn't
+     * sync across collaborators when multi-user arrives.
+     */
+    readonly backgroundFileId?: string;
+    /**
+     * Per-project crop region for the pinned backdrop. All values 0–1
+     * fractional of the viz's full viewport. Absent when the backdrop
+     * should render full-rect (default). Same storage rationale as
+     * `backgroundFileId` — per-user view preference.
+     */
+    readonly backgroundCrop?: {
+        readonly x: number;
+        readonly y: number;
+        readonly w: number;
+        readonly h: number;
+    };
 }
 /** List all projects, sorted by lastOpenedAt descending (most recent first). */
 declare function listProjects(): Promise<ProjectMeta[]>;
@@ -3050,6 +3183,25 @@ declare function getLastOpenedProject(): Promise<ProjectMeta | undefined>;
 declare function createProject(name: string): Promise<ProjectMeta>;
 /** Update the lastOpenedAt timestamp. Call when opening a project. */
 declare function touchProject(id: string): Promise<void>;
+/**
+ * Pin or clear this project's backdrop file id. `null` removes the
+ * field (project has no backdrop). No-op when the project doesn't
+ * exist — caller is expected to have resolved a real project id.
+ * Clearing the backdrop also clears any stored crop (a crop is
+ * meaningless without the file it's cropping).
+ */
+declare function setProjectBackgroundFileId(id: string, fileId: string | null): Promise<void>;
+/**
+ * Save or clear the backdrop crop region. `null` removes the field
+ * (backdrop renders full-rect). No-op when the project doesn't
+ * exist or has no backdrop file pinned.
+ */
+declare function setProjectBackgroundCrop(id: string, crop: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+} | null): Promise<void>;
 /** Rename a project. */
 declare function renameProject(id: string, name: string): Promise<void>;
 /**
@@ -3970,4 +4122,4 @@ declare function getPresetIdForFile(file: WorkspaceFile): string | undefined;
  */
 declare function registerPresetAsNamedViz(preset: VizPreset): boolean;
 
-export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BUNDLED_PREFIX, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type EditorTheme, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getChildOrder, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setChildOrder, setContent, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, type BackdropQuality, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type EditorTheme, EditorView, type EngineComponents, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };

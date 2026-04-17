@@ -4813,12 +4813,31 @@ var HydraVizRenderer = class {
       }
       this.rafId = requestAnimationFrame(this.pumpAudio);
     };
+    const bag = {
+      scheduler: null,
+      tracks: /* @__PURE__ */ new Map(),
+      H: (trackId, field = "gain") => {
+        return () => {
+          const sched = bag.tracks.get(trackId) ?? bag.scheduler;
+          if (!sched) return 0;
+          const now = sched.now();
+          const events = sched.query(now, now + 1e-3);
+          const ev = events[0];
+          if (!ev) return 0;
+          const raw = ev[field];
+          return typeof raw === "number" ? raw : 0;
+        };
+      }
+    };
+    this.staveBag = bag;
   }
   mount(container, components, size, onError) {
     try {
       const config = getVizConfig();
       this.analyser = components.audio?.analyser ?? null;
       this.hapStream = components.streaming?.hapStream ?? null;
+      this.staveBag.scheduler = components.queryable?.scheduler ?? null;
+      this.staveBag.tracks = components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map();
       if (this.analyser) {
         this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
         this.useEnvelope = false;
@@ -4867,7 +4886,7 @@ var HydraVizRenderer = class {
       synth.a = { fft: new Array(config.hydraAudioBins).fill(0) };
     }
     if (this.pattern) {
-      this.pattern(synth);
+      this.pattern(synth, this.staveBag);
     } else {
       this.defaultPattern(synth);
     }
@@ -4887,6 +4906,8 @@ var HydraVizRenderer = class {
         this.useEnvelope = false;
       }
     }
+    this.staveBag.scheduler = components.queryable?.scheduler ?? null;
+    this.staveBag.tracks = components.queryable?.trackSchedulers ?? this.staveBag.tracks;
   }
   resize(w, h) {
     if (this.canvas) {
@@ -4925,6 +4946,8 @@ var HydraVizRenderer = class {
     this.freqData = null;
     this.envelope = null;
     this.hapStream = null;
+    this.staveBag.scheduler = null;
+    this.staveBag.tracks = /* @__PURE__ */ new Map();
   }
 };
 
@@ -7460,6 +7483,89 @@ function onInlineVizActionSizeChange(cb) {
 function applyPersistedInlineVizActionSize() {
   applyInlineVizActionSizeVar(readInlineVizActionSize());
 }
+var DEFAULT_BACKDROP_BLUR = 8;
+var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
+var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
+function readBackdropBlur() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_BLUR;
+  const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE));
+  return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
+}
+function writeBackdropBlur(size) {
+  safeLocalStorage()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
+}
+function applyBackdropBlurVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    BACKDROP_BLUR_VAR,
+    `${size}px`
+  );
+}
+function getEditorBackdropBlur() {
+  return readBackdropBlur();
+}
+function setEditorBackdropBlur(size) {
+  const clamped = Math.max(0, Math.min(40, Math.round(size)));
+  writeBackdropBlur(clamped);
+  applyBackdropBlurVar(clamped);
+}
+function applyPersistedBackdropBlur() {
+  applyBackdropBlurVar(readBackdropBlur());
+}
+var DEFAULT_BACKDROP_OPACITY = 1;
+var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
+var backdropOpacityListeners = /* @__PURE__ */ new Set();
+function readBackdropOpacity() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_OPACITY;
+  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
+}
+function writeBackdropOpacity(o) {
+  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
+}
+function getBackdropOpacity() {
+  return readBackdropOpacity();
+}
+function setBackdropOpacity(o) {
+  const clamped = Math.max(0, Math.min(1, o));
+  writeBackdropOpacity(clamped);
+  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
+}
+function onBackdropOpacityChange(cb) {
+  backdropOpacityListeners.add(cb);
+  return () => {
+    backdropOpacityListeners.delete(cb);
+  };
+}
+var DEFAULT_BACKDROP_QUALITY = "half";
+var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
+var backdropQualityListeners = /* @__PURE__ */ new Set();
+function readBackdropQuality() {
+  const ls = safeLocalStorage();
+  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
+  return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
+}
+function writeBackdropQuality(q) {
+  safeLocalStorage()?.setItem(BACKDROP_QUALITY_STORAGE, q);
+}
+function getBackdropQuality() {
+  return readBackdropQuality();
+}
+function setBackdropQuality(q) {
+  writeBackdropQuality(q);
+  for (const cb of Array.from(backdropQualityListeners)) cb(q);
+}
+function onBackdropQualityChange(cb) {
+  backdropQualityListeners.add(cb);
+  return () => {
+    backdropQualityListeners.delete(cb);
+  };
+}
+function backdropQualityFactor(q) {
+  return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
+}
 function applyPersistedEditorOptions(editor) {
   applyOptionsToEditor(editor);
 }
@@ -8695,11 +8801,10 @@ function registerBuiltinCommands() {
         warnOnceDisabled("workspace.toggleBackgroundPreview", language);
         return;
       }
-      const bgTabId = `bg-${activeTab.fileId}`;
-      if (activeGroup.backgroundTabId === bgTabId) {
+      if (activeGroup.backgroundFileId === activeTab.fileId) {
         shell.updateGroupBackground(activeGroupId, null);
       } else {
-        shell.updateGroupBackground(activeGroupId, bgTabId);
+        shell.updateGroupBackground(activeGroupId, activeTab.fileId);
       }
     }
   });
@@ -9493,6 +9598,8 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
   theme = "dark",
   height = "100%",
   onActiveTabChange,
+  onBackgroundFileChange,
+  backgroundCrop,
   onTabClose,
   previewProviderFor,
   chromeForTab,
@@ -9520,6 +9627,20 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
   const [tabDragInProgress, setTabDragInProgress] = useState(false);
   const [pausedPreviews, setPausedPreviews] = useState(
     () => /* @__PURE__ */ new Set()
+  );
+  const [backdropQuality, setBackdropQualityState] = useState(
+    () => getBackdropQuality()
+  );
+  useEffect(
+    () => onBackdropQualityChange(setBackdropQualityState),
+    []
+  );
+  const [backdropOpacity, setBackdropOpacityState] = useState(
+    () => getBackdropOpacity()
+  );
+  useEffect(
+    () => onBackdropOpacityChange(setBackdropOpacityState),
+    []
   );
   useEffect(() => {
     if (!shellRootRef.current) return;
@@ -9764,13 +9885,16 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
     [groups]
   );
   const updateGroupBackground = useCallback(
-    (groupId, backgroundTabId) => {
+    (groupId, backgroundFileId) => {
+      const prev = groups.get(groupId)?.backgroundFileId ?? null;
+      if (prev === backgroundFileId) return;
       updateGroup(groupId, (g) => ({
         ...g,
-        backgroundTabId: backgroundTabId ?? void 0
+        backgroundFileId: backgroundFileId ?? void 0
       }));
+      onBackgroundFileChange?.(groupId, backgroundFileId);
     },
-    [updateGroup]
+    [groups, updateGroup, onBackgroundFileChange]
   );
   const closeTabById = useCallback(
     (tabId) => {
@@ -10209,6 +10333,7 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                       }
                     });
                   },
+                  isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
                   onSave: () => {
                     onSaveFileRef.current?.(tab);
                   }
@@ -10502,41 +10627,93 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
                 "data-workspace-group-content": group.id,
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
-                  group.backgroundTabId && activeTabObj?.kind === "editor" && (() => {
+                  group.backgroundFileId && (() => {
+                    const bgFileId = group.backgroundFileId;
                     const bgProvider = previewProviderFor?.({
                       kind: "preview",
-                      id: group.backgroundTabId,
-                      fileId: activeTabObj.fileId,
+                      id: `bg-${bgFileId}`,
+                      fileId: bgFileId,
                       sourceRef: { kind: "default" }
                     });
                     if (!bgProvider) return null;
+                    const qf = backdropQualityFactor(backdropQuality);
+                    const crop = backgroundCrop ?? null;
+                    const cx = crop?.x ?? 0;
+                    const cy = crop?.y ?? 0;
+                    const cw = crop?.w ?? 1;
+                    const ch = crop?.h ?? 1;
+                    const scaleX = qf / cw;
+                    const scaleY = qf / ch;
+                    const innerSizePct = qf === 1 ? 100 : 100 / qf;
+                    const translateX = -cx * 100;
+                    const translateY = -cy * 100;
                     return /* @__PURE__ */ jsx(
                       "div",
                       {
                         "data-workspace-background": group.id,
+                        "data-background-file-id": bgFileId,
+                        "data-backdrop-quality": backdropQuality,
                         style: {
                           position: "absolute",
                           inset: 0,
                           zIndex: 0,
-                          opacity: 0.4,
-                          pointerEvents: "none"
+                          // Viz renders at user-set opacity. Stacks with
+                          // the code-panel wash in globals.css — both
+                          // dim the viz behind the code. Defaults to 1.
+                          opacity: backdropOpacity,
+                          pointerEvents: "none",
+                          overflow: "hidden"
                         },
                         children: /* @__PURE__ */ jsx(
-                          PreviewView,
+                          "div",
                           {
-                            fileId: activeTabObj.fileId,
-                            provider: bgProvider,
-                            sourceRef: { kind: "default" },
-                            theme,
-                            hidden: false,
-                            onSourceRefChange: () => {
-                            }
+                            style: {
+                              width: `${innerSizePct}%`,
+                              height: `${innerSizePct}%`,
+                              // Build the transform string conditionally so
+                              // `transform: none` beats anything undefined
+                              // leaving the node unscaled when we DO want
+                              // scale(1). Crop translate is expressed in %
+                              // of the inner's post-scale viewport.
+                              transform: crop || qf !== 1 ? `scale(${scaleX}, ${scaleY}) translate(${translateX}%, ${translateY}%)` : void 0,
+                              transformOrigin: "top left"
+                            },
+                            children: /* @__PURE__ */ jsx(
+                              PreviewView,
+                              {
+                                fileId: bgFileId,
+                                provider: bgProvider,
+                                sourceRef: { kind: "default" },
+                                theme,
+                                hidden: false,
+                                onSourceRefChange: () => {
+                                }
+                              }
+                            )
                           }
                         )
                       }
                     );
                   })(),
-                  activeTabObj ? /* @__PURE__ */ jsx("div", { style: { position: "relative", zIndex: 1, height: "100%" }, children: renderTabContent(activeTabObj, group.id, isShellActiveGroup) }) : /* @__PURE__ */ jsx(
+                  activeTabObj ? /* @__PURE__ */ jsx(
+                    "div",
+                    {
+                      "data-stave-code-panel": "true",
+                      "data-stave-backdrop": group.backgroundFileId ? "on" : "off",
+                      style: {
+                        position: "relative",
+                        zIndex: 1,
+                        height: "100%"
+                        // Blur / halo only kick in when the data attribute
+                        // flips to 'on' via the CSS rule in globals.css.
+                        // Shipping the rule on the wrapper (not on a global
+                        // selector) keeps the effect local to this group
+                        // so split panes with different backdrops stay
+                        // independent.
+                      },
+                      children: renderTabContent(activeTabObj, group.id, isShellActiveGroup)
+                    }
+                  ) : /* @__PURE__ */ jsx(
                     "div",
                     {
                       "data-testid": `group-empty-${group.id}`,
@@ -10569,7 +10746,16 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
       handleTabDragStart,
       handleSplit,
       handleCloseGroup,
-      renderTabContent
+      renderTabContent,
+      // Backdrop props — without these, renderGroup keeps a stale
+      // closure and never re-reads the crop / quality / provider,
+      // so Save-in-crop-popup + quality-picker + theme-flip never
+      // reach the render.
+      backgroundCrop,
+      backdropQuality,
+      backdropOpacity,
+      previewProviderFor,
+      theme
     ]
   );
   const totalGroupCount = useMemo(
@@ -10742,9 +10928,19 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
       splitActiveGroup: (direction = "east") => {
         if (!activeGroupId) return;
         handleSplit(activeGroupId, direction);
+      },
+      setBackgroundFile: (fileId, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupBackground(gid, fileId);
+      },
+      getBackgroundFileId: (groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return void 0;
+        return groups.get(gid)?.backgroundFileId;
       }
     }),
-    [groups, activeGroupId, closeTabById, handleSplit]
+    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground]
   );
   return /* @__PURE__ */ jsxs(
     "div",
@@ -19735,6 +19931,14 @@ function installErrorSketch(p, message) {
   };
 }
 
+// src/visualizers/hydraCompiler.ts
+function compileHydraCode(code) {
+  return (s, stave) => {
+    const fn = new Function("s", "stave", code);
+    fn(s, stave);
+  };
+}
+
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name: name2, renderer, code, requires } = preset;
@@ -19757,12 +19961,6 @@ function compilePreset(preset) {
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
-}
-function compileHydraCode(code) {
-  return (s) => {
-    const fn = new Function("s", code);
-    fn(s);
-  };
 }
 var DB_NAME3 = "stave-snapshots";
 var DB_VERSION3 = 1;
@@ -19940,6 +20138,28 @@ async function touchProject(id) {
   const existing = await wrap3(store.get(id));
   if (existing) {
     await wrap3(store.put({ ...existing, lastOpenedAt: Date.now() }));
+  }
+  db.close();
+}
+async function setProjectBackgroundFileId(id, fileId) {
+  const db = await openDb3();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap3(store.get(id));
+  if (existing) {
+    const { backgroundFileId: _unusedFile, backgroundCrop: _unusedCrop, ...rest } = existing;
+    const next = fileId == null ? rest : { ...rest, backgroundFileId: fileId };
+    await wrap3(store.put(next));
+  }
+  db.close();
+}
+async function setProjectBackgroundCrop(id, crop) {
+  const db = await openDb3();
+  const store = tx2(db, "readwrite");
+  const existing = await wrap3(store.get(id));
+  if (existing) {
+    const { backgroundCrop: _unused, ...rest } = existing;
+    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
+    await wrap3(store.put(next));
   }
   db.close();
 }
@@ -20239,7 +20459,9 @@ function VizEditorChrome({
   previewOpen,
   previewPaused,
   onTogglePausePreview,
-  onChangePreviewSource
+  onChangePreviewSource,
+  onToggleBackground,
+  isBackground
 }) {
   const [liveOn, setLiveOn] = useState(() => getVizLive(file.id));
   useEffect(() => {
@@ -20355,6 +20577,30 @@ function VizEditorChrome({
           }
         ),
         /* @__PURE__ */ jsx("div", { style: { flex: 1 } }),
+        /* @__PURE__ */ jsx(
+          "button",
+          {
+            "data-testid": "viz-chrome-bg-toggle",
+            "data-bg-mode": isBackground ? "on" : "off",
+            onClick: onToggleBackground,
+            title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "3px 8px",
+              borderRadius: 3,
+              fontSize: 10,
+              fontFamily: "inherit",
+              cursor: "pointer",
+              userSelect: "none",
+              background: isBackground ? "var(--accent-dim)" : "none",
+              color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+              border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
+            },
+            children: isBackground ? "\u25A0 bg" : "\u25A0"
+          }
+        ),
         /* @__PURE__ */ jsx(
           "button",
           {
@@ -20596,6 +20842,6 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getChildOrder, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setChildOrder, setContent, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_RUNTIME, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, filter, flushToPreset, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, startSampleSound, stopSampleSound, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

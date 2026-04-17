@@ -222,6 +222,124 @@ export function applyPersistedInlineVizActionSize(): void {
   applyInlineVizActionSizeVar(readInlineVizActionSize())
 }
 
+// ── Backdrop blur (code-surface legibility over viz backdrop) #39 ───
+const DEFAULT_BACKDROP_BLUR = 8
+const BACKDROP_BLUR_STORAGE = 'stave:backdropBlur'
+/** CSS variable read by the shell's code-panel blur rule (see
+ *  globals.css). 0 disables the blur entirely; higher values push
+ *  more toward frosted-glass legibility. */
+export const BACKDROP_BLUR_VAR = '--stave-backdrop-blur'
+
+function readBackdropBlur(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_BACKDROP_BLUR
+  const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE))
+  return Number.isFinite(saved) && saved >= 0 && saved <= 40
+    ? saved
+    : DEFAULT_BACKDROP_BLUR
+}
+
+function writeBackdropBlur(size: number): void {
+  safeLocalStorage()?.setItem(BACKDROP_BLUR_STORAGE, String(size))
+}
+
+function applyBackdropBlurVar(size: number): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty(
+    BACKDROP_BLUR_VAR,
+    `${size}px`,
+  )
+}
+
+export function getEditorBackdropBlur(): number {
+  return readBackdropBlur()
+}
+
+export function setEditorBackdropBlur(size: number): void {
+  const clamped = Math.max(0, Math.min(40, Math.round(size)))
+  writeBackdropBlur(clamped)
+  applyBackdropBlurVar(clamped)
+}
+
+export function applyPersistedBackdropBlur(): void {
+  applyBackdropBlurVar(readBackdropBlur())
+}
+
+// ── Backdrop viz opacity — user-facing dim control ──────────────────
+const DEFAULT_BACKDROP_OPACITY = 1
+const BACKDROP_OPACITY_STORAGE = 'stave:backdropOpacity'
+const backdropOpacityListeners = new Set<(o: number) => void>()
+
+function readBackdropOpacity(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_BACKDROP_OPACITY
+  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE))
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1
+    ? saved
+    : DEFAULT_BACKDROP_OPACITY
+}
+
+function writeBackdropOpacity(o: number): void {
+  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o))
+}
+
+export function getBackdropOpacity(): number {
+  return readBackdropOpacity()
+}
+
+export function setBackdropOpacity(o: number): void {
+  const clamped = Math.max(0, Math.min(1, o))
+  writeBackdropOpacity(clamped)
+  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped)
+}
+
+export function onBackdropOpacityChange(
+  cb: (o: number) => void,
+): () => void {
+  backdropOpacityListeners.add(cb)
+  return () => { backdropOpacityListeners.delete(cb) }
+}
+
+// ── Backdrop quality ladder (Full / Half / Quarter) #41 ─────────────
+export type BackdropQuality = 'full' | 'half' | 'quarter'
+const DEFAULT_BACKDROP_QUALITY: BackdropQuality = 'half'
+const BACKDROP_QUALITY_STORAGE = 'stave:backdropQuality'
+const backdropQualityListeners = new Set<(q: BackdropQuality) => void>()
+
+function readBackdropQuality(): BackdropQuality {
+  const ls = safeLocalStorage()
+  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE)
+  return v === 'full' || v === 'half' || v === 'quarter'
+    ? v
+    : DEFAULT_BACKDROP_QUALITY
+}
+
+function writeBackdropQuality(q: BackdropQuality): void {
+  safeLocalStorage()?.setItem(BACKDROP_QUALITY_STORAGE, q)
+}
+
+export function getBackdropQuality(): BackdropQuality {
+  return readBackdropQuality()
+}
+
+export function setBackdropQuality(q: BackdropQuality): void {
+  writeBackdropQuality(q)
+  for (const cb of Array.from(backdropQualityListeners)) cb(q)
+}
+
+export function onBackdropQualityChange(
+  cb: (q: BackdropQuality) => void,
+): () => void {
+  backdropQualityListeners.add(cb)
+  return () => { backdropQualityListeners.delete(cb) }
+}
+
+/** Resolution factor applied to the backdrop — render at factor×
+ *  viewport size, CSS-stretch to fill. Lower = cheaper GPU. */
+export function backdropQualityFactor(q: BackdropQuality): number {
+  return q === 'full' ? 1 : q === 'quarter' ? 0.25 : 0.5
+}
+
 /** Called by EditorView on mount to seed the editor with saved options. */
 export function applyPersistedEditorOptions(editor: MonacoEditor): void {
   applyOptionsToEditor(editor)

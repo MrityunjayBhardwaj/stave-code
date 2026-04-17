@@ -10,6 +10,13 @@ import {
   setEditorUiIconSize,
   getInlineVizActionSize,
   setInlineVizActionSize,
+  getEditorBackdropBlur,
+  setEditorBackdropBlur,
+  getBackdropQuality,
+  setBackdropQuality,
+  type BackdropQuality,
+  getBackdropOpacity,
+  setBackdropOpacity,
   getEditorTheme,
   setEditorTheme,
   type EditorTheme,
@@ -31,6 +38,10 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   const [minimap, setMinimap] = useState(false);
   const [iconSize, setIconSize] = useState(25);
   const [vizActionSize, setVizActionSize] = useState(11);
+  const [backdropBlur, setBackdropBlur] = useState(8);
+  const [backdropQuality, setBackdropQualityLocal] =
+    useState<BackdropQuality>("half");
+  const [backdropOpacity, setBackdropOpacityLocal] = useState(1);
   const [theme, setTheme] = useState<EditorTheme>("dark");
 
   useEffect(() => {
@@ -39,6 +50,9 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setMinimap(getEditorMinimap());
     setIconSize(getEditorUiIconSize());
     setVizActionSize(getInlineVizActionSize());
+    setBackdropBlur(getEditorBackdropBlur());
+    setBackdropQualityLocal(getBackdropQuality());
+    setBackdropOpacityLocal(getBackdropOpacity());
     setTheme(getEditorTheme());
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -110,6 +124,9 @@ export function EditorSettingsModal({ open, onClose }: Props) {
             />
             <span style={s.value}>{vizActionSize}px</span>
           </Row>
+          {/* Backdrop blur / opacity / quality moved to the
+              backdrop popover (click the bg indicator in the
+              menubar). Settings stays for editor-level prefs only. */}
           <Row label="Theme">
             <select
               style={s.select}

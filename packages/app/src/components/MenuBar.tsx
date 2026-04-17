@@ -2,6 +2,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
+import {
+  BackdropPopover,
+  type BackdropPopoverVizFile,
+} from "./BackdropPopover";
 
 interface MenuBarProps {
   projectName: string;
@@ -18,10 +22,24 @@ interface MenuBarProps {
   sidebarCollapsed: boolean;
   onToggleZenMode: () => void;
   zenMode: boolean;
+  onToggleCinemaMode: () => void;
+  cinemaMode: boolean;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Current backdrop file id, or null when none pinned. */
+  backgroundFileId?: string | null;
+  /** Display name of pinned backdrop (basename minus extension). */
+  backgroundFileName?: string | null;
+  /** All viz files eligible for pinning (`.hydra` / `.p5`). */
+  vizFiles?: readonly BackdropPopoverVizFile[];
+  /** Pin or clear the backdrop — null clears. */
+  onSetBackdrop?: (fileId: string | null) => void;
+  /** Open the backdrop crop popup for the current backdrop. */
+  onCropBackground?: () => void;
+  /** Reveal the pinned file's editor tab. */
+  onRevealBackground?: () => void;
 }
 
 type MenuId = "file" | "edit" | "view" | "help" | "settings" | null;
@@ -41,11 +59,41 @@ export function MenuBar({
   sidebarCollapsed,
   onToggleZenMode,
   zenMode,
+  onToggleCinemaMode,
+  cinemaMode,
   onUndo,
   onRedo,
   canUndo,
   canRedo,
+  backgroundFileId,
+  backgroundFileName,
+  vizFiles = [],
+  onSetBackdrop,
+  onRevealBackground,
+  onCropBackground,
 }: MenuBarProps) {
+  // Popover open/close state — single surface that handles both
+  // "set a backdrop" (when unpinned) and "tweak this backdrop"
+  // (when pinned). Anchored to the indicator button.
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const indicatorRef = useRef<HTMLButtonElement | null>(null);
+
+  const toggleBackdropPopover = () => {
+    if (popoverOpen) {
+      setPopoverOpen(false);
+      return;
+    }
+    const el = indicatorRef.current;
+    if (el) setAnchorRect(el.getBoundingClientRect());
+    setPopoverOpen(true);
+  };
+
+  const pinned = backgroundFileId != null;
+  const hasVizFiles = vizFiles.length > 0;
+  // Only render the indicator when there's something actionable —
+  // either a pinned backdrop OR viz files available to pin.
+  const showIndicator = pinned || hasVizFiles;
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +154,11 @@ export function MenuBar({
           shortcut="⌘K Z"
           onClick={() => clickItem(onToggleZenMode)}
         />
+        <MenuItem
+          label={cinemaMode ? "Exit Cinema Mode" : "Cinema Mode"}
+          shortcut="⌘K F"
+          onClick={() => clickItem(onToggleCinemaMode)}
+        />
       </MenuButton>
 
       <MenuButton label="Help" open={openMenu === "help"} onClick={() => setOpenMenu(openMenu === "help" ? null : "help")}>
@@ -114,6 +167,60 @@ export function MenuBar({
       </MenuButton>
 
       <div style={styles.spacer} />
+
+      {/* Backdrop indicator — single entry point. Click opens the
+          popover which handles both "set backdrop" (unpinned) and
+          full controls (pinned). Kept visible whenever there's a
+          viz file to pin or a backdrop already pinned — so the
+          control is self-sustaining without going through the
+          file tree or Settings. */}
+      {showIndicator && (
+        <div style={styles.bgCluster}>
+          <button
+            ref={indicatorRef}
+            data-testid="menubar-bg-indicator"
+            data-pinned={pinned ? "true" : "false"}
+            title={
+              pinned
+                ? `Backdrop: ${backgroundFileName} — click for controls`
+                : "Set a viz as backdrop"
+            }
+            onClick={toggleBackdropPopover}
+            style={styles.bgIndicator}
+          >
+            <span
+              style={{
+                ...styles.bgRecDot,
+                ...(pinned ? {} : styles.bgRecDotIdle),
+              }}
+              aria-hidden="true"
+            />
+            <span style={styles.bgText}>
+              <span style={styles.bgLabel}>
+                {pinned ? "bg:" : "set bg"}
+              </span>
+              {pinned && (
+                <span style={styles.bgFileName}>{backgroundFileName}</span>
+              )}
+            </span>
+            <span style={{ color: "var(--foreground-muted)", fontSize: 9 }}>
+              ▾
+            </span>
+          </button>
+          {popoverOpen && anchorRect && (
+            <BackdropPopover
+              anchorRect={anchorRect}
+              onClose={() => setPopoverOpen(false)}
+              vizFiles={vizFiles}
+              backgroundFileId={backgroundFileId ?? null}
+              backgroundFileName={backgroundFileName ?? null}
+              onSetBackdrop={(id) => onSetBackdrop?.(id)}
+              onCropBackground={() => onCropBackground?.()}
+              onRevealBackground={() => onRevealBackground?.()}
+            />
+          )}
+        </div>
+      )}
       <div style={styles.menuButtonWrap}>
         <button
           style={{ ...styles.gearBtn, ...(openMenu === "settings" ? styles.menuButtonOpen : {}) }}
@@ -264,5 +371,61 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100%",
     lineHeight: 1,
     fontFamily: "inherit",
+  },
+  bgIndicator: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: "calc(100% - 8px)",
+    margin: "4px 4px 4px 0",
+    padding: "0 10px",
+    borderRadius: 4,
+    border: "1px solid var(--border)",
+    background: "var(--surface-elevated, var(--surface))",
+    color: "var(--text-primary)",
+    fontSize: 11,
+    fontFamily: "var(--font-mono, ui-monospace, monospace)",
+    cursor: "pointer",
+    userSelect: "none",
+    whiteSpace: "nowrap",
+  },
+  bgRecDot: {
+    display: "inline-block",
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: "#ef4444",
+    boxShadow: "0 0 6px rgba(239, 68, 68, 0.7)",
+    animation: "stave-bg-rec-pulse 1.6s ease-in-out infinite",
+    flexShrink: 0,
+  },
+  bgRecDotIdle: {
+    background: "var(--text-muted, #6a6a88)",
+    boxShadow: "none",
+    animation: "none",
+  },
+  bgText: {
+    display: "inline-flex",
+    alignItems: "baseline",
+    gap: 4,
+  },
+  bgLabel: {
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+  bgFileName: {
+    color: "var(--text-primary)",
+    fontSize: 11,
+    maxWidth: 200,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  bgCluster: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    height: "calc(100% - 8px)",
+    margin: "4px 4px 4px 0",
   },
 };
