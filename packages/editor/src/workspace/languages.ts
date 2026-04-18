@@ -51,9 +51,10 @@ import {
   registerStrudelNoteCompletions,
 } from '../monaco/strudelCompletions'
 import { registerStrudelHover } from '../monaco/strudelDocs'
-import { registerP5Providers } from '../monaco/docs/p5'
-import { registerHydraProviders } from '../monaco/docs/hydra'
+import { registerP5Providers, P5_DOCS_INDEX } from '../monaco/docs/p5'
+import { registerHydraProviders, HYDRA_DOCS_INDEX } from '../monaco/docs/hydra'
 import { registerSonicPiProviders } from '../monaco/docs/sonicpi'
+import { buildIdentifierAlternation } from '../monaco/docs/tokenizer-utils'
 import type { WorkspaceLanguage } from './types'
 
 /**
@@ -74,23 +75,29 @@ function registerHydraLanguage(monaco: typeof Monaco): void {
   }
   hydraRegistered = true
   monaco.languages.register({ id: 'hydra' })
+  // Keyword / method / variable sets derived from HYDRA_DOCS_INDEX so every
+  // newly-documented symbol is also coloured. `kind: 'function'` captures
+  // sources (osc, noise, shape, …); `kind: 'method'` captures chainable
+  // transforms (rotate, kaleid, modulate, …); `kind: 'variable'` captures
+  // the IO buffers + globals (s0..s3, o0..o3, time, mouse).
+  const sources = buildIdentifierAlternation(HYDRA_DOCS_INDEX, {
+    includeKinds: ['function'],
+  })
+  const methods = buildIdentifierAlternation(HYDRA_DOCS_INDEX, {
+    includeKinds: ['method'],
+  })
+  const globals = buildIdentifierAlternation(HYDRA_DOCS_INDEX, {
+    includeKinds: ['variable', 'constant'],
+    extra: ['Math', 'PI', 'sin', 'cos', 'tan', 'abs', 'floor', 'ceil', 'round', 'max', 'min', 'random', 'pow', 'sqrt'],
+  })
   monaco.languages.setMonarchTokensProvider('hydra', {
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@comment'],
-        [
-          /\b(osc|noise|shape|gradient|solid|voronoi|src|s0|s1|s2|s3|o0|o1|o2|o3)\b/,
-          'keyword',
-        ],
-        [
-          /\.(color|rotate|scale|modulate|blend|add|diff|layer|mask|luma|thresh|posterize|shift|kaleid|scroll|scrollX|scrollY|pixelate|repeat|repeatX|repeatY|out|brightness|contrast|saturate|hue|invert)\b/,
-          'type',
-        ],
-        [
-          /\b(Math|PI|sin|cos|tan|abs|floor|ceil|round|max|min|random|pow|sqrt)\b/,
-          'variable',
-        ],
+        ...keywordRule(sources, 'keyword'),
+        ...methodRule(methods, 'type'),
+        ...keywordRule(globals, 'variable.predefined'),
         [/\ba\b/, 'variable.predefined'],
         [/\b\d+\.?\d*\b/, 'number'],
         [/"[^"]*"/, 'string'],
@@ -114,19 +121,24 @@ function registerP5JsLanguage(monaco: typeof Monaco): void {
   }
   p5jsRegistered = true
   monaco.languages.register({ id: 'p5js' })
+  // Functions/constants/variables derived from P5_DOCS_INDEX so every
+  // documented p5 identifier is also syntax-coloured. Stave-specific
+  // globals (`scheduler`, `analyser`, `hapStream`) stay in `extra` since
+  // they come from the host, not from p5.
+  const fns = buildIdentifierAlternation(P5_DOCS_INDEX, {
+    includeKinds: ['function'],
+  })
+  const variables = buildIdentifierAlternation(P5_DOCS_INDEX, {
+    includeKinds: ['variable', 'constant'],
+    extra: ['hapStream', 'analyser', 'scheduler'],
+  })
   monaco.languages.setMonarchTokensProvider('p5js', {
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@comment'],
-        [
-          /\b(background|fill|stroke|noFill|noStroke|rect|ellipse|line|point|arc|triangle|quad|beginShape|endShape|vertex|text|textSize|textAlign|image|loadImage|createCanvas|resizeCanvas|push|pop|translate|rotate|scale)\b/,
-          'keyword',
-        ],
-        [
-          /\b(width|height|mouseX|mouseY|frameCount|millis|hapStream|analyser|scheduler)\b/,
-          'variable.predefined',
-        ],
+        ...keywordRule(fns, 'keyword'),
+        ...keywordRule(variables, 'variable.predefined'),
         [
           /\b(let|const|var|function|for|while|if|else|return|class|new|typeof|of|in)\b/,
           'keyword',
@@ -142,6 +154,28 @@ function registerP5JsLanguage(monaco: typeof Monaco): void {
       ],
     },
   })
+}
+
+/**
+ * Guard against empty alternations — an empty capture group in a Monaco
+ * Monarch rule matches the empty string on every position and crashes the
+ * tokenizer with "no progress in tokenizer in rule". Skipping the rule is
+ * safer than emitting a sentinel that would never match.
+ */
+function keywordRule(
+  alternation: string,
+  token: string,
+): Array<[RegExp, string]> {
+  if (!alternation) return []
+  return [[new RegExp(`\\b(${alternation})\\b`), token]]
+}
+
+function methodRule(
+  alternation: string,
+  token: string,
+): Array<[RegExp, string]> {
+  if (!alternation) return []
+  return [[new RegExp(`\\.(${alternation})\\b`), token]]
 }
 
 /**

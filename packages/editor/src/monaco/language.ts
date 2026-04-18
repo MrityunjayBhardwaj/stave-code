@@ -1,10 +1,22 @@
 import type * as Monaco from 'monaco-editor'
+import { SONICPI_DOCS_INDEX } from './docs/sonicpi'
+import { STRUDEL_DOCS_INDEX } from './strudelDocs'
+import { buildIdentifierAlternation } from './docs/tokenizer-utils'
 
 export function registerSonicPiLanguage(monaco: typeof Monaco): void {
   const langs = monaco.languages.getLanguages()
   if (langs.some((l) => l.id === 'sonicpi')) return
 
   monaco.languages.register({ id: 'sonicpi' })
+
+  // Derive the function-name alternation from the docs index so every
+  // upstream-sourced entry (313 across lang / synth / fx) is highlighted.
+  // Symbols (`:dull_bell`) are handled by the `:\w+` rule below — we only
+  // need bare identifiers here, so synth / fx / sample kinds are dropped.
+  const sonicPiFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
+    excludeKinds: ['synth', 'fx', 'sample'],
+    extra: ['puts', 'print'],
+  })
 
   monaco.languages.setMonarchTokensProvider('sonicpi', {
     defaultToken: '',
@@ -15,18 +27,6 @@ export function registerSonicPiLanguage(monaco: typeof Monaco): void {
       'for', 'in', 'begin', 'rescue', 'ensure', 'true', 'false', 'nil', 'and', 'or', 'not',
     ],
 
-    sonicPiFunctions: [
-      'live_loop', 'play', 'sample', 'sleep', 'sync', 'cue', 'in_thread',
-      'use_synth', 'use_bpm', 'use_random_seed', 'with_fx', 'control',
-      'define', 'density', 'puts', 'print',
-    ],
-
-    musicFunctions: [
-      'choose', 'rrand', 'rrand_i', 'rand', 'rand_i', 'dice', 'one_in',
-      'ring', 'knit', 'range', 'line', 'spread', 'chord', 'scale',
-      'note', 'hz_to_midi', 'midi_to_hz', 'tick', 'look',
-    ],
-
     tokenizer: {
       root: [
         // Ruby comment
@@ -35,17 +35,8 @@ export function registerSonicPiLanguage(monaco: typeof Monaco): void {
         // Ruby symbols :name
         [/:\w+/, 'sonicpi.symbol'],
 
-        // Sonic Pi DSL functions
-        [
-          /\b(live_loop|play|sample|sleep|sync|cue|in_thread|use_synth|use_bpm|use_random_seed|with_fx|control|define|density)\b/,
-          'sonicpi.function',
-        ],
-
-        // Music/math helper functions
-        [
-          /\b(choose|rrand|rrand_i|rand|rand_i|dice|one_in|ring|knit|range|line|spread|chord|scale|note|hz_to_midi|midi_to_hz|tick|look)\b/,
-          'sonicpi.music',
-        ],
+        // Sonic Pi language + music functions (derived from docs index)
+        [new RegExp(`\\b(${sonicPiFns})\\b`), 'sonicpi.function'],
 
         // Keywords
         [/\b(do|end|if|else|elsif|unless|loop|while|until|for|in|true|false|nil)\b/, 'keyword'],
@@ -109,6 +100,18 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
 
   monaco.languages.register({ id: 'strudel' })
 
+  // Derive the function-name alternation from the docs index. Extras stay
+  // as a short hand-curated list for symbols the docs haven't covered yet
+  // (mini-notation helpers and tempo aliases).
+  const strudelFns = buildIdentifierAlternation(STRUDEL_DOCS_INDEX, {
+    extra: [
+      'sub', 'add', 'mul', 'div', 'mod', 'abs',
+      'sine', 'saw', 'square', 'tri',
+      'setcps', 'setCps', 'cpm',
+      'loopBegin', 'loopEnd', 'n', 'ftype', 'fanchor',
+    ],
+  })
+
   monaco.languages.setMonarchTokensProvider('strudel', {
     defaultToken: '',
     tokenPostfix: '.strudel',
@@ -116,20 +119,6 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
     keywords: [
       'const', 'let', 'var', 'await', 'async', 'return', 'if', 'else',
       'for', 'while', 'function', 'class', 'import', 'export', 'from',
-    ],
-
-    strudelFunctions: [
-      'note', 's', 'gain', 'release', 'sustain', 'cutoff', 'resonance',
-      'stack', 'mask', 'speed', 'room', 'delay', 'distort', 'fm', 'swing',
-      'struct', 'every', 'sometimes', 'jux', 'off', 'fast', 'slow', 'rev',
-      'palindrome', 'chunk', 'iter', 'euclid', 'euclidRot', 'degradeBy',
-      'layer', 'cat', 'seq', 'silence', 'pure', 'reify', 'sub', 'add',
-      'mul', 'div', 'mod', 'abs', 'range', 'rangex', 'rand', 'irand',
-      'perlin', 'sine', 'saw', 'square', 'tri', 'setcps', 'setCps',
-      'cpm', 'hpf', 'lpf', 'bpf', 'crush', 'shape', 'coarse', 'begin',
-      'end', 'loop', 'loopBegin', 'loopEnd', 'pan', 'orbit', 'color',
-      'velocity', 'amp', 'legato', 'accel', 'unit', 'cut', 'n', 'bank',
-      'stretch', 'nudge', 'degrade', 'ftype', 'fanchor', 'vowel',
     ],
 
     tokenizer: {
@@ -144,10 +133,7 @@ export function registerStrudelLanguage(monaco: typeof Monaco): void {
         [/\b[a-gA-G][b#]?\d\b/, 'strudel.note'],
 
         // Strudel function names (must come before keywords check)
-        [
-          /\b(note|s|gain|release|sustain|cutoff|resonance|stack|mask|speed|room|delay|distort|fm|swing|struct|every|sometimes|jux|off|fast|slow|rev|palindrome|chunk|iter|euclid|euclidRot|degradeBy|layer|cat|seq|silence|pure|reify|range|rangex|rand|irand|perlin|cpm|hpf|lpf|bpf|crush|shape|coarse|begin|end|loop|pan|orbit|color|velocity|amp|legato|accel|unit|cut|bank|stretch|nudge|degrade|vowel)\b/,
-          'strudel.function',
-        ],
+        [new RegExp(`\\b(${strudelFns})\\b`), 'strudel.function'],
 
         // JS keywords
         [
