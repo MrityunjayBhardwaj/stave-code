@@ -348,11 +348,45 @@ export function CropPopup(props: CropPopupProps) {
         });
       } else if (dragging.kind === "resize") {
         const edge = (dragging as any).edge as string;
+        const isCorner = edge.length === 2;
+        const freeMode = e.ctrlKey || e.metaKey;
         let { x, y, w, h } = orig;
-        if (edge.includes("e")) w = Math.max(0.05, Math.min(1 - x, w + dx));
-        if (edge.includes("w")) { x = Math.max(0, Math.min(x + w - 0.05, x + dx)); w = orig.x + orig.w - x; }
-        if (edge.includes("s")) h = Math.max(0.05, Math.min(1 - y, h + dy));
-        if (edge.includes("n")) { y = Math.max(0, Math.min(y + h - 0.05, y + dy)); h = orig.y + orig.h - y; }
+
+        if (isCorner && !freeMode) {
+          // Aspect-ratio-locked corner drag. Use the axis with
+          // the larger delta to drive, compute the other from the
+          // original aspect ratio.
+          const aspect = orig.w / orig.h;
+          const absDx = Math.abs(dx);
+          const absDy = Math.abs(dy);
+          let dw: number, dh: number;
+          if (absDx >= absDy) {
+            dw = dx; dh = dx / aspect;
+          } else {
+            dh = dy; dw = dy * aspect;
+          }
+          // Flip sign for west/north edges (shrink = positive delta).
+          const signW = edge.includes("w") ? -1 : 1;
+          const signH = edge.includes("n") ? -1 : 1;
+          w = Math.max(0.05, orig.w + signW * dw);
+          h = Math.max(0.05, orig.h + signH * dh);
+          // Keep aspect ratio exact after clamping.
+          if (w / h !== aspect) {
+            if (absDx >= absDy) h = w / aspect;
+            else w = h * aspect;
+          }
+          if (edge.includes("w")) x = orig.x + orig.w - w;
+          if (edge.includes("n")) y = orig.y + orig.h - h;
+          // Clamp to bounds.
+          x = Math.max(0, x); y = Math.max(0, y);
+          w = Math.min(w, 1 - x); h = Math.min(h, 1 - y);
+        } else {
+          // Free resize — edges or Ctrl/Cmd-held corners.
+          if (edge.includes("e")) w = Math.max(0.05, Math.min(1 - x, w + dx));
+          if (edge.includes("w")) { x = Math.max(0, Math.min(x + w - 0.05, x + dx)); w = orig.x + orig.w - x; }
+          if (edge.includes("s")) h = Math.max(0.05, Math.min(1 - y, h + dy));
+          if (edge.includes("n")) { y = Math.max(0, Math.min(y + h - 0.05, y + dy)); h = orig.y + orig.h - y; }
+        }
         setCrop({ x, y, w, h });
       }
     };
