@@ -14213,48 +14213,23 @@ function ensureWorkspaceLanguages(monaco) {
   registerSonicPiLanguage(monaco);
   registerHydraLanguage(monaco);
   registerP5JsLanguage(monaco);
-  ensureStrudelProviders(monaco);
-  ensureP5Providers(monaco);
-  ensureHydraProviders(monaco);
-  ensureSonicPiProviders(monaco);
+  ensureProviders("strudel", monaco, (m) => {
+    registerStrudelDotCompletions(m);
+    registerStrudelNoteCompletions(m);
+    registerStrudelHover(m);
+  });
+  ensureProviders("p5js", monaco, registerP5Providers);
+  ensureProviders("hydra", monaco, registerHydraProviders);
+  ensureProviders("sonicpi", monaco, registerSonicPiProviders);
 }
-var strudelProvidersRegistered = false;
-function ensureStrudelProviders(monaco) {
-  if (strudelProvidersRegistered) return;
+var providersRegistered = {};
+function ensureProviders(key, monaco, register) {
+  if (providersRegistered[key]) return;
   if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
     return;
   }
-  strudelProvidersRegistered = true;
-  registerStrudelDotCompletions(monaco);
-  registerStrudelNoteCompletions(monaco);
-  registerStrudelHover(monaco);
-}
-var p5ProvidersRegistered = false;
-function ensureP5Providers(monaco) {
-  if (p5ProvidersRegistered) return;
-  if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
-    return;
-  }
-  p5ProvidersRegistered = true;
-  registerP5Providers(monaco);
-}
-var hydraProvidersRegistered = false;
-function ensureHydraProviders(monaco) {
-  if (hydraProvidersRegistered) return;
-  if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
-    return;
-  }
-  hydraProvidersRegistered = true;
-  registerHydraProviders(monaco);
-}
-var sonicPiProvidersRegistered = false;
-function ensureSonicPiProviders(monaco) {
-  if (sonicPiProvidersRegistered) return;
-  if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
-    return;
-  }
-  sonicPiProvidersRegistered = true;
-  registerSonicPiProviders(monaco);
+  providersRegistered[key] = true;
+  register(monaco);
 }
 function toMonacoLanguage(lang) {
   switch (lang) {

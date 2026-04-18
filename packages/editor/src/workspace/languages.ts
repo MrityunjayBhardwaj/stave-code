@@ -326,68 +326,38 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
   registerSonicPiLanguage(monaco)
   registerHydraLanguage(monaco)
   registerP5JsLanguage(monaco)
-  ensureStrudelProviders(monaco)
-  ensureP5Providers(monaco)
-  ensureHydraProviders(monaco)
-  ensureSonicPiProviders(monaco)
+  ensureProviders('strudel', monaco, (m) => {
+    registerStrudelDotCompletions(m)
+    registerStrudelNoteCompletions(m)
+    registerStrudelHover(m)
+  })
+  ensureProviders('p5js', monaco, registerP5Providers)
+  ensureProviders('hydra', monaco, registerHydraProviders)
+  ensureProviders('sonicpi', monaco, registerSonicPiProviders)
 }
 
-// Completion + hover providers for strudel. Monaco's provider registry
-// is append-only per invocation, so we guard with a module-level flag
-// to avoid fan-out when multiple EditorView instances mount. Tests use
-// a thin Monaco mock — skip when the required APIs are absent.
-let strudelProvidersRegistered = false
-function ensureStrudelProviders(monaco: typeof Monaco): void {
-  if (strudelProvidersRegistered) return
+// Per-runtime idempotency flags so `ensureWorkspaceLanguages` is safe on
+// every EditorView mount. Monaco's provider registry is append-only per
+// invocation — without the guard, mounting N editors would register N
+// copies of each provider.
+const providersRegistered: Record<string, boolean> = {}
+
+function ensureProviders(
+  key: string,
+  monaco: typeof Monaco,
+  register: (m: typeof Monaco) => void,
+): void {
+  if (providersRegistered[key]) return
+  // Tests use a thin Monaco mock — skip when the required APIs are
+  // absent rather than crashing on `undefined is not a function`.
   if (
     typeof monaco.languages?.registerCompletionItemProvider !== 'function' ||
     typeof monaco.languages?.registerHoverProvider !== 'function'
   ) {
     return
   }
-  strudelProvidersRegistered = true
-  registerStrudelDotCompletions(monaco)
-  registerStrudelNoteCompletions(monaco)
-  registerStrudelHover(monaco)
-}
-
-let p5ProvidersRegistered = false
-function ensureP5Providers(monaco: typeof Monaco): void {
-  if (p5ProvidersRegistered) return
-  if (
-    typeof monaco.languages?.registerCompletionItemProvider !== 'function' ||
-    typeof monaco.languages?.registerHoverProvider !== 'function'
-  ) {
-    return
-  }
-  p5ProvidersRegistered = true
-  registerP5Providers(monaco)
-}
-
-let hydraProvidersRegistered = false
-function ensureHydraProviders(monaco: typeof Monaco): void {
-  if (hydraProvidersRegistered) return
-  if (
-    typeof monaco.languages?.registerCompletionItemProvider !== 'function' ||
-    typeof monaco.languages?.registerHoverProvider !== 'function'
-  ) {
-    return
-  }
-  hydraProvidersRegistered = true
-  registerHydraProviders(monaco)
-}
-
-let sonicPiProvidersRegistered = false
-function ensureSonicPiProviders(monaco: typeof Monaco): void {
-  if (sonicPiProvidersRegistered) return
-  if (
-    typeof monaco.languages?.registerCompletionItemProvider !== 'function' ||
-    typeof monaco.languages?.registerHoverProvider !== 'function'
-  ) {
-    return
-  }
-  sonicPiProvidersRegistered = true
-  registerSonicPiProviders(monaco)
+  providersRegistered[key] = true
+  register(monaco)
 }
 
 /**
@@ -422,7 +392,7 @@ export function toMonacoLanguage(lang: WorkspaceLanguage): string {
 export function __resetWorkspaceLanguagesForTests(): void {
   hydraRegistered = false
   p5jsRegistered = false
-  p5ProvidersRegistered = false
-  hydraProvidersRegistered = false
-  sonicPiProvidersRegistered = false
+  for (const k of Object.keys(providersRegistered)) {
+    providersRegistered[k] = false
+  }
 }
