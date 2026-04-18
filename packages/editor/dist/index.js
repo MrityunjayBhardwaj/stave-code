@@ -9612,6 +9612,7 @@ var p5_default = {
     describe: {
       signature: "describe(text: String, display?: Constant)",
       description: "Creates a screen reader-accessible description of the canvas.",
+      example: "describe('A pink square with a red heart in the bottom-right corner.')",
       kind: "function",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/describe"
@@ -10165,6 +10166,7 @@ var p5_default = {
     HALF_PI: {
       signature: "HALF_PI",
       description: "A `Number` constant that's approximately 1.",
+      example: "arc(50, 50, 80, 80, 0, HALF_PI)",
       kind: "variable",
       category: "Constants",
       sourceUrl: "https://p5js.org/reference/#/p5/HALF_PI"
@@ -10172,6 +10174,7 @@ var p5_default = {
     PI: {
       signature: "PI",
       description: "A `Number` constant that's approximately 3.",
+      example: "arc(50, 50, 80, 80, 0, PI)",
       kind: "variable",
       category: "Constants",
       sourceUrl: "https://p5js.org/reference/#/p5/PI"
@@ -10179,6 +10182,7 @@ var p5_default = {
     QUARTER_PI: {
       signature: "QUARTER_PI",
       description: "A `Number` constant that's approximately 0.",
+      example: "arc(50, 50, 80, 80, 0, QUARTER_PI)",
       kind: "variable",
       category: "Constants",
       sourceUrl: "https://p5js.org/reference/#/p5/QUARTER_PI"
@@ -10186,6 +10190,7 @@ var p5_default = {
     TAU: {
       signature: "TAU",
       description: "A `Number` constant that's approximately 6.",
+      example: "arc(50, 50, 80, 80, 0, TAU)",
       kind: "variable",
       category: "Constants",
       sourceUrl: "https://p5js.org/reference/#/p5/TAU"
@@ -10193,6 +10198,7 @@ var p5_default = {
     TWO_PI: {
       signature: "TWO_PI",
       description: "A `Number` constant that's approximately 6.",
+      example: "arc(50, 50, 80, 80, 0, TWO_PI)",
       kind: "variable",
       category: "Constants",
       sourceUrl: "https://p5js.org/reference/#/p5/TWO_PI"
@@ -10200,6 +10206,7 @@ var p5_default = {
     DEGREES: {
       signature: "DEGREES",
       description: "A `String` constant that's used to set the angleMode().",
+      example: "angleMode(DEGREES)",
       kind: "variable",
       category: "Constants",
       sourceUrl: "https://p5js.org/reference/#/p5/DEGREES"
@@ -10207,6 +10214,7 @@ var p5_default = {
     RADIANS: {
       signature: "RADIANS",
       description: "A `String` constant that's used to set the angleMode().",
+      example: "angleMode(RADIANS)",
       kind: "variable",
       category: "Constants",
       sourceUrl: "https://p5js.org/reference/#/p5/RADIANS"
@@ -10950,6 +10958,7 @@ var p5_default = {
     frameCount: {
       signature: "frameCount",
       description: "A `Number` variable that tracks the number of frames drawn since the sketch started.",
+      example: "text(frameCount, 50, 50)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/frameCount"
@@ -10957,6 +10966,7 @@ var p5_default = {
     deltaTime: {
       signature: "deltaTime",
       description: "A `Number` variable that tracks the number of milliseconds it took to draw the last frame.",
+      example: "let deltaX = speed * deltaTime",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/deltaTime"
@@ -10964,6 +10974,7 @@ var p5_default = {
     focused: {
       signature: "focused",
       description: "A `Boolean` variable that's `true` if the browser is focused and `false` if not.",
+      example: "if (focused === true) {",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/focused"
@@ -11003,6 +11014,7 @@ var p5_default = {
     webglVersion: {
       signature: "webglVersion",
       description: "A `String` variable with the WebGL version in use.",
+      example: "text(webglVersion, 42, 54)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/webglVersion"
@@ -11010,6 +11022,7 @@ var p5_default = {
     displayWidth: {
       signature: "displayWidth",
       description: "A `Number` variable that stores the width of the screen display.",
+      example: "createCanvas(displayWidth, displayHeight)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/displayWidth"
@@ -11017,6 +11030,7 @@ var p5_default = {
     displayHeight: {
       signature: "displayHeight",
       description: "A `Number` variable that stores the height of the screen display.",
+      example: "createCanvas(displayWidth, displayHeight)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/displayHeight"
@@ -11024,6 +11038,7 @@ var p5_default = {
     windowWidth: {
       signature: "windowWidth",
       description: "A `Number` variable that stores the width of the browser's viewport.",
+      example: "createCanvas(windowWidth, windowHeight)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/windowWidth"
@@ -11031,6 +11046,7 @@ var p5_default = {
     windowHeight: {
       signature: "windowHeight",
       description: "A `Number` variable that stores the height of the browser's viewport.",
+      example: "createCanvas(windowWidth, windowHeight)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/windowHeight"
@@ -11045,6 +11061,7 @@ var p5_default = {
     width: {
       signature: "width",
       description: "A `Number` variable that stores the width of the canvas in pixels.",
+      example: "text(width, 42, 54)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/width"
@@ -11052,6 +11069,7 @@ var p5_default = {
     height: {
       signature: "height",
       description: "A `Number` variable that stores the height of the canvas in pixels.",
+      example: "text(height, 42, 54)",
       kind: "variable",
       category: "Environment",
       sourceUrl: "https://p5js.org/reference/#/p5/height"
@@ -11143,6 +11161,7 @@ var p5_default = {
     let: {
       signature: "let",
       description: "Declares a new variable.",
+      example: "let message = 'Hello, \u{1F30D}!'",
       kind: "variable",
       category: "Foundation",
       sourceUrl: "https://p5js.org/reference/#/p5/let"
@@ -11200,6 +11219,7 @@ var p5_default = {
     class: {
       signature: "class",
       description: "A template for creating objects of a particular type.",
+      example: "class Frog {",
       kind: "variable",
       category: "Foundation",
       sourceUrl: "https://p5js.org/reference/#/p5/class"
@@ -11223,6 +11243,7 @@ var p5_default = {
     console: {
       signature: "console",
       description: "Prints a message to the web browser's console.",
+      example: "console.log('Hello!')",
       kind: "variable",
       category: "Foundation",
       sourceUrl: "https://p5js.org/reference/#/p5/console"
@@ -11286,6 +11307,7 @@ var p5_default = {
     drawingContext: {
       signature: "drawingContext",
       description: "A system variable that provides direct access to the sketch's `&lt;canvas&gt;` element.",
+      example: "drawingContext.shadowOffsetX = 5",
       kind: "variable",
       category: "Rendering",
       sourceUrl: "https://p5js.org/reference/#/p5/drawingContext"
@@ -11658,6 +11680,7 @@ var p5_default = {
     accelerationX: {
       signature: "accelerationX",
       description: "The system variable accelerationX always contains the acceleration of the device along the x axis.",
+      example: "ellipse(width / 2, height / 2, accelerationX)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/accelerationX"
@@ -11665,6 +11688,7 @@ var p5_default = {
     accelerationY: {
       signature: "accelerationY",
       description: "The system variable accelerationY always contains the acceleration of the device along the y axis.",
+      example: "ellipse(width / 2, height / 2, accelerationY)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/accelerationY"
@@ -11672,6 +11696,7 @@ var p5_default = {
     accelerationZ: {
       signature: "accelerationZ",
       description: "The system variable accelerationZ always contains the acceleration of the device along the z axis.",
+      example: "ellipse(width / 2, height / 2, accelerationZ)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/accelerationZ"
@@ -11700,6 +11725,7 @@ var p5_default = {
     rotationX: {
       signature: "rotationX",
       description: "The system variable rotationX always contains the rotation of the device along the x axis.",
+      example: "rotateX(radians(rotationX))",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/rotationX"
@@ -11707,6 +11733,7 @@ var p5_default = {
     rotationY: {
       signature: "rotationY",
       description: "The system variable rotationY always contains the rotation of the device along the y axis.",
+      example: "rotateY(radians(rotationY))",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/rotationY"
@@ -11714,6 +11741,7 @@ var p5_default = {
     rotationZ: {
       signature: "rotationZ",
       description: "The system variable rotationZ always contains the rotation of the device along the z axis.",
+      example: "rotateZ(radians(rotationZ))",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/rotationZ"
@@ -11721,6 +11749,7 @@ var p5_default = {
     pRotationX: {
       signature: "pRotationX",
       description: "The system variable pRotationX always contains the rotation of the device along the x axis in the frame previous to the current frame.",
+      example: "let pRX = pRotationX + 180",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/pRotationX"
@@ -11728,6 +11757,7 @@ var p5_default = {
     pRotationY: {
       signature: "pRotationY",
       description: "The system variable pRotationY always contains the rotation of the device along the y axis in the frame previous to the current frame.",
+      example: "let pRY = pRotationY + 180",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/pRotationY"
@@ -11735,6 +11765,7 @@ var p5_default = {
     pRotationZ: {
       signature: "pRotationZ",
       description: "The system variable pRotationZ always contains the rotation of the device along the z axis in the frame previous to the current frame.",
+      example: "(rotationZ - pRotationZ > 0 && rotationZ - pRotationZ < 270) ||",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/pRotationZ"
@@ -11742,6 +11773,7 @@ var p5_default = {
     turnAxis: {
       signature: "turnAxis",
       description: "When a device is rotated, the axis that triggers the deviceTurned() method is stored in the turnAxis variable.",
+      example: "if (turnAxis === 'X') {",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/turnAxis"
@@ -11786,6 +11818,7 @@ var p5_default = {
     keyIsPressed: {
       signature: "keyIsPressed",
       description: "A `Boolean` system variable that's `true` if any key is currently pressed and `false` if not.",
+      example: "if (keyIsPressed === true) {",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/keyIsPressed"
@@ -11793,6 +11826,7 @@ var p5_default = {
     key: {
       signature: "key",
       description: "A `String` system variable that contains the value of the last key typed.",
+      example: "'A gray square. The last key pressed is displayed at the center.'",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/key"
@@ -11800,6 +11834,7 @@ var p5_default = {
     keyCode: {
       signature: "keyCode",
       description: "A `Number` system variable that contains the code of the last key typed.",
+      example: "text(`${key} : ${keyCode}`, 50, 50)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/keyCode"
@@ -11836,6 +11871,7 @@ var p5_default = {
     movedX: {
       signature: "movedX",
       description: "A `Number` system variable that tracks the mouse's horizontal movement.",
+      example: "if (movedX > 0) {",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/movedX"
@@ -11843,6 +11879,7 @@ var p5_default = {
     movedY: {
       signature: "movedY",
       description: "A `Number` system variable that tracks the mouse's vertical movement.",
+      example: "if (movedY > 0) {",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/movedY"
@@ -11850,6 +11887,7 @@ var p5_default = {
     mouseX: {
       signature: "mouseX",
       description: "A `Number` system variable that tracks the mouse's horizontal position.",
+      example: "line(mouseX, 0, mouseX, 100)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/mouseX"
@@ -11857,6 +11895,7 @@ var p5_default = {
     mouseY: {
       signature: "mouseY",
       description: "A `Number` system variable that tracks the mouse's vertical position.",
+      example: "line(0, mouseY, 100, mouseY)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/mouseY"
@@ -11864,6 +11903,7 @@ var p5_default = {
     pmouseX: {
       signature: "pmouseX",
       description: "A `Number` system variable that tracks the mouse's previous horizontal position.",
+      example: "line(pmouseX, pmouseY, mouseX, mouseY)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/pmouseX"
@@ -11871,6 +11911,7 @@ var p5_default = {
     pmouseY: {
       signature: "pmouseY",
       description: "A `Number` system variable that tracks the mouse's previous vertical position.",
+      example: "line(pmouseX, pmouseY, mouseX, mouseY)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/pmouseY"
@@ -11878,6 +11919,7 @@ var p5_default = {
     winMouseX: {
       signature: "winMouseX",
       description: "A `Number` variable that tracks the mouse's horizontal position within the browser.",
+      example: "text(`x: ${winMouseX} y: ${winMouseY}`, 50, 50)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/winMouseX"
@@ -11885,6 +11927,7 @@ var p5_default = {
     winMouseY: {
       signature: "winMouseY",
       description: "A `Number` variable that tracks the mouse's vertical position within the browser.",
+      example: "text(`x: ${winMouseX} y: ${winMouseY}`, 50, 50)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/winMouseY"
@@ -11892,6 +11935,7 @@ var p5_default = {
     pwinMouseX: {
       signature: "pwinMouseX",
       description: "A `Number` variable that tracks the mouse's previous horizontal position within the browser.",
+      example: "let d = winMouseX - pwinMouseX",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/pwinMouseX"
@@ -11899,6 +11943,7 @@ var p5_default = {
     pwinMouseY: {
       signature: "pwinMouseY",
       description: "A `Number` variable that tracks the mouse's previous vertical position within the browser.",
+      example: "let d = winMouseY - pwinMouseY",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/pwinMouseY"
@@ -11906,6 +11951,7 @@ var p5_default = {
     mouseButton: {
       signature: "mouseButton",
       description: "A String system variable that contains the value of the last mouse button pressed.",
+      example: "text(mouseButton, 50, 50)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/mouseButton"
@@ -11913,6 +11959,7 @@ var p5_default = {
     mouseIsPressed: {
       signature: "mouseIsPressed",
       description: "A `Boolean` system variable that's `true` if the mouse is pressed and `false` if not.",
+      example: "text(mouseIsPressed, 25, 50)",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/mouseIsPressed"
@@ -11985,6 +12032,7 @@ var p5_default = {
     touches: {
       signature: "touches",
       description: "An `Array` of all the current touch points on a touchscreen device.",
+      example: "'A gray square. White circles appear where the user touches the square.'",
       kind: "variable",
       category: "Events",
       sourceUrl: "https://p5js.org/reference/#/p5/touches"
@@ -12085,6 +12133,7 @@ var p5_default = {
     pixels: {
       signature: "pixels",
       description: "An array containing the color of each pixel on the canvas.",
+      example: "pixels[index] = 0",
       kind: "variable",
       category: "Image",
       sourceUrl: "https://p5js.org/reference/#/p5/pixels"

@@ -56,6 +56,11 @@ function renderSignature(name, overload) {
 
 function extractExample(name, ex) {
   if (!Array.isArray(ex) || ex.length === 0) return undefined
+  // Call expression (`name(...)`) OR identifier usage (`HSB`, `PI`) — the
+  // latter covers constants and non-function properties whose example is
+  // an `ellipseMode(CENTER)` style reference rather than a call.
+  const callRe = new RegExp(`(?:^|[^\\w.])${name}\\s*\\(`)
+  const refRe = new RegExp(`(?:^|[^\\w.])${name}(?:$|[^\\w])`)
   for (const block of ex) {
     const codeMatch = /<code>([\s\S]*?)<\/code>/.exec(block)
     const code = (codeMatch?.[1] ?? block).trim()
@@ -63,15 +68,29 @@ function extractExample(name, ex) {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
-    const callRe = new RegExp(`(?:^|[^\\w.])${name}\\s*\\(`)
-    const direct = lines.find(
-      (l) =>
-        callRe.test(l) &&
-        !l.startsWith('//') &&
-        !l.startsWith('function ') &&
-        !l.startsWith('describe('),
-    )
+    // Only skip the boilerplate `describe('…')` calls when the entry
+    // we're building isn't the `describe` function itself — otherwise
+    // we'd throw away `describe`'s own example.
+    const isDescribe = name === 'describe'
+    const pick = (re) =>
+      lines.find(
+        (l) =>
+          re.test(l) &&
+          !l.startsWith('//') &&
+          // Skip `function setup()` / `function draw()` declarations —
+          // they'd match the call regex for `setup` / `draw` but aren't
+          // actually calls. Bare function-expression literals inside
+          // a `const fn = function foo()` still get picked via the
+          // remaining lines.
+          !l.startsWith('function ') &&
+          // `describe('…')` is boilerplate accessibility in every p5
+          // example; skip it UNLESS the entry being built IS describe.
+          (isDescribe || !l.startsWith('describe(')),
+      )
+    const direct = pick(callRe)
     if (direct) return direct.replace(/;$/, '')
+    const ref = pick(refRe)
+    if (ref) return ref.replace(/;$/, '')
   }
   return undefined
 }
