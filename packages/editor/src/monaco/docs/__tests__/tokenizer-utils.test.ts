@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import type { DocsIndex } from '../types'
-import { buildIdentifierAlternation } from '../tokenizer-utils'
+import {
+  buildIdentifierAlternation,
+  keywordRule,
+  methodRule,
+} from '../tokenizer-utils'
 
 const INDEX: DocsIndex = {
   runtime: 'demo',
@@ -68,5 +72,35 @@ describe('buildIdentifierAlternation', () => {
     expect(
       buildIdentifierAlternation({ runtime: 'x', docs: {} }),
     ).toBe('')
+  })
+})
+
+describe('keywordRule', () => {
+  it('returns a matcher rule when alternation is non-empty', () => {
+    const rules = keywordRule('foo|bar', 'keyword')
+    expect(rules).toHaveLength(1)
+    const [regex, token] = rules[0]
+    expect(regex.source).toBe('\\b(foo|bar)\\b')
+    expect(token).toBe('keyword')
+    expect('call foo here'.match(regex)?.[0]).toBe('foo')
+  })
+
+  it('returns [] for an empty alternation — prevents Monaco zero-width loop', () => {
+    expect(keywordRule('', 'keyword')).toEqual([])
+  })
+})
+
+describe('methodRule', () => {
+  it('returns a matcher rule for chain syntax', () => {
+    const rules = methodRule('rotate|scale', 'type')
+    expect(rules).toHaveLength(1)
+    const [regex, token] = rules[0]
+    expect(regex.source).toBe('\\.(rotate|scale)\\b')
+    expect(token).toBe('type')
+    expect('osc().rotate(5)'.match(regex)?.[0]).toBe('.rotate')
+  })
+
+  it('returns [] for an empty alternation', () => {
+    expect(methodRule('', 'type')).toEqual([])
   })
 })

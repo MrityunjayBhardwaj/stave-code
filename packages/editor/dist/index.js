@@ -9271,6 +9271,14 @@ function buildIdentifierAlternation(index, opts = {}) {
 function escapeForRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+function keywordRule(alternation, token) {
+  if (!alternation) return [];
+  return [[new RegExp(`\\b(${alternation})\\b`), token]];
+}
+function methodRule(alternation, token) {
+  if (!alternation) return [];
+  return [[new RegExp(`\\.(${alternation})\\b`), token]];
+}
 
 // src/monaco/language.ts
 function registerSonicPiLanguage(monaco) {
@@ -14150,14 +14158,6 @@ function registerP5JsLanguage(monaco) {
       { open: "`", close: "`" }
     ]
   });
-}
-function keywordRule(alternation, token) {
-  if (!alternation) return [];
-  return [[new RegExp(`\\b(${alternation})\\b`), token]];
-}
-function methodRule(alternation, token) {
-  if (!alternation) return [];
-  return [[new RegExp(`\\.(${alternation})\\b`), token]];
 }
 function ensureWorkspaceLanguages(monaco) {
   registerStrudelLanguage(monaco);

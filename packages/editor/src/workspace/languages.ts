@@ -54,7 +54,11 @@ import { registerStrudelHover } from '../monaco/strudelDocs'
 import { registerP5Providers, P5_DOCS_INDEX } from '../monaco/docs/p5'
 import { registerHydraProviders, HYDRA_DOCS_INDEX } from '../monaco/docs/hydra'
 import { registerSonicPiProviders } from '../monaco/docs/sonicpi'
-import { buildIdentifierAlternation } from '../monaco/docs/tokenizer-utils'
+import {
+  buildIdentifierAlternation,
+  keywordRule,
+  methodRule,
+} from '../monaco/docs/tokenizer-utils'
 import type { WorkspaceLanguage } from './types'
 
 /**
@@ -302,28 +306,6 @@ function registerP5JsLanguage(monaco: typeof Monaco): void {
       { open: '`', close: '`' },
     ],
   })
-}
-
-/**
- * Guard against empty alternations — an empty capture group in a Monaco
- * Monarch rule matches the empty string on every position and crashes the
- * tokenizer with "no progress in tokenizer in rule". Skipping the rule is
- * safer than emitting a sentinel that would never match.
- */
-function keywordRule(
-  alternation: string,
-  token: string,
-): Array<[RegExp, string]> {
-  if (!alternation) return []
-  return [[new RegExp(`\\b(${alternation})\\b`), token]]
-}
-
-function methodRule(
-  alternation: string,
-  token: string,
-): Array<[RegExp, string]> {
-  if (!alternation) return []
-  return [[new RegExp(`\\.(${alternation})\\b`), token]]
 }
 
 /**

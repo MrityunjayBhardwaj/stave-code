@@ -52,3 +52,30 @@ export function buildIdentifierAlternation(
 function escapeForRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+/**
+ * Build a Monaco Monarch rule that matches a word-boundary-wrapped
+ * alternation and emits `token`. Returns an empty array when the
+ * alternation is empty — an empty capture group (`\b()\b`) matches the
+ * empty string at every position and crashes the tokenizer with
+ * "no progress in tokenizer in rule".
+ */
+export function keywordRule(
+  alternation: string,
+  token: string,
+): Array<[RegExp, string]> {
+  if (!alternation) return []
+  return [[new RegExp(`\\b(${alternation})\\b`), token]]
+}
+
+/**
+ * Same guard as `keywordRule` but for method-chain syntax — matches
+ * `.name\b` so chained Hydra/p5 calls tokenize as methods.
+ */
+export function methodRule(
+  alternation: string,
+  token: string,
+): Array<[RegExp, string]> {
+  if (!alternation) return []
+  return [[new RegExp(`\\.(${alternation})\\b`), token]]
+}
