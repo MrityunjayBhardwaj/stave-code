@@ -1,14 +1,23 @@
 import type * as Monaco from 'monaco-editor'
+import type { DocsIndex, RuntimeDoc } from './docs/types'
+import { createHoverProvider } from './docs/providers'
 
 // ---------------------------------------------------------------------------
 // Strudel function documentation
 // ---------------------------------------------------------------------------
+//
+// Hand-curated until upstream publishes a structured JSDoc dump. The
+// Strudel repo generates `doc.json` at build time via
+// `npm run jsdoc-json`, but doesn't commit or host it as a static asset —
+// see `packages/editor/scripts/fetch-docs/strudel.mjs` for the path we'd
+// need to automate. Until then these entries are maintained manually.
+//
+// `StrudelDoc` is a structural subset of `RuntimeDoc` (kept as an alias
+// so existing imports keep working); entries are indexed through
+// `STRUDEL_DOCS_INDEX` and served by the same factory the other
+// runtimes use.
 
-export interface StrudelDoc {
-  signature: string
-  description: string
-  example: string
-}
+export type StrudelDoc = RuntimeDoc & { example: string }
 
 export const STRUDEL_DOCS: Record<string, StrudelDoc> = {
   note: {
@@ -169,31 +178,20 @@ export const STRUDEL_DOCS: Record<string, StrudelDoc> = {
 }
 
 // ---------------------------------------------------------------------------
-// Hover provider
+// Index + hover provider — uses the shared factory so the markdown layout
+// matches p5js / hydra / sonicpi hovers exactly.
 // ---------------------------------------------------------------------------
 
-export function registerStrudelHover(monaco: typeof Monaco): Monaco.IDisposable {
-  return monaco.languages.registerHoverProvider('strudel', {
-    provideHover(model, position) {
-      const word = model.getWordAtPosition(position)
-      if (!word) return null
+export const STRUDEL_DOCS_INDEX: DocsIndex = {
+  runtime: 'strudel',
+  docs: STRUDEL_DOCS,
+  meta: {
+    source: 'hand-curated',
+  },
+}
 
-      const doc = STRUDEL_DOCS[word.word]
-      if (!doc) return null
-
-      const contents: Monaco.IMarkdownString[] = [
-        { value: `\`\`\`typescript\n${doc.signature}\n\`\`\`` },
-        { value: doc.description },
-        { value: `**Example:** \`${doc.example}\`` },
-      ]
-
-      return {
-        range: new monaco.Range(
-          position.lineNumber, word.startColumn,
-          position.lineNumber, word.endColumn
-        ),
-        contents,
-      }
-    },
-  })
+export function registerStrudelHover(
+  monaco: typeof Monaco,
+): Monaco.IDisposable {
+  return createHoverProvider(monaco, STRUDEL_DOCS_INDEX)
 }

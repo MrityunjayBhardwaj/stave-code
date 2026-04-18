@@ -6759,6 +6759,138 @@ function registerStrudelLanguage(monaco) {
   });
 }
 
+// src/monaco/docs/types.ts
+function resolveDoc(index, word) {
+  const direct = index.docs[word];
+  if (direct) return { name: word, doc: direct };
+  const aliasTarget = index.aliases?.[word];
+  if (aliasTarget && index.docs[aliasTarget]) {
+    return { name: aliasTarget, doc: index.docs[aliasTarget] };
+  }
+  return null;
+}
+
+// src/monaco/docs/providers.ts
+function createHoverProvider(monaco, index) {
+  return monaco.languages.registerHoverProvider(index.runtime, {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const hit = resolveDoc(index, word.word);
+      if (!hit) return null;
+      return {
+        range: new monaco.Range(
+          position.lineNumber,
+          word.startColumn,
+          position.lineNumber,
+          word.endColumn
+        ),
+        contents: renderHoverContents(hit.name, hit.doc)
+      };
+    }
+  });
+}
+function renderHoverContents(name2, doc) {
+  const out2 = [];
+  out2.push({ value: "```typescript\n" + doc.signature + "\n```" });
+  if (doc.description) out2.push({ value: doc.description });
+  if (doc.example) out2.push({ value: "**Example:** `" + doc.example + "`" });
+  if (doc.returns) out2.push({ value: "**Returns:** " + doc.returns });
+  if (doc.sourceUrl) {
+    out2.push({
+      value: "[Reference \u2192](" + doc.sourceUrl + ")",
+      isTrusted: true
+    });
+  }
+  return out2;
+}
+var KIND_TO_MONACO = {
+  function: "Function",
+  method: "Method",
+  variable: "Variable",
+  constant: "Constant",
+  keyword: "Keyword",
+  synth: "Module",
+  sample: "Value",
+  fx: "Interface"
+};
+function kindOf(monaco, kind) {
+  const mapped = kind ? KIND_TO_MONACO[kind] : "Function";
+  return monaco.languages.CompletionItemKind[mapped];
+}
+function createDotCompletionProvider(monaco, index) {
+  return monaco.languages.registerCompletionItemProvider(index.runtime, {
+    triggerCharacters: ["."],
+    provideCompletionItems(model, position) {
+      const lineBefore = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
+      if (!/[)\]"'`\w]\.[\w]*$/.test(lineBefore)) {
+        return { suggestions: [] };
+      }
+      const word = model.getWordUntilPosition(position);
+      const range2 = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      };
+      return {
+        suggestions: Object.entries(index.docs).map(
+          ([name2, doc]) => toSuggestion(monaco, name2, doc, range2)
+        )
+      };
+    }
+  });
+}
+function createIdentifierCompletionProvider(monaco, index) {
+  return monaco.languages.registerCompletionItemProvider(index.runtime, {
+    provideCompletionItems(model, position) {
+      const word = model.getWordUntilPosition(position);
+      const prefix = word.word;
+      const range2 = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      };
+      const entries = Object.entries(index.docs).filter(
+        ([name2]) => prefix.length === 0 ? true : name2.toLowerCase().startsWith(prefix.toLowerCase())
+      );
+      return {
+        suggestions: entries.map(
+          ([name2, doc]) => toSuggestion(monaco, name2, doc, range2)
+        )
+      };
+    }
+  });
+}
+function toSuggestion(monaco, name2, doc, range2) {
+  const documentation = {
+    value: (doc.description ?? "") + (doc.example ? "\n\n**Example:** `" + doc.example + "`" : "") + (doc.sourceUrl ? "\n\n[Reference \u2192](" + doc.sourceUrl + ")" : ""),
+    isTrusted: true
+  };
+  return {
+    label: name2,
+    kind: kindOf(monaco, doc.kind),
+    insertText: name2,
+    detail: doc.signature,
+    documentation,
+    range: range2
+  };
+}
+function registerRuntimeProviders(monaco, index, toggle = {
+  hover: true,
+  dotCompletion: true,
+  identifierCompletion: true
+}) {
+  const disposables = [];
+  if (toggle.hover) disposables.push(createHoverProvider(monaco, index));
+  if (toggle.dotCompletion)
+    disposables.push(createDotCompletionProvider(monaco, index));
+  if (toggle.identifierCompletion)
+    disposables.push(createIdentifierCompletionProvider(monaco, index));
+  return disposables;
+}
+
 // src/monaco/strudelDocs.ts
 var STRUDEL_DOCS = {
   note: {
@@ -6917,31 +7049,11 @@ var STRUDEL_DOCS = {
     example: 'note("c4 e4").room(0.5).orbit(1)'
   }
 };
+var STRUDEL_DOCS_INDEX = {
+  runtime: "strudel",
+  docs: STRUDEL_DOCS};
 function registerStrudelHover(monaco) {
-  return monaco.languages.registerHoverProvider("strudel", {
-    provideHover(model, position) {
-      const word = model.getWordAtPosition(position);
-      if (!word) return null;
-      const doc = STRUDEL_DOCS[word.word];
-      if (!doc) return null;
-      const contents = [
-        { value: `\`\`\`typescript
-${doc.signature}
-\`\`\`` },
-        { value: doc.description },
-        { value: `**Example:** \`${doc.example}\`` }
-      ];
-      return {
-        range: new monaco.Range(
-          position.lineNumber,
-          word.startColumn,
-          position.lineNumber,
-          word.endColumn
-        ),
-        contents
-      };
-    }
-  });
+  return createHoverProvider(monaco, STRUDEL_DOCS_INDEX);
 }
 
 // src/monaco/strudelCompletions.ts
@@ -7012,138 +7124,6 @@ function registerStrudelNoteCompletions(monaco) {
       };
     }
   });
-}
-
-// src/monaco/docs/types.ts
-function resolveDoc(index, word) {
-  const direct = index.docs[word];
-  if (direct) return { name: word, doc: direct };
-  const aliasTarget = index.aliases?.[word];
-  if (aliasTarget && index.docs[aliasTarget]) {
-    return { name: aliasTarget, doc: index.docs[aliasTarget] };
-  }
-  return null;
-}
-
-// src/monaco/docs/providers.ts
-function createHoverProvider(monaco, index) {
-  return monaco.languages.registerHoverProvider(index.runtime, {
-    provideHover(model, position) {
-      const word = model.getWordAtPosition(position);
-      if (!word) return null;
-      const hit = resolveDoc(index, word.word);
-      if (!hit) return null;
-      return {
-        range: new monaco.Range(
-          position.lineNumber,
-          word.startColumn,
-          position.lineNumber,
-          word.endColumn
-        ),
-        contents: renderHoverContents(hit.name, hit.doc)
-      };
-    }
-  });
-}
-function renderHoverContents(name2, doc) {
-  const out2 = [];
-  out2.push({ value: "```typescript\n" + doc.signature + "\n```" });
-  if (doc.description) out2.push({ value: doc.description });
-  if (doc.example) out2.push({ value: "**Example:** `" + doc.example + "`" });
-  if (doc.returns) out2.push({ value: "**Returns:** " + doc.returns });
-  if (doc.sourceUrl) {
-    out2.push({
-      value: "[Reference \u2192](" + doc.sourceUrl + ")",
-      isTrusted: true
-    });
-  }
-  return out2;
-}
-var KIND_TO_MONACO = {
-  function: "Function",
-  method: "Method",
-  variable: "Variable",
-  constant: "Constant",
-  keyword: "Keyword",
-  synth: "Module",
-  sample: "Value",
-  fx: "Interface"
-};
-function kindOf(monaco, kind) {
-  const mapped = kind ? KIND_TO_MONACO[kind] : "Function";
-  return monaco.languages.CompletionItemKind[mapped];
-}
-function createDotCompletionProvider(monaco, index) {
-  return monaco.languages.registerCompletionItemProvider(index.runtime, {
-    triggerCharacters: ["."],
-    provideCompletionItems(model, position) {
-      const lineBefore = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
-      if (!/[)\]"'`\w]\.[\w]*$/.test(lineBefore)) {
-        return { suggestions: [] };
-      }
-      const word = model.getWordUntilPosition(position);
-      const range2 = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: word.startColumn,
-        endColumn: word.endColumn
-      };
-      return {
-        suggestions: Object.entries(index.docs).map(
-          ([name2, doc]) => toSuggestion(monaco, name2, doc, range2)
-        )
-      };
-    }
-  });
-}
-function createIdentifierCompletionProvider(monaco, index) {
-  return monaco.languages.registerCompletionItemProvider(index.runtime, {
-    provideCompletionItems(model, position) {
-      const word = model.getWordUntilPosition(position);
-      const prefix = word.word;
-      const range2 = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: word.startColumn,
-        endColumn: word.endColumn
-      };
-      const entries = Object.entries(index.docs).filter(
-        ([name2]) => prefix.length === 0 ? true : name2.toLowerCase().startsWith(prefix.toLowerCase())
-      );
-      return {
-        suggestions: entries.map(
-          ([name2, doc]) => toSuggestion(monaco, name2, doc, range2)
-        )
-      };
-    }
-  });
-}
-function toSuggestion(monaco, name2, doc, range2) {
-  const documentation = {
-    value: (doc.description ?? "") + (doc.example ? "\n\n**Example:** `" + doc.example + "`" : "") + (doc.sourceUrl ? "\n\n[Reference \u2192](" + doc.sourceUrl + ")" : ""),
-    isTrusted: true
-  };
-  return {
-    label: name2,
-    kind: kindOf(monaco, doc.kind),
-    insertText: name2,
-    detail: doc.signature,
-    documentation,
-    range: range2
-  };
-}
-function registerRuntimeProviders(monaco, index, toggle = {
-  hover: true,
-  dotCompletion: true,
-  identifierCompletion: true
-}) {
-  const disposables = [];
-  if (toggle.hover) disposables.push(createHoverProvider(monaco, index));
-  if (toggle.dotCompletion)
-    disposables.push(createDotCompletionProvider(monaco, index));
-  if (toggle.identifierCompletion)
-    disposables.push(createIdentifierCompletionProvider(monaco, index));
-  return disposables;
 }
 
 // src/monaco/docs/data/p5.json
