@@ -6344,6 +6344,29 @@ function setZoneCropOverride(fileId, trackKey, cropRegion, vizId) {
     }
   }, STRUCT_ORIGIN);
 }
+function getZoneHeightOverride(fileId, trackKey) {
+  ensureDoc();
+  const overrides = ensureZoneOverridesMap(fileId);
+  if (!overrides) return void 0;
+  const entry = overrides.get(trackKey);
+  return entry?.heightPx;
+}
+function setZoneHeightOverride(fileId, trackKey, heightPx) {
+  ensureDoc();
+  const overrides = ensureZoneOverridesMap(fileId);
+  if (!overrides) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const existing = overrides.get(trackKey) ?? {};
+    if (heightPx === null) {
+      const { heightPx: _, ...rest } = existing;
+      if (Object.keys(rest).length === 0) overrides.delete(trackKey);
+      else overrides.set(trackKey, rest);
+    } else {
+      overrides.set(trackKey, { ...existing, heightPx });
+    }
+  }, STRUCT_ORIGIN);
+}
 function pruneZoneOverrides(fileId, currentViz) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
@@ -8137,6 +8160,57 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         vizDecoration
       };
       zoneEntries.push(entry);
+      const resizeHandle = document.createElement("div");
+      resizeHandle.style.cssText = `
+        position:absolute;bottom:0;left:0;right:0;height:6px;
+        cursor:row-resize;z-index:50;
+        background:transparent;transition:background 150ms;
+      `;
+      resizeHandle.addEventListener("mouseenter", () => {
+        resizeHandle.style.background = "var(--accent-strong, #7c7cff)";
+        resizeHandle.style.opacity = "0.6";
+      });
+      resizeHandle.addEventListener("mouseleave", () => {
+        if (!resizeHandle.dataset.dragging) {
+          resizeHandle.style.background = "transparent";
+          resizeHandle.style.opacity = "1";
+        }
+      });
+      resizeHandle.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizeHandle.dataset.dragging = "1";
+        entry.container.dataset.resizing = "1";
+        const startY = e.clientY;
+        const startH = entry.zoneDesc.heightInPx;
+        const onMove = (ev) => {
+          const delta = ev.clientY - startY;
+          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
+          entry.container.style.height = `${newH}px`;
+          entry.zoneDesc.heightInPx = newH;
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          delete resizeHandle.dataset.dragging;
+          delete entry.container.dataset.resizing;
+          resizeHandle.style.background = "transparent";
+          resizeHandle.style.opacity = "1";
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
+          if (fileId) {
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx);
+          }
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+      for (const evt of ["mousedown", "mouseup", "pointerdown", "pointerup"]) {
+        resizeHandle.addEventListener(evt, (e) => {
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+        }, true);
+      }
+      container.appendChild(resizeHandle);
       let refineAttempts = 0;
       const tryRefine = () => {
         refineAttempts++;
@@ -8183,8 +8257,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           entry.crop = override ?? preset?.cropRegion ?? FULL_CROP;
           const contentW = editor.getLayoutInfo().contentWidth || 400;
           const layout = computeLayout(contentW, entry.native, entry.crop);
-          entry.zoneDesc.heightInPx = layout.zoneH;
-          entry.container.style.height = `${layout.zoneH}px`;
+          const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+          const finalH = hOverride ?? layout.zoneH;
+          entry.zoneDesc.heightInPx = finalH;
+          entry.container.style.height = `${finalH}px`;
           accessor.layoutZone(entry.zoneId);
           applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
         }
@@ -8192,8 +8268,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       for (const entry of zoneEntries) {
         const contentW = editor.getLayoutInfo().contentWidth || 400;
         const layout = computeLayout(contentW, entry.native, entry.crop);
-        entry.zoneDesc.heightInPx = layout.zoneH;
-        entry.container.style.height = `${layout.zoneH}px`;
+        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+        const finalH = hOverride ?? layout.zoneH;
+        entry.zoneDesc.heightInPx = finalH;
+        entry.container.style.height = `${finalH}px`;
         applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
       }
     } catch {
@@ -8202,10 +8280,13 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
   const recomputeAllZones = () => {
     editor.changeViewZones((accessor) => {
       for (const entry of zoneEntries) {
+        if (entry.container.dataset.resizing) continue;
         const contentW = editor.getLayoutInfo().contentWidth || 400;
         const layout = computeLayout(contentW, entry.native, entry.crop);
-        entry.zoneDesc.heightInPx = layout.zoneH;
-        entry.container.style.height = `${layout.zoneH}px`;
+        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+        const finalH = hOverride ?? layout.zoneH;
+        entry.zoneDesc.heightInPx = finalH;
+        entry.container.style.height = `${finalH}px`;
         accessor.layoutZone(entry.zoneId);
         applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
       }
@@ -20960,6 +21041,7 @@ exports.getRuntimeProviderForLanguage = getRuntimeProviderForLanguage;
 exports.getSubfolderOrder = getSubfolderOrder;
 exports.getVizConfig = getVizConfig;
 exports.getZoneCropOverride = getZoneCropOverride;
+exports.getZoneHeightOverride = getZoneHeightOverride;
 exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;
@@ -21024,6 +21106,7 @@ exports.setProjectBackgroundFileId = setProjectBackgroundFileId;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setVizConfig = setVizConfig;
 exports.setZoneCropOverride = setZoneCropOverride;
+exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.startSampleSound = startSampleSound;
 exports.stopSampleSound = stopSampleSound;
 exports.subscribeToDocUpdate = subscribeToDocUpdate;

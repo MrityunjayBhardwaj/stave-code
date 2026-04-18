@@ -113,6 +113,8 @@ export {
   setChildOrder,
   getZoneCropOverride,
   setZoneCropOverride,
+  getZoneHeightOverride,
+  setZoneHeightOverride,
   pruneZoneOverrides,
   subscribeToZoneOverrides,
 } from './workspace/WorkspaceFile'

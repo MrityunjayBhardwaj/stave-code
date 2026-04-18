@@ -4,7 +4,7 @@ import type { VizRenderer, VizDescriptor } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
-import { getZoneCropOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
+import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
 
 export interface InlineZoneHandle {
   cleanup(): void
@@ -374,6 +374,62 @@ export function addInlineViewZones(
       }
       zoneEntries.push(entry)
 
+      // ── Resize handle (bottom edge) ──
+      // Thin strip at the bottom of the zone — reveals on hover, drag
+      // to resize the zone height. Persists via setZoneHeightOverride.
+      const resizeHandle = document.createElement('div')
+      resizeHandle.style.cssText = `
+        position:absolute;bottom:0;left:0;right:0;height:6px;
+        cursor:row-resize;z-index:50;
+        background:transparent;transition:background 150ms;
+      `
+      resizeHandle.addEventListener('mouseenter', () => {
+        resizeHandle.style.background = 'var(--accent-strong, #7c7cff)'
+        resizeHandle.style.opacity = '0.6'
+      })
+      resizeHandle.addEventListener('mouseleave', () => {
+        if (!resizeHandle.dataset.dragging) {
+          resizeHandle.style.background = 'transparent'
+          resizeHandle.style.opacity = '1'
+        }
+      })
+      resizeHandle.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        resizeHandle.dataset.dragging = '1'
+        entry.container.dataset.resizing = '1'
+        const startY = e.clientY
+        const startH = entry.zoneDesc.heightInPx
+        const onMove = (ev: MouseEvent) => {
+          const delta = ev.clientY - startY
+          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta))
+          // Update CSS only during drag — don't call changeViewZones
+          // or it triggers recomputeAllZones which resets the height.
+          entry.container.style.height = `${newH}px`
+          entry.zoneDesc.heightInPx = newH
+        }
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove)
+          document.removeEventListener('mouseup', onUp)
+          delete resizeHandle.dataset.dragging
+          delete entry.container.dataset.resizing
+          resizeHandle.style.background = 'transparent'
+          resizeHandle.style.opacity = '1'
+          // Commit the final height to Monaco + persist.
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
+          if (fileId) {
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx)
+          }
+        }
+        document.addEventListener('mousemove', onMove)
+        document.addEventListener('mouseup', onUp)
+      })
+      // Block Monaco from intercepting pointer events on the handle.
+      for (const evt of ['mousedown', 'mouseup', 'pointerdown', 'pointerup'] as const) {
+        resizeHandle.addEventListener(evt, (e) => { e.stopPropagation(); e.stopImmediatePropagation() }, true)
+      }
+      container.appendChild(resizeHandle)
+
       // p5's createCanvas(W, H) may pick dimensions that differ from the
       // preset's declared nativeSize. The transform math MUST use the
       // canvas's ACTUAL intrinsic size or the viz overflows its zone.
@@ -441,8 +497,11 @@ export function addInlineViewZones(
           entry.crop = override ?? preset?.cropRegion ?? FULL_CROP
           const contentW = editor.getLayoutInfo().contentWidth || 400
           const layout = computeLayout(contentW, entry.native, entry.crop)
-          entry.zoneDesc.heightInPx = layout.zoneH
-          entry.container.style.height = `${layout.zoneH}px`
+          // User height override (drag-to-resize) takes precedence.
+          const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+          const finalH = hOverride ?? layout.zoneH
+          entry.zoneDesc.heightInPx = finalH
+          entry.container.style.height = `${finalH}px`
           accessor.layoutZone(entry.zoneId)
           applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
         }
@@ -452,8 +511,10 @@ export function addInlineViewZones(
       for (const entry of zoneEntries) {
         const contentW = editor.getLayoutInfo().contentWidth || 400
         const layout = computeLayout(contentW, entry.native, entry.crop)
-        entry.zoneDesc.heightInPx = layout.zoneH
-        entry.container.style.height = `${layout.zoneH}px`
+        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+        const finalH = hOverride ?? layout.zoneH
+        entry.zoneDesc.heightInPx = finalH
+        entry.container.style.height = `${finalH}px`
         applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
       }
     } catch { /* ignore */ }
@@ -466,10 +527,15 @@ export function addInlineViewZones(
   const recomputeAllZones = () => {
     editor.changeViewZones((accessor) => {
       for (const entry of zoneEntries) {
+        // Skip zones being actively resized — their height is
+        // controlled by the drag handler, not layout computation.
+        if (entry.container.dataset.resizing) continue
         const contentW = editor.getLayoutInfo().contentWidth || 400
         const layout = computeLayout(contentW, entry.native, entry.crop)
-        entry.zoneDesc.heightInPx = layout.zoneH
-        entry.container.style.height = `${layout.zoneH}px`
+        const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+        const finalH = hOverride ?? layout.zoneH
+        entry.zoneDesc.heightInPx = finalH
+        entry.container.style.height = `${finalH}px`
         accessor.layoutZone(entry.zoneId)
         applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
       }

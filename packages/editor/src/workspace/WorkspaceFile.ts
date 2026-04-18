@@ -534,6 +534,9 @@ export interface ZoneOverride {
    *  detect when the user switches .viz("A") → .viz("B") and the old crop
    *  no longer matches the new viz's aspect. */
   vizId?: string
+  /** User-set zone height in pixels (drag-to-resize). Overrides the
+   *  layout-computed height. Cleared when the user resets the crop. */
+  heightPx?: number
 }
 
 const zoneOverrideSubscribers = new Map<string, Set<Subscriber>>()
@@ -600,6 +603,38 @@ export function setZoneCropOverride(
       overrides.delete(trackKey)
     } else {
       overrides.set(trackKey, { cropRegion, vizId })
+    }
+  }, STRUCT_ORIGIN)
+}
+
+export function getZoneHeightOverride(
+  fileId: string,
+  trackKey: string,
+): number | undefined {
+  ensureDoc()
+  const overrides = ensureZoneOverridesMap(fileId)
+  if (!overrides) return undefined
+  const entry = overrides.get(trackKey) as ZoneOverride | undefined
+  return entry?.heightPx
+}
+
+export function setZoneHeightOverride(
+  fileId: string,
+  trackKey: string,
+  heightPx: number | null,
+): void {
+  ensureDoc()
+  const overrides = ensureZoneOverridesMap(fileId)
+  if (!overrides) return
+  const doc = ensureDoc()
+  doc.transact(() => {
+    const existing = (overrides.get(trackKey) as ZoneOverride | undefined) ?? {}
+    if (heightPx === null) {
+      const { heightPx: _, ...rest } = existing
+      if (Object.keys(rest).length === 0) overrides.delete(trackKey)
+      else overrides.set(trackKey, rest)
+    } else {
+      overrides.set(trackKey, { ...existing, heightPx })
     }
   }, STRUCT_ORIGIN)
 }
