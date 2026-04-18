@@ -11450,6 +11450,2448 @@ function registerHydraProviders(monaco) {
   });
 }
 
+// src/monaco/docs/data/sonicpi.json
+var sonicpi_default = {
+  runtime: "sonicpi",
+  docs: {
+    set: {
+      signature: "set(time_state_key: default, value: anything)",
+      description: "Store information in the Time State for the current time for either the current or any other thread.",
+      example: "set :foo, 1 #=> Stores the value 1 with key :foo",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    cue: {
+      signature: "cue(cue_id: symbol)",
+      description: "Send a heartbeat synchronisation message containing the (virtual) timestamp of the current thread.",
+      example: "in_thread do sync :foo # this parks the current thread waiting for a foo cue message to be received. sample :ambi_lunar_land end sleep 5 cue :foo # We send a cue message from the main thread. # This then unblocks the thread above and we then hear the sample",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    get: {
+      signature: "get(time_state_key: default)",
+      description: "Retrieve information from Time State set prior to the current time from either the current or any other thread.",
+      example: "get :foo #=> returns the last value set as :foo, or nil",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_swing: {
+      signature: "with_swing(shift: beats, pulse: number, tick: symbol, offset: number)",
+      description: "Runs block within a `time_warp` except for once every `pulse` consecutive runs (defaulting to 4).",
+      example: "live_loop :foo do with_swing 0.1 do sample :elec_beep # plays the :elec_beep sample late except on the 1st beat of every 4 end sleep 0.25 end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tuplets: {
+      signature: "tuplets(tuplet_list: list)",
+      description: "Runs the block with tuplet timing and optional swing.",
+      example: "tuplets [70, [72, 72], 70, [82, 82, 82]] do |n| play n # plays 70, # then at double speed, 72, 72, # followed by another 70, # then 82, 82, 82 as triplets end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    run_file: {
+      signature: "run_file(filename: path)",
+      description: "Reads the full contents of the file with `path` and executes it in a new Run.",
+      example: 'run_file "~/path/to/sonic-pi-code.rb" #=> will run the contents of this file',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    run_code: {
+      signature: "run_code(code: string)",
+      description: "Executes the code passed as a string in a new Run.",
+      example: 'run_code "sample :ambi_lunar_land" #=> will play the :ambi_lunar_land sample',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    eval_file: {
+      signature: "eval_file(filename: path)",
+      description: "Reads the full contents of the file with `path` and executes within the current thread like a function call.",
+      example: 'eval_file "~/path/to/sonic-pi-code.rb" #=> will run the contents of this file',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_osc_logging: {
+      signature: "use_osc_logging(true_or_false: boolean)",
+      description: "Enable or disable log messages created on OSC functions.",
+      example: "use_osc_logging true # Turn on OSC logging",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_osc_logging: {
+      signature: "with_osc_logging(true_or_false: boolean)",
+      description: "Similar to use_osc_logging except only applies to code within supplied `do`/`end` block.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_osc: {
+      signature: "use_osc(hostname: string, port: number)",
+      description: "Sets the destination host and port that `osc` will send messages to.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_osc: {
+      signature: "with_osc(hostname: string, port: number)",
+      description: "Sets the destination host and port that `osc` will send messages to for the given do/end block.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    osc_send: {
+      signature: "osc_send(hostname: string, port: number, path: osc_path, args: list)",
+      description: "Similar to `osc` except ignores any `use_osc` settings and sends the OSC message directly to the specified `hostname` and `port`.",
+      example: 'osc_send "localhost\\',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    osc: {
+      signature: "osc(path: arguments)",
+      description: "Sends an OSC message to the current host and port specified by `use_osc` or `with_osc`.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    reset: {
+      signature: "reset",
+      description: "All settings such as the current synth, BPM, random stream and tick values will be reset to the values inherited from the parent thread.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    clear: {
+      signature: "clear",
+      description: "All settings such as the current synth, BPM, random stream and tick values will be reset to their defaults.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    time_warp: {
+      signature: "time_warp(delta_time: number)",
+      description: "The code within the given block is executed with the specified delta time shift specified in beats.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick_set: {
+      signature: "tick_set(value: number)",
+      description: "Set the default tick to the specified `value`.",
+      example: "tick_set 40 # set default tick to 40 puts look #=> 40",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick_reset: {
+      signature: "tick_reset",
+      description: "Reset default tick to 0.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick_reset_all: {
+      signature: "tick_reset_all",
+      description: "Reset all ticks - default and keyed",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick: {
+      signature: "tick(key: symbol)",
+      description: "Increment the default tick by 1 and return value.",
+      example: "puts tick #=> 0 puts tick #=> 1 puts tick #=> 2 puts tick #=> 3",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    look: {
+      signature: "look",
+      description: "Read and return value of default tick.",
+      example: "puts look #=> 0 puts look #=> 0 puts look #=> 0 # look doesn't advance the tick, it just returns the current value",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    stop: {
+      signature: "stop",
+      description: "Stops the current thread or if not in a thread, stops the current run.",
+      example: "sample :loop_amen #=> this sample is played until completion sleep 0.5 stop #=> signal to stop executing this run sample :loop_garzul #=> this never executes",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    on: {
+      signature: "on(condition: truthy)",
+      description: "Optionally evaluate the block depending on the truthiness of the supplied condition.",
+      example: "on true do play 70 #=> will play 70 as true is truthy end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    bools: {
+      signature: "bools(list: array)",
+      description: "Create a new ring of booleans values from 1s and 0s, which can be easier to write and manipulate in a live setting.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    stretch: {
+      signature: "stretch(list: anything, count: number)",
+      description: "Stretches a list of values each value repeated count times.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    knit: {
+      signature: "knit(value: anything, count: number)",
+      description: "Knits a series of value, count pairs to create a ring buffer where each value is repeated count times.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    spread: {
+      signature: "spread(num_accents: number, size: number)",
+      description: "Creates a new ring of boolean values which space a given number of accents as evenly as possible throughout a bar.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    range: {
+      signature: "range(start: number, finish: number, step_size: number)",
+      description: "Create a new ring buffer from the range arguments (start, finish and step size).",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    line: {
+      signature: "line(start: number, finish: number)",
+      description: "Create a ring buffer representing a straight line between start and finish of steps elements.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    halves: {
+      signature: "halves(start: number, num_halves: int)",
+      description: "Create a ring containing the results of successive halving of the `start` value.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    doubles: {
+      signature: "doubles(start: number, num_doubles: int)",
+      description: "Create a ring containing the results of successive doubling of the `start` value.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    vector: {
+      signature: "vector(list: array)",
+      description: "Create a new immutable vector from args.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ring: {
+      signature: "ring(list: array)",
+      description: "Create a new immutable ring buffer from args.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    map: {
+      signature: "map(list: array)",
+      description: "Create a new immutable key/value map from args.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ramp: {
+      signature: "ramp(list: array)",
+      description: "Create a new immutable ramp vector from args.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    choose: {
+      signature: "choose(list: array)",
+      description: "Choose an element at random from a list (array).",
+      example: "loop do play choose([60, 64, 67]) #=> plays one of 60, 64 or 67 at random sleep 1 play chord(:c, :major).choose #=> You can also call .choose on the list sleep 1 end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    pick: {
+      signature: "pick(list: array, n: number_or_nil)",
+      description: "Pick n elements from list or ring.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    inc: {
+      signature: "inc(n: number)",
+      description: "Increment a number by `1`.",
+      example: "inc 1 # returns 2",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    dec: {
+      signature: "dec(n: number)",
+      description: "Decrement a number by `1`.",
+      example: "dec 1 # returns 0",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    loop: {
+      signature: "loop",
+      description: "Given a do/end block, repeats it forever.",
+      example: "play 70 # note 70 is played loop do play 50 # This loop will repeat notes 50 and 62 forever sleep 1 play 62 sleep 2 end play 80 # This is *never* played as the program is trapped in the loop above",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    live_loop: {
+      signature: "live_loop(name: symbol)",
+      description: "Loop the do/end block forever.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    block_duration: {
+      signature: "block_duration",
+      description: "Given a block, runs it and returns the amount of time that has passed.",
+      example: "dur = block_duration do play 50 sleep 1 play 62 sleep 2 end puts dur #=> Returns 3 as 3 seconds have passed within the block",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    block_slept: {
+      signature: "block_slept",
+      description: "Given a block, runs it and returns whether or not the block contained sleeps or syncs",
+      example: "slept = block_slept? do play 50 sleep 1 play 62 sleep 2 end puts slept #=> Returns true as there were sleeps in the block",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    at: {
+      signature: "at(times: list, params: list)",
+      description: "Given a list of times, run the block once after waiting each given time.",
+      example: "at 4 do sample :ambi_choir # play sample after waiting for 4 beats end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    version: {
+      signature: "version",
+      description: "Return information representing the current version of Sonic Pi.",
+      example: "puts version # => Prints out the current version such as v2.0.1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    spark_graph: {
+      signature: "spark_graph",
+      description: "Given a list of numeric values, this method turns them into a string of bar heights.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    spark: {
+      signature: "spark",
+      description: "Given a list of numeric values, this method turns them into a string of bar heights and prints them out.",
+      example: "spark (range 1, 5) #=> \u2581\u2583\u2585\u2588",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    defonce: {
+      signature: "defonce(name: symbol)",
+      description: "Allows you to assign the result of some code to a name, with the property that the code will only execute once - therefore stopping re-definitions.",
+      example: `defonce :foo do # Define a new function called foo sleep 1 # Sleep for a beat in the function definition. Note that this amount # of time in seconds will depend on the current BPM of the live_loop # or thread calling this function. puts "hello" # Print hello 10 # Return a value of 10 end # Call foo on its own puts foo # The run sleeps for a beat and prints "hello" before returning 10 # Try it again: puts foo # This time the run doesn't sleep or print anything out. However, 10 is still returned. defonce :foo do # Try redefining foo puts "you can't redefine me" 15 end puts foo # We still don't see any printing or sleeping, and the result is still 10 # You can use foo anywhere you would use normal code. # For example, in a block: 3.times do play foo # play 10 end`,
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ndefine: {
+      signature: "ndefine(name: symbol)",
+      description: "Does nothing.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    define: {
+      signature: "define(name: symbol)",
+      description: "Allows you to group a bunch of code and give it your own name for future re-use.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    comment: {
+      signature: "comment",
+      description: "Does not evaluate any of the code within the block.",
+      example: "comment do # starting a block level comment: play 50 # not played sleep 1 # no sleep happens play 62 # not played end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    uncomment: {
+      signature: "uncomment",
+      description: "Evaluates all of the code within the block.",
+      example: "uncomment do # starting a block level comment: play 50 # played sleep 1 # sleep happens play 62 # played end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    print: {
+      signature: "print(output: anything)",
+      description: "Displays the information you specify as a string inside the output pane.",
+      example: 'print "hello there" #=> will print the string "hello there" to the output pane',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    puts: {
+      signature: "puts(output: anything)",
+      description: "Displays the information you specify as a string inside the output pane.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    vt: {
+      signature: "vt",
+      description: "Get the virtual time of the current thread.",
+      example: "puts vt # prints 0 sleep 1 puts vt # prints 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    factor: {
+      signature: "factor(val: number, factor: number)",
+      description: "Test to see if factor is indeed a factor of `val`.",
+      example: "factor?(10, 2) # true - 10 is a multiple of 2 (2 * 5 = 10)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    quantise: {
+      signature: "quantise(n: number, step: positive_number)",
+      description: "Round value to the nearest multiple of step resolution.",
+      example: 'quantise(10, 1) # 10 is already a multiple of 1, so returns 10" , " quantise(10, 1.1) # Returns 9.9 which is 1.1 * 9',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    dice: {
+      signature: "dice(num_sides: number)",
+      description: "Throws a dice with the specified num_sides (defaults to `6`) and returns the score as a number between `1` and `num_sides`.",
+      example: "dice # will return a number between 1 and 6 inclusively # (with an even probability distribution).",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    one_in: {
+      signature: "one_in(num: number)",
+      description: "Returns `true` or `false` with a specified probability - it will return true every one in num times where num is the param you specify",
+      example: "one_in 2 # will return true with a probability of 1/2, false with probability 1/2",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rdist: {
+      signature: "rdist(width: number, centre: number)",
+      description: "Returns a random number within the range with width around centre.",
+      example: "print rdist(1, 0) #=> will print a number between -1 and 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rrand: {
+      signature: "rrand(min: number, max: number)",
+      description: "Given two numbers, this produces a float between the supplied min and max values exclusively.",
+      example: "print rrand(0, 10) #=> will print a number like 8.917730007820797 to the output pane",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rrand_i: {
+      signature: "rrand_i(min: number, max: number)",
+      description: "Given two numbers, this produces a whole number between the min and max you supplied inclusively.",
+      example: "print rrand_i(0, 10) #=> will print a random number between 0 and 10 (e.g. 4, 0 or 10) to the output pane",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand: {
+      signature: "rand(max: number_or_range)",
+      description: "Given a max number, produces a float between `0` and the supplied max value.",
+      example: "print rand(0.5) #=> will print a number like 0.375030517578125 to the output pane",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_i: {
+      signature: "rand_i(max: number_or_range)",
+      description: "Given a max number, produces a whole number between `0` and the supplied max value exclusively.",
+      example: "print rand_i(5) #=> will print either 0, 1, 2, 3, or 4 to the output pane",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_look: {
+      signature: "rand_look(max: number_or_range)",
+      description: "Given a max number, produces a number between `0` and the supplied max value exclusively.",
+      example: "print rand_look(0.5) # will print a number like 0.375030517578125 to the output pane",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_i_look: {
+      signature: "rand_i_look(max: number_or_range)",
+      description: "Given a max number, produces a whole number between `0` and the supplied max value exclusively.",
+      example: "print rand_i_look(5) # will print either 0, 1, 2, 3, or 4 to the output pane",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_back: {
+      signature: "rand_back(amount: number)",
+      description: "Roll the random generator back essentially 'undoing' the last call to `rand`.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_skip: {
+      signature: "rand_skip(amount: number)",
+      description: "Jump the random generator forward essentially skipping the next call to `rand`.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_reset: {
+      signature: "rand_reset",
+      description: "Resets the random stream to the last specified seed.",
+      example: "puts rand # prints 0.75006103515625 puts rand # prints 0.733917236328125 puts rand # prints 0.464202880859375 puts rand # prints 0.24249267578125 rand_reset # reset the random stream puts rand # prints 0.75006103515625",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    shuffle: {
+      signature: "shuffle(list: array)",
+      description: "Returns a new list with the same elements as the original but with their order shuffled.",
+      example: "shuffle [1, 2, 3, 4] #=> Would return something like: [3, 4, 2, 1]",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_random_seed: {
+      signature: "use_random_seed(seed: number)",
+      description: "Resets the random number generator to the specified seed.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_random_seed: {
+      signature: "with_random_seed(seed: number)",
+      description: "Resets the random number generator to the specified seed for the specified code block.",
+      example: "use_random_seed 1 # reset random seed to 1 puts rand # => 0.733917236328125 puts rand #=> 0.464202880859375 use_random_seed 1 # reset it back to 1 puts rand # => 0.733917236328125 with_random_seed 1 do # reset seed back to 1 just for this block puts rand # => 0.733917236328125 puts rand #=> 0.464202880859375 end puts rand # => 0.464202880859375 # notice how the original generator is restored",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_random_source: {
+      signature: "use_random_source(noise_type: symbol)",
+      description: "Sets the random number source to be one of `:white`, `:pink`, `:light_pink`, `:dark_pink` or `:perlin`.",
+      example: "use_random_source :white # use white noise as the distribution (default) rand_reset # reset random seed puts rand # => 0.75006103515625 puts rand # => 0.733917236328125 puts rand # => 0.464202880859375 rand_reset # reset it again use_random_source :pink # use pink noise as the distribution puts rand # => 0.47808837890625 puts rand # => 0.56011962890625 rand_reset # reset it use_random_source :perlin # use perlin noise as the distribution puts rand # => 0.546478271484375 puts rand # => 0.573150634765625 with_random_source :white do # use white noise just for this block puts rand # => 0.464202880859375 end puts rand # => 0.597015380859375 # notice how the last generator (perlin) is restored",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_random_source: {
+      signature: "with_random_source(noise_type: symbol)",
+      description: "Resets the random number generator to the specified noise type for the specified code block.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_cue_logging: {
+      signature: "use_cue_logging(true_or_false: boolean)",
+      description: "Enable or disable log messages created on cues.",
+      example: "use_cue_logging true # Turn on cue messages",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_cue_logging: {
+      signature: "with_cue_logging(true_or_false: boolean)",
+      description: "Similar to use_cue_logging except only applies to code within supplied `do`/`end` block.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    link_sync: {
+      signature: "link_sync(quantum: number, phase: number)",
+      description: "Similar to link except it also waits for the link session to be playing.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    link: {
+      signature: "link(quantum: number, phase: number)",
+      description: "By default link waits for the start of the next bar of the shared network metronome link.",
+      example: "use_bpm 120 # bpm is at 120 link # wait for the start of the next bar before continuing # (where each bar has 4 beats) puts current_bpm #=> :link (not 120)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_link_bpm: {
+      signature: "set_link_bpm(bpm: number)",
+      description: "Set the tempo for the link metronome in BPM.",
+      example: "use_bpm :link # Switch to Link BPM mode set_link_bpm! 30 # Change Link BPM to 30 8.times do bpm += 10 set_link_bpm! bpm # Gradually increase the Link BPM sample :loop_amen, beat_stretch: 2 sleep 2 end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_bpm: {
+      signature: "use_bpm(bpm: number)",
+      description: "Sets the tempo in bpm (beats per minute) for everything afterwards.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_bpm: {
+      signature: "with_bpm(bpm: number)",
+      description: "Sets the tempo in bpm (beats per minute) for everything in the given block.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_bpm_mul: {
+      signature: "with_bpm_mul(mul: number)",
+      description: "Sets the tempo in bpm (beats per minute) for everything in the given block as a multiplication of the current tempo.",
+      example: "use_bpm 60 # Set the BPM to 60 play 50 sleep 1 # Sleeps for 1 second play 62 sleep 2 # Sleeps for 2 seconds with_bpm_mul 0.5 do # BPM is now (60 * 0.5) == 30 play 50 sleep 1 # Sleeps for 2 seconds play 62 end sleep 1 # BPM is now back to 60, therefore sleep is 1 second",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_bpm_mul: {
+      signature: "use_bpm_mul(mul: number)",
+      description: "Sets the tempo in bpm (beats per minute) as a multiplication of the current tempo.",
+      example: "use_bpm 60 # Set the BPM to 60 play 50 sleep 1 # Sleeps for 1 seconds play 62 sleep 2 # Sleeps for 2 seconds use_bpm_mul 0.5 # BPM is now (60 * 0.5) == 30 play 50 sleep 1 # Sleeps for 2 seconds play 62",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    density: {
+      signature: "density(d: density)",
+      description: "Runs the block `d` times with the bpm for the block also multiplied by `d`.",
+      example: "use_bpm 60 # Set the BPM to 60 density 2 do # BPM for block is now 120 # block is called 2.times sample :bd_haus # sample is played twice sleep 0.5 # sleep is 0.25s end",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_time: {
+      signature: "current_time",
+      description: "Returns the current logical time.",
+      example: "puts current_time # 2017-03-19 23:37:57.324 +0000",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_random_seed: {
+      signature: "current_random_seed",
+      description: "Returns the current random seed.",
+      example: "puts current_random_seed # Print out the current random seed",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_random_source: {
+      signature: "current_random_source",
+      description: "Returns the source of the current random number generator (what kind of noise is generating the random numbers).",
+      example: "puts current_random_source # Print out the current random source",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_bpm_mode: {
+      signature: "current_bpm_mode",
+      description: "Returns the current tempo mode - either a bpm value or :link.",
+      example: "use_bpm 60 puts current_bpm_mode # => 60 use_bpm 70 puts current_bpm_mode # => 70 use_bpm :link puts current_bpm_mode # => :link",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_bpm: {
+      signature: "current_bpm",
+      description: "Returns the current tempo as a bpm value.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_beat_duration: {
+      signature: "current_beat_duration",
+      description: "Get the duration of the current beat in seconds.",
+      example: "use_bpm 60 puts current_beat_duration #=> 1 use_bpm 120 puts current_beat_duration #=> 0.5",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    beat: {
+      signature: "beat",
+      description: "Returns the beat value for the current thread/live_loop.",
+      example: "use_bpm 120 #=> The initial beat does not start at 0 puts beat #=> 109252.703125 sleep 1 puts beat #=> 109253.703125 use_bpm 2000 # Changing the BPM makes no difference sleep 2 puts beat #=> 109255.703125",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rt: {
+      signature: "rt(seconds: number)",
+      description: "Real time representation.",
+      example: "use_bpm 120 # modifies all time to be half play 50 sleep 1 # actually sleeps for half of a second play 62 sleep rt(1) # bypasses bpm scaling and sleeps for a second play 72",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    bt: {
+      signature: "bt(seconds: number)",
+      description: "Beat time representation.",
+      example: "use_bpm 120 # Set the BPM to be double the default puts bt(1) # 0.5 use_bpm 60 # BPM is now default puts bt(1) # 1 use_bpm 30 # BPM is now half the default puts bt(1) # 2",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_sched_ahead_time: {
+      signature: "set_sched_ahead_time(time: number)",
+      description: "Specify how many seconds ahead of time the synths should be triggered.",
+      example: "set_sched_ahead_time! 1 # Code will now run approximately 1 second ahead of audio.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_sched_ahead_time: {
+      signature: "use_sched_ahead_time(time: number)",
+      description: "Specify how many seconds ahead of time the synths should be triggered.",
+      example: "use_sched_ahead_time 1 # Code will now run approximately 1 second ahead of audio.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_real_time: {
+      signature: "use_real_time",
+      description: "Set sched ahead time to 0 for the current thread.",
+      example: "use_real_time # Code will now produce sound without a scheduling delay.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_real_time: {
+      signature: "with_real_time",
+      description: "Sets sched ahead time to 0 within the block for the current thread.",
+      example: "with_real_time do play 70 # Sound will happen without a scheduling delay. end play 70 # Sound will happen with the default latency (0.5s).",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_sched_ahead_time: {
+      signature: "with_sched_ahead_time(time: number)",
+      description: "Specify how many seconds ahead of time the synths should be triggered for the block.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_sched_ahead_time: {
+      signature: "current_sched_ahead_time",
+      description: "Returns the current schedule ahead time.",
+      example: "set_sched_ahead_time! 0.5 puts current_sched_ahead_time # Prints 0.5",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sleep: {
+      signature: "sleep(beats: number)",
+      description: "Wait for a number of beats before triggering the next command.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    wait: {
+      signature: "wait(beats: number)",
+      description: "Synonym for `sleep` - see `sleep`",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sync_bpm: {
+      signature: "sync_bpm(cue_id: symbol)",
+      description: "An alias for `sync` with the `bpm_sync:` opt set to true.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sync: {
+      signature: "sync(cue_id: symbol)",
+      description: "Pause/block the current thread until a `cue` heartbeat with a matching `cue_id` is received.",
+      example: "in_thread do sync :foo # this parks the current thread waiting for a foo sync message to be received. sample :ambi_lunar_land end sleep 5 cue :foo # We send a sync message from the main thread. # This then unblocks the thread above and we then hear the sample",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    in_thread: {
+      signature: "in_thread",
+      description: "Execute a given block (between `do` .",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_error: {
+      signature: "assert_error(class: Exception)",
+      description: "Runs the block and ensures that it raises the correct Exception.",
+      example: 'assert_error do play 70 end # Will throw an exception: "Assert error failed!" as the block # contains no errors.',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_not: {
+      signature: "assert_not(arg: anything)",
+      description: "Raises an exception if the argument is not either nil or false.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert: {
+      signature: "assert(arg: anything)",
+      description: "Raises an exception if the argument is either nil or false.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_not_equal: {
+      signature: "assert_not_equal(arg1: anything, arg2: anything)",
+      description: "Raises an exception if both arguments are qual.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_equal: {
+      signature: "assert_equal(arg1: anything, arg2: anything)",
+      description: "Raises an exception if both arguments aren't equal.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_similar: {
+      signature: "assert_similar(arg1: anything, arg2: anything)",
+      description: "Raises an exception if both arguments aren't similar.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_buffer: {
+      signature: "load_buffer(path: string)",
+      description: "Given a path to a file, will read the contents and load it into the current buffer.",
+      example: 'load_buffer "~/sonic-pi-tracks/phat-beats.rb" # will replace content of current buffer with contents of the file',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_example: {
+      signature: "load_example(path: string)",
+      description: "Given a keyword representing an example, will load it into the current buffer.",
+      example: "load_example :rerezzed # will replace content of current buffer with the rerezzed example",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    live_audio: {
+      signature: "live_audio(name: symbol)",
+      description: "A named audio stream live from your soundcard",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    scsynth_info: {
+      signature: "scsynth_info",
+      description: "Create a map of information about the running audio synthesiser SuperCollider.",
+      example: "puts scsynth_info #=> (map sample_rate: 44100.0, # sample_dur: 2.2675736545352265e-05, # radians_per_sample: 0.00014247585204429924, # control_rate: 689.0625, # control_dur: 0.001451247138902545, # subsample_offset: 0.0, # num_output_busses: 16.0, # num_input_busses: 16.0, # num_audio_busses: 1024.0, # num_control_busses: 4096.0, # num_buffers: 4096.0)",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_free: {
+      signature: "sample_free(path: string)",
+      description: "Frees the memory and resources consumed by loading the sample on the server.",
+      example: "sample :loop_amen # The Amen break is now loaded into memory and played sleep 2 sample :loop_amen # The Amen break is not loaded but played from memory sleep 2 sample_free :loop_amen # The Amen break is freed from memory sample :loop_amen # the Amen break is re-loaded and played",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    buffer: {
+      signature: "buffer(symbol: name, number: duration)",
+      description: "Initialise or return a named buffer with a specific duration (defaults to 8 beats).",
+      example: "buffer(:foo) # load a 8s buffer and name it :foo b = buffer(:foo) # return cached buffer and bind it to b puts b.duration #=> 8.0",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_free_all: {
+      signature: "sample_free_all",
+      description: "Unloads all samples therefore freeing the memory and resources consumed.",
+      example: "sample :loop_amen # load and play :loop_amen sample :ambi_lunar_land # load and play :ambi_lunar_land sleep 2 sample_free_all sample :loop_amen # re-loads and plays amen",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_timing_guarantees: {
+      signature: "use_timing_guarantees(bool: true_or_false)",
+      description: "If set to true, synths will not trigger if it is too late.",
+      example: "use_timing_guarantees true sample :loop_amen #=> if time is behind by any margin, this will not trigger",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_timing_guarantees: {
+      signature: "with_timing_guarantees(bool: true_or_false)",
+      description: "For the given block, if set to true, synths will not trigger if it is too late.",
+      example: "with_timing_guarantees true do sample :loop_amen #=> if time is behind by any margin, this will not trigger end",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_sample_bpm: {
+      signature: "use_sample_bpm(string_or_number: sample_name_or_duration)",
+      description: "Modify bpm so that sleeping for 1 will sleep for the duration of the sample.",
+      example: "use_sample_bpm :loop_amen #Set bpm based on :loop_amen duration live_loop :dnb do sample :bass_dnb_f sample :loop_amen sleep 1 #`sleep`ing for 1 actually sleeps for duration of :loop_amen end",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_sample_bpm: {
+      signature: "with_sample_bpm(string_or_number: sample_name_or_duration)",
+      description: "Block-scoped modification of bpm so that sleeping for 1 will sleep for the duration of the sample.",
+      example: "live_loop :dnb do with_sample_bpm :loop_amen do #Set bpm based on :loop_amen duration sample :bass_dnb_f sample :loop_amen sleep 1 #`sleep`ing for 1 sleeps for duration of :loop_amen end end",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_arg_bpm_scaling: {
+      signature: "use_arg_bpm_scaling(bool: boolean)",
+      description: "Turn synth argument bpm scaling on or off for the current thread.",
+      example: "use_bpm 120 play 50, release: 2 # release is actually 1 due to bpm scaling sleep 2 # actually sleeps for 1 second use_arg_bpm_scaling false play 50, release: 2 # release is now 2 sleep 2 # still sleeps for 1 second",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_arg_bpm_scaling: {
+      signature: "with_arg_bpm_scaling",
+      description: "Turn synth argument bpm scaling on or off for the supplied block.",
+      example: "use_bpm 120 play 50, release: 2 # release is actually 1 due to bpm scaling sleep 2 # actually sleeps for 1 second with_arg_bpm_scaling false do play 50, release: 2 # release is now 2 sleep 2 # still sleeps for 1 second end",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_audio_latency: {
+      signature: "set_audio_latency(milliseconds: number)",
+      description: "On some systems with certain configurations (such as wireless speakers, and even a typical Windows environment with the default audio drivers) the audio latency can be large.",
+      example: "set_audio_latency! 100 # Audio events will now be scheduled 100ms # after the schedule ahead time",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_recording_bit_depth: {
+      signature: "set_recording_bit_depth(bit_depth: number)",
+      description: "When you hit the record button, Sonic Pi saves all the audio you can hear into a wav file.",
+      example: "set_recording_bit_depth! 24 # Set recording bit depth to 24",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_control_delta: {
+      signature: "set_control_delta(time: number)",
+      description: "Specify how many seconds between successive modifications (i.",
+      example: "set_control_delta! 0.1 # Set control delta to 0.1 s = play 70, release: 8, note_slide: 8 # Play a note and set the slide time control s, note: 82 # immediately start sliding note. # This control message might not be # correctly handled as it is sent at the # same virtual time as the trigger. # If you don't hear a slide, try increasing the # control delta until you do.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_debug: {
+      signature: "use_debug(true_or_false: boolean)",
+      description: "Enable or disable messages created on synth triggers.",
+      example: "use_debug true # Turn on debug messages",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_debug: {
+      signature: "with_debug(true_or_false: boolean)",
+      description: "Similar to use_debug except only applies to code within supplied `do`/`end` block.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_arg_checks: {
+      signature: "use_arg_checks(true_or_false: boolean)",
+      description: "When triggering synths, each argument is checked to see if it is sensible.",
+      example: "play 50, release: 5 # Args are checked use_arg_checks false play 50, release: 5 # Args are not checked",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_arg_checks: {
+      signature: "with_arg_checks(true_or_false: boolean)",
+      description: "Similar to `use_arg_checks` except only applies to code within supplied `do`/`end` block.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_synth: {
+      signature: "use_synth(synth_name: symbol)",
+      description: "Switch the current synth to `synth_name`.",
+      example: "play 50 # Plays with default synth use_synth :mod_sine play 50 # Plays with mod_sine synth",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_synth: {
+      signature: "with_synth(synth_name: symbol)",
+      description: "Switch the current synth to `synth_name` but only for the duration of the `do`/`end` block.",
+      example: "play 50 # Plays with default synth sleep 2 use_synth :supersaw play 50 # Plays with supersaw synth sleep 2 with_synth :saw_beep do play 50 # Plays with saw_beep synth end sleep 2 # Previous synth is restored play 50 # Plays with supersaw synth",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_start: {
+      signature: "recording_start",
+      description: "Start recording all sound to a `.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_stop: {
+      signature: "recording_stop",
+      description: "Stop current recording.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_save: {
+      signature: "recording_save(path: string)",
+      description: "Save previous recording to the specified location",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_delete: {
+      signature: "recording_delete",
+      description: "After using `recording_start` and `recording_stop`, a temporary file is created until you decide to use `recording_save`.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    reset_mixer: {
+      signature: "reset_mixer",
+      description: "The main mixer is the final mixer that all sound passes through.",
+      example: "set_mixer_control! lpf: 70 # LPF cutoff value of main mixer is now 70 sample :loop_amen # :loop_amen sample is played with low cutoff sleep 3 reset_mixer! # mixer is now reset to default values sample :loop_amen # :loop_amen sample is played with normal cutoff",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_mixer_control: {
+      signature: "set_mixer_control",
+      description: "The main mixer is the final mixer that all sound passes through.",
+      example: "set_mixer_control! lpf: 30, lpf_slide: 16 # slide the global lpf to 30 over 16 beats.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    synth: {
+      signature: "synth(synth_name: symbol)",
+      description: "Trigger specified synth with given opts.",
+      example: "use_synth :beep # Set current synth to :beep play 60 # Play note 60 with opt defaults synth :dsaw, note: 60 # Bypass current synth and play :dsaw # with note 60 and opt defaults",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play: {
+      signature: "play(note: symbol_or_number)",
+      description: "Play note with current synth.",
+      example: "play 50 # Plays note 50 on the current synth",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play_pattern: {
+      signature: "play_pattern(notes: list)",
+      description: "Play list of notes with the current synth one after another with a sleep of 1 Accepts optional args for modification of the synth being played.",
+      example: "play_pattern [40, 41, 42] # Same as: # play 40, sustain: 1 # sleep 1 # play 41, sustain: 1 # sleep 1 # play 42, sustain: 1 # sleep 1",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play_pattern_timed: {
+      signature: "play_pattern_timed(notes: list, times: list_or_number)",
+      description: "Play each note in a list of notes one after another with specified durations.",
+      example: "play_pattern_timed [40, 42, 44], [1, 2, 3] # same as: play 40, sustain: 1 sleep 1 play 42, sustain: 2 sleep 2 play 44, sustain: 3 sleep 3",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play_chord: {
+      signature: "play_chord(notes: list)",
+      description: "Play a list of notes at the same time.",
+      example: "play_chord [40, 45, 47] # same as: play 40 play 45 play 47",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_merged_synth_defaults: {
+      signature: "use_merged_synth_defaults",
+      description: "Specify synth arg values to be used by any following call to play.",
+      example: "play 50 #=> Plays note 50 use_merged_synth_defaults amp: 0.5 play 50 #=> Plays note 50 with amp 0.5 use_merged_synth_defaults cutoff: 80 play 50 #=> Plays note 50 with amp 0.5 and cutoff 80 use_merged_synth_defaults amp: 0.7 play 50 #=> Plays note 50 with amp 0.7 and cutoff 80",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_merged_synth_defaults: {
+      signature: "with_merged_synth_defaults",
+      description: "Specify synth arg values to be used by any following call to play within the specified `do`/`end` block.",
+      example: "with_merged_synth_defaults amp: 0.5, pan: 1 do play 50 # => plays note 50 with amp 0.5 and pan 1 end",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_synth_defaults: {
+      signature: "use_synth_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `play`.",
+      example: "play 50 # plays note 50 with default arguments use_synth_defaults amp: 0.5, cutoff: 70 play 50 # plays note 50 with an amp of 0.5, cutoff of 70 and defaults for rest of args use_synth_defaults cutoff: 90 play 50 # plays note 50 with a cutoff of 90 and defaults for rest of args - note that amp is no longer 0.5",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_sample_defaults: {
+      signature: "use_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample`.",
+      example: "sample :loop_amen # plays amen break with default arguments use_sample_defaults amp: 0.5, cutoff: 70 sample :loop_amen # plays amen break with an amp of 0.5, cutoff of 70 and defaults for rest of args use_sample_defaults cutoff: 90 sample :loop_amen # plays amen break with a cutoff of 90 and defaults for rest of args - note that amp is no longer 0.5",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_merged_sample_defaults: {
+      signature: "use_merged_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample`.",
+      example: "sample :loop_amen # plays amen break with default arguments use_merged_sample_defaults amp: 0.5, cutoff: 70 sample :loop_amen # plays amen break with an amp of 0.5, cutoff of 70 and defaults for rest of args use_merged_sample_defaults cutoff: 90 sample :loop_amen # plays amen break with a cutoff of 90 and and an amp of 0.5 with defaults for rest of args",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_sample_defaults: {
+      signature: "with_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample` within the `do`/`end` block.",
+      example: "sample :loop_amen # plays amen break with default arguments use_sample_defaults amp: 0.5, cutoff: 70 sample :loop_amen # plays amen break with an amp of 0.5, cutoff of 70 and defaults for rest of args with_sample_defaults cutoff: 90 do sample :loop_amen # plays amen break with a cutoff of 90 and defaults for rest of args - note that amp is no longer 0.5 end sample :loop_amen # plays amen break with a cutoff of 70 and amp is 0.5 again as the previous defaults are restored.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_merged_sample_defaults: {
+      signature: "with_merged_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample` within the `do`/`end` block.",
+      example: "sample :loop_amen # plays amen break with default arguments use_merged_sample_defaults amp: 0.5, cutoff: 70 sample :loop_amen # plays amen break with an amp of 0.5, cutoff of 70 and defaults for rest of args with_merged_sample_defaults cutoff: 90 do sample :loop_amen # plays amen break with a cutoff of 90 and amp of 0.5 end sample :loop_amen # plays amen break with a cutoff of 70 and amp is 0.5 again as the previous defaults are restored.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_synth_defaults: {
+      signature: "with_synth_defaults",
+      description: "Specify new default values to be used by all calls to `play` within the `do`/`end` block.",
+      example: "play 50 # plays note 50 with default arguments use_synth_defaults amp: 0.5, pan: -1 play 50 # plays note 50 with an amp of 0.5, pan of -1 and defaults for rest of args with_synth_defaults amp: 0.6, cutoff: 80 do play 50 # plays note 50 with an amp of 0.6, cutoff of 80 and defaults for rest of args (including pan) end play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of args",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_fx: {
+      signature: "with_fx(fx_name: symbol)",
+      description: "This applies the named effect (FX) to everything within a given `do`/`end` block.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_synth: {
+      signature: "current_synth",
+      description: "Returns the current synth name.",
+      example: "puts current_synth # Print out the current synth name",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_synth_defaults: {
+      signature: "current_synth_defaults",
+      description: "Returns the current synth defaults.",
+      example: "use_synth_defaults amp: 0.5, cutoff: 80 play 50 # Plays note 50 with amp 0.5 and cutoff 80 puts current_synth_defaults #=> Prints {amp: 0.5, cutoff: 80}",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_sample_defaults: {
+      signature: "current_sample_defaults",
+      description: "Returns the current sample defaults.",
+      example: "use_sample_defaults amp: 0.5, cutoff: 80 sample :loop_amen # Plays amen break with amp 0.5 and cutoff 80 puts current_sample_defaults #=> Prints {amp: 0.5, cutoff: 80}",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_volume: {
+      signature: "current_volume",
+      description: "Returns the current volume.",
+      example: "puts current_volume # Print out the current volume",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_debug: {
+      signature: "current_debug",
+      description: "Returns the current debug setting (`true` or `false`).",
+      example: "puts current_debug # Print out the current debug setting",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_arg_checks: {
+      signature: "current_arg_checks",
+      description: "Returns the current arg checking setting (`true` or `false`).",
+      example: "puts current_arg_checks # Print out the current arg check setting",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_volume: {
+      signature: "set_volume(vol: number)",
+      description: "Set the main system volume to `vol`.",
+      example: "set_volume! 2 # Set the main system volume to 2",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_loaded: {
+      signature: "sample_loaded(path: string)",
+      description: "Given a path to a `.",
+      example: "load_sample :elec_blip # :elec_blip is now loaded and ready to play as a sample puts sample_loaded? :elec_blip # prints true because it has been pre-loaded puts sample_loaded? :misc_burp # prints false because it has not been loaded",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_sample: {
+      signature: "load_sample(path: string)",
+      description: "Given a path to a `.",
+      example: "load_sample :elec_blip # :elec_blip is now loaded and ready to play as a sample sample :elec_blip # No delay takes place when attempting to trigger it",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_samples: {
+      signature: "load_samples(paths: list)",
+      description: "Given a directory containing multiple `.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_info: {
+      signature: "sample_info(path: string)",
+      description: "Alias for the `load_sample` method.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_buffer: {
+      signature: "sample_buffer(path: string)",
+      description: "Alias for the `load_sample` method.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_duration: {
+      signature: "sample_duration(path: string)",
+      description: "Given the name of a loaded sample, or a path to a `.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_paths: {
+      signature: "sample_paths(pre_args: source_and_filter_types)",
+      description: "Accepts the same pre-args and opts as `sample` and returns a ring of matched sample paths.",
+      example: 'sample_paths "/path/to/samples/" #=> ring of all top-level samples in /path/to/samples',
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample: {
+      signature: "sample(name_or_path: symbol_or_string)",
+      description: "Play back a recorded sound file (sample).",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    status: {
+      signature: "status",
+      description: "This returns a Hash of information about the synthesis environment.",
+      example: "puts status # Returns something similar to: # { # :ugens=>10, # :synths=>1, # :groups=>7, # :sdefs=>61, # :avg_cpu=>0.20156468451023102, # :peak_cpu=>0.36655542254447937, # :nom_samp_rate=>44100.0, # :act_samp_rate=>44099.9998411752, # :audio_busses=>2, # :control_busses=>0 # }",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    control: {
+      signature: "control(node: synth_node)",
+      description: "Control a running synth node by passing new parameters to it.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    kill: {
+      signature: "kill(node: synth_node)",
+      description: "Kill a running synth sound or sample.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_names: {
+      signature: "sample_names(group: symbol)",
+      description: "Return a ring of sample names for the specified group",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    all_sample_names: {
+      signature: "all_sample_names",
+      description: "Return a list of all the sample names available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_groups: {
+      signature: "sample_groups",
+      description: "Return a list of all the sample groups available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    synth_names: {
+      signature: "synth_names",
+      description: "Return a list of all the synths available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    fx_names: {
+      signature: "fx_names",
+      description: "Return a list of all the FX available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_synthdef: {
+      signature: "load_synthdef(path: string)",
+      description: "Load a pre-compiled synth design from the specified file.",
+      example: 'load_synthdef "~/Desktop/my_noises/whoosh.scsyndef" # Load whoosh synthdef design.',
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_synthdefs: {
+      signature: "load_synthdefs(path: string)",
+      description: "Load all pre-compiled synth designs in the specified directory.",
+      example: 'load_synthdefs "~/Desktop/my_noises" # Load all synthdefs in my_noises folder',
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    math_scale: {
+      signature: "math_scale",
+      description: "Scales a given input value within the specified input range to a corresponding value in the specified output range using the formula: (out_max - out_min) (val - in_min) f (x) = -------------------------------- + out_min ",
+      kind: "function",
+      category: "maths",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    octs: {
+      signature: "octs(start: note, num_octaves: pos_int)",
+      description: "Create a ring of successive octaves starting at `start` for `num_octaves`.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_notes: {
+      signature: "midi_notes(list: array)",
+      description: "Create a new immutable ring buffer of notes from args.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rest: {
+      signature: "rest(note_or_args: number_symbol_or_map)",
+      description: "Given a note or an args map, returns true if it represents a rest and false if otherwise",
+      example: "puts rest? nil # true",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    pitch_to_ratio: {
+      signature: "pitch_to_ratio(pitch: midi_number)",
+      description: "Convert a midi note to a ratio which when applied to a frequency will scale the frequency by the number of semitones.",
+      example: "pitch_to_ratio 12 #=> 2.0",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ratio_to_pitch: {
+      signature: "ratio_to_pitch(ratio: number)",
+      description: "Convert a frequency ratio to a midi note which when added to a note will transpose the note to match the frequency ratio.",
+      example: "ratio_to_pitch 2 #=> 12.0",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_to_hz: {
+      signature: "midi_to_hz(note: symbol_or_number)",
+      description: "Convert a midi note to hz",
+      example: "midi_to_hz(60) #=> 261.6256",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    hz_to_midi: {
+      signature: "hz_to_midi(freq: number)",
+      description: "Convert a frequency in hz to a midi note.",
+      example: "hz_to_midi(261.63) #=> 60.0003",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_cent_tuning: {
+      signature: "set_cent_tuning(cent_shift: number)",
+      description: "Globally tune Sonic Pi to play with another external instrument.",
+      example: "play 50 # Plays note 50 set_cent_tuning! 1 play 50 # Plays note 50.01",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_cent_tuning: {
+      signature: "use_cent_tuning(cent_shift: number)",
+      description: "Uniformly tunes your music by shifting all notes played by the specified number of cents.",
+      example: "play 50 # Plays note 50 use_cent_tuning 1 play 50 # Plays note 50.01",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_cent_tuning: {
+      signature: "with_cent_tuning(cent_shift: number)",
+      description: "Similar to `use_cent_tuning` except only applies cent shift to code within supplied `do`/`end` block.",
+      example: "use_cent_tuning 1 play 50 # Plays note 50.01 with_cent_tuning 2 do play 50 # Plays note 50.02 end # Original cent tuning value is restored play 50 # Plays note 50.01",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_octave: {
+      signature: "use_octave(octave_shift: number)",
+      description: "Transposes your music by shifting all notes played by the specified number of octaves.",
+      example: "play 50 # Plays note 50 use_octave 1 play 50 # Plays note 62",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_octave: {
+      signature: "with_octave(octave_shift: number)",
+      description: "Transposes your music by shifting all notes played by the specified number of octaves within the specified block.",
+      example: "play 50 # Plays note 50 sleep 1 with_octave 1 do play 50 # Plays note 62 end sleep 1 play 50 # Plays note 50",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_transpose: {
+      signature: "use_transpose(note_shift: number)",
+      description: "Transposes your music by shifting all notes played by the specified amount.",
+      example: "play 50 # Plays note 50 use_transpose 1 play 50 # Plays note 51",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_transpose: {
+      signature: "with_transpose(note_shift: number)",
+      description: "Similar to use_transpose except only applies to code within supplied `do`/`end` block.",
+      example: "use_transpose 3 play 62 # Plays note 65 with_transpose 12 do play 50 # Plays note 62 sleep 1 play 72 # Plays note 84 end # Original transpose value is restored play 80 # Plays note 83",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_tuning: {
+      signature: "use_tuning(tuning: symbol, fundamental_note: symbol_or_number)",
+      description: "In most music we make semitones by dividing the octave into 12 equal parts, which is known as equal temperament.",
+      example: "play :e4 # Plays note 64 use_tuning :just, :c play :e4 # Plays note 63.8631 # transparently changes midi notes too play 64 # Plays note 63.8631",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_tuning: {
+      signature: "with_tuning(tuning: symbol, fundamental_note: symbol_or_number)",
+      description: "Similar to use_tuning except only applies to code within supplied `do`/`end` block.",
+      example: "use_tuning :equal, :c play :e4 # Plays note 64 with_tuning :just, :c do play :e4 # Plays note 63.8631 sleep 1 play :c4 # Plays note 60 end # Original tuning value is restored play :e4 # Plays note 64",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_transpose: {
+      signature: "current_transpose",
+      description: "Returns the current transpose value.",
+      example: "puts current_transpose # Print out the current transpose value",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_cent_tuning: {
+      signature: "current_cent_tuning",
+      description: "Returns the cent shift value.",
+      example: "puts current_cent_tuning # Print out the current cent shift",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_octave: {
+      signature: "current_octave",
+      description: "Returns the octave shift value.",
+      example: "puts current_octave # Print out the current octave shift",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    note: {
+      signature: "note(note: symbol_or_number)",
+      description: "Takes a midi note, a symbol (e.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    note_range: {
+      signature: "note_range(start_note: note, end_note: note)",
+      description: "Produces a ring of all the notes between a start note and an end note.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    note_info: {
+      signature: "note_info(note: symbol_or_number)",
+      description: "Returns an instance of `SonicPi::Note`.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    degree: {
+      signature: "degree(degree: symbol_or_number, tonic: symbol, scale: symbol)",
+      description: "For a given scale and tonic it takes a symbol/string/number and resolves it to a midi note.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    scale: {
+      signature: "scale(tonic: symbol, name: symbol)",
+      description: "Creates a ring of MIDI note numbers when given a tonic note and a scale name.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord_degree: {
+      signature: "chord_degree(degree: symbol_or_number, tonic: symbol, scale: symbol, number_of_notes: number)",
+      description: "In music we build chords from scales.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord: {
+      signature: "chord(tonic: symbol, name: symbol)",
+      description: "Creates an immutable ring of Midi note numbers when given a tonic note and a chord type.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord_invert: {
+      signature: "chord_invert(notes: list, shift: number)",
+      description: "Given a set of notes, apply a number of inversions indicated by the `shift` parameter.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    scale_names: {
+      signature: "scale_names",
+      description: "Returns a ring containing all scale names known to Sonic Pi",
+      example: "puts scale_names #=> prints a list of all the scales",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord_names: {
+      signature: "chord_names",
+      description: "Returns a ring containing all chord names known to Sonic Pi",
+      example: "puts chord_names #=> prints a list of all the chords",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_midi_logging: {
+      signature: "use_midi_logging(true_or_false: boolean)",
+      description: "Enable or disable log messages created on MIDI functions.",
+      example: "use_midi_logging true # Turn on MIDI logging",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_midi_logging: {
+      signature: "with_midi_logging(true_or_false: boolean)",
+      description: "Similar to use_midi_logging except only applies to code within supplied `do`/`end` block.",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_midi_defaults: {
+      signature: "use_midi_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `midi_*` fns.",
+      example: 'midi_note_on :e1 # Sends MIDI :e1 note_on with default opts use_midi_defaults channel: 3, port: "foo" midi_note_on :e3 # Sends MIDI :e3 note_on to channel 3 on port "foo" use_midi_defaults channel: 1 midi_note_on :e2 # Sends MIDI :e2 note_on to channel 1. Note that the port is back to the default and no longer "foo".',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_midi_defaults: {
+      signature: "with_midi_defaults",
+      description: "Specify new default values to be used by all calls to `midi_*` fns within the `do`/`end` block.",
+      example: 'midi_note_on :e1 # Sends MIDI :e1 note on with default opts with_midi_defaults channel: 3, port: "foo" do midi_note_on :e3 # Sends MIDI :e3 note on to channel 3 on port "foo" end use_midi_defaults channel: 1 # this will be overridden by the following with_midi_defaults channel: 5 do midi_note_on :e2 # Sends MIDI :e2 note on to channel 5. # Note that the port is back to the default end midi_note_on :e4 # Sends MIDI :e4 note on to channel 1 # Note that the call to use_midi_defaults is now honoured.',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_merged_midi_defaults: {
+      signature: "use_merged_midi_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `midi_*` fns.",
+      example: 'midi_note_on :e1 # Sends MIDI :e1 note_on with default opts use_midi_defaults channel: 3, port: "foo" midi_note_on :e3 # Sends MIDI :e3 note_on to channel 3 on port "foo" use_merged_midi_defaults channel: 1 midi_note_on :e2 # Sends MIDI :e2 note_on to channel 1 on port "foo". # This is because the call to use_merged_midi_defaults overrode the # channel but not the port which got merged in.',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_merged_midi_defaults: {
+      signature: "with_merged_midi_defaults",
+      description: "Specify opt values to be used by any following call to the `midi_*` fns within the specified `do`/`end` block.",
+      example: 'midi_note_on :e1 # Sends MIDI :e1 note_on with default opts use_midi_defaults channel: 3, port: "foo" midi_note_on :e3 # Sends MIDI :e3 note_on to channel 3 on port "foo" with_merged_midi_defaults channel: 1 do midi_note_on :e2 # Sends MIDI :e2 note_on to channel 1 on port "foo". # This is because the call to use_merged_midi_defaults overrode the # channel but not the port which got merged in. end midi_note_on :e2 # Sends MIDI :e2 note_on to channel 3 on port "foo". # This is because the previous defaults were restored after # the call to with_merged_midi_defaults.',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_midi_defaults: {
+      signature: "current_midi_defaults",
+      description: "Returns the current MIDI defaults.",
+      example: 'use_midi_defaults channel: 1, port: "foo" midi_note_on :e1 # Sends MIDI :e1 note on to channel 1 on port "foo" current_midi_defaults #=> Prints {channel: 1, port: "foo"}',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_note_on: {
+      signature: "midi_note_on(note: midi, velocity: midi)",
+      description: "Sends a MIDI Note On Event to *all* connected devices on *all* channels.",
+      example: "midi_note_on :e3 #=> Sends MIDI note on for note :e3 with the default velocity of 12 to all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_note_off: {
+      signature: "midi_note_off(note: midi, release_velocity: midi)",
+      description: "Sends the MIDI note off message to *all* connected devices on *all* channels.",
+      example: "midi_note_off :e3 #=> Sends MIDI note off for note :e3 with the default release velocity of 127 to all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_poly_pressure: {
+      signature: "midi_poly_pressure(note: midi, value: midi)",
+      description: "Sends a MIDI polyphonic key pressure message to *all* connected devices on *all* channels.",
+      example: "midi_poly_pressure 100, 32 #=> Sends a MIDI poly key pressure message to control note 100 with value 32 to all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_cc: {
+      signature: "midi_cc(control_num: midi, value: midi)",
+      description: "Sends a MIDI control change message to *all* connected devices on *all* channels.",
+      example: "midi_cc 100, 32 #=> Sends MIDI cc message to control 100 with value 32 to all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_channel_pressure: {
+      signature: "midi_channel_pressure(val: midi)",
+      description: "Sends a MIDI channel pressure (aftertouch) message to *all* connected devices on *all* channels.",
+      example: "midi_channel_pressure 50 #=> Sends MIDI channel pressure message with value 50 to all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_pitch_bend: {
+      signature: "midi_pitch_bend(delta: float01)",
+      description: "Sends a MIDI pitch bend message to *all* connected devices on *all* channels.",
+      example: "midi_pitch_bend 0 #=> Sends MIDI pitch bend message with value 0 to all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_pc: {
+      signature: "midi_pc(program_num: midi)",
+      description: "Sends a MIDI program change message to *all* connected devices on *all* channels.",
+      example: "midi_pc 100 #=> Sends MIDI pc message to all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_raw: {
+      signature: "midi_raw",
+      description: "Send raw MIDI message",
+      example: "midi_raw 176, 121, 0 #=> Sends the MIDI reset command",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_sysex: {
+      signature: "midi_sysex",
+      description: "Sends the MIDI SysEx message to *all* connected MIDI devices.",
+      example: 'midi_sysex 0xf0, 0x00, 0x20, 0x6b, 0x7f, 0x42, 0x02, 0x00, 0x10, 0x77, 0x11, 0xf7 #=> Program an Arturia Beatstep controller to turn the eighth pad pink" ] def midi_sound_off(*args) params, opts = split_params_and_merge_opts_array(args) opts = current_midi_defaults.merge(opts) on_val = opts.fetch(:on, 1) ports = __resolve_midi_ports(opts) channels = __resolve_midi_channels(opts) port = pp_el_or_list(ports) chan = pp_el_or_list(channels) if truthy?(on_val) ports.each do |p| channels.each do |c| __midi_send_timed_pc("/control_change',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_sound_off: {
+      signature: "midi_sound_off",
+      description: "Sends a MIDI sound off message to *all* connected devices on *all* channels.",
+      example: "midi_sound_off #=> Silence MIDI devices on all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_reset: {
+      signature: "midi_reset(value: number)",
+      description: "Sends a MIDI reset all controllers message to *all* connected devices on *all* channels.",
+      example: "midi_reset #=> Reset MIDI devices on all channels (and ports)",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_local_control_off: {
+      signature: "midi_local_control_off",
+      description: "Sends a MIDI local control off message to *all* connected devices on *all* channels.",
+      example: "midi_local_control_off #=> Disable local control on MIDI devices on all channels (and ports)",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_local_control_on: {
+      signature: "midi_local_control_on",
+      description: "Sends a MIDI local control on message to *all* connected devices on *all* channels.",
+      example: "midi_local_control_on #=> Enable local control on MIDI devices on all channels (and ports)",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_mode: {
+      signature: "midi_mode(mode: mode_keyword)",
+      description: "Sends the Omni/Mono/Poly MIDI mode message to *all* connected MIDI devices on *all* channels.",
+      example: "midi_mode :omni_on #=> Turn Omni Mode On on all ports and channels",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_all_notes_off: {
+      signature: "midi_all_notes_off",
+      description: "Sends a MIDI all notes off message to *all* connected MIDI devices.",
+      example: "midi_all_notes_off #=> Turn off all notes on MIDI devices on all channels (and ports)",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_clock_tick: {
+      signature: "midi_clock_tick",
+      description: "Sends a MIDI clock tick message to *all* connected devices on *all* channels.",
+      example: 'midi_clock_tick #=> Send an individual clock tick to all connected MIDI devices on all ports." ] def midi_start(*args) params, opts = split_params_and_merge_opts_array(args) opts = current_midi_defaults.merge(opts) on_val = opts.fetch(:on, 1) ports = __resolve_midi_ports(opts) port = pp_el_or_list(ports) if truthy?(on_val) ports.each do |p| __midi_send_timed("/start',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_start: {
+      signature: "midi_start",
+      description: "Sends the MIDI start system message to *all* connected MIDI devices on *all* ports.",
+      example: 'midi_start #=> Send start message to all connected MIDI devices" ] def midi_stop(*args) params, opts = split_params_and_merge_opts_array(args) opts = current_midi_defaults.merge(opts) on_val = opts.fetch(:on, 1) ports = __resolve_midi_ports(opts) port = pp_el_or_list(ports) if truthy?(on_val) ports.each do |p| __midi_send_timed("/stop',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_stop: {
+      signature: "midi_stop",
+      description: "Sends the MIDI stop system message to *all* connected MIDI devices on *all* ports.",
+      example: 'midi_stop #=> Send stop message to all connected MIDI devices" ] def midi_continue(*args) params, opts = split_params_and_merge_opts_array(args) opts = current_midi_defaults.merge(opts) on_val = opts.fetch(:on, 1) ports = __resolve_midi_ports(opts) port = pp_el_or_list(ports) if truthy?(on_val) ports.each do |p| __midi_send_timed("/continue',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_continue: {
+      signature: "midi_continue",
+      description: "Sends the MIDI continue system message to *all* connected MIDI devices on *all* ports.",
+      example: 'midi_continue #=> Send continue message to all connected MIDI devices" ] def midi_clock_beat(*args) params, opts = split_params_and_merge_opts_array(args) opts = current_midi_defaults.merge(opts) on_val = opts.fetch(:on, 1) num_beats = opts[:duration] || params[0] || 1 ports = __resolve_midi_ports(opts) port = pp_el_or_list(ports) if truthy?(on_val) ports.each do |p| __midi_send_timed_param_2("/clock_beat',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_clock_beat: {
+      signature: "midi_clock_beat(duration: beats)",
+      description: "Sends enough MIDI clock ticks for one beat to *all* connected MIDI devices.",
+      example: "midi_clock_beat #=> Send 24 clock ticks over a period of 1 beat to all connected MIDI devices",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi: {
+      signature: "midi(note: number)",
+      description: "Sends a MIDI note on event to *all* connected MIDI devices and *all* channels and then after sustain beats sends a MIDI note off event.",
+      example: "midi :e1, sustain: 0.3, vel_f: 0.5, channel: 3 # Play E, octave 1 for 0.3 beats at half velocity on channel 3 on all connected MIDI ports.",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    dull_bell: {
+      signature: ":dull_bell",
+      description: "A simple dull discordant bell sound.",
+      example: "synth :dull_bell, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pretty_bell: {
+      signature: ":pretty_bell",
+      description: "A pretty bell sound. Works well with short attacks and long decays.",
+      example: "synth :pretty_bell, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    beep: {
+      signature: ":beep",
+      description: "A simple pure sine wave. The sine wave is the simplest, purest sound there is and is the fundamental building block of all noise. The mathematician Fourier demonstrated that any sound could be built out of a number of sine waves (the more complex the sound, the more sine waves ne",
+      example: "synth :beep, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    sine: {
+      signature: ":sine",
+      description: "A simple pure sine wave. The sine wave is the simplest, purest sound there is and is the fundamental building block of all noise. The mathematician Fourier demonstrated that any sound could be built out of a number of sine waves (the more complex the sound, the more sine waves ne",
+      example: "synth :sine, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    saw: {
+      signature: ":saw",
+      description: "A saw wave with a low pass filter. Great for using with FX such as the built in low pass filter (available via the cutoff arg) due to the complexity and thickness of the sound.",
+      example: "synth :saw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pulse: {
+      signature: ":pulse",
+      description: "A simple pulse wave with a low pass filter. This defaults to a square wave, but the timbre can be changed dramatically by adjusting the pulse_width arg between 0 and 1. The pulse wave is thick and heavy with lower notes and is a great ingredient for bass sounds.",
+      example: "synth :pulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    subpulse: {
+      signature: ":subpulse",
+      description: "A pulse wave with a sub sine wave passed through a low pass filter. The pulse wave is thick and heavy with lower notes and is a great ingredient for bass sounds - especially with the sub wave.",
+      example: "synth :subpulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    square: {
+      signature: ":square",
+      description: "A simple square wave with a low pass filter. The square wave is thick and heavy with lower notes and is a great ingredient for bass sounds. If you wish to modulate the width of the square wave see the synth pulse.",
+      example: "synth :square, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    tri: {
+      signature: ":tri",
+      description: "A simple triangle wave with a low pass filter.",
+      example: "synth :tri, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dsaw: {
+      signature: ":dsaw",
+      description: "A pair of detuned saw waves passed through a low pass filter. Two saw waves with slightly different frequencies generates a nice thick sound which is the basis for a lot of famous synth sounds. Thicken the sound by increasing the detune value, or create an octave-playing synth by",
+      example: "synth :dsaw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dpulse: {
+      signature: ":dpulse",
+      description: "A pair of detuned pulse waves passed through a low pass filter. Two pulse waves with slightly different frequencies generates a nice thick sound which can be used as a basis for some nice bass sounds. Thicken the sound by increasing the detune value, or create an octave-playing s",
+      example: "synth :dpulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dtri: {
+      signature: ":dtri",
+      description: "A pair of detuned triangle waves passed through a low pass filter. Two pulse waves with slightly different frequencies generates a nice thick sound which can be used as a basis for some nice bass sounds. Thicken the sound by increasing the detune value, or create an octave-playin",
+      example: "synth :dtri, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    fm: {
+      signature: ":fm",
+      description: "A sine wave with a fundamental frequency which is modulated at audio rate by another sine wave with a specific modulation, division and depth. Useful for generating a wide range of sounds by playing with the divisor and depth params. Great for deep powerful bass and crazy 70s sci",
+      example: "synth :fm, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_fm: {
+      signature: ":mod_fm",
+      description: "The FM synth modulating between two notes - the duration of the modulation can be modified using the mod_phase arg, the range (number of notes jumped between) by the mod_range arg and the width of the jumps by the mod_width param. The FM synth is a sine wave with a fundamental fr",
+      example: "synth :mod_fm, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_saw: {
+      signature: ":mod_saw",
+      description: "A saw wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_saw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_dsaw: {
+      signature: ":mod_dsaw",
+      description: "A pair of detuned saw waves (see the dsaw synth) which are modulated between two fixed notes at a given rate.",
+      example: "synth :mod_dsaw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_sine: {
+      signature: ":mod_sine",
+      description: "A sine wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_sine, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_beep: {
+      signature: ":mod_beep",
+      description: "A sine wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_beep, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_tri: {
+      signature: ":mod_tri",
+      description: "A triangle wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_tri, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_pulse: {
+      signature: ":mod_pulse",
+      description: "A pulse wave with a low pass filter modulating between two notes via a variety of control waves (see mod_wave: arg). The pulse wave defaults to a square wave, but the timbre can be changed dramatically by adjusting the pulse_width arg between 0 and 1.",
+      example: "synth :mod_pulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    tb303: {
+      signature: ":tb303",
+      description: "Emulation of the classic Roland TB-303 Bass Line synthesiser. Overdrive the res (i.e. use very large values) for that classic late 80s acid sound.",
+      example: "synth :tb303, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    supersaw: {
+      signature: ":supersaw",
+      description: "Thick swirly saw waves sparkling and moving about to create a rich trancy sound.",
+      example: "synth :supersaw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    hoover: {
+      signature: ":hoover",
+      description: "Classic early 90's rave synth - 'a sort of slurry chorussy synth line like the classic Dominator by Human Resource'. Based on Dan Stowell's implementation in SuperCollider and Daniel Turczanski's port to Overtone. Works really well with portamento (see docs for the 'control' meth",
+      example: "synth :hoover, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    prophet: {
+      signature: ":prophet",
+      description: "Dark and swirly, this synth uses Pulse Width Modulation (PWM) to create a timbre which continually moves around. This effect is created using the pulse ugen which produces a variable width square wave. We then control the width of the pulses using a variety of LFOs - sin-osc and ",
+      example: "synth :prophet, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    zawa: {
+      signature: ":zawa",
+      description: "Saw wave with oscillating timbre. Produces moving saw waves with a unique character controllable with the control oscillator (usage similar to mod synths).",
+      example: "synth :zawa, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dark_ambience: {
+      signature: ":dark_ambience",
+      description: "A slow rolling bass with a sparkle of light trying to escape the darkness. Great for an ambient sound.",
+      example: "synth :dark_ambience, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    growl: {
+      signature: ":growl",
+      description: "A deep rumbling growl with a bright sine shining through at higher notes.",
+      example: "synth :growl, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    hollow: {
+      signature: ":hollow",
+      description: "A hollow breathy sound constructed from random noise",
+      example: "synth :hollow, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mono_player: {
+      signature: ":mono_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :mono_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    stereo_player: {
+      signature: ":stereo_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :stereo_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    blade: {
+      signature: ":blade",
+      description: "Straight from the 70s, evoking the mists of Blade Runner, this simple electro-style string synth is based on filtered saw waves and a variable vibrato.",
+      example: "synth :blade, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    piano: {
+      signature: ":piano",
+      description: "A basic piano synthesiser. Note that due to the plucked nature of this synth the envelope opts such as `attack:`, `sustain:` and `release:` do not work as expected. They can only shorten the natural length of the note, not prolong it. Also, the `note:` opt will only honour whole ",
+      example: "synth :piano, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pluck: {
+      signature: ":pluck",
+      description: "A basic plucked string synthesiser that uses Karplus-Strong synthesis. Note that due to the plucked nature of this synth the envelope opts such as `attack:`, `sustain:` and `release:` do not work as expected. They can only shorten the natural length of the note, not prolong it. A",
+      example: "synth :pluck, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    sound_in: {
+      signature: ":sound_in",
+      description: "Please write documentation!",
+      example: "synth :sound_in, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    noise: {
+      signature: ":noise",
+      description: "Noise that contains equal amounts of energy at every frequency - comparable to radio static. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :noise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pnoise: {
+      signature: ":pnoise",
+      description: "Noise whose spectrum falls off in power by 3 dB per octave. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :pnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    bnoise: {
+      signature: ":bnoise",
+      description: "Noise whose spectrum falls off in power by 6 dB per octave. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :bnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    gnoise: {
+      signature: ":gnoise",
+      description: "Generates noise which results from flipping random bits in a word. The spectrum is emphasised towards lower frequencies. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :gnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    cnoise: {
+      signature: ":cnoise",
+      description: "Generates noise whose values are either -1 or 1. This produces the maximum energy for the least peak to peak amplitude. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :cnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    basic_mono_player: {
+      signature: ":basic_mono_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :basic_mono_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    basic_stereo_player: {
+      signature: ":basic_stereo_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :basic_stereo_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    basic_mixer: {
+      signature: ":basic_mixer",
+      description: "Please write documentation!",
+      example: "synth :basic_mixer, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    main_mixer: {
+      signature: ":main_mixer",
+      description: "Please write documentation!",
+      example: "synth :main_mixer, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    bitcrusher: {
+      signature: ":bitcrusher",
+      description: "Creates lo-fi output by decimating and deconstructing the incoming audio by lowering both the sample rate and bit depth. The default sample rate for CD audio is 44100, so use values less than that for that crunchy chip-tune sound full of artefacts and bitty distortion. Similarly,",
+      example: "with_fx :bitcrusher do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    krush: {
+      signature: ":krush",
+      description: "Krush that sound!",
+      example: "with_fx :krush do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    reverb: {
+      signature: ":reverb",
+      description: "Make the incoming signal sound more spacious or distant as if it were played in a large room or cave. Signal may also be dampened by reducing the amplitude of the higher frequencies.",
+      example: "with_fx :reverb do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    gverb: {
+      signature: ":gverb",
+      description: "Make the incoming signal sound more spacious or distant as if it were played in a large room or cave. Similar to reverb but with a more spacious feel.",
+      example: "with_fx :gverb do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    level: {
+      signature: ":level",
+      description: "Amplitude modifier. All FX have their own amp built in, so it may be the case that you don't specifically need an isolated amp FX. However, it is useful to be able to control the overall amplitude of a number of running synths. All sounds created in the FX block will have their a",
+      example: "with_fx :level do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    echo: {
+      signature: ":echo",
+      description: "Standard echo with variable phase duration (time between echoes) and decay (length of echo fade out). If you wish to have a phase duration longer than 2s, you need to specify the longest phase duration you'd like with the arg max_phase. Be warned, echo FX with very long phases ca",
+      example: "with_fx :echo do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    slicer: {
+      signature: ":slicer",
+      description: "Modulates the amplitude of the input signal with a specific control wave and phase duration. With the default pulse wave, slices the signal in and out, with the triangle wave, fades the signal in and out and with the saw wave, phases the signal in and then dramatically out. Contr",
+      example: "with_fx :slicer do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    panslicer: {
+      signature: ":panslicer",
+      description: "Slice the pan automatically from left to right. Behaves similarly to slicer and wobble FX but modifies stereo panning of sound in left and right speakers. Default slice wave form is square (hard slicing between left and right) however other wave forms can be set with the `wave:` ",
+      example: "with_fx :panslicer do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    wobble: {
+      signature: ":wobble",
+      description: "Versatile wobble FX. Will repeatedly modulate a range of filters (rlpf, rhpf) between two cutoff values using a range of control wave forms (saw, pulse, tri, sine). You may alter the phase duration of the wobble, and the resonance of the filter. Combines well with the dsaw synth ",
+      example: "with_fx :wobble do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    ixi_techno: {
+      signature: ":ixi_techno",
+      description: "Moving resonant low pass filter between min and max cutoffs. Great for sweeping effects across long synths or samples.",
+      example: "with_fx :ixi_techno do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    compressor: {
+      signature: ":compressor",
+      description: "Compresses the dynamic range of the incoming signal. Equivalent to automatically turning the amp down when the signal gets too loud and then back up again when it's quiet. Useful for ensuring the containing signal doesn't overwhelm other aspects of the sound. Also a general purpo",
+      example: "with_fx :compressor do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    whammy: {
+      signature: ":whammy",
+      description: "A cheap sounding transposition effect, with a slightly robotic edge. Good for adding alien sounds and harmonies to everything from beeps to guitar samples. It's similar to pitch shift although not as smooth sounding.",
+      example: "with_fx :whammy do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    rlpf: {
+      signature: ":rlpf",
+      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). The resonant part of the resonant low pass filter emphasises/resonates the frequencies around th",
+      example: "with_fx :rlpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nrlpf: {
+      signature: ":nrlpf",
+      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). The resonant part of the resonant low pass filter emphasises/resonates the frequencies around th",
+      example: "with_fx :nrlpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    rhpf: {
+      signature: ":rhpf",
+      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). The resonant part of the resonant high pass filter emphasises/resonates the frequencies around the c",
+      example: "with_fx :rhpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nrhpf: {
+      signature: ":nrhpf",
+      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). The resonant part of the resonant high pass filter emphasises/resonates the frequencies around the c",
+      example: "with_fx :nrhpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    hpf: {
+      signature: ":hpf",
+      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make the sound more light ",
+      example: "with_fx :hpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nhpf: {
+      signature: ":nhpf",
+      description: "A high pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard high pass filter and then normalised to ensure the amplitude of the final output is constant. A high pass filter will reduce the amplitude of the resulting signal (as some of the so",
+      example: "with_fx :nhpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    lpf: {
+      signature: ":lpf",
+      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). Choose a higher cutoff to keep more of the high frequences/treble of the sound and a lower cutof",
+      example: "with_fx :lpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nlpf: {
+      signature: ":nlpf",
+      description: "A low pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard low pass filter and then normalised to ensure the amplitude of the final output is constant. A low pass filter will reduce the amplitude of the resulting signal (as some of the sound",
+      example: "with_fx :nlpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    normaliser: {
+      signature: ":normaliser",
+      description: "Raise or lower amplitude of sound to a specified level. Evens out the amplitude of incoming sound across the frequency spectrum by flattening all dynamics.",
+      example: "with_fx :normaliser do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    distortion: {
+      signature: ":distortion",
+      description: "Distorts the signal reducing clarity in favour of raw crunchy noise.",
+      example: "with_fx :distortion do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    pan: {
+      signature: ":pan",
+      description: "Specify where in the stereo field the sound should be heard. A value of -1 for pan will put the sound in the left speaker, a value of 1 will put the sound in the right speaker and values in between will shift the sound accordingly.",
+      example: "with_fx :pan do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    bpf: {
+      signature: ":bpf",
+      description: "Combines low pass and high pass filters to only allow a 'band' of frequencies through. If the band is very narrow (a low res value like 0.0001) then the BPF will reduce the original sound, almost down to a single frequency (controlled by the centre opt). With higher values for re",
+      example: "with_fx :bpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nbpf: {
+      signature: ":nbpf",
+      description: "Like the Band Pass Filter but normalised. The normaliser is useful here as some volume is lost when filtering the original signal.",
+      example: "with_fx :nbpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    rbpf: {
+      signature: ":rbpf",
+      description: "Like the Band Pass Filter but with a resonance (slight volume boost) around the target frequency. This can produce an interesting whistling effect, especially when used with larger values for the res opt.",
+      example: "with_fx :rbpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nrbpf: {
+      signature: ":nrbpf",
+      description: "Like the Band Pass Filter but normalised, with a resonance (slight volume boost) around the target frequency. This can produce an interesting whistling effect, especially when used with larger values for the res opt. The normaliser is useful here as some volume is lost when filte",
+      example: "with_fx :nrbpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    band_eq: {
+      signature: ":band_eq",
+      description: "Attenuate or Boost a frequency band",
+      example: "with_fx :band_eq do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    tanh: {
+      signature: ":tanh",
+      description: "Please write documentation!",
+      example: "with_fx :tanh do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    pitch_shift: {
+      signature: ":pitch_shift",
+      description: "Changes the pitch of a signal without affecting tempo. Does this mainly through the pitch parameter which takes a midi number to transpose by. You can also play with the other params to produce some interesting textures and sounds.",
+      example: "with_fx :pitch_shift do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    ring_mod: {
+      signature: ":ring_mod",
+      description: "Attack of the Daleks! Ring mod is a classic effect often used on soundtracks to evoke robots or aliens as it sounds hollow or metallic. We take a 'carrier' signal (a sine wave controlled by the freq opt) and modulate its amplitude using the signal given inside the fx block. This ",
+      example: "with_fx :ring_mod do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    octaver: {
+      signature: ":octaver",
+      description: "This effect adds three pitches based on the input sound. The first is the original sound transposed up an octave (super_amp), the second is the original sound transposed down an octave (sub_amp) and the third is the original sound transposed down two octaves (subsub_amp). The way",
+      example: "with_fx :octaver do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    vowel: {
+      signature: ":vowel",
+      description: "This effect filters the input to match a human voice singing a certain vowel sound. Human singing voice sounds are easily achieved with a source of a saw wave with a little vibrato.",
+      example: "with_fx :vowel do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    flanger: {
+      signature: ":flanger",
+      description: "Mix the incoming signal with a copy of itself which has a rate modulating faster and slower than the original. Creates a swirling/whooshing effect.",
+      example: "with_fx :flanger do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    }
+  }};
+
+// src/monaco/docs/sonicpi.ts
+var SONICPI_DOCS_INDEX = sonicpi_default;
+function registerSonicPiProviders(monaco) {
+  return registerRuntimeProviders(monaco, SONICPI_DOCS_INDEX, {
+    hover: true,
+    dotCompletion: false,
+    identifierCompletion: true
+  });
+}
+
 // src/workspace/languages.ts
 var hydraRegistered = false;
 var p5jsRegistered = false;
@@ -11538,6 +13980,7 @@ function ensureWorkspaceLanguages(monaco) {
   ensureStrudelProviders(monaco);
   ensureP5Providers(monaco);
   ensureHydraProviders(monaco);
+  ensureSonicPiProviders(monaco);
 }
 var strudelProvidersRegistered = false;
 function ensureStrudelProviders(monaco) {
@@ -11567,6 +14010,15 @@ function ensureHydraProviders(monaco) {
   }
   hydraProvidersRegistered = true;
   registerHydraProviders(monaco);
+}
+var sonicPiProvidersRegistered = false;
+function ensureSonicPiProviders(monaco) {
+  if (sonicPiProvidersRegistered) return;
+  if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
+    return;
+  }
+  sonicPiProvidersRegistered = true;
+  registerSonicPiProviders(monaco);
 }
 function toMonacoLanguage(lang) {
   switch (lang) {

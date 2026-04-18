@@ -53,6 +53,7 @@ import {
 import { registerStrudelHover } from '../monaco/strudelDocs'
 import { registerP5Providers } from '../monaco/docs/p5'
 import { registerHydraProviders } from '../monaco/docs/hydra'
+import { registerSonicPiProviders } from '../monaco/docs/sonicpi'
 import type { WorkspaceLanguage } from './types'
 
 /**
@@ -164,6 +165,7 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
   ensureStrudelProviders(monaco)
   ensureP5Providers(monaco)
   ensureHydraProviders(monaco)
+  ensureSonicPiProviders(monaco)
 }
 
 // Completion + hover providers for strudel. Monaco's provider registry
@@ -211,6 +213,19 @@ function ensureHydraProviders(monaco: typeof Monaco): void {
   registerHydraProviders(monaco)
 }
 
+let sonicPiProvidersRegistered = false
+function ensureSonicPiProviders(monaco: typeof Monaco): void {
+  if (sonicPiProvidersRegistered) return
+  if (
+    typeof monaco.languages?.registerCompletionItemProvider !== 'function' ||
+    typeof monaco.languages?.registerHoverProvider !== 'function'
+  ) {
+    return
+  }
+  sonicPiProvidersRegistered = true
+  registerSonicPiProviders(monaco)
+}
+
 /**
  * Map a `WorkspaceLanguage` to the Monaco language id string. The mapping
  * is currently identity — the `WorkspaceLanguage` string literals were
@@ -245,4 +260,5 @@ export function __resetWorkspaceLanguagesForTests(): void {
   p5jsRegistered = false
   p5ProvidersRegistered = false
   hydraProvidersRegistered = false
+  sonicPiProvidersRegistered = false
 }
