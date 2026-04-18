@@ -27,7 +27,15 @@
  */
 
 console.error(
-  'strudel docs are hand-curated — see packages/editor/src/monaco/strudelDocs.ts.',
+  'strudel docs are hand-curated — no automated fetch is wired up yet.',
 )
-console.error('See this file\'s header for the upstream integration path.')
-process.exit(0)
+console.error(
+  'Edit packages/editor/src/monaco/strudelDocs.ts directly.',
+)
+console.error(
+  'See this file\'s header for the upstream integration paths we\'d need to wire.',
+)
+// Exit non-zero so a CI script or ad-hoc `node … && …` chain notices that
+// nothing was fetched — matches the contract of the sibling fetchers
+// which all emit a doc index file on success.
+process.exit(1)
