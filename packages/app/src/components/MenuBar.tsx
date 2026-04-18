@@ -157,6 +157,10 @@ export function MenuBar({
         <MenuItem label="Report Issue" onClick={() => { window.open("https://github.com/MrityunjayBhardwaj/stave/issues", "_blank"); setOpenMenu(null); }} />
       </MenuButton>
 
+      <div data-stave-brand style={styles.brand} aria-hidden="true">
+        Stave Code
+      </div>
+
       <div style={styles.spacer} />
 
       {/* Backdrop indicator — single entry point. Click opens the
@@ -284,6 +288,7 @@ function MenuDivider() {
 
 const styles: Record<string, React.CSSProperties> = {
   bar: {
+    position: "relative" as const,
     display: "flex",
     alignItems: "center",
     height: 28,
@@ -294,6 +299,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     userSelect: "none",
     paddingLeft: 6,
+  },
+  brand: {
+    position: "absolute" as const,
+    left: "50%",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+    pointerEvents: "none" as const,
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    fontWeight: 500,
+    letterSpacing: 0.4,
+    whiteSpace: "nowrap" as const,
   },
   menuButtonWrap: {
     position: "relative" as const,
