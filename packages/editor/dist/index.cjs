@@ -9227,12 +9227,13 @@ function registerStrudelHover(monaco) {
 
 // src/monaco/docs/tokenizer-utils.ts
 function buildIdentifierAlternation(index, opts = {}) {
-  const { includeKinds, excludeKinds, extra = [] } = opts;
+  const { includeKinds, excludeKinds, filter: filter2, extra = [] } = opts;
   const names = /* @__PURE__ */ new Set();
   for (const [name2, doc] of Object.entries(index.docs)) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name2)) continue;
     if (includeKinds && (!doc.kind || !includeKinds.includes(doc.kind))) continue;
     if (excludeKinds && doc.kind && excludeKinds.includes(doc.kind)) continue;
+    if (filter2 && !filter2(name2, doc)) continue;
     names.add(name2);
   }
   for (const n of extra) if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) names.add(n);
@@ -9247,8 +9248,35 @@ function registerSonicPiLanguage(monaco) {
   const langs = monaco.languages.getLanguages();
   if (langs.some((l) => l.id === "sonicpi")) return;
   monaco.languages.register({ id: "sonicpi" });
-  const sonicPiFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
+  const MUSIC_HELPER_NAMES = /* @__PURE__ */ new Set([
+    "choose",
+    "rrand",
+    "rrand_i",
+    "rand",
+    "rand_i",
+    "dice",
+    "one_in",
+    "ring",
+    "knit",
+    "range",
+    "line",
+    "spread",
+    "tick",
+    "look",
+    "shuffle",
+    "sort_by",
+    "reflect",
+    "stretch",
+    "repeat",
+    "mirror"
+  ]);
+  const musicFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
     excludeKinds: ["synth", "fx", "sample"],
+    filter: (name2, doc) => doc.category === "western_theory" || doc.category === "maths" || MUSIC_HELPER_NAMES.has(name2)
+  });
+  const dslFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
+    excludeKinds: ["synth", "fx", "sample"],
+    filter: (name2, doc) => doc.category !== "western_theory" && doc.category !== "maths" && !MUSIC_HELPER_NAMES.has(name2),
     extra: ["puts", "print"]
   });
   monaco.languages.setMonarchTokensProvider("sonicpi", {
@@ -9288,8 +9316,10 @@ function registerSonicPiLanguage(monaco) {
         // Keywords first — `end` / `do` would otherwise match the function
         // list (Sonic Pi has many fns named alike, but these are lexical).
         [/\b(do|end|if|else|elsif|unless|loop|while|until|for|in|true|false|nil|and|or|not|begin|rescue|ensure|return|yield|then|when|case|break|next|redo|retry|module|class|def|lambda|proc|self)\b/, "keyword"],
-        // Sonic Pi language + music functions (derived from docs index)
-        [new RegExp(`\\b(${sonicPiFns})\\b`), "sonicpi.function"],
+        // Music helpers (mathy / pitch / randomness) — pink-tinted class.
+        [new RegExp(`\\b(${musicFns})\\b`), "sonicpi.music"],
+        // DSL / sound / MIDI functions — blue-tinted class.
+        [new RegExp(`\\b(${dslFns})\\b`), "sonicpi.function"],
         // Note names: c3, eb4, f#2
         [/\b[a-gA-G][bs#]?\d\b/, "sonicpi.note"],
         // Identifier fallthrough — user variables, iterator names, etc.

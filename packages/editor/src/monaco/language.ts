@@ -9,12 +9,35 @@ export function registerSonicPiLanguage(monaco: typeof Monaco): void {
 
   monaco.languages.register({ id: 'sonicpi' })
 
-  // Derive the function-name alternation from the docs index so every
-  // upstream-sourced entry (313 across lang / synth / fx) is highlighted.
-  // Symbols (`:dull_bell`) are handled by the `:\w+` rule below — we only
-  // need bare identifiers here, so synth / fx / sample kinds are dropped.
-  const sonicPiFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
+  // Two token-classes restore the prior visual distinction:
+  //
+  //   sonicpi.music    — pitch + randomness + ring helpers that feel
+  //                      mathematical (choose, rrand, ring, range, chord,
+  //                      scale, note, tick, …). All western_theory / maths
+  //                      categories + a curated list of random/ring fns.
+  //   sonicpi.function — DSL flow / audio / MIDI (play, sleep, live_loop,
+  //                      sample, synth, with_fx, use_bpm, cc, …).
+  //
+  // Symbols (`:dull_bell`) hit the `:\w+` rule below; synth / fx / sample
+  // kinds are dropped from both alternations.
+  const MUSIC_HELPER_NAMES = new Set([
+    'choose', 'rrand', 'rrand_i', 'rand', 'rand_i', 'dice', 'one_in',
+    'ring', 'knit', 'range', 'line', 'spread', 'tick', 'look',
+    'shuffle', 'sort_by', 'reflect', 'stretch', 'repeat', 'mirror',
+  ])
+  const musicFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
     excludeKinds: ['synth', 'fx', 'sample'],
+    filter: (name, doc) =>
+      doc.category === 'western_theory' ||
+      doc.category === 'maths' ||
+      MUSIC_HELPER_NAMES.has(name),
+  })
+  const dslFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
+    excludeKinds: ['synth', 'fx', 'sample'],
+    filter: (name, doc) =>
+      doc.category !== 'western_theory' &&
+      doc.category !== 'maths' &&
+      !MUSIC_HELPER_NAMES.has(name),
     extra: ['puts', 'print'],
   })
 
@@ -43,8 +66,11 @@ export function registerSonicPiLanguage(monaco: typeof Monaco): void {
         // list (Sonic Pi has many fns named alike, but these are lexical).
         [/\b(do|end|if|else|elsif|unless|loop|while|until|for|in|true|false|nil|and|or|not|begin|rescue|ensure|return|yield|then|when|case|break|next|redo|retry|module|class|def|lambda|proc|self)\b/, 'keyword'],
 
-        // Sonic Pi language + music functions (derived from docs index)
-        [new RegExp(`\\b(${sonicPiFns})\\b`), 'sonicpi.function'],
+        // Music helpers (mathy / pitch / randomness) — pink-tinted class.
+        [new RegExp(`\\b(${musicFns})\\b`), 'sonicpi.music'],
+
+        // DSL / sound / MIDI functions — blue-tinted class.
+        [new RegExp(`\\b(${dslFns})\\b`), 'sonicpi.function'],
 
         // Note names: c3, eb4, f#2
         [/\b[a-gA-G][bs#]?\d\b/, 'sonicpi.note'],

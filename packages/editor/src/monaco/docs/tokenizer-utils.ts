@@ -5,13 +5,15 @@
  * means every newly-documented symbol automatically becomes syntax-coloured.
  */
 
-import type { DocKind, DocsIndex } from './types'
+import type { DocKind, DocsIndex, RuntimeDoc } from './types'
 
 export interface AlternationOpts {
   /** If set, only keys whose kind is in this list are included. */
   includeKinds?: DocKind[]
   /** If set, keys whose kind is in this list are excluded. */
   excludeKinds?: DocKind[]
+  /** Arbitrary filter applied after kind-based filtering. */
+  filter?: (name: string, doc: RuntimeDoc) => boolean
   /** Additional identifiers to merge in (e.g. hand-curated synonyms). */
   extra?: string[]
 }
@@ -29,13 +31,14 @@ export function buildIdentifierAlternation(
   index: DocsIndex,
   opts: AlternationOpts = {},
 ): string {
-  const { includeKinds, excludeKinds, extra = [] } = opts
+  const { includeKinds, excludeKinds, filter, extra = [] } = opts
   const names = new Set<string>()
 
   for (const [name, doc] of Object.entries(index.docs)) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue
     if (includeKinds && (!doc.kind || !includeKinds.includes(doc.kind))) continue
     if (excludeKinds && doc.kind && excludeKinds.includes(doc.kind)) continue
+    if (filter && !filter(name, doc)) continue
     names.add(name)
   }
   for (const n of extra) if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) names.add(n)
