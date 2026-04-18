@@ -13,9 +13,11 @@
 
 import type * as Monaco from 'monaco-editor'
 import type { DocsIndex } from './types'
+import { validateDocsIndex } from './types'
 import { registerRuntimeProviders } from './providers'
 import RAW from './data/p5.json'
 
+validateDocsIndex('p5.json', RAW)
 export const P5_DOCS_INDEX: DocsIndex = RAW as DocsIndex
 
 export function registerP5Providers(

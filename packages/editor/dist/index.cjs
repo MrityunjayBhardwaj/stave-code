@@ -6482,6 +6482,34 @@ function resolveDoc(index, word) {
   }
   return null;
 }
+function validateDocsIndex(label, raw) {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`${label}: docs index must be an object`);
+  }
+  const r = raw;
+  if (typeof r.runtime !== "string" || r.runtime.length === 0) {
+    throw new Error(`${label}: runtime must be a non-empty string`);
+  }
+  if (!r.docs || typeof r.docs !== "object") {
+    throw new Error(`${label}: docs must be an object`);
+  }
+  for (const [name2, entry] of Object.entries(r.docs)) {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`${label}: entry "${name2}" is not an object`);
+    }
+    const e = entry;
+    if (typeof e.signature !== "string") {
+      throw new Error(
+        `${label}: entry "${name2}" is missing string "signature"`
+      );
+    }
+    if (typeof e.description !== "string") {
+      throw new Error(
+        `${label}: entry "${name2}" is missing string "description"`
+      );
+    }
+  }
+}
 
 // src/monaco/docs/providers.ts
 function createHoverProvider(monaco, index) {
@@ -9099,6 +9127,7 @@ var sonicpi_default = {
 };
 
 // src/monaco/docs/sonicpi.ts
+validateDocsIndex("sonicpi.json", sonicpi_default);
 var SONICPI_DOCS_INDEX = sonicpi_default;
 function registerSonicPiProviders(monaco) {
   return registerRuntimeProviders(monaco, SONICPI_DOCS_INDEX, {
@@ -13497,6 +13526,7 @@ var p5_default = {
 };
 
 // src/monaco/docs/p5.ts
+validateDocsIndex("p5.json", p5_default);
 var P5_DOCS_INDEX = p5_default;
 function registerP5Providers(monaco) {
   return registerRuntimeProviders(monaco, P5_DOCS_INDEX, {
@@ -14014,6 +14044,7 @@ var hydra_default = {
 };
 
 // src/monaco/docs/hydra.ts
+validateDocsIndex("hydra.json", hydra_default);
 var HYDRA_DOCS_INDEX = hydra_default;
 function registerHydraProviders(monaco) {
   return registerRuntimeProviders(monaco, HYDRA_DOCS_INDEX, {

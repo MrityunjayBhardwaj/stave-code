@@ -15,9 +15,11 @@
 
 import type * as Monaco from 'monaco-editor'
 import type { DocsIndex } from './types'
+import { validateDocsIndex } from './types'
 import { registerRuntimeProviders } from './providers'
 import RAW from './data/sonicpi.json'
 
+validateDocsIndex('sonicpi.json', RAW)
 export const SONICPI_DOCS_INDEX: DocsIndex = RAW as DocsIndex
 
 export function registerSonicPiProviders(

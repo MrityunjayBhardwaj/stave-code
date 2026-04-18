@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type * as Monaco from 'monaco-editor'
 import type { DocsIndex } from '../types'
-import { resolveDoc } from '../types'
+import { resolveDoc, validateDocsIndex } from '../types'
 import {
   createHoverProvider,
   createDotCompletionProvider,
@@ -106,6 +106,52 @@ describe('resolveDoc', () => {
   })
   it('returns null for misses', () => {
     expect(resolveDoc(INDEX, 'nope')).toBeNull()
+  })
+})
+
+describe('validateDocsIndex', () => {
+  it('accepts a valid index', () => {
+    expect(() => validateDocsIndex('test', INDEX)).not.toThrow()
+  })
+  it('rejects non-object roots', () => {
+    expect(() => validateDocsIndex('test', null)).toThrow(/must be an object/)
+    expect(() => validateDocsIndex('test', 42)).toThrow(/must be an object/)
+  })
+  it('rejects missing runtime field', () => {
+    expect(() =>
+      validateDocsIndex('test', { docs: {} }),
+    ).toThrow(/runtime must be/)
+  })
+  it('rejects empty runtime string', () => {
+    expect(() =>
+      validateDocsIndex('test', { runtime: '', docs: {} }),
+    ).toThrow(/runtime must be/)
+  })
+  it('rejects missing docs field', () => {
+    expect(() =>
+      validateDocsIndex('test', { runtime: 'x' }),
+    ).toThrow(/docs must be/)
+  })
+  it('rejects entry missing signature', () => {
+    expect(() =>
+      validateDocsIndex('test', {
+        runtime: 'x',
+        docs: { foo: { description: 'hi' } },
+      }),
+    ).toThrow(/"foo" is missing string "signature"/)
+  })
+  it('rejects entry missing description', () => {
+    expect(() =>
+      validateDocsIndex('test', {
+        runtime: 'x',
+        docs: { foo: { signature: 'foo()' } },
+      }),
+    ).toThrow(/"foo" is missing string "description"/)
+  })
+  it('label appears in error messages', () => {
+    expect(() =>
+      validateDocsIndex('myruntime.json', { runtime: 42 }),
+    ).toThrow(/myruntime\.json/)
   })
 })
 

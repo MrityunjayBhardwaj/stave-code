@@ -69,3 +69,45 @@ export function resolveDoc(
   }
   return null
 }
+
+/**
+ * Assert that a vendored JSON blob conforms to `DocsIndex`. Runs at
+ * module-load when each runtime's index is imported, so a malformed
+ * `data/*.json` file from an upstream-regenerate surfaces as a loud
+ * startup error rather than a silent hover/completion gap.
+ *
+ * Throws if `runtime` isn't a non-empty string, if `docs` isn't a
+ * plain object, or if any entry is missing the required `signature` +
+ * `description` fields. Unknown fields are permitted (forward-compat).
+ */
+export function validateDocsIndex(
+  label: string,
+  raw: unknown,
+): asserts raw is DocsIndex {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error(`${label}: docs index must be an object`)
+  }
+  const r = raw as Record<string, unknown>
+  if (typeof r.runtime !== 'string' || r.runtime.length === 0) {
+    throw new Error(`${label}: runtime must be a non-empty string`)
+  }
+  if (!r.docs || typeof r.docs !== 'object') {
+    throw new Error(`${label}: docs must be an object`)
+  }
+  for (const [name, entry] of Object.entries(r.docs)) {
+    if (!entry || typeof entry !== 'object') {
+      throw new Error(`${label}: entry "${name}" is not an object`)
+    }
+    const e = entry as Record<string, unknown>
+    if (typeof e.signature !== 'string') {
+      throw new Error(
+        `${label}: entry "${name}" is missing string "signature"`,
+      )
+    }
+    if (typeof e.description !== 'string') {
+      throw new Error(
+        `${label}: entry "${name}" is missing string "description"`,
+      )
+    }
+  }
+}
