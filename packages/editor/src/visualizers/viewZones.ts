@@ -303,16 +303,20 @@ export function addInlineViewZones(
       const crop = FULL_CROP
       const contentW = editor.getLayoutInfo().contentWidth || 400
       const layout = computeLayout(contentW, native, crop)
+      // Apply persisted height override immediately so remounted zones
+      // don't flash at the computed height before the async block corrects them.
+      const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : undefined
+      const initH = initHOverride ?? layout.zoneH
 
       const container = document.createElement('div')
       container.setAttribute('data-viz-zone', '')
       container.setAttribute('data-viz-zone-track', trackKey)
       container.setAttribute('data-viz-zone-id', vizId)
-      container.style.cssText = `overflow:hidden;height:${layout.zoneH}px;position:relative;`
+      container.style.cssText = `overflow:hidden;height:${initH}px;position:relative;`
 
       const zoneDesc = {
         afterLineNumber: afterLine,
-        heightInPx: layout.zoneH,
+        heightInPx: initH,
         domNode: container,
         suppressMouseDown: true,
       }
@@ -393,41 +397,60 @@ export function addInlineViewZones(
           resizeHandle.style.opacity = '1'
         }
       })
-      resizeHandle.addEventListener('mousedown', (e) => {
+      // Register in CAPTURE phase on the container so the handler
+      // fires before Monaco's scrollable-element pointer capture.
+      // The resize handle is identified by checking the event target.
+      container.addEventListener('pointerdown', (e) => {
+        if (e.target !== resizeHandle) return
         e.preventDefault()
         e.stopPropagation()
+        e.stopImmediatePropagation()
+        // Capture the pointer so move/up events route here instead
+        // of being swallowed by Monaco's setPointerCapture.
+        resizeHandle.setPointerCapture(e.pointerId)
         resizeHandle.dataset.dragging = '1'
         entry.container.dataset.resizing = '1'
         const startY = e.clientY
         const startH = entry.zoneDesc.heightInPx
-        const onMove = (ev: MouseEvent) => {
+        const contentW = editor.getLayoutInfo().contentWidth || 400
+        const onMove = (ev: PointerEvent) => {
+          ev.preventDefault()
           const delta = ev.clientY - startY
           const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta))
-          // Update CSS only during drag — don't call changeViewZones
-          // or it triggers recomputeAllZones which resets the height.
           entry.container.style.height = `${newH}px`
           entry.zoneDesc.heightInPx = newH
+          // Tell Monaco the zone height changed so lines below
+          // reflow in real time (resizing flag prevents recomputeAllZones
+          // from resetting the height).
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
+          const nw = entry.native.w, nh = entry.native.h
+          const cropW = Math.max(0.01, entry.crop.w)
+          const cropH = Math.max(0.01, entry.crop.h)
+          const scaleByW = contentW / (cropW * nw)
+          const scaleByH = newH / (cropH * nh)
+          const scale = Math.min(scaleByW, scaleByH)
+          const tx = -entry.crop.x * nw * scale
+          const ty = -entry.crop.y * nh * scale
+          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
         }
-        const onUp = () => {
-          document.removeEventListener('mousemove', onMove)
-          document.removeEventListener('mouseup', onUp)
+        const onUp = (ev: PointerEvent) => {
+          resizeHandle.releasePointerCapture(ev.pointerId)
+          resizeHandle.removeEventListener('pointermove', onMove)
+          resizeHandle.removeEventListener('pointerup', onUp)
           delete resizeHandle.dataset.dragging
-          delete entry.container.dataset.resizing
           resizeHandle.style.background = 'transparent'
           resizeHandle.style.opacity = '1'
-          // Commit the final height to Monaco + persist.
-          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
           if (fileId) {
             setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx)
           }
+          // Keep resizing flag ON during changeViewZones so the
+          // triggered recomputeAllZones skips this zone. Clear after.
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
+          delete entry.container.dataset.resizing
         }
-        document.addEventListener('mousemove', onMove)
-        document.addEventListener('mouseup', onUp)
-      })
-      // Block Monaco from intercepting pointer events on the handle.
-      for (const evt of ['mousedown', 'mouseup', 'pointerdown', 'pointerup'] as const) {
-        resizeHandle.addEventListener(evt, (e) => { e.stopPropagation(); e.stopImmediatePropagation() }, true)
-      }
+        resizeHandle.addEventListener('pointermove', onMove)
+        resizeHandle.addEventListener('pointerup', onUp)
+      }, true)
       container.appendChild(resizeHandle)
 
       // p5's createCanvas(W, H) may pick dimensions that differ from the
@@ -503,7 +526,19 @@ export function addInlineViewZones(
           entry.zoneDesc.heightInPx = finalH
           entry.container.style.height = `${finalH}px`
           accessor.layoutZone(entry.zoneId)
-          applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+          if (hOverride != null) {
+            const nw = entry.native.w, nh = entry.native.h
+            const cropW = Math.max(0.01, entry.crop.w)
+            const cropH = Math.max(0.01, entry.crop.h)
+            const scaleByW = contentW / (cropW * nw)
+            const scaleByH = hOverride / (cropH * nh)
+            const scale = Math.min(scaleByW, scaleByH)
+            const tx = -entry.crop.x * nw * scale
+            const ty = -entry.crop.y * nh * scale
+            applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
+          } else {
+            applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+          }
         }
       })
       // After heights change, Monaco repositions zones — ensure the
@@ -515,7 +550,19 @@ export function addInlineViewZones(
         const finalH = hOverride ?? layout.zoneH
         entry.zoneDesc.heightInPx = finalH
         entry.container.style.height = `${finalH}px`
-        applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+        if (hOverride != null) {
+          const nw = entry.native.w, nh = entry.native.h
+          const cropW = Math.max(0.01, entry.crop.w)
+          const cropH = Math.max(0.01, entry.crop.h)
+          const scaleByW = contentW / (cropW * nw)
+          const scaleByH = hOverride / (cropH * nh)
+          const scale = Math.min(scaleByW, scaleByH)
+          const tx = -entry.crop.x * nw * scale
+          const ty = -entry.crop.y * nh * scale
+          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
+        } else {
+          applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+        }
       }
     } catch { /* ignore */ }
   })()
@@ -527,8 +574,6 @@ export function addInlineViewZones(
   const recomputeAllZones = () => {
     editor.changeViewZones((accessor) => {
       for (const entry of zoneEntries) {
-        // Skip zones being actively resized — their height is
-        // controlled by the drag handler, not layout computation.
         if (entry.container.dataset.resizing) continue
         const contentW = editor.getLayoutInfo().contentWidth || 400
         const layout = computeLayout(contentW, entry.native, entry.crop)
@@ -537,7 +582,21 @@ export function addInlineViewZones(
         entry.zoneDesc.heightInPx = finalH
         entry.container.style.height = `${finalH}px`
         accessor.layoutZone(entry.zoneId)
-        applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+        // When a height override is active, recompute the canvas
+        // transform to fit the overridden height (aspect-ratio scale).
+        if (hOverride != null) {
+          const nw = entry.native.w, nh = entry.native.h
+          const cropW = Math.max(0.01, entry.crop.w)
+          const cropH = Math.max(0.01, entry.crop.h)
+          const scaleByW = contentW / (cropW * nw)
+          const scaleByH = hOverride / (cropH * nh)
+          const scale = Math.min(scaleByW, scaleByH)
+          const tx = -entry.crop.x * nw * scale
+          const ty = -entry.crop.y * nh * scale
+          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
+        } else {
+          applyLayout(entry.container, entry.container.querySelector('canvas'), layout)
+        }
       }
     })
   }

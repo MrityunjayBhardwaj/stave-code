@@ -6278,6 +6278,7 @@ function notify(id) {
 var zoneOverrideSubscribers = /* @__PURE__ */ new Map();
 var wiredZoneObservers = /* @__PURE__ */ new Set();
 var PRUNE_ZONE_OVERRIDES_ORIGIN = /* @__PURE__ */ Symbol("prune-zone-overrides");
+var HEIGHT_RESIZE_ORIGIN = /* @__PURE__ */ Symbol("height-resize");
 function ensureZoneOverridesMap(fileId) {
   const filesMap = getFilesMap();
   const fileMap = filesMap.get(fileId);
@@ -6289,7 +6290,8 @@ function ensureZoneOverridesMap(fileId) {
   }
   if (!wiredZoneObservers.has(fileId)) {
     overrides.observeDeep((events) => {
-      if (events[0]?.transaction.origin === PRUNE_ZONE_OVERRIDES_ORIGIN) return;
+      const origin = events[0]?.transaction.origin;
+      if (origin === PRUNE_ZONE_OVERRIDES_ORIGIN || origin === HEIGHT_RESIZE_ORIGIN) return;
       const subs = zoneOverrideSubscribers.get(fileId);
       if (subs) for (const cb of subs) cb();
     });
@@ -6338,7 +6340,7 @@ function setZoneHeightOverride(fileId, trackKey, heightPx) {
     } else {
       overrides.set(trackKey, { ...existing, heightPx });
     }
-  }, STRUCT_ORIGIN);
+  }, HEIGHT_RESIZE_ORIGIN);
 }
 function pruneZoneOverrides(fileId, currentViz) {
   ensureDoc();
@@ -8072,14 +8074,16 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const crop = FULL_CROP;
       const contentW = editor.getLayoutInfo().contentWidth || 400;
       const layout = computeLayout(contentW, native, crop);
+      const initHOverride = fileId ? getZoneHeightOverride(fileId, trackKey) : void 0;
+      const initH = initHOverride ?? layout.zoneH;
       const container = document.createElement("div");
       container.setAttribute("data-viz-zone", "");
       container.setAttribute("data-viz-zone-track", trackKey);
       container.setAttribute("data-viz-zone-id", vizId);
-      container.style.cssText = `overflow:hidden;height:${layout.zoneH}px;position:relative;`;
+      container.style.cssText = `overflow:hidden;height:${initH}px;position:relative;`;
       const zoneDesc = {
         afterLineNumber: afterLine,
-        heightInPx: layout.zoneH,
+        heightInPx: initH,
         domNode: container,
         suppressMouseDown: true
       };
@@ -8149,40 +8153,50 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           resizeHandle.style.opacity = "1";
         }
       });
-      resizeHandle.addEventListener("mousedown", (e) => {
+      container.addEventListener("pointerdown", (e) => {
+        if (e.target !== resizeHandle) return;
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
+        resizeHandle.setPointerCapture(e.pointerId);
         resizeHandle.dataset.dragging = "1";
         entry.container.dataset.resizing = "1";
         const startY = e.clientY;
         const startH = entry.zoneDesc.heightInPx;
+        const contentW2 = editor.getLayoutInfo().contentWidth || 400;
         const onMove = (ev) => {
+          ev.preventDefault();
           const delta = ev.clientY - startY;
           const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
           entry.container.style.height = `${newH}px`;
           entry.zoneDesc.heightInPx = newH;
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
+          const nw = entry.native.w, nh = entry.native.h;
+          const cropW = Math.max(0.01, entry.crop.w);
+          const cropH = Math.max(0.01, entry.crop.h);
+          const scaleByW = contentW2 / (cropW * nw);
+          const scaleByH = newH / (cropH * nh);
+          const scale2 = Math.min(scaleByW, scaleByH);
+          const tx3 = -entry.crop.x * nw * scale2;
+          const ty = -entry.crop.y * nh * scale2;
+          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
         };
-        const onUp = () => {
-          document.removeEventListener("mousemove", onMove);
-          document.removeEventListener("mouseup", onUp);
+        const onUp = (ev) => {
+          resizeHandle.releasePointerCapture(ev.pointerId);
+          resizeHandle.removeEventListener("pointermove", onMove);
+          resizeHandle.removeEventListener("pointerup", onUp);
           delete resizeHandle.dataset.dragging;
-          delete entry.container.dataset.resizing;
           resizeHandle.style.background = "transparent";
           resizeHandle.style.opacity = "1";
-          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           if (fileId) {
             setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx);
           }
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
+          delete entry.container.dataset.resizing;
         };
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
-      });
-      for (const evt of ["mousedown", "mouseup", "pointerdown", "pointerup"]) {
-        resizeHandle.addEventListener(evt, (e) => {
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }, true);
-      }
+        resizeHandle.addEventListener("pointermove", onMove);
+        resizeHandle.addEventListener("pointerup", onUp);
+      }, true);
       container.appendChild(resizeHandle);
       let refineAttempts = 0;
       const tryRefine = () => {
@@ -8235,7 +8249,19 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           entry.zoneDesc.heightInPx = finalH;
           entry.container.style.height = `${finalH}px`;
           accessor.layoutZone(entry.zoneId);
-          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+          if (hOverride != null) {
+            const nw = entry.native.w, nh = entry.native.h;
+            const cropW = Math.max(0.01, entry.crop.w);
+            const cropH = Math.max(0.01, entry.crop.h);
+            const scaleByW = contentW / (cropW * nw);
+            const scaleByH = hOverride / (cropH * nh);
+            const scale2 = Math.min(scaleByW, scaleByH);
+            const tx3 = -entry.crop.x * nw * scale2;
+            const ty = -entry.crop.y * nh * scale2;
+            applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
+          } else {
+            applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+          }
         }
       });
       for (const entry of zoneEntries) {
@@ -8245,7 +8271,19 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const finalH = hOverride ?? layout.zoneH;
         entry.zoneDesc.heightInPx = finalH;
         entry.container.style.height = `${finalH}px`;
-        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+        if (hOverride != null) {
+          const nw = entry.native.w, nh = entry.native.h;
+          const cropW = Math.max(0.01, entry.crop.w);
+          const cropH = Math.max(0.01, entry.crop.h);
+          const scaleByW = contentW / (cropW * nw);
+          const scaleByH = hOverride / (cropH * nh);
+          const scale2 = Math.min(scaleByW, scaleByH);
+          const tx3 = -entry.crop.x * nw * scale2;
+          const ty = -entry.crop.y * nh * scale2;
+          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
+        } else {
+          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+        }
       }
     } catch {
     }
@@ -8261,7 +8299,19 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         entry.zoneDesc.heightInPx = finalH;
         entry.container.style.height = `${finalH}px`;
         accessor.layoutZone(entry.zoneId);
-        applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+        if (hOverride != null) {
+          const nw = entry.native.w, nh = entry.native.h;
+          const cropW = Math.max(0.01, entry.crop.w);
+          const cropH = Math.max(0.01, entry.crop.h);
+          const scaleByW = contentW / (cropW * nw);
+          const scaleByH = hOverride / (cropH * nh);
+          const scale2 = Math.min(scaleByW, scaleByH);
+          const tx3 = -entry.crop.x * nw * scale2;
+          const ty = -entry.crop.y * nh * scale2;
+          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
+        } else {
+          applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
+        }
       }
     });
   };

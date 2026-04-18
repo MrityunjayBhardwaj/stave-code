@@ -549,6 +549,8 @@ const wiredZoneObservers = new Set<string>()
  * active zone-mount would re-trigger the mount reentrantly (see #30).
  */
 const PRUNE_ZONE_OVERRIDES_ORIGIN = Symbol('prune-zone-overrides')
+/** Height-resize writes shouldn't trigger a full zone remount. */
+const HEIGHT_RESIZE_ORIGIN = Symbol('height-resize')
 
 function ensureZoneOverridesMap(fileId: string): Y.Map<unknown> | null {
   const filesMap = getFilesMap()
@@ -563,8 +565,11 @@ function ensureZoneOverridesMap(fileId: string): Y.Map<unknown> | null {
   // mutations via observeDeep — one subscription watches the tree.
   if (!wiredZoneObservers.has(fileId)) {
     overrides.observeDeep((events) => {
-      // Skip prune-originated mutations — see PRUNE_ZONE_OVERRIDES_ORIGIN.
-      if (events[0]?.transaction.origin === PRUNE_ZONE_OVERRIDES_ORIGIN) return
+      // Skip prune and height-resize mutations — neither should trigger
+      // a full zone remount (prune is bookkeeping, height-resize is
+      // already applied directly by the drag handler).
+      const origin = events[0]?.transaction.origin
+      if (origin === PRUNE_ZONE_OVERRIDES_ORIGIN || origin === HEIGHT_RESIZE_ORIGIN) return
       const subs = zoneOverrideSubscribers.get(fileId)
       if (subs) for (const cb of subs) cb()
     })
@@ -636,7 +641,7 @@ export function setZoneHeightOverride(
     } else {
       overrides.set(trackKey, { ...existing, heightPx })
     }
-  }, STRUCT_ORIGIN)
+  }, HEIGHT_RESIZE_ORIGIN)
 }
 
 /**

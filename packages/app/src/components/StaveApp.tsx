@@ -954,25 +954,40 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                   showToast(`Viz file "${vizId}" not found in workspace`, "error");
                 }}
                 onCropViz={(vizId, presetId, trackKey) => {
-                  if (!presetId) {
-                    showToast(`No preset found for "${vizId}" — save it first`, "error");
-                    return;
-                  }
                   const fileId = activeFileId ?? listWorkspaceFiles().find(f => f.language === 'strudel' || f.language === 'sonicpi')?.id ?? null;
                   if (!fileId) {
                     showToast("Open an editor file before cropping", "error");
                     return;
                   }
+                  // If presetId is null (async preset lookup hasn't completed),
+                  // resolve by searching workspace files for a matching viz name.
+                  let resolvedPresetId = presetId;
+                  if (!resolvedPresetId) {
+                    const norm = (s: string) => s.toLowerCase().replace(/[\s\-_]/g, "");
+                    const target = norm(vizId);
+                    const allFiles = listWorkspaceFiles();
+                    const vizFile = allFiles.find(f => {
+                      if (f.language !== "p5js" && f.language !== "hydra") return false;
+                      const base = f.path.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
+                      return norm(base) === target;
+                    });
+                    if (vizFile?.meta?.presetId) {
+                      resolvedPresetId = vizFile.meta.presetId as string;
+                    }
+                  }
+                  if (!resolvedPresetId) {
+                    showToast(`No preset found for "${vizId}" — save it first`, "error");
+                    return;
+                  }
                   // Read the live inline viz canvas dimensions so the
                   // crop preview renders at the same native size.
-                  // Query by trackKey to find the specific zone being cropped.
                   const vizCanvas = document.querySelector(
                     `[data-viz-zone-track="${trackKey}"] canvas`
                   ) as HTMLCanvasElement | null;
                   const renderSize = vizCanvas
                     ? { w: vizCanvas.offsetWidth, h: vizCanvas.offsetHeight }
                     : undefined;
-                  setCropTarget({ mode: "inline", vizId, presetId, fileId, trackKey, renderSize });
+                  setCropTarget({ mode: "inline", vizId, presetId: resolvedPresetId, fileId, trackKey, renderSize });
                 }}
               />
             )}
