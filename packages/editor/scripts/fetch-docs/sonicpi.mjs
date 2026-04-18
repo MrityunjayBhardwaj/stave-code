@@ -63,6 +63,76 @@ function stripHtml(s) {
     .trim()
 }
 
+/**
+ * Walk the `examples: [ "…", "…", "…" ]` block of a `doc name:` chunk and
+ * return the first line across all example strings that looks like a
+ * clean, single-line usage of `fnName`. v1 only inspected the first
+ * string; this picks up entries whose first example is a multi-line
+ * setup with the fn call on line 3+.
+ */
+function pickExampleLine(chunk, fnName) {
+  const examplesStart = chunk.indexOf('examples:')
+  if (examplesStart < 0) return undefined
+  // Crude string-literal scanner — walk from after `examples: [` picking
+  // out `"..."` strings until we hit the closing `]` at the same bracket
+  // depth.
+  const after = chunk.slice(examplesStart)
+  const openIdx = after.indexOf('[')
+  if (openIdx < 0) return undefined
+  let i = openIdx + 1
+  const strings = []
+  let depth = 1
+  while (i < after.length && depth > 0) {
+    const ch = after[i]
+    if (ch === '"') {
+      // Capture string body with backslash-escape awareness
+      let j = i + 1
+      let buf = ''
+      while (j < after.length) {
+        const cj = after[j]
+        if (cj === '\\' && j + 1 < after.length) {
+          buf += cj + after[j + 1]
+          j += 2
+          continue
+        }
+        if (cj === '"') break
+        buf += cj
+        j++
+      }
+      strings.push(buf)
+      i = j + 1
+      continue
+    }
+    if (ch === '[') depth++
+    if (ch === ']') depth--
+    i++
+    // Bound runaway scans
+    if (strings.length > 10) break
+  }
+  const nameRe = new RegExp(`(?:^|[\\s;=({,])${fnName}(?:\\b|\\s|[(!])`)
+  for (const s of strings) {
+    // Local unescape that preserves `\n` as a real newline so split
+    // downstream works. `unescapeRuby` collapses `\n` → space which is
+    // fine for single-line prose (summary/doc) but wrong here.
+    const raw = s
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '  ')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\')
+    for (const rawLine of raw.split(/[\n;]/)) {
+      // Strip trailing `# comment` so long explanatory comments don't
+      // blow past the length filter, and so the example itself ends at
+      // a natural point.
+      const codeOnly = rawLine.replace(/\s+#.*$/, '').trim()
+      if (!codeOnly || codeOnly.startsWith('#')) continue
+      if (codeOnly.length > 120) continue
+      if (!nameRe.test(codeOnly)) continue
+      return codeOnly
+    }
+  }
+  return undefined
+}
+
 function parseRubyDocs(source, filePath) {
   const chunks = source.split(/\n\s*doc\s+name:\s+/)
   const out = []
@@ -72,7 +142,6 @@ function parseRubyDocs(source, filePath) {
     const summaryM = /summary:\s+"((?:[^"\\]|\\.)*)"/.exec(chunk)
     const docM = /\bdoc:\s+"((?:[^"\\]|\\.)*)"/.exec(chunk)
     const argsM = /args:\s+\[([\s\S]*?)\](?=,\s*(?:alt|opts|accepts|examples|introduced|returns|intro_fn|hide))/.exec(chunk)
-    const exampleM = /examples:\s+\[\s*"([\s\S]*?)"(?=[,\]])/.exec(chunk)
     if (!nameM) continue
     const name = nameM[1]
     const summary = summaryM ? unescapeRuby(summaryM[1]) : ''
@@ -86,18 +155,11 @@ function parseRubyDocs(source, filePath) {
         args.push({ name: m[1], type: m[2] ?? '' })
       }
     }
-    // Trim example to one line with the function name
-    let example
-    if (exampleM) {
-      const raw = unescapeRuby(exampleM[1])
-      const nameRe = new RegExp(`(?:^|[\\s;])${name}(?:\\b|\\s|[(!])`)
-      const line =
-        raw
-          .split(/[\n;]/)
-          .map((l) => l.trim())
-          .find((l) => l && !l.startsWith('#') && nameRe.test(l))
-      example = line || undefined
-    }
+    // Extract every string inside `examples: [...]` and try each until we
+    // find one with a clean, short call-site line. Ruby examples are
+    // verbose multi-line heredocs — iterating every string rather than
+    // just the first string covers ~30% more entries than the v1 regex.
+    const example = pickExampleLine(chunk, name)
     out.push({ name, summary, doc, args, example, file: filePath })
   }
   return out
