@@ -198,8 +198,13 @@ function registerP5JsLanguage(monaco: typeof Monaco): void {
   })
   const variables = buildIdentifierAlternation(P5_DOCS_INDEX, {
     includeKinds: ['variable', 'constant'],
-    extra: ['hapStream', 'analyser', 'scheduler'],
   })
+  // Stave-specific host globals — injected into every p5 sketch by the
+  // runtime. `stave` is the umbrella object; its properties are accessed
+  // as `stave.scheduler`, `stave.analyser`, `stave.hapStream`, etc. The
+  // property-access rule below colours the `.xxx` portion; this alternation
+  // covers the bare `stave` identifier and direct-exposed aliases.
+  const HOST_GLOBALS = 'stave|scheduler|analyser|hapStream'
   // Covers: JS keywords, p5 identifiers (from docs), literals, operators,
   // brackets, delimiters, numbers, strings (single / double / template
   // with ${} interpolation), comments. Previously the tokenizer only
@@ -214,6 +219,10 @@ function registerP5JsLanguage(monaco: typeof Monaco): void {
       root: [
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@comment'],
+        // Host-global bare identifier (e.g. `stave` → colour as predefined
+        // even when accessed as `stave.foo`). Must come before the
+        // property-access rule so `.stave` stays as identifier.property.
+        [new RegExp(`\\b(${HOST_GLOBALS})\\b`), 'variable.predefined'],
         // Property access: `.foo` — color the name so `obj.prop` reads as
         // property, not the same colour as bare identifiers. Must come
         // before the keyword rule so p5 names accessed as `.foo` don't
