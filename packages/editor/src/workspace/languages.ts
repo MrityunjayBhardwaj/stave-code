@@ -132,27 +132,98 @@ function registerP5JsLanguage(monaco: typeof Monaco): void {
     includeKinds: ['variable', 'constant'],
     extra: ['hapStream', 'analyser', 'scheduler'],
   })
+  // Covers: JS keywords, p5 identifiers (from docs), literals, operators,
+  // brackets, delimiters, numbers, strings (single / double / template
+  // with ${} interpolation), comments. Previously the tokenizer only
+  // matched docs-sourced identifiers + JS keywords + numbers + simple
+  // strings, leaving operators / brackets / property accesses / local
+  // variables rendered as undifferentiated `source.p5js` — the user-
+  // visible gap in syntax colour.
   monaco.languages.setMonarchTokensProvider('p5js', {
+    defaultToken: '',
+    tokenPostfix: '.p5js',
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
         [/\/\*/, 'comment', '@comment'],
+        // Property access: `.foo` — color the name so `obj.prop` reads as
+        // property, not the same colour as bare identifiers. Must come
+        // before the keyword rule so p5 names accessed as `.foo` don't
+        // get mis-highlighted as top-level functions.
+        [/\.([a-zA-Z_$][\w$]*)/, 'identifier.property'],
         ...keywordRule(fns, 'keyword'),
         ...keywordRule(variables, 'variable.predefined'),
         [
-          /\b(let|const|var|function|for|while|if|else|return|class|new|typeof|of|in)\b/,
+          /\b(let|const|var|function|for|while|if|else|return|class|new|typeof|instanceof|of|in|break|continue|do|switch|case|default|throw|try|catch|finally|async|await|yield|this|super|import|export|from|as|void|delete|null|undefined|true|false)\b/,
           'keyword',
         ],
-        [/\b\d+\.?\d*\b/, 'number'],
-        [/"[^"]*"/, 'string'],
-        [/'[^']*'/, 'string'],
-        [/`[^`]*`/, 'string'],
+        // Identifier fallthrough — anything left that looks like a name.
+        [/[a-zA-Z_$][\w$]*/, 'identifier'],
+        // Numbers: 0x…, 0b…, scientific, decimals starting with `.`.
+        [/0[xX][\da-fA-F]+n?/, 'number.hex'],
+        [/0[bB][01]+n?/, 'number.binary'],
+        [/\d+(\.\d+)?([eE][+-]?\d+)?n?/, 'number'],
+        [/\.\d+([eE][+-]?\d+)?/, 'number.float'],
+        // Strings
+        [/"/, { token: 'string.quote', next: '@string_double' }],
+        [/'/, { token: 'string.quote', next: '@string_single' }],
+        [/`/, { token: 'string.quote', next: '@string_template' }],
+        // Operators + delimiters
+        [/=>/, 'keyword.operator'],
+        [/(\?\?|\?\.|\?|:)/, 'keyword.operator'],
+        [/===|!==|==|!=|<=|>=|<<|>>>|>>|&&|\|\|/, 'keyword.operator'],
+        [/[=!<>]=?/, 'keyword.operator'],
+        [/[+\-*/%&|^~]=?/, 'keyword.operator'],
+        [/[{}()[\]]/, '@brackets'],
+        [/[;,.]/, 'delimiter'],
       ],
       comment: [
+        [/[^/*]+/, 'comment'],
         [/\*\//, 'comment', '@pop'],
         [/./, 'comment'],
       ],
+      string_double: [
+        [/[^\\"]+/, 'string'],
+        [/\\./, 'string.escape'],
+        [/"/, { token: 'string.quote', next: '@pop' }],
+      ],
+      string_single: [
+        [/[^\\']+/, 'string'],
+        [/\\./, 'string.escape'],
+        [/'/, { token: 'string.quote', next: '@pop' }],
+      ],
+      string_template: [
+        [/[^\\`$]+/, 'string'],
+        [/\\./, 'string.escape'],
+        [/\$\{/, { token: 'delimiter.bracket', next: '@template_interp' }],
+        [/\$/, 'string'],
+        [/`/, { token: 'string.quote', next: '@pop' }],
+      ],
+      template_interp: [
+        [/\}/, { token: 'delimiter.bracket', next: '@pop' }],
+        { include: 'root' },
+      ],
     },
+  })
+  monaco.languages.setLanguageConfiguration('p5js', {
+    comments: { lineComment: '//', blockComment: ['/*', '*/'] },
+    brackets: [['{', '}'], ['[', ']'], ['(', ')']],
+    autoClosingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+      { open: '`', close: '`' },
+    ],
+    surroundingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+      { open: '`', close: '`' },
+    ],
   })
 }
 

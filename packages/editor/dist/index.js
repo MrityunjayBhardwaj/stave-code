@@ -5790,9 +5790,25 @@ function defineStrudelMonacoTheme(monaco) {
       { token: "strudel.mini.operator", foreground: "f472b6" },
       { token: "strudel.mini.number", foreground: "fb923c" },
       { token: "string", foreground: "fcd34d" },
+      { token: "string.escape", foreground: "fde68a" },
+      { token: "string.quote", foreground: "fcd34d" },
       { token: "number", foreground: "fb923c" },
+      { token: "number.hex", foreground: "fb923c" },
+      { token: "number.binary", foreground: "fb923c" },
+      { token: "number.float", foreground: "fb923c" },
       { token: "comment", foreground: "6b7280", fontStyle: "italic" },
       { token: "keyword", foreground: "c4b5fd" },
+      { token: "keyword.operator", foreground: "f472b6" },
+      { token: "variable.predefined", foreground: "fde68a" },
+      { token: "constant", foreground: "fb923c" },
+      { token: "type", foreground: "7dd3fc" },
+      { token: "identifier", foreground: "e2e8f0" },
+      { token: "identifier.property", foreground: "93c5fd" },
+      { token: "delimiter", foreground: "94a3b8" },
+      { token: "delimiter.parenthesis", foreground: "94a3b8" },
+      { token: "delimiter.curly", foreground: "94a3b8" },
+      { token: "delimiter.square", foreground: "94a3b8" },
+      { token: "delimiter.bracket", foreground: "94a3b8" },
       // Sonic Pi tokens
       { token: "sonicpi.function", foreground: "93c5fd", fontStyle: "bold" },
       { token: "sonicpi.music", foreground: "a78bfa" },
@@ -5826,8 +5842,25 @@ function defineStrudelMonacoTheme(monaco) {
       { token: "strudel.mini.operator", foreground: "be185d" },
       { token: "strudel.mini.number", foreground: "c2410c" },
       { token: "string", foreground: "92400e" },
+      { token: "string.escape", foreground: "a16207" },
+      { token: "string.quote", foreground: "92400e" },
       { token: "number", foreground: "c2410c" },
-      { token: "comment", foreground: "9ca3af", fontStyle: "italic" }
+      { token: "number.hex", foreground: "c2410c" },
+      { token: "number.binary", foreground: "c2410c" },
+      { token: "number.float", foreground: "c2410c" },
+      { token: "comment", foreground: "9ca3af", fontStyle: "italic" },
+      { token: "keyword", foreground: "6d28d9" },
+      { token: "keyword.operator", foreground: "be185d" },
+      { token: "variable.predefined", foreground: "92400e" },
+      { token: "constant", foreground: "c2410c" },
+      { token: "type", foreground: "0369a1" },
+      { token: "identifier", foreground: "1e1b4b" },
+      { token: "identifier.property", foreground: "1d4ed8" },
+      { token: "delimiter", foreground: "64748b" },
+      { token: "delimiter.parenthesis", foreground: "64748b" },
+      { token: "delimiter.curly", foreground: "64748b" },
+      { token: "delimiter.square", foreground: "64748b" },
+      { token: "delimiter.bracket", foreground: "64748b" }
     ],
     colors: {
       "editor.background": "#f0f0f6",
@@ -13842,26 +13875,90 @@ function registerP5JsLanguage(monaco) {
     extra: ["hapStream", "analyser", "scheduler"]
   });
   monaco.languages.setMonarchTokensProvider("p5js", {
+    defaultToken: "",
+    tokenPostfix: ".p5js",
     tokenizer: {
       root: [
         [/\/\/.*$/, "comment"],
         [/\/\*/, "comment", "@comment"],
+        // Property access: `.foo` — color the name so `obj.prop` reads as
+        // property, not the same colour as bare identifiers. Must come
+        // before the keyword rule so p5 names accessed as `.foo` don't
+        // get mis-highlighted as top-level functions.
+        [/\.([a-zA-Z_$][\w$]*)/, "identifier.property"],
         ...keywordRule(fns, "keyword"),
         ...keywordRule(variables, "variable.predefined"),
         [
-          /\b(let|const|var|function|for|while|if|else|return|class|new|typeof|of|in)\b/,
+          /\b(let|const|var|function|for|while|if|else|return|class|new|typeof|instanceof|of|in|break|continue|do|switch|case|default|throw|try|catch|finally|async|await|yield|this|super|import|export|from|as|void|delete|null|undefined|true|false)\b/,
           "keyword"
         ],
-        [/\b\d+\.?\d*\b/, "number"],
-        [/"[^"]*"/, "string"],
-        [/'[^']*'/, "string"],
-        [/`[^`]*`/, "string"]
+        // Identifier fallthrough — anything left that looks like a name.
+        [/[a-zA-Z_$][\w$]*/, "identifier"],
+        // Numbers: 0x…, 0b…, scientific, decimals starting with `.`.
+        [/0[xX][\da-fA-F]+n?/, "number.hex"],
+        [/0[bB][01]+n?/, "number.binary"],
+        [/\d+(\.\d+)?([eE][+-]?\d+)?n?/, "number"],
+        [/\.\d+([eE][+-]?\d+)?/, "number.float"],
+        // Strings
+        [/"/, { token: "string.quote", next: "@string_double" }],
+        [/'/, { token: "string.quote", next: "@string_single" }],
+        [/`/, { token: "string.quote", next: "@string_template" }],
+        // Operators + delimiters
+        [/=>/, "keyword.operator"],
+        [/(\?\?|\?\.|\?|:)/, "keyword.operator"],
+        [/===|!==|==|!=|<=|>=|<<|>>>|>>|&&|\|\|/, "keyword.operator"],
+        [/[=!<>]=?/, "keyword.operator"],
+        [/[+\-*/%&|^~]=?/, "keyword.operator"],
+        [/[{}()[\]]/, "@brackets"],
+        [/[;,.]/, "delimiter"]
       ],
       comment: [
+        [/[^/*]+/, "comment"],
         [/\*\//, "comment", "@pop"],
         [/./, "comment"]
+      ],
+      string_double: [
+        [/[^\\"]+/, "string"],
+        [/\\./, "string.escape"],
+        [/"/, { token: "string.quote", next: "@pop" }]
+      ],
+      string_single: [
+        [/[^\\']+/, "string"],
+        [/\\./, "string.escape"],
+        [/'/, { token: "string.quote", next: "@pop" }]
+      ],
+      string_template: [
+        [/[^\\`$]+/, "string"],
+        [/\\./, "string.escape"],
+        [/\$\{/, { token: "delimiter.bracket", next: "@template_interp" }],
+        [/\$/, "string"],
+        [/`/, { token: "string.quote", next: "@pop" }]
+      ],
+      template_interp: [
+        [/\}/, { token: "delimiter.bracket", next: "@pop" }],
+        { include: "root" }
       ]
     }
+  });
+  monaco.languages.setLanguageConfiguration("p5js", {
+    comments: { lineComment: "//", blockComment: ["/*", "*/"] },
+    brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
+    autoClosingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+      { open: "`", close: "`" }
+    ],
+    surroundingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+      { open: "`", close: "`" }
+    ]
   });
 }
 function keywordRule(alternation, token) {
