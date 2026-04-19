@@ -1,0 +1,45 @@
+---
+title: Inline viz and backdrops
+description: Attach visuals to patterns with `.viz("name")` or pin one full-viewport as a backdrop.
+---
+
+Stave has three ways to render a visualizer:
+
+1. **Inline** — a `.viz("name")` call at the end of a `$:` block opens a zone underneath it.
+2. **Backdrop** — any viz file can be pinned as the fullscreen background of the code panel.
+3. **Popout** — open a viz in a separate window for dual-monitor setups.
+
+## Inline zones
+
+```js
+$: note("c4 e4 g4 b4").s("sawtooth").viz("pianoroll")
+```
+
+On evaluate, Stave resolves `"pianoroll"` to the project file `preset/viz/Piano Roll.p5` (fuzzy name match — case and spacing don't matter), mounts its renderer in a zone below the `$:` block, and feeds it:
+
+- A live **hap stream** of the events this pattern produced.
+- A **per-track audio analyser** tapped at the pattern's orbit.
+- The **scheduler** so the viz can query upcoming events.
+
+Drag the zone's bottom edge to resize. Hover the zone for inline actions: crop, clear, and a side-bar reveal button that opens the underlying preset file.
+
+## Backdrops
+
+Right-click any `.p5` / `.hydra` file in the explorer → **Set as Background**. The code panel becomes translucent (opacity configurable) and the viz renders full-viewport.
+
+The top-bar **set bg ▾** button opens a popover with: swap, opacity, quality ladder (full / half / quarter), crop, and reveal.
+
+## Presets
+
+`.p5` / `.hydra` files become named viz presets automatically. The preset name is the filename with its extension stripped. All built-ins (`scope`, `fscope`, `spectrum`, `spiral`, `pitchwheel`, `wordfall`, `kaleidoscope`, `Piano Roll`) ship as editable workspace files under `preset/viz/`.
+
+## Host globals
+
+Inside a `.p5` file:
+
+- `stave.scheduler` — query upcoming / past events.
+- `stave.analyser` — `getByteFrequencyData` / `getByteTimeDomainData` tapped at the attached pattern.
+- `stave.hapStream` — raw event feed.
+- `stave.width` / `stave.height` — device-pixel-correct canvas size.
+
+Inside a `.hydra` file, `s.a.fft[i]` gives audio-reactive bins.

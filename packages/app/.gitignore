@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# Published by @stave/docs postbuild — generated, do not commit.
+/public/docs/
+
 # production
 /build
 

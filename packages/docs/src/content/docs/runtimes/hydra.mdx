@@ -1,0 +1,43 @@
+---
+title: Hydra
+description: Hydra is a chainable video synth by Olivia Jack — in Stave it runs alongside audio patterns and taps their FFT.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Hydra chains sources, transforms, and combinators to produce a video signal and route it to an output buffer.
+
+```js
+// Audio-reactive oscilloscope driven by the attached pattern
+s.osc(() => 20 + s.a.fft[0] * 80, 0.1, 0)
+  .color(0.2, 0.8, 1.0)
+  .rotate(() => s.a.fft[1] * 0.5)
+  .modulate(s.osc(3, 0, 0), () => s.a.fft[2] * 0.1)
+  .diff(s.osc(2, 0.1, 0).rotate(0.5))
+  .out()
+```
+
+## What Stave adds
+
+- `s.a.fft[i]` — an 8-bin FFT tapped at the attached pattern's analyser. Use it in any input argument to drive the visual from audio.
+- `.out()` writes to `o0` by default. Use `o0`..`o3` explicitly when blending multiple chains.
+- `render(o0)` picks a specific buffer to display fullscreen.
+
+## Categories of function
+
+| Kind | Examples |
+|---|---|
+| **Source** | `osc`, `noise`, `shape`, `gradient`, `voronoi`, `solid` |
+| **Coord** (warp) | `rotate`, `scale`, `kaleid`, `pixelate`, `repeat`, `scroll` |
+| **Color** | `color`, `brightness`, `contrast`, `saturate`, `hue`, `invert`, `posterize`, `thresh` |
+| **Combine** | `blend`, `add`, `diff`, `layer`, `mask`, `mult` |
+| **Combine coord** | `modulate`, `modulateScale`, `modulateRotate`, `modulatePixelate` |
+
+## Sources and buffers
+
+- `s0`..`s3` — external source textures. Bind a webcam with `s0.initCam()` or an image with `s0.initImage()`.
+- `o0`..`o3` — output buffers. `out()` takes one as arg.
+
+## Full function reference
+
+[Hydra reference](/reference/hydra/) — 65 entries derived from `hydra-synth/src/glsl/glsl-functions.js`.

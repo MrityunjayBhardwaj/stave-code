@@ -1,0 +1,52 @@
+---
+title: p5.js
+description: p5.js sketches running with Stave's host globals — scheduler, analyser, and hap stream injected.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Every `.p5` file is a full p5.js sketch. Stave renders it either as its own preview tab, as an inline viz attached to a pattern, or as the fullscreen backdrop.
+
+```js
+function setup() {
+  createCanvas(stave.width, stave.height)
+  colorMode(HSB, 360, 100, 100, 1)
+  noStroke()
+}
+
+function draw() {
+  background(230, 30, 8, 0.25)
+  if (stave.scheduler) {
+    const now = stave.scheduler.now()
+    const haps = stave.scheduler.query(now - 3, now + 1)
+    for (const h of haps) {
+      const x = ((h.begin - now + 3) / 4) * width
+      const y = (1 - (h.note ?? 60) / 127) * height
+      fill((h.note ?? 60) * 7 % 360, 70, 100)
+      rect(x, y, 6, 6)
+    }
+  }
+}
+```
+
+## Host globals
+
+| Global | What it is |
+|---|---|
+| `stave.scheduler` | `{ now(), query(from, to) }` — read the hap stream of the attached pattern |
+| `stave.analyser` | Web Audio `AnalyserNode` tapped at the attached pattern's orbit |
+| `stave.hapStream` | Raw event feed (same data the scheduler wraps) |
+| `stave.width` / `stave.height` | Device-pixel-correct canvas dimensions |
+| `stave.hapStream.on(cb)` | Subscribe to hap trigger events |
+
+<Aside type="tip">
+When a `.p5` sketch is opened as a standalone preview tab (not attached via `.viz()`), `stave.scheduler` / `stave.analyser` are `null`. Guard with `if (stave.scheduler) { … }` so the sketch still runs outside a pattern context.
+</Aside>
+
+## Using a `.p5` as a named viz
+
+Any `.p5` file whose name matches the string passed to `.viz("…")` is eligible. Name matching is case-insensitive and ignores spaces / dashes / underscores, so `Piano Roll.p5` matches `.viz("pianoroll")` or `.viz("piano-roll")`.
+
+## Full function reference
+
+[p5.js reference](/reference/p5/) — 502 entries sourced from `p5js.org/reference/data.json`, kept in sync via `node packages/editor/scripts/fetch-docs/p5.mjs`.

@@ -1,0 +1,37 @@
+---
+title: Tabs and groups
+description: VS Code-style 2D tab layout — split editors horizontally or vertically, drag tabs between groups.
+---
+
+Stave's workspace is a 2D grid of **groups**, each containing a stack of **tabs**. Every file renders inside a tab; tabs can be dragged between groups; groups can be split horizontally or vertically.
+
+## Splitting
+
+- **⌘\\** — split the active group to the right.
+- **⌘⇧\\** — split the active group down (new row inside the same column).
+
+## Moving tabs
+
+Drag a tab's header onto another group. Dropping on:
+
+- **The tab strip** appends the tab at the drop position.
+- **The N / S / E / W quadrant** of a group body splits and places the tab in the new pane.
+- **The group centre** merges into the existing tab stack.
+- **The left / right edge** of the whole shell spawns a new column.
+
+## Activity bar
+
+The narrow bar on the far left switches the sidebar panel:
+
+- **Explorer** (Files) — project tree.
+- **Search** — full-text search across every file.
+- **Version History** — snapshots.
+- **Outline** — `$:` blocks / function names in the active file.
+
+Toggle the sidebar with **⌘B**.
+
+## Zen mode
+
+**⌘⌥Z** enters Zen Mode — menu bar, sidebar, status bar, activity bar all hide; the editor fills the viewport; `requestFullscreen` fires. Press **Esc** to exit.
+
+Intended for performing; all commands still work via the palette (**⌘⇧P**).
