@@ -60,6 +60,7 @@ import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
+import { ConsolePanel } from "./ConsolePanel";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
@@ -766,6 +767,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       order: 40,
       render: () => null,
     }));
+    unregs.push(registerPanel({
+      id: "console",
+      title: "Console",
+      icon: "terminal",
+      order: 50,
+      render: () => null,
+    }));
     return () => { for (const u of unregs) u(); };
   }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject]);
 
@@ -901,6 +909,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             />
           </div>
         )}
+        {!zenMode && activePanelId === "console" && <ConsolePanel />}
         {!zenMode && activePanelId === "outline" && (
           <div style={styles.panelRoot} data-sidebar>
             <div style={styles.panelHeader}>OUTLINE</div>
