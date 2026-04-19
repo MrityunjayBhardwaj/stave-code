@@ -21,31 +21,50 @@ function parseErrorLocation(error: Error): { line: number; col: number } | null 
  * Sets a red error squiggle on the model.
  * If the error has a parseable location, marks that line.
  * Otherwise marks the entire document.
+ *
+ * Stack-parsed line numbers can exceed the model's line count — Strudel
+ * transpiles user code into a wrapper so the reported line may sit past
+ * the end of the visible document. Monaco throws `Illegal value for
+ * lineNumber` when that happens; the throw cascades through React's
+ * commit phase and unmounts the editor subtree. Clamp line/column into
+ * model range and swallow any residual Monaco validation errors so a
+ * bad stack trace never tears down the UI (hetvabhasa P37).
  */
 export function setEvalError(
   monaco: typeof Monaco,
   model: Monaco.editor.ITextModel,
   error: Error
 ): void {
-  const loc = parseErrorLocation(error)
+  try {
+    const loc = parseErrorLocation(error)
+    const lineCount = model.getLineCount()
 
-  const lineNumber = loc?.line ?? 1
-  const startColumn = loc?.col ?? 1
-  const endLineNumber = loc ? loc.line : model.getLineCount()
-  const endColumn = loc
-    ? model.getLineMaxColumn(loc.line)
-    : model.getLineMaxColumn(model.getLineCount())
+    const validLine =
+      loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount
+        ? loc.line
+        : null
+    const validCol =
+      loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1
 
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, [
-    {
-      severity: monaco.MarkerSeverity.Error,
-      message: error.message,
-      startLineNumber: lineNumber,
-      startColumn,
-      endLineNumber,
-      endColumn,
-    },
-  ])
+    const lineNumber = validLine ?? 1
+    const startColumn = validLine ? validCol : 1
+    const endLineNumber = validLine ?? lineCount
+    const endColumn = model.getLineMaxColumn(endLineNumber)
+
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, [
+      {
+        severity: monaco.MarkerSeverity.Error,
+        message: error.message,
+        startLineNumber: lineNumber,
+        startColumn,
+        endLineNumber,
+        endColumn,
+      },
+    ])
+  } catch (markerError) {
+    // eslint-disable-next-line no-console
+    console.warn('[stave] setEvalError failed, marker skipped:', markerError)
+  }
 }
 
 /**
@@ -56,5 +75,10 @@ export function clearEvalErrors(
   monaco: typeof Monaco,
   model: Monaco.editor.ITextModel
 ): void {
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, [])
+  try {
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, [])
+  } catch (markerError) {
+    // eslint-disable-next-line no-console
+    console.warn('[stave] clearEvalErrors failed:', markerError)
+  }
 }

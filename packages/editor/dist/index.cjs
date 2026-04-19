@@ -14894,24 +14894,35 @@ function parseErrorLocation(error) {
   return null;
 }
 function setEvalError(monaco, model, error) {
-  const loc = parseErrorLocation(error);
-  const lineNumber = loc?.line ?? 1;
-  const startColumn = loc?.col ?? 1;
-  const endLineNumber = loc ? loc.line : model.getLineCount();
-  const endColumn = loc ? model.getLineMaxColumn(loc.line) : model.getLineMaxColumn(model.getLineCount());
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, [
-    {
-      severity: monaco.MarkerSeverity.Error,
-      message: error.message,
-      startLineNumber: lineNumber,
-      startColumn,
-      endLineNumber,
-      endColumn
-    }
-  ]);
+  try {
+    const loc = parseErrorLocation(error);
+    const lineCount = model.getLineCount();
+    const validLine = loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount ? loc.line : null;
+    const validCol = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
+    const lineNumber = validLine ?? 1;
+    const startColumn = validLine ? validCol : 1;
+    const endLineNumber = validLine ?? lineCount;
+    const endColumn = model.getLineMaxColumn(endLineNumber);
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, [
+      {
+        severity: monaco.MarkerSeverity.Error,
+        message: error.message,
+        startLineNumber: lineNumber,
+        startColumn,
+        endLineNumber,
+        endColumn
+      }
+    ]);
+  } catch (markerError) {
+    console.warn("[stave] setEvalError failed, marker skipped:", markerError);
+  }
 }
 function clearEvalErrors(monaco, model) {
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+  try {
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+  } catch (markerError) {
+    console.warn("[stave] clearEvalErrors failed:", markerError);
+  }
 }
 
 // src/visualizers/namedVizRegistry.ts
@@ -15877,6 +15888,69 @@ function EditorView({
     }
   );
 }
+var ErrorBoundary = class extends React__default.default.Component {
+  constructor() {
+    super(...arguments);
+    this.state = { error: null };
+    this.reset = () => {
+      this.setState({ error: null });
+    };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info2) {
+    console.error("[stave] editor subtree crashed:", error, info2.componentStack);
+    this.props.onError?.(error, info2);
+  }
+  componentDidUpdate(prev) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    if (this.props.fallback) return this.props.fallback(error, this.reset);
+    return /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-stave-error-boundary": true,
+        style: {
+          padding: 16,
+          fontFamily: "var(--font-mono, monospace)",
+          fontSize: 12,
+          color: "var(--foreground-muted, #999)",
+          background: "var(--background-subtle, transparent)",
+          height: "100%",
+          boxSizing: "border-box",
+          overflow: "auto"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { color: "var(--error, #f48771)", marginBottom: 8 }, children: "Editor crashed" }),
+          /* @__PURE__ */ jsxRuntime.jsx("pre", { style: { whiteSpace: "pre-wrap", margin: 0 }, children: error.message }),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: this.reset,
+              style: {
+                marginTop: 12,
+                padding: "4px 10px",
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid currentColor",
+                borderRadius: 3,
+                cursor: "pointer"
+              },
+              children: "Retry"
+            }
+          )
+        ]
+      }
+    );
+  }
+};
 
 // src/workspace/preview/vizLiveToggle.ts
 var STORAGE_PREFIX = "stave:vizLive:";
@@ -17707,7 +17781,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
             }
           }
           const extras = editorExtrasForTab?.(tab);
-          return /* @__PURE__ */ jsxRuntime.jsx(
+          return /* @__PURE__ */ jsxRuntime.jsx(ErrorBoundary, { resetKey: tab.fileId, children: /* @__PURE__ */ jsxRuntime.jsx(
             EditorView,
             {
               fileId: tab.fileId,
@@ -17718,9 +17792,8 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
               error: extras?.error,
               onEditViz,
               onCropViz
-            },
-            tab.id
-          );
+            }
+          ) }, tab.id);
         }
         case "preview": {
           const provider = previewProviderFor?.(tab);
@@ -28357,6 +28430,7 @@ exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
 exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DemoEngine = DemoEngine;
 exports.EditorView = EditorView;
+exports.ErrorBoundary = ErrorBoundary;
 exports.HYDRA_DOCS_INDEX = HYDRA_DOCS_INDEX;
 exports.HYDRA_VIZ = HYDRA_VIZ;
 exports.HapStream = HapStream;

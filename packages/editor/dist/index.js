@@ -1,6 +1,6 @@
 import React, { forwardRef, useRef, useState, useEffect, useMemo, useCallback, useImperativeHandle, useSyncExternalStore } from 'react';
 import p5 from 'p5';
-import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
+import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw from '@monaco-editor/react';
 import * as Y3 from 'yjs';
 
@@ -14867,24 +14867,35 @@ function parseErrorLocation(error) {
   return null;
 }
 function setEvalError(monaco, model, error) {
-  const loc = parseErrorLocation(error);
-  const lineNumber = loc?.line ?? 1;
-  const startColumn = loc?.col ?? 1;
-  const endLineNumber = loc ? loc.line : model.getLineCount();
-  const endColumn = loc ? model.getLineMaxColumn(loc.line) : model.getLineMaxColumn(model.getLineCount());
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, [
-    {
-      severity: monaco.MarkerSeverity.Error,
-      message: error.message,
-      startLineNumber: lineNumber,
-      startColumn,
-      endLineNumber,
-      endColumn
-    }
-  ]);
+  try {
+    const loc = parseErrorLocation(error);
+    const lineCount = model.getLineCount();
+    const validLine = loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount ? loc.line : null;
+    const validCol = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
+    const lineNumber = validLine ?? 1;
+    const startColumn = validLine ? validCol : 1;
+    const endLineNumber = validLine ?? lineCount;
+    const endColumn = model.getLineMaxColumn(endLineNumber);
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, [
+      {
+        severity: monaco.MarkerSeverity.Error,
+        message: error.message,
+        startLineNumber: lineNumber,
+        startColumn,
+        endLineNumber,
+        endColumn
+      }
+    ]);
+  } catch (markerError) {
+    console.warn("[stave] setEvalError failed, marker skipped:", markerError);
+  }
 }
 function clearEvalErrors(monaco, model) {
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+  try {
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+  } catch (markerError) {
+    console.warn("[stave] clearEvalErrors failed:", markerError);
+  }
 }
 
 // src/visualizers/namedVizRegistry.ts
@@ -15850,6 +15861,69 @@ function EditorView({
     }
   );
 }
+var ErrorBoundary = class extends React.Component {
+  constructor() {
+    super(...arguments);
+    this.state = { error: null };
+    this.reset = () => {
+      this.setState({ error: null });
+    };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info2) {
+    console.error("[stave] editor subtree crashed:", error, info2.componentStack);
+    this.props.onError?.(error, info2);
+  }
+  componentDidUpdate(prev) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    if (this.props.fallback) return this.props.fallback(error, this.reset);
+    return /* @__PURE__ */ jsxs(
+      "div",
+      {
+        "data-stave-error-boundary": true,
+        style: {
+          padding: 16,
+          fontFamily: "var(--font-mono, monospace)",
+          fontSize: 12,
+          color: "var(--foreground-muted, #999)",
+          background: "var(--background-subtle, transparent)",
+          height: "100%",
+          boxSizing: "border-box",
+          overflow: "auto"
+        },
+        children: [
+          /* @__PURE__ */ jsx("div", { style: { color: "var(--error, #f48771)", marginBottom: 8 }, children: "Editor crashed" }),
+          /* @__PURE__ */ jsx("pre", { style: { whiteSpace: "pre-wrap", margin: 0 }, children: error.message }),
+          /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              onClick: this.reset,
+              style: {
+                marginTop: 12,
+                padding: "4px 10px",
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid currentColor",
+                borderRadius: 3,
+                cursor: "pointer"
+              },
+              children: "Retry"
+            }
+          )
+        ]
+      }
+    );
+  }
+};
 
 // src/workspace/preview/vizLiveToggle.ts
 var STORAGE_PREFIX = "stave:vizLive:";
@@ -17680,7 +17754,7 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
             }
           }
           const extras = editorExtrasForTab?.(tab);
-          return /* @__PURE__ */ jsx(
+          return /* @__PURE__ */ jsx(ErrorBoundary, { resetKey: tab.fileId, children: /* @__PURE__ */ jsx(
             EditorView,
             {
               fileId: tab.fileId,
@@ -17691,9 +17765,8 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
               error: extras?.error,
               onEditViz,
               onCropViz
-            },
-            tab.id
-          );
+            }
+          ) }, tab.id);
         }
         case "preview": {
           const provider = previewProviderFor?.(tab);
@@ -28321,6 +28394,6 @@ function formatFriendlyError2(err2, runtime, options = {}) {
   };
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError2 as formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError2 as formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

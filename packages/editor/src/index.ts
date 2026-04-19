@@ -89,6 +89,8 @@ export { PitchwheelSketch } from './visualizers/sketches/PitchwheelSketch'
 export { WorkspaceShell } from './workspace/WorkspaceShell'
 export type { WorkspaceShellHandle } from './workspace/WorkspaceShell'
 export { EditorView } from './workspace/EditorView'
+export { ErrorBoundary } from './workspace/ErrorBoundary'
+export type { ErrorBoundaryProps } from './workspace/ErrorBoundary'
 export { PreviewView } from './workspace/PreviewView'
 
 // WorkspaceFile store + hook
