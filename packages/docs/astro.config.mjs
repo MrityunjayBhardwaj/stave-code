@@ -1,8 +1,16 @@
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 
+// Deployed at stave.live/docs/ — Astro's `base` makes every generated
+// URL (asset + internal link) include that prefix, so the Next app can
+// serve the built output from `public/docs/` and the dev rewrite can
+// forward `/docs/:path*` to the Astro dev server running with the same
+// base. Override via `STAVE_DOCS_BASE=/` for standalone preview.
+const BASE = process.env.STAVE_DOCS_BASE ?? '/docs/'
+
 export default defineConfig({
   site: 'https://stave.live',
+  base: BASE,
   integrations: [
     starlight({
       title: 'Stave Code',

@@ -8,8 +8,9 @@
     "predev": "node scripts/gen-reference.mjs",
     "dev": "astro dev --port 4321",
     "build": "astro build",
+    "postbuild": "node scripts/publish-to-app.mjs",
     "preview": "astro preview",
-    "clean": "rm -rf dist .astro node_modules/.astro src/content/docs/reference/_generated"
+    "clean": "rm -rf dist .astro node_modules/.astro"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.30.0",
