@@ -51,11 +51,16 @@ describe('emitLog', () => {
   })
 })
 
+// Listener notifications are deferred to a microtask to prevent
+// mid-commit React setState chains. `flush` yields the microtask queue.
+const flush = () => new Promise<void>((r) => queueMicrotask(r))
+
 describe('subscribeLog', () => {
-  it('fires the listener with the emitted entry', () => {
+  it('fires the listener with the emitted entry', async () => {
     const listener = vi.fn()
     subscribeLog(listener)
     const e = emitLog({ level: 'warn', runtime: 'hydra', message: 'hi' })
+    await flush()
     expect(listener).toHaveBeenCalledOnce()
     const [entry, history] = listener.mock.calls[0] as [
       LogEntry,
@@ -65,37 +70,42 @@ describe('subscribeLog', () => {
     expect(history.map((h) => h.message)).toEqual(['hi'])
   })
 
-  it('unsubscribes cleanly', () => {
+  it('unsubscribes cleanly', async () => {
     const listener = vi.fn()
     const off = subscribeLog(listener)
     off()
     emitLog({ level: 'info', runtime: 'stave', message: 'x' })
+    await flush()
     expect(listener).not.toHaveBeenCalled()
   })
 
-  it('does not replay history to new subscribers', () => {
+  it('does not replay history to new subscribers', async () => {
     emitLog({ level: 'info', runtime: 'p5', message: 'pre' })
+    await flush()
     const listener = vi.fn()
     subscribeLog(listener)
     expect(listener).not.toHaveBeenCalled()
     emitLog({ level: 'info', runtime: 'p5', message: 'post' })
+    await flush()
     expect(listener).toHaveBeenCalledOnce()
   })
 
-  it('a thrown listener does not stop other listeners', () => {
+  it('a thrown listener does not stop other listeners', async () => {
     const ok = vi.fn()
     subscribeLog(() => {
       throw new Error('rude')
     })
     subscribeLog(ok)
     emitLog({ level: 'info', runtime: 'stave', message: 'x' })
+    await flush()
     expect(ok).toHaveBeenCalledOnce()
   })
 })
 
 describe('clearLog', () => {
-  it('empties history and notifies with null', () => {
+  it('empties history and notifies with null', async () => {
     emitLog({ level: 'info', runtime: 'p5', message: 'a' })
+    await flush()
     const listener = vi.fn()
     subscribeLog(listener)
     clearLog()

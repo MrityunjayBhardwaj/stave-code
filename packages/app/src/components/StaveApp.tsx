@@ -63,7 +63,7 @@ import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
-import { listWorkspaceFiles, subscribeToFileList } from "@stave/editor";
+import { listWorkspaceFiles, subscribeToFileList, subscribeLog } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 
 interface StaveAppProps {
@@ -123,6 +123,23 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     applyPersistedUiIconSize();
     applyPersistedInlineVizActionSize();
   }, []);
+
+  // Toast bridge — every new error-level engineLog entry also surfaces
+  // as a transient toast so the user notices even when the Console panel
+  // isn't open. Warnings stay in the LED + Console only (noisier to
+  // toast every warn, and live coders warn themselves a lot). The toast
+  // auto-dismisses in ~4s; the Console entry + status-bar LED persist.
+  useEffect(() => {
+    return subscribeLog((entry) => {
+      if (!entry) return;
+      if (entry.level !== "error") return;
+      const text = entry.suggestion
+        ? `${entry.message} → try \`${entry.suggestion.name}\``
+        : entry.message;
+      showToast(text, "error");
+    });
+  }, []);
+
   const [zenMode, setZenMode] = useState(false);
   const searchViewRef = useRef<WorkspaceSearchViewHandle | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -1126,6 +1143,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         runtime={activeRuntime}
         canUndo={undoState.canUndo}
         canRedo={undoState.canRedo}
+        onOpenConsole={() => setActivePanelId("console")}
       />}
 
       <CommandPalette

@@ -28216,12 +28216,14 @@ function emitLog(partial) {
   if (history.length > MAX_HISTORY) {
     history.splice(0, history.length - MAX_HISTORY);
   }
-  for (const fn of listeners3) {
-    try {
-      fn(entry, history);
-    } catch {
+  queueMicrotask(() => {
+    for (const fn of listeners3) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
     }
-  }
+  });
   return entry;
 }
 function subscribeLog(fn) {

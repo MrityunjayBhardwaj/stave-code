@@ -97,13 +97,22 @@ export function emitLog(
   if (history.length > MAX_HISTORY) {
     history.splice(0, history.length - MAX_HISTORY)
   }
-  for (const fn of listeners) {
-    try {
-      fn(entry, history)
-    } catch {
-      // A broken subscriber shouldn't kill the emitter.
+  // Fire listeners in a microtask so runtime error paths (Strudel
+  // onEvalError, Monaco marker commit, etc.) aren't forced to re-enter
+  // React's commit phase with React setStates happening from
+  // subscribers — mid-eval state updates caused the whole subtree to
+  // unmount when a live syntax error interleaved with the engine's
+  // own error reporting. Deferred is still fast enough (<1ms) for toast
+  // + status bar feel instantaneous.
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history)
+      } catch {
+        // A broken subscriber shouldn't kill the emitter.
+      }
     }
-  }
+  })
   return entry
 }
 

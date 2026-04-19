@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { subscribeLog, getLogHistory, type LogEntry } from "@stave/editor";
 
 export interface StatusBarRuntimeState {
   readonly isPlaying: boolean;
@@ -14,6 +15,8 @@ interface StatusBarProps {
   runtime: StatusBarRuntimeState | null;
   canUndo: boolean;
   canRedo: boolean;
+  /** Open the Console panel (or reset unread count if already open). */
+  onOpenConsole?: () => void;
 }
 
 export function StatusBar({
@@ -22,8 +25,36 @@ export function StatusBar({
   runtime,
   canUndo,
   canRedo,
+  onOpenConsole,
 }: StatusBarProps) {
   const playDot = runtime?.isPlaying ? "var(--success-fg)" : "var(--text-muted)";
+
+  // Unread error count — counts every `error`-level LogEntry emitted
+  // since the user last opened the Console panel. Seeded from current
+  // history on mount so a reload doesn't zero out the badge.
+  const [unreadErrors, setUnreadErrors] = useState(
+    () => getLogHistory().filter((e) => e.level === "error").length,
+  );
+  const [unreadWarns, setUnreadWarns] = useState(
+    () => getLogHistory().filter((e) => e.level === "warn").length,
+  );
+  useEffect(() => {
+    return subscribeLog((entry: LogEntry | null) => {
+      if (entry === null) {
+        setUnreadErrors(0);
+        setUnreadWarns(0);
+        return;
+      }
+      if (entry.level === "error") setUnreadErrors((n) => n + 1);
+      else if (entry.level === "warn") setUnreadWarns((n) => n + 1);
+    });
+  }, []);
+
+  const handleConsoleClick = () => {
+    setUnreadErrors(0);
+    setUnreadWarns(0);
+    onOpenConsole?.();
+  };
   return (
     <div style={styles.bar} data-stave-statusbar>
       <div style={styles.section}>
@@ -57,6 +88,30 @@ export function StatusBar({
       </div>
 
       <div style={styles.sectionRight}>
+        <button
+          data-testid="statusbar-console-chip"
+          onClick={handleConsoleClick}
+          title={
+            unreadErrors + unreadWarns > 0
+              ? `${unreadErrors} errors, ${unreadWarns} warnings — open Console`
+              : "Open Console"
+          }
+          style={{
+            ...styles.chip,
+            ...(unreadErrors > 0
+              ? styles.chipErr
+              : unreadWarns > 0
+              ? styles.chipWarn
+              : styles.chipIdle),
+          }}
+        >
+          <span style={styles.chipIcon} aria-hidden="true">❯_</span>
+          {unreadErrors + unreadWarns > 0 && (
+            <span style={styles.chipCount}>
+              {unreadErrors + unreadWarns}
+            </span>
+          )}
+        </button>
         <span
           style={{ ...styles.hint, opacity: canUndo ? 1 : 0.4 }}
           title="Undo (⌘Z)"
@@ -127,5 +182,47 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: "var(--text-tertiary)",
     cursor: "default",
+  },
+  chip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    background: "transparent",
+    border: "1px solid transparent",
+    color: "var(--text-tertiary)",
+    fontFamily: "inherit",
+    fontSize: 10,
+    height: 18,
+    padding: "0 6px",
+    borderRadius: 3,
+    cursor: "pointer",
+    transition: "background 80ms ease, border-color 80ms ease",
+  },
+  chipIdle: {
+    color: "var(--text-tertiary)",
+  },
+  chipWarn: {
+    color: "#f59e0b",
+    borderColor: "rgba(245, 158, 11, 0.35)",
+    background: "rgba(245, 158, 11, 0.08)",
+  },
+  chipErr: {
+    color: "#ef4444",
+    borderColor: "rgba(239, 68, 68, 0.45)",
+    background: "rgba(239, 68, 68, 0.08)",
+  },
+  chipIcon: {
+    fontFamily: '"JetBrains Mono", monospace',
+    fontWeight: 600,
+  },
+  chipCount: {
+    fontFamily: '"JetBrains Mono", monospace',
+    fontWeight: 600,
+    padding: "0 3px",
+    borderRadius: 2,
+    minWidth: 14,
+    textAlign: "center" as const,
+    background: "currentColor",
+    color: "var(--bg-chrome-2)",
   },
 };
