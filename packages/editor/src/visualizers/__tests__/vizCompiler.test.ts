@@ -41,6 +41,7 @@ import { compileP5Code, isFullLifecycleSketch } from '../p5Compiler'
 import {
   __resetEngineLogForTests,
   subscribeLog,
+  getLogHistory,
   type LogEntry,
 } from '../../engine/engineLog'
 import type { HapStream } from '../../engine/HapStream'
@@ -531,6 +532,53 @@ describe('compileP5Code — compile errors', () => {
       }
     `
     expect(() => compileP5Code(source)).toThrow(SyntaxError)
+  })
+
+  it('bridges draw-time runtime errors to engineLog (the `zoom` typo case)', async () => {
+    __resetEngineLogForTests()
+    const entries: LogEntry[] = []
+    subscribeLog((entry) => {
+      if (entry) entries.push(entry)
+    })
+
+    // Declares `zom` but references `zoom` inside draw — valid syntax,
+    // resolves fine at compile and at factory invocation, throws only
+    // when p5 calls draw().
+    const source = `
+      let zom = -100
+      function draw() {
+        const v = zoom + 1
+      }
+    `
+    const factory = compileP5Code(source, 'tests/zoom.p5')
+    const refs = makeRefs()
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+    )
+    const { p } = makeFakeP5()
+    sketchFn(p)
+    // Simulate p5 invoking draw three times. The wrap must swallow
+    // the throw so p5's loop doesn't halt; emitLog's dedupe collapses
+    // the per-frame flood to one Console row.
+    ;(p.draw as () => void)()
+    ;(p.draw as () => void)()
+    ;(p.draw as () => void)()
+
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()))
+
+    // Listener fires once per emit (so UIs can re-flash toasts) but
+    // engineLog's dedupe collapses identical entries in history —
+    // exactly the behaviour we want for a 60fps per-frame flood.
+    expect(entries.length).toBeGreaterThanOrEqual(1)
+    const history = getLogHistory()
+    expect(history).toHaveLength(1)
+    expect(history[0].runtime).toBe('p5')
+    expect(history[0].level).toBe('error')
+    expect(history[0].message).toMatch(/draw.*zoom/)
+    expect(history[0].source).toBe('tests/zoom.p5')
   })
 
   it('bridges top-level runtime errors (new Mp()) to engineLog', async () => {

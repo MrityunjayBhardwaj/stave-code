@@ -235,7 +235,7 @@ export function compileP5Code(code: string, source?: string) {
         return
       }
 
-      installLifecycle(p, lifecycle)
+      installLifecycle(p, lifecycle, source, lineOffset)
     }
   }
 }
@@ -310,20 +310,67 @@ function buildLegacyBody(userCode: string): string {
  * Assign the compiled lifecycle functions onto the p5 instance. If
  * the user didn't supply `setup`, fall back to a default that just
  * creates a full-window canvas — without SOME setup, p5 throws.
+ *
+ * Each user lifecycle hook is wrapped in a try/catch that forwards
+ * the error to `emitLog`. p5 v2 swallows draw-time throws internally
+ * (sets `hitCriticalError`, halts the loop, never reaches the
+ * browser console or FES). Without this wrap, a `translate(0, 0,
+ * zoom)` where `zoom` is undefined just produced a black canvas and
+ * dead silence — no Console row, no toast, no squiggle. The wrap
+ * also keeps the tight per-frame flood in check: `emitLog`'s dedupe
+ * collapses identical consecutive entries so 60fps of ReferenceError
+ * becomes one Console row.
  */
 function installLifecycle(
   p: unknown,
   lifecycle: { preload?: () => void; setup?: () => void; draw?: () => void },
+  source: string | undefined,
+  lineOffset: number,
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pi = p as any
-  if (lifecycle.preload) pi.preload = lifecycle.preload
+  const reportLifecycleError = (hook: string, err: unknown): void => {
+    const error = err instanceof Error ? err : new Error(String(err))
+    const parts = formatFriendlyError(error, 'p5', { index: P5_DOCS_INDEX })
+    const loc = parseStackLocation(error)
+    const userLine =
+      loc && lineOffset > 0
+        ? Math.max(1, loc.line - lineOffset)
+        : loc?.line
+    emitLog({
+      level: 'error',
+      runtime: 'p5',
+      source,
+      message: `${hook}(): ${parts.message}`,
+      suggestion: parts.suggestion,
+      stack: parts.stack,
+      line: userLine,
+      column: loc?.column,
+    })
+  }
+  const wrap = (
+    hook: string,
+    fn: (() => void) | undefined,
+  ): (() => void) | undefined => {
+    if (!fn) return undefined
+    return function (this: unknown, ...args: unknown[]) {
+      try {
+        return (fn as (...a: unknown[]) => unknown).apply(this, args)
+      } catch (err) {
+        reportLifecycleError(hook, err)
+        // Swallow — returning normally lets p5 continue. The dedupe
+        // in engineLog keeps per-frame floods from drowning the
+        // Console panel; the user still sees one clear row.
+      }
+    }
+  }
+  if (lifecycle.preload) pi.preload = wrap('preload', lifecycle.preload)
   pi.setup =
-    lifecycle.setup ??
+    wrap('setup', lifecycle.setup) ??
     function () {
       pi.createCanvas(pi.windowWidth, pi.windowHeight)
     }
-  if (lifecycle.draw) pi.draw = lifecycle.draw
+  if (lifecycle.draw) pi.draw = wrap('draw', lifecycle.draw)
 }
 
 /**

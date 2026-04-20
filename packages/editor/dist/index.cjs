@@ -27583,7 +27583,7 @@ function compileP5Code(code, source) {
         });
         return;
       }
-      installLifecycle(p, lifecycle);
+      installLifecycle(p, lifecycle, source, lineOffset);
     };
   };
 }
@@ -27620,13 +27620,39 @@ function buildLegacyBody(userCode) {
 }
   `;
 }
-function installLifecycle(p, lifecycle) {
+function installLifecycle(p, lifecycle, source, lineOffset) {
   const pi = p;
-  if (lifecycle.preload) pi.preload = lifecycle.preload;
-  pi.setup = lifecycle.setup ?? function() {
+  const reportLifecycleError = (hook, err2) => {
+    const error = err2 instanceof Error ? err2 : new Error(String(err2));
+    const parts2 = formatFriendlyError2(error, "p5", { index: P5_DOCS_INDEX });
+    const loc = parseStackLocation(error);
+    const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
+    emitLog({
+      level: "error",
+      runtime: "p5",
+      source,
+      message: `${hook}(): ${parts2.message}`,
+      suggestion: parts2.suggestion,
+      stack: parts2.stack,
+      line: userLine,
+      column: loc?.column
+    });
+  };
+  const wrap4 = (hook, fn) => {
+    if (!fn) return void 0;
+    return function(...args2) {
+      try {
+        return fn.apply(this, args2);
+      } catch (err2) {
+        reportLifecycleError(hook, err2);
+      }
+    };
+  };
+  if (lifecycle.preload) pi.preload = wrap4("preload", lifecycle.preload);
+  pi.setup = wrap4("setup", lifecycle.setup) ?? function() {
     pi.createCanvas(pi.windowWidth, pi.windowHeight);
   };
-  if (lifecycle.draw) pi.draw = lifecycle.draw;
+  if (lifecycle.draw) pi.draw = wrap4("draw", lifecycle.draw);
 }
 function installErrorSketch(p, message) {
   const pi = p;
