@@ -264,6 +264,7 @@ export {
   makeFixedKey,
 } from './engine/engineLog'
 export { installEngineLogMarkers } from './workspace/engineLogMarkers'
+export { installGlobalErrorCatch } from './engine/globalErrorCatch'
 export type {
   FriendlyErrorParts,
   FuzzyMatch,

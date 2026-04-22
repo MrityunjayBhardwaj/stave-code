@@ -8,6 +8,7 @@ import type {
   PatternScheduler,
   ContainerSize,
 } from '../types'
+import { installP5FesBridgeWith } from '../p5FesBridge'
 
 /**
  * Adapter that wraps an existing p5 SketchFactory into the VizRenderer interface.
@@ -42,6 +43,13 @@ export class P5VizRenderer implements VizRenderer {
     size: { w: number; h: number },
     onError: (e: Error) => void
   ): void {
+    // Install the FES bridge with the real p5 constructor we already
+    // hold statically. Doing this here (rather than via a dynamic
+    // `import('p5')` in CompiledVizMount) eliminates the class of bug
+    // where the bridge and the runtime end up on two different p5
+    // module instances — or where the async import hasn't resolved
+    // before the first sketch runs. Idempotent.
+    installP5FesBridgeWith(p5)
     try {
       // Bridge: populate refs from the component bag
       this.hapStreamRef.current = components.streaming?.hapStream ?? null

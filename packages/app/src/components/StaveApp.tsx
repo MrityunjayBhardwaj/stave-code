@@ -69,6 +69,7 @@ import {
   subscribeToFileList,
   subscribeLog,
   installEngineLogMarkers,
+  installGlobalErrorCatch,
 } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 
@@ -136,6 +137,15 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // Idempotent — installs on first mount; no-op thereafter.
   useEffect(() => {
     installEngineLogMarkers();
+  }, []);
+
+  // Global error floor — catches any throw / rejected promise that
+  // escaped the per-runtime bridges. The bridges still enrich known
+  // error shapes with friendly messages and source attribution; this
+  // is the guarantee that even unknown-shape errors become visible
+  // instead of vanishing.
+  useEffect(() => {
+    installGlobalErrorCatch();
   }, []);
 
   // Toast bridge — every new error-level engineLog entry also surfaces

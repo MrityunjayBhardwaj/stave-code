@@ -28,11 +28,20 @@ import { emitLog } from '../engine/engineLog'
 const P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/
 
 /**
- * FES messages embed the wrapped-body line number in a bracketed
- * locator — e.g. "[packages_editor_dist_index_…_.js line 32182 >
- * Function, line 73]". We parse that `line N` tail and translate it
- * back to a user-file line by subtracting the wrapper offset captured
- * alongside the source (see `setCurrentP5Source`).
+ * FES messages embed a bracketed locator right after "p5.js says:".
+ * Two shapes observed in the wild:
+ *
+ *   [packages_editor_dist_index.js line 32182 > Function, line 73]
+ *     — Firefox-style long locator from `new Function` bodies;
+ *       `line 73` is the wrapped-body position.
+ *
+ *   [sketch.js, line 14]
+ *     — Chromium-style short locator; `line 14` is already counted
+ *       from the anonymous function body (no extra header to skip),
+ *       so only the `with(p) { ... }` wrapper prefix applies.
+ *
+ * Either shape ends with `, line N]`, which is all we actually need.
+ * The same parse works for both.
  */
 const FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/
 
@@ -51,29 +60,39 @@ function buildLogger(): (msg: string) => void {
     const clean = raw.replace(P5_PREFIX_RE, '').trim()
     if (!clean) return
 
-    // Pull the wrapped-body line out of FES's bracketed locator and
-    // translate it back to a user-file line. Rewrite the message
-    // fragment so the Console row reads "line 69" instead of the
-    // internal "line 73" — matches whatever the Monaco squiggle lands
-    // on and stops the "off by 4" surprise.
+    // Strip the bracketed locator prefix regardless of whether we can
+    // translate — "[sketch.js, line 14] It seems that you may have…"
+    // becomes "It seems that you may have…". The dist-file / sketch.js
+    // framing is meaningless to the user; the clean message reads
+    // better in the Console row.
+    let message = clean.replace(/^\[[^\]]*\]\s*/, '').trim() || clean
+
+    // Pull the line out of the locator and translate it by subtracting
+    // our wrapper offset so the Monaco squiggle lands on the user's
+    // line. If no source is attributed yet (`currentLineOffset === 0`)
+    // or the parsed line is nonsense, emit without a line — the
+    // Console row still surfaces the message.
     let line: number | undefined
-    let message = clean
     const match = raw.match(FES_LINE_RE)
-    if (match && currentLineOffset > 0) {
+    if (match) {
       const wrapped = parseInt(match[1], 10)
-      const userLine = wrapped - currentLineOffset
-      if (Number.isFinite(userLine) && userLine >= 1) {
-        line = userLine
-        // Replace only the `, line N]` tail of the locator and wipe
-        // the leading `[bundle…]` framing — users don't need the
-        // dist-file location to fix their sketch.
-        message = clean.replace(/^\[.*?\]\s*/, '').trim()
+      if (Number.isFinite(wrapped)) {
+        const candidate =
+          currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped
+        if (candidate >= 1) line = candidate
       }
     }
 
+    // FES covers both "definitely a bug" (undefined identifier —
+    // `elipse`, `zoom`) and "here's a tip" (unused return, asset
+    // load hint). Promote the bug shape to `error` so the toast
+    // fires; leave the advisory hints as `warn`.
+    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
+      message,
+    )
     emitLog({
       runtime: 'p5',
-      level: 'warn',
+      level: isLikelyBug ? 'error' : 'warn',
       source: currentSource ?? undefined,
       message,
       line,

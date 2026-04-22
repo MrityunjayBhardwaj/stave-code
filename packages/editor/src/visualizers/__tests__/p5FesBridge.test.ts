@@ -120,9 +120,23 @@ describe('FES line translation', () => {
     // Bundle locator stripped from the Console row.
     expect(last?.message).not.toMatch(/\.js line \d+/)
     expect(last?.message).toMatch(/zoom/)
+    // Promoted to error level because the body matches the "this is
+    // a bug" pattern (accidentally written / is not defined).
+    expect(last?.level).toBe('error')
   })
 
-  it('leaves the message alone when no locator is present', () => {
+  it('handles the Chromium short locator [sketch.js, line 14]', () => {
+    installP5FesBridge()
+    setCurrentP5Source('sphere.p5', 4)
+    ;(p5 as unknown as P5Static)._fesLogger?.(
+      '🌸 p5.js says: [sketch.js, line 14] It seems that you may have accidentally written "zoom".',
+    )
+    const last = getLogHistory()[getLogHistory().length - 1]
+    expect(last?.line).toBe(10) // 14 - 4 = 10
+    expect(last?.message.startsWith('[')).toBe(false)
+  })
+
+  it('keeps advisory hints as warn-level', () => {
     installP5FesBridge()
     setCurrentP5Source('sphere.p5', 4)
     ;(p5 as unknown as P5Static)._fesLogger?.(
@@ -130,17 +144,17 @@ describe('FES line translation', () => {
     )
     const last = getLogHistory()[getLogHistory().length - 1]
     expect(last?.line).toBeUndefined()
+    expect(last?.level).toBe('warn')
     expect(last?.message).toBe('consider using noLoop()')
   })
 
-  it('clamps to at least 1 when the wrapped line sits inside the prefix', () => {
+  it('clamps to undefined when the wrapped line sits inside the prefix', () => {
     installP5FesBridge()
     setCurrentP5Source('sphere.p5', 10)
     ;(p5 as unknown as P5Static)._fesLogger?.(
       '🌸 p5.js says: [src.js line 1 > Function, line 3] something',
     )
     const last = getLogHistory()[getLogHistory().length - 1]
-    // wrapped 3 - offset 10 = -7 → rejected (filter requires >= 1)
     expect(last?.line).toBeUndefined()
   })
 })

@@ -98,10 +98,7 @@ import { emitLog, emitFixed, type RuntimeId } from '../../engine/engineLog'
 import { formatFriendlyError } from '../../engine/friendlyErrors'
 import { P5_DOCS_INDEX } from '../../monaco/docs/p5'
 import { HYDRA_DOCS_INDEX } from '../../monaco/docs/hydra'
-import {
-  installP5FesBridge,
-  setCurrentP5Source,
-} from '../../visualizers/p5FesBridge'
+import { setCurrentP5Source } from '../../visualizers/p5FesBridge'
 import { getP5LineOffset } from '../../visualizers/p5Compiler'
 import { getHydraLineOffset } from '../../visualizers/hydraCompiler'
 
@@ -335,12 +332,10 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     const runtime = descriptor.renderer as RuntimeId
     const isP5 = runtime === 'p5'
     if (isP5) {
-      // Idempotent install + source attribution for p5's FES (see
-      // p5FesBridge.ts). Clear on unmount below so a cold destroy
-      // doesn't attribute FES messages from some sibling sketch. The
-      // line offset lets the bridge translate FES's wrapped-body
-      // line numbers back to the user's file.
-      installP5FesBridge()
+      // The FES bridge itself is installed by P5VizRenderer.mount with
+      // the real p5 constructor (avoids dynamic-import races). Here we
+      // just attribute the source + line offset so messages land on
+      // the right file. Clear on unmount below.
       setCurrentP5Source(file.path, getP5LineOffset(file.content))
     }
     let mounted: ReturnType<typeof mountVizRenderer> | null = null

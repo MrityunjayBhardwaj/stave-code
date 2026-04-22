@@ -4631,6 +4631,149 @@ var StrudelEngine = class {
     }
   }
 };
+
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var listeners = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+function emitLog(partial) {
+  const last = history.length > 0 ? history[history.length - 1] : void 0;
+  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
+    last.ts = Date.now();
+    queueMicrotask(() => {
+      for (const fn of listeners) {
+        try {
+          fn(last, history);
+        } catch {
+        }
+      }
+    });
+    return last;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    ...partial
+  };
+  history.push(entry);
+  if (history.length > MAX_HISTORY) {
+    history.splice(0, history.length - MAX_HISTORY);
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
+}
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+function getLogHistory() {
+  return [...history];
+}
+function clearLog() {
+  history.length = 0;
+  fixedMarkers.clear();
+  for (const fn of listeners) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+
+// src/visualizers/p5FesBridge.ts
+var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
+var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
+var installed = false;
+var currentSource = null;
+var currentLineOffset = 0;
+function buildLogger() {
+  return (msg) => {
+    const raw = String(msg);
+    const clean = raw.replace(P5_PREFIX_RE, "").trim();
+    if (!clean) return;
+    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
+    let line2;
+    const match = raw.match(FES_LINE_RE);
+    if (match) {
+      const wrapped = parseInt(match[1], 10);
+      if (Number.isFinite(wrapped)) {
+        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
+        if (candidate >= 1) line2 = candidate;
+      }
+    }
+    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
+      message
+    );
+    emitLog({
+      runtime: "p5",
+      level: isLikelyBug ? "error" : "warn",
+      source: currentSource ?? void 0,
+      message,
+      line: line2
+    });
+  };
+}
+function installP5FesBridgeWith(p5Ctor) {
+  if (installed) return;
+  installed = true;
+  const ctor = p5Ctor;
+  ctor.disableFriendlyErrors = false;
+  ctor._fesLogger = buildLogger();
+}
+function setCurrentP5Source(source, lineOffset = 0) {
+  currentSource = source;
+  currentLineOffset = source == null ? 0 : lineOffset;
+}
+
+// src/visualizers/renderers/P5VizRenderer.ts
 var P5VizRenderer = class {
   constructor(sketch) {
     this.sketch = sketch;
@@ -4643,6 +4786,7 @@ var P5VizRenderer = class {
     };
   }
   mount(container, components, size, onError) {
+    installP5FesBridgeWith(p5);
     try {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null;
       this.analyserRef.current = components.audio?.analyser ?? null;
@@ -14942,7 +15086,7 @@ function clearLineMarkers(monaco, model, owner) {
 
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
+var listeners2 = /* @__PURE__ */ new Set();
 function registerNamedViz(name2, descriptor) {
   const existing = registry.get(name2);
   if (existing === descriptor) return;
@@ -14964,17 +15108,17 @@ function listNamedVizEntries() {
   return Array.from(registry.entries());
 }
 function onNamedVizChanged(cb) {
-  listeners.add(cb);
+  listeners2.add(cb);
   let unsubscribed = false;
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    listeners.delete(cb);
+    listeners2.delete(cb);
   };
 }
 function notifyListeners() {
-  if (listeners.size === 0) return;
-  const snapshot = Array.from(listeners);
+  if (listeners2.size === 0) return;
+  const snapshot = Array.from(listeners2);
   for (const cb of snapshot) {
     try {
       cb();
@@ -15979,7 +16123,7 @@ function safeLocalStorage2() {
   }
 }
 var values = /* @__PURE__ */ new Map();
-var listeners2 = /* @__PURE__ */ new Map();
+var listeners3 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
   return `${STORAGE_PREFIX}${fileId}`;
 }
@@ -15997,22 +16141,22 @@ function setVizLive(fileId, on) {
   if (prev === on) return;
   values.set(fileId, on);
   safeLocalStorage2()?.setItem(keyFor(fileId), on ? "1" : "0");
-  const set = listeners2.get(fileId);
+  const set = listeners3.get(fileId);
   if (set) for (const cb of Array.from(set)) cb(on);
 }
 function toggleVizLive(fileId) {
   setVizLive(fileId, !getVizLive(fileId));
 }
 function onVizLiveChange(fileId, cb) {
-  let set = listeners2.get(fileId);
+  let set = listeners3.get(fileId);
   if (!set) {
     set = /* @__PURE__ */ new Set();
-    listeners2.set(fileId, set);
+    listeners3.set(fileId, set);
   }
   set.add(cb);
   return () => {
     set.delete(cb);
-    if (set.size === 0) listeners2.delete(fileId);
+    if (set.size === 0) listeners3.delete(fileId);
   };
 }
 function payloadKey(ref, payload) {
@@ -27278,102 +27422,6 @@ function VizEditor({
   );
 }
 
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var listeners3 = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
-}
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
-}
-function emitLog(partial) {
-  const last = history.length > 0 ? history[history.length - 1] : void 0;
-  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
-    last.ts = Date.now();
-    queueMicrotask(() => {
-      for (const fn of listeners3) {
-        try {
-          fn(last, history);
-        } catch {
-        }
-      }
-    });
-    return last;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    ...partial
-  };
-  history.push(entry);
-  if (history.length > MAX_HISTORY) {
-    history.splice(0, history.length - MAX_HISTORY);
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners3) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
-}
-function subscribeLog(fn) {
-  listeners3.add(fn);
-  return () => {
-    listeners3.delete(fn);
-  };
-}
-function getLogHistory() {
-  return [...history];
-}
-function clearLog() {
-  history.length = 0;
-  fixedMarkers.clear();
-  for (const fn of listeners3) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err2) {
   const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 ? String(err2.stack ?? "") : "";
@@ -28353,53 +28401,6 @@ function VizEditorChrome({
     }
   );
 }
-
-// src/visualizers/p5FesBridge.ts
-var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
-var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
-var installed = false;
-var currentSource = null;
-var currentLineOffset = 0;
-function buildLogger() {
-  return (msg) => {
-    const raw = String(msg);
-    const clean = raw.replace(P5_PREFIX_RE, "").trim();
-    if (!clean) return;
-    let line2;
-    let message = clean;
-    const match = raw.match(FES_LINE_RE);
-    if (match && currentLineOffset > 0) {
-      const wrapped = parseInt(match[1], 10);
-      const userLine = wrapped - currentLineOffset;
-      if (Number.isFinite(userLine) && userLine >= 1) {
-        line2 = userLine;
-        message = clean.replace(/^\[.*?\]\s*/, "").trim();
-      }
-    }
-    emitLog({
-      runtime: "p5",
-      level: "warn",
-      source: currentSource ?? void 0,
-      message,
-      line: line2
-    });
-  };
-}
-function installP5FesBridge() {
-  if (installed) return;
-  installed = true;
-  void import('p5').then(({ default: p52 }) => {
-    const ctor = p52;
-    ctor.disableFriendlyErrors = false;
-    ctor._fesLogger = buildLogger();
-  }).catch(() => {
-    installed = false;
-  });
-}
-function setCurrentP5Source(source, lineOffset = 0) {
-  currentSource = source;
-  currentLineOffset = source == null ? 0 : lineOffset;
-}
 function createCompiledVizProvider(opts) {
   return {
     extensions: opts.extensions,
@@ -28501,7 +28502,6 @@ function CompiledVizMount(props) {
     const runtime = descriptor.renderer;
     const isP5 = runtime === "p5";
     if (isP5) {
-      installP5FesBridge();
       setCurrentP5Source(file.path, getP5LineOffset(file.content));
     }
     let mounted = null;
@@ -28739,6 +28739,41 @@ function installEngineLogMarkers() {
   });
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError2 as formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeFixed, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+// src/engine/globalErrorCatch.ts
+var installed3 = false;
+function installGlobalErrorCatch() {
+  if (installed3) return;
+  if (typeof window === "undefined") return;
+  installed3 = true;
+  window.addEventListener("error", (event) => {
+    if (!event.error && !event.message) return;
+    const err2 = event.error instanceof Error ? event.error : new Error(event.message || "Uncaught error");
+    emitFromGlobal(err2);
+  });
+  window.addEventListener(
+    "unhandledrejection",
+    (event) => {
+      const reason = event.reason;
+      const err2 = reason instanceof Error ? reason : new Error(
+        typeof reason === "string" ? reason : "Unhandled promise rejection"
+      );
+      emitFromGlobal(err2);
+    }
+  );
+}
+function emitFromGlobal(err2, _kind) {
+  const parts2 = formatFriendlyError2(err2, "stave");
+  const loc = parseStackLocation(err2);
+  emitLog({
+    level: "error",
+    runtime: "stave",
+    message: parts2.message,
+    stack: parts2.stack,
+    line: loc?.line,
+    column: loc?.column
+  });
+}
+
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError2 as formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeFixed, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
