@@ -66,6 +66,14 @@ export function parseStackLocation(
   const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/)
   if (v8Eval)
     return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) }
+  // V8: "at <FuncName> (<anonymous>:LINE:COL)" — a named user function
+  // (setup / draw / a user helper) declared inside a `new Function`
+  // body, throwing mid-execution. The `<anonymous>` token is the safe
+  // anchor — it can't appear in a real bundled filename — so we don't
+  // need line-start anchoring here.
+  const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/)
+  if (v8Named)
+    return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) }
   // V8: bare "at <anonymous>:LINE:COL" frame — typical for code run
   // through `new Function(body)` when the parser points at the body
   // position. Anchored to line start so we don't match the tail of a

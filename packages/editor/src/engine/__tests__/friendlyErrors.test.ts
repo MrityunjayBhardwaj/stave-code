@@ -205,6 +205,21 @@ describe('parseStackLocation', () => {
     ).toEqual({ line: 4, column: 12 })
   })
 
+  it('parses V8 named-function frame (`at setup (<anonymous>:14:3)`)', () => {
+    // A user-declared `function setup` throws mid-execution. Every
+    // ReferenceError inside setup/draw/preload or a user helper
+    // produces this shape — without this pattern the stack-parser
+    // returned null and no Monaco squiggle landed.
+    expect(
+      parseStackLocation({
+        stack:
+          'ReferenceError: zoom is not defined\n' +
+          '    at setup (<anonymous>:14:3)\n' +
+          '    at p5._setup (p5.js:123:45)',
+      }),
+    ).toEqual({ line: 14, column: 3 })
+  })
+
   it('parses Firefox @<anonymous> frame', () => {
     expect(
       parseStackLocation({
