@@ -26,6 +26,13 @@ import {
   flushToPreset,
   getPresetIdForFile,
   registerPresetAsNamedViz,
+  emitLog,
+  emitFixed,
+  formatFriendlyError,
+  STRUDEL_DOCS_INDEX,
+  SONICPI_DOCS_INDEX,
+  type DocsIndex,
+  type RuntimeId,
   type WorkspaceTab,
   type ChromeContext,
   type VizPreset,
@@ -240,6 +247,37 @@ export default function StrudelEditorClient({
         next.set(fileId, { ...cur, error: err });
         return next;
       });
+      // Pipe into the shared event store so toast / status-bar / console
+      // panel / Monaco markers can all react. Runtime identity comes from
+      // the workspace file's language (strudel | sonicpi — no other
+      // languages are wired to LiveCodingRuntime today).
+      const fileNow = getFile(fileId);
+      const runtimeId: RuntimeId = fileNow?.language === "sonicpi" ? "sonicpi" : "strudel";
+      const index: DocsIndex = runtimeId === "sonicpi" ? SONICPI_DOCS_INDEX : STRUDEL_DOCS_INDEX;
+      const parts = formatFriendlyError(err, runtimeId, { index });
+      // Strudel routes user code through `@strudel/transpiler`, which
+      // rewrites `$:` sugar into method calls and wraps everything in
+      // an async IIFE. The resulting wrapper offset is NOT constant —
+      // it depends on how many `$:` lines the user has and which
+      // transpiler rules fire — so a naive offset constant (like p5's
+      // or Hydra's) would drift per sketch. We deliberately drop
+      // `parts.line` here: the Console row + toast still surface the
+      // error, and the engineLogMarkers bridge's out-of-range guard
+      // keeps a bogus stack line from painting the whole file.
+      // Sonic Pi's Ruby errors carry user-file lines natively, so the
+      // same treatment isn't needed there — but the runtime dispatch
+      // here doesn't distinguish, and dropping the line for Sonic Pi
+      // is the conservative default until we wire a Ruby-aware
+      // line extractor.
+      emitLog({
+        level: "error",
+        runtime: runtimeId,
+        source: fileNow?.path ?? fileId,
+        message: parts.message,
+        suggestion: parts.suggestion,
+        stack: parts.stack,
+        column: parts.column,
+      });
     });
     // Live-mode re-eval has no user-driven play() to clear the error state,
     // so a transient syntax error stays visible until stop+play. Clearing on
@@ -253,6 +291,12 @@ export default function StrudelEditorClient({
         next.set(fileId, { ...cur, error: null });
         return next;
       });
+      // Record a fix marker so the Console panel's Live mode can hide
+      // any log entry emitted before this clean eval. Non-destructive —
+      // history stays intact for users who want the full trail.
+      const fileNow = getFile(fileId);
+      const runtimeId: RuntimeId = fileNow?.language === "sonicpi" ? "sonicpi" : "strudel";
+      emitFixed({ runtime: runtimeId, source: fileNow?.path ?? fileId });
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {
       setRuntimeStates(prev => {

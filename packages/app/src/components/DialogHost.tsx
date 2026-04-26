@@ -99,10 +99,28 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
       {toasts.map((t) => (
         <div
           key={t.id}
-          style={{ ...styles.toast, ...(t.level === "error" ? styles.toastError : {}) }}
+          style={{
+            ...styles.toast,
+            ...(t.level === "error" ? styles.toastError : {}),
+            position: "relative",
+          }}
           onClick={() => dismissToast(t.id)}
         >
-          {t.message}
+          <span style={{ paddingRight: t.count > 1 ? 28 : 0, display: "block" }}>
+            {t.message}
+          </span>
+          {t.count > 1 && (
+            <span
+              style={{
+                ...styles.toastCount,
+                ...(t.level === "error" ? styles.toastCountError : {}),
+              }}
+              aria-label={`Repeated ${t.count} times`}
+              title={`Repeated ${t.count} times`}
+            >
+              ×{t.count}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -212,5 +230,24 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toastError: {
     borderLeftColor: "var(--danger-fg)",
+  },
+  toastCount: {
+    position: "absolute",
+    bottom: 4,
+    right: 6,
+    background: "var(--bg-input, rgba(255,255,255,0.08))",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: 10,
+    padding: "1px 6px",
+    fontSize: 10,
+    lineHeight: 1.2,
+    color: "var(--text-secondary)",
+    fontVariantNumeric: "tabular-nums",
+    pointerEvents: "none",
+  },
+  toastCountError: {
+    background: "rgba(239, 68, 68, 0.15)",
+    borderColor: "rgba(239, 68, 68, 0.5)",
+    color: "var(--danger-fg, #f87171)",
   },
 };

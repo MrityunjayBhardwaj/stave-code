@@ -94,6 +94,13 @@ import { mountVizRenderer } from '../../visualizers/mountVizRenderer'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { PreviewContext, PreviewEditorChromeContext, PreviewProvider } from '../PreviewProvider'
 import { VizEditorChrome } from './VizEditorChrome'
+import { emitLog, emitFixed, type RuntimeId } from '../../engine/engineLog'
+import { formatFriendlyError } from '../../engine/friendlyErrors'
+import { P5_DOCS_INDEX } from '../../monaco/docs/p5'
+import { HYDRA_DOCS_INDEX } from '../../monaco/docs/hydra'
+import { setCurrentP5Source } from '../../visualizers/p5FesBridge'
+import { getP5LineOffset } from '../../visualizers/p5Compiler'
+import { getHydraLineOffset } from '../../visualizers/hydraCompiler'
 
 /**
  * Options accepted by `createCompiledVizProvider`. Both viz providers pass
@@ -236,14 +243,40 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
         createdAt: 0,
         updatedAt: 0,
       }
-      return { descriptor: compilePreset(preset), compileError: null }
+      const result = compilePreset(preset)
+      // Successful compile → record a fix marker for (runtime, source)
+      // so the Console panel's Live mode can drop any prior errors
+      // for this file. Runtime-level mount failures that happen later
+      // re-emit with a fresh timestamp and still surface normally.
+      emitFixed({ runtime: rendererType as RuntimeId, source: file.path })
+      return { descriptor: result, compileError: null }
     } catch (err) {
-      return {
-        descriptor: null,
-        compileError: err instanceof Error ? err.message : String(err),
-      }
+      const message = err instanceof Error ? err.message : String(err)
+      // Bridge compile failures into the shared log so the Console
+      // panel, toast, and status-bar chip see them alongside Strudel
+      // / Sonic Pi errors. p5 uses its own FES corpus for fuzzy
+      // matches; hydra uses our Levenshtein matcher against the
+      // HYDRA_DOCS_INDEX.
+      const runtime = rendererType as RuntimeId
+      const index = runtime === 'p5' ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX
+      const parts = formatFriendlyError(
+        err instanceof Error ? err : new Error(message),
+        runtime,
+        { index },
+      )
+      emitLog({
+        level: 'error',
+        runtime,
+        source: file.path,
+        message: parts.message,
+        suggestion: parts.suggestion,
+        stack: parts.stack,
+        line: parts.line,
+        column: parts.column,
+      })
+      return { descriptor: null, compileError: message }
     }
-  }, [file.id, file.content, file.language, rendererType])
+  }, [file.id, file.content, file.language, rendererType, file.path])
 
   const containerRef = useRef<HTMLDivElement>(null)
   // Track the live renderer across effect invocations so the hidden-flip
@@ -296,30 +329,59 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
       w: el.clientWidth || 400,
       h: el.clientHeight || 300,
     }
+    const runtime = descriptor.renderer as RuntimeId
+    const isP5 = runtime === 'p5'
+    if (isP5) {
+      // The FES bridge itself is installed by P5VizRenderer.mount with
+      // the real p5 constructor (avoids dynamic-import races). Here we
+      // just attribute the source + line offset so messages land on
+      // the right file. Clear on unmount below.
+      setCurrentP5Source(file.path, getP5LineOffset(file.content))
+    }
     let mounted: ReturnType<typeof mountVizRenderer> | null = null
+    const reportError = (e: Error): void => {
+      const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX
+      const parts = formatFriendlyError(e, runtime, { index })
+      // The stack trace for p5 / Hydra runtime errors (thrown from
+      // inside the compiled `new Function` body) counts from the
+      // wrapper header, not from the user's file. Translate before
+      // emitting so the Console row + Monaco marker land on the line
+      // the user actually wrote.
+      const offset = isP5
+        ? getP5LineOffset(file.content)
+        : runtime === 'hydra'
+          ? getHydraLineOffset()
+          : 0
+      const line =
+        parts.line != null && offset > 0
+          ? Math.max(1, parts.line - offset)
+          : parts.line
+      emitLog({
+        level: 'error',
+        runtime,
+        source: file.path,
+        message: parts.message,
+        suggestion: parts.suggestion,
+        stack: parts.stack,
+        line,
+        column: parts.column,
+      })
+    }
     try {
       mounted = mountVizRenderer(
         el,
         descriptor.factory,
         components,
         size,
-        (e) => {
-          // Surface renderer errors into the DOM so tests and observers
-          // can detect them without console-sniffing.
-          // eslint-disable-next-line no-console
-          console.error('[compiledVizProvider] renderer error:', e)
-        },
+        reportError,
       )
       rendererRef.current = mounted
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(
-        '[compiledVizProvider] mountVizRenderer threw:',
-        err,
-      )
+      reportError(err instanceof Error ? err : new Error(String(err)))
     }
     return () => {
       rendererRef.current = null
+      if (isP5) setCurrentP5Source(null)
       if (mounted) {
         try {
           mounted.disconnect()

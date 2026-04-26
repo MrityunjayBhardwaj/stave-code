@@ -38,6 +38,12 @@ import { describe, it, expect, vi } from 'vitest'
 // the test's module graph doesn't transitively pull in p5 → gifenc
 // through P5VizRenderer, which breaks the vitest ESM loader.
 import { compileP5Code, isFullLifecycleSketch } from '../p5Compiler'
+import {
+  __resetEngineLogForTests,
+  subscribeLog,
+  getLogHistory,
+  type LogEntry,
+} from '../../engine/engineLog'
 import type { HapStream } from '../../engine/HapStream'
 import type { PatternScheduler, ContainerSize } from '../types'
 import type { RefObject } from 'react'
@@ -141,6 +147,24 @@ function compileAndMount(userCode: string) {
 describe('isFullLifecycleSketch', () => {
   it('returns true when the source declares function draw', () => {
     expect(isFullLifecycleSketch('function draw() { background(0) }')).toBe(true)
+  })
+
+  it('returns true for a setup-only sketch (one-shot, no animation)', () => {
+    // A sketch with only `function setup` used to fall through to the
+    // legacy draw-body wrap; the user's setup declaration ended up
+    // nested inside a synthetic draw and never ran. The detector now
+    // matches any lifecycle entry point.
+    expect(
+      isFullLifecycleSketch(
+        'function setup() { createCanvas(100, 100); print("hi") }',
+      ),
+    ).toBe(true)
+  })
+
+  it('returns true for a preload-only sketch', () => {
+    expect(
+      isFullLifecycleSketch('function preload() { loadImage("a.png") }'),
+    ).toBe(true)
   })
 
   it('returns true even when draw is preceded by other declarations', () => {
@@ -514,30 +538,97 @@ describe('compileP5Code — legacy mode (backwards compat)', () => {
 // ---------------------------------------------------------------------------
 
 describe('compileP5Code — compile errors', () => {
-  it('installs an error sketch when new Function throws a syntax error', () => {
+  it('throws a SyntaxError synchronously so callers can surface it via engineLog', () => {
     // An unbalanced brace surfaces as a SyntaxError inside new Function.
+    // We want this to propagate up — the useMemo catch in CompiledVizMount
+    // turns it into a Console row + Monaco squiggle. Swallowing it here
+    // (the old behaviour — drawing the error onto the canvas) meant no
+    // engineLog surface ever saw the error.
     const source = `
       function draw() {
         background(
       }
     `
-    const { p, calls } = compileAndMount(source)
+    expect(() => compileP5Code(source)).toThrow(SyntaxError)
+  })
 
-    // Both setup and draw should exist (the error sketch).
-    expect(typeof p.setup).toBe('function')
-    expect(typeof p.draw).toBe('function')
+  it('bridges draw-time runtime errors to engineLog (the `zoom` typo case)', async () => {
+    __resetEngineLogForTests()
+    const entries: LogEntry[] = []
+    subscribeLog((entry) => {
+      if (entry) entries.push(entry)
+    })
 
-    // The error sketch's draw paints the error message via text().
-    ;(p.setup as () => void)()
+    // Declares `zom` but references `zoom` inside draw — valid syntax,
+    // resolves fine at compile and at factory invocation, throws only
+    // when p5 calls draw().
+    const source = `
+      let zom = -100
+      function draw() {
+        const v = zoom + 1
+      }
+    `
+    const factory = compileP5Code(source, 'tests/zoom.p5')
+    const refs = makeRefs()
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+    )
+    const { p } = makeFakeP5()
+    sketchFn(p)
+    // Simulate p5 invoking draw three times. The wrap must swallow
+    // the throw so p5's loop doesn't halt; emitLog's dedupe collapses
+    // the per-frame flood to one Console row.
+    ;(p.draw as () => void)()
+    ;(p.draw as () => void)()
     ;(p.draw as () => void)()
 
-    // At least one text call should contain a substring of the
-    // parser error (e.g., `Unexpected`, `SyntaxError`, `}` etc.).
-    const textCalls = calls.filter((c) => c.method === 'text')
-    expect(textCalls.length).toBeGreaterThan(0)
-    const messageCall = textCalls.find((c) =>
-      /p5 viz compile error/i.test(String(c.args[0])),
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()))
+
+    // Listener fires once per emit (so UIs can re-flash toasts) but
+    // engineLog's dedupe collapses identical entries in history —
+    // exactly the behaviour we want for a 60fps per-frame flood.
+    expect(entries.length).toBeGreaterThanOrEqual(1)
+    const history = getLogHistory()
+    expect(history).toHaveLength(1)
+    expect(history[0].runtime).toBe('p5')
+    expect(history[0].level).toBe('error')
+    expect(history[0].message).toMatch(/draw.*zoom/)
+    expect(history[0].source).toBe('tests/zoom.p5')
+  })
+
+  it('bridges top-level runtime errors (new Mp()) to engineLog', async () => {
+    __resetEngineLogForTests()
+    const entries: LogEntry[] = []
+    subscribeLog((entry) => {
+      if (entry) entries.push(entry)
+    })
+
+    // Top-level ReferenceError — the factory's internal catch used to
+    // swallow this into `installErrorSketch` only. Now it also emits.
+    const source = `
+      let x = new Mp()
+      function draw() { background(0) }
+    `
+    const factory = compileP5Code(source, 'tests/mp.p5')
+    const refs = makeRefs()
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
     )
-    expect(messageCall).toBeDefined()
+    const { p } = makeFakeP5()
+    sketchFn(p)
+
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()))
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0].runtime).toBe('p5')
+    expect(entries[0].level).toBe('error')
+    expect(entries[0].source).toBe('tests/mp.p5')
+    expect(entries[0].message).toMatch(/Mp/)
   })
 })

@@ -30,6 +30,14 @@ export interface ToastState {
   message: string;
   level: "info" | "error";
   expiresAt: number;
+  /**
+   * How many times this message has been shown. Repeat emits with the
+   * same `(message, level)` bump this count + extend `expiresAt`
+   * instead of stacking another toast — so a per-frame flood (e.g., a
+   * draw-loop ReferenceError) renders as one toast with a counter
+   * rather than covering the screen.
+   */
+  count: number;
 }
 
 type Listener = () => void;
@@ -120,18 +128,55 @@ export function resolveConfirm(value: boolean): void {
 }
 
 export function showToast(message: string, level: "info" | "error" = "info", ttlMs = 4000): void {
+  // Dedupe: if the most recent visible toast carries the same message +
+  // level, bump its count and extend its expiry instead of stacking a
+  // new one. The scheduled cleanup below re-reads `expiresAt` so the
+  // reused toast lives `ttlMs` from the latest emit, not from the
+  // first.
+  const existing = toasts.find(
+    (x) => x.message === message && x.level === level,
+  );
+  if (existing) {
+    existing.count += 1;
+    existing.expiresAt = Date.now() + ttlMs;
+    toasts = [...toasts];
+    notify();
+    scheduleToastCleanup(existing.id);
+    return;
+  }
   const t: ToastState = {
     id: ++seq,
     message,
     level,
     expiresAt: Date.now() + ttlMs,
+    count: 1,
   };
   toasts = [...toasts, t];
   notify();
+  scheduleToastCleanup(t.id);
+}
+
+/**
+ * Schedule a cleanup check against the current `expiresAt`. Re-firing
+ * showToast for the same message bumps `expiresAt` and schedules a new
+ * check; whichever check wakes last actually removes the toast
+ * (earlier checks see a still-future expiry and re-arm). Keeps the
+ * dedupe logic self-contained — no per-toast timeout ids to track.
+ */
+function scheduleToastCleanup(id: number): void {
+  const toast = toasts.find((x) => x.id === id);
+  if (!toast) return;
+  const delay = Math.max(0, toast.expiresAt - Date.now());
   setTimeout(() => {
-    toasts = toasts.filter((x) => x.id !== t.id);
+    const current = toasts.find((x) => x.id === id);
+    if (!current) return;
+    if (current.expiresAt > Date.now()) {
+      scheduleToastCleanup(id);
+      return;
+    }
+    toasts = toasts.filter((x) => x.id !== id);
     notify();
-  }, ttlMs);
+  }, delay);
 }
 
 export function dismissToast(id: number): void {

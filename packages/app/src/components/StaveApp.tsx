@@ -60,10 +60,17 @@ import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
+import { ConsolePanel } from "./ConsolePanel";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
-import { listWorkspaceFiles, subscribeToFileList } from "@stave/editor";
+import {
+  listWorkspaceFiles,
+  subscribeToFileList,
+  subscribeLog,
+  installEngineLogMarkers,
+  installGlobalErrorCatch,
+} from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 
 interface StaveAppProps {
@@ -123,6 +130,40 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     applyPersistedUiIconSize();
     applyPersistedInlineVizActionSize();
   }, []);
+
+  // Monaco marker bridge — engineLog entries that carry a `source` +
+  // `line` become inline squiggles on the matching file's model,
+  // cleared whenever `emitFixed` fires for the same (runtime, source).
+  // Idempotent — installs on first mount; no-op thereafter.
+  useEffect(() => {
+    installEngineLogMarkers();
+  }, []);
+
+  // Global error floor — catches any throw / rejected promise that
+  // escaped the per-runtime bridges. The bridges still enrich known
+  // error shapes with friendly messages and source attribution; this
+  // is the guarantee that even unknown-shape errors become visible
+  // instead of vanishing.
+  useEffect(() => {
+    installGlobalErrorCatch();
+  }, []);
+
+  // Toast bridge — every new error-level engineLog entry also surfaces
+  // as a transient toast so the user notices even when the Console panel
+  // isn't open. Warnings stay in the LED + Console only (noisier to
+  // toast every warn, and live coders warn themselves a lot). The toast
+  // auto-dismisses in ~4s; the Console entry + status-bar LED persist.
+  useEffect(() => {
+    return subscribeLog((entry) => {
+      if (!entry) return;
+      if (entry.level !== "error") return;
+      const text = entry.suggestion
+        ? `${entry.message} → try \`${entry.suggestion.name}\``
+        : entry.message;
+      showToast(text, "error");
+    });
+  }, []);
+
   const [zenMode, setZenMode] = useState(false);
   const searchViewRef = useRef<WorkspaceSearchViewHandle | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -749,6 +790,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       order: 40,
       render: () => null,
     }));
+    unregs.push(registerPanel({
+      id: "console",
+      title: "Console",
+      icon: "terminal",
+      order: 50,
+      render: () => null,
+    }));
     return () => { for (const u of unregs) u(); };
   }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject]);
 
@@ -884,6 +932,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             />
           </div>
         )}
+        {!zenMode && activePanelId === "console" && <ConsolePanel />}
         {!zenMode && activePanelId === "outline" && (
           <div style={styles.panelRoot} data-sidebar>
             <div style={styles.panelHeader}>OUTLINE</div>
@@ -1126,6 +1175,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         runtime={activeRuntime}
         canUndo={undoState.canUndo}
         canRedo={undoState.canRedo}
+        onOpenConsole={() => setActivePanelId("console")}
       />}
 
       <CommandPalette

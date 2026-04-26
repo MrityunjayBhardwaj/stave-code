@@ -13,6 +13,12 @@
 import type { HapStream } from '../engine/HapStream'
 import type { PatternScheduler, ContainerSize } from './types'
 import type { RefObject } from 'react'
+import { emitLog } from '../engine/engineLog'
+import {
+  formatFriendlyError,
+  parseStackLocation,
+} from '../engine/friendlyErrors'
+import { P5_DOCS_INDEX } from '../monaco/docs/p5'
 
 /**
  * The live `stave` namespace handed to user p5 sketches. Fields are
@@ -48,9 +54,46 @@ interface StaveContext {
  */
 export function isFullLifecycleSketch(code: string): boolean {
   // Tolerate leading whitespace, comments, and alternate formatting.
-  // The key signal is: somewhere in the source, there's a
-  // function declaration whose name is `draw`.
-  return /\bfunction\s+draw\s*\(/.test(code)
+  // The key signal is: the user declared ANY of p5's lifecycle
+  // entry points — `draw`, `setup`, or `preload`. A sketch that only
+  // has setup (e.g. a one-shot drawing that doesn't animate) used
+  // to fall through to the legacy draw-body wrap, where the user's
+  // `function setup` ended up declared inside a synthetic draw and
+  // never actually ran — nothing threw, nothing drew, nothing
+  // reached engineLog.
+  return /\bfunction\s+(?:draw|setup|preload)\s*\(/.test(code)
+}
+
+/**
+ * `new Function(args, body)` wraps the body with its own header, which
+ * V8 generates as two lines:
+ *
+ *   function anonymous(p,stave
+ *   ) {
+ *     <body starts here on line 3>
+ *
+ * Every stack-parsed line coming out of a runtime error — and every
+ * line number embedded in a p5 FES message — counts from that header.
+ * We subtract this offset plus the wrapper-specific prefix count to
+ * translate back into the user's original file.
+ */
+const NEW_FUNCTION_HEADER_LINES = 2
+
+/**
+ * Return the number of wrapper lines sitting between `function
+ * anonymous(...)` and the start of the user's code. Call-sites that
+ * need to translate a wrapped-body line back to a user-file line
+ * subtract this value.
+ *
+ *   userLine = wrappedLine - getP5LineOffset(userCode)
+ *
+ * Clamps the result to at least 0 so a caller that forgets to guard
+ * an already-too-small line doesn't produce a negative.
+ */
+export function getP5LineOffset(code: string): number {
+  return isFullLifecycleSketch(code)
+    ? FULL_LIFECYCLE_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES
+    : LEGACY_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES
 }
 
 /**
@@ -95,7 +138,24 @@ export function isFullLifecycleSketch(code: string): boolean {
  * `with(p)` is central to letting users write idiomatic bare-name p5
  * code.
  */
-export function compileP5Code(code: string) {
+export function compileP5Code(code: string, source?: string) {
+  // Build the body ONCE per compile. The compiled function is reused
+  // for every mount of this sketch (p5 calls it once per `new p5(...)`).
+  const body = isFullLifecycleSketch(code)
+    ? buildFullLifecycleBody(code)
+    : buildLegacyBody(code)
+  const lineOffset = getP5LineOffset(code)
+
+  // Pre-validate syntax synchronously. Without this step, the factory
+  // below defers the `new Function(body)` call until p5's instance
+  // constructor invokes the sketch — the internal try/catch there
+  // swallows the SyntaxError into `installErrorSketch`, so the error
+  // only appears on the canvas. By throwing from compileP5Code, the
+  // error propagates up through `compilePreset` into the useMemo
+  // catch in CompiledVizMount where it becomes a proper engineLog
+  // entry (Console row, toast, status-bar chip, Monaco squiggle).
+  new Function('p', 'stave', body)
+
   // P5SketchFactory signature — fourth arg is the container-size ref
   // maintained by the renderer so `stave.width` / `stave.height`
   // expose the preview pane dimensions. Optional (and defaulted) so
@@ -109,12 +169,6 @@ export function compileP5Code(code: string) {
       current: { w: 400, h: 300 },
     } as RefObject<ContainerSize>,
   ) => {
-    // Build the body ONCE per sketch instance. The compiled function
-    // is then reused for every mount of this sketch (p5 calls it
-    // exactly once per `new p5(...)` invocation).
-    const body = isFullLifecycleSketch(code)
-      ? buildFullLifecycleBody(code)
-      : buildLegacyBody(code)
 
     return (p: unknown) => {
       // Live stave namespace — getters forward to the refs so reads
@@ -152,14 +206,41 @@ export function compileP5Code(code: string) {
         ) => typeof lifecycle
         lifecycle = compile(p, stave)
       } catch (err) {
-        // Compile-time syntax error. Render it onto the canvas so
-        // the user can see what went wrong instead of facing a blank
-        // preview and a console error they may not open.
-        installErrorSketch(p, (err as Error).message ?? String(err))
+        // Top-level runtime error inside the user sketch — the most
+        // common shape is a ReferenceError from a typo'd identifier
+        // (`new Mp()` instead of `new Map()`) at module scope. The
+        // compile-time pre-validation at the top of compileP5Code
+        // only catches SyntaxErrors; references resolve at execute
+        // time. Two things happen here:
+        //   1. Canvas fallback: `installErrorSketch` paints the
+        //      error in the preview pane so a user who has the
+        //      Console panel closed still sees something.
+        //   2. engineLog bridge: `emitLog` pushes the error through
+        //      the shared pipe (Console row, toast, status-bar chip,
+        //      Monaco squiggle). Without this, the preview pane was
+        //      the ONLY surface that showed the error.
+        const error = err instanceof Error ? err : new Error(String(err))
+        installErrorSketch(p, error.message)
+        const parts = formatFriendlyError(error, 'p5', {
+          index: P5_DOCS_INDEX,
+        })
+        const loc = parseStackLocation(error)
+        const userLine =
+          loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line
+        emitLog({
+          level: 'error',
+          runtime: 'p5',
+          source,
+          message: parts.message,
+          suggestion: parts.suggestion,
+          stack: parts.stack,
+          line: userLine,
+          column: loc?.column,
+        })
         return
       }
 
-      installLifecycle(p, lifecycle)
+      installLifecycle(p, lifecycle, source, lineOffset)
     }
   }
 }
@@ -176,10 +257,17 @@ export function compileP5Code(code: string) {
  * `typeof X === 'function'` guards let us tolerate partial sketches —
  * a user who only wrote `draw` gets a working sketch with just draw.
  */
+/**
+ * Prefix preceding `${userCode}` in the full-lifecycle body template.
+ * Counted at module load so the emit-time line offset tracks the
+ * template verbatim (change the template → offset self-updates).
+ */
+const FULL_LIFECYCLE_PREFIX = '\nwith (p) {\n  '
+const FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || [])
+  .length
+
 function buildFullLifecycleBody(userCode: string): string {
-  return `
-with (p) {
-  ${userCode}
+  return `${FULL_LIFECYCLE_PREFIX}${userCode}
   return {
     setup: typeof setup === 'function' ? setup : undefined,
     draw: typeof draw === 'function' ? draw : undefined,
@@ -199,8 +287,8 @@ with (p) {
  * snippets written for the OLD compiler (which exposed those as
  * locals) keep working without modification.
  */
-function buildLegacyBody(userCode: string): string {
-  return `
+/** Prefix preceding `${userCode}` in the legacy draw-body template. */
+const LEGACY_PREFIX = `
 with (p) {
   return {
     setup: function () {
@@ -211,7 +299,11 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
-      ${userCode}
+      `
+const LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length
+
+function buildLegacyBody(userCode: string): string {
+  return `${LEGACY_PREFIX}${userCode}
     },
     preload: undefined,
   }
@@ -223,20 +315,67 @@ with (p) {
  * Assign the compiled lifecycle functions onto the p5 instance. If
  * the user didn't supply `setup`, fall back to a default that just
  * creates a full-window canvas — without SOME setup, p5 throws.
+ *
+ * Each user lifecycle hook is wrapped in a try/catch that forwards
+ * the error to `emitLog`. p5 v2 swallows draw-time throws internally
+ * (sets `hitCriticalError`, halts the loop, never reaches the
+ * browser console or FES). Without this wrap, a `translate(0, 0,
+ * zoom)` where `zoom` is undefined just produced a black canvas and
+ * dead silence — no Console row, no toast, no squiggle. The wrap
+ * also keeps the tight per-frame flood in check: `emitLog`'s dedupe
+ * collapses identical consecutive entries so 60fps of ReferenceError
+ * becomes one Console row.
  */
 function installLifecycle(
   p: unknown,
   lifecycle: { preload?: () => void; setup?: () => void; draw?: () => void },
+  source: string | undefined,
+  lineOffset: number,
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pi = p as any
-  if (lifecycle.preload) pi.preload = lifecycle.preload
+  const reportLifecycleError = (hook: string, err: unknown): void => {
+    const error = err instanceof Error ? err : new Error(String(err))
+    const parts = formatFriendlyError(error, 'p5', { index: P5_DOCS_INDEX })
+    const loc = parseStackLocation(error)
+    const userLine =
+      loc && lineOffset > 0
+        ? Math.max(1, loc.line - lineOffset)
+        : loc?.line
+    emitLog({
+      level: 'error',
+      runtime: 'p5',
+      source,
+      message: `${hook}(): ${parts.message}`,
+      suggestion: parts.suggestion,
+      stack: parts.stack,
+      line: userLine,
+      column: loc?.column,
+    })
+  }
+  const wrap = (
+    hook: string,
+    fn: (() => void) | undefined,
+  ): (() => void) | undefined => {
+    if (!fn) return undefined
+    return function (this: unknown, ...args: unknown[]) {
+      try {
+        return (fn as (...a: unknown[]) => unknown).apply(this, args)
+      } catch (err) {
+        reportLifecycleError(hook, err)
+        // Swallow — returning normally lets p5 continue. The dedupe
+        // in engineLog keeps per-frame floods from drowning the
+        // Console panel; the user still sees one clear row.
+      }
+    }
+  }
+  if (lifecycle.preload) pi.preload = wrap('preload', lifecycle.preload)
   pi.setup =
-    lifecycle.setup ??
+    wrap('setup', lifecycle.setup) ??
     function () {
       pi.createCanvas(pi.windowWidth, pi.windowHeight)
     }
-  if (lifecycle.draw) pi.draw = lifecycle.draw
+  if (lifecycle.draw) pi.draw = wrap('draw', lifecycle.draw)
 }
 
 /**

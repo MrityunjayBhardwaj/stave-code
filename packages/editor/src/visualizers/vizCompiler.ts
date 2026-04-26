@@ -50,7 +50,12 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       label: name,
       renderer: 'p5',
       requires,
-      factory: () => new P5VizRenderer(compileP5Code(code)),
+      // Pass `name` (the workspace path) as the source so the factory's
+      // runtime-error catch can attribute the engineLog entry back to
+      // the file. Without it, a top-level `new Mp()` typo surfaced on
+      // the preview canvas but nowhere else — no Console row, no
+      // Monaco squiggle.
+      factory: () => new P5VizRenderer(compileP5Code(code, name)),
     }
   }
 

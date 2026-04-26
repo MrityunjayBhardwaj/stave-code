@@ -117,6 +117,7 @@ import React, {
 import { SplitPane } from '../visualizers/editor/SplitPane'
 import { applyTheme } from '../theme/tokens'
 import { EditorView } from './EditorView'
+import { ErrorBoundary } from './ErrorBoundary'
 import { PreviewView } from './PreviewView'
 import { useKeyboardCommands } from './commands/useKeyboardCommands'
 import { executeCommand } from './commands/CommandRegistry'
@@ -1551,17 +1552,18 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           }
           const extras = editorExtrasForTab?.(tab as WorkspaceTab & { kind: 'editor' })
           return (
-            <EditorView
-              key={tab.id}
-              fileId={tab.fileId}
-              chromeSlot={chromeSlot}
-              theme={theme}
-              onPlay={extras?.onPlay}
-              onStop={extras?.onStop}
-              error={extras?.error}
-              onEditViz={onEditViz}
-              onCropViz={onCropViz}
-            />
+            <ErrorBoundary key={tab.id} resetKey={tab.fileId}>
+              <EditorView
+                fileId={tab.fileId}
+                chromeSlot={chromeSlot}
+                theme={theme}
+                onPlay={extras?.onPlay}
+                onStop={extras?.onStop}
+                error={extras?.error}
+                onEditViz={onEditViz}
+                onCropViz={onCropViz}
+              />
+            </ErrorBoundary>
           )
         }
         case 'preview': {

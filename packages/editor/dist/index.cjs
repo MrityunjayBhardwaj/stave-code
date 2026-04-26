@@ -4658,6 +4658,149 @@ var StrudelEngine = class {
     }
   }
 };
+
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var listeners = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+function emitLog(partial) {
+  const last = history.length > 0 ? history[history.length - 1] : void 0;
+  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
+    last.ts = Date.now();
+    queueMicrotask(() => {
+      for (const fn of listeners) {
+        try {
+          fn(last, history);
+        } catch {
+        }
+      }
+    });
+    return last;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    ...partial
+  };
+  history.push(entry);
+  if (history.length > MAX_HISTORY) {
+    history.splice(0, history.length - MAX_HISTORY);
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
+}
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+function getLogHistory() {
+  return [...history];
+}
+function clearLog() {
+  history.length = 0;
+  fixedMarkers.clear();
+  for (const fn of listeners) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+
+// src/visualizers/p5FesBridge.ts
+var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
+var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
+var installed = false;
+var currentSource = null;
+var currentLineOffset = 0;
+function buildLogger() {
+  return (msg) => {
+    const raw = String(msg);
+    const clean = raw.replace(P5_PREFIX_RE, "").trim();
+    if (!clean) return;
+    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
+    let line2;
+    const match = raw.match(FES_LINE_RE);
+    if (match) {
+      const wrapped = parseInt(match[1], 10);
+      if (Number.isFinite(wrapped)) {
+        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
+        if (candidate >= 1) line2 = candidate;
+      }
+    }
+    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
+      message
+    );
+    emitLog({
+      runtime: "p5",
+      level: isLikelyBug ? "error" : "warn",
+      source: currentSource ?? void 0,
+      message,
+      line: line2
+    });
+  };
+}
+function installP5FesBridgeWith(p5Ctor) {
+  if (installed) return;
+  installed = true;
+  const ctor = p5Ctor;
+  ctor.disableFriendlyErrors = false;
+  ctor._fesLogger = buildLogger();
+}
+function setCurrentP5Source(source, lineOffset = 0) {
+  currentSource = source;
+  currentLineOffset = source == null ? 0 : lineOffset;
+}
+
+// src/visualizers/renderers/P5VizRenderer.ts
 var P5VizRenderer = class {
   constructor(sketch) {
     this.sketch = sketch;
@@ -4670,6 +4813,7 @@ var P5VizRenderer = class {
     };
   }
   mount(container, components, size, onError) {
+    installP5FesBridgeWith(p5__default.default);
     try {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null;
       this.analyserRef.current = components.audio?.analyser ?? null;
@@ -5996,9 +6140,9 @@ function ensureUndoManager() {
     }
   };
   files.observe(filesObserver);
-  const listeners3 = /* @__PURE__ */ new Set();
+  const listeners4 = /* @__PURE__ */ new Set();
   const notify2 = () => {
-    for (const l of listeners3) l();
+    for (const l of listeners4) l();
   };
   const onStackItemAdded = () => notify2();
   const onStackItemPopped = () => notify2();
@@ -6008,7 +6152,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners3,
+    listeners: listeners4,
     cleanup: () => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -6045,10 +6189,10 @@ function canRedo() {
 }
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners3 = active.listeners;
-  listeners3.add(cb);
+  const listeners4 = active.listeners;
+  listeners4.add(cb);
   return () => {
-    listeners3.delete(cb);
+    listeners4.delete(cb);
   };
 }
 
@@ -14576,11 +14720,17 @@ var monacoNs = null;
 function registerMonacoNamespace(monaco) {
   if (!monacoNs) monacoNs = monaco;
 }
+function getMonacoNamespace() {
+  return monacoNs;
+}
 function registerEditor(fileId, editor) {
   editors.set(fileId, editor);
 }
 function unregisterEditor(fileId, editor) {
   if (editors.get(fileId) === editor) editors.delete(fileId);
+}
+function getEditorForFile(fileId) {
+  return editors.get(fileId);
 }
 function revealLineInFile(fileId, line2) {
   const editor = editors.get(fileId);
@@ -14894,29 +15044,76 @@ function parseErrorLocation(error) {
   return null;
 }
 function setEvalError(monaco, model, error) {
-  const loc = parseErrorLocation(error);
-  const lineNumber = loc?.line ?? 1;
-  const startColumn = loc?.col ?? 1;
-  const endLineNumber = loc ? loc.line : model.getLineCount();
-  const endColumn = loc ? model.getLineMaxColumn(loc.line) : model.getLineMaxColumn(model.getLineCount());
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, [
-    {
-      severity: monaco.MarkerSeverity.Error,
-      message: error.message,
-      startLineNumber: lineNumber,
-      startColumn,
-      endLineNumber,
-      endColumn
-    }
-  ]);
+  try {
+    const loc = parseErrorLocation(error);
+    const lineCount = model.getLineCount();
+    const validLine = loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount ? loc.line : null;
+    const validCol = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
+    const lineNumber = validLine ?? 1;
+    const startColumn = validLine ? validCol : 1;
+    const endLineNumber = validLine ?? lineCount;
+    const endColumn = model.getLineMaxColumn(endLineNumber);
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, [
+      {
+        severity: monaco.MarkerSeverity.Error,
+        message: error.message,
+        startLineNumber: lineNumber,
+        startColumn,
+        endLineNumber,
+        endColumn
+      }
+    ]);
+  } catch (markerError) {
+    console.warn("[stave] setEvalError failed, marker skipped:", markerError);
+  }
 }
 function clearEvalErrors(monaco, model) {
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+  try {
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+  } catch (markerError) {
+    console.warn("[stave] clearEvalErrors failed:", markerError);
+  }
+}
+function setLineMarker(monaco, model, opts) {
+  try {
+    const lineCount = model.getLineCount();
+    const line2 = opts.line != null && Number.isFinite(opts.line) && opts.line >= 1 && opts.line <= lineCount ? opts.line : null;
+    const col = opts.column != null && Number.isFinite(opts.column) && opts.column >= 1 ? opts.column : 1;
+    const severityMap = {
+      error: monaco.MarkerSeverity.Error,
+      warn: monaco.MarkerSeverity.Warning,
+      info: monaco.MarkerSeverity.Info
+    };
+    const severity = severityMap[opts.severity ?? "error"];
+    const startLine = line2 ?? 1;
+    const endLine = line2 ?? lineCount;
+    const startColumn = line2 ? col : 1;
+    const endColumn = model.getLineMaxColumn(endLine);
+    monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
+      {
+        severity,
+        message: opts.message,
+        startLineNumber: startLine,
+        startColumn,
+        endLineNumber: endLine,
+        endColumn
+      }
+    ]);
+  } catch (markerError) {
+    console.warn("[stave] setLineMarker failed, skipped:", markerError);
+  }
+}
+function clearLineMarkers(monaco, model, owner) {
+  try {
+    monaco.editor.setModelMarkers(model, owner, []);
+  } catch (markerError) {
+    console.warn("[stave] clearLineMarkers failed:", markerError);
+  }
 }
 
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
+var listeners2 = /* @__PURE__ */ new Set();
 function registerNamedViz(name2, descriptor) {
   const existing = registry.get(name2);
   if (existing === descriptor) return;
@@ -14938,17 +15135,17 @@ function listNamedVizEntries() {
   return Array.from(registry.entries());
 }
 function onNamedVizChanged(cb) {
-  listeners.add(cb);
+  listeners2.add(cb);
   let unsubscribed = false;
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    listeners.delete(cb);
+    listeners2.delete(cb);
   };
 }
 function notifyListeners() {
-  if (listeners.size === 0) return;
-  const snapshot = Array.from(listeners);
+  if (listeners2.size === 0) return;
+  const snapshot = Array.from(listeners2);
   for (const cb of snapshot) {
     try {
       cb();
@@ -15877,6 +16074,69 @@ function EditorView({
     }
   );
 }
+var ErrorBoundary = class extends React__default.default.Component {
+  constructor() {
+    super(...arguments);
+    this.state = { error: null };
+    this.reset = () => {
+      this.setState({ error: null });
+    };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info2) {
+    console.error("[stave] editor subtree crashed:", error, info2.componentStack);
+    this.props.onError?.(error, info2);
+  }
+  componentDidUpdate(prev) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    if (this.props.fallback) return this.props.fallback(error, this.reset);
+    return /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-stave-error-boundary": true,
+        style: {
+          padding: 16,
+          fontFamily: "var(--font-mono, monospace)",
+          fontSize: 12,
+          color: "var(--foreground-muted, #999)",
+          background: "var(--background-subtle, transparent)",
+          height: "100%",
+          boxSizing: "border-box",
+          overflow: "auto"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { color: "var(--error, #f48771)", marginBottom: 8 }, children: "Editor crashed" }),
+          /* @__PURE__ */ jsxRuntime.jsx("pre", { style: { whiteSpace: "pre-wrap", margin: 0 }, children: error.message }),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: this.reset,
+              style: {
+                marginTop: 12,
+                padding: "4px 10px",
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid currentColor",
+                borderRadius: 3,
+                cursor: "pointer"
+              },
+              children: "Retry"
+            }
+          )
+        ]
+      }
+    );
+  }
+};
 
 // src/workspace/preview/vizLiveToggle.ts
 var STORAGE_PREFIX = "stave:vizLive:";
@@ -15890,7 +16150,7 @@ function safeLocalStorage2() {
   }
 }
 var values = /* @__PURE__ */ new Map();
-var listeners2 = /* @__PURE__ */ new Map();
+var listeners3 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
   return `${STORAGE_PREFIX}${fileId}`;
 }
@@ -15908,22 +16168,22 @@ function setVizLive(fileId, on) {
   if (prev === on) return;
   values.set(fileId, on);
   safeLocalStorage2()?.setItem(keyFor(fileId), on ? "1" : "0");
-  const set = listeners2.get(fileId);
+  const set = listeners3.get(fileId);
   if (set) for (const cb of Array.from(set)) cb(on);
 }
 function toggleVizLive(fileId) {
   setVizLive(fileId, !getVizLive(fileId));
 }
 function onVizLiveChange(fileId, cb) {
-  let set = listeners2.get(fileId);
+  let set = listeners3.get(fileId);
   if (!set) {
     set = /* @__PURE__ */ new Set();
-    listeners2.set(fileId, set);
+    listeners3.set(fileId, set);
   }
   set.add(cb);
   return () => {
     set.delete(cb);
-    if (set.size === 0) listeners2.delete(fileId);
+    if (set.size === 0) listeners3.delete(fileId);
   };
 }
 function payloadKey(ref, payload) {
@@ -17707,7 +17967,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
             }
           }
           const extras = editorExtrasForTab?.(tab);
-          return /* @__PURE__ */ jsxRuntime.jsx(
+          return /* @__PURE__ */ jsxRuntime.jsx(ErrorBoundary, { resetKey: tab.fileId, children: /* @__PURE__ */ jsxRuntime.jsx(
             EditorView,
             {
               fileId: tab.fileId,
@@ -17718,9 +17978,8 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
               error: extras?.error,
               onEditViz,
               onCropViz
-            },
-            tab.id
-          );
+            }
+          ) }, tab.id);
         }
         case "preview": {
           const provider = previewProviderFor?.(tab);
@@ -27190,15 +27449,149 @@ function VizEditor({
   );
 }
 
+// src/engine/friendlyErrors.ts
+function parseStackLocation(err2) {
+  const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 ? String(err2.stack ?? "") : "";
+  if (!stack) return null;
+  const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
+  if (v8Eval)
+    return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) };
+  const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/);
+  if (v8Named)
+    return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) };
+  const v8Anon = stack.match(/^\s*at\s+<anonymous>:(\d+):(\d+)/m);
+  if (v8Anon)
+    return { line: parseInt(v8Anon[1], 10), column: parseInt(v8Anon[2], 10) };
+  const ff = stack.match(
+    /@(?:<anonymous>|debugger eval|eval):(\d+):(\d+)/
+  );
+  if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) };
+  return null;
+}
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const la = a.length;
+  const lb = b.length;
+  if (la === 0) return lb;
+  if (lb === 0) return la;
+  let prev = new Array(lb + 1);
+  let curr = new Array(lb + 1);
+  for (let j = 0; j <= lb; j++) prev[j] = j;
+  for (let i2 = 1; i2 <= la; i2++) {
+    curr[0] = i2;
+    const ac = a.charCodeAt(i2 - 1);
+    for (let j = 1; j <= lb; j++) {
+      const cost = ac === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        // insert
+        prev[j] + 1,
+        // delete
+        prev[j - 1] + cost
+        // substitute
+      );
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[lb];
+}
+function fuzzyMatch(word, corpus, options = {}) {
+  if (!word) return [];
+  const lower = word.toLowerCase();
+  const threshold = options.maxDistance ?? Math.max(2, Math.ceil(word.length / 3));
+  const limit = options.limit ?? 5;
+  const hits = [];
+  for (const candidate of corpus) {
+    const d = levenshtein(lower, candidate.toLowerCase());
+    if (d <= threshold) hits.push({ name: candidate, distance: d });
+  }
+  hits.sort(
+    (a, b) => a.distance - b.distance || // Prefer case-matching names on ties (e.g. PI over Pi).
+    (a.name === word ? -1 : b.name === word ? 1 : 0) || a.name.localeCompare(b.name)
+  );
+  return hits.slice(0, limit);
+}
+var REFERENCE_ERROR_PATTERNS = [
+  // Chrome / Edge / Node: "foo is not defined"
+  /^(\w+) is not defined$/,
+  // Firefox: "foo is not defined"
+  /^ReferenceError: (\w+) is not defined$/,
+  // Safari: "Can't find variable: foo"
+  /^Can't find variable: (\w+)$/
+];
+function extractReferenceIdentifier(err2) {
+  const message = typeof err2 === "object" && err2 !== null && "message" in err2 ? String(err2.message) : String(err2);
+  if (!message) return null;
+  const trimmed = message.replace(/^Uncaught\s+/, "").trim();
+  for (const re of REFERENCE_ERROR_PATTERNS) {
+    const m = re.exec(trimmed);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+function defaultDocsUrl(runtime, name2) {
+  return `/docs/reference/${runtime}/#${name2.toLowerCase()}`;
+}
+function formatFriendlyError2(err2, runtime, options = {}) {
+  const rawMessage = typeof err2 === "object" && err2 !== null && "message" in err2 ? String(err2.message) : String(err2);
+  const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 && typeof err2.stack === "string" ? err2.stack : void 0;
+  const loc = parseStackLocation(err2);
+  const identifier = extractReferenceIdentifier(err2);
+  if (identifier && options.index) {
+    const matches = fuzzyMatch(
+      identifier,
+      Object.keys(options.index.docs)
+    );
+    if (matches.length > 0) {
+      const hit = options.index.docs[matches[0].name];
+      const docsUrl = (options.docsUrlFor ?? defaultDocsUrl)(
+        runtime,
+        matches[0].name
+      );
+      const suggestion = {
+        name: matches[0].name,
+        docsUrl,
+        example: hit?.example,
+        description: hit?.description
+      };
+      return {
+        message: `\`${identifier}\` is not defined. Did you mean \`${matches[0].name}\`?`,
+        suggestion,
+        stack,
+        line: loc?.line,
+        column: loc?.column
+      };
+    }
+    return {
+      message: `\`${identifier}\` is not defined.`,
+      stack,
+      line: loc?.line,
+      column: loc?.column
+    };
+  }
+  return {
+    message: rawMessage || "Unknown error",
+    stack,
+    line: loc?.line,
+    column: loc?.column
+  };
+}
+
 // src/visualizers/p5Compiler.ts
 function isFullLifecycleSketch(code) {
-  return /\bfunction\s+draw\s*\(/.test(code);
+  return /\bfunction\s+(?:draw|setup|preload)\s*\(/.test(code);
 }
-function compileP5Code(code) {
+var NEW_FUNCTION_HEADER_LINES = 2;
+function getP5LineOffset(code) {
+  return isFullLifecycleSketch(code) ? FULL_LIFECYCLE_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES : LEGACY_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES;
+}
+function compileP5Code(code, source) {
+  const body2 = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
+  const lineOffset = getP5LineOffset(code);
+  new Function("p", "stave", body2);
   return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
     current: { w: 400, h: 300 }
   }) => {
-    const body2 = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
     return (p) => {
       const stave = {
         get scheduler() {
@@ -27222,17 +27615,33 @@ function compileP5Code(code) {
         const compile = new Function("p", "stave", body2);
         lifecycle = compile(p, stave);
       } catch (err2) {
-        installErrorSketch(p, err2.message ?? String(err2));
+        const error = err2 instanceof Error ? err2 : new Error(String(err2));
+        installErrorSketch(p, error.message);
+        const parts2 = formatFriendlyError2(error, "p5", {
+          index: P5_DOCS_INDEX
+        });
+        const loc = parseStackLocation(error);
+        const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
+        emitLog({
+          level: "error",
+          runtime: "p5",
+          source,
+          message: parts2.message,
+          suggestion: parts2.suggestion,
+          stack: parts2.stack,
+          line: userLine,
+          column: loc?.column
+        });
         return;
       }
-      installLifecycle(p, lifecycle);
+      installLifecycle(p, lifecycle, source, lineOffset);
     };
   };
 }
+var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  ";
+var FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || []).length;
 function buildFullLifecycleBody(userCode) {
-  return `
-with (p) {
-  ${userCode}
+  return `${FULL_LIFECYCLE_PREFIX}${userCode}
   return {
     setup: typeof setup === 'function' ? setup : undefined,
     draw: typeof draw === 'function' ? draw : undefined,
@@ -27241,8 +27650,7 @@ with (p) {
 }
   `;
 }
-function buildLegacyBody(userCode) {
-  return `
+var LEGACY_PREFIX = `
 with (p) {
   return {
     setup: function () {
@@ -27253,20 +27661,49 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
-      ${userCode}
+      `;
+var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
+function buildLegacyBody(userCode) {
+  return `${LEGACY_PREFIX}${userCode}
     },
     preload: undefined,
   }
 }
   `;
 }
-function installLifecycle(p, lifecycle) {
+function installLifecycle(p, lifecycle, source, lineOffset) {
   const pi = p;
-  if (lifecycle.preload) pi.preload = lifecycle.preload;
-  pi.setup = lifecycle.setup ?? function() {
+  const reportLifecycleError = (hook, err2) => {
+    const error = err2 instanceof Error ? err2 : new Error(String(err2));
+    const parts2 = formatFriendlyError2(error, "p5", { index: P5_DOCS_INDEX });
+    const loc = parseStackLocation(error);
+    const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
+    emitLog({
+      level: "error",
+      runtime: "p5",
+      source,
+      message: `${hook}(): ${parts2.message}`,
+      suggestion: parts2.suggestion,
+      stack: parts2.stack,
+      line: userLine,
+      column: loc?.column
+    });
+  };
+  const wrap4 = (hook, fn) => {
+    if (!fn) return void 0;
+    return function(...args2) {
+      try {
+        return fn.apply(this, args2);
+      } catch (err2) {
+        reportLifecycleError(hook, err2);
+      }
+    };
+  };
+  if (lifecycle.preload) pi.preload = wrap4("preload", lifecycle.preload);
+  pi.setup = wrap4("setup", lifecycle.setup) ?? function() {
     pi.createCanvas(pi.windowWidth, pi.windowHeight);
   };
-  if (lifecycle.draw) pi.draw = lifecycle.draw;
+  if (lifecycle.draw) pi.draw = wrap4("draw", lifecycle.draw);
 }
 function installErrorSketch(p, message) {
   const pi = p;
@@ -27288,10 +27725,15 @@ function installErrorSketch(p, message) {
 
 // src/visualizers/hydraCompiler.ts
 function compileHydraCode(code) {
+  new Function("s", "stave", code);
   return (s, stave) => {
     const fn = new Function("s", "stave", code);
     fn(s, stave);
   };
+}
+var HYDRA_LINE_OFFSET = 2;
+function getHydraLineOffset() {
+  return HYDRA_LINE_OFFSET;
 }
 
 // src/visualizers/vizCompiler.ts
@@ -27312,7 +27754,12 @@ function compilePreset(preset) {
       label: name2,
       renderer: "p5",
       requires,
-      factory: () => new P5VizRenderer(compileP5Code(code))
+      // Pass `name` (the workspace path) as the source so the factory's
+      // runtime-error catch can attribute the engineLog entry back to
+      // the file. Without it, a top-level `new Mp()` typo surfaced on
+      // the preview canvas but nowhere else — no Console row, no
+      // Monaco squiggle.
+      factory: () => new P5VizRenderer(compileP5Code(code, name2))
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
@@ -28025,14 +28472,31 @@ function CompiledVizMount(props) {
         createdAt: 0,
         updatedAt: 0
       };
-      return { descriptor: compilePreset(preset), compileError: null };
+      const result = compilePreset(preset);
+      emitFixed({ runtime: rendererType, source: file.path });
+      return { descriptor: result, compileError: null };
     } catch (err2) {
-      return {
-        descriptor: null,
-        compileError: err2 instanceof Error ? err2.message : String(err2)
-      };
+      const message = err2 instanceof Error ? err2.message : String(err2);
+      const runtime = rendererType;
+      const index = runtime === "p5" ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
+      const parts2 = formatFriendlyError2(
+        err2 instanceof Error ? err2 : new Error(message),
+        runtime,
+        { index }
+      );
+      emitLog({
+        level: "error",
+        runtime,
+        source: file.path,
+        message: parts2.message,
+        suggestion: parts2.suggestion,
+        stack: parts2.stack,
+        line: parts2.line,
+        column: parts2.column
+      });
+      return { descriptor: null, compileError: message };
     }
-  }, [file.id, file.content, file.language, rendererType]);
+  }, [file.id, file.content, file.language, rendererType, file.path]);
   const containerRef = React.useRef(null);
   const rendererRef = React.useRef(null);
   const components = React.useMemo(() => {
@@ -28065,26 +28529,43 @@ function CompiledVizMount(props) {
       w: el.clientWidth || 400,
       h: el.clientHeight || 300
     };
+    const runtime = descriptor.renderer;
+    const isP5 = runtime === "p5";
+    if (isP5) {
+      setCurrentP5Source(file.path, getP5LineOffset(file.content));
+    }
     let mounted = null;
+    const reportError = (e) => {
+      const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
+      const parts2 = formatFriendlyError2(e, runtime, { index });
+      const offset = isP5 ? getP5LineOffset(file.content) : runtime === "hydra" ? getHydraLineOffset() : 0;
+      const line2 = parts2.line != null && offset > 0 ? Math.max(1, parts2.line - offset) : parts2.line;
+      emitLog({
+        level: "error",
+        runtime,
+        source: file.path,
+        message: parts2.message,
+        suggestion: parts2.suggestion,
+        stack: parts2.stack,
+        line: line2,
+        column: parts2.column
+      });
+    };
     try {
       mounted = mountVizRenderer(
         el,
         descriptor.factory,
         components,
         size,
-        (e) => {
-          console.error("[compiledVizProvider] renderer error:", e);
-        }
+        reportError
       );
       rendererRef.current = mounted;
     } catch (err2) {
-      console.error(
-        "[compiledVizProvider] mountVizRenderer threw:",
-        err2
-      );
+      reportError(err2 instanceof Error ? err2 : new Error(String(err2)));
     }
     return () => {
       rendererRef.current = null;
+      if (isP5) setCurrentP5Source(null);
       if (mounted) {
         try {
           mounted.disconnect();
@@ -28197,6 +28678,132 @@ function registerPresetAsNamedViz(preset) {
   }
 }
 
+// src/workspace/engineLogMarkers.ts
+var OWNER = "stave-log";
+var installed2 = false;
+var activeMarkers = /* @__PURE__ */ new Set();
+var markerKey = (runtime, fileId) => `${runtime}:${fileId}`;
+function findFileIdForSource(source) {
+  const files = listWorkspaceFiles();
+  const byPath = files.find((f) => f.path === source);
+  if (byPath) return byPath.id;
+  const byId = files.find((f) => f.id === source);
+  if (byId) return byId.id;
+  return null;
+}
+function getModelForFile(fileId) {
+  const editor = getEditorForFile(fileId);
+  const monaco = getMonacoNamespace();
+  if (!editor || !monaco) return null;
+  const model = editor.getModel?.();
+  if (!model) return null;
+  return { monaco, model };
+}
+function applyEntry(entry) {
+  if (!entry.source || entry.line == null) return;
+  const fileId = findFileIdForSource(entry.source);
+  if (!fileId) return;
+  const resolved = getModelForFile(fileId);
+  if (!resolved) return;
+  const model = resolved.model;
+  const lineCount = model.getLineCount?.() ?? 0;
+  if (entry.line < 1 || entry.line > lineCount) return;
+  const severity = entry.level;
+  setLineMarker(
+    resolved.monaco,
+    resolved.model,
+    {
+      line: entry.line,
+      column: entry.column,
+      message: entry.suggestion ? `${entry.message} \u2014 try \`${entry.suggestion.name}\`` : entry.message,
+      severity,
+      owner: OWNER
+    }
+  );
+  activeMarkers.add(markerKey(entry.runtime, fileId));
+}
+function clearForFix(marker) {
+  const prefix = `${marker.runtime}:`;
+  if (!marker.source) {
+    for (const key of Array.from(activeMarkers)) {
+      if (!key.startsWith(prefix)) continue;
+      const fileId2 = key.slice(prefix.length);
+      const resolved2 = getModelForFile(fileId2);
+      if (resolved2) {
+        clearLineMarkers(
+          resolved2.monaco,
+          resolved2.model,
+          OWNER
+        );
+      }
+      activeMarkers.delete(key);
+    }
+    return;
+  }
+  const fileId = findFileIdForSource(marker.source);
+  if (!fileId) return;
+  const resolved = getModelForFile(fileId);
+  if (!resolved) return;
+  clearLineMarkers(
+    resolved.monaco,
+    resolved.model,
+    OWNER
+  );
+  activeMarkers.delete(markerKey(marker.runtime, fileId));
+}
+function installEngineLogMarkers() {
+  if (installed2) return;
+  installed2 = true;
+  subscribeLog((entry) => {
+    if (!entry) return;
+    try {
+      applyEntry(entry);
+    } catch {
+    }
+  });
+  subscribeFixed((marker) => {
+    try {
+      clearForFix(marker);
+    } catch {
+    }
+  });
+}
+
+// src/engine/globalErrorCatch.ts
+var installed3 = false;
+function installGlobalErrorCatch() {
+  if (installed3) return;
+  if (typeof window === "undefined") return;
+  installed3 = true;
+  window.addEventListener("error", (event) => {
+    if (!event.error && !event.message) return;
+    const err2 = event.error instanceof Error ? event.error : new Error(event.message || "Uncaught error");
+    emitFromGlobal(err2);
+  });
+  window.addEventListener(
+    "unhandledrejection",
+    (event) => {
+      const reason = event.reason;
+      const err2 = reason instanceof Error ? reason : new Error(
+        typeof reason === "string" ? reason : "Unhandled promise rejection"
+      );
+      emitFromGlobal(err2);
+    }
+  );
+}
+function emitFromGlobal(err2, _kind) {
+  const parts2 = formatFriendlyError2(err2, "stave");
+  const loc = parseStackLocation(err2);
+  emitLog({
+    level: "error",
+    runtime: "stave",
+    message: parts2.message,
+    stack: parts2.stack,
+    line: loc?.line,
+    column: loc?.column
+  });
+}
+
 exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
 exports.BACKDROP_BLUR_VAR = BACKDROP_BLUR_VAR;
 exports.BUNDLED_PREFIX = BUNDLED_PREFIX;
@@ -28206,6 +28813,8 @@ exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
 exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DemoEngine = DemoEngine;
 exports.EditorView = EditorView;
+exports.ErrorBoundary = ErrorBoundary;
+exports.HYDRA_DOCS_INDEX = HYDRA_DOCS_INDEX;
 exports.HYDRA_VIZ = HYDRA_VIZ;
 exports.HapStream = HapStream;
 exports.HydraVizRenderer = HydraVizRenderer;
@@ -28218,6 +28827,7 @@ exports.LiveCodingRuntime = LiveCodingRuntime;
 exports.LiveRecorder = LiveRecorder;
 exports.OfflineRenderer = OfflineRenderer;
 exports.P5VizRenderer = P5VizRenderer;
+exports.P5_DOCS_INDEX = P5_DOCS_INDEX;
 exports.P5_VIZ = P5_VIZ;
 exports.PATTERN_IR_SCHEMA_VERSION = PATTERN_IR_SCHEMA_VERSION;
 exports.PianorollSketch = PianorollSketch;
@@ -28225,7 +28835,9 @@ exports.PitchwheelSketch = PitchwheelSketch;
 exports.PreviewView = PreviewView;
 exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
 exports.SAMPLE_SOUND_SOURCE_ID = SAMPLE_SOUND_SOURCE_ID;
+exports.SONICPI_DOCS_INDEX = SONICPI_DOCS_INDEX;
 exports.SONICPI_RUNTIME = SONICPI_RUNTIME;
+exports.STRUDEL_DOCS_INDEX = STRUDEL_DOCS_INDEX;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
 exports.ScopeSketch = ScopeSketch;
 exports.SonicPiEngine = SonicPiEngine2;
@@ -28253,6 +28865,7 @@ exports.bumpEditorFontSize = bumpEditorFontSize;
 exports.bundledPresetId = bundledPresetId;
 exports.canRedo = canRedo;
 exports.canUndo = canUndo;
+exports.clearLog = clearLog;
 exports.collect = collect;
 exports.compilePreset = compilePreset;
 exports.createProject = createProject;
@@ -28263,8 +28876,13 @@ exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
 exports.duplicateProject = duplicateProject;
+exports.emitFixed = emitFixed;
+exports.emitLog = emitLog;
+exports.extractReferenceIdentifier = extractReferenceIdentifier;
 exports.filter = filter;
 exports.flushToPreset = flushToPreset;
+exports.formatFriendlyError = formatFriendlyError2;
+exports.fuzzyMatch = fuzzyMatch;
 exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveProjectId = getActiveProjectId;
 exports.getBackdropOpacity = getBackdropOpacity;
@@ -28276,9 +28894,11 @@ exports.getEditorMinimap = getEditorMinimap;
 exports.getEditorTheme = getEditorTheme;
 exports.getEditorUiIconSize = getEditorUiIconSize;
 exports.getFile = getFile;
+exports.getFixedMarkers = getFixedMarkers;
 exports.getFolderOrder = getFolderOrder;
 exports.getInlineVizActionSize = getInlineVizActionSize;
 exports.getLastOpenedProject = getLastOpenedProject;
+exports.getLogHistory = getLogHistory;
 exports.getNamedViz = getNamedViz;
 exports.getPresetIdForFile = getPresetIdForFile;
 exports.getPreviewProviderForExtension = getPreviewProviderForExtension;
@@ -28296,15 +28916,19 @@ exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;
 exports.initProjectDoc = initProjectDoc;
 exports.initProjectDocSync = initProjectDocSync;
+exports.installEngineLogMarkers = installEngineLogMarkers;
+exports.installGlobalErrorCatch = installGlobalErrorCatch;
 exports.isBundledPresetId = isBundledPresetId;
 exports.isDocReady = isDocReady;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
+exports.levenshtein = levenshtein;
 exports.listNamedVizEntries = listNamedVizEntries;
 exports.listNamedVizNames = listNamedVizNames;
 exports.listProjects = listProjects;
 exports.listSnapshots = listSnapshots;
 exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
+exports.makeFixedKey = makeFixedKey;
 exports.merge = merge;
 exports.mountVizRenderer = mountVizRenderer;
 exports.normalizeStrudelHap = normalizeStrudelHap;
@@ -28316,6 +28940,7 @@ exports.onNamedVizChanged = onNamedVizChanged;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.parseMini = parseMini;
+exports.parseStackLocation = parseStackLocation;
 exports.parseStrudel = parseStrudel;
 exports.patternFromJSON = patternFromJSON;
 exports.patternToJSON = patternToJSON;
@@ -28358,6 +28983,8 @@ exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.startSampleSound = startSampleSound;
 exports.stopSampleSound = stopSampleSound;
+exports.subscribeFixed = subscribeFixed;
+exports.subscribeLog = subscribeLog;
 exports.subscribeToDocUpdate = subscribeToDocUpdate;
 exports.subscribeToFileList = subscribeToFileList;
 exports.subscribeToFolderOrder = subscribeToFolderOrder;

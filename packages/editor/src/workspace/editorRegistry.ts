@@ -25,6 +25,16 @@ export function registerMonacoNamespace(monaco: MonacoNs): void {
   if (!monacoNs) monacoNs = monaco
 }
 
+/**
+ * Return the Monaco namespace captured at first editor mount. `null`
+ * until any editor has rendered — callers relying on this for
+ * cross-editor operations (setModelMarkers, setTheme) should early-exit
+ * when it's missing, not throw.
+ */
+export function getMonacoNamespace(): MonacoNs | null {
+  return monacoNs
+}
+
 export function registerEditor(fileId: string, editor: MonacoEditor): void {
   editors.set(fileId, editor)
 }

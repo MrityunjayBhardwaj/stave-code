@@ -8,7 +8,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { compileHydraCode } from '../hydraCompiler'
+import {
+  compileHydraCode,
+  getHydraLineOffset,
+  HYDRA_LINE_OFFSET,
+} from '../hydraCompiler'
 
 describe('compileHydraCode — stave bag in eval scope', () => {
   it('user code can reference `stave` without ReferenceError', () => {
@@ -64,5 +68,20 @@ describe('compileHydraCode — stave bag in eval scope', () => {
       events,
     )
     delete (globalThis as Record<string, unknown>).__query_result
+  })
+})
+
+describe('compileHydraCode — syntax + line offset', () => {
+  it('throws SyntaxError synchronously for malformed source', () => {
+    expect(() => compileHydraCode('osc(')).toThrow(SyntaxError)
+  })
+
+  it('HYDRA_LINE_OFFSET accounts for `new Function` 2-line header', () => {
+    // Hydra prepends no body wrapper of its own — the offset is exactly
+    // the `function anonymous(s,stave\n) {\n` header V8 adds. Any
+    // change to that shape must update this constant together with the
+    // compiledVizProvider reportError translation.
+    expect(getHydraLineOffset()).toBe(2)
+    expect(HYDRA_LINE_OFFSET).toBe(2)
   })
 })
