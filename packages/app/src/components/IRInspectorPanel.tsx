@@ -11,7 +11,7 @@
  */
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   type IRSnapshot,
   type IREvent,
@@ -241,6 +241,10 @@ function countLines(src: string, offset: number): number {
 
 export function IRInspectorPanel(): React.ReactElement {
   const [snap, setSnap] = useState<IRSnapshot | null>(getIRSnapshot);
+  // Persisted by name so the selection survives re-evals when the new
+  // snapshot still has that pass. Falls back to the last pass otherwise.
+  const [selectedTabName, setSelectedTabName] = useState<string | null>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     return subscribeIRSnapshot((s) => setSnap(s));
@@ -253,6 +257,12 @@ export function IRInspectorPanel(): React.ReactElement {
     if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
     return `${Math.round(ms / 60_000)}m ago`;
   }, [snap]);
+
+  const selectedIndex = useMemo<number>(() => {
+    if (!snap || snap.passes.length === 0) return -1;
+    const i = selectedTabName ? snap.passes.findIndex((p) => p.name === selectedTabName) : -1;
+    return i >= 0 ? i : snap.passes.length - 1;
+  }, [snap, selectedTabName]);
 
   if (!snap) {
     return (
@@ -297,14 +307,62 @@ export function IRInspectorPanel(): React.ReactElement {
         </div>
       </div>
 
-      <details open data-testid="ir-tree-section">
-        <summary style={{ cursor: "pointer", fontWeight: 600, padding: "4px 0" }}>
-          IR tree
-        </summary>
-        <div style={{ paddingLeft: 4 }}>
-          <IRNodeRow node={snap.ir} depth={0} />
-        </div>
-      </details>
+      <div
+        role="tablist"
+        aria-label="IR passes"
+        data-testid="ir-passes-tablist"
+        style={{
+          display: "flex",
+          gap: 4,
+          borderBottom: "1px solid var(--panel-border, rgba(128,128,128,0.2))",
+          marginBottom: 6,
+        }}
+        onKeyDown={(e) => {
+          if (snap == null || snap.passes.length === 0) return;
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          const dir = e.key === "ArrowRight" ? 1 : -1;
+          const next = (selectedIndex + dir + snap.passes.length) % snap.passes.length;
+          setSelectedTabName(snap.passes[next].name);
+          tabRefs.current[next]?.focus();
+          e.preventDefault();
+        }}
+      >
+        {snap.passes.map((p, i) => (
+          <button
+            key={p.name}
+            ref={(el) => { tabRefs.current[i] = el; }}
+            role="tab"
+            aria-selected={i === selectedIndex}
+            aria-controls="ir-tree-panel"
+            tabIndex={i === selectedIndex ? 0 : -1}
+            onClick={() => setSelectedTabName(p.name)}
+            data-testid={`ir-pass-tab-${p.name}`}
+            style={{
+              padding: "4px 10px",
+              fontSize: "0.85em",
+              fontWeight: i === selectedIndex ? 600 : 400,
+              background: i === selectedIndex ? "var(--panel-active, rgba(128,128,128,0.15))" : "transparent",
+              border: "none",
+              borderBottom: i === selectedIndex ? "2px solid var(--accent, #3b82f6)" : "2px solid transparent",
+              cursor: "pointer",
+              color: "inherit",
+            }}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel" id="ir-tree-panel" data-testid="ir-tree-section">
+        <details open>
+          <summary style={{ cursor: "pointer", fontWeight: 600, padding: "4px 0", opacity: 0.85, listStyle: "none" }}>
+            IR tree{snap.passes.length > 1 && selectedIndex >= 0 ? ` · ${snap.passes[selectedIndex].name}` : null}
+          </summary>
+          <div style={{ paddingLeft: 4 }}>
+            {selectedIndex >= 0 && <IRNodeRow node={snap.passes[selectedIndex].ir} depth={0} />}
+          </div>
+        </details>
+      </div>
 
       <details open data-testid="ir-events-section" style={{ marginTop: 12 }}>
         <summary style={{ cursor: "pointer", fontWeight: 600, padding: "4px 0" }}>

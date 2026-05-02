@@ -31,7 +31,10 @@ import {
   formatFriendlyError,
   parseStrudel,
   collect,
+  runPasses,
   publishIRSnapshot,
+  type Pass,
+  type PatternIR,
   STRUDEL_DOCS_INDEX,
   SONICPI_DOCS_INDEX,
   type DocsIndex,
@@ -42,6 +45,12 @@ import {
   type PreviewProvider,
 } from "@stave/editor";
 import { PIANOROLL_P5_CODE, PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
+
+
+// Future passes that rewrite Play nodes must preserve or compose `loc` (PV24).
+const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
+  { name: "Parsed", run: (ir) => ir },
+];
 
 
 // ---------------------------------------------------------------------------
@@ -311,13 +320,20 @@ export default function StrudelEditorClient({
       if (runtimeId === "strudel" && fileNow) {
         try {
           const ir = parseStrudel(fileNow.content);
-          const events = collect(ir);
+          const passes = runPasses(ir, STRUDEL_PASSES);
+          // finalIR drives both `collect` (events reflect post-pass IR
+          // when real passes land later) and the `ir` alias on the
+          // snapshot. Single source of truth — passes[last].ir and the
+          // alias cannot drift apart.
+          const finalIR = passes[passes.length - 1].ir;
+          const events = collect(finalIR);
           publishIRSnapshot({
             ts: Date.now(),
             source: fileNow.id,
             runtime: "strudel",
             code: fileNow.content,
-            ir,
+            passes,
+            ir: finalIR, // alias of passes[last].ir per IRSnapshot contract
             events,
           });
         } catch {

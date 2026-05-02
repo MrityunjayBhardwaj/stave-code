@@ -4067,6 +4067,17 @@ function splitFirstArg(argsStr) {
   return [parts2[0], parts2.slice(1).join(", ")];
 }
 
+// src/ir/passes.ts
+function runPasses(input, passes) {
+  const out2 = [];
+  let cur = input;
+  for (const p of passes) {
+    cur = p.run(cur);
+    out2.push({ name: p.name, ir: cur });
+  }
+  return out2;
+}
+
 // src/ir/propagation.ts
 function propagate(bag, systems) {
   const sorted = [...systems].sort((a, b) => a.stratum - b.stratum);
@@ -20010,7 +20021,7 @@ var VirtualTimeScheduler = class {
     /** Map from `${time}:${taskId}` to insertion order for stable sorting */
     // entryOrder Map removed — insertion order stored directly on SleepEntry (#75)
     this._running = false;
-    /** Cue state: last cue per name with virtual time and args */
+    /** Cue state: last cue per name with virtual time, args, and cuer's BPM. */
     this.cueMap = /* @__PURE__ */ new Map();
     /** Tasks waiting for a cue */
     this.syncWaiters = /* @__PURE__ */ new Map();
@@ -20169,7 +20180,8 @@ var VirtualTimeScheduler = class {
   fireCue(name2, taskId, args2 = []) {
     const task = this.tasks.get(taskId);
     const cueVirtualTime = task?.virtualTime ?? this.getAudioTime();
-    this.cueMap.set(name2, { time: cueVirtualTime, args: args2 });
+    const cueBpm = task?.bpm ?? 60;
+    this.cueMap.set(name2, { time: cueVirtualTime, args: args2, bpm: cueBpm });
     this.emitEvent({
       type: "cue",
       taskId,
@@ -20185,14 +20197,16 @@ var VirtualTimeScheduler = class {
         if (waiterTask) {
           waiterTask.virtualTime = cueVirtualTime;
         }
-        waiter.resolve(args2);
+        waiter.resolve({ args: args2, bpm: cueBpm });
       }
       this.syncWaiters.delete(pattern);
     }
   }
   /**
    * Wait for a cue. The calling task suspends until fireCue(name) is called.
-   * On resume, the task inherits the cue's virtual time (SV5).
+   * On resume, the task inherits the cue's virtual time (SV5). The resolved
+   * payload also carries the cuer's BPM so callers using `bpm_sync: true`
+   * (sync_bpm, #236) can mutate the waiter's task.bpm.
    */
   waitForSync(name2, taskId) {
     return new Promise((resolve) => {
@@ -20719,6 +20733,32 @@ var Ramp = class {
     return this.items[Symbol.iterator]();
   }
 };
+function doubles(start2, num_doubles = 1) {
+  if (typeof start2 !== "number") {
+    throw new Error(`Start value for doubles needs to be a number, got: ${String(start2)}`);
+  }
+  if (num_doubles < 0) return halves(start2, -num_doubles);
+  const out2 = [];
+  let v = start2;
+  for (let i2 = 0; i2 < num_doubles; i2++) {
+    out2.push(v);
+    v *= 2;
+  }
+  return new Ring(out2);
+}
+function halves(start2, num_halves = 1) {
+  if (typeof start2 !== "number") {
+    throw new Error(`Start value for halves needs to be a number, got: ${String(start2)}`);
+  }
+  if (num_halves < 0) return doubles(start2, -num_halves);
+  const out2 = [];
+  let v = start2;
+  for (let i2 = 0; i2 < num_halves; i2++) {
+    out2.push(v);
+    v /= 2;
+  }
+  return new Ring(out2);
+}
 function line(start2, finish, stepsOrOpts = 4) {
   const steps = typeof stepsOrOpts === "number" ? stepsOrOpts : stepsOrOpts.steps ?? 4;
   const result = [];
@@ -21265,9 +21305,18 @@ var ProgramBuilder = class _ProgramBuilder {
     this.steps.push({ tag: "cue", name: name2, args: args2 });
     return this;
   }
-  sync(name2) {
-    this.steps.push({ tag: "sync", name: name2 });
+  sync(name2, opts) {
+    const bpmSync = opts?.bpm_sync === true;
+    this.steps.push(bpmSync ? { tag: "sync", name: name2, bpmSync: true } : { tag: "sync", name: name2 });
     return this;
+  }
+  /**
+   * sync_bpm — alias for sync with bpm_sync: true (#236).
+   * Inherits both virtual time AND BPM from the cuer at wake time.
+   * Matches desktop `core.rb:4490-4494`.
+   */
+  sync_bpm(name2) {
+    return this.sync(name2, { bpm_sync: true });
   }
   control(nodeRef, params) {
     const p = !this._argBpmScaling ? { ...params, _argBpmScaling: 0 } : params;
@@ -21335,8 +21384,12 @@ var ProgramBuilder = class _ProgramBuilder {
     }
     return this;
   }
-  live_audio(name2, opts) {
-    this.steps.push({ tag: "liveAudio", name: name2, opts: opts ?? {} });
+  live_audio(name2, optsOrStop, maybeOpts) {
+    if (optsOrStop === "stop") {
+      this.steps.push({ tag: "liveAudio", name: name2, opts: maybeOpts ?? {}, stop: true });
+      return this;
+    }
+    this.steps.push({ tag: "liveAudio", name: name2, opts: optsOrStop ?? {} });
     return this;
   }
   stop() {
@@ -21500,17 +21553,80 @@ var ProgramBuilder = class _ProgramBuilder {
     }
     return this;
   }
+  /**
+   * Tier B PR #2 (#233) — block-form tuplet scheduling.
+   *
+   * `tuplets [70, [72, 72], 70, [82, 82, 82]] do |n| play n end`
+   *   - Bare element → `block.call(n); sleep duration` (default 1 beat).
+   *   - Sub-list of size N → fits N `block + sleep` calls into `duration`
+   *     beats by wrapping in `with_density(N)`.
+   *
+   * Optional `swing:` opt offsets every Nth tuplet by that many beats via
+   * `at([swing], …)`. Swing is density-scaled inside sub-lists so the
+   * offset stays proportional to the local pulse. Mirrors upstream
+   * `core.rb:486-512`. Pre-resolved at build time (the block runs N times
+   * synchronously, pushing N play+sleep step pairs); the resulting steps
+   * fire at scheduled virtual time exactly like a hand-written sequence.
+   */
+  tuplets(tuplet_list, optsOrFn, maybeFn) {
+    const opts = typeof optsOrFn === "function" ? {} : optsOrFn;
+    const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn;
+    if (typeof fn !== "function") {
+      throw new Error("tuplets requires a block");
+    }
+    const duration = opts.duration ?? 1;
+    const swing = opts.swing ?? 0;
+    const swing_pulse = opts.swing_pulse ?? 2;
+    const swing_offset = (opts.swing_offset ?? 0) + 1;
+    const items = tuplet_list instanceof Ring ? tuplet_list.toArray() : Array.from(tuplet_list);
+    for (const el of items) {
+      if (Array.isArray(el)) {
+        const n = el.length;
+        this.with_density(n, (b) => {
+          el.forEach((tuplet, idx) => {
+            const should_swing = swing !== 0 && n % swing_pulse === 0 && (idx + swing_offset) % swing_pulse === 0;
+            if (should_swing) {
+              b.at([swing / n], null, (inner) => fn(inner, tuplet));
+            } else {
+              fn(b, tuplet);
+            }
+            b.sleep(duration);
+          });
+        });
+      } else {
+        fn(this, el);
+        this.sleep(duration);
+      }
+    }
+    return this;
+  }
   /** Return the current synth name. */
   get current_synth_name() {
     return this.currentSynth;
   }
-  /** Return the current synth defaults hash. */
-  get current_synth_defaults_hash() {
+  /**
+   * Tier B PR #2 (#233) — defaults / setting introspection. All four are
+   * called bare (`puts current_debug`) so they're methods returning a value,
+   * not getters — see BARE_CALLABLE in TreeSitterTranspiler.ts which emits
+   * `__b.NAME()` with parens.
+   */
+  current_synth_defaults() {
     return { ...this._synthDefaults };
   }
-  /** Return the current sample defaults hash. */
-  get current_sample_defaults_hash() {
+  current_sample_defaults() {
     return { ...this._sampleDefaults };
+  }
+  current_debug() {
+    return this._debug;
+  }
+  /**
+   * We don't validate synth arg names against synthinfo — unknown args are
+   * silently dropped at SoundLayer normalization. Returning the upstream
+   * default (`true`) keeps existing user code that branches on this read
+   * working. When `use_arg_checks` ships in Tier C, this becomes a real read.
+   */
+  current_arg_checks() {
+    return true;
   }
   /** Deferred set — fires at runtime (interleaved with sleeps). */
   set(key, value) {
@@ -22429,10 +22545,15 @@ async function runProgram(program, ctx, fxCounter) {
           ctx.globalStore.set(step.key, step.value);
         }
         break;
-      case "sync":
+      case "sync": {
         ctx.bridge?.flushMessages();
-        await ctx.scheduler.waitForSync(step.name, ctx.taskId);
+        const payload = await ctx.scheduler.waitForSync(step.name, ctx.taskId);
+        if (step.bpmSync) {
+          currentBpm = payload.bpm;
+          if (task) task.bpm = payload.bpm;
+        }
         break;
+      }
       case "fx": {
         const reps = step.opts.reps ?? 1;
         if (!ctx.bridge) {
@@ -22523,7 +22644,11 @@ async function runProgram(program, ctx, fxCounter) {
       }
       case "liveAudio": {
         if (ctx.bridge) {
-          ctx.bridge.startLiveAudio(step.name, { stereo: !!step.opts.stereo }).catch((err2) => ctx.printHandler?.(`live_audio failed: ${err2.message}`));
+          if (step.stop) {
+            ctx.bridge.stopLiveAudio(step.name);
+          } else {
+            ctx.bridge.startLiveAudio(step.name, { stereo: !!step.opts.stereo }).catch((err2) => ctx.printHandler?.(`live_audio failed: ${err2.message}`));
+          }
         }
         break;
       }
@@ -24050,7 +24175,54 @@ var DSL_NAMES = [
   "recording_start",
   "recording_stop",
   "recording_save",
-  "recording_delete"
+  "recording_delete",
+  // Tier B PR #2 — pure ring constructors (#233). Both delegate to each
+  // other for negative counts (matches upstream `core.rb:1919-1970`).
+  "doubles",
+  "halves",
+  // Tier B PR #2 — defaults / setting introspection (#233). Inside live_loops
+  // these route via __b for per-task reads; at top level they read the
+  // topLevelBuilder's state. current_arg_checks returns constant true (we
+  // don't validate arg names yet — see ProgramBuilder).
+  "current_synth_defaults",
+  "current_sample_defaults",
+  "current_arg_checks",
+  "current_debug",
+  // Tier B PR #2 — block-form tuplet scheduling (#233). The transpiler
+  // routes `tuplets [...] do |x| ... end` to __b.tuplets(list, opts, cb),
+  // resolving the list/opts at build time then pushing N play+sleep step
+  // pairs per the block (one per leaf element). Density wraps each
+  // sub-list so N elements fit in `duration` beats.
+  "tuplets",
+  // Tier B PR #2 — defonce (#212 / #233). The transpiler emits a bare
+  // assignment `name = defonce("name", opts, (__b) => { ...; return last })`
+  // so the cached value lands in proxy storage. The runtime registrar caches
+  // against engine.defonceCache; opts.override re-runs the body. Cached
+  // values are spread into persistedFns at the next eval so removing the
+  // defonce line doesn't break still-running live_loops that read `name`.
+  "defonce",
+  // Tier B PR #3 — sync_bpm (#236). Deferred ProgramBuilder step that wraps
+  // sync with bpm_sync: true. Inside live_loops the transpiler routes
+  // through __b.sync_bpm via BUILDER_METHODS; at top level the runtime stub
+  // forwards to topLevelBuilder.sync_bpm. Cuer's BPM travels through the
+  // extended cueMap entry; AudioInterpreter's sync handler mutates task.bpm
+  // when step.bpmSync is true.
+  "sync_bpm",
+  // Tier B PR #3 — run_code (#236). Host-side dynamic eval — calls back into
+  // engine.evaluate with the supplied string. Top-level only; throws inside
+  // live_loops to match desktop spider re-entry semantics.
+  "run_code",
+  // Tier B PR #3 — eval_file / run_file (#236). Browser-sandbox stubs: the
+  // engine has no filesystem access, so both throw an informative error
+  // pointing users at run_code(string) / load_example(:name) instead.
+  // Listed in the public DSL surface so user code that references them
+  // gets a clear redirect rather than a silent globalThis lookup miss.
+  "eval_file",
+  "run_file",
+  // Tier B PR #3 — load_example (#236). Looks up an example by name in the
+  // bundled registry then forwards to the host's loadExampleHandler so the
+  // editor replaces its buffer + re-runs. Top-level only (host-bridge).
+  "load_example"
 ];
 
 // ../../../sonicPiWeb/src/engine/Sandbox.ts
@@ -24369,6 +24541,7 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "wait",
   "sample",
   "sync",
+  "sync_bpm",
   "cue",
   "set",
   "use_synth",
@@ -24432,6 +24605,7 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "kill",
   "play_chord",
   "play_pattern",
+  "tuplets",
   "with_octave",
   "with_random_seed",
   "with_density",
@@ -24470,6 +24644,12 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "rand_back",
   "rand_skip",
   "rand_reset",
+  // Tier B PR #2 — defaults / setting introspection (#233). Per-task pure
+  // reads — route through __b so per-loop use_*_defaults are visible.
+  "current_synth_defaults",
+  "current_sample_defaults",
+  "current_arg_checks",
+  "current_debug",
   // Deferred-step DSL contract (issue #193 — must mirror methods on
   // ProgramBuilder so they fire at scheduled virtual time, not build time).
   "stop_loop",
@@ -24603,7 +24783,13 @@ var BARE_CALLABLE = /* @__PURE__ */ new Set([
   "recording_start",
   "recording_stop",
   "recording_delete",
-  "recording_save"
+  "recording_save",
+  // Tier B PR #2 — defaults / setting introspection (#233). Routinely called
+  // bare in user code (`puts current_debug`, `if current_arg_checks`).
+  "current_synth_defaults",
+  "current_sample_defaults",
+  "current_arg_checks",
+  "current_debug"
 ]);
 var BARE_CALLABLE_TOP_LEVEL = /* @__PURE__ */ new Set([
   "current_bpm"
@@ -25085,7 +25271,7 @@ function transpileProgram(node, ctx) {
     const isBareLoopNode = method === "loop" && child.namedChildren.some((c) => c.type === "do_block" || c.type === "block");
     if (method && TOP_LEVEL_SETTINGS.has(method)) {
       topLevel.push(child);
-    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
+    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "defonce" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
       blocks.push(child);
     } else {
       bareCode.push(child);
@@ -25150,6 +25336,9 @@ function transpileMethodCall(node, ctx) {
     if (methodName === "define" || methodName === "ndefine") {
       return transpileDefine(node, argsNode, blockNode, ctx, methodName);
     }
+    if (methodName === "defonce") {
+      return transpileDefonce(node, argsNode, blockNode, ctx);
+    }
     if (methodName === "with_fx" || methodName === "with_synth" || methodName === "with_bpm" || methodName === "with_transpose" || methodName === "with_arg_bpm_scaling" || methodName === "with_synth_defaults" || methodName === "with_sample_defaults" || methodName === "with_random_seed" || methodName === "with_octave" || methodName === "with_density") {
       return transpileWithBlock(methodName, argsNode, blockNode, ctx);
     }
@@ -25161,6 +25350,9 @@ function transpileMethodCall(node, ctx) {
     }
     if (methodName === "time_warp") {
       return transpileTimeWarp(argsNode, blockNode, ctx);
+    }
+    if (methodName === "tuplets") {
+      return transpileTuplets(argsNode, blockNode, ctx);
     }
     if (methodName === "assert_error" && blockNode) {
       const bodyCtx = { ...ctx, insideLoop: true };
@@ -25548,6 +25740,40 @@ ${ctx.indent}define(${JSON.stringify(name2)}, ${name2})`;
   }
   return decl;
 }
+function transpileDefonce(node, argsNode, blockNode, ctx) {
+  const args2 = argsNode?.namedChildren ?? [];
+  let name2 = "unnamed";
+  const optPairs = [];
+  for (const arg of args2) {
+    if (arg.type === "simple_symbol") {
+      name2 = arg.text.slice(1);
+    } else if (arg.type === "pair") {
+      const key = arg.namedChildren[0];
+      const val = arg.namedChildren[1];
+      const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
+      optPairs.push(`${keyName}: ${transpileNode(val, ctx)}`);
+    }
+  }
+  if (!blockNode) {
+    const line2 = node.startPosition?.row != null ? node.startPosition.row + 1 : "?";
+    ctx.errors.push(`Parse error at line ${line2}: defonce :${name2} is missing 'do ... end' block`);
+    return `/* parse error: defonce :${name2} missing block */`;
+  }
+  const bodyChildren = blockNode.namedChildren.filter((c) => c.type !== "block_parameters");
+  if (bodyChildren.length === 0) {
+    return `${name2} = defonce(${JSON.stringify(name2)}, ${optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}"}, (__b) => undefined)`;
+  }
+  const bodyCtx = { ...ctx, insideLoop: true };
+  const lastIdx = bodyChildren.length - 1;
+  const stmts = bodyChildren.map((c, i2) => {
+    const expr = transpileNode(c, bodyCtx);
+    return i2 === lastIdx ? `${ctx.indent}  return ${expr}` : `${ctx.indent}  ${expr}`;
+  });
+  const optsStr = optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}";
+  return `${name2} = defonce(${JSON.stringify(name2)}, ${optsStr}, (__b) => {
+${stmts.join("\n")}
+${ctx.indent}})`;
+}
 function transpileWithBlock(methodName, argsNode, blockNode, ctx) {
   const args2 = argsNode?.namedChildren ?? [];
   const positional = [];
@@ -25699,6 +25925,32 @@ function transpileTimeWarp(argsNode, blockNode, ctx) {
   const bodyCtx = { ...ctx, insideLoop: true };
   const bodyStr = transpileBlockBody(blockNode, bodyCtx);
   return `${prefix}at([${offset}], null, (__b) => {
+${bodyStr}
+${ctx.indent}})`;
+}
+function transpileTuplets(argsNode, blockNode, ctx) {
+  if (!blockNode) {
+    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
+    ctx.errors.push(`Parse error at line ${line2}: tuplets is missing 'do ... end' block`);
+    return `/* parse error: tuplets missing block */`;
+  }
+  const args2 = argsNode?.namedChildren ?? [];
+  const positional = args2.filter((a) => a.type !== "pair").map((a) => transpileNode(a, ctx));
+  const pairs = args2.filter((a) => a.type === "pair");
+  const listExpr = positional[0] ?? "[]";
+  const optsExpr = pairs.length > 0 ? "{ " + pairs.map((p) => {
+    const key = p.namedChildren[0];
+    const val = p.namedChildren[1];
+    const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
+    return `${keyName}: ${transpileNode(val, ctx)}`;
+  }).join(", ") + " }" : "{}";
+  const prefix = ctx.insideLoop ? "__b." : "";
+  const bodyCtx = { ...ctx, insideLoop: true };
+  const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
+  const paramNames = params?.namedChildren.map((c) => c.text) ?? [];
+  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
+  const paramStr = paramNames.length > 0 ? ", " + paramNames.join(", ") : "";
+  return `${prefix}tuplets(${listExpr}, ${optsExpr}, (__b${paramStr}) => {
 ${bodyStr}
 ${ctx.indent}})`;
 }
@@ -25969,6 +26221,1375 @@ function autoTranspileDetailed(code) {
     return { code: tsResult.code, hasError: true, errorMessage: `TreeSitter produced invalid JS: ${e}`, method: "tree-sitter" };
   }
   return { code: tsResult.code, hasError: false, method: "tree-sitter" };
+}
+
+// ../../../sonicPiWeb/src/engine/examples.ts
+var examples = [
+  {
+    name: "Hello Beep",
+    difficulty: "beginner",
+    description: "The simplest possible Sonic Pi program \u2014 one note.",
+    ruby: `play 60
+sleep 1
+play 64
+sleep 1
+play 67`,
+    js: `live_loop("hello", async ({play, sleep}) => {
+  await play(60)
+  await sleep(1)
+  await play(64)
+  await sleep(1)
+  await play(67)
+  await sleep(1)
+})`
+  },
+  {
+    name: "Basic Beat",
+    difficulty: "beginner",
+    description: "A four-on-the-floor drum pattern with kick and snare.",
+    ruby: `live_loop :drums do
+  sample :bd_haus
+  sleep 0.5
+  sample :sn_dub
+  sleep 0.5
+end`,
+    js: `live_loop("drums", async ({sample, sleep}) => {
+  await sample("bd_haus")
+  await sleep(0.5)
+  await sample("sn_dub")
+  await sleep(0.5)
+})`
+  },
+  {
+    name: "Ambient Pad",
+    difficulty: "beginner",
+    description: "Slow chord washes with reverb \u2014 ambient music in 6 lines.",
+    ruby: `use_synth :prophet
+live_loop :pad do
+  play chord(:e3, :minor), release: 4, amp: 0.6
+  sleep 4
+end`,
+    js: `live_loop("pad", async ({play, sleep, use_synth, chord}) => {
+  use_synth("prophet")
+  const notes = chord("e3", "minor")
+  for (const n of notes) {
+    await play(n, {release: 4, amp: 0.6})
+  }
+  await sleep(4)
+})`
+  },
+  {
+    name: "Arpeggio",
+    difficulty: "intermediate",
+    description: "A rising arpeggio using ring and tick \u2014 Sonic Pi's signature pattern.",
+    ruby: `use_synth :tb303
+live_loop :arp do
+  play (ring 60, 64, 67, 72).tick, release: 0.2, cutoff: 80
+  sleep 0.25
+end`,
+    js: `live_loop("arp", async ({play, sleep, use_synth, ring, tick}) => {
+  use_synth("tb303")
+  const notes = ring(60, 64, 67, 72)
+  await play(notes[tick()], {release: 0.2, cutoff: 80})
+  await sleep(0.25)
+})`
+  },
+  {
+    name: "Euclidean Rhythm",
+    difficulty: "intermediate",
+    description: "Euclidean rhythms \u2014 spread hits evenly across steps.",
+    ruby: `live_loop :euclidean do
+  pattern = spread(5, 8)
+  8.times do |i|
+    sample :bd_tek if pattern[i]
+    sleep 0.25
+  end
+end`,
+    js: `live_loop("euclidean", async ({sample, sleep, spread}) => {
+  const pattern = spread(5, 8)
+  for (let i = 0; i < 8; i++) {
+    if (pattern[i]) await sample("bd_tek")
+    await sleep(0.25)
+  }
+})`
+  },
+  {
+    name: "Random Melody",
+    difficulty: "intermediate",
+    description: "Seeded random melody \u2014 deterministic but unpredictable.",
+    ruby: `use_random_seed 42
+live_loop :melody do
+  use_synth :pluck
+  play scale(:c4, :minor_pentatonic).choose, release: 0.3
+  sleep 0.25
+end`,
+    js: `live_loop("melody", async ({play, sleep, use_synth, use_random_seed, scale, choose}) => {
+  use_random_seed(42)
+  use_synth("pluck")
+  const notes = scale("c4", "minor_pentatonic")
+  await play(choose(notes), {release: 0.3})
+  await sleep(0.25)
+})`
+  },
+  {
+    name: "Sync/Cue",
+    difficulty: "intermediate",
+    description: "Two loops synchronized \u2014 the bass waits for the drums.",
+    ruby: `live_loop :drums do
+  sample :bd_haus
+  sleep 0.5
+  cue :tick
+  sample :sn_dub
+  sleep 0.5
+end
+
+live_loop :bass do
+  sync :tick
+  use_synth :tb303
+  play :e2, release: 0.3, cutoff: 70
+  sleep 0.5
+end`,
+    js: `live_loop("drums", async ({sample, sleep, cue}) => {
+  await sample("bd_haus")
+  await sleep(0.5)
+  cue("tick")
+  await sample("sn_dub")
+  await sleep(0.5)
+})
+
+live_loop("bass", async ({play, sleep, sync, use_synth}) => {
+  await sync("tick")
+  use_synth("tb303")
+  await play("e2", {release: 0.3, cutoff: 70})
+  await sleep(0.5)
+})`
+  },
+  {
+    name: "Multi-Layer",
+    difficulty: "intermediate",
+    description: "Three simultaneous loops \u2014 drums, bass, and lead.",
+    ruby: `use_bpm 120
+
+live_loop :drums do
+  sample :bd_haus
+  sleep 0.5
+  sample :hat_snap
+  sleep 0.25
+  sample :hat_snap
+  sleep 0.25
+end
+
+live_loop :bass do
+  use_synth :tb303
+  notes = ring(:e2, :e2, :g2, :a2)
+  play notes.tick, release: 0.3, cutoff: 60
+  sleep 1
+end
+
+live_loop :lead do
+  use_synth :pluck
+  play scale(:e4, :minor_pentatonic).choose, release: 0.2
+  sleep 0.25
+end`,
+    js: `live_loop("drums", async ({sample, sleep, use_bpm}) => {
+  use_bpm(120)
+  await sample("bd_haus")
+  await sleep(0.5)
+  await sample("hat_snap")
+  await sleep(0.25)
+  await sample("hat_snap")
+  await sleep(0.25)
+})
+
+live_loop("bass", async ({play, sleep, use_synth, use_bpm, ring, tick}) => {
+  use_bpm(120)
+  use_synth("tb303")
+  const notes = ring("e2", "e2", "g2", "a2")
+  await play(notes[tick()], {release: 0.3, cutoff: 60})
+  await sleep(1)
+})
+
+live_loop("lead", async ({play, sleep, use_synth, use_bpm, scale, choose}) => {
+  use_bpm(120)
+  use_synth("pluck")
+  const notes = scale("e4", "minor_pentatonic")
+  await play(choose(notes), {release: 0.2})
+  await sleep(0.25)
+})`
+  },
+  {
+    name: "FX Chain",
+    difficulty: "intermediate",
+    description: "Nested effects \u2014 reverb wrapping distortion.",
+    ruby: `live_loop :fx_demo do
+  with_fx :reverb, room: 0.8 do
+    with_fx :distortion, distort: 0.5 do
+      play 50, release: 0.5
+      sleep 0.5
+      play 55, release: 0.5
+      sleep 0.5
+    end
+  end
+end`,
+    js: `live_loop("fx_demo", async (ctx) => {
+  await ctx.with_fx("reverb", {room: 0.8}, async (rv) => {
+    await rv.with_fx("distortion", {distort: 0.5}, async (dist) => {
+      await dist.play(50, {release: 0.5})
+      await dist.sleep(0.5)
+      await dist.play(55, {release: 0.5})
+      await dist.sleep(0.5)
+    })
+  })
+})`
+  },
+  {
+    name: "Minimal Techno",
+    difficulty: "intermediate",
+    description: "A stripped-down techno loop with Euclidean hi-hats.",
+    ruby: `use_bpm 130
+
+live_loop :kick do
+  sample :bd_haus, amp: 1.5
+  sleep 1
+end
+
+live_loop :hats do
+  pattern = spread(7, 16)
+  16.times do |i|
+    sample :hat_snap, amp: 0.4 if pattern[i]
+    sleep 0.25
+  end
+end
+
+live_loop :acid do
+  use_synth :tb303
+  notes = ring(:e2, :e2, :e3, :e2, :g2, :e2, :a2, :e2)
+  play notes.tick, release: 0.2, cutoff: rrand(40, 120), res: 0.3
+  sleep 0.25
+end`,
+    js: `live_loop("kick", async ({sample, sleep, use_bpm}) => {
+  use_bpm(130)
+  await sample("bd_haus", {amp: 1.5})
+  await sleep(1)
+})
+
+live_loop("hats", async ({sample, sleep, use_bpm, spread}) => {
+  use_bpm(130)
+  const pattern = spread(7, 16)
+  for (let i = 0; i < 16; i++) {
+    if (pattern[i]) await sample("hat_snap", {amp: 0.4})
+    await sleep(0.25)
+  }
+})
+
+live_loop("acid", async ({play, sleep, use_synth, use_bpm, ring, tick, rrand}) => {
+  use_bpm(130)
+  use_synth("tb303")
+  const notes = ring("e2", "e2", "e3", "e2", "g2", "e2", "a2", "e2")
+  await play(notes[tick()], {release: 0.2, cutoff: rrand(40, 120), res: 0.3})
+  await sleep(0.25)
+})`
+  },
+  // ========================================================================
+  // Advanced — Original compositions (community-style Sonic Pi pieces)
+  // ========================================================================
+  {
+    name: "Midnight Drive",
+    difficulty: "advanced",
+    description: "Synthwave/retrowave \u2014 lush saw pads, arpeggiated lead, punchy drums, 80s feel.",
+    ruby: `# "Midnight Drive" \u2014 Synthwave
+# Inspired by the Sonic Pi community
+# Technique: layered supersaws, gated arpeggios, retro drum programming
+
+use_bpm 110
+
+live_loop :director do
+  set :section, 0  # intro: pad + slow arp
+  sleep 32
+  set :section, 1  # verse: drums enter, bass joins
+  sleep 32
+  set :section, 2  # chorus: full energy, lead soars
+  sleep 48
+  set :section, 3  # breakdown: strip to pad + arp
+  sleep 16
+  set :section, 4  # outro: fade all
+  sleep 16
+  stop
+end
+
+live_loop :pad do
+  s = get[:section]
+  use_synth :supersaw
+  vol = 0
+  vol = 0.3 if s == 0 or s == 3
+  vol = 0.25 if s == 1
+  vol = 0.4 if s == 2
+  vol = 0.15 if s == 4
+  with_fx :reverb, room: 0.85, mix: 0.6 do
+    with_fx :lpf, cutoff: 85 do
+      chords = [chord(:e3, :minor7), chord(:c3, :major7),
+                chord(:a2, :minor7), chord(:b2, :minor)]
+      play chords.tick, attack: 2, release: 6, amp: vol
+      sleep 4
+    end
+  end
+end
+
+live_loop :arp do
+  s = get[:section]
+  use_synth :saw
+  vol = 0
+  vol = 0.2 if s == 0 or s == 3
+  vol = 0.3 if s == 1
+  vol = 0.4 if s == 2
+  vol = 0.1 if s == 4
+  notes = ring(:e4, :g4, :b4, :e5, :b4, :g4, :d5, :b4)
+  with_fx :echo, phase: 0.375, decay: 4, mix: 0.35 do
+    play notes.tick, release: 0.15, amp: vol, cutoff: 95
+    sleep 0.25
+  end
+end
+
+live_loop :bass do
+  s = get[:section]
+  use_synth :tb303
+  vol = 0
+  vol = 0.5 if s == 1
+  vol = 0.7 if s == 2
+  vol = 0.3 if s == 4
+  notes = ring(:e2, :e2, :c2, :c2, :a1, :a1, :b1, :b1)
+  play notes.tick, release: 0.3, cutoff: 70, res: 0.3, amp: vol
+  sleep 0.5
+end
+
+live_loop :kick do
+  s = get[:section]
+  vol = 0
+  vol = 1.5 if s == 1
+  vol = 2.0 if s == 2
+  vol = 0.8 if s == 4
+  sample :bd_haus, amp: vol
+  sleep 1
+end
+
+live_loop :snare do
+  s = get[:section]
+  vol = 0
+  vol = 0.8 if s == 1
+  vol = 1.2 if s == 2
+  sleep 1
+  sample :sn_dub, amp: vol
+  sleep 1
+end
+
+live_loop :hats do
+  s = get[:section]
+  vol = 0
+  vol = rrand(0.2, 0.5) if s == 1 or s == 2
+  sample :drum_cymbal_closed, amp: vol
+  sleep 0.25
+end
+
+live_loop :lead do
+  s = get[:section]
+  use_synth :saw
+  vol = 0
+  vol = 0.35 if s == 2
+  notes = [:e5, :d5, :b4, :g4, :a4, :b4, :d5, :e5,
+           :g5, :e5, :d5, :b4, :a4, :g4, :a4, :b4]
+  with_fx :reverb, room: 0.7 do
+    with_fx :flanger, phase: 2, mix: 0.3 do
+      play notes.tick, release: 0.4, amp: vol, cutoff: 105
+      sleep 0.5
+    end
+  end
+end`,
+    js: ""
+  },
+  {
+    name: "Rainforest",
+    difficulty: "advanced",
+    description: "Ambient/generative \u2014 layered nature textures, random plucks, evolving pad, no drums.",
+    ruby: `# "Rainforest" \u2014 Ambient / Generative
+# Inspired by the Sonic Pi community
+# Technique: rrand for organic randomness, layered textures, no fixed rhythm
+
+use_bpm 70
+
+live_loop :director do
+  set :section, 0  # dawn: quiet pad emerges
+  sleep 32
+  set :section, 1  # morning: bird plucks begin
+  sleep 48
+  set :section, 2  # midday: full canopy, all layers
+  sleep 64
+  set :section, 3  # dusk: thin out, slower
+  sleep 32
+  set :section, 4  # night: fade to silence
+  sleep 16
+  stop
+end
+
+live_loop :canopy_pad do
+  s = get[:section]
+  use_synth :dark_ambience
+  vol = 0
+  vol = 0.2 if s == 0
+  vol = 0.3 if s == 1
+  vol = 0.4 if s == 2
+  vol = 0.25 if s == 3
+  vol = 0.1 if s == 4
+  with_fx :reverb, room: 0.95, mix: 0.8 do
+    notes = [chord(:e3, :minor7), chord(:g3, :major7),
+             chord(:a3, :minor), chord(:d3, :sus4)]
+    play notes.choose, attack: 4, release: 8, amp: vol, cutoff: rrand(60, 80)
+    sleep rrand(6, 10)
+  end
+end
+
+live_loop :bird_plucks do
+  s = get[:section]
+  use_synth :pluck
+  vol = 0
+  vol = 0.25 if s == 1
+  vol = 0.4 if s == 2
+  vol = 0.2 if s == 3
+  with_fx :echo, phase: rrand(0.2, 0.5), decay: 3, mix: 0.4 do
+    with_fx :reverb, room: 0.8 do
+      notes = scale(:e5, :minor_pentatonic, num_octaves: 2)
+      play notes.choose, release: rrand(0.1, 0.4), amp: vol
+    end
+  end
+  sleep rrand(0.3, 1.5)
+end
+
+live_loop :water_drops do
+  s = get[:section]
+  use_synth :sine
+  vol = 0
+  vol = 0.15 if s == 1 or s == 3
+  vol = 0.25 if s == 2
+  with_fx :reverb, room: 0.9 do
+    play rrand_i(72, 96), release: rrand(0.05, 0.2), amp: vol
+  end
+  sleep rrand(0.5, 3.0)
+end
+
+live_loop :wind do
+  s = get[:section]
+  use_synth :cnoise
+  vol = 0
+  vol = 0.03 if s == 0 or s == 4
+  vol = 0.04 if s == 1 or s == 3
+  vol = 0.06 if s == 2
+  with_fx :lpf, cutoff: rrand(50, 70) do
+    play :c4, release: rrand(3, 6), amp: vol
+  end
+  sleep rrand(4, 8)
+end
+
+live_loop :deep_pulse do
+  s = get[:section]
+  use_synth :sine
+  vol = 0
+  vol = 0.2 if s == 2
+  vol = 0.15 if s == 1 or s == 3
+  with_fx :reverb, room: 0.9 do
+    play [:e2, :g2, :a2, :d2].choose, attack: 2, release: 6, amp: vol
+  end
+  sleep rrand(6, 12)
+end
+
+live_loop :insects do
+  s = get[:section]
+  use_synth :square
+  vol = 0
+  vol = 0.05 if s == 2
+  vol = 0.03 if s == 3
+  with_fx :hpf, cutoff: 100 do
+    play rrand_i(90, 110), release: rrand(0.02, 0.08), amp: vol if one_in(3)
+  end
+  sleep rrand(0.1, 0.4)
+end`,
+    js: ""
+  },
+  {
+    name: "Concrete Jungle",
+    difficulty: "advanced",
+    description: "Drum & Bass \u2014 fast breakbeat patterns, deep reese bass, chopped hats.",
+    ruby: `# "Concrete Jungle" \u2014 Drum & Bass
+# Inspired by the Sonic Pi community
+# Technique: fast breakbeats, reese bass with wobble, chopped hat patterns
+
+use_bpm 174
+
+live_loop :director do
+  set :section, 0  # intro: hats + sparse kick
+  sleep 32
+  set :section, 1  # build: bass enters, drums fill
+  sleep 32
+  set :section, 2  # drop: full breakbeat + reese
+  sleep 64
+  set :section, 3  # breakdown: half-time, pad
+  sleep 16
+  set :section, 4  # drop 2: full, more chopped
+  sleep 64
+  stop
+end
+
+live_loop :kick do
+  s = get[:section]
+  vol = 0
+  vol = 0.8 if s == 0
+  vol = 1.5 if s == 1
+  vol = 2.5 if s == 2 or s == 4
+  vol = 1.0 if s == 3
+  pattern = spread(3, 8)
+  sample :bd_tek, amp: vol if pattern.tick
+  sleep 0.25
+end
+
+live_loop :snare do
+  s = get[:section]
+  vol = 0
+  vol = 0.6 if s == 1
+  vol = 1.5 if s == 2 or s == 4
+  vol = 0.8 if s == 3
+  sleep 1
+  sample :sn_dub, amp: vol
+  sleep 1
+end
+
+live_loop :hats do
+  s = get[:section]
+  vol = 0
+  vol = rrand(0.2, 0.5) if s == 0 or s == 1
+  vol = rrand(0.3, 0.7) if s == 2 or s == 4
+  vol = rrand(0.1, 0.3) if s == 3
+  sample :drum_cymbal_closed, amp: vol, rate: rrand(0.9, 1.3) if spread(5, 8).tick
+  sleep 0.125
+end
+
+live_loop :ghost_snares do
+  s = get[:section]
+  vol = 0
+  vol = 0.4 if s == 2 or s == 4
+  pattern = knit(false, 3, true, 1, false, 2, true, 1, false, 1)
+  sample :sn_dub, amp: vol * rrand(0.3, 0.6), rate: 1.4 if pattern.tick
+  sleep 0.25
+end
+
+live_loop :reese do
+  s = get[:section]
+  use_synth :tb303
+  vol = 0
+  vol = 0.4 if s == 1
+  vol = 0.7 if s == 2
+  vol = 0.8 if s == 4
+  vol = 0.3 if s == 3
+  notes = ring(:e1, :e1, :g1, :e1, :a1, :e1, :d1, :e1)
+  with_fx :wobble, phase: 0.5, mix: 0.6 do
+    with_fx :distortion, distort: 0.4 do
+      play notes.tick, release: 0.4, cutoff: rrand(60, 100), res: 0.7, amp: vol
+      sleep 0.5
+    end
+  end
+end
+
+live_loop :pad do
+  s = get[:section]
+  use_synth :hollow
+  vol = 0
+  vol = 0.3 if s == 3
+  vol = 0.15 if s == 0
+  with_fx :reverb, room: 0.9 do
+    play chord(:e3, :minor7), release: 8, amp: vol, cutoff: 75
+  end
+  sleep 8
+end
+
+live_loop :stab do
+  s = get[:section]
+  use_synth :supersaw
+  vol = 0
+  vol = 0.4 if s == 2
+  vol = 0.5 if s == 4
+  if one_in(4)
+    with_fx :reverb, room: 0.6 do
+      play chord(:e4, :minor), release: 0.15, amp: vol, cutoff: 100
+    end
+  end
+  sleep 0.5
+end`,
+    js: ""
+  },
+  {
+    name: "Solar Flare",
+    difficulty: "advanced",
+    description: "Progressive trance \u2014 building arpeggios, filter sweeps, euphoric chords, four-on-floor.",
+    ruby: `# "Solar Flare" \u2014 Progressive Trance
+# Inspired by the Sonic Pi community
+# Technique: line() filter sweeps, building arpeggios, layered pads
+
+use_bpm 138
+
+live_loop :director do
+  set :section, 0  # intro: kick + rising filter arp
+  sleep 32
+  set :section, 1  # build: pads enter, arp intensifies
+  sleep 32
+  set :section, 2  # drop: full euphoric chords + bass
+  sleep 64
+  set :section, 3  # breakdown: pad solo, no drums
+  sleep 16
+  set :section, 4  # climax: everything, peak energy
+  sleep 48
+  stop
+end
+
+live_loop :kick do
+  s = get[:section]
+  vol = 0
+  vol = 1.5 if s == 0 or s == 1
+  vol = 2.0 if s == 2 or s == 4
+  sample :bd_haus, amp: vol
+  sleep 1
+end
+
+live_loop :offbeat_hat do
+  s = get[:section]
+  vol = 0
+  vol = 0.4 if s == 0 or s == 1
+  vol = 0.6 if s == 2 or s == 4
+  sleep 0.5
+  sample :drum_cymbal_closed, amp: vol
+  sleep 0.5
+end
+
+live_loop :clap do
+  s = get[:section]
+  vol = 0
+  vol = 0.8 if s == 1
+  vol = 1.2 if s == 2 or s == 4
+  sleep 1
+  sample :sn_dub, amp: vol
+  sleep 1
+end
+
+live_loop :arp do
+  s = get[:section]
+  use_synth :saw
+  vol = 0
+  vol = 0.2 if s == 0
+  vol = 0.3 if s == 1
+  vol = 0.4 if s == 2 or s == 4
+  vol = 0.15 if s == 3
+  co = 70
+  co = 90 if s == 1
+  co = 110 if s >= 2
+  notes = scale(:a3, :minor_pentatonic, num_octaves: 2)
+  with_fx :echo, phase: 0.25, decay: 4, mix: 0.4 do
+    play notes.tick, release: 0.15, amp: vol, cutoff: co
+    sleep 0.125
+  end
+end
+
+live_loop :pad do
+  s = get[:section]
+  use_synth :prophet
+  vol = 0
+  vol = 0.3 if s == 1
+  vol = 0.5 if s == 2
+  vol = 0.6 if s == 3
+  vol = 0.5 if s == 4
+  chords = [chord(:a3, :minor), chord(:f3, :major),
+            chord(:c4, :major), chord(:g3, :major)]
+  with_fx :reverb, room: 0.8, mix: 0.5 do
+    play chords.tick, attack: 1, release: 6, amp: vol, cutoff: 90
+    sleep 4
+  end
+end
+
+live_loop :bass do
+  s = get[:section]
+  use_synth :sine
+  vol = 0
+  vol = 0.6 if s == 2
+  vol = 0.8 if s == 4
+  notes = ring(:a1, :a1, :f1, :f1, :c2, :c2, :g1, :g1)
+  play notes.tick, release: 0.4, amp: vol
+  sleep 0.5
+end
+
+live_loop :riser do
+  s = get[:section]
+  use_synth :cnoise
+  vol = 0
+  vol = 0.06 if s == 1
+  vol = 0.08 if s == 3
+  with_fx :hpf, cutoff: rrand(70, 100) do
+    play :c4, release: 4, amp: vol
+  end
+  sleep 4
+end`,
+    js: ""
+  },
+  {
+    name: "Pocket Groove",
+    difficulty: "advanced",
+    description: "Lo-fi hip hop \u2014 dusty drums, mellow piano chords, vinyl crackle, jazzy bass.",
+    ruby: `# "Pocket Groove" \u2014 Lo-fi Hip Hop
+# Inspired by the Sonic Pi community
+# Technique: swing timing, noise textures, mellow timbres, jazzy harmony
+
+use_bpm 85
+
+live_loop :director do
+  set :section, 0  # intro: vinyl + piano only
+  sleep 16
+  set :section, 1  # verse: drums enter, bass joins
+  sleep 32
+  set :section, 2  # chorus: lead melody + full band
+  sleep 48
+  set :section, 3  # bridge: strip to piano + bass
+  sleep 16
+  set :section, 4  # outro: fade all layers
+  sleep 16
+  stop
+end
+
+live_loop :vinyl do
+  s = get[:section]
+  use_synth :cnoise
+  vol = 0
+  vol = 0.03 if s <= 3
+  vol = 0.02 if s == 4
+  with_fx :lpf, cutoff: 80 do
+    with_fx :hpf, cutoff: 40 do
+      play :c4, release: 4, amp: vol
+    end
+  end
+  sleep 4
+end
+
+live_loop :piano do
+  s = get[:section]
+  use_synth :piano
+  vol = 0
+  vol = 0.4 if s == 0 or s == 3
+  vol = 0.35 if s == 1
+  vol = 0.5 if s == 2
+  vol = 0.2 if s == 4
+  chords = [chord(:d3, :minor7), chord(:g3, :dom7),
+            chord(:c3, :major7), chord(:a2, :minor7)]
+  with_fx :lpf, cutoff: 90 do
+    with_fx :reverb, room: 0.5, mix: 0.3 do
+      play chords.tick, release: 1.5, amp: vol
+      sleep 2
+    end
+  end
+end
+
+live_loop :kick do
+  s = get[:section]
+  vol = 0
+  vol = 1.2 if s == 1
+  vol = 1.5 if s == 2
+  sample :bd_808, amp: vol
+  sleep 1
+end
+
+live_loop :snare do
+  s = get[:section]
+  vol = 0
+  vol = 0.6 if s == 1
+  vol = 0.8 if s == 2
+  sleep 1
+  sample :sn_dub, amp: vol, rate: 0.9
+  sleep 1
+end
+
+live_loop :hats do
+  s = get[:section]
+  vol = 0
+  vol = rrand(0.15, 0.35) if s == 1 or s == 2
+  pattern = knit(true, 1, false, 1, true, 1, true, 1)
+  sample :drum_cymbal_closed, amp: vol, rate: rrand(0.8, 1.1) if pattern.tick
+  sleep 0.25
+end
+
+live_loop :bass do
+  s = get[:section]
+  use_synth :fm
+  vol = 0
+  vol = 0.4 if s == 1 or s == 3
+  vol = 0.5 if s == 2
+  vol = 0.2 if s == 4
+  notes = ring(:d2, :d2, :g2, :g2, :c2, :c2, :a1, :a1)
+  with_fx :lpf, cutoff: 75 do
+    play notes.tick, release: 0.5, amp: vol, cutoff: 70
+    sleep 0.5
+  end
+end
+
+live_loop :lead do
+  s = get[:section]
+  use_synth :pluck
+  vol = 0
+  vol = 0.35 if s == 2
+  notes = scale(:d4, :dorian)
+  with_fx :reverb, room: 0.6 do
+    play notes.choose, release: rrand(0.3, 0.6), amp: vol if one_in(2)
+  end
+  sleep 0.5
+end`,
+    js: ""
+  },
+  {
+    name: "Neon Grid",
+    difficulty: "advanced",
+    description: "Cyberpunk techno \u2014 industrial kick, metallic hats, dark acid line, glitchy FX.",
+    ruby: `# "Neon Grid" \u2014 Cyberpunk Techno
+# Inspired by the Sonic Pi community
+# Technique: TB-303 acid, krush/distortion, Euclidean patterns, glitch FX
+
+use_bpm 135
+
+live_loop :director do
+  set :section, 0  # intro: kick + sparse acid
+  sleep 32
+  set :section, 1  # build: hats enter, acid intensifies
+  sleep 32
+  set :section, 2  # drop: full acid + industrial drums
+  sleep 64
+  set :section, 3  # break: glitch noise + sparse hits
+  sleep 16
+  set :section, 4  # climax: everything crushed
+  sleep 48
+  stop
+end
+
+live_loop :kick do
+  s = get[:section]
+  vol = 0
+  vol = 1.5 if s == 0 or s == 1
+  vol = 2.5 if s == 2 or s == 4
+  vol = 0.8 if s == 3
+  with_fx :distortion, distort: 0.2 do
+    sample :bd_tek, amp: vol
+  end
+  sleep 0.5
+end
+
+live_loop :hats do
+  s = get[:section]
+  vol = 0
+  vol = rrand(0.2, 0.5) if s == 1
+  vol = rrand(0.3, 0.7) if s == 2 or s == 4
+  pattern = spread(7, 16)
+  sample :drum_cymbal_closed, amp: vol, rate: rrand(1.0, 1.5) if pattern.tick
+  sleep 0.125
+end
+
+live_loop :clap do
+  s = get[:section]
+  vol = 0
+  vol = 1.0 if s == 1 or s == 2
+  vol = 1.5 if s == 4
+  sleep 1
+  sample :sn_dub, amp: vol
+  sleep 1
+end
+
+live_loop :acid do
+  s = get[:section]
+  use_synth :tb303
+  vol = 0
+  vol = 0.3 if s == 0
+  vol = 0.5 if s == 1
+  vol = 0.7 if s == 2
+  vol = 0.8 if s == 4
+  vol = 0.2 if s == 3
+  lo = 50
+  hi = 100
+  lo = 60 if s >= 2
+  hi = 120 if s >= 2
+  with_fx :distortion, distort: 0.5 do
+    notes = ring(:e1, :e1, :e2, :e1, :g1, :e1, :bb1, :a1)
+    play notes.tick, release: 0.2, cutoff: rrand(lo, hi), res: 0.85, amp: vol
+    sleep 0.25
+  end
+end
+
+live_loop :glitch do
+  s = get[:section]
+  use_synth :cnoise
+  vol = 0
+  vol = 0.06 if s == 3
+  vol = 0.04 if s == 4
+  with_fx :krush, gain: 8, cutoff: rrand(60, 100) do
+    play :c4, release: rrand(0.05, 0.2), amp: vol if one_in(3)
+  end
+  sleep 0.125
+end
+
+live_loop :dark_pad do
+  s = get[:section]
+  use_synth :dark_ambience
+  vol = 0
+  vol = 0.2 if s == 0
+  vol = 0.25 if s == 2 or s == 4
+  vol = 0.3 if s == 3
+  with_fx :reverb, room: 0.8 do
+    play chord(:e2, :minor), release: 8, amp: vol
+  end
+  sleep 8
+end
+
+live_loop :perc do
+  s = get[:section]
+  vol = 0
+  vol = 0.4 if s == 2 or s == 4
+  pattern = spread(3, 8)
+  sample :perc_bell, amp: vol * rrand(0.3, 0.8), rate: rrand(0.5, 2.0) if pattern.tick
+  sleep 0.25
+end`,
+    js: ""
+  },
+  {
+    name: "Cloud Cathedral",
+    difficulty: "advanced",
+    description: "Post-rock/ambient \u2014 reverb-drenched plucks, swelling pads, delayed melody that builds.",
+    ruby: `# "Cloud Cathedral" \u2014 Post-rock / Ambient
+# Inspired by the Sonic Pi community
+# Technique: deep reverb/delay stacking, slow crescendo, tremolo swells
+
+use_bpm 100
+
+live_loop :director do
+  set :section, 0  # intro: single plucks in space
+  sleep 32
+  set :section, 1  # build: pad swells, melody forms
+  sleep 32
+  set :section, 2  # peak: full arrangement, drums enter
+  sleep 48
+  set :section, 3  # descent: strip layers, slow down
+  sleep 24
+  set :section, 4  # silence: final note rings out
+  sleep 8
+  stop
+end
+
+live_loop :plucks do
+  s = get[:section]
+  use_synth :pluck
+  vol = 0
+  vol = 0.3 if s == 0
+  vol = 0.35 if s == 1
+  vol = 0.4 if s == 2
+  vol = 0.25 if s == 3
+  vol = 0.15 if s == 4
+  notes = ring(:e4, :b4, :g4, :d5, :a4, :e5, :b4, :fs5)
+  with_fx :reverb, room: 0.95, mix: 0.7 do
+    with_fx :echo, phase: 0.75, decay: 6, mix: 0.5 do
+      play notes.tick, release: rrand(0.3, 0.8), amp: vol
+    end
+  end
+  sleep 1
+end
+
+live_loop :pad do
+  s = get[:section]
+  use_synth :hollow
+  vol = 0
+  vol = 0.2 if s == 1
+  vol = 0.4 if s == 2
+  vol = 0.3 if s == 3
+  vol = 0.1 if s == 4
+  chords = [chord(:e3, :sus4), chord(:b2, :sus2),
+            chord(:g3, :major7), chord(:d3, :sus4)]
+  with_fx :reverb, room: 0.9, mix: 0.6 do
+    with_fx :tremolo, phase: 4, mix: 0.3 do
+      play chords.tick, attack: 4, release: 8, amp: vol, cutoff: 80
+      sleep 8
+    end
+  end
+end
+
+live_loop :melody do
+  s = get[:section]
+  use_synth :blade
+  vol = 0
+  vol = 0.2 if s == 1
+  vol = 0.35 if s == 2
+  vol = 0.15 if s == 3
+  notes = [:e5, :d5, :b4, :a4, :g4, :a4, :b4, :d5]
+  durs = [1.5, 1, 0.5, 1, 1.5, 1, 0.5, 1]
+  with_fx :reverb, room: 0.85 do
+    with_fx :echo, phase: 0.5, decay: 4, mix: 0.4 do
+      i = tick % 8
+      play notes[i], release: durs[i] * 0.8, amp: vol, cutoff: 90
+      sleep durs[i]
+    end
+  end
+end
+
+live_loop :bass_drone do
+  s = get[:section]
+  use_synth :sine
+  vol = 0
+  vol = 0.2 if s == 1
+  vol = 0.35 if s == 2
+  vol = 0.15 if s == 3
+  notes = ring(:e2, :e2, :b1, :g2)
+  play notes.tick, attack: 2, release: 6, amp: vol
+  sleep 8
+end
+
+live_loop :drums do
+  s = get[:section]
+  k_vol = 0
+  s_vol = 0
+  k_vol = 1.2 if s == 2
+  s_vol = 0.6 if s == 2
+  sample :bd_haus, amp: k_vol
+  sleep 1
+  sample :sn_dub, amp: s_vol
+  sleep 1
+  sample :bd_haus, amp: k_vol * 0.7
+  sleep 1
+  sample :sn_dub, amp: s_vol * 0.8
+  sleep 1
+end
+
+live_loop :shimmer do
+  s = get[:section]
+  use_synth :saw
+  vol = 0
+  vol = 0.08 if s == 2
+  vol = 0.05 if s == 3
+  with_fx :reverb, room: 0.95, mix: 0.9 do
+    with_fx :hpf, cutoff: 90 do
+      play scale(:e5, :minor_pentatonic).choose, release: 0.1, amp: vol if one_in(3)
+    end
+  end
+  sleep 0.25
+end`,
+    js: ""
+  },
+  {
+    name: "Algorithm",
+    difficulty: "advanced",
+    description: "Algorave/live-coding showcase \u2014 randomized params, Euclidean rhythms, density variations.",
+    ruby: `# "Algorithm" \u2014 Algorave
+# Inspired by the Sonic Pi community
+# Technique: every parameter randomized within ranges, Euclidean rhythms, density, spread
+
+use_bpm 128
+
+live_loop :director do
+  set :section, 0  # intro: sparse algorithmic textures
+  sleep 32
+  set :section, 1  # build: layers accumulate
+  sleep 32
+  set :section, 2  # peak: maximum density
+  sleep 48
+  set :section, 3  # variation: shift all patterns
+  sleep 32
+  set :section, 4  # outro: dissolve
+  sleep 16
+  stop
+end
+
+live_loop :algo_kick do
+  s = get[:section]
+  vol = 0
+  vol = 1.5 if s == 0 or s == 1
+  vol = 2.0 if s == 2 or s == 3
+  vol = 1.0 if s == 4
+  hits = 4
+  hits = 5 if s == 3
+  pattern = spread(hits, 8)
+  sample :bd_haus, amp: vol if pattern.tick
+  sleep 0.25
+end
+
+live_loop :algo_snare do
+  s = get[:section]
+  vol = 0
+  vol = 0.6 if s == 1
+  vol = 1.0 if s == 2 or s == 3
+  vol = 0.4 if s == 4
+  hits = 3
+  hits = 5 if s == 3
+  pattern = spread(hits, 16)
+  sample :sn_dub, amp: vol * rrand(0.6, 1.0) if pattern.tick
+  sleep 0.25
+end
+
+live_loop :algo_hats do
+  s = get[:section]
+  vol = 0
+  vol = rrand(0.1, 0.3) if s == 0
+  vol = rrand(0.2, 0.5) if s == 1 or s == 2
+  vol = rrand(0.3, 0.6) if s == 3
+  vol = rrand(0.05, 0.2) if s == 4
+  hits = 5
+  hits = 7 if s >= 2
+  steps = 8
+  steps = 16 if s >= 2
+  pattern = spread(hits, steps)
+  sample :drum_cymbal_closed, amp: vol, rate: rrand(0.8, 1.6) if pattern.tick
+  sleep 0.125
+end
+
+live_loop :algo_bass do
+  s = get[:section]
+  use_synth :tb303
+  vol = 0
+  vol = 0.4 if s == 0
+  vol = 0.5 if s == 1
+  vol = 0.7 if s == 2
+  vol = 0.6 if s == 3
+  vol = 0.3 if s == 4
+  notes = scale(:e1, :minor_pentatonic)
+  with_fx :distortion, distort: rrand(0.1, 0.5) do
+    play notes.choose, release: 0.2, cutoff: rrand(50, 110), res: rrand(0.2, 0.9), amp: vol
+    sleep 0.25
+  end
+end
+
+live_loop :algo_lead do
+  s = get[:section]
+  synths = [:saw, :square, :pluck, :blade, :zawa]
+  use_synth synths.choose
+  vol = 0
+  vol = 0.2 if s == 1
+  vol = 0.35 if s == 2
+  vol = 0.3 if s == 3
+  vol = 0.1 if s == 4
+  notes = scale(:e4, :minor_pentatonic, num_octaves: 2)
+  with_fx :echo, phase: [0.25, 0.375, 0.5].choose, decay: rrand(2, 6), mix: 0.4 do
+    with_fx :reverb, room: rrand(0.4, 0.9) do
+      play notes.choose, release: rrand(0.1, 0.4), amp: vol, cutoff: rrand(70, 110) if one_in(2)
+    end
+  end
+  sleep 0.25
+end
+
+live_loop :algo_pad do
+  s = get[:section]
+  use_synth [:prophet, :hollow, :dark_ambience].choose
+  vol = 0
+  vol = 0.2 if s == 1
+  vol = 0.3 if s == 2
+  vol = 0.35 if s == 3
+  vol = 0.15 if s == 4
+  roots = [:e3, :a3, :b3, :d3, :g3]
+  types = [:minor7, :minor, :sus4, :sus2]
+  with_fx :reverb, room: rrand(0.6, 0.95) do
+    play chord(roots.choose, types.choose), attack: 2, release: rrand(4, 8), amp: vol
+  end
+  sleep rrand(4, 8)
+end
+
+live_loop :algo_perc do
+  s = get[:section]
+  vol = 0
+  vol = 0.3 if s == 2
+  vol = 0.4 if s == 3
+  vol = 0.15 if s == 4
+  sample :perc_bell, amp: vol * rrand(0.2, 0.8), rate: rrand(0.3, 3.0) if one_in(4)
+  sleep 0.25
+end`,
+    js: ""
+  },
+  {
+    name: "Blade Runner x Techno",
+    difficulty: "advanced",
+    description: "10 synced loops \u2014 percussion, harmonic engine, synthbass. Techniques: define, line().mirror.tick, panslicer, sync.",
+    ruby: `# =====================================================
+#  BLADE RUNNER x TECHNO
+#  10 synced loops: percussion + harmonic engine + synthbass
+#  Techniques: define, line().mirror.tick, panslicer, sync
+# =====================================================
+
+use_bpm 115
+
+amp_master = 1.0
+c_blade    = 72
+c_perc     = 115
+
+define :pattern do |p|
+  p.ring.tick == "x"
+end
+
+live_loop :met1 do
+  sleep 1
+end
+
+# KICK
+live_loop :kick, sync: :met1 do
+  sample :bd_haus, amp: 1.5 * amp_master, cutoff: c_perc      if pattern "x-----------x---"
+  sample :bd_tek,  amp: 0.5 * amp_master, cutoff: c_perc + 12 if pattern "x-----------x---"
+  sleep 0.25
+end
+
+# SNARE
+with_fx :reverb, mix: 0.3, room: 0.72 do
+  live_loop :snare, sync: :met1 do
+    sleep 1
+    sample :drum_snare_hard, rate: 1.8, cutoff: c_perc, amp: 0.65 * amp_master
+    sample :drum_snare_hard, rate: 1.6, start: 0.03, cutoff: c_perc, pan: 0.25, amp: 0.65 * amp_master
+    sample :drum_snare_hard, rate: 1.5, start: 0.06, cutoff: c_perc, pan: -0.25, amp: 0.65 * amp_master
+    sleep 1
+  end
+end
+
+# HI-HATS
+with_fx :panslicer, mix: 0.22 do
+  with_fx :reverb, mix: 0.15 do
+    live_loop :hats, sync: :met1 do
+      a = rrand(0.38, 0.72) * amp_master
+      sample :drum_cymbal_closed, amp: a, rate: 2.2, finish: 0.5, pan: [-0.4, 0.4].choose, cutoff: c_perc if pattern "x-x-x-x-x-x-x-x-xxx-x-x-x-"
+      sleep 0.125
+    end
+  end
+end
+
+# CRASH
+with_fx :reverb, mix: 0.75 do
+  live_loop :crash, sync: :met1 do
+    sleep 15.5
+    sample :drum_splash_soft, amp: 0.07 * amp_master, cutoff: c_perc - 12, rate: 1.4, finish: 0.3
+    sleep 0.5
+  end
+end
+
+# HARMONIC ENGINE
+with_fx :panslicer, mix: 0.18, phase: 8 do
+  with_fx :reverb, room: 0.97, mix: 0.78, damp: 0.4 do
+
+    # PADS
+    live_loop :pads, sync: :met1 do
+      use_synth :blade
+      sweep = (line c_blade - 16, c_blade + 16, steps: 16).mirror.tick
+
+      [:c3, :eb3, :g3, :b3].each do |n|
+        play n, attack: 3.0, sustain: 5.0, release: 4.0, amp: 1.3 * amp_master, cutoff: sweep, vibrato_rate: 4.5, vibrato_depth: 0.10, vibrato_delay: 1.5, vibrato_onset: 0.8
+      end
+      sleep 12
+
+      [:eb3, :g3, :bb3, :d4, :f4].each do |n|
+        play n, attack: 3.0, sustain: 5.0, release: 4.0, amp: 1.3 * amp_master, cutoff: sweep + 8, vibrato_rate: 5.0, vibrato_depth: 0.12, vibrato_delay: 1.2, vibrato_onset: 0.7
+      end
+      sleep 12
+
+      [:ab2, :c3, :eb3, :g3].each do |n|
+        play n, attack: 3.0, sustain: 5.0, release: 4.0, amp: 1.4 * amp_master, cutoff: sweep + 14, vibrato_rate: 5.5, vibrato_depth: 0.15, vibrato_delay: 1.0, vibrato_onset: 0.6
+      end
+      sleep 12
+
+      [:g2, :b2, :d3, :f3, :a3].each do |n|
+        play n, attack: 3.5, sustain: 5.0, release: 4.5, amp: 1.4 * amp_master, cutoff: sweep + 20, vibrato_rate: 6.0, vibrato_depth: 0.18, vibrato_delay: 0.8, vibrato_onset: 0.5
+      end
+      sleep 12
+    end
+
+    # MELODY
+    live_loop :melody, sync: :pads do
+      use_synth :blade
+      vib = (line 0.10, 0.30, steps: 48).mirror.tick
+
+      play :c5, attack: 1.5, sustain: 2.5, release: 2.5, amp: 0.58 * amp_master, cutoff: c_blade + 6, vibrato_rate: 5.5, vibrato_depth: vib, vibrato_delay: 0.8, vibrato_onset: 0.5
+      sleep 5
+      play :eb5, attack: 0.8, sustain: 1.5, release: 1.8, amp: 0.52 * amp_master, cutoff: c_blade + 4, vibrato_rate: 5.2, vibrato_depth: vib + 0.02, vibrato_delay: 0.6, vibrato_onset: 0.4
+      sleep 4
+      play :g5, attack: 0.6, sustain: 1.2, release: 1.5, amp: 0.50 * amp_master, cutoff: c_blade + 8, vibrato_rate: 5.8, vibrato_depth: vib + 0.02, vibrato_delay: 0.5, vibrato_onset: 0.3
+      sleep 3
+
+      play :bb5, attack: 2.0, sustain: 3.5, release: 2.5, amp: 0.64 * amp_master, cutoff: c_blade + 12, vibrato_rate: 6.0, vibrato_depth: vib + 0.04, vibrato_delay: 0.9, vibrato_onset: 0.5
+      sleep 6
+      play :g5, attack: 0.8, sustain: 2.0, release: 2.0, amp: 0.56 * amp_master, cutoff: c_blade + 10, vibrato_rate: 5.8, vibrato_depth: vib + 0.02, vibrato_delay: 0.7, vibrato_onset: 0.4
+      sleep 6
+
+      play :c6, attack: 2.5, sustain: 5.5, release: 3.0, amp: 0.68 * amp_master, cutoff: c_blade + 20, vibrato_rate: 6.5, vibrato_depth: vib + 0.08, vibrato_delay: 1.2, vibrato_onset: 0.6
+      sleep 12
+
+      play :d6, attack: 3.0, sustain: 4.5, release: 3.5, amp: 0.66 * amp_master, cutoff: c_blade + 24, vibrato_rate: 7.0, vibrato_depth: vib + 0.10, vibrato_delay: 1.0, vibrato_onset: 0.7
+      sleep 8
+      play :b5, attack: 1.2, sustain: 1.8, release: 2.2, amp: 0.55 * amp_master, cutoff: c_blade + 18, vibrato_rate: 6.5, vibrato_depth: vib + 0.05, vibrato_delay: 0.6, vibrato_onset: 0.4
+      sleep 4
+    end
+
+    # ECSTASY ARPEGGIOS
+    live_loop :ecstasy, sync: :pads do
+      use_synth :blade
+      arp_chords = [
+        [:c4, :eb4, :g4, :b4, :c5, :g4],
+        [:eb4, :g4, :bb4, :d5, :f5, :bb4],
+        [:ab4, :c5, :eb5, :g5, :ab5, :eb5],
+        [:g4, :b4, :d5, :f5, :a5, :d5],
+      ]
+      4.times do |i|
+        arp = arp_chords[i]
+        spd = 1.2 - (i * 0.05)
+        breath = 12.0 - (arp.length * spd)
+        with_fx :echo, phase: 0.75, mix: (line 0.08, 0.72, steps: 128).mirror.tick do
+          arp.each do |n|
+            play n, attack: 0.04, sustain: spd * 0.32, release: spd * 0.58, amp: rrand(0.18, 0.32) * amp_master, cutoff: c_blade + (i * 6) + rrand(-4, 8), vibrato_rate: rrand(6, 9), vibrato_depth: rrand(0.08, 0.16), vibrato_delay: 0.12, vibrato_onset: 0.06
+            sleep spd
+          end
+        end
+        sleep [breath, 0.25].max
+      end
+    end
+
+    # TEARS
+    live_loop :tears, sync: :pads do
+      use_synth :blade
+      tear_data = [[:eb6, 12], [:g6, 12], [:c7, 12], [:b6, 12]]
+      tear_data.each do |td|
+        if one_in(2)
+          play td[0], attack: rrand(2.5, 4.5), sustain: rrand(3.0, 5.5), release: rrand(4.0, 7.0), amp: rrand(0.12, 0.22) * amp_master, cutoff: rrand(92, 108), vibrato_rate: rrand(4.5, 7.0), vibrato_depth: rrand(0.18, 0.34), vibrato_delay: rrand(1.2, 2.5), vibrato_onset: rrand(0.5, 1.0)
+        end
+        sleep td[1]
+      end
+    end
+
+    # SHIMMER
+    live_loop :shimmer, sync: :pads do
+      use_synth :blade
+      pool = [:c6, :eb6, :g6, :bb6, :d7, :c7, :g6, :eb6, :ab6, :f6, :b6, :d6]
+      pool.each do |n|
+        unless one_in(3)
+          play n, attack: rrand(1.0, 3.0), sustain: rrand(0.5, 2.0), release: rrand(3.5, 6.0), amp: rrand(0.06, 0.16) * amp_master, cutoff: rrand(94, 112), vibrato_rate: rrand(7.0, 10.0), vibrato_depth: rrand(0.14, 0.30), vibrato_delay: rrand(0.3, 0.8), vibrato_onset: rrand(0.2, 0.5)
+        end
+        sleep rrand(1.0, 3.0)
+      end
+    end
+
+  end
+end
+
+# SYNTHBASS
+with_fx :panslicer, mix: 0.28 do
+  with_fx :reverb, mix: 0.28 do
+    live_loop :synthbass, sync: :pads do
+      use_synth :tech_saws
+      bass_data = [[:c2, 56], [:eb2, 60], [:ab2, 65], [:g2, 69]]
+      bass_data.each do |bd|
+        play bd[0], sustain: 8.5, release: 3.0, cutoff: bd[1], amp: 0.78 * amp_master, attack: 0.1
+        sleep 12
+      end
+    end
+  end
+end`,
+    js: ""
+  }
+];
+function getExample(name2) {
+  return examples.find((e) => e.name.toLowerCase() === name2.toLowerCase());
 }
 
 // ../../../sonicPiWeb/src/engine/SynthParams.ts
@@ -27329,6 +28950,7 @@ var SonicPiEngine = class {
     this.runtimeErrorHandler = null;
     this.printHandler = null;
     this.cueHandler = null;
+    this.loadExampleHandler = null;
     /**
      * Per-evaluation dedup set for clamp/range warnings (issue #202, G4).
      * SoundLayer's validateAndClamp emits one warning per out-of-range param,
@@ -27389,6 +29011,9 @@ var SonicPiEngine = class {
      *  next eval's scopeBase so removing a `define` line from the buffer does not
      *  break a still-running live_loop that calls it. (#215) */
     this.definedFns = /* @__PURE__ */ new Map();
+    /** Cached `defonce` values (#212 / #233). Survive across re-evals — that's
+     *  the whole point. Cleared only on full engine reset / dispose. */
+    this.defonceCache = /* @__PURE__ */ new Map();
     /** Host-provided OSC send handler. Engine fires this; host wires to actual transport. */
     this.oscHandler = null;
     /** Active Recorder instance (#228). Null when not recording. */
@@ -28211,6 +29836,99 @@ var SonicPiEngine = class {
         },
         (...args2) => {
           topLevelBuilder.recording_delete(...args2);
+        },
+        // Tier B PR #2 — pure ring constructors (#233)
+        doubles,
+        halves,
+        // Tier B PR #2 — defaults / setting introspection (#233). Forward
+        // to topLevelBuilder so the value reflects top-level use_*_defaults
+        // calls. Inside live_loops the transpiler routes through __b.
+        () => topLevelBuilder.current_synth_defaults(),
+        () => topLevelBuilder.current_sample_defaults(),
+        () => topLevelBuilder.current_arg_checks(),
+        () => topLevelBuilder.current_debug(),
+        // Tier B PR #2 — block-form tuplets (#233). Forwards to topLevelBuilder
+        // so steps land on the top-level program. Inside live_loops the
+        // transpiler emits `__b.tuplets(...)` directly via BUILDER_METHODS.
+        (list, optsOrFn, maybeFn) => {
+          topLevelBuilder.tuplets(
+            list,
+            optsOrFn,
+            maybeFn
+          );
+        },
+        // Tier B PR #2 — defonce (#212 / #233). Cache lookup; runs body once
+        // (or again on `override: true`). The transpiler emits a bare
+        // assignment `name = defonce(...)` so the Sandbox proxy captures the
+        // cached value into scope-isolated storage. Spread back into
+        // persistedFns above so `name` reads still work after the line is
+        // removed from the buffer (matches define persistence #215).
+        (name2, opts, fn) => {
+          if (typeof name2 !== "string" || typeof fn !== "function") return void 0;
+          if (!opts?.override && this.defonceCache.has(name2)) {
+            return this.defonceCache.get(name2);
+          }
+          const value = fn(topLevelBuilder);
+          this.defonceCache.set(name2, value);
+          return value;
+        },
+        // Tier B PR #3 — sync_bpm (#236). Inside live_loops the transpiler
+        // routes `sync_bpm :name` to `__b.sync_bpm(name)` via BUILDER_METHODS.
+        // At top level we forward to topLevelBuilder so the cue waiter runs
+        // when the top-level program reaches it. Top-level programs run
+        // serially (no concurrent context), so nothing actually waits — the
+        // call is a no-op in that case, matching desktop where sync at top
+        // level outside in_thread is unusual but harmless.
+        (name2) => {
+          topLevelBuilder.sync_bpm(name2);
+        },
+        // Tier B PR #3 — run_code (#236). Host-side dynamic eval. Replaces
+        // all running loops with the supplied code, equivalent to pressing
+        // Run with a fresh buffer. Returns a Promise that resolves when the
+        // new evaluation completes. Inside live_loops this re-enters the
+        // engine which is undefined behaviour — desktop's spider re-entry
+        // guard would throw; we accept the same risk for now and may add a
+        // strict guard if observed misuse warrants it.
+        (code2) => {
+          if (typeof code2 !== "string") {
+            throw new TypeError(`run_code expects a string, got ${typeof code2}`);
+          }
+          return this.evaluate(code2);
+        },
+        // Tier B PR #3 — eval_file / run_file (#236). Both stubs throw an
+        // informative error redirecting users to the working alternatives.
+        // Sonic Pi Web has no filesystem; on desktop these read a .rb file
+        // from disk. We surface that limitation explicitly rather than
+        // silently no-op'ing, so user-error from copy-pasted desktop code
+        // gets a useful message in the editor's runtime-error overlay.
+        (_path) => {
+          throw new Error(
+            "browser sandbox: no filesystem access; use run_code(string) or load_example(:name) instead"
+          );
+        },
+        (_path) => {
+          throw new Error(
+            "browser sandbox: no filesystem access; use run_code(string) or load_example(:name) instead"
+          );
+        },
+        // Tier B PR #3 — load_example (#236). Looks up the example by name in
+        // the bundled registry; on hit, calls the host's loadExampleHandler so
+        // the editor replaces its buffer + re-runs. On miss, throws an
+        // informative error listing the available names. If no host handler
+        // is registered (engine-only test harness), throws a different error
+        // explaining the missing wiring rather than silently no-op'ing.
+        (name2) => {
+          if (typeof name2 !== "string") {
+            throw new TypeError(`load_example expects a name (string or symbol), got ${typeof name2}`);
+          }
+          const example = getExample(name2);
+          if (!example) {
+            throw new Error(`load_example: no example named "${name2}". See examples panel for the full list.`);
+          }
+          if (!this.loadExampleHandler) {
+            throw new Error("load_example requires a host editor \u2014 no loadExampleHandler registered on the engine.");
+          }
+          this.loadExampleHandler(example);
         }
       ];
       const codeWarnings = validateCode(transpiledCode);
@@ -28218,7 +29936,10 @@ var SonicPiEngine = class {
         if (this.printHandler) this.printHandler(`[Warning] ${warning}`);
         else console.warn("[SonicPi]", warning);
       }
-      const persistedFns = Object.fromEntries(this.definedFns);
+      const persistedFns = {
+        ...Object.fromEntries(this.defonceCache),
+        ...Object.fromEntries(this.definedFns)
+      };
       const sandbox = createIsolatedExecutor(transpiledCode, dslNames, persistedFns);
       scopeHandle = sandbox.scopeHandle;
       await sandbox.execute(...dslValues);
@@ -28283,6 +30004,7 @@ var SonicPiEngine = class {
     this.loopSynced.clear();
     this.globalStore.clear();
     this.definedFns.clear();
+    this.defonceCache.clear();
     this.persistentFx.clear();
     this.reusableFx.clear();
     this.loopFxScope.clear();
@@ -28309,6 +30031,7 @@ var SonicPiEngine = class {
     this.loopSeeds.clear();
     this.globalStore.clear();
     this.definedFns.clear();
+    this.defonceCache.clear();
   }
   /** Register a handler for runtime errors inside `live_loop` bodies. */
   setRuntimeErrorHandler(handler) {
@@ -28329,6 +30052,16 @@ var SonicPiEngine = class {
   /** Register a handler for cue events (for the CueLog panel). */
   setCueHandler(handler) {
     this.cueHandler = handler;
+  }
+  /**
+   * Register a handler for `load_example(:name)` calls in user code (#236).
+   * The host (App.ts) wires this to its loadExample(example) method which
+   * replaces the editor buffer with the example's Ruby code and runs it.
+   * If unset, load_example throws an informative error so the engine works
+   * standalone without requiring an editor harness.
+   */
+  setLoadExampleHandler(handler) {
+    this.loadExampleHandler = handler;
   }
   /**
    * Register a handler for `osc_send` calls in user code.
@@ -30788,6 +32521,7 @@ exports.resetUndoManager = resetUndoManager;
 exports.resolveDescriptor = resolveDescriptor;
 exports.restoreSnapshot = restoreSnapshot;
 exports.revealLineInFile = revealLineInFile;
+exports.runPasses = runPasses;
 exports.sanitizePresetName = sanitizePresetName;
 exports.saveSnapshot = saveSnapshot;
 exports.scaleGain = scaleGain;

@@ -21,7 +21,9 @@ export interface IRSnapshot {
   runtime: RuntimeId
   /** The raw user code that was parsed. */
   code: string
-  /** Top-level parsed IR. May be a Stack of $: tracks or a single track. */
+  /** Per-pass IR snapshots, in execution order. IR-shaped only — collected events live in `events`. */
+  passes: readonly { readonly name: string; readonly ir: PatternIR }[]
+  /** Alias of `passes[passes.length - 1].ir`. Publishers MUST keep these in sync. */
   ir: PatternIR
   /** Collected events for one cycle window starting at t=0. */
   events: IREvent[]
