@@ -4331,6 +4331,43 @@ declare function installGlobalErrorCatch(): void;
  * the same index — not hand-rolled per runtime.
  */
 type DocKind = 'function' | 'method' | 'variable' | 'constant' | 'keyword' | 'synth' | 'sample' | 'fx';
+/**
+ * A curated friendly-error hint attached to a `RuntimeDoc` (per-symbol)
+ * or to `DocsIndex.globalMistakes` (catch-alls). Consulted by
+ * `formatFriendlyError` before the Levenshtein fallback.
+ *
+ * Three detector kinds, ordered by specificity:
+ *   - `message` — regex / substring tested against the error's message.
+ *   - `code`    — regex / substring tested against a window of user
+ *                 source around the throw (caller passes `codeContext`).
+ *   - `identifier` — old-name / cross-runtime alias for the
+ *                    misspelling-fallback path.
+ *
+ * `match` accepts a string for forward-compat with JSON-shipped indexes
+ * (regex literals don't survive JSON.stringify). Strings are treated as
+ * the source of a `RegExp` with the `i` flag.
+ */
+interface CommonMistake {
+    detect: {
+        kind: 'message';
+        match: string | RegExp;
+    } | {
+        kind: 'code';
+        match: string | RegExp;
+    } | {
+        kind: 'identifier';
+        alias: string;
+    };
+    /** Friendly one-liner. Renders in place of the raw error. */
+    hint: string;
+    /** Optional inline example, rendered below the hint. */
+    example?: string;
+    /**
+     * Confidence weight for ranking. Default 1. Bump for runtimes where
+     * the curated hint is clearly better than the algorithmic suggestion.
+     */
+    weight?: number;
+}
 interface RuntimeDoc {
     /** Callable form, e.g. `note(pattern: string)` or `.fast(n)` */
     signature: string;
@@ -4346,6 +4383,12 @@ interface RuntimeDoc {
     category?: string;
     /** Permalink into the upstream reference. */
     sourceUrl?: string;
+    /**
+     * Friendly-error hints scoped to this symbol. Consulted when the user
+     * names this symbol but uses it wrong (right name, wrong arg shape /
+     * idiom). See `CommonMistake`.
+     */
+    commonMistakes?: CommonMistake[];
 }
 interface DocsIndex {
     /** Monaco language id. */
@@ -4354,6 +4397,12 @@ interface DocsIndex {
     docs: Record<string, RuntimeDoc>;
     /** Optional alias → canonical name map (e.g. `bg` → `background`). */
     aliases?: Record<string, string>;
+    /**
+     * Catch-alls that don't belong to a specific symbol — runtime-wide
+     * gotchas, "you forgot to call play()", scheduler-not-set-up.
+     * Matched after per-symbol `commonMistakes`, before the fuzzy fallback.
+     */
+    globalMistakes?: CommonMistake[];
     /** Provenance for sync scripts and staleness checks. */
     meta?: {
         version?: string;
@@ -4454,6 +4503,14 @@ interface FormatOptions {
     index?: DocsIndex;
     /** Override the base URL pattern used for suggestion.docsUrl. */
     docsUrlFor?: (runtime: RuntimeId, name: string) => string;
+    /**
+     * A window of user source code around the throw — typically the line
+     * the error happened on plus a couple of neighbours. Used by
+     * `CommonMistake` detectors of `kind: 'code'` to recognise wrong-shape
+     * idioms (`chord(C)` vs `chord("C")`) without needing a full parse.
+     * Caller is free to omit it; `kind: 'code'` detectors simply won't fire.
+     */
+    codeContext?: string;
 }
 /**
  * Build a FriendlyErrorParts from a raw thrown value. When `index` is

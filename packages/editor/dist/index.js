@@ -5643,12 +5643,12 @@ function SpiralSketch(_hapStreamRef, _analyserRef, schedulerRef) {
         p.strokeWeight(margin / 2);
         p.strokeCap("round");
         p.beginShape();
-        const inc = 1 / 60;
+        const inc2 = 1 / 60;
         let angle2 = from;
         while (angle2 <= to) {
           const [x, y] = xyOnSpiral(angle2, margin, cx, cy, rotate);
           p.vertex(x, y);
-          angle2 += inc;
+          angle2 += inc2;
         }
         p.endShape();
       }
@@ -6625,7 +6625,48 @@ function validateDocsIndex(label, raw) {
         `${label}: entry "${name2}" is missing string "description"`
       );
     }
+    if (e.commonMistakes !== void 0) {
+      validateMistakes(`${label}: entry "${name2}".commonMistakes`, e.commonMistakes);
+    }
   }
+  if (r.globalMistakes !== void 0) {
+    validateMistakes(`${label}: globalMistakes`, r.globalMistakes);
+  }
+}
+function validateMistakes(label, raw) {
+  if (!Array.isArray(raw)) {
+    throw new Error(`${label} must be an array`);
+  }
+  raw.forEach((item, idx) => {
+    if (!item || typeof item !== "object") {
+      throw new Error(`${label}[${idx}] must be an object`);
+    }
+    const m = item;
+    if (typeof m.hint !== "string" || m.hint.length === 0) {
+      throw new Error(`${label}[${idx}] requires non-empty string "hint"`);
+    }
+    const detect = m.detect;
+    if (!detect || typeof detect !== "object") {
+      throw new Error(`${label}[${idx}] requires object "detect"`);
+    }
+    if (detect.kind === "identifier") {
+      if (typeof detect.alias !== "string" || detect.alias.length === 0) {
+        throw new Error(
+          `${label}[${idx}].detect (identifier) requires non-empty string "alias"`
+        );
+      }
+    } else if (detect.kind === "message" || detect.kind === "code") {
+      if (typeof detect.match !== "string" && !(detect.match instanceof RegExp)) {
+        throw new Error(
+          `${label}[${idx}].detect (${detect.kind}) requires string|RegExp "match"`
+        );
+      }
+    } else {
+      throw new Error(
+        `${label}[${idx}].detect.kind must be "message" | "code" | "identifier"`
+      );
+    }
+  });
 }
 
 // src/monaco/docs/providers.ts
@@ -9294,7 +9335,18 @@ var STRUDEL_DOCS = {
   every: {
     signature: ".every(n, fn)",
     description: "Apply fn to the pattern every n cycles.",
-    example: 'note("c4 e4 g4").every(4, x => x.rev())'
+    example: 'note("c4 e4 g4").every(4, x => x.rev())',
+    commonMistakes: [
+      {
+        // Calling `every(...)` as a free function instead of chaining
+        // it on a Pattern surfaces as `every is not a function` (when
+        // shadowed) or `every is not defined`. Both end up confusing —
+        // the curated hint points at the `.every()` shape directly.
+        detect: { kind: "message", match: /every is not (?:a function|defined)/ },
+        hint: "`.every(n, fn)` is a method on a Pattern \u2014 chain it after `note(...)` or `s(...)`.",
+        weight: 2
+      }
+    ]
   },
   sometimes: {
     signature: ".sometimes(fn)",
@@ -9415,6 +9467,35 @@ var STRUDEL_DOCS = {
 var STRUDEL_DOCS_INDEX = {
   runtime: "strudel",
   docs: STRUDEL_DOCS,
+  // Catch-all friendly-error hints that aren't tied to a single symbol.
+  // The two cases below are the highest-frequency Strudel papercut:
+  // bare note / drum names outside a string. JS evaluates them as
+  // identifiers and throws ReferenceError — without these hints the
+  // user sees "c4 is not defined" with a Levenshtein neighbour
+  // ("cat"?) that doesn't help.
+  globalMistakes: [
+    {
+      detect: {
+        kind: "message",
+        // Note names: c, d, e, f, g, a, b — optional sharp/flat,
+        // optional octave digit. Anchored to start so we don't match
+        // mid-message references.
+        match: /^[a-g][s#b]?\d? is not defined$/i
+      },
+      hint: 'Looks like a note name \u2014 wrap it in a string: `note("c4")`.',
+      example: 'note("c4 e4 g4")'
+    },
+    {
+      detect: {
+        kind: "message",
+        // Drum / sample shorthands. Curated list; expand as we
+        // observe new ones in the wild.
+        match: /^(bd|sd|hh|oh|cp|cb|rim|tom|cy|kick|snare|hat|clap|crash|ride) is not defined$/i
+      },
+      hint: 'Looks like a drum name \u2014 wrap it in a string: `s("bd")`.',
+      example: 's("bd sd hh sd")'
+    }
+  ],
   meta: {
     source: "hand-curated",
     // Strudel's jsdoc isn't published with per-function permalinks, so
@@ -13644,7 +13725,21 @@ var p5_default = {
 
 // src/monaco/docs/p5.ts
 validateDocsIndex("p5.json", p5_default);
-var P5_DOCS_INDEX = p5_default;
+var P5_GLOBAL_MISTAKES = [
+  {
+    // A common pattern from session-5 observation: `width` / `height`
+    // referenced before `setup()` ran — the wrapper-time stack puts
+    // these as `ReferenceError: width is not defined` because they're
+    // sketch-instance properties, not real globals.
+    detect: { kind: "message", match: /^(width|height) is not defined$/ },
+    hint: "`width` / `height` only become available once `setup()` runs. Move the read inside `setup()` or `draw()`."
+  }
+];
+var RAW_INDEX = p5_default;
+var P5_DOCS_INDEX = {
+  ...RAW_INDEX,
+  globalMistakes: [...RAW_INDEX.globalMistakes ?? [], ...P5_GLOBAL_MISTAKES]
+};
 function registerP5Providers(monaco) {
   return registerRuntimeProviders(monaco, P5_DOCS_INDEX, {
     hover: true,
@@ -14162,7 +14257,26 @@ var hydra_default = {
 
 // src/monaco/docs/hydra.ts
 validateDocsIndex("hydra.json", hydra_default);
-var HYDRA_DOCS_INDEX = hydra_default;
+var HYDRA_GLOBAL_MISTAKES = [
+  {
+    // `out` is a method on a chain (`osc().out()`), not a free fn.
+    // Calling it bare surfaces as `out is not a function` (when it's
+    // shadowed) or — more often — `out is not defined`. Levenshtein
+    // would match `out` to itself as a symbol, but the existing fuzzy
+    // path returns "Did you mean out?" which isn't useful.
+    detect: { kind: "message", match: /^out is not (?:a function|defined)$/ },
+    hint: "Hydra outputs render by calling `.out()` on a chain \u2014 try `osc().out()`.",
+    example: "osc(20, 0.1, 1.0).out()"
+  }
+];
+var HYDRA_RAW_INDEX = hydra_default;
+var HYDRA_DOCS_INDEX = {
+  ...HYDRA_RAW_INDEX,
+  globalMistakes: [
+    ...HYDRA_RAW_INDEX.globalMistakes ?? [],
+    ...HYDRA_GLOBAL_MISTAKES
+  ]
+};
 function registerHydraProviders(monaco) {
   return registerRuntimeProviders(monaco, HYDRA_DOCS_INDEX, {
     hover: true,
@@ -19657,6 +19771,10 @@ var VirtualTimeScheduler = class {
       return entry.time + entry.order * HEAP_TIEBREAK_EPSILON;
     });
   }
+  /** Public read of the current audio-context time (used by current_time at top level — #226). */
+  get audioTime() {
+    return this.getAudioTime();
+  }
   get running() {
     return this._running;
   }
@@ -19958,8 +20076,14 @@ var UPPER_MASK = 2147483648;
 var LOWER_MASK = 2147483647;
 var SeededRandom = class _SeededRandom {
   constructor(seed = 0) {
+    /** Last seed passed to constructor or reset() — used by rand_reset / current_random_seed (#227). */
+    this._lastSeed = 0;
+    /** Number of next() / genrandInt32() draws since the last seed/reset — used by rand_back / current_random_seed (#227). */
+    this._idx = 0;
     this.mt = new Int32Array(N);
     this.mti = N + 1;
+    this._lastSeed = seed >>> 0;
+    this._idx = 0;
     this.initGenrand(seed >>> 0);
   }
   /** Initialize the state array with a seed. */
@@ -19999,6 +20123,7 @@ var SeededRandom = class _SeededRandom {
   next() {
     const a = this.genrandInt32() >>> 5;
     const b = this.genrandInt32() >>> 6;
+    this._idx++;
     return (a * 67108864 + b) / 9007199254740992;
   }
   /** Random float in [min, max]. */
@@ -20019,23 +20144,56 @@ var SeededRandom = class _SeededRandom {
   }
   /** Reset seed. */
   reset(seed) {
+    this._lastSeed = seed >>> 0;
+    this._idx = 0;
     this.initGenrand(seed >>> 0);
+  }
+  /**
+   * Read the seed-plus-index — matches Desktop SP's `current_random_seed`
+   * (`SPRand.get_seed_plus_idx`). Increments by one for each `next()` draw. (#227)
+   */
+  getSeedPlusIdx() {
+    return this._lastSeed + this._idx;
+  }
+  /**
+   * Re-seed to the last seed and skip forward `count` draws. Used by
+   * rand_back / rand_reset / rand_skip (#227). MT19937 isn't trivially
+   * reversible, so we re-init and replay forward — cheap enough for the
+   * `rand_back(small N)` use case (one Knuth init + N draws).
+   */
+  setIdx(count) {
+    if (count < 0) count = 0;
+    this.initGenrand(this._lastSeed);
+    this._idx = 0;
+    for (let i2 = 0; i2 < count; i2++) this.next();
+  }
+  /** Decrement idx by `amount` (clamped at 0). Matches Desktop SP rand_back. (#227) */
+  decIdx(amount = 1) {
+    this.setIdx(Math.max(0, this._idx - amount));
+  }
+  /** Increment idx by `amount` (advance the stream). Matches Desktop SP rand_skip. (#227) */
+  incIdx(amount = 1) {
+    for (let i2 = 0; i2 < amount; i2++) this.next();
   }
   /** Clone current state. */
   clone() {
     const r = new _SeededRandom();
     r.mt.set(this.mt);
     r.mti = this.mti;
+    r._lastSeed = this._lastSeed;
+    r._idx = this._idx;
     return r;
   }
   /** Snapshot state for save/restore (used by with_random_seed). */
   getState() {
-    return { mt: new Uint32Array(this.mt), mti: this.mti };
+    return { mt: new Uint32Array(this.mt), mti: this.mti, lastSeed: this._lastSeed, idx: this._idx };
   }
   /** Restore state from snapshot. */
   setState(state4) {
     this.mt.set(state4.mt);
     this.mti = state4.mti;
+    if (state4.lastSeed !== void 0) this._lastSeed = state4.lastSeed;
+    if (state4.idx !== void 0) this._idx = state4.idx;
   }
   /** Return next value without advancing state. */
   peek() {
@@ -20082,6 +20240,27 @@ function hzToMidi(freq) {
 }
 function noteToFreq2(note2) {
   return midiToFreq5(noteToMidi2(note2));
+}
+var PITCH_CLASS_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"];
+var NoteInfo = class {
+  constructor(midi) {
+    this._midi = midi;
+  }
+  midi_note() {
+    return this._midi;
+  }
+  octave() {
+    return Math.floor(Math.round(this._midi) / 12) - 1;
+  }
+  pitch_class() {
+    return PITCH_CLASS_NAMES[(Math.round(this._midi) % 12 + 12) % 12];
+  }
+  to_s() {
+    return `${this.pitch_class()}${this.octave()}`;
+  }
+};
+function noteInfo(n) {
+  return new NoteInfo(noteToMidi2(n));
 }
 
 // ../../../sonicPiWeb/src/engine/Ring.ts
@@ -20251,6 +20430,45 @@ function range(start2, end, stepOrOpts = 1) {
   }
   return new Ring(result);
 }
+var Ramp = class {
+  constructor(items) {
+    this._tick = 0;
+    this.items = [...items];
+    return new Proxy(this, {
+      get(target, prop, receiver) {
+        if (typeof prop === "string") {
+          const n = Number(prop);
+          if (!isNaN(n) && String(n) === prop) return target.at(n);
+        }
+        return Reflect.get(target, prop, receiver);
+      }
+    });
+  }
+  get length() {
+    return this.items.length;
+  }
+  at(index) {
+    if (this.items.length === 0) return void 0;
+    if (index <= 0) return this.items[0];
+    if (index >= this.items.length) return this.items[this.items.length - 1];
+    return this.items[index];
+  }
+  tick() {
+    return this.at(this._tick++);
+  }
+  look() {
+    return this.at(this._tick);
+  }
+  resetTick() {
+    this._tick = 0;
+  }
+  toArray() {
+    return [...this.items];
+  }
+  [Symbol.iterator]() {
+    return this.items[Symbol.iterator]();
+  }
+};
 function line(start2, finish, stepsOrOpts = 4) {
   const steps = typeof stepsOrOpts === "number" ? stepsOrOpts : stepsOrOpts.steps ?? 4;
   const result = [];
@@ -20594,6 +20812,24 @@ var ProgramBuilder = class _ProgramBuilder {
     this._debug = true;
     this._argBpmScaling = true;
     this._currentBpm = 60;
+    // Iteration-context fields for current_time / current_beat introspection (#226).
+    // Set once per iteration by SonicPiEngine before invoking the user body callback.
+    // _currentBeat persists across iterations via engine's loopBeats map; the other
+    // two reset because the builder is recreated each iteration.
+    this._iterationStartAudioTime = 0;
+    this._currentBuildSeconds = 0;
+    this._currentBeat = 0;
+    this._schedAheadTime = 0;
+    // --- OSC: deferred (issue #196) ---
+    /**
+     * Builder-captured OSC defaults for the `osc` shorthand. `use_osc`
+     * mutates these synchronously at build time AND emits a deferred
+     * `useOsc` step (the latter is for cross-task visibility).
+     * `osc(path, ...)` reads these at build time and pushes a deferred
+     * `oscSend` step using the captured destination.
+     */
+    this._oscHost = "localhost";
+    this._oscPort = 4560;
     // --- Data constructors (pure, no side effects) ---
     this.ring = ring;
     this.knit = knit;
@@ -20607,6 +20843,7 @@ var ProgramBuilder = class _ProgramBuilder {
     this.note_range = note_range;
     this.noteToMidi = noteToMidi2;
     this.midiToFreq = midiToFreq5;
+    this.note_info = noteInfo;
     // --- Wave 1 DSL additions ---
     this.hz_to_midi = hzToMidi;
     this.midi_to_hz = midiToFreq5;
@@ -20659,7 +20896,10 @@ var ProgramBuilder = class _ProgramBuilder {
     });
   }
   sleep(beats) {
-    this.steps.push({ tag: "sleep", beats: beats / this.densityFactor });
+    const scaled = beats / this.densityFactor;
+    this.steps.push({ tag: "sleep", beats: scaled });
+    this._currentBeat += scaled;
+    this._currentBuildSeconds += scaled * 60 / this._currentBpm;
     this._budgetRemaining = DEFAULT_LOOP_BUDGET;
     return this;
   }
@@ -20703,6 +20943,74 @@ var ProgramBuilder = class _ProgramBuilder {
     this.rng.reset(seed);
     return this;
   }
+  /** Read seed + idx — matches Desktop SP's current_random_seed. (#227) */
+  current_random_seed() {
+    return this.rng.getSeedPlusIdx();
+  }
+  /**
+   * Roll the rand stream back by `amount` draws. Returns the value the next
+   * `rand` would now produce (peek). Matches Desktop SP rand_back. (#227)
+   */
+  rand_back(amount = 1) {
+    this.rng.decIdx(amount);
+    return this.rng.peek();
+  }
+  /**
+   * Skip the rand stream forward by `amount` draws. Returns the value the next
+   * `rand` would now produce (peek). Matches Desktop SP rand_skip. (#227)
+   */
+  rand_skip(amount = 1) {
+    this.rng.incIdx(amount);
+    return this.rng.peek();
+  }
+  /** Reset rand stream to its last seed (equivalent to setIdx 0). (#227) */
+  rand_reset() {
+    this.rng.setIdx(0);
+    return this;
+  }
+  /**
+   * Seed the per-iteration introspection state. Called by SonicPiEngine before
+   * invoking the user's body callback.
+   *
+   * - `audioTime` is the task's virtualTime at iteration start (current_time)
+   * - `beat` is the persisted across-iteration beat counter (current_beat)
+   * - `schedAhead` is the engine's schedule-ahead window (current_sched_ahead_time)
+   * - `bpm` (optional) seeds _currentBpm so current_beat_duration reflects the
+   *    task's bpm without pushing a useBpm step. User's `use_bpm` inside the
+   *    body still overrides per-step.
+   * (#226)
+   */
+  setIterationContext(audioTime, beat, schedAhead, bpm) {
+    this._iterationStartAudioTime = audioTime;
+    this._currentBeat = beat;
+    this._currentBuildSeconds = 0;
+    this._schedAheadTime = schedAhead;
+    if (bpm !== void 0) this._currentBpm = bpm;
+  }
+  /** Read the build-phase beat counter (engine persists this across iterations). */
+  get currentBeatRaw() {
+    return this._currentBeat;
+  }
+  /** Sum of `sleep` arguments since the loop started. Matches Desktop SP. (#226) */
+  current_beat() {
+    return this._currentBeat;
+  }
+  /** Duration of one beat in seconds at the current bpm. (#226) */
+  current_beat_duration() {
+    return 60 / this._currentBpm;
+  }
+  /**
+   * Logical (virtual) time in seconds at the current build position. Quantised
+   * to the most recent sleep — matches Desktop SP's "wall-clock time quantised
+   * to a nearby sleep point". (#226)
+   */
+  current_time() {
+    return this._iterationStartAudioTime + this._currentBuildSeconds;
+  }
+  /** Engine's schedule-ahead window in seconds. (#226) */
+  current_sched_ahead_time() {
+    return this._schedAheadTime;
+  }
   cue(name2, ...args2) {
     this.steps.push({ tag: "cue", name: name2, args: args2 });
     return this;
@@ -20735,6 +21043,10 @@ var ProgramBuilder = class _ProgramBuilder {
     inner._transpose = this._transpose;
     inner._synthDefaults = { ...this._synthDefaults };
     inner._sampleDefaults = { ...this._sampleDefaults };
+    inner._iterationStartAudioTime = this._iterationStartAudioTime;
+    inner._currentBuildSeconds = this._currentBuildSeconds;
+    inner._currentBeat = this._currentBeat;
+    inner._schedAheadTime = this._schedAheadTime;
     fn(inner, fxRef);
     const fxOpts = !this._argBpmScaling ? { ...opts, _argBpmScaling: 0 } : opts;
     this.steps.push({ tag: "fx", name: name2, opts: fxOpts, body: inner.build(), nodeRef: fxRef });
@@ -20748,6 +21060,10 @@ var ProgramBuilder = class _ProgramBuilder {
     inner._transpose = this._transpose;
     inner._synthDefaults = { ...this._synthDefaults };
     inner._sampleDefaults = { ...this._sampleDefaults };
+    inner._iterationStartAudioTime = this._iterationStartAudioTime;
+    inner._currentBuildSeconds = this._currentBuildSeconds;
+    inner._currentBeat = this._currentBeat;
+    inner._schedAheadTime = this._schedAheadTime;
     buildFn(inner);
     this.steps.push({ tag: "thread", body: inner.build() });
     return this;
@@ -20777,14 +21093,149 @@ var ProgramBuilder = class _ProgramBuilder {
     this.steps.push({ tag: "stop" });
     return this;
   }
+  /**
+   * Stop a named live_loop at the scheduled time (issue #194).
+   * Without this deferred step, `stop_loop :name` inside a live_loop
+   * fires at BUILD time (beat 0), killing target loops before any
+   * preceding `sleep` elapses — silent failure mode confirmed by
+   * the welcome-buffer finale bug.
+   */
+  stop_loop(name2) {
+    this.steps.push({ tag: "stopLoop", name: name2 });
+    return this;
+  }
   /** Free a running synth node immediately. */
   kill(nodeRef) {
     this.steps.push({ tag: "kill", nodeRef });
     return this;
   }
+  /**
+   * Set master volume at the scheduled time (issue #197).
+   * Without this deferred step, ducking patterns
+   * (`set_volume 0.3; sleep 4; set_volume 1.0`) collapse: both calls
+   * fire at beat 0, last-writer wins, no ducking.
+   */
+  set_volume(vol) {
+    this.steps.push({ tag: "setVolume", vol });
+    return this;
+  }
+  // --- Recording (#228) — deferred steps -----------------------------------
+  // Lifecycle is sequenced against the scheduled program, not the build
+  // pass. The user's mental model is "start, play 8 notes, stop, save" —
+  // running them at build time fires save before any audio plays.
+  // Cross-engine arity ethic: rest args + length guard so passing extras
+  // errors instead of silently swallowing.
+  recording_start(...args2) {
+    if (args2.length > 0) {
+      throw new Error(`recording_start expects no arguments, got ${args2.length}`);
+    }
+    this.steps.push({ tag: "recordingStart" });
+    return this;
+  }
+  recording_stop(...args2) {
+    if (args2.length > 0) {
+      throw new Error(`recording_stop expects no arguments, got ${args2.length}`);
+    }
+    this.steps.push({ tag: "recordingStop" });
+    return this;
+  }
+  recording_save(...args2) {
+    if (args2.length === 0 || args2.length > 1) {
+      throw new Error(`recording_save expects 1 argument (filename), got ${args2.length}`);
+    }
+    const filename = args2[0];
+    if (typeof filename !== "string") {
+      throw new Error(`recording_save: filename must be a string, got ${typeof filename}`);
+    }
+    this.steps.push({ tag: "recordingSave", filename });
+    return this;
+  }
+  recording_delete(...args2) {
+    if (args2.length > 0) {
+      throw new Error(`recording_delete expects no arguments, got ${args2.length}`);
+    }
+    this.steps.push({ tag: "recordingDelete" });
+    return this;
+  }
+  use_osc(host, port) {
+    this._oscHost = host;
+    this._oscPort = port;
+    this.steps.push({ tag: "useOsc", host, port });
+    return this;
+  }
+  /** Emit an OSC message to the use_osc-set default destination. */
+  osc(path, ...args2) {
+    this.steps.push({ tag: "oscSend", host: this._oscHost, port: this._oscPort, path, args: args2 });
+    return this;
+  }
   /** Emit an OSC message — the host provides the actual transport. */
   osc_send(host, port, path, ...args2) {
     this.steps.push({ tag: "oscSend", host, port, path, args: args2 });
+    return this;
+  }
+  // --- MIDI output: 14 deferred entry points (issue #195) ---
+  // All push a `midiOut` step with a `kind` discriminator. The interpreter
+  // dispatches at scheduled virtual time. Auto note-off for `midi(...)` is
+  // BPM-aware (sustain in beats → seconds via the task's current bpm).
+  /** midi shorthand: note-on + auto note-off after `sustain` beats. */
+  midi(note2, opts = {}) {
+    const sustain = opts.sustain ?? 1;
+    const velocity = opts.velocity ?? opts.vel ?? 100;
+    const channel = opts.channel ?? 1;
+    this.steps.push({ tag: "midiOut", kind: "noteOn", args: [note2, velocity, channel] });
+    this.steps.push({ tag: "midiOut", kind: "noteOff", args: [note2, channel, sustain] });
+    return this;
+  }
+  midi_note_on(note2, velocity = 100, opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "noteOn", args: [note2, velocity, opts.channel ?? 1] });
+    return this;
+  }
+  midi_note_off(note2, opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "noteOff", args: [note2, opts.channel ?? 1, 0] });
+    return this;
+  }
+  midi_cc(controller, value, opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "cc", args: [controller, value, opts.channel ?? 1] });
+    return this;
+  }
+  midi_pitch_bend(val, opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "pitchBend", args: [val, opts.channel ?? 1] });
+    return this;
+  }
+  midi_channel_pressure(val, opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "channelPressure", args: [val, opts.channel ?? 1] });
+    return this;
+  }
+  midi_poly_pressure(note2, val, opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "polyPressure", args: [note2, val, opts.channel ?? 1] });
+    return this;
+  }
+  midi_prog_change(program, opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "progChange", args: [program, opts.channel ?? 1] });
+    return this;
+  }
+  midi_clock_tick() {
+    this.steps.push({ tag: "midiOut", kind: "clockTick", args: [] });
+    return this;
+  }
+  midi_start() {
+    this.steps.push({ tag: "midiOut", kind: "start", args: [] });
+    return this;
+  }
+  midi_stop() {
+    this.steps.push({ tag: "midiOut", kind: "stop", args: [] });
+    return this;
+  }
+  midi_continue() {
+    this.steps.push({ tag: "midiOut", kind: "continue", args: [] });
+    return this;
+  }
+  midi_all_notes_off(opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "allNotesOff", args: [opts.channel ?? 1] });
+    return this;
+  }
+  midi_notes_off(opts = {}) {
+    this.steps.push({ tag: "midiOut", kind: "allNotesOff", args: [opts.channel ?? 1] });
     return this;
   }
   /** Play multiple notes simultaneously as a chord. */
@@ -20831,10 +21282,22 @@ var ProgramBuilder = class _ProgramBuilder {
   rrand_i(min, max) {
     return this.rng.rrand_i(min, max);
   }
-  rand(max = 1) {
+  rand(...args2) {
+    if (args2.length > 1) {
+      throw new Error(
+        `wrong number of arguments to rand (given ${args2.length}, expected 0..1). For a [min, max] range, use rrand(min, max) instead.`
+      );
+    }
+    const max = args2[0] ?? 1;
     return this.rng.rrand(0, max);
   }
-  rand_i(max = 2) {
+  rand_i(...args2) {
+    if (args2.length > 1) {
+      throw new Error(
+        `wrong number of arguments to rand_i (given ${args2.length}, expected 0..1). For a [min, max] integer range, use rrand_i(min, max) instead.`
+      );
+    }
+    const max = args2[0] ?? 2;
     return this.rng.rrand_i(0, max - 1);
   }
   rand_look() {
@@ -20886,6 +21349,14 @@ var ProgramBuilder = class _ProgramBuilder {
   /** Reset ALL tick counters. */
   tick_reset_all() {
     this.ticks.clear();
+  }
+  /** Set a named tick counter to a specific value. Subsequent `tick(name)` returns value+step. */
+  tick_set(nameOrValue, value) {
+    if (typeof nameOrValue === "number") {
+      this.ticks.set("__default", nameOrValue);
+    } else {
+      this.ticks.set(nameOrValue, value ?? 0);
+    }
   }
   // --- Transpose ---
   /** Set transpose offset (semitones) for all subsequent play calls. */
@@ -21020,6 +21491,25 @@ var ProgramBuilder = class _ProgramBuilder {
    */
   bools(...values2) {
     return new Ring(values2.map((v) => v !== 0));
+  }
+  /**
+   * `stretch([1,2,3], 2)` → Ring([1,1,2,2,3,3]). Repeat each element n times.
+   * Ruby invocation `[1,2,3].stretch(2)` is the Ring method; this is the bare form.
+   */
+  stretch(arr, n) {
+    const items = arr instanceof Ring ? arr.toArray() : [...arr];
+    const result = [];
+    for (const item of items) {
+      for (let i2 = 0; i2 < n; i2++) result.push(item);
+    }
+    return new Ring(result);
+  }
+  /**
+   * `ramp(60, 64, 67)` → non-cycling ring: clamps to last value instead of wrapping.
+   * Used for envelope-shape iteration that should hold the final value.
+   */
+  ramp(...values2) {
+    return new Ramp(values2);
   }
   /**
    * Play a sequence of notes with timed intervals.
@@ -21316,7 +21806,7 @@ function normalizePlayParams(synthName, params, bpm, warnFn) {
   p = injectSynthTimeDefaults(synthName, p);
   p = aliasSynthParams(synthName, p);
   p = mungeSynthOpts(synthName, p);
-  p = validateAndClamp(p);
+  p = validateAndClamp(p, warnFn);
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
@@ -21327,7 +21817,7 @@ function normalizeSampleParams(params, bpm, warnFn) {
   p = expandSlideParam(p);
   p = stripNonScynthParams(p);
   p = injectSampleDefaults(p);
-  p = validateAndClamp(p);
+  p = validateAndClamp(p, warnFn);
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
@@ -21335,7 +21825,7 @@ function normalizeControlParams(params, bpm, warnFn) {
   const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
   let p = { ...params };
   p = stripNonScynthParams(p);
-  p = validateAndClamp(p);
+  p = validateAndClamp(p, warnFn);
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
@@ -21345,7 +21835,7 @@ function normalizeFxParams(fxName, params, bpm, warnFn) {
   p = stripNonScynthParams(p);
   p = resolveSymbolDefaults(p);
   p = injectFxTimeDefaults(fxName, p);
-  p = validateAndClamp(p);
+  p = validateAndClamp(p, warnFn);
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
@@ -21465,9 +21955,11 @@ function validateAndClamp(params, warnFn) {
     if (min !== null && val < min) {
       if (p === params) p = { ...params };
       p[key] = min;
+      warnFn?.(`${key}: ${val} clamped to ${min} (min)`);
     } else if (max !== null && val > max) {
       if (p === params) p = { ...params };
       p[key] = max;
+      warnFn?.(`${key}: ${val} clamped to ${max} (max)`);
     }
   }
   return p;
@@ -21603,7 +22095,8 @@ async function runProgram(program, ctx, fxCounter) {
             ctx.bridge.startLiveAudio(synth, { stereo: synth === "sound_in_stereo" }).catch((err2) => ctx.printHandler?.(`Mic input failed: ${err2.message}`));
           }
           step.opts.note = step.note;
-          const params = normalizePlayParams(synth, step.opts, currentBpm);
+          const playWarn = ctx.printHandler ? (m) => ctx.printHandler(`[Warning] play :${synth} \u2014 ${m}`) : void 0;
+          const params = normalizePlayParams(synth, step.opts, currentBpm, playWarn);
           params.out_bus = task.outBus;
           ctx.bridge.triggerSynth(synth, audioTime, params).then((realNodeId) => ctx.nodeRefMap.set(nodeRef, realNodeId)).catch((err2) => {
             ctx.printHandler?.(`Synth '${synth}' failed: ${err2.message}`);
@@ -21661,7 +22154,8 @@ async function runProgram(program, ctx, fxCounter) {
         const realNodeId = ctx.nodeRefMap.get(step.nodeRef);
         if (realNodeId && ctx.bridge) {
           const audioTime = task.virtualTime + ctx.schedAheadTime;
-          const normalized = normalizeControlParams(step.params, currentBpm);
+          const ctlWarn = ctx.printHandler ? (m) => ctx.printHandler(`[Warning] control \u2014 ${m}`) : void 0;
+          const normalized = normalizeControlParams(step.params, currentBpm, ctlWarn);
           const paramList = [];
           for (const [k, v] of Object.entries(normalized)) {
             paramList.push(k, v);
@@ -21726,7 +22220,8 @@ async function runProgram(program, ctx, fxCounter) {
           let fxNodeId;
           try {
             const audioTime = task.virtualTime + ctx.schedAheadTime;
-            const fxOpts = normalizeFxParams(step.name, step.opts, currentBpm);
+            const fxWarn = ctx.printHandler ? (m) => ctx.printHandler(`[Warning] with_fx :${step.name} \u2014 ${m}`) : void 0;
+            const fxOpts = normalizeFxParams(step.name, step.opts, currentBpm, fxWarn);
             fxNodeId = await ctx.bridge.applyFx(step.name, audioTime, fxOpts, newBus, prevOutBus);
             if (step.nodeRef && fxNodeId !== void 0) {
               ctx.nodeRefMap.set(step.nodeRef, fxNodeId);
@@ -21796,6 +22291,100 @@ async function runProgram(program, ctx, fxCounter) {
         ctx.bridge?.flushMessages();
         if (task) task.running = false;
         return;
+      // --- Deferred-step DSL fixes (issue #193) ---
+      case "stopLoop":
+        ctx.scheduler.stopLoop(step.name);
+        break;
+      case "setVolume": {
+        const vol = Math.max(0, Math.min(5, step.vol));
+        if (ctx.onVolumeChange) {
+          ctx.onVolumeChange(vol);
+        } else {
+          ctx.bridge?.setMasterVolume(vol / 5);
+        }
+        break;
+      }
+      case "useOsc":
+        break;
+      case "recordingStart":
+        await ctx.onRecordingEvent?.("start");
+        break;
+      case "recordingStop":
+        await ctx.onRecordingEvent?.("stop");
+        break;
+      case "recordingSave":
+        await ctx.onRecordingEvent?.("save", step.filename);
+        break;
+      case "recordingDelete":
+        await ctx.onRecordingEvent?.("delete");
+        break;
+      case "midiOut": {
+        const mb = ctx.midiBridge;
+        if (!mb) break;
+        const a = step.args;
+        switch (step.kind) {
+          case "noteOn": {
+            const [note2, vel, ch] = a;
+            const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
+            mb.noteOn(n, vel, ch);
+            break;
+          }
+          case "noteOff": {
+            const [note2, ch, sustainBeats] = a;
+            const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
+            if (sustainBeats > 0) {
+              const seconds = sustainBeats * 60 / currentBpm;
+              mb.scheduleNoteOff(n, ch, seconds);
+            } else {
+              mb.noteOff(n, ch);
+            }
+            break;
+          }
+          case "cc": {
+            const [c, v, ch] = a;
+            mb.cc(c, v, ch);
+            break;
+          }
+          case "pitchBend": {
+            const [v, ch] = a;
+            mb.pitchBend(v, ch);
+            break;
+          }
+          case "channelPressure": {
+            const [v, ch] = a;
+            mb.channelPressure(v, ch);
+            break;
+          }
+          case "polyPressure": {
+            const [n, v, ch] = a;
+            mb.polyPressure(n, v, ch);
+            break;
+          }
+          case "progChange": {
+            const [p, ch] = a;
+            mb.programChange(p, ch);
+            break;
+          }
+          case "clockTick":
+            mb.clockTick();
+            break;
+          case "start":
+            mb.midiStart();
+            break;
+          case "stop":
+            mb.midiStop();
+            break;
+          case "continue":
+            mb.midiContinue();
+            break;
+          case "allNotesOff": {
+            const [ch] = a;
+            mb.allNotesOff(ch);
+            break;
+          }
+        }
+        break;
+      }
     }
   }
   ctx.bridge?.flushMessages();
@@ -22213,6 +22802,9 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     this.analyserNode = null;
     this.analyserL = null;
     this.analyserR = null;
+    /** Optional warning sink — set by SonicPiEngine so SoundLayer clamp
+     *  messages for samples reach the UI log (SV19 — accept with signal). */
+    this.warnHandler = null;
     /** rand_buf — buffer of random values for slicer/wobble/panslicer FX.
      *  Desktop SP loads rand-stream.wav (studio.rb:87). We generate in-memory. */
     this.randBufId = -1;
@@ -22262,15 +22854,15 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     }
     this.SuperSonicClass = SuperSonicClass;
     this.oscEncoder = SuperSonicClass.osc ?? { encodeSingleBundle };
-    const pkgBase = "https://unpkg.com/supersonic-scsynth@latest/dist/";
-    const coreBase = "https://unpkg.com/supersonic-scsynth-core@latest/";
-    this.resolvedSampleBaseURL = this.options.sampleBaseURL ?? "https://unpkg.com/supersonic-scsynth-samples@latest/samples/";
+    const pkgBase = "https://unpkg.com/supersonic-scsynth@0.57.0/dist/";
+    const coreBase = "https://unpkg.com/supersonic-scsynth-core@0.57.0/";
+    this.resolvedSampleBaseURL = this.options.sampleBaseURL ?? "https://unpkg.com/supersonic-scsynth-samples@0.57.0/samples/";
     this.sonic = new SuperSonicClass({
       baseURL: this.options.baseURL ?? pkgBase,
       workerBaseURL: this.options.baseURL ?? `${pkgBase}workers/`,
       wasmBaseURL: this.options.coreBaseURL ?? `${coreBase}wasm/`,
       coreBaseURL: this.options.coreBaseURL ?? coreBase,
-      synthdefBaseURL: this.options.synthdefBaseURL ?? "https://unpkg.com/supersonic-scsynth-synthdefs@latest/synthdefs/",
+      synthdefBaseURL: this.options.synthdefBaseURL ?? "https://unpkg.com/supersonic-scsynth-synthdefs@0.57.0/synthdefs/",
       sampleBaseURL: this.resolvedSampleBaseURL,
       autoConnect: false,
       scsynthOptions: { numOutputBusChannels: NUM_OUTPUT_CHANNELS }
@@ -22341,6 +22933,15 @@ var _SuperSonicBridge = class _SuperSonicBridge {
   }
   get analyser() {
     return this.analyserNode;
+  }
+  /**
+   * Master output node — sits between scsynth's mixer output and
+   * `audioContext.destination`. Tap point for the DSL `recording_*`
+   * functions (#228). Downstream of all SoundLayer param normalization,
+   * so recording captures exactly what the user hears.
+   */
+  get masterOutputNode() {
+    return this.masterGainNode;
   }
   get analyserLeft() {
     return this.analyserL;
@@ -22523,7 +23124,8 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     const nodeId = this.sonic.nextNodeId();
     const duration = this.sampleDurations.get(sampleName) ?? null;
     const translated = translateSampleOpts(opts, bpm ?? 60, duration);
-    const params = normalizeSampleParams(translated, bpm ?? 60);
+    const sampleWarn = this.warnHandler ? (m) => this.warnHandler(`[Warning] sample :${sampleName} \u2014 ${m}`) : void 0;
+    const params = normalizeSampleParams(translated, bpm ?? 60, sampleWarn);
     const paramList = ["buf", bufNum];
     for (const key in params) {
       paramList.push(key, params[key]);
@@ -22893,6 +23495,310 @@ _SuperSonicBridge.RAND_BUF_FX = /* @__PURE__ */ new Set([
 ]);
 var SuperSonicBridge = _SuperSonicBridge;
 
+// ../../../sonicPiWeb/src/engine/Recorder.ts
+var DEFAULT_CHANNELS = 2;
+var RECORDER_CHUNK_INTERVAL_MS = 100;
+var WAV_HEADER_SIZE = 44;
+var WAV_FMT_CHUNK_SIZE = 16;
+var WAV_FMT_PCM = 1;
+var BITS_PER_SAMPLE = 16;
+var BYTES_PER_SAMPLE = 2;
+var WAV_RIFF_DATA_OFFSET = 36;
+var INT16_NEGATIVE_SCALE = 32768;
+var INT16_POSITIVE_SCALE = 32767;
+var Recorder = class _Recorder {
+  constructor(audioCtx, source, options) {
+    this.mediaRecorder = null;
+    this.destination = null;
+    this.chunks = [];
+    this._state = "idle";
+    this.audioCtx = audioCtx;
+    this.source = source;
+    this.channels = options?.channels ?? DEFAULT_CHANNELS;
+  }
+  get state() {
+    return this._state;
+  }
+  /** Start recording. */
+  start() {
+    if (this._state === "recording") return;
+    this.destination = this.audioCtx.createMediaStreamDestination();
+    this.source.connect(this.destination);
+    this.chunks = [];
+    this.mediaRecorder = new MediaRecorder(this.destination.stream, {
+      mimeType: this.getSupportedMimeType()
+    });
+    this.mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) this.chunks.push(e.data);
+    };
+    this.mediaRecorder.start(RECORDER_CHUNK_INTERVAL_MS);
+    this._state = "recording";
+  }
+  /** Stop recording and return the audio as a WAV Blob. */
+  async stop() {
+    return new Promise((resolve, reject) => {
+      if (!this.mediaRecorder || this._state !== "recording") {
+        reject(new Error("Not recording"));
+        return;
+      }
+      this.mediaRecorder.onstop = async () => {
+        try {
+          if (this.destination) {
+            try {
+              this.source.disconnect(this.destination);
+            } catch {
+            }
+          }
+          const blob = new Blob(this.chunks, { type: this.mediaRecorder.mimeType });
+          const wavBlob = await this.blobToWav(blob);
+          this._state = "stopped";
+          resolve(wavBlob);
+        } catch (err2) {
+          reject(err2);
+        }
+      };
+      this.mediaRecorder.stop();
+    });
+  }
+  /** Stop recording and trigger a browser download. */
+  async stopAndDownload(filename) {
+    const blob = await this.stop();
+    _Recorder.saveBlobToDownload(blob, filename);
+  }
+  /**
+   * Trigger a browser download for an already-captured Blob.
+   * Split out from stopAndDownload so the DSL `recording_save` step
+   * can be invoked separately from `recording_stop` (#228).
+   */
+  static saveBlobToDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename ?? `sonicpi-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[T:]/g, "-")}.wav`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  /** Cancel recording without saving. */
+  cancel() {
+    if (this.mediaRecorder && this._state === "recording") {
+      this.mediaRecorder.stop();
+    }
+    if (this.destination) {
+      try {
+        this.source.disconnect(this.destination);
+      } catch {
+      }
+    }
+    this.chunks = [];
+    this._state = "idle";
+  }
+  getSupportedMimeType() {
+    const types = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg"];
+    for (const t of types) {
+      if (MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return "";
+  }
+  /** Convert a recorded blob (webm/ogg) to WAV format. */
+  async blobToWav(blob) {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer);
+    const numChannels = Math.min(audioBuffer.numberOfChannels, this.channels);
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length;
+    const blockAlign = numChannels * BYTES_PER_SAMPLE;
+    const dataSize = length * blockAlign;
+    const buffer = new ArrayBuffer(WAV_HEADER_SIZE + dataSize);
+    const view = new DataView(buffer);
+    this.writeString(view, 0, "RIFF");
+    view.setUint32(4, WAV_RIFF_DATA_OFFSET + dataSize, true);
+    this.writeString(view, 8, "WAVE");
+    this.writeString(view, 12, "fmt ");
+    view.setUint32(16, WAV_FMT_CHUNK_SIZE, true);
+    view.setUint16(20, WAV_FMT_PCM, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, BITS_PER_SAMPLE, true);
+    this.writeString(view, 36, "data");
+    view.setUint32(40, dataSize, true);
+    const channels = [];
+    for (let ch = 0; ch < numChannels; ch++) {
+      channels.push(audioBuffer.getChannelData(ch));
+    }
+    let offset = WAV_HEADER_SIZE;
+    for (let i2 = 0; i2 < length; i2++) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        const sample = Math.max(-1, Math.min(1, channels[ch][i2]));
+        view.setInt16(offset, sample < 0 ? sample * INT16_NEGATIVE_SCALE : sample * INT16_POSITIVE_SCALE, true);
+        offset += BYTES_PER_SAMPLE;
+      }
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+  writeString(view, offset, str) {
+    for (let i2 = 0; i2 < str.length; i2++) {
+      view.setUint8(offset + i2, str.charCodeAt(i2));
+    }
+  }
+};
+
+// ../../../sonicPiWeb/src/engine/DslNames.ts
+var DSL_NAMES = [
+  "__b",
+  "live_loop",
+  "with_fx",
+  "use_bpm",
+  "use_synth",
+  "use_random_seed",
+  "use_arg_bpm_scaling",
+  "with_arg_bpm_scaling",
+  "in_thread",
+  "at",
+  "density",
+  "ring",
+  "knit",
+  "range",
+  "line",
+  "spread",
+  "rrand",
+  "rrand_i",
+  "rand",
+  "rand_i",
+  "choose",
+  "dice",
+  "one_in",
+  "rdist",
+  "chord",
+  "scale",
+  "chord_invert",
+  "note",
+  "note_range",
+  "chord_degree",
+  "degree",
+  "chord_names",
+  "scale_names",
+  "noteToMidi",
+  "midiToFreq",
+  "noteToFreq",
+  "note_info",
+  "hz_to_midi",
+  "midi_to_hz",
+  "quantise",
+  "quantize",
+  "octs",
+  "current_bpm",
+  "puts",
+  "print",
+  "stop",
+  "stop_loop",
+  // Volume & introspection
+  "set_volume",
+  "current_synth",
+  "current_volume",
+  // Catalog queries
+  "synth_names",
+  "fx_names",
+  "all_sample_names",
+  // Sample management
+  "load_sample",
+  "sample_info",
+  // Global store
+  "get",
+  "set",
+  // Sample catalog
+  "sample_names",
+  "sample_groups",
+  "sample_loaded",
+  "sample_duration",
+  // MIDI input
+  "get_cc",
+  "get_pitch_bend",
+  "get_note_on",
+  "get_note_off",
+  // MIDI output
+  "midi",
+  "midi_note_on",
+  "midi_note_off",
+  "midi_cc",
+  "midi_pitch_bend",
+  "midi_channel_pressure",
+  "midi_poly_pressure",
+  "midi_prog_change",
+  "midi_clock_tick",
+  "midi_start",
+  "midi_stop",
+  "midi_continue",
+  "midi_all_notes_off",
+  "midi_notes_off",
+  "midi_devices",
+  // OSC
+  "use_osc",
+  "osc",
+  "osc_send",
+  // Sample BPM
+  "use_sample_bpm",
+  // Debug (no-op in browser — silences log output in Desktop SP)
+  "use_debug",
+  // Latency — set schedule-ahead to 0 for responsive MIDI input (#149)
+  "use_real_time",
+  // Tier A — global tick context (#211)
+  "tick",
+  "look",
+  "tick_set",
+  "tick_reset",
+  "tick_reset_all",
+  // Tier A — ring helpers (#211)
+  "pick",
+  "shuffle",
+  "stretch",
+  "bools",
+  "ramp",
+  // Tier A — pattern helpers (#211)
+  "play_pattern",
+  "play_chord",
+  "play_pattern_timed",
+  // Tier A — asserts + counter helpers (#211)
+  "assert",
+  "assert_equal",
+  "assert_similar",
+  "assert_not",
+  "assert_error",
+  "inc",
+  "dec",
+  // Tier A — define is transpiler-handled (TreeSitterTranspiler.transpileDefine);
+  // these names are blocklist-safe entries so user code that introspects them
+  // doesn't fall through to globalThis. (#211)
+  "define",
+  "ndefine",
+  // Tier A — time_warp is transpiler-handled (transpileTimeWarp → __b.at(...)).
+  // Runtime stub is a fallback for the regex transpiler path. (#211)
+  "time_warp",
+  // Tier B — timing introspection (#226). Inside live_loops these route to
+  // __b.current_* for per-task reads; at top level they read engine state.
+  "current_beat",
+  "current_beat_duration",
+  "current_time",
+  "current_sched_ahead_time",
+  // Tier B — PRNG inspection (#227). Per-task reads/mutations of the rand
+  // stream. All four are pure build-time on the per-loop builder's RNG.
+  "current_random_seed",
+  "rand_back",
+  "rand_skip",
+  "rand_reset",
+  // Tier B — recording (#228). Top-level immediate side effects (session
+  // lifecycle, not music events) — no ProgramBuilder methods. recording_*
+  // tap masterOutputNode on SuperSonicBridge, downstream of all SoundLayer
+  // param normalization, so the WAV captures exactly what the user hears.
+  "recording_start",
+  "recording_stop",
+  "recording_save",
+  "recording_delete"
+];
+
 // ../../../sonicPiWeb/src/engine/Sandbox.ts
 var SANDBOX_WRAPPER_LINES = 37;
 var BLOCKED_GLOBALS = [
@@ -22922,10 +23828,15 @@ var BLOCKED_GLOBALS = [
   "Function"
 ];
 var BLOCKED_SET = new Set(BLOCKED_GLOBALS);
-function createIsolatedExecutor(transpiledCode, dslParamNames) {
+function createIsolatedExecutor(transpiledCode, dslParamNames, extraScope) {
   const scopeBase = {};
   for (const name2 of BLOCKED_GLOBALS) {
     scopeBase[name2] = void 0;
+  }
+  if (extraScope) {
+    for (const [k, v] of Object.entries(extraScope)) {
+      scopeBase[k] = v;
+    }
   }
   const scopeStack = [];
   const scopeLocals = /* @__PURE__ */ new Map();
@@ -22948,7 +23859,7 @@ function createIsolatedExecutor(transpiledCode, dslParamNames) {
     set(target, prop, value) {
       if (typeof prop === "string") {
         const currentScopeName = scopeStack[scopeStack.length - 1] ?? null;
-        if (currentScopeName !== null) {
+        if (currentScopeName !== null && currentScopeName !== "__run_once") {
           let locals = scopeLocals.get(currentScopeName);
           if (!locals) {
             locals = /* @__PURE__ */ new Map();
@@ -22976,8 +23887,10 @@ function createIsolatedExecutor(transpiledCode, dslParamNames) {
 `;
   const arrayAtPolyfill = `{ const _origAt = Array.prototype.at; Object.defineProperty(Array.prototype, 'at', { value: function(i) { return this[((i % this.length) + this.length) % this.length]; }, writable: true, configurable: true }); }
 `;
+  const arrayTakePolyfill = `if (!Array.prototype.take) { Object.defineProperty(Array.prototype, 'take', { value: function(n) { return this.slice(0, n); }, writable: true, configurable: true }); }
+`;
   const spOperatorPolyfill = [
-    "var __spNoteRe = /^[a-g][sb#]?\\d*$/;",
+    "var __spNoteRe = /^[a-g][sb#]?\\d*$/i;",
     'function __spIsNote(v) { return typeof v === "string" && __spNoteRe.test(v); }',
     'function __spToNum(v) { return __spIsNote(v) && typeof note === "function" ? note(v) : v; }',
     'function __spIsRing(v) { return v != null && typeof v === "object" && typeof v.toArray === "function" && typeof v.tick === "function"; }',
@@ -23005,13 +23918,42 @@ function createIsolatedExecutor(transpiledCode, dslParamNames) {
     "function __spMul(a, b) {",
     '  if (__spIsRing(a) && typeof b === "number") return a.repeat(b);',
     '  if (typeof a === "number" && __spIsRing(b)) return b.repeat(a);',
+    // Ruby Array * Integer → repeat the array (not arithmetic).
+    // Needed for patterns like `hats = [1,0,1,0] * 4`.
+    '  if (Array.isArray(a) && typeof b === "number") return new Array(b).fill(a).flat();',
+    '  if (typeof a === "number" && Array.isArray(b)) return new Array(a).fill(b).flat();',
     "  return a * b;",
+    "}",
+    // Ruby x.kind_of?(Class) / x.is_a?(Class) — dispatch by class name.
+    // Class arg comes in as a string (the transpiler JSON-encodes the
+    // constant name) so we can match without needing the runtime to have
+    // bindings for Integer, Numeric, etc.
+    "function __spIsA(x, cls) {",
+    "  switch (cls) {",
+    '    case "Integer":  return Number.isInteger(x);',
+    '    case "Float":    return typeof x === "number" && !Number.isInteger(x);',
+    '    case "Numeric":  return typeof x === "number";',
+    '    case "String":   return typeof x === "string";',
+    '    case "Symbol":   return typeof x === "string";',
+    '    case "Array":    return Array.isArray(x);',
+    '    case "Hash":     return x !== null && typeof x === "object" && !Array.isArray(x) && !__spIsRing(x);',
+    '    case "NilClass": return x === null || x === undefined;',
+    '    case "TrueClass":  return x === true;',
+    '    case "FalseClass": return x === false;',
+    '    case "Proc":     return typeof x === "function";',
+    "  }",
+    // Unknown class name — try the runtime binding. If it's a function,
+    // fall back to instanceof; otherwise return false (Ruby semantics for
+    // an undefined class would raise NameError, but silent false is safer
+    // than crashing a live loop).
+    '  try { var t = eval(cls); return typeof t === "function" ? (x instanceof t) : false; }',
+    "  catch (e) { return false; }",
     "}"
   ].join("\n") + "\n";
   const wrappedCode = `with(__scope__) { return (async () => {
-${mergePolyfill}${stringRingPolyfill}${arrayAtPolyfill}${spOperatorPolyfill}${transpiledCode}
+${mergePolyfill}${stringRingPolyfill}${arrayAtPolyfill}${arrayTakePolyfill}${spOperatorPolyfill}${transpiledCode}
 })(); }`;
-  const polyfillLineCount = (mergePolyfill + stringRingPolyfill + arrayAtPolyfill + spOperatorPolyfill).split("\n").length;
+  const polyfillLineCount = (mergePolyfill + stringRingPolyfill + arrayAtPolyfill + arrayTakePolyfill + spOperatorPolyfill).split("\n").length;
   SANDBOX_WRAPPER_LINES = 2 + polyfillLineCount;
   try {
     const fn = new Function("__scope__", wrappedCode);
@@ -23152,7 +24094,8 @@ function treeSitterTranspile(ruby) {
     errors,
     insideLoop: false,
     definedFunctions: /* @__PURE__ */ new Set(),
-    indent: ""
+    indent: "",
+    inthreadLoopCounter: { n: 0 }
   };
   const js = transpileNode(tree.rootNode, ctx);
   if (errors.length > 0) {
@@ -23197,11 +24140,12 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "rand_look",
   "shuffle",
   "pick",
-  // Tick
+  // Tick (#211)
   "tick",
   "look",
   "tick_reset",
   "tick_reset_all",
+  "tick_set",
   // Transpose
   "use_transpose",
   "with_transpose",
@@ -23224,6 +24168,8 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "bools",
   "play_pattern_timed",
   "sample_duration",
+  "stretch",
+  "ramp",
   "hz_to_midi",
   "midi_to_hz",
   "quantise",
@@ -23238,6 +24184,7 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "noteToMidi",
   "midiToFreq",
   "noteToFreq",
+  "note_info",
   // Data constructors
   "ring",
   "knit",
@@ -23257,6 +24204,46 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "osc_send",
   // Sample BPM
   "use_sample_bpm",
+  // Tier B — timing introspection (#226). Per-task pure reads — must route
+  // through __b so the value reflects the calling task, not engine state.
+  "current_beat",
+  "current_beat_duration",
+  "current_time",
+  "current_sched_ahead_time",
+  // Tier B — PRNG inspection (#227). Per-task RNG mutations — route through
+  // __b so they hit the calling builder's seeded random stream.
+  "current_random_seed",
+  "rand_back",
+  "rand_skip",
+  "rand_reset",
+  // Deferred-step DSL contract (issue #193 — must mirror methods on
+  // ProgramBuilder so they fire at scheduled virtual time, not build time).
+  "stop_loop",
+  "set_volume",
+  "use_osc",
+  "osc",
+  "midi",
+  "midi_note_on",
+  "midi_note_off",
+  "midi_cc",
+  "midi_pitch_bend",
+  "midi_channel_pressure",
+  "midi_poly_pressure",
+  "midi_prog_change",
+  "midi_clock_tick",
+  "midi_start",
+  "midi_stop",
+  "midi_continue",
+  "midi_all_notes_off",
+  "midi_notes_off",
+  // Tier B — recording (#228). Deferred so the lifecycle sequences against
+  // the audio playback timeline. Building them at top-level immediate
+  // would fire recording_save before any notes from the surrounding
+  // `8.times do` had played, leaving the WAV empty.
+  "recording_start",
+  "recording_stop",
+  "recording_save",
+  "recording_delete",
   // Budget
   "__checkBudget__"
 ]);
@@ -23339,7 +24326,30 @@ var BARE_CALLABLE = /* @__PURE__ */ new Set([
   "rand",
   "rand_i",
   "chord_names",
-  "scale_names"
+  "scale_names",
+  // Tier B — timing introspection (#226). Ruby calls these without parens.
+  "current_beat",
+  "current_beat_duration",
+  "current_time",
+  "current_sched_ahead_time",
+  // Tier B — PRNG inspection (#227). current_random_seed and rand_reset are
+  // typically called without parens. rand_back / rand_skip take an optional
+  // arg but are also valid bare (rand_back == rand_back(1)).
+  "current_random_seed",
+  "rand_back",
+  "rand_skip",
+  "rand_reset",
+  // Tier B — recording (#228). Three of the four are 0-arity and routinely
+  // called bare (`recording_start`, not `recording_start()`). Inside a
+  // BARE_DSL_CALLS-wrapped run-once block they need __b.recording_*()
+  // emitted so the deferred step actually pushes onto the program.
+  // `recording_save` always carries an arg and parses as a method_call,
+  // so it doesn't need this list — but including it means a bare
+  // `recording_save` (forgotten filename) trips the arity guard at build.
+  "recording_start",
+  "recording_stop",
+  "recording_delete",
+  "recording_save"
 ]);
 var BARE_CALLABLE_TOP_LEVEL = /* @__PURE__ */ new Set([
   "current_bpm"
@@ -23579,7 +24589,13 @@ function transpileNode(node, ctx) {
       return `${obj}[${args2.join(", ")}]`;
     }
     case "scope_resolution":
-      return node.text;
+      return transpileScopeResolution(node, ctx);
+    // Ruby splat `*expr` → JS spread `...expr` (works in array literals
+    // and call arguments — same surface as Ruby's common usage).
+    case "splat_argument": {
+      const child = node.namedChildren[0];
+      return child ? `...${transpileNode(child, ctx)}` : "...";
+    }
     // ---- Blocks ----
     case "do_block":
     case "block": {
@@ -23727,19 +24743,25 @@ ${ctx.indent}}`;
       ctx.errors.push(`Parse error at line ${node.startPosition.row + 1}: ${node.text.slice(0, 50)}`);
       return `/* PARSE ERROR: ${node.text.slice(0, 30)} */`;
     }
-    // ---- Structural wrapper nodes — recurse into children ----
-    // These are CST nodes that exist for grouping but carry no semantic
-    // content for transpilation (e.g., `then`, `body_statement` variants).
-    // A partial fold over named nodes — handle semantically meaningful
-    // types explicitly above, recurse through structural wrappers here.
+    // ---- Default: structural wrapper OR unsupported feature ----
+    // Only nodes in STRUCTURAL_WRAPPERS silently pass through. Everything
+    // else flags via pushUnsupported so the user gets a report link instead
+    // of a cryptic JS parser error downstream. This closes the silent-leak
+    // path where an unknown node with namedChildren would recurse and emit
+    // malformed JS (e.g., `Math::PI` → `Math::PI` → "Unexpected token ':'").
     default: {
-      if (node.namedChildCount > 0) {
-        return transpileChildren(node, ctx);
+      if (STRUCTURAL_WRAPPERS.has(node.type)) {
+        return node.namedChildCount > 0 ? transpileChildren(node, ctx) : node.text;
       }
-      if (node.type !== "empty_statement" && node.text.trim()) {
-        ctx.errors.push(`Unhandled node type '${node.type}' at line ${node.startPosition.row + 1}: ${node.text.slice(0, 40)}`);
+      if (node.text.trim()) {
+        pushUnsupported(
+          ctx,
+          node,
+          node.type,
+          `Ruby construct \`${node.type}\` isn't supported yet`
+        );
       }
-      return node.text;
+      return "undefined";
     }
   }
 }
@@ -23752,14 +24774,22 @@ var BARE_DSL_CALLS = /* @__PURE__ */ new Set([
   "puts",
   "print",
   "control",
+  "kill",
   "synth",
-  "loop",
   "play_chord",
   "play_pattern",
   "play_pattern_timed",
   "use_synth_defaults",
   "use_sample_defaults",
-  "use_transpose"
+  "use_transpose",
+  // Tier B — recording (#228). Bare top-level recording_* triggers the
+  // implicit live_loop :__run_once wrapper so __b is in scope; the
+  // resulting __b.recording_* calls fire as deferred steps at scheduled
+  // virtual time.
+  "recording_start",
+  "recording_stop",
+  "recording_save",
+  "recording_delete"
 ]);
 var TOP_LEVEL_SETTINGS = /* @__PURE__ */ new Set(["use_bpm", "use_random_seed", "use_debug", "use_arg_bpm_scaling"]);
 function transpileProgram(node, ctx) {
@@ -23779,7 +24809,13 @@ function transpileProgram(node, ctx) {
     const text = c.text ?? "";
     return !/live_loop/.test(text);
   });
-  if (!hasBareCode && !hasBareFx) {
+  const hasBareLoop = children.some((c) => {
+    if (c.type !== "call" && c.type !== "method_call") return false;
+    const method = c.childForFieldName("method")?.text ?? c.namedChildren[0]?.text;
+    if (method !== "loop") return false;
+    return c.namedChildren.some((x) => x.type === "do_block" || x.type === "block");
+  });
+  if (!hasBareCode && !hasBareFx && !hasBareLoop) {
     return transpileChildren(node, ctx);
   }
   const topLevel = [];
@@ -23792,9 +24828,10 @@ function transpileProgram(node, ctx) {
     }
     const method = child.type === "call" || child.type === "method_call" ? child.childForFieldName("method")?.text ?? child.namedChildren[0]?.text : null;
     const isBareFxNode = method === "with_fx" && !/live_loop/.test(child.text ?? "");
+    const isBareLoopNode = method === "loop" && child.namedChildren.some((c) => c.type === "do_block" || c.type === "block");
     if (method && TOP_LEVEL_SETTINGS.has(method)) {
       topLevel.push(child);
-    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "with_fx" || method === "in_thread")) {
+    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
       blocks.push(child);
     } else {
       bareCode.push(child);
@@ -23802,7 +24839,7 @@ function transpileProgram(node, ctx) {
   }
   for (const child of blocks) {
     const m = child.type === "call" || child.type === "method_call" ? child.childForFieldName("method")?.text ?? child.namedChildren[0]?.text : null;
-    if (m === "define") {
+    if (m === "define" || m === "ndefine") {
       const argsNode = child.childForFieldName("arguments");
       const nameNode = argsNode?.namedChildren?.[0];
       if (nameNode) {
@@ -23814,7 +24851,22 @@ function transpileProgram(node, ctx) {
   const topJS = topLevel.map((c) => transpileNode(c, ctx)).filter(Boolean);
   const bareCtx = { ...ctx, insideLoop: true };
   const bareJS = bareCode.map((c) => "  " + transpileNode(c, bareCtx)).filter((s) => s.trim());
-  const blockJS = blocks.map((c) => transpileNode(c, ctx)).filter(Boolean);
+  let topLoopCounter = 0;
+  const blockJS = blocks.map((c) => {
+    const m = c.type === "call" || c.type === "method_call" ? c.childForFieldName("method")?.text ?? c.namedChildren[0]?.text : null;
+    if (m === "loop") {
+      const body2 = c.namedChildren.find((x) => x.type === "do_block" || x.type === "block");
+      if (body2) {
+        const bodyCtx = { ...ctx, insideLoop: true };
+        const bodyStr = transpileBlockBody(body2, bodyCtx);
+        const name2 = `__loop_${topLoopCounter++}`;
+        return `live_loop("${name2}", (__b) => {
+${bodyStr}
+${ctx.indent}})`;
+      }
+    }
+    return transpileNode(c, ctx);
+  }).filter(Boolean);
   const parts2 = [];
   if (topJS.length > 0) parts2.push(topJS.join("\n"));
   if (bareJS.length > 0) {
@@ -23841,8 +24893,8 @@ function transpileMethodCall(node, ctx) {
     if (methodName === "live_loop") {
       return transpileLiveLoop(node, argsNode, blockNode, ctx);
     }
-    if (methodName === "define") {
-      return transpileDefine(node, argsNode, blockNode, ctx);
+    if (methodName === "define" || methodName === "ndefine") {
+      return transpileDefine(node, argsNode, blockNode, ctx, methodName);
     }
     if (methodName === "with_fx" || methodName === "with_synth" || methodName === "with_bpm" || methodName === "with_transpose" || methodName === "with_arg_bpm_scaling" || methodName === "with_synth_defaults" || methodName === "with_sample_defaults" || methodName === "with_random_seed" || methodName === "with_octave" || methodName === "with_density") {
       return transpileWithBlock(methodName, argsNode, blockNode, ctx);
@@ -23855,6 +24907,13 @@ function transpileMethodCall(node, ctx) {
     }
     if (methodName === "time_warp") {
       return transpileTimeWarp(argsNode, blockNode, ctx);
+    }
+    if (methodName === "assert_error" && blockNode) {
+      const bodyCtx = { ...ctx, insideLoop: true };
+      const bodyStr = transpileBlockBody(blockNode, bodyCtx);
+      return `assert_error((__b) => {
+${bodyStr}
+${ctx.indent}})`;
     }
     if (methodName === "density") {
       return transpileDensity(argsNode, blockNode, ctx);
@@ -23881,10 +24940,6 @@ ${ctx.indent}}`;
     }
     if (methodName === "stop") {
       return "__b.stop()";
-    }
-    if (methodName === "stop_loop") {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      return `stop_loop(${args3})`;
     }
     if (methodName === "use_synth") {
       const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
@@ -23965,9 +25020,10 @@ ${ctx.indent}}`;
   }
   if (method === "each" && blockNode) {
     const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-    const varName = params?.namedChildren[0]?.text ?? "_item";
+    const paramNames = params?.namedChildren?.map((c) => c.text) ?? [];
     const bodyStr = transpileBlockBody(blockNode, ctx);
-    return `for (const ${varName} of ${recStr}) {
+    const bindings = paramNames.length === 0 ? "_item" : paramNames.length === 1 ? paramNames[0] : `[${paramNames.join(", ")}]`;
+    return `for (const ${bindings} of ${recStr}) {
 ${ctx.indent}  __b.__checkBudget__()
 ${bodyStr}
 ${ctx.indent}}`;
@@ -24070,6 +25126,18 @@ ${ctx.indent}} }`;
   }
   if (method === "min") return `Math.min(...${recStr})`;
   if (method === "max") return `Math.max(...${recStr})`;
+  if (method === "sum" && !blockNode) {
+    return `${recStr}.reduce((a, b) => a + b, 0)`;
+  }
+  if (method === "avg" && !blockNode) {
+    return `(${recStr}.reduce((a, b) => a + b, 0) / ${recStr}.length)`;
+  }
+  if (method === "values" && !blockNode && !argsNode) {
+    return `Object.values(${recStr})`;
+  }
+  if (method === "keys" && !blockNode && !argsNode) {
+    return `Object.keys(${recStr})`;
+  }
   if (method === "first") {
     return `${recStr}[0]`;
   }
@@ -24094,6 +25162,11 @@ ${ctx.indent}} }`;
   if (method === "sample" && !argsNode) {
     return `__b.choose(${recStr})`;
   }
+  if (method === "kind_of?" || method === "is_a?" || method === "instance_of?") {
+    const arg = argsNode?.namedChildren?.[0];
+    const argText = arg ? arg.text : "Object";
+    return `__spIsA(${recStr}, ${JSON.stringify(argText)})`;
+  }
   if (method.endsWith("?")) {
     const cleanName = method.slice(0, -1) + "_q";
     const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
@@ -24107,6 +25180,62 @@ ${ctx.indent}} }`;
   if (fullNode.text.includes("(")) return `${recStr}.${method}()`;
   return `${recStr}.${method}()`;
 }
+var SCOPE_RESOLUTION_MAP = {
+  "Math::PI": "Math.PI",
+  "Math::E": "Math.E",
+  "Float::INFINITY": "Infinity",
+  "Float::NAN": "NaN"
+};
+function transpileScopeResolution(node, ctx) {
+  const text = node.text;
+  if (text in SCOPE_RESOLUTION_MAP) return SCOPE_RESOLUTION_MAP[text];
+  pushUnsupported(
+    ctx,
+    node,
+    "scope_resolution",
+    `Ruby namespace/constant access \`${text}\` isn't mapped yet`
+  );
+  return "undefined";
+}
+var REPORT_BUG_URL = "https://github.com/MrityunjayBhardwaj/SonicPi.js/issues/new";
+function pushUnsupported(ctx, node, featureId, humanMessage) {
+  const line2 = node.startPosition.row + 1;
+  const snippet = node.text.replace(/\s+/g, " ").slice(0, 60);
+  const title = `Unsupported Ruby feature: ${featureId}`;
+  const body2 = [
+    `The transpiler doesn't handle this yet.`,
+    ``,
+    `**Feature:** \`${featureId}\``,
+    `**Code:** \`${snippet}\``,
+    `**Line:** ${line2}`
+  ].join("\n");
+  const reportUrl = `${REPORT_BUG_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body2)}`;
+  ctx.errors.push(
+    `Line ${line2}: ${humanMessage}. Report: ${reportUrl}`
+  );
+}
+var STRUCTURAL_WRAPPERS = /* @__PURE__ */ new Set([
+  "program",
+  "expression_statement",
+  "parenthesized_statements",
+  "body_statement",
+  "block_body",
+  "then",
+  "else",
+  "elsif",
+  "argument_list",
+  "empty_statement",
+  // Pattern inside `case/when` — wraps a single value (literal, range, class,
+  // etc.) that `case` already compares against. Passes through to the child.
+  "pattern",
+  // `do` keyword block inside for/until/while constructs that already have
+  // explicit handlers — the grammar wraps the body in a `do` node.
+  "do",
+  // `in` keyword inside `for x in arr` — the `for` handler at case 'for'
+  // already pulls the iterator from namedChildren, so `in` here is just
+  // the keyword token with no semantic payload.
+  "in"
+]);
 function transpileLiveLoop(node, argsNode, blockNode, ctx) {
   const args2 = argsNode?.namedChildren ?? [];
   let name2 = "main";
@@ -24138,7 +25267,7 @@ function transpileLiveLoop(node, argsNode, blockNode, ctx) {
 ${bodyStr}
 ${ctx.indent}})`;
 }
-function transpileDefine(node, argsNode, blockNode, ctx) {
+function transpileDefine(node, argsNode, blockNode, ctx, methodName = "define") {
   const args2 = argsNode?.namedChildren ?? [];
   let name2 = "unnamed";
   for (const arg of args2) {
@@ -24149,16 +25278,21 @@ function transpileDefine(node, argsNode, blockNode, ctx) {
   ctx.definedFunctions.add(name2);
   if (!blockNode) {
     const line2 = node.startPosition?.row != null ? node.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: define :${name2} is missing 'do ... end' block`);
-    return `/* parse error: define :${name2} missing block */`;
+    ctx.errors.push(`Parse error at line ${line2}: ${methodName} :${name2} is missing 'do ... end' block`);
+    return `/* parse error: ${methodName} :${name2} missing block */`;
   }
   const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
   const paramStr = params ? params.namedChildren.map((c) => transpileNode(c, ctx)).join(", ") : "";
   const bodyCtx = { ...ctx, insideLoop: true };
   const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  return `function ${name2}(__b${paramStr ? ", " + paramStr : ""}) {
+  const decl = `function ${name2}(__b${paramStr ? ", " + paramStr : ""}) {
 ${bodyStr}
 ${ctx.indent}}`;
+  if (methodName === "define") {
+    return `${decl};
+${ctx.indent}define(${JSON.stringify(name2)}, ${name2})`;
+  }
+  return decl;
 }
 function transpileWithBlock(methodName, argsNode, blockNode, ctx) {
   const args2 = argsNode?.namedChildren ?? [];
@@ -24207,23 +25341,78 @@ function transpileInThread(argsNode, blockNode, ctx) {
     return `/* parse error: in_thread missing block */`;
   }
   const prefix = ctx.insideLoop ? "__b." : "";
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
+  let nameExpr = null;
   const args2 = argsNode?.namedChildren ?? [];
   for (const arg of args2) {
     if (arg.type === "pair") {
       const key = arg.namedChildren[0]?.text?.replace(/:$/, "");
       if (key === "name") {
-        const name2 = transpileNode(arg.namedChildren[1], ctx);
-        return `${prefix}in_thread({ name: ${name2} }, (__b) => {
-${bodyStr}
-${ctx.indent}})`;
+        nameExpr = transpileNode(arg.namedChildren[1], ctx);
       }
     }
   }
-  return `${prefix}in_thread((__b) => {
+  const rawChildren = blockNode.namedChildren ?? [];
+  const bodyChildren = rawChildren.length === 1 && rawChildren[0]?.type === "body_statement" ? rawChildren[0].namedChildren ?? [] : rawChildren;
+  const setupChildren = [];
+  const loopChildren = [];
+  let sawLoop = false;
+  let droppedAfterLoop = false;
+  for (const child of bodyChildren) {
+    const m = child.type === "call" || child.type === "method_call" ? child.childForFieldName("method")?.text ?? child.namedChildren[0]?.text : null;
+    const isLoop = m === "loop" && child.namedChildren.some((c) => c.type === "do_block" || c.type === "block");
+    if (isLoop) {
+      loopChildren.push(child);
+      sawLoop = true;
+    } else if (sawLoop) {
+      droppedAfterLoop = true;
+    } else {
+      setupChildren.push(child);
+    }
+  }
+  if (loopChildren.length === 0) {
+    const bodyCtx = { ...ctx, insideLoop: true };
+    const bodyStr = transpileBlockBody(blockNode, bodyCtx);
+    if (nameExpr !== null) {
+      return `${prefix}in_thread({ name: ${nameExpr} }, (__b) => {
 ${bodyStr}
 ${ctx.indent}})`;
+    }
+    return `${prefix}in_thread((__b) => {
+${bodyStr}
+${ctx.indent}})`;
+  }
+  if (droppedAfterLoop) {
+    const line2 = blockNode.startPosition?.row != null ? blockNode.startPosition.row + 1 : "?";
+    ctx.errors.push(`Warning at line ${line2}: statements after \`loop do\` inside in_thread are unreachable and were dropped.`);
+  }
+  const counter = ctx.inthreadLoopCounter ?? { n: 0 };
+  const baseName = nameExpr !== null ? nameExpr : null;
+  const parts2 = [];
+  if (setupChildren.length > 0) {
+    const setupCtx = { ...ctx, insideLoop: true };
+    const setupStr = setupChildren.map((c) => "  " + transpileNode(c, setupCtx)).filter((s) => s.trim()).join("\n");
+    if (nameExpr !== null) {
+      parts2.push(`${prefix}in_thread({ name: ${nameExpr} }, (__b) => {
+${setupStr}
+${ctx.indent}})`);
+    } else {
+      parts2.push(`${prefix}in_thread((__b) => {
+${setupStr}
+${ctx.indent}})`);
+    }
+  }
+  for (const loopNode of loopChildren) {
+    const body2 = loopNode.namedChildren.find((c) => c.type === "do_block" || c.type === "block");
+    const bodyCtx = { ...ctx, insideLoop: true };
+    const bodyStr = transpileBlockBody(body2, bodyCtx);
+    const idx = counter.n++;
+    const autoName = baseName !== null ? `(${baseName}) + "__loop_${idx}"` : `"__inthread_loop_${idx}"`;
+    const liveLoopPrefix = ctx.insideLoop ? "__b." : "";
+    parts2.push(`${liveLoopPrefix}live_loop(${autoName}, (__b) => {
+${bodyStr}
+${ctx.indent}})`);
+  }
+  return parts2.join("\n");
 }
 function transpileAt(argsNode, blockNode, ctx) {
   if (!blockNode) {
@@ -25193,6 +26382,55 @@ var SoundEventStream = class {
   }
 };
 
+// ../../../sonicPiWeb/src/engine/Asserts.ts
+var AssertionFailedError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "AssertionFailedError";
+  }
+};
+function fail(msg) {
+  throw new AssertionFailedError(msg);
+}
+function assert(condition, msg) {
+  if (!condition) fail(msg ?? `assert failed (got ${JSON.stringify(condition)})`);
+  return true;
+}
+function assert_equal(a, b, msg) {
+  if (a === b) return true;
+  if (typeof a === "object" && typeof b === "object" && a !== null && b !== null) {
+    if (JSON.stringify(a) === JSON.stringify(b)) return true;
+  }
+  fail(msg ?? `assert_equal failed: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`);
+}
+function assert_similar(a, b, msg, epsilon = 1e-9) {
+  if (typeof a === "number" && typeof b === "number") {
+    if (Math.abs(a - b) > epsilon) {
+      fail(msg ?? `assert_similar failed: ${a} \u2249 ${b} (epsilon=${epsilon})`);
+    }
+    return true;
+  }
+  return assert_equal(a, b, msg);
+}
+function assert_not(condition, msg) {
+  if (condition) fail(msg ?? `assert_not failed (got ${JSON.stringify(condition)})`);
+  return true;
+}
+function assert_error(blockFn, msg) {
+  try {
+    blockFn();
+  } catch {
+    return true;
+  }
+  fail(msg ?? "assert_error failed: block did not raise an exception");
+}
+function inc(x) {
+  return x + 1;
+}
+function dec(x) {
+  return x - 1;
+}
+
 // ../../../sonicPiWeb/src/engine/MidiBridge.ts
 var NOTE_ON = 144;
 var NOTE_OFF = 128;
@@ -25228,6 +26466,14 @@ var MidiBridge = class {
     this.noteOffState = /* @__PURE__ */ new Map();
     /** Running MIDI clock interval (started by startClock / stopped by stopClock). */
     this.clockInterval = null;
+    /**
+     * Tracks pending auto-note-offs scheduled by `midi(...)` shorthand and the
+     * deferred `midiOut`-with-sustain step. engine.stop() calls
+     * cancelPendingNoteOffs() to fire each pending note's off NOW (so external
+     * devices don't hang) and prevent the timer's deferred fire from sending a
+     * stale note-off into a fresh run (#200).
+     */
+    this.pendingNoteOffs = /* @__PURE__ */ new Set();
   }
   // ---------------------------------------------------------------------------
   // Initialisation
@@ -25322,6 +26568,29 @@ var MidiBridge = class {
   noteOff(note2, channel = 1) {
     const status = NOTE_OFF | channel - 1 & CHANNEL_NIBBLE_MASK;
     this.send([status, note2 & MIDI_DATA_MASK, 0]);
+  }
+  /**
+   * Schedule a note-off after `delaySeconds`. Returns the entry so the caller
+   * can ignore it; the bridge tracks the timer and clears it on stop().
+   */
+  scheduleNoteOff(note2, channel, delaySeconds) {
+    const entry = { timer: 0, note: note2, channel };
+    entry.timer = setTimeout(() => {
+      this.pendingNoteOffs.delete(entry);
+      this.noteOff(note2, channel);
+    }, delaySeconds * 1e3);
+    this.pendingNoteOffs.add(entry);
+  }
+  /**
+   * Cancel every pending auto note-off and immediately fire its note-off so
+   * external MIDI devices don't hang. Called from engine.stop() (#200).
+   */
+  cancelPendingNoteOffs() {
+    for (const entry of this.pendingNoteOffs) {
+      clearTimeout(entry.timer);
+      this.noteOff(entry.note, entry.channel);
+    }
+    this.pendingNoteOffs.clear();
   }
   // ---------------------------------------------------------------------------
   // Output — continuous controllers
@@ -25794,6 +27063,7 @@ async function loadAllCustomSamples() {
 }
 
 // ../../../sonicPiWeb/src/engine/SonicPiEngine.ts
+var CLAMP_WARN_RE = /clamped to .+ \((min|max)\)$/;
 var randomSuffix = () => Math.random().toString(36).slice(2, 6);
 var SonicPiEngine = class {
   constructor(options) {
@@ -25805,6 +27075,16 @@ var SonicPiEngine = class {
     this.runtimeErrorHandler = null;
     this.printHandler = null;
     this.cueHandler = null;
+    /**
+     * Per-evaluation dedup set for clamp/range warnings (issue #202, G4).
+     * SoundLayer's validateAndClamp emits one warning per out-of-range param,
+     * which fires every loop iteration → log floods. We dedup by exact message
+     * so the user sees each unique clamp once per evaluation.
+     * Cleared on each evaluate() call (re-running the user's code resets the
+     * "what have we already told them" memory — they may have changed the
+     * offending value, or want to be told again because they re-pressed Run).
+     */
+    this.warnDedup = /* @__PURE__ */ new Set();
     this.currentCode = "";
     this.currentStratum = 1 /* S1 */;
     /** Maps DSL nodeRef → SuperSonic nodeId for control messages */
@@ -25819,8 +27099,20 @@ var SonicPiEngine = class {
     this.loopSeeds = /* @__PURE__ */ new Map();
     /** Per-loop tick counters — persisted across iterations so ring.tick() advances correctly */
     this.loopTicks = /* @__PURE__ */ new Map();
+    /** Per-loop beat counter — persisted across iterations so current_beat keeps growing (#226) */
+    this.loopBeats = /* @__PURE__ */ new Map();
     /** Tracks which loops have completed their initial sync — persists across hot-swaps. */
     this.loopSynced = /* @__PURE__ */ new Set();
+    /**
+     * Build-phase nesting depth (issue #198). Incremented around each
+     * synchronous builderFn invocation. > 0 means we are currently
+     * building one live_loop's iteration step array; any `live_loop`
+     * call that fires now is a NESTED registration and gets sibling-once
+     * semantics rather than re-binding on every outer tick.
+     */
+    this.buildNestingDepth = 0;
+    /** Names that already received the "nested live_loop" warning so we don't spam. */
+    this.nestedWarned = /* @__PURE__ */ new Set();
     /** Persistent top-level FX state — keyed by scope ID, shared across loops in same with_fx. */
     this.persistentFx = /* @__PURE__ */ new Map();
     /** Maps loop name → FX scope ID (loops under same with_fx share a scope). */
@@ -25839,8 +27131,24 @@ var SonicPiEngine = class {
     this.midiBridge = new MidiBridge();
     /** Global key-value store — shared across all loops via get/set */
     this.globalStore = /* @__PURE__ */ new Map();
+    /** User-defined functions — `define`/`ndefine` register here. Seeded back into the
+     *  next eval's scopeBase so removing a `define` line from the buffer does not
+     *  break a still-running live_loop that calls it. (#215) */
+    this.definedFns = /* @__PURE__ */ new Map();
     /** Host-provided OSC send handler. Engine fires this; host wires to actual transport. */
     this.oscHandler = null;
+    /** Active Recorder instance (#228). Null when not recording. */
+    this.recorder = null;
+    /** Last completed recording, awaiting recording_save / recording_delete (#228). */
+    this.lastRecording = null;
+    /**
+     * In-flight stop+encode promise (#228). recording_stop is async — the
+     * MediaRecorder.onstop fires after a chunk flush, then we decode webm and
+     * re-encode as WAV. recording_save must await this so the natural pattern
+     *   recording_start; play …; recording_stop; recording_save "x.wav"
+     * does not save before the blob is ready.
+     */
+    this.pendingRecordingStop = null;
     this.bridgeOptions = options?.bridge ?? {};
     this.schedAheadTime = options?.schedAheadTime ?? DEFAULT_SCHED_AHEAD_TIME;
   }
@@ -25859,6 +27167,7 @@ var SonicPiEngine = class {
   async init() {
     if (this.initialized) return;
     this.bridge = new SuperSonicBridge(this.bridgeOptions);
+    if (this.printHandler) this.bridge.warnHandler = this.printHandler;
     const bridgeInit = this.bridge.init().then(() => {
       if (this.pendingVolume !== null) {
         this.bridge.setMasterVolume(this.pendingVolume);
@@ -25905,6 +27214,7 @@ var SonicPiEngine = class {
     try {
       this.currentCode = code;
       this.currentStratum = detectStratum(code);
+      this.warnDedup.clear();
       const isReEvaluate = this.scheduler !== null && this.playing;
       if (!isReEvaluate) {
         if (this.scheduler) {
@@ -25972,44 +27282,139 @@ var SonicPiEngine = class {
         currentVolume = Math.max(0, Math.min(5, vol));
         this.bridge?.setMasterVolume(currentVolume / 5);
       };
+      const setVolumeShared = (vol) => set_volume(vol);
       const current_synth_fn = () => defaultSynth;
       const current_volume_fn = () => currentVolume;
+      const warn = (msg) => {
+        if (this.printHandler) this.printHandler(`[Warning] ${msg}`);
+        else console.warn("[SonicPi]", msg);
+      };
+      const recordingHandler = async (kind, filename) => {
+        switch (kind) {
+          case "start": {
+            if (this.recorder && this.recorder.state === "recording") {
+              warn("recording_start: already recording \u2014 call recording_stop first");
+              return;
+            }
+            const audioCtx = this.bridge?.audioContext;
+            const tap = this.bridge?.masterOutputNode;
+            if (!audioCtx || !tap) {
+              warn("recording_start: audio bridge not initialised \u2014 recording skipped");
+              return;
+            }
+            this.recorder = new Recorder(audioCtx, tap);
+            this.recorder.start();
+            return;
+          }
+          case "stop": {
+            if (!this.recorder || this.recorder.state !== "recording") {
+              return;
+            }
+            const r = this.recorder;
+            this.recorder = null;
+            this.pendingRecordingStop = (async () => {
+              try {
+                this.lastRecording = await r.stop();
+              } catch (err2) {
+                warn(`recording_stop: ${err2.message}`);
+              }
+            })();
+            await this.pendingRecordingStop;
+            return;
+          }
+          case "save": {
+            if (this.pendingRecordingStop) {
+              await this.pendingRecordingStop;
+            }
+            if (!this.lastRecording) {
+              warn("recording_save: no completed recording to save (call recording_stop first)");
+              return;
+            }
+            Recorder.saveBlobToDownload(this.lastRecording, filename);
+            return;
+          }
+          case "delete":
+            this.lastRecording = null;
+            return;
+        }
+      };
       const synth_names_fn = () => [
+        // Bells / oscillators
         "beep",
+        "sine",
         "saw",
         "prophet",
         "tb303",
         "supersaw",
         "pluck",
         "pretty_bell",
+        "dull_bell",
         "piano",
         "dsaw",
         "dpulse",
         "dtri",
-        "fm",
-        "mod_fm",
-        "mod_saw",
-        "mod_pulse",
-        "mod_tri",
-        "sine",
         "square",
         "tri",
         "pulse",
+        "subpulse",
+        "fm",
+        // Mod synths
+        "mod_fm",
+        "mod_saw",
+        "mod_dsaw",
+        "mod_sine",
+        "mod_beep",
+        "mod_tri",
+        "mod_pulse",
+        // Noise variants
         "noise",
         "pnoise",
         "bnoise",
         "gnoise",
         "cnoise",
+        // Chip
         "chipbass",
         "chiplead",
         "chipnoise",
+        // Vintage / classic
         "dark_ambience",
         "hollow",
         "growl",
         "zawa",
         "blade",
         "tech_saws",
-        "bass_foundation"
+        "hoover",
+        "bass_foundation",
+        "bass_highend",
+        "organ_tonewheel",
+        // Plucked / acoustic family
+        "rhodey",
+        "rodeo",
+        "kalimba",
+        "gabberkick",
+        // SC808 drum kit
+        "sc808_bassdrum",
+        "sc808_snare",
+        "sc808_clap",
+        "sc808_tomlo",
+        "sc808_tommid",
+        "sc808_tomhi",
+        "sc808_congalo",
+        "sc808_congamid",
+        "sc808_congahi",
+        "sc808_rimshot",
+        "sc808_claves",
+        "sc808_maracas",
+        "sc808_cowbell",
+        "sc808_closed_hihat",
+        "sc808_open_hihat",
+        "sc808_cymbal"
+        // Note: dark_sea_horn, singer, winwood_lead are in Desktop SP's synthinfo.rb
+        //   but their compiled .scsyndef binaries are not published on the SuperSonic CDN
+        //   (HTTP 404 at all known versions). Listing them would cause /s_new dispatch
+        //   to silently fail per SP5. Track in artifacts/designs/full-parity-gaps.md.
+        // Note: sound_in, sound_in_stereo, live_audio require Web Audio mic permission
+        //   plumbing which is not yet implemented. Track separately.
       ];
       const fx_names_fn = () => [
         "reverb",
@@ -26081,6 +27486,19 @@ var SonicPiEngine = class {
           syncTarget = builderFnOrOpts.sync ?? null;
           builderFn = maybeFn;
         }
+        const isNested = this.buildNestingDepth > 0 && !isReEvaluate;
+        if (isNested) {
+          const existing = scheduler.getTask(name2);
+          if (existing && existing.running) {
+            return;
+          }
+          if (!this.nestedWarned.has(name2)) {
+            this.nestedWarned.add(name2);
+            const msg = `[Warning] live_loop :${name2} is declared inside another live_loop. It will be registered as a sibling top-level loop on FIRST occurrence only. Any guards (if/unless/one_in/...) wrapping it are evaluated at first occurrence; subsequent toggles do not register or unregister it.`;
+            if (this.printHandler) this.printHandler(msg);
+            else console.warn("[SonicPi]", msg);
+          }
+        }
         const loopBus = this.bridge?.createLoopMonitor(name2) ?? 0;
         this.loopBuilders.set(name2, builderFn);
         if (!this.loopSeeds.has(name2)) {
@@ -26108,7 +27526,8 @@ var SonicPiEngine = class {
               for (const fx of fxChain) {
                 const bus = this.bridge.allocateBus();
                 const groupId = this.bridge.createFxGroup();
-                const fxOpts = normalizeFxParams(fx.name, fx.opts, task.bpm);
+                const fxWarn = this.printHandler ? (m) => this.printHandler(`[Warning] with_fx :${fx.name} \u2014 ${m}`) : void 0;
+                const fxOpts = normalizeFxParams(fx.name, fx.opts, task.bpm, fxWarn);
                 await this.bridge.applyFx(fx.name, audioTime, fxOpts, bus, currentOutBus);
                 this.bridge.flushMessages();
                 buses.push(bus);
@@ -26130,13 +27549,22 @@ var SonicPiEngine = class {
           if (task.currentSynth && task.currentSynth !== "beep") {
             builder.use_synth(task.currentSynth);
           }
+          builder.setIterationContext(
+            task.virtualTime,
+            this.loopBeats.get(name2) ?? 0,
+            this.schedAheadTime,
+            task.bpm
+          );
           scopeHandle?.enterScope(name2);
+          this.buildNestingDepth++;
           try {
             builderFn(builder);
           } finally {
+            this.buildNestingDepth--;
             scopeHandle?.exitScope();
           }
           this.loopTicks.set(name2, builder.getTicks());
+          this.loopBeats.set(name2, builder.currentBeatRaw);
           const program = builder.build();
           await runProgram(program, {
             bridge: this.bridge,
@@ -26148,7 +27576,10 @@ var SonicPiEngine = class {
             nodeRefMap: this.nodeRefMap,
             reusableFx: this.reusableFx,
             globalStore: this.globalStore,
-            oscHandler: this.oscHandler ?? void 0
+            oscHandler: this.oscHandler ?? void 0,
+            midiBridge: this.midiBridge,
+            onVolumeChange: setVolumeShared,
+            onRecordingEvent: recordingHandler
           });
           scheduler.fireCue(name2, name2);
         };
@@ -26227,6 +27658,7 @@ var SonicPiEngine = class {
       let storedRandomSeed = null;
       const topLevelUseRandomSeed = (seed) => {
         storedRandomSeed = seed;
+        topLevelBuilder.use_random_seed(seed);
       };
       const topLevelInThread = (fn) => {
         const name2 = `__thread_${Date.now()}_${randomSuffix()}`;
@@ -26288,8 +27720,9 @@ var SonicPiEngine = class {
         const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
         const vel = opts.velocity ?? opts.vel ?? 100;
         const sus = opts.sustain ?? 1;
-        this.midiBridge.noteOn(n, vel, opts.channel ?? 1);
-        setTimeout(() => this.midiBridge.noteOff(n, opts.channel ?? 1), sus * 1e3);
+        const ch = opts.channel ?? 1;
+        this.midiBridge.noteOn(n, vel, ch);
+        this.midiBridge.scheduleNoteOff(n, ch, sus);
       };
       const midi_note_on = (note2, velocity = 100, opts = {}) => {
         const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
@@ -26333,96 +27766,15 @@ var SonicPiEngine = class {
       const quantize = quantise;
       const octs = (n, numOctaves = 1) => Array.from({ length: numOctaves }, (_, i2) => n + i2 * 12);
       const topLevelBuilder = new ProgramBuilder();
-      const dslNames = [
-        "__b",
-        "live_loop",
-        "with_fx",
-        "use_bpm",
-        "use_synth",
-        "use_random_seed",
-        "use_arg_bpm_scaling",
-        "with_arg_bpm_scaling",
-        "in_thread",
-        "at",
-        "density",
-        "ring",
-        "knit",
-        "range",
-        "line",
-        "spread",
-        "chord",
-        "scale",
-        "chord_invert",
-        "note",
-        "note_range",
-        "chord_degree",
-        "degree",
-        "chord_names",
-        "scale_names",
-        "noteToMidi",
-        "midiToFreq",
-        "noteToFreq",
-        "hz_to_midi",
-        "midi_to_hz",
-        "quantise",
-        "quantize",
-        "octs",
-        "current_bpm",
-        "puts",
-        "print",
-        "stop",
-        "stop_loop",
-        // Volume & introspection
-        "set_volume",
-        "current_synth",
-        "current_volume",
-        // Catalog queries
-        "synth_names",
-        "fx_names",
-        "all_sample_names",
-        // Sample management
-        "load_sample",
-        "sample_info",
-        // Global store
-        "get",
-        "set",
-        // Sample catalog
-        "sample_names",
-        "sample_groups",
-        "sample_loaded",
-        "sample_duration",
-        // MIDI input
-        "get_cc",
-        "get_pitch_bend",
-        "get_note_on",
-        "get_note_off",
-        // MIDI output
-        "midi",
-        "midi_note_on",
-        "midi_note_off",
-        "midi_cc",
-        "midi_pitch_bend",
-        "midi_channel_pressure",
-        "midi_poly_pressure",
-        "midi_prog_change",
-        "midi_clock_tick",
-        "midi_start",
-        "midi_stop",
-        "midi_continue",
-        "midi_all_notes_off",
-        "midi_notes_off",
-        "midi_devices",
-        // OSC
-        "use_osc",
-        "osc",
-        "osc_send",
-        // Sample BPM
-        "use_sample_bpm",
-        // Debug (no-op in browser — silences log output in Desktop SP)
-        "use_debug",
-        // Latency — set schedule-ahead to 0 for responsive MIDI input (#149)
-        "use_real_time"
-      ];
+      const tlRrand = (min, max) => topLevelBuilder.rrand(min, max);
+      const tlRrandI = (min, max) => topLevelBuilder.rrand_i(min, max);
+      const tlRand = (...args2) => topLevelBuilder.rand(...args2);
+      const tlRandI = (...args2) => topLevelBuilder.rand_i(...args2);
+      const tlChoose = (arr) => topLevelBuilder.choose(arr);
+      const tlDice = (n) => topLevelBuilder.dice(n ?? 6);
+      const tlOneIn = (n) => topLevelBuilder.one_in(n);
+      const tlRdist = (max, centre) => topLevelBuilder.rdist(max, centre ?? 0);
+      const dslNames = [...DSL_NAMES];
       const dslValues = [
         topLevelBuilder,
         fxAwareWrappedLiveLoop,
@@ -26440,6 +27792,14 @@ var SonicPiEngine = class {
         range,
         line,
         spread,
+        tlRrand,
+        tlRrandI,
+        tlRand,
+        tlRandI,
+        tlChoose,
+        tlDice,
+        tlOneIn,
+        tlRdist,
         chord,
         scale,
         chord_invert,
@@ -26452,6 +27812,7 @@ var SonicPiEngine = class {
         noteToMidi2,
         midiToFreq5,
         noteToFreq2,
+        noteInfo,
         hzToMidi,
         midiToFreq5,
         quantise,
@@ -26513,6 +27874,89 @@ var SonicPiEngine = class {
         },
         // Latency — no-op at top level; inside loops it's handled by ProgramBuilder + AudioInterpreter
         () => {
+        },
+        // Global tick context (#211 Tier A)
+        (name2, opts) => topLevelBuilder.tick(name2 ?? "__default", opts),
+        (name2, offset) => topLevelBuilder.look(name2 ?? "__default", offset ?? 0),
+        (nameOrValue, value) => topLevelBuilder.tick_set(nameOrValue, value),
+        (name2) => topLevelBuilder.tick_reset(name2 ?? "__default"),
+        () => topLevelBuilder.tick_reset_all(),
+        // Ring helpers (#211 Tier A)
+        (arr, n = 1) => topLevelBuilder.pick(arr, n),
+        (arr) => topLevelBuilder.shuffle(arr),
+        (arr, n) => topLevelBuilder.stretch(arr, n),
+        (...values2) => topLevelBuilder.bools(...values2),
+        (...values2) => topLevelBuilder.ramp(...values2),
+        // Pattern helpers (#211 Tier A) — deferred steps via topLevelBuilder
+        (notes, opts) => {
+          topLevelBuilder.play_pattern(notes, opts);
+        },
+        (notes, opts) => {
+          topLevelBuilder.play_chord(notes, opts);
+        },
+        (notes, times, opts) => {
+          topLevelBuilder.play_pattern_timed(notes, times, opts);
+        },
+        // Asserts + counter helpers (#211 Tier A) — pure build-time
+        assert,
+        assert_equal,
+        assert_similar,
+        assert_not,
+        assert_error,
+        inc,
+        dec,
+        // define — transpiler emits both the function decl AND a register call
+        // (transpileDefine line ~1586). The register persists the fn across
+        // re-evals so removing a `define` line from the buffer does not break
+        // a still-running live_loop that calls it. (#215)
+        (name2, fn) => {
+          if (typeof name2 === "string" && typeof fn === "function") {
+            this.definedFns.set(name2, fn);
+          }
+        },
+        // ndefine — same call shape as define, but does NOT persist across
+        // re-evals (the register call is omitted by the transpiler).
+        () => {
+        },
+        // time_warp — the transpiler turns `time_warp 0.5 do ... end` into
+        // `__b.at([0.5], null, ...)`. This runtime stub catches the rare regex
+        // fallback path; it forwards to topLevelAt's array-of-times shape. (#211)
+        (offset, fn) => topLevelAt([offset], null, fn),
+        // Tier B — timing introspection (#226). Top-level forms read engine
+        // state directly; inside live_loops the transpiler routes through
+        // BUILDER_METHODS so __b.current_* gives per-task reads.
+        () => 0,
+        // current_beat: top-level has no beat counter
+        () => 60 / defaultBpm,
+        // current_beat_duration
+        () => scheduler.audioTime,
+        // current_time: audio-context wall clock at top level
+        () => this.schedAheadTime,
+        // current_sched_ahead_time
+        // Tier B — PRNG inspection (#227). Top-level mutates topLevelBuilder's
+        // RNG; inside live_loops these route to __b.* for per-loop RNG.
+        () => topLevelBuilder.current_random_seed(),
+        (n) => topLevelBuilder.rand_back(n ?? 1),
+        (n) => topLevelBuilder.rand_skip(n ?? 1),
+        () => {
+          topLevelBuilder.rand_reset();
+        },
+        // Tier B — recording (#228). Forward to topLevelBuilder so the
+        // arity guards (rest args + length check) live in one place. The
+        // pushed steps fire at scheduled virtual time via recordingHandler
+        // wired into the runProgram ctx above. Inside live_loops the
+        // transpiler routes through __b directly (BUILDER_METHODS).
+        (...args2) => {
+          topLevelBuilder.recording_start(...args2);
+        },
+        (...args2) => {
+          topLevelBuilder.recording_stop(...args2);
+        },
+        (...args2) => {
+          topLevelBuilder.recording_save(...args2);
+        },
+        (...args2) => {
+          topLevelBuilder.recording_delete(...args2);
         }
       ];
       const codeWarnings = validateCode(transpiledCode);
@@ -26520,7 +27964,8 @@ var SonicPiEngine = class {
         if (this.printHandler) this.printHandler(`[Warning] ${warning}`);
         else console.warn("[SonicPi]", warning);
       }
-      const sandbox = createIsolatedExecutor(transpiledCode, dslNames);
+      const persistedFns = Object.fromEntries(this.definedFns);
+      const sandbox = createIsolatedExecutor(transpiledCode, dslNames, persistedFns);
       scopeHandle = sandbox.scopeHandle;
       await sandbox.execute(...dslValues);
       if (isReEvaluate) {
@@ -26565,6 +28010,11 @@ var SonicPiEngine = class {
     if (!this.playing) return;
     this.playing = false;
     this.scheduler?.stop();
+    this.midiBridge.cancelPendingNoteOffs();
+    if (this.recorder) {
+      this.recorder.cancel();
+      this.recorder = null;
+    }
     if (this.bridge) {
       this.bridge.freeAllNodes();
       this.bridge.stopAllLiveAudio();
@@ -26575,12 +28025,16 @@ var SonicPiEngine = class {
     this.loopBuilders.clear();
     this.loopSeeds.clear();
     this.loopTicks.clear();
+    this.loopBeats.clear();
     this.loopSynced.clear();
     this.globalStore.clear();
+    this.definedFns.clear();
     this.persistentFx.clear();
     this.reusableFx.clear();
     this.loopFxScope.clear();
     this.fxScopeChains.clear();
+    this.buildNestingDepth = 0;
+    this.nestedWarned.clear();
   }
   dispose() {
     if (this.playing) this.stop();
@@ -26594,6 +28048,7 @@ var SonicPiEngine = class {
     this.loopBuilders.clear();
     this.loopSeeds.clear();
     this.globalStore.clear();
+    this.definedFns.clear();
   }
   /** Register a handler for runtime errors inside `live_loop` bodies. */
   setRuntimeErrorHandler(handler) {
@@ -26601,7 +28056,15 @@ var SonicPiEngine = class {
   }
   /** Register a handler for `puts` / `print` output from user code. */
   setPrintHandler(handler) {
-    this.printHandler = handler;
+    const wrapped = (msg) => {
+      if (CLAMP_WARN_RE.test(msg)) {
+        if (this.warnDedup.has(msg)) return;
+        this.warnDedup.add(msg);
+      }
+      handler(msg);
+    };
+    this.printHandler = wrapped;
+    if (this.bridge) this.bridge.warnHandler = wrapped;
   }
   /** Register a handler for cue events (for the CueLog panel). */
   setCueHandler(handler) {
@@ -27502,6 +28965,76 @@ function extractReferenceIdentifier(err2) {
   }
   return null;
 }
+function asRegExp(match) {
+  return match instanceof RegExp ? match : new RegExp(match, "i");
+}
+function evalMistake(mistake, ctx) {
+  const { detect } = mistake;
+  if (detect.kind === "message") {
+    return asRegExp(detect.match).test(ctx.rawMessage);
+  }
+  if (detect.kind === "code") {
+    if (!ctx.codeContext) return false;
+    return asRegExp(detect.match).test(ctx.codeContext);
+  }
+  return ctx.identifier !== null && ctx.identifier === detect.alias;
+}
+var SPECIFICITY = {
+  message: 3,
+  code: 2,
+  identifier: 1
+};
+function rankHits(hits) {
+  if (hits.length === 0) return null;
+  hits.sort((a, b) => {
+    const wa = a.mistake.weight ?? 1;
+    const wb = b.mistake.weight ?? 1;
+    if (wa !== wb) return wb - wa;
+    if (a.specificity !== b.specificity) return b.specificity - a.specificity;
+    return a.order - b.order;
+  });
+  return hits[0];
+}
+function collectMistakes(index, ctx) {
+  const hits = [];
+  let order = 0;
+  if (ctx.identifier && index.docs[ctx.identifier]) {
+    const doc = index.docs[ctx.identifier];
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name: ctx.identifier, doc }
+        });
+      }
+    }
+  }
+  for (const [name2, doc] of Object.entries(index.docs)) {
+    if (name2 === ctx.identifier) continue;
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name: name2, doc }
+        });
+      }
+    }
+  }
+  for (const m of index.globalMistakes ?? []) {
+    if (evalMistake(m, ctx)) {
+      hits.push({
+        mistake: m,
+        specificity: SPECIFICITY[m.detect.kind],
+        order: order++
+      });
+    }
+  }
+  return rankHits(hits);
+}
 function defaultDocsUrl(runtime, name2) {
   return `/docs/reference/${runtime}/#${name2.toLowerCase()}`;
 }
@@ -27510,6 +29043,37 @@ function formatFriendlyError2(err2, runtime, options = {}) {
   const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 && typeof err2.stack === "string" ? err2.stack : void 0;
   const loc = parseStackLocation(err2);
   const identifier = extractReferenceIdentifier(err2);
+  if (options.index) {
+    const hit = collectMistakes(options.index, {
+      rawMessage,
+      identifier,
+      codeContext: options.codeContext
+    });
+    if (hit) {
+      const suggestion = hit.symbol ? {
+        name: hit.symbol.name,
+        docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(
+          runtime,
+          hit.symbol.name
+        ),
+        example: hit.mistake.example ?? hit.symbol.doc.example,
+        description: hit.symbol.doc.description
+      } : hit.mistake.example ? {
+        // Global mistake without a symbol — synthesise a minimal
+        // suggestion so downstream UI still surfaces the example.
+        name: "",
+        docsUrl: "",
+        example: hit.mistake.example
+      } : void 0;
+      return {
+        message: hit.mistake.hint,
+        suggestion,
+        stack,
+        line: loc?.line,
+        column: loc?.column
+      };
+    }
+  }
   if (identifier && options.index) {
     const matches = fuzzyMatch(
       identifier,
