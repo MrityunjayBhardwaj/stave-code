@@ -11,7 +11,7 @@
  */
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   type IRSnapshot,
   type IREvent,
@@ -241,11 +241,10 @@ function countLines(src: string, offset: number): number {
 
 export function IRInspectorPanel(): React.ReactElement {
   const [snap, setSnap] = useState<IRSnapshot | null>(getIRSnapshot);
-  // Tab selection persists across snapshots via name (not index): if the
-  // user picked "Parsed" and a later snapshot still has a "Parsed" pass,
-  // the selection survives. Falls back to the last (rightmost) pass when
-  // the previously-selected name is gone (pre-mortem #2 of plan 19-02).
+  // Persisted by name so the selection survives re-evals when the new
+  // snapshot still has that pass. Falls back to the last pass otherwise.
   const [selectedTabName, setSelectedTabName] = useState<string | null>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
     return subscribeIRSnapshot((s) => setSnap(s));
@@ -259,19 +258,11 @@ export function IRInspectorPanel(): React.ReactElement {
     return `${Math.round(ms / 60_000)}m ago`;
   }, [snap]);
 
-  const effectiveTab = useMemo<string | null>(() => {
-    if (!snap || snap.passes.length === 0) return null;
-    if (selectedTabName && snap.passes.some((p) => p.name === selectedTabName)) {
-      return selectedTabName;
-    }
-    return snap.passes[snap.passes.length - 1].name;
-  }, [snap, selectedTabName]);
-
   const selectedIndex = useMemo<number>(() => {
-    if (!snap || effectiveTab == null) return -1;
-    const i = snap.passes.findIndex((p) => p.name === effectiveTab);
+    if (!snap || snap.passes.length === 0) return -1;
+    const i = selectedTabName ? snap.passes.findIndex((p) => p.name === selectedTabName) : -1;
     return i >= 0 ? i : snap.passes.length - 1;
-  }, [snap, effectiveTab]);
+  }, [snap, selectedTabName]);
 
   if (!snap) {
     return (
@@ -316,12 +307,6 @@ export function IRInspectorPanel(): React.ReactElement {
         </div>
       </div>
 
-      {/*
-        Tab row above the IR tree (Phase 19-02, decision D-01/D-04).
-        v1 ships a single "Parsed" tab — intentional scaffold for future
-        passes (parser decomposition, JS API Tier 4). The events section
-        below is independent of tab selection.
-      */}
       <div
         role="tablist"
         aria-label="IR passes"
@@ -338,12 +323,14 @@ export function IRInspectorPanel(): React.ReactElement {
           const dir = e.key === "ArrowRight" ? 1 : -1;
           const next = (selectedIndex + dir + snap.passes.length) % snap.passes.length;
           setSelectedTabName(snap.passes[next].name);
+          tabRefs.current[next]?.focus();
           e.preventDefault();
         }}
       >
         {snap.passes.map((p, i) => (
           <button
             key={p.name}
+            ref={(el) => { tabRefs.current[i] = el; }}
             role="tab"
             aria-selected={i === selectedIndex}
             aria-controls="ir-tree-panel"
@@ -367,12 +354,14 @@ export function IRInspectorPanel(): React.ReactElement {
       </div>
 
       <div role="tabpanel" id="ir-tree-panel" data-testid="ir-tree-section">
-        <div style={{ fontWeight: 600, padding: "4px 0", opacity: 0.85 }}>
-          IR tree{snap.passes.length > 1 && effectiveTab ? ` · ${effectiveTab}` : null}
-        </div>
-        <div style={{ paddingLeft: 4 }}>
-          {selectedIndex >= 0 && <IRNodeRow node={snap.passes[selectedIndex].ir} depth={0} />}
-        </div>
+        <details open>
+          <summary style={{ cursor: "pointer", fontWeight: 600, padding: "4px 0", opacity: 0.85, listStyle: "none" }}>
+            IR tree{snap.passes.length > 1 && selectedIndex >= 0 ? ` · ${snap.passes[selectedIndex].name}` : null}
+          </summary>
+          <div style={{ paddingLeft: 4 }}>
+            {selectedIndex >= 0 && <IRNodeRow node={snap.passes[selectedIndex].ir} depth={0} />}
+          </div>
+        </details>
       </div>
 
       <details open data-testid="ir-events-section" style={{ marginTop: 12 }}>

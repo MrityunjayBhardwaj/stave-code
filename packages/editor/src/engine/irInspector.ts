@@ -21,23 +21,9 @@ export interface IRSnapshot {
   runtime: RuntimeId
   /** The raw user code that was parsed. */
   code: string
-  /**
-   * Per-pass IR snapshots, in execution order. v1 Strudel pipeline
-   * publishes a single entry: { name: "Parsed", ir: <parseStrudel output> }.
-   * Future passes (parser decomposition, JS API Tier 4 desugaring) append.
-   *
-   * Note: this list is IR-shaped only. The collected IREvent[] is NOT
-   * a pass entry — it lives in `events` below because it is not a
-   * PatternIR tree.
-   */
-  passes: { readonly name: string; readonly ir: PatternIR }[]
-  /**
-   * Convenience alias of `passes[passes.length - 1].ir` — the IR
-   * after the last pass ran. Kept for back-compat with consumers
-   * that read `snap.ir` directly. Publishers MUST set this to
-   * stay consistent with `passes`. New consumers should prefer
-   * `passes[selected].ir` so they can switch passes.
-   */
+  /** Per-pass IR snapshots, in execution order. IR-shaped only — collected events live in `events`. */
+  passes: readonly { readonly name: string; readonly ir: PatternIR }[]
+  /** Alias of `passes[passes.length - 1].ir`. Publishers MUST keep these in sync. */
   ir: PatternIR
   /** Collected events for one cycle window starting at t=0. */
   events: IREvent[]

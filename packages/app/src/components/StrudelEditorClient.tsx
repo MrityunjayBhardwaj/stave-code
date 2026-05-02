@@ -47,17 +47,7 @@ import {
 import { PIANOROLL_P5_CODE, PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
 
-// ---------------------------------------------------------------------------
-// Strudel IR pass list (Phase 19-02)
-// ---------------------------------------------------------------------------
-// v1: only the parse stage exists as a real IR-shaped step. Future passes
-// (parser decomposition into Raw / Mini-expanded / Chain-applied; JS API
-// Tier 4 desugaring) append here. The "Collected" stage is event-shaped,
-// not IR-shaped, so it lives in snap.events — NOT in this pass list (per
-// CONTEXT D-01/D-04).
-//
-// Invariant (PV24): every pass that rewrites Play nodes MUST preserve or
-// compose `loc`. Identity passes (the v1 default) trivially satisfy this.
+// Future passes that rewrite Play nodes must preserve or compose `loc` (PV24).
 const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
   { name: "Parsed", run: (ir) => ir },
 ];
