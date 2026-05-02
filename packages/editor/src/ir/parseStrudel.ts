@@ -22,16 +22,19 @@ export function parseStrudel(code: string): PatternIR {
   if (!code.trim()) return IR.pure()
 
   try {
-    // Split into track blocks ($: lines)
+    // Split into track blocks ($: lines). Each carries the absolute
+    // char offset of `expr[0]` within `code` so parseMini can attach
+    // `loc` (source ranges) to Play nodes.
     const tracks = extractTracks(code)
     if (tracks.length === 0) {
-      // No $: prefix — try parsing as a single expression
-      return parseExpression(code.trim())
+      // No $: prefix — try parsing as a single expression at offset 0
+      const trimStart = code.search(/\S/)
+      return parseExpression(code.trim(), trimStart >= 0 ? trimStart : 0)
     }
     if (tracks.length === 1) {
-      return parseExpression(tracks[0])
+      return parseExpression(tracks[0].expr, tracks[0].offset)
     }
-    return IR.stack(...tracks.map(parseExpression))
+    return IR.stack(...tracks.map(t => parseExpression(t.expr, t.offset)))
   } catch {
     return IR.code(code)
   }
@@ -43,29 +46,41 @@ export function parseStrudel(code: string): PatternIR {
 
 /**
  * Split code by $: lines.
- * Returns expressions (without the $: prefix) for each track.
- * If no $: lines found, returns [] (caller handles single-expression case).
+ * Returns each track's expression body (without the $: prefix) plus
+ * the absolute char offset of the body within the original code, so
+ * downstream parsing can attach source-range information.
+ *
+ * Slices preserve original whitespace + newlines (no .trim()) so an
+ * offset within the slice is also a valid offset within `code`.
+ * Returns [] if no $: lines found (caller handles single-expression case).
  */
-function extractTracks(code: string): string[] {
-  const lines = code.split('\n')
-  const hasPrefix = lines.some(l => l.trim().startsWith('$:'))
-  if (!hasPrefix) return []
-
-  const trackExprs: string[] = []
-  let current = ''
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (trimmed.startsWith('$:')) {
-      if (current) trackExprs.push(current.trim())
-      current = trimmed.slice(2).trim()
-    } else if (current && trimmed) {
-      current += '\n' + trimmed
+function extractTracks(code: string): { expr: string; offset: number }[] {
+  const tracks: { expr: string; offset: number }[] = []
+  // Match `$:` at the start of a line (allowing leading whitespace).
+  const dollarRe = /^[ \t]*\$:/gm
+  const starts: { dollarStart: number; bodyStart: number }[] = []
+  let m: RegExpExecArray | null
+  while ((m = dollarRe.exec(code))) {
+    // bodyStart points after `$:` and any post-colon whitespace on the
+    // same physical line. Tracks may continue on subsequent lines.
+    const after = m.index + m[0].length
+    let bodyStart = after
+    while (bodyStart < code.length && (code[bodyStart] === ' ' || code[bodyStart] === '\t')) {
+      bodyStart++
     }
+    starts.push({ dollarStart: m.index, bodyStart })
   }
-  if (current) trackExprs.push(current.trim())
+  if (starts.length === 0) return []
 
-  return trackExprs
+  for (let i = 0; i < starts.length; i++) {
+    const { bodyStart } = starts[i]
+    const end = i + 1 < starts.length ? starts[i + 1].dollarStart : code.length
+    const slice = code.slice(bodyStart, end)
+    // Trailing whitespace can stay — parseExpression handles it. We
+    // keep the leading slice intact so offsets line up.
+    tracks.push({ expr: slice, offset: bodyStart })
+  }
+  return tracks
 }
 
 // ---------------------------------------------------------------------------
@@ -74,17 +89,25 @@ function extractTracks(code: string): string[] {
 
 /**
  * Parse a single Strudel expression (with optional method chain).
+ * `baseOffset` is the absolute char offset of `expr[0]` within the
+ * user's full code, so leaf parsers can attach `loc` to Play nodes.
+ *
  * e.g. 'note("c4 e4").fast(2).every(4, fast(2))'
  */
-function parseExpression(expr: string): PatternIR {
+function parseExpression(expr: string, baseOffset = 0): PatternIR {
   if (!expr.trim()) return IR.pure()
 
   try {
+    // Compute the offset of `expr.trim()[0]` within `code` so the
+    // root parser can locate the inner mini-notation string accurately.
+    const leadingWs = expr.length - expr.trimStart().length
+    const trimmedOffset = baseOffset + leadingWs
+
     // Extract root function call and remaining method chain
     const { root, chain } = splitRootAndChain(expr.trim())
 
     // Parse the root — if it can't be parsed, fall back to full expression as Code
-    const rootIR = parseRoot(root)
+    const rootIR = parseRoot(root, trimmedOffset)
     if (rootIR.tag === 'Code' && !chain.trim()) {
       // Entire expression is opaque — preserve full original expression
       return IR.code(expr)
@@ -108,23 +131,32 @@ function parseExpression(expr: string): PatternIR {
 
 /**
  * Parse the root function call: note("..."), s("..."), stack(...), or bare expression.
+ * `baseOffset` is the absolute char offset of `root[0]` within the user's code.
  */
-function parseRoot(root: string): PatternIR {
+function parseRoot(root: string, baseOffset = 0): PatternIR {
   const trimmed = root.trim()
+  const leadingWs = root.length - root.trimStart().length
 
   // note("...") or n("...")
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/)
   if (noteMatch) {
-    return parseMini(noteMatch[1], false)
+    // Position of the opening quote within `trimmed`, then +1 to skip it.
+    const quoteIdx = noteMatch[0].indexOf('"')
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
+    return parseMini(noteMatch[1], false, innerOffset)
   }
 
   // s("...") — sample pattern
   const sMatch = trimmed.match(/^s\s*\(\s*"([^"]*)"\s*\)/)
   if (sMatch) {
-    return parseMini(sMatch[1], true)
+    const quoteIdx = sMatch[0].indexOf('"')
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
+    return parseMini(sMatch[1], true, innerOffset)
   }
 
-  // stack(a, b, c) — parallel composition
+  // stack(a, b, c) — parallel composition. Argument offsets are
+  // dropped here for v0 — when a future consumer needs loc through
+  // stack(), splitArgs would need to return slice positions too.
   const stackMatch = trimmed.match(/^stack\s*\(/)
   if (stackMatch) {
     const inner = extractParenContent(trimmed, 'stack(')

@@ -2914,7 +2914,16 @@ function scaleGain(events, factor) {
 // src/ir/PatternIR.ts
 var IR = {
   pure: () => ({ tag: "Pure" }),
-  play: (note2, duration = 0.25, params = {}) => ({ tag: "Play", note: note2, duration, params: { gain: 1, velocity: 1, ...params } }),
+  play: (note2, duration = 0.25, params = {}, loc) => {
+    const node = {
+      tag: "Play",
+      note: note2,
+      duration,
+      params: { gain: 1, velocity: 1, ...params }
+    };
+    if (loc && loc.length > 0) node.loc = loc;
+    return node;
+  },
   sleep: (duration) => ({ tag: "Sleep", duration }),
   seq: (...children) => ({ tag: "Seq", children }),
   stack: (...tracks) => ({ tag: "Stack", tracks }),
@@ -2991,6 +3000,7 @@ function walk(ir, ctx) {
     case "Play": {
       if (ctx.time < ctx.begin || ctx.time >= ctx.end) return [];
       const event = makeEvent(ctx, ir.note, { ...ir.params });
+      if (ir.loc && ir.loc.length > 0) event.loc = ir.loc;
       return [event];
     }
     case "Sleep":
@@ -3446,13 +3456,12 @@ function requireObject(node, key, path) {
 }
 
 // src/ir/parseMini.ts
-function parseMini(input, isSample = false) {
-  const trimmed = input.trim();
-  if (!trimmed) return IR.pure();
+function parseMini(input, isSample = false, baseOffset = 0) {
+  if (!input.trim()) return IR.pure();
   try {
-    const tokens = tokenize(trimmed);
+    const tokens = tokenize(input);
     if (tokens.length === 0) return IR.pure();
-    const nodes = parseTokens(tokens, isSample);
+    const nodes = parseTokens(tokens, isSample, baseOffset);
     if (nodes.length === 0) return IR.pure();
     if (nodes.length === 1) return nodes[0];
     return IR.seq(...nodes);
@@ -3510,11 +3519,12 @@ function tokenize(input) {
       continue;
     }
     if (/[a-zA-Z0-9#-]/.test(ch)) {
+      const atomStart = i2;
       let atom = "";
       while (i2 < input.length && /[a-zA-Z0-9#\-_.]/.test(input[i2])) {
         atom += input[i2++];
       }
-      tokens.push({ type: "atom", value: atom });
+      tokens.push({ type: "atom", value: atom, start: atomStart, end: i2 });
       if (i2 < input.length && input[i2] === ":") {
         i2++;
         let numStr = "";
@@ -3615,13 +3625,14 @@ function rotate(arr, by) {
   const n = (by % arr.length + arr.length) % arr.length;
   return [...arr.slice(n), ...arr.slice(0, n)];
 }
-function parseTokens(tokens, isSample) {
+function parseTokens(tokens, isSample, baseOffset = 0) {
   const nodes = [];
   let i2 = 0;
   while (i2 < tokens.length) {
     const tok = tokens[i2];
     if (tok.type === "atom") {
       const note2 = tok.value;
+      const atomLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }];
       i2++;
       let sliceIndex;
       if (i2 < tokens.length && tokens[i2].type === "slice") {
@@ -3631,7 +3642,7 @@ function parseTokens(tokens, isSample) {
       const params = isSample ? { s: note2 } : {};
       if (sliceIndex !== void 0) params.slice = sliceIndex;
       const baseDuration = isSample ? 1 : 0.25;
-      let node = IR.play(note2, baseDuration, params);
+      let node = IR.play(note2, baseDuration, params, atomLoc);
       if (i2 < tokens.length && tokens[i2].type === "euclid") {
         const e = tokens[i2];
         i2++;
@@ -3675,7 +3686,7 @@ function parseTokens(tokens, isSample) {
         subTokens.push(t);
         i2++;
       }
-      const subNodes = parseTokens(subTokens, isSample);
+      const subNodes = parseTokens(subTokens, isSample, baseOffset);
       if (subNodes.length > 0) {
         nodes.push(subNodes.length === 1 ? subNodes[0] : IR.seq(...subNodes));
       }
@@ -3700,7 +3711,7 @@ function parseTokens(tokens, isSample) {
         }
         i2++;
       }
-      const trackNodes = segments.map((seg) => parseTokens(seg, isSample)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
+      const trackNodes = segments.map((seg) => parseTokens(seg, isSample, baseOffset)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
       if (trackNodes.length === 0) ; else if (trackNodes.length === 1) {
         nodes.push(trackNodes[0]);
       } else {
@@ -3723,7 +3734,7 @@ function parseTokens(tokens, isSample) {
         cycleTokens.push(t);
         i2++;
       }
-      const cycleNodes = parseTokens(cycleTokens, isSample);
+      const cycleNodes = parseTokens(cycleTokens, isSample, baseOffset);
       if (cycleNodes.length > 0) {
         nodes.push(IR.cycle(...cycleNodes));
       }
@@ -3740,39 +3751,46 @@ function parseStrudel(code) {
   try {
     const tracks = extractTracks(code);
     if (tracks.length === 0) {
-      return parseExpression(code.trim());
+      const trimStart = code.search(/\S/);
+      return parseExpression(code.trim(), trimStart >= 0 ? trimStart : 0);
     }
     if (tracks.length === 1) {
-      return parseExpression(tracks[0]);
+      return parseExpression(tracks[0].expr, tracks[0].offset);
     }
-    return IR.stack(...tracks.map(parseExpression));
+    return IR.stack(...tracks.map((t) => parseExpression(t.expr, t.offset)));
   } catch {
     return IR.code(code);
   }
 }
 function extractTracks(code) {
-  const lines = code.split("\n");
-  const hasPrefix = lines.some((l) => l.trim().startsWith("$:"));
-  if (!hasPrefix) return [];
-  const trackExprs = [];
-  let current2 = "";
-  for (const line2 of lines) {
-    const trimmed = line2.trim();
-    if (trimmed.startsWith("$:")) {
-      if (current2) trackExprs.push(current2.trim());
-      current2 = trimmed.slice(2).trim();
-    } else if (current2 && trimmed) {
-      current2 += "\n" + trimmed;
+  const tracks = [];
+  const dollarRe = /^[ \t]*\$:/gm;
+  const starts = [];
+  let m;
+  while (m = dollarRe.exec(code)) {
+    const after = m.index + m[0].length;
+    let bodyStart = after;
+    while (bodyStart < code.length && (code[bodyStart] === " " || code[bodyStart] === "	")) {
+      bodyStart++;
     }
+    starts.push({ dollarStart: m.index, bodyStart });
   }
-  if (current2) trackExprs.push(current2.trim());
-  return trackExprs;
+  if (starts.length === 0) return [];
+  for (let i2 = 0; i2 < starts.length; i2++) {
+    const { bodyStart } = starts[i2];
+    const end = i2 + 1 < starts.length ? starts[i2 + 1].dollarStart : code.length;
+    const slice = code.slice(bodyStart, end);
+    tracks.push({ expr: slice, offset: bodyStart });
+  }
+  return tracks;
 }
-function parseExpression(expr) {
+function parseExpression(expr, baseOffset = 0) {
   if (!expr.trim()) return IR.pure();
   try {
+    const leadingWs = expr.length - expr.trimStart().length;
+    const trimmedOffset = baseOffset + leadingWs;
     const { root, chain } = splitRootAndChain(expr.trim());
-    const rootIR = parseRoot(root);
+    const rootIR = parseRoot(root, trimmedOffset);
     if (rootIR.tag === "Code" && !chain.trim()) {
       return IR.code(expr);
     }
@@ -3785,15 +3803,20 @@ function parseExpression(expr) {
     return IR.code(expr);
   }
 }
-function parseRoot(root) {
+function parseRoot(root, baseOffset = 0) {
   const trimmed = root.trim();
+  const leadingWs = root.length - root.trimStart().length;
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/);
   if (noteMatch) {
-    return parseMini(noteMatch[1], false);
+    const quoteIdx = noteMatch[0].indexOf('"');
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
+    return parseMini(noteMatch[1], false, innerOffset);
   }
   const sMatch = trimmed.match(/^s\s*\(\s*"([^"]*)"\s*\)/);
   if (sMatch) {
-    return parseMini(sMatch[1], true);
+    const quoteIdx = sMatch[0].indexOf('"');
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
+    return parseMini(sMatch[1], true, innerOffset);
   }
   const stackMatch = trimmed.match(/^stack\s*\(/);
   if (stackMatch) {
@@ -20669,32 +20692,6 @@ var Ramp = class {
     return this.items[Symbol.iterator]();
   }
 };
-function doubles(start2, num_doubles = 1) {
-  if (typeof start2 !== "number") {
-    throw new Error(`Start value for doubles needs to be a number, got: ${String(start2)}`);
-  }
-  if (num_doubles < 0) return halves(start2, -num_doubles);
-  const out2 = [];
-  let v = start2;
-  for (let i2 = 0; i2 < num_doubles; i2++) {
-    out2.push(v);
-    v *= 2;
-  }
-  return new Ring(out2);
-}
-function halves(start2, num_halves = 1) {
-  if (typeof start2 !== "number") {
-    throw new Error(`Start value for halves needs to be a number, got: ${String(start2)}`);
-  }
-  if (num_halves < 0) return doubles(start2, -num_halves);
-  const out2 = [];
-  let v = start2;
-  for (let i2 = 0; i2 < num_halves; i2++) {
-    out2.push(v);
-    v /= 2;
-  }
-  return new Ring(out2);
-}
 function line(start2, finish, stepsOrOpts = 4) {
   const steps = typeof stepsOrOpts === "number" ? stepsOrOpts : stepsOrOpts.steps ?? 4;
   const result = [];
@@ -21476,80 +21473,17 @@ var ProgramBuilder = class _ProgramBuilder {
     }
     return this;
   }
-  /**
-   * Tier B PR #2 (#233) — block-form tuplet scheduling.
-   *
-   * `tuplets [70, [72, 72], 70, [82, 82, 82]] do |n| play n end`
-   *   - Bare element → `block.call(n); sleep duration` (default 1 beat).
-   *   - Sub-list of size N → fits N `block + sleep` calls into `duration`
-   *     beats by wrapping in `with_density(N)`.
-   *
-   * Optional `swing:` opt offsets every Nth tuplet by that many beats via
-   * `at([swing], …)`. Swing is density-scaled inside sub-lists so the
-   * offset stays proportional to the local pulse. Mirrors upstream
-   * `core.rb:486-512`. Pre-resolved at build time (the block runs N times
-   * synchronously, pushing N play+sleep step pairs); the resulting steps
-   * fire at scheduled virtual time exactly like a hand-written sequence.
-   */
-  tuplets(tuplet_list, optsOrFn, maybeFn) {
-    const opts = typeof optsOrFn === "function" ? {} : optsOrFn;
-    const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn;
-    if (typeof fn !== "function") {
-      throw new Error("tuplets requires a block");
-    }
-    const duration = opts.duration ?? 1;
-    const swing = opts.swing ?? 0;
-    const swing_pulse = opts.swing_pulse ?? 2;
-    const swing_offset = (opts.swing_offset ?? 0) + 1;
-    const items = tuplet_list instanceof Ring ? tuplet_list.toArray() : Array.from(tuplet_list);
-    for (const el of items) {
-      if (Array.isArray(el)) {
-        const n = el.length;
-        this.with_density(n, (b) => {
-          el.forEach((tuplet, idx) => {
-            const should_swing = swing !== 0 && n % swing_pulse === 0 && (idx + swing_offset) % swing_pulse === 0;
-            if (should_swing) {
-              b.at([swing / n], null, (inner) => fn(inner, tuplet));
-            } else {
-              fn(b, tuplet);
-            }
-            b.sleep(duration);
-          });
-        });
-      } else {
-        fn(this, el);
-        this.sleep(duration);
-      }
-    }
-    return this;
-  }
   /** Return the current synth name. */
   get current_synth_name() {
     return this.currentSynth;
   }
-  /**
-   * Tier B PR #2 (#233) — defaults / setting introspection. All four are
-   * called bare (`puts current_debug`) so they're methods returning a value,
-   * not getters — see BARE_CALLABLE in TreeSitterTranspiler.ts which emits
-   * `__b.NAME()` with parens.
-   */
-  current_synth_defaults() {
+  /** Return the current synth defaults hash. */
+  get current_synth_defaults_hash() {
     return { ...this._synthDefaults };
   }
-  current_sample_defaults() {
+  /** Return the current sample defaults hash. */
+  get current_sample_defaults_hash() {
     return { ...this._sampleDefaults };
-  }
-  current_debug() {
-    return this._debug;
-  }
-  /**
-   * We don't validate synth arg names against synthinfo — unknown args are
-   * silently dropped at SoundLayer normalization. Returning the upstream
-   * default (`true`) keeps existing user code that branches on this read
-   * working. When `use_arg_checks` ships in Tier C, this becomes a real read.
-   */
-  current_arg_checks() {
-    return true;
   }
   /** Deferred set — fires at runtime (interleaved with sleeps). */
   set(key, value) {
@@ -24089,32 +24023,7 @@ var DSL_NAMES = [
   "recording_start",
   "recording_stop",
   "recording_save",
-  "recording_delete",
-  // Tier B PR #2 — pure ring constructors (#233). Both delegate to each
-  // other for negative counts (matches upstream `core.rb:1919-1970`).
-  "doubles",
-  "halves",
-  // Tier B PR #2 — defaults / setting introspection (#233). Inside live_loops
-  // these route via __b for per-task reads; at top level they read the
-  // topLevelBuilder's state. current_arg_checks returns constant true (we
-  // don't validate arg names yet — see ProgramBuilder).
-  "current_synth_defaults",
-  "current_sample_defaults",
-  "current_arg_checks",
-  "current_debug",
-  // Tier B PR #2 — block-form tuplet scheduling (#233). The transpiler
-  // routes `tuplets [...] do |x| ... end` to __b.tuplets(list, opts, cb),
-  // resolving the list/opts at build time then pushing N play+sleep step
-  // pairs per the block (one per leaf element). Density wraps each
-  // sub-list so N elements fit in `duration` beats.
-  "tuplets",
-  // Tier B PR #2 — defonce (#212 / #233). The transpiler emits a bare
-  // assignment `name = defonce("name", opts, (__b) => { ...; return last })`
-  // so the cached value lands in proxy storage. The runtime registrar caches
-  // against engine.defonceCache; opts.override re-runs the body. Cached
-  // values are spread into persistedFns at the next eval so removing the
-  // defonce line doesn't break still-running live_loops that read `name`.
-  "defonce"
+  "recording_delete"
 ];
 
 // ../../../sonicPiWeb/src/engine/Sandbox.ts
@@ -24496,7 +24405,6 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "kill",
   "play_chord",
   "play_pattern",
-  "tuplets",
   "with_octave",
   "with_random_seed",
   "with_density",
@@ -24535,12 +24443,6 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "rand_back",
   "rand_skip",
   "rand_reset",
-  // Tier B PR #2 — defaults / setting introspection (#233). Per-task pure
-  // reads — route through __b so per-loop use_*_defaults are visible.
-  "current_synth_defaults",
-  "current_sample_defaults",
-  "current_arg_checks",
-  "current_debug",
   // Deferred-step DSL contract (issue #193 — must mirror methods on
   // ProgramBuilder so they fire at scheduled virtual time, not build time).
   "stop_loop",
@@ -24674,13 +24576,7 @@ var BARE_CALLABLE = /* @__PURE__ */ new Set([
   "recording_start",
   "recording_stop",
   "recording_delete",
-  "recording_save",
-  // Tier B PR #2 — defaults / setting introspection (#233). Routinely called
-  // bare in user code (`puts current_debug`, `if current_arg_checks`).
-  "current_synth_defaults",
-  "current_sample_defaults",
-  "current_arg_checks",
-  "current_debug"
+  "recording_save"
 ]);
 var BARE_CALLABLE_TOP_LEVEL = /* @__PURE__ */ new Set([
   "current_bpm"
@@ -25162,7 +25058,7 @@ function transpileProgram(node, ctx) {
     const isBareLoopNode = method === "loop" && child.namedChildren.some((c) => c.type === "do_block" || c.type === "block");
     if (method && TOP_LEVEL_SETTINGS.has(method)) {
       topLevel.push(child);
-    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "defonce" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
+    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
       blocks.push(child);
     } else {
       bareCode.push(child);
@@ -25227,9 +25123,6 @@ function transpileMethodCall(node, ctx) {
     if (methodName === "define" || methodName === "ndefine") {
       return transpileDefine(node, argsNode, blockNode, ctx, methodName);
     }
-    if (methodName === "defonce") {
-      return transpileDefonce(node, argsNode, blockNode, ctx);
-    }
     if (methodName === "with_fx" || methodName === "with_synth" || methodName === "with_bpm" || methodName === "with_transpose" || methodName === "with_arg_bpm_scaling" || methodName === "with_synth_defaults" || methodName === "with_sample_defaults" || methodName === "with_random_seed" || methodName === "with_octave" || methodName === "with_density") {
       return transpileWithBlock(methodName, argsNode, blockNode, ctx);
     }
@@ -25241,9 +25134,6 @@ function transpileMethodCall(node, ctx) {
     }
     if (methodName === "time_warp") {
       return transpileTimeWarp(argsNode, blockNode, ctx);
-    }
-    if (methodName === "tuplets") {
-      return transpileTuplets(argsNode, blockNode, ctx);
     }
     if (methodName === "assert_error" && blockNode) {
       const bodyCtx = { ...ctx, insideLoop: true };
@@ -25631,40 +25521,6 @@ ${ctx.indent}define(${JSON.stringify(name2)}, ${name2})`;
   }
   return decl;
 }
-function transpileDefonce(node, argsNode, blockNode, ctx) {
-  const args2 = argsNode?.namedChildren ?? [];
-  let name2 = "unnamed";
-  const optPairs = [];
-  for (const arg of args2) {
-    if (arg.type === "simple_symbol") {
-      name2 = arg.text.slice(1);
-    } else if (arg.type === "pair") {
-      const key = arg.namedChildren[0];
-      const val = arg.namedChildren[1];
-      const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
-      optPairs.push(`${keyName}: ${transpileNode(val, ctx)}`);
-    }
-  }
-  if (!blockNode) {
-    const line2 = node.startPosition?.row != null ? node.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: defonce :${name2} is missing 'do ... end' block`);
-    return `/* parse error: defonce :${name2} missing block */`;
-  }
-  const bodyChildren = blockNode.namedChildren.filter((c) => c.type !== "block_parameters");
-  if (bodyChildren.length === 0) {
-    return `${name2} = defonce(${JSON.stringify(name2)}, ${optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}"}, (__b) => undefined)`;
-  }
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const lastIdx = bodyChildren.length - 1;
-  const stmts = bodyChildren.map((c, i2) => {
-    const expr = transpileNode(c, bodyCtx);
-    return i2 === lastIdx ? `${ctx.indent}  return ${expr}` : `${ctx.indent}  ${expr}`;
-  });
-  const optsStr = optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}";
-  return `${name2} = defonce(${JSON.stringify(name2)}, ${optsStr}, (__b) => {
-${stmts.join("\n")}
-${ctx.indent}})`;
-}
 function transpileWithBlock(methodName, argsNode, blockNode, ctx) {
   const args2 = argsNode?.namedChildren ?? [];
   const positional = [];
@@ -25816,32 +25672,6 @@ function transpileTimeWarp(argsNode, blockNode, ctx) {
   const bodyCtx = { ...ctx, insideLoop: true };
   const bodyStr = transpileBlockBody(blockNode, bodyCtx);
   return `${prefix}at([${offset}], null, (__b) => {
-${bodyStr}
-${ctx.indent}})`;
-}
-function transpileTuplets(argsNode, blockNode, ctx) {
-  if (!blockNode) {
-    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: tuplets is missing 'do ... end' block`);
-    return `/* parse error: tuplets missing block */`;
-  }
-  const args2 = argsNode?.namedChildren ?? [];
-  const positional = args2.filter((a) => a.type !== "pair").map((a) => transpileNode(a, ctx));
-  const pairs = args2.filter((a) => a.type === "pair");
-  const listExpr = positional[0] ?? "[]";
-  const optsExpr = pairs.length > 0 ? "{ " + pairs.map((p) => {
-    const key = p.namedChildren[0];
-    const val = p.namedChildren[1];
-    const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
-    return `${keyName}: ${transpileNode(val, ctx)}`;
-  }).join(", ") + " }" : "{}";
-  const prefix = ctx.insideLoop ? "__b." : "";
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-  const paramNames = params?.namedChildren.map((c) => c.text) ?? [];
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  const paramStr = paramNames.length > 0 ? ", " + paramNames.join(", ") : "";
-  return `${prefix}tuplets(${listExpr}, ${optsExpr}, (__b${paramStr}) => {
 ${bodyStr}
 ${ctx.indent}})`;
 }
@@ -27532,9 +27362,6 @@ var SonicPiEngine = class {
      *  next eval's scopeBase so removing a `define` line from the buffer does not
      *  break a still-running live_loop that calls it. (#215) */
     this.definedFns = /* @__PURE__ */ new Map();
-    /** Cached `defonce` values (#212 / #233). Survive across re-evals — that's
-     *  the whole point. Cleared only on full engine reset / dispose. */
-    this.defonceCache = /* @__PURE__ */ new Map();
     /** Host-provided OSC send handler. Engine fires this; host wires to actual transport. */
     this.oscHandler = null;
     /** Active Recorder instance (#228). Null when not recording. */
@@ -28357,41 +28184,6 @@ var SonicPiEngine = class {
         },
         (...args2) => {
           topLevelBuilder.recording_delete(...args2);
-        },
-        // Tier B PR #2 — pure ring constructors (#233)
-        doubles,
-        halves,
-        // Tier B PR #2 — defaults / setting introspection (#233). Forward
-        // to topLevelBuilder so the value reflects top-level use_*_defaults
-        // calls. Inside live_loops the transpiler routes through __b.
-        () => topLevelBuilder.current_synth_defaults(),
-        () => topLevelBuilder.current_sample_defaults(),
-        () => topLevelBuilder.current_arg_checks(),
-        () => topLevelBuilder.current_debug(),
-        // Tier B PR #2 — block-form tuplets (#233). Forwards to topLevelBuilder
-        // so steps land on the top-level program. Inside live_loops the
-        // transpiler emits `__b.tuplets(...)` directly via BUILDER_METHODS.
-        (list, optsOrFn, maybeFn) => {
-          topLevelBuilder.tuplets(
-            list,
-            optsOrFn,
-            maybeFn
-          );
-        },
-        // Tier B PR #2 — defonce (#212 / #233). Cache lookup; runs body once
-        // (or again on `override: true`). The transpiler emits a bare
-        // assignment `name = defonce(...)` so the Sandbox proxy captures the
-        // cached value into scope-isolated storage. Spread back into
-        // persistedFns above so `name` reads still work after the line is
-        // removed from the buffer (matches define persistence #215).
-        (name2, opts, fn) => {
-          if (typeof name2 !== "string" || typeof fn !== "function") return void 0;
-          if (!opts?.override && this.defonceCache.has(name2)) {
-            return this.defonceCache.get(name2);
-          }
-          const value = fn(topLevelBuilder);
-          this.defonceCache.set(name2, value);
-          return value;
         }
       ];
       const codeWarnings = validateCode(transpiledCode);
@@ -28399,10 +28191,7 @@ var SonicPiEngine = class {
         if (this.printHandler) this.printHandler(`[Warning] ${warning}`);
         else console.warn("[SonicPi]", warning);
       }
-      const persistedFns = {
-        ...Object.fromEntries(this.defonceCache),
-        ...Object.fromEntries(this.definedFns)
-      };
+      const persistedFns = Object.fromEntries(this.definedFns);
       const sandbox = createIsolatedExecutor(transpiledCode, dslNames, persistedFns);
       scopeHandle = sandbox.scopeHandle;
       await sandbox.execute(...dslValues);
@@ -28467,7 +28256,6 @@ var SonicPiEngine = class {
     this.loopSynced.clear();
     this.globalStore.clear();
     this.definedFns.clear();
-    this.defonceCache.clear();
     this.persistentFx.clear();
     this.reusableFx.clear();
     this.loopFxScope.clear();
@@ -28494,7 +28282,6 @@ var SonicPiEngine = class {
     this.loopSeeds.clear();
     this.globalStore.clear();
     this.definedFns.clear();
-    this.defonceCache.clear();
   }
   /** Register a handler for runtime errors inside `live_loop` bodies. */
   setRuntimeErrorHandler(handler) {

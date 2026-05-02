@@ -109,6 +109,12 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       // Respect the query window: skip events outside [begin, end)
       if (ctx.time < ctx.begin || ctx.time >= ctx.end) return []
       const event = makeEvent(ctx, ir.note, { ...ir.params })
+      // Propagate parser-side loc onto the produced event so consumers
+      // (Inspector click-to-source, Monaco highlighting) can map this
+      // event back to its source range. parseMini sets this when it
+      // sees an atom; nodes built by hand via IR.play() without loc
+      // produce events with loc undefined.
+      if (ir.loc && ir.loc.length > 0) event.loc = ir.loc
       return [event]
     }
 
