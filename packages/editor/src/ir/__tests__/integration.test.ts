@@ -148,6 +148,40 @@ describe('parseMini', () => {
       if (play) expect(play.params.slice).toBeUndefined()
     })
   })
+
+  // ---- Tier 2: elongation -----------------------------------------------
+
+  describe('elongation (a@N)', () => {
+    it('wraps a single atom in Elongate', () => {
+      const tree = parseMini('c4@2')
+      expect(tree.tag).toBe('Elongate')
+      if (tree.tag === 'Elongate') {
+        expect(tree.factor).toBe(2)
+        expect(tree.body.tag).toBe('Play')
+      }
+    })
+
+    it('inside a sequence — elongated child carries weight', () => {
+      const tree = parseMini('c4@2 e4')
+      expect(tree.tag).toBe('Seq')
+      if (tree.tag === 'Seq') {
+        expect(tree.children).toHaveLength(2)
+        expect(tree.children[0].tag).toBe('Elongate')
+        expect(tree.children[1].tag).toBe('Play')
+      }
+    })
+
+    it('non-integer factor allowed (1.5x)', () => {
+      const tree = parseMini('c4@1.5')
+      expect(tree.tag).toBe('Elongate')
+      if (tree.tag === 'Elongate') expect(tree.factor).toBe(1.5)
+    })
+
+    it('zero/negative factors are silently dropped', () => {
+      const tree = parseMini('c4@0')
+      expect(tree.tag).toBe('Play') // no Elongate wrapper
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

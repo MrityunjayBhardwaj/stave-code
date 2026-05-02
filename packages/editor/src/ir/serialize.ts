@@ -207,6 +207,16 @@ function validateNode(raw: unknown, path: string): PatternIR {
       }
     }
 
+    case 'Elongate': {
+      requireField(node, 'factor', ['number'], path)
+      requireField(node, 'body', ['object'], path)
+      return {
+        tag: 'Elongate',
+        factor: node.factor as number,
+        body: validateNode(node.body, `${path}.body`),
+      }
+    }
+
     case 'Code': {
       requireField(node, 'code', ['string'], path)
       return { tag: 'Code', code: node.code as string, lang: 'strudel' }

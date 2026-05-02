@@ -317,6 +317,26 @@ describe('collect', () => {
     const tree = IR.seq(IR.play('c4'), IR.play('e4'), IR.play('g4'))
     expect(collect(tree)).toHaveLength(3)
   })
+
+  it('Elongate weights its slot inside a Seq (c4@2 e4 → c4 takes 2/3, e4 takes 1/3)', () => {
+    const tree = IR.seq(IR.elongate(2, IR.play('c4')), IR.play('e4'))
+    const events = collect(tree)
+    expect(events).toHaveLength(2)
+    expect(events[0].begin).toBeCloseTo(0)
+    // c4's slot is (2/(2+1)) * 1 = 0.667 cycles long, so e4 starts at 0.667
+    expect(events[1].begin).toBeCloseTo(2 / 3)
+    // e4's duration is 1/3 of cycle
+    expect(events[1].end - events[1].begin).toBeCloseTo(1 / 3)
+    // c4's duration is 2/3 of cycle
+    expect(events[0].end - events[0].begin).toBeCloseTo(2 / 3)
+  })
+
+  it('Elongate standalone is a no-op (factor degenerate without a sibling)', () => {
+    const events = collect(IR.elongate(5, IR.play('c4')))
+    expect(events).toHaveLength(1)
+    // No sibling to take time from — body runs over full ctx.duration
+    expect(events[0].end - events[0].begin).toBeCloseTo(1)
+  })
 })
 
 // ---------------------------------------------------------------------------

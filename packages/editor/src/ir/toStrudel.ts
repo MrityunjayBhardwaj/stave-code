@@ -129,6 +129,14 @@ function gen(ir: PatternIR): string {
     case 'Loop':
       // All Strudel patterns loop implicitly
       return gen(ir.body)
+
+    case 'Elongate':
+      // Mini-notation `a@N` only renders inside a Seq context. As a
+      // standalone, the factor is informationally lost when going
+      // back to Strudel — emit the inner body unchanged. Round-trip
+      // fidelity for elongation in seqs is handled where the parent
+      // Seq emits its mini-notation string (Tier 3 work).
+      return gen(ir.body)
   }
 }
 

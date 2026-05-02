@@ -117,21 +117,28 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       return []
 
     case 'Seq': {
-      // Sequential: each child runs after the previous, advancing time
-      // The time budget for each child is proportional to its position
+      // Sequential: each child runs after the previous, advancing time.
+      // Children weight the available cycle proportionally — default 1
+      // per child, with `Elongate(f, body)` declaring weight = f. Total
+      // weight is the sum; each slot gets `(weight / total) * ctx.duration`.
       if (ir.children.length === 0) return []
-      const slotDuration = ctx.duration / ir.children.length
+      const weights = ir.children.map(c => (c.tag === 'Elongate' ? c.factor : 1))
+      const total = weights.reduce((s, w) => s + w, 0)
+      if (total <= 0) return []
       const events: IREvent[] = []
       let cursor = ctx.time
-      for (const child of ir.children) {
+      for (let i = 0; i < ir.children.length; i++) {
+        const child = ir.children[i]
+        const slotDuration = ctx.duration * (weights[i] / total)
+        // Unwrap Elongate so its body sees the weighted slot directly.
+        const target = child.tag === 'Elongate' ? child.body : child
         const childCtx: CollectContext = {
           ...ctx,
           time: cursor,
           duration: slotDuration,
         }
-        const childEvents = walk(child, childCtx)
+        const childEvents = walk(target, childCtx)
         events.push(...childEvents)
-        // Advance cursor by slot duration (Sleep counts as a slot)
         cursor += slotDuration / ctx.speed
       }
       return events
@@ -223,6 +230,15 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
     case 'Loop': {
       // Loop is structural — the scheduler handles repetition.
       // collect() evaluates body once (for the current cycle window).
+      return walk(ir.body, ctx)
+    }
+
+    case 'Elongate': {
+      // Inside a Seq parent the weight is consumed there. Standalone
+      // (e.g. `Elongate(2, Play(c4))` at the top level) is degenerate
+      // — there is no sibling to take time from, so we just walk the
+      // body unchanged. The factor is recoverable from the tree if a
+      // future consumer needs structural intent.
       return walk(ir.body, ctx)
     }
   }

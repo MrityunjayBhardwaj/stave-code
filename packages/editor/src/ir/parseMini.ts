@@ -57,6 +57,7 @@ type Token =
   | { type: 'repeat';  factor: number }
   | { type: 'sometimes' }
   | { type: 'slice';   index: number }
+  | { type: 'elongate'; factor: number }
 
 function tokenize(input: string): Token[] {
   const tokens: Token[] = []
@@ -96,7 +97,7 @@ function tokenize(input: string): Token[] {
         if (!isNaN(idx) && idx >= 0) tokens.push({ type: 'slice', index: idx })
       }
 
-      // Check for trailing *n (repeat) or ? (sometimes)
+      // Check for trailing *n (repeat), ? (sometimes), or @n (elongate)
       if (i < input.length && input[i] === '*') {
         i++ // skip *
         let numStr = ''
@@ -108,6 +109,14 @@ function tokenize(input: string): Token[] {
       } else if (i < input.length && input[i] === '?') {
         i++
         tokens.push({ type: 'sometimes' })
+      } else if (i < input.length && input[i] === '@') {
+        i++ // skip @
+        let numStr = ''
+        while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++]
+        const factor = parseFloat(numStr)
+        if (!isNaN(factor) && factor > 0) {
+          tokens.push({ type: 'elongate', factor })
+        }
       }
       continue
     }
@@ -149,7 +158,7 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
       const baseDuration = isSample ? 1 : 0.25
       let node: PatternIR = IR.play(note, baseDuration, params)
 
-      // Check for repeat/sometimes modifier following this atom
+      // Check for repeat / sometimes / elongate modifier following this atom
       if (i < tokens.length) {
         const next = tokens[i]
         if (next.type === 'repeat') {
@@ -157,6 +166,9 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
           i++
         } else if (next.type === 'sometimes') {
           node = IR.choice(0.5, node, IR.pure())
+          i++
+        } else if (next.type === 'elongate') {
+          node = IR.elongate(next.factor, node)
           i++
         }
       }

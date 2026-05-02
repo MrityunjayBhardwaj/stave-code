@@ -37,6 +37,7 @@ export type PatternIR =
   | { tag: 'Ramp';   param: string; from: number; to: number; cycles: number; body: PatternIR }
   | { tag: 'Fast';   factor: number; body: PatternIR }
   | { tag: 'Slow';   factor: number; body: PatternIR }
+  | { tag: 'Elongate'; factor: number; body: PatternIR }  // Mini-notation `a@N` — weights this slot inside a parent Seq
   | { tag: 'Loop';   body: PatternIR }
   | { tag: 'Code';   code: string; lang: 'strudel' }  // Opaque fallback for unparseable fragments
 
@@ -60,6 +61,7 @@ export const IR = {
     ({ tag: 'Ramp', param, from, to, cycles, body }),
   fast: (factor: number, body: PatternIR): PatternIR => ({ tag: 'Fast', factor, body }),
   slow: (factor: number, body: PatternIR): PatternIR => ({ tag: 'Slow', factor, body }),
+  elongate: (factor: number, body: PatternIR): PatternIR => ({ tag: 'Elongate', factor, body }),
   loop: (body: PatternIR): PatternIR => ({ tag: 'Loop', body }),
   code: (code: string): PatternIR => ({ tag: 'Code', code, lang: 'strudel' }),
 } as const
