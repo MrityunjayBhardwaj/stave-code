@@ -255,6 +255,46 @@ describe('parseMini', () => {
       }
     })
   })
+
+  // ---- Tier 2: polymetric ----------------------------------------------
+
+  describe('polymetric ({a b, c d})', () => {
+    it('two-segment polymeter lowers to Stack', () => {
+      const tree = parseMini('{c4 e4, g4 b4 d5}')
+      expect(tree.tag).toBe('Stack')
+      if (tree.tag === 'Stack') {
+        expect(tree.tracks).toHaveLength(2)
+      }
+    })
+
+    it('each segment can have any of the existing structures inside', () => {
+      const tree = parseMini('{c4 e4, [g4 b4]*2, <a4 d5>}')
+      expect(tree.tag).toBe('Stack')
+      if (tree.tag === 'Stack') {
+        expect(tree.tracks).toHaveLength(3)
+      }
+    })
+
+    it('single segment (no comma) just inlines the sub-sequence', () => {
+      const tree = parseMini('{c4 e4 g4}')
+      expect(tree.tag).toBe('Seq') // not Stack
+    })
+
+    it('empty polymeter is a no-op', () => {
+      const tree = parseMini('{}')
+      // Implementation may emit Pure or omit nodes entirely.
+      expect(['Pure']).toContain(tree.tag)
+    })
+
+    it('polymetric inside a sequence parses as one element', () => {
+      const tree = parseMini('c4 {e4, g4 b4} a4')
+      expect(tree.tag).toBe('Seq')
+      if (tree.tag === 'Seq') {
+        expect(tree.children).toHaveLength(3)
+        expect(tree.children[1].tag).toBe('Stack')
+      }
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

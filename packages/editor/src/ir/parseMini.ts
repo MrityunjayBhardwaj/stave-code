@@ -59,6 +59,9 @@ type Token =
   | { type: 'slice';   index: number }
   | { type: 'elongate'; factor: number }
   | { type: 'euclid';   hits: number; steps: number; rotation: number }
+  | { type: 'lcurly' }
+  | { type: 'rcurly' }
+  | { type: 'comma' }
 
 function tokenize(input: string): Token[] {
   const tokens: Token[] = []
@@ -73,6 +76,9 @@ function tokenize(input: string): Token[] {
     if (ch === ']') { tokens.push({ type: 'rbracket' }); i++; continue }
     if (ch === '<') { tokens.push({ type: 'langle' });   i++; continue }
     if (ch === '>') { tokens.push({ type: 'rangle' });   i++; continue }
+    if (ch === '{') { tokens.push({ type: 'lcurly' });   i++; continue }
+    if (ch === '}') { tokens.push({ type: 'rcurly' });   i++; continue }
+    if (ch === ',') { tokens.push({ type: 'comma' });    i++; continue }
 
     if (ch === '~') {
       tokens.push({ type: 'rest' })
@@ -288,6 +294,39 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
       const subNodes = parseTokens(subTokens, isSample)
       if (subNodes.length > 0) {
         nodes.push(subNodes.length === 1 ? subNodes[0] : IR.seq(...subNodes))
+      }
+    } else if (tok.type === 'lcurly') {
+      // Polymetric: collect tokens until matching `}`, splitting on
+      // top-level commas. Each segment becomes a parallel track in a
+      // Stack — Strudel's polymeter semantics (each track stretches /
+      // compresses to fit one cycle, regardless of step count).
+      i++ // skip {
+      const segments: Token[][] = [[]]
+      let depth = 1
+      while (i < tokens.length && depth > 0) {
+        const t = tokens[i]
+        if (t.type === 'lcurly') depth++
+        if (t.type === 'rcurly') {
+          depth--
+          if (depth === 0) { i++; break }
+        }
+        if (depth === 1 && t.type === 'comma') {
+          segments.push([])
+        } else {
+          segments[segments.length - 1].push(t)
+        }
+        i++
+      }
+      const trackNodes = segments
+        .map(seg => parseTokens(seg, isSample))
+        .filter(s => s.length > 0)
+        .map(s => (s.length === 1 ? s[0] : IR.seq(...s)))
+      if (trackNodes.length === 0) {
+        // {} — nothing to play
+      } else if (trackNodes.length === 1) {
+        nodes.push(trackNodes[0]) // single segment is just a sub-sequence
+      } else {
+        nodes.push(IR.stack(...trackNodes))
       }
     } else if (tok.type === 'langle') {
       // Cycle (alternation): collect until matching >
