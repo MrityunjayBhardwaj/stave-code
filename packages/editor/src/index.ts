@@ -265,6 +265,16 @@ export {
 } from './engine/engineLog'
 export { installEngineLogMarkers } from './workspace/engineLogMarkers'
 export { installGlobalErrorCatch } from './engine/globalErrorCatch'
+
+// IR Inspector — observation-only snapshot store for the Transform
+// Graph debugger surface (v0). Single latest snapshot, not a history.
+export type { IRSnapshot } from './engine/irInspector'
+export {
+  publishIRSnapshot,
+  clearIRSnapshot,
+  getIRSnapshot,
+  subscribeIRSnapshot,
+} from './engine/irInspector'
 export type {
   FriendlyErrorParts,
   FuzzyMatch,
