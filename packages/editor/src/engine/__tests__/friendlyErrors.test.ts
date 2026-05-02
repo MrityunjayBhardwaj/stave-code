@@ -259,3 +259,143 @@ describe('parseStackLocation', () => {
     expect(parseStackLocation({ stack })).toBeNull()
   })
 })
+
+describe('formatFriendlyError — commonMistakes cascade', () => {
+  // Index that exercises every detector kind plus a global catch-all.
+  const HINTED_INDEX: DocsIndex = {
+    runtime: 'strudel',
+    docs: {
+      chord: {
+        signature: 'chord(name: string)',
+        description: 'Build a chord.',
+        example: 'chord("C")',
+        commonMistakes: [
+          {
+            // User typed `chord(C)` — bare identifier where a string was
+            // expected. Recognised structurally via the codeContext
+            // window.
+            detect: { kind: 'code', match: /chord\(\s*[A-G][^"'\s]*\)/ },
+            hint: 'Pitch classes are strings — try `chord("C")`.',
+            example: 'chord("Cmaj7")',
+          },
+        ],
+      },
+      hush: {
+        signature: 'hush()',
+        description: 'Silence everything.',
+        example: 'hush()',
+        commonMistakes: [
+          {
+            detect: { kind: 'identifier', alias: 'silence' },
+            hint: 'In Strudel the silencer is `hush()`, not `silence()`.',
+          },
+        ],
+      },
+      every: {
+        signature: '.every(n, fn)',
+        description: 'Apply fn every n cycles.',
+        example: '.every(4, rev)',
+        commonMistakes: [
+          {
+            detect: { kind: 'message', match: /every is not a function/ },
+            hint: '`.every()` is a method on a Pattern — chain it after `note(...)`.',
+            weight: 2,
+          },
+        ],
+      },
+    },
+    globalMistakes: [
+      {
+        detect: { kind: 'message', match: /scheduler is not ready/i },
+        hint: 'Hit play first — the scheduler boots on the first eval.',
+      },
+    ],
+  }
+
+  it('per-symbol message detector wins over fuzzy fallback', () => {
+    // `every is not a function` would otherwise fall through to the
+    // raw-message branch since identifier extraction returns null for
+    // TypeErrors. The curated hint should fire.
+    const err = new TypeError('every is not a function')
+    const r = formatFriendlyError(err, 'strudel', { index: HINTED_INDEX })
+    expect(r.message).toContain('chain it after `note')
+    expect(r.suggestion?.name).toBe('every')
+    expect(r.suggestion?.docsUrl).toContain('strudel')
+  })
+
+  it('per-symbol code detector fires when codeContext matches', () => {
+    const err = new Error('Unexpected identifier')
+    const r = formatFriendlyError(err, 'strudel', {
+      index: HINTED_INDEX,
+      codeContext: 'chord(C).fast(2)',
+    })
+    expect(r.message).toContain('Pitch classes are strings')
+    expect(r.suggestion?.example).toBe('chord("Cmaj7")')
+  })
+
+  it('code detector skipped when codeContext absent', () => {
+    const err = new Error('Unexpected identifier')
+    const r = formatFriendlyError(err, 'strudel', { index: HINTED_INDEX })
+    // Falls through to raw message.
+    expect(r.message).toBe('Unexpected identifier')
+    expect(r.suggestion).toBeUndefined()
+  })
+
+  it('identifier alias beats Levenshtein fuzzy', () => {
+    // `silence` would Levenshtein-match `every`/`hush`, but the curated
+    // identifier alias on `hush` is higher signal — prefer it.
+    const err = new ReferenceError('silence is not defined')
+    const r = formatFriendlyError(err, 'strudel', { index: HINTED_INDEX })
+    expect(r.message).toContain('hush()')
+    expect(r.suggestion?.name).toBe('hush')
+  })
+
+  it('globalMistakes catch errors with no symbol context', () => {
+    const err = new Error('Scheduler is not ready')
+    const r = formatFriendlyError(err, 'strudel', { index: HINTED_INDEX })
+    expect(r.message).toContain('Hit play first')
+    // No symbol → no .name in suggestion.
+    expect(r.suggestion?.name ?? '').toBe('')
+  })
+
+  it('higher weight wins on ranking ties', () => {
+    const idx: DocsIndex = {
+      runtime: 'strudel',
+      docs: {
+        a: {
+          signature: 'a()',
+          description: 'low-weight target',
+          commonMistakes: [
+            {
+              detect: { kind: 'message', match: /boom/ },
+              hint: 'low',
+              weight: 1,
+            },
+          ],
+        },
+        b: {
+          signature: 'b()',
+          description: 'high-weight target',
+          commonMistakes: [
+            {
+              detect: { kind: 'message', match: /boom/ },
+              hint: 'high',
+              weight: 5,
+            },
+          ],
+        },
+      },
+    }
+    const r = formatFriendlyError(new Error('boom'), 'strudel', { index: idx })
+    expect(r.message).toBe('high')
+  })
+
+  it('preserves stack/line/column when curated hint fires', () => {
+    const err = new Error('Scheduler is not ready')
+    err.stack = 'Error: Scheduler is not ready\n    at eval (<anonymous>:9:1)'
+    const r = formatFriendlyError(err, 'strudel', { index: HINTED_INDEX })
+    expect(r.line).toBe(9)
+    expect(r.column).toBe(1)
+    expect(r.stack).toContain('Scheduler is not ready')
+  })
+})

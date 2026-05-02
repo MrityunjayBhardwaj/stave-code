@@ -18,7 +18,7 @@
  *   - Cross-runtime suggestions (*"stack is a Strudel fn; you're in Hydra"*).
  */
 
-import type { DocsIndex } from '../monaco/docs/types'
+import type { CommonMistake, DocsIndex, RuntimeDoc } from '../monaco/docs/types'
 import type { LogSuggestion, RuntimeId } from './engineLog'
 
 export interface FriendlyErrorParts {
@@ -194,6 +194,115 @@ export interface FormatOptions {
   index?: DocsIndex
   /** Override the base URL pattern used for suggestion.docsUrl. */
   docsUrlFor?: (runtime: RuntimeId, name: string) => string
+  /**
+   * A window of user source code around the throw — typically the line
+   * the error happened on plus a couple of neighbours. Used by
+   * `CommonMistake` detectors of `kind: 'code'` to recognise wrong-shape
+   * idioms (`chord(C)` vs `chord("C")`) without needing a full parse.
+   * Caller is free to omit it; `kind: 'code'` detectors simply won't fire.
+   */
+  codeContext?: string
+}
+
+/**
+ * Coerce a string|RegExp `match` into a RegExp. Strings ship through
+ * JSON-serialised DocsIndexes; we treat them as case-insensitive regex
+ * sources so authors can write either `"chord\\(\\s*[A-G][^\"]*\\)"`
+ * literally or use a runtime-constructed RegExp.
+ */
+function asRegExp(match: string | RegExp): RegExp {
+  return match instanceof RegExp ? match : new RegExp(match, 'i')
+}
+
+interface MistakeHit {
+  mistake: CommonMistake
+  /** Specificity rank: higher beats lower when weights tie. */
+  specificity: 3 | 2 | 1
+  /** DocsIndex order — lower index wins on full ties (stable). */
+  order: number
+  /** Symbol the hint was attached to, if any. Used for the suggestion record. */
+  symbol?: { name: string; doc: RuntimeDoc }
+}
+
+function evalMistake(
+  mistake: CommonMistake,
+  ctx: { rawMessage: string; identifier: string | null; codeContext?: string },
+): boolean {
+  const { detect } = mistake
+  if (detect.kind === 'message') {
+    return asRegExp(detect.match).test(ctx.rawMessage)
+  }
+  if (detect.kind === 'code') {
+    if (!ctx.codeContext) return false
+    return asRegExp(detect.match).test(ctx.codeContext)
+  }
+  // identifier
+  return ctx.identifier !== null && ctx.identifier === detect.alias
+}
+
+const SPECIFICITY: Record<CommonMistake['detect']['kind'], 3 | 2 | 1> = {
+  message: 3,
+  code: 2,
+  identifier: 1,
+}
+
+function rankHits(hits: MistakeHit[]): MistakeHit | null {
+  if (hits.length === 0) return null
+  hits.sort((a, b) => {
+    const wa = a.mistake.weight ?? 1
+    const wb = b.mistake.weight ?? 1
+    if (wa !== wb) return wb - wa
+    if (a.specificity !== b.specificity) return b.specificity - a.specificity
+    return a.order - b.order
+  })
+  return hits[0]
+}
+
+function collectMistakes(
+  index: DocsIndex,
+  ctx: { rawMessage: string; identifier: string | null; codeContext?: string },
+): MistakeHit | null {
+  const hits: MistakeHit[] = []
+  let order = 0
+  // Per-symbol — prefer the symbol the user explicitly named when we
+  // have one (right name, wrong shape); otherwise scan all symbols for
+  // identifier-aliases and message detectors that key off other clues.
+  if (ctx.identifier && index.docs[ctx.identifier]) {
+    const doc = index.docs[ctx.identifier]
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name: ctx.identifier, doc },
+        })
+      }
+    }
+  }
+  for (const [name, doc] of Object.entries(index.docs)) {
+    if (name === ctx.identifier) continue // already scanned
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name, doc },
+        })
+      }
+    }
+  }
+  for (const m of index.globalMistakes ?? []) {
+    if (evalMistake(m, ctx)) {
+      hits.push({
+        mistake: m,
+        specificity: SPECIFICITY[m.detect.kind],
+        order: order++,
+      })
+    }
+  }
+  return rankHits(hits)
 }
 
 function defaultDocsUrl(runtime: RuntimeId, name: string): string {
@@ -223,8 +332,49 @@ export function formatFriendlyError(
       : undefined
 
   const loc = parseStackLocation(err)
-
   const identifier = extractReferenceIdentifier(err)
+
+  // 1. Curated hints (commonMistakes + globalMistakes) — fire first.
+  //    Higher specificity than algorithmic fuzzy match: when the author
+  //    has hand-written the right hint for this case, it beats the
+  //    Levenshtein neighbour every time.
+  if (options.index) {
+    const hit = collectMistakes(options.index, {
+      rawMessage,
+      identifier,
+      codeContext: options.codeContext,
+    })
+    if (hit) {
+      const suggestion: LogSuggestion | undefined = hit.symbol
+        ? {
+            name: hit.symbol.name,
+            docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(
+              runtime,
+              hit.symbol.name,
+            ),
+            example: hit.mistake.example ?? hit.symbol.doc.example,
+            description: hit.symbol.doc.description,
+          }
+        : hit.mistake.example
+        ? {
+            // Global mistake without a symbol — synthesise a minimal
+            // suggestion so downstream UI still surfaces the example.
+            name: '',
+            docsUrl: '',
+            example: hit.mistake.example,
+          }
+        : undefined
+      return {
+        message: hit.mistake.hint,
+        suggestion,
+        stack,
+        line: loc?.line,
+        column: loc?.column,
+      }
+    }
+  }
+
+  // 2. ReferenceError fuzzy fallback (today's behaviour).
   if (identifier && options.index) {
     const matches = fuzzyMatch(
       identifier,
@@ -250,7 +400,6 @@ export function formatFriendlyError(
         column: loc?.column,
       }
     }
-    // No fuzzy hit — still friendlier than a bare "is not defined".
     return {
       message: `\`${identifier}\` is not defined.`,
       stack,
@@ -259,7 +408,7 @@ export function formatFriendlyError(
     }
   }
 
-  // Non-reference errors — fall back to the raw message + stack.
+  // 3. Non-reference, no curated hint — raw message.
   return {
     message: rawMessage || 'Unknown error',
     stack,
