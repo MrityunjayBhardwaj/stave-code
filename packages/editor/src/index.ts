@@ -5,6 +5,10 @@ export type { PatternIR, PlayParams, CollectContext, ComponentBag, System } from
 export { IR, collect, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
 export { parseMini, parseStrudel, propagate, StrudelParseSystem, IREventCollectSystem } from './ir'
 
+// Pass runner — runtime-neutral IR→IR transform machinery
+export type { Pass } from './ir'
+export { runPasses } from './ir'
+
 // Main components
 export { StrudelEditor } from './StrudelEditor'
 export type { StrudelEditorProps } from './StrudelEditor'

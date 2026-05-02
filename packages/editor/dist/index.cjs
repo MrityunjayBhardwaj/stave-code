@@ -4067,6 +4067,17 @@ function splitFirstArg(argsStr) {
   return [parts2[0], parts2.slice(1).join(", ")];
 }
 
+// src/ir/passes.ts
+function runPasses(input, passes) {
+  const out2 = [];
+  let cur = input;
+  for (const p of passes) {
+    cur = p.run(cur);
+    out2.push({ name: p.name, ir: cur });
+  }
+  return out2;
+}
+
 // src/ir/propagation.ts
 function propagate(bag, systems) {
   const sorted = [...systems].sort((a, b) => a.stratum - b.stratum);
@@ -20010,7 +20021,7 @@ var VirtualTimeScheduler = class {
     /** Map from `${time}:${taskId}` to insertion order for stable sorting */
     // entryOrder Map removed — insertion order stored directly on SleepEntry (#75)
     this._running = false;
-    /** Cue state: last cue per name with virtual time and args */
+    /** Cue state: last cue per name with virtual time, args, and cuer's BPM. */
     this.cueMap = /* @__PURE__ */ new Map();
     /** Tasks waiting for a cue */
     this.syncWaiters = /* @__PURE__ */ new Map();
@@ -20169,7 +20180,8 @@ var VirtualTimeScheduler = class {
   fireCue(name2, taskId, args2 = []) {
     const task = this.tasks.get(taskId);
     const cueVirtualTime = task?.virtualTime ?? this.getAudioTime();
-    this.cueMap.set(name2, { time: cueVirtualTime, args: args2 });
+    const cueBpm = task?.bpm ?? 60;
+    this.cueMap.set(name2, { time: cueVirtualTime, args: args2, bpm: cueBpm });
     this.emitEvent({
       type: "cue",
       taskId,
@@ -20185,14 +20197,16 @@ var VirtualTimeScheduler = class {
         if (waiterTask) {
           waiterTask.virtualTime = cueVirtualTime;
         }
-        waiter.resolve(args2);
+        waiter.resolve({ args: args2, bpm: cueBpm });
       }
       this.syncWaiters.delete(pattern);
     }
   }
   /**
    * Wait for a cue. The calling task suspends until fireCue(name) is called.
-   * On resume, the task inherits the cue's virtual time (SV5).
+   * On resume, the task inherits the cue's virtual time (SV5). The resolved
+   * payload also carries the cuer's BPM so callers using `bpm_sync: true`
+   * (sync_bpm, #236) can mutate the waiter's task.bpm.
    */
   waitForSync(name2, taskId) {
     return new Promise((resolve) => {
@@ -20719,6 +20733,32 @@ var Ramp = class {
     return this.items[Symbol.iterator]();
   }
 };
+function doubles(start2, num_doubles = 1) {
+  if (typeof start2 !== "number") {
+    throw new Error(`Start value for doubles needs to be a number, got: ${String(start2)}`);
+  }
+  if (num_doubles < 0) return halves(start2, -num_doubles);
+  const out2 = [];
+  let v = start2;
+  for (let i2 = 0; i2 < num_doubles; i2++) {
+    out2.push(v);
+    v *= 2;
+  }
+  return new Ring(out2);
+}
+function halves(start2, num_halves = 1) {
+  if (typeof start2 !== "number") {
+    throw new Error(`Start value for halves needs to be a number, got: ${String(start2)}`);
+  }
+  if (num_halves < 0) return doubles(start2, -num_halves);
+  const out2 = [];
+  let v = start2;
+  for (let i2 = 0; i2 < num_halves; i2++) {
+    out2.push(v);
+    v /= 2;
+  }
+  return new Ring(out2);
+}
 function line(start2, finish, stepsOrOpts = 4) {
   const steps = typeof stepsOrOpts === "number" ? stepsOrOpts : stepsOrOpts.steps ?? 4;
   const result = [];
@@ -21265,9 +21305,18 @@ var ProgramBuilder = class _ProgramBuilder {
     this.steps.push({ tag: "cue", name: name2, args: args2 });
     return this;
   }
-  sync(name2) {
-    this.steps.push({ tag: "sync", name: name2 });
+  sync(name2, opts) {
+    const bpmSync = opts?.bpm_sync === true;
+    this.steps.push(bpmSync ? { tag: "sync", name: name2, bpmSync: true } : { tag: "sync", name: name2 });
     return this;
+  }
+  /**
+   * sync_bpm — alias for sync with bpm_sync: true (#236).
+   * Inherits both virtual time AND BPM from the cuer at wake time.
+   * Matches desktop `core.rb:4490-4494`.
+   */
+  sync_bpm(name2) {
+    return this.sync(name2, { bpm_sync: true });
   }
   control(nodeRef, params) {
     const p = !this._argBpmScaling ? { ...params, _argBpmScaling: 0 } : params;
@@ -21500,17 +21549,80 @@ var ProgramBuilder = class _ProgramBuilder {
     }
     return this;
   }
+  /**
+   * Tier B PR #2 (#233) — block-form tuplet scheduling.
+   *
+   * `tuplets [70, [72, 72], 70, [82, 82, 82]] do |n| play n end`
+   *   - Bare element → `block.call(n); sleep duration` (default 1 beat).
+   *   - Sub-list of size N → fits N `block + sleep` calls into `duration`
+   *     beats by wrapping in `with_density(N)`.
+   *
+   * Optional `swing:` opt offsets every Nth tuplet by that many beats via
+   * `at([swing], …)`. Swing is density-scaled inside sub-lists so the
+   * offset stays proportional to the local pulse. Mirrors upstream
+   * `core.rb:486-512`. Pre-resolved at build time (the block runs N times
+   * synchronously, pushing N play+sleep step pairs); the resulting steps
+   * fire at scheduled virtual time exactly like a hand-written sequence.
+   */
+  tuplets(tuplet_list, optsOrFn, maybeFn) {
+    const opts = typeof optsOrFn === "function" ? {} : optsOrFn;
+    const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn;
+    if (typeof fn !== "function") {
+      throw new Error("tuplets requires a block");
+    }
+    const duration = opts.duration ?? 1;
+    const swing = opts.swing ?? 0;
+    const swing_pulse = opts.swing_pulse ?? 2;
+    const swing_offset = (opts.swing_offset ?? 0) + 1;
+    const items = tuplet_list instanceof Ring ? tuplet_list.toArray() : Array.from(tuplet_list);
+    for (const el of items) {
+      if (Array.isArray(el)) {
+        const n = el.length;
+        this.with_density(n, (b) => {
+          el.forEach((tuplet, idx) => {
+            const should_swing = swing !== 0 && n % swing_pulse === 0 && (idx + swing_offset) % swing_pulse === 0;
+            if (should_swing) {
+              b.at([swing / n], null, (inner) => fn(inner, tuplet));
+            } else {
+              fn(b, tuplet);
+            }
+            b.sleep(duration);
+          });
+        });
+      } else {
+        fn(this, el);
+        this.sleep(duration);
+      }
+    }
+    return this;
+  }
   /** Return the current synth name. */
   get current_synth_name() {
     return this.currentSynth;
   }
-  /** Return the current synth defaults hash. */
-  get current_synth_defaults_hash() {
+  /**
+   * Tier B PR #2 (#233) — defaults / setting introspection. All four are
+   * called bare (`puts current_debug`) so they're methods returning a value,
+   * not getters — see BARE_CALLABLE in TreeSitterTranspiler.ts which emits
+   * `__b.NAME()` with parens.
+   */
+  current_synth_defaults() {
     return { ...this._synthDefaults };
   }
-  /** Return the current sample defaults hash. */
-  get current_sample_defaults_hash() {
+  current_sample_defaults() {
     return { ...this._sampleDefaults };
+  }
+  current_debug() {
+    return this._debug;
+  }
+  /**
+   * We don't validate synth arg names against synthinfo — unknown args are
+   * silently dropped at SoundLayer normalization. Returning the upstream
+   * default (`true`) keeps existing user code that branches on this read
+   * working. When `use_arg_checks` ships in Tier C, this becomes a real read.
+   */
+  current_arg_checks() {
+    return true;
   }
   /** Deferred set — fires at runtime (interleaved with sleeps). */
   set(key, value) {
@@ -22429,10 +22541,15 @@ async function runProgram(program, ctx, fxCounter) {
           ctx.globalStore.set(step.key, step.value);
         }
         break;
-      case "sync":
+      case "sync": {
         ctx.bridge?.flushMessages();
-        await ctx.scheduler.waitForSync(step.name, ctx.taskId);
+        const payload = await ctx.scheduler.waitForSync(step.name, ctx.taskId);
+        if (step.bpmSync) {
+          currentBpm = payload.bpm;
+          if (task) task.bpm = payload.bpm;
+        }
         break;
+      }
       case "fx": {
         const reps = step.opts.reps ?? 1;
         if (!ctx.bridge) {
@@ -24050,7 +24167,50 @@ var DSL_NAMES = [
   "recording_start",
   "recording_stop",
   "recording_save",
-  "recording_delete"
+  "recording_delete",
+  // Tier B PR #2 — pure ring constructors (#233). Both delegate to each
+  // other for negative counts (matches upstream `core.rb:1919-1970`).
+  "doubles",
+  "halves",
+  // Tier B PR #2 — defaults / setting introspection (#233). Inside live_loops
+  // these route via __b for per-task reads; at top level they read the
+  // topLevelBuilder's state. current_arg_checks returns constant true (we
+  // don't validate arg names yet — see ProgramBuilder).
+  "current_synth_defaults",
+  "current_sample_defaults",
+  "current_arg_checks",
+  "current_debug",
+  // Tier B PR #2 — block-form tuplet scheduling (#233). The transpiler
+  // routes `tuplets [...] do |x| ... end` to __b.tuplets(list, opts, cb),
+  // resolving the list/opts at build time then pushing N play+sleep step
+  // pairs per the block (one per leaf element). Density wraps each
+  // sub-list so N elements fit in `duration` beats.
+  "tuplets",
+  // Tier B PR #2 — defonce (#212 / #233). The transpiler emits a bare
+  // assignment `name = defonce("name", opts, (__b) => { ...; return last })`
+  // so the cached value lands in proxy storage. The runtime registrar caches
+  // against engine.defonceCache; opts.override re-runs the body. Cached
+  // values are spread into persistedFns at the next eval so removing the
+  // defonce line doesn't break still-running live_loops that read `name`.
+  "defonce",
+  // Tier B PR #3 — sync_bpm (#236). Deferred ProgramBuilder step that wraps
+  // sync with bpm_sync: true. Inside live_loops the transpiler routes
+  // through __b.sync_bpm via BUILDER_METHODS; at top level the runtime stub
+  // forwards to topLevelBuilder.sync_bpm. Cuer's BPM travels through the
+  // extended cueMap entry; AudioInterpreter's sync handler mutates task.bpm
+  // when step.bpmSync is true.
+  "sync_bpm",
+  // Tier B PR #3 — run_code (#236). Host-side dynamic eval — calls back into
+  // engine.evaluate with the supplied string. Top-level only; throws inside
+  // live_loops to match desktop spider re-entry semantics.
+  "run_code",
+  // Tier B PR #3 — eval_file / run_file (#236). Browser-sandbox stubs: the
+  // engine has no filesystem access, so both throw an informative error
+  // pointing users at run_code(string) / load_example(:name) instead.
+  // Listed in the public DSL surface so user code that references them
+  // gets a clear redirect rather than a silent globalThis lookup miss.
+  "eval_file",
+  "run_file"
 ];
 
 // ../../../sonicPiWeb/src/engine/Sandbox.ts
@@ -24369,6 +24529,7 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "wait",
   "sample",
   "sync",
+  "sync_bpm",
   "cue",
   "set",
   "use_synth",
@@ -24432,6 +24593,7 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "kill",
   "play_chord",
   "play_pattern",
+  "tuplets",
   "with_octave",
   "with_random_seed",
   "with_density",
@@ -24470,6 +24632,12 @@ var BUILDER_METHODS = /* @__PURE__ */ new Set([
   "rand_back",
   "rand_skip",
   "rand_reset",
+  // Tier B PR #2 — defaults / setting introspection (#233). Per-task pure
+  // reads — route through __b so per-loop use_*_defaults are visible.
+  "current_synth_defaults",
+  "current_sample_defaults",
+  "current_arg_checks",
+  "current_debug",
   // Deferred-step DSL contract (issue #193 — must mirror methods on
   // ProgramBuilder so they fire at scheduled virtual time, not build time).
   "stop_loop",
@@ -24603,7 +24771,13 @@ var BARE_CALLABLE = /* @__PURE__ */ new Set([
   "recording_start",
   "recording_stop",
   "recording_delete",
-  "recording_save"
+  "recording_save",
+  // Tier B PR #2 — defaults / setting introspection (#233). Routinely called
+  // bare in user code (`puts current_debug`, `if current_arg_checks`).
+  "current_synth_defaults",
+  "current_sample_defaults",
+  "current_arg_checks",
+  "current_debug"
 ]);
 var BARE_CALLABLE_TOP_LEVEL = /* @__PURE__ */ new Set([
   "current_bpm"
@@ -25085,7 +25259,7 @@ function transpileProgram(node, ctx) {
     const isBareLoopNode = method === "loop" && child.namedChildren.some((c) => c.type === "do_block" || c.type === "block");
     if (method && TOP_LEVEL_SETTINGS.has(method)) {
       topLevel.push(child);
-    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
+    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "defonce" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
       blocks.push(child);
     } else {
       bareCode.push(child);
@@ -25150,6 +25324,9 @@ function transpileMethodCall(node, ctx) {
     if (methodName === "define" || methodName === "ndefine") {
       return transpileDefine(node, argsNode, blockNode, ctx, methodName);
     }
+    if (methodName === "defonce") {
+      return transpileDefonce(node, argsNode, blockNode, ctx);
+    }
     if (methodName === "with_fx" || methodName === "with_synth" || methodName === "with_bpm" || methodName === "with_transpose" || methodName === "with_arg_bpm_scaling" || methodName === "with_synth_defaults" || methodName === "with_sample_defaults" || methodName === "with_random_seed" || methodName === "with_octave" || methodName === "with_density") {
       return transpileWithBlock(methodName, argsNode, blockNode, ctx);
     }
@@ -25161,6 +25338,9 @@ function transpileMethodCall(node, ctx) {
     }
     if (methodName === "time_warp") {
       return transpileTimeWarp(argsNode, blockNode, ctx);
+    }
+    if (methodName === "tuplets") {
+      return transpileTuplets(argsNode, blockNode, ctx);
     }
     if (methodName === "assert_error" && blockNode) {
       const bodyCtx = { ...ctx, insideLoop: true };
@@ -25548,6 +25728,40 @@ ${ctx.indent}define(${JSON.stringify(name2)}, ${name2})`;
   }
   return decl;
 }
+function transpileDefonce(node, argsNode, blockNode, ctx) {
+  const args2 = argsNode?.namedChildren ?? [];
+  let name2 = "unnamed";
+  const optPairs = [];
+  for (const arg of args2) {
+    if (arg.type === "simple_symbol") {
+      name2 = arg.text.slice(1);
+    } else if (arg.type === "pair") {
+      const key = arg.namedChildren[0];
+      const val = arg.namedChildren[1];
+      const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
+      optPairs.push(`${keyName}: ${transpileNode(val, ctx)}`);
+    }
+  }
+  if (!blockNode) {
+    const line2 = node.startPosition?.row != null ? node.startPosition.row + 1 : "?";
+    ctx.errors.push(`Parse error at line ${line2}: defonce :${name2} is missing 'do ... end' block`);
+    return `/* parse error: defonce :${name2} missing block */`;
+  }
+  const bodyChildren = blockNode.namedChildren.filter((c) => c.type !== "block_parameters");
+  if (bodyChildren.length === 0) {
+    return `${name2} = defonce(${JSON.stringify(name2)}, ${optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}"}, (__b) => undefined)`;
+  }
+  const bodyCtx = { ...ctx, insideLoop: true };
+  const lastIdx = bodyChildren.length - 1;
+  const stmts = bodyChildren.map((c, i2) => {
+    const expr = transpileNode(c, bodyCtx);
+    return i2 === lastIdx ? `${ctx.indent}  return ${expr}` : `${ctx.indent}  ${expr}`;
+  });
+  const optsStr = optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}";
+  return `${name2} = defonce(${JSON.stringify(name2)}, ${optsStr}, (__b) => {
+${stmts.join("\n")}
+${ctx.indent}})`;
+}
 function transpileWithBlock(methodName, argsNode, blockNode, ctx) {
   const args2 = argsNode?.namedChildren ?? [];
   const positional = [];
@@ -25699,6 +25913,32 @@ function transpileTimeWarp(argsNode, blockNode, ctx) {
   const bodyCtx = { ...ctx, insideLoop: true };
   const bodyStr = transpileBlockBody(blockNode, bodyCtx);
   return `${prefix}at([${offset}], null, (__b) => {
+${bodyStr}
+${ctx.indent}})`;
+}
+function transpileTuplets(argsNode, blockNode, ctx) {
+  if (!blockNode) {
+    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
+    ctx.errors.push(`Parse error at line ${line2}: tuplets is missing 'do ... end' block`);
+    return `/* parse error: tuplets missing block */`;
+  }
+  const args2 = argsNode?.namedChildren ?? [];
+  const positional = args2.filter((a) => a.type !== "pair").map((a) => transpileNode(a, ctx));
+  const pairs = args2.filter((a) => a.type === "pair");
+  const listExpr = positional[0] ?? "[]";
+  const optsExpr = pairs.length > 0 ? "{ " + pairs.map((p) => {
+    const key = p.namedChildren[0];
+    const val = p.namedChildren[1];
+    const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
+    return `${keyName}: ${transpileNode(val, ctx)}`;
+  }).join(", ") + " }" : "{}";
+  const prefix = ctx.insideLoop ? "__b." : "";
+  const bodyCtx = { ...ctx, insideLoop: true };
+  const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
+  const paramNames = params?.namedChildren.map((c) => c.text) ?? [];
+  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
+  const paramStr = paramNames.length > 0 ? ", " + paramNames.join(", ") : "";
+  return `${prefix}tuplets(${listExpr}, ${optsExpr}, (__b${paramStr}) => {
 ${bodyStr}
 ${ctx.indent}})`;
 }
@@ -27389,6 +27629,9 @@ var SonicPiEngine = class {
      *  next eval's scopeBase so removing a `define` line from the buffer does not
      *  break a still-running live_loop that calls it. (#215) */
     this.definedFns = /* @__PURE__ */ new Map();
+    /** Cached `defonce` values (#212 / #233). Survive across re-evals — that's
+     *  the whole point. Cleared only on full engine reset / dispose. */
+    this.defonceCache = /* @__PURE__ */ new Map();
     /** Host-provided OSC send handler. Engine fires this; host wires to actual transport. */
     this.oscHandler = null;
     /** Active Recorder instance (#228). Null when not recording. */
@@ -28211,6 +28454,80 @@ var SonicPiEngine = class {
         },
         (...args2) => {
           topLevelBuilder.recording_delete(...args2);
+        },
+        // Tier B PR #2 — pure ring constructors (#233)
+        doubles,
+        halves,
+        // Tier B PR #2 — defaults / setting introspection (#233). Forward
+        // to topLevelBuilder so the value reflects top-level use_*_defaults
+        // calls. Inside live_loops the transpiler routes through __b.
+        () => topLevelBuilder.current_synth_defaults(),
+        () => topLevelBuilder.current_sample_defaults(),
+        () => topLevelBuilder.current_arg_checks(),
+        () => topLevelBuilder.current_debug(),
+        // Tier B PR #2 — block-form tuplets (#233). Forwards to topLevelBuilder
+        // so steps land on the top-level program. Inside live_loops the
+        // transpiler emits `__b.tuplets(...)` directly via BUILDER_METHODS.
+        (list, optsOrFn, maybeFn) => {
+          topLevelBuilder.tuplets(
+            list,
+            optsOrFn,
+            maybeFn
+          );
+        },
+        // Tier B PR #2 — defonce (#212 / #233). Cache lookup; runs body once
+        // (or again on `override: true`). The transpiler emits a bare
+        // assignment `name = defonce(...)` so the Sandbox proxy captures the
+        // cached value into scope-isolated storage. Spread back into
+        // persistedFns above so `name` reads still work after the line is
+        // removed from the buffer (matches define persistence #215).
+        (name2, opts, fn) => {
+          if (typeof name2 !== "string" || typeof fn !== "function") return void 0;
+          if (!opts?.override && this.defonceCache.has(name2)) {
+            return this.defonceCache.get(name2);
+          }
+          const value = fn(topLevelBuilder);
+          this.defonceCache.set(name2, value);
+          return value;
+        },
+        // Tier B PR #3 — sync_bpm (#236). Inside live_loops the transpiler
+        // routes `sync_bpm :name` to `__b.sync_bpm(name)` via BUILDER_METHODS.
+        // At top level we forward to topLevelBuilder so the cue waiter runs
+        // when the top-level program reaches it. Top-level programs run
+        // serially (no concurrent context), so nothing actually waits — the
+        // call is a no-op in that case, matching desktop where sync at top
+        // level outside in_thread is unusual but harmless.
+        (name2) => {
+          topLevelBuilder.sync_bpm(name2);
+        },
+        // Tier B PR #3 — run_code (#236). Host-side dynamic eval. Replaces
+        // all running loops with the supplied code, equivalent to pressing
+        // Run with a fresh buffer. Returns a Promise that resolves when the
+        // new evaluation completes. Inside live_loops this re-enters the
+        // engine which is undefined behaviour — desktop's spider re-entry
+        // guard would throw; we accept the same risk for now and may add a
+        // strict guard if observed misuse warrants it.
+        (code2) => {
+          if (typeof code2 !== "string") {
+            throw new TypeError(`run_code expects a string, got ${typeof code2}`);
+          }
+          return this.evaluate(code2);
+        },
+        // Tier B PR #3 — eval_file / run_file (#236). Both stubs throw an
+        // informative error redirecting users to the working alternatives.
+        // Sonic Pi Web has no filesystem; on desktop these read a .rb file
+        // from disk. We surface that limitation explicitly rather than
+        // silently no-op'ing, so user-error from copy-pasted desktop code
+        // gets a useful message in the editor's runtime-error overlay.
+        (_path) => {
+          throw new Error(
+            "browser sandbox: no filesystem access; use run_code(string) or load_example(:name) instead"
+          );
+        },
+        (_path) => {
+          throw new Error(
+            "browser sandbox: no filesystem access; use run_code(string) or load_example(:name) instead"
+          );
         }
       ];
       const codeWarnings = validateCode(transpiledCode);
@@ -28218,7 +28535,10 @@ var SonicPiEngine = class {
         if (this.printHandler) this.printHandler(`[Warning] ${warning}`);
         else console.warn("[SonicPi]", warning);
       }
-      const persistedFns = Object.fromEntries(this.definedFns);
+      const persistedFns = {
+        ...Object.fromEntries(this.defonceCache),
+        ...Object.fromEntries(this.definedFns)
+      };
       const sandbox = createIsolatedExecutor(transpiledCode, dslNames, persistedFns);
       scopeHandle = sandbox.scopeHandle;
       await sandbox.execute(...dslValues);
@@ -28283,6 +28603,7 @@ var SonicPiEngine = class {
     this.loopSynced.clear();
     this.globalStore.clear();
     this.definedFns.clear();
+    this.defonceCache.clear();
     this.persistentFx.clear();
     this.reusableFx.clear();
     this.loopFxScope.clear();
@@ -28309,6 +28630,7 @@ var SonicPiEngine = class {
     this.loopSeeds.clear();
     this.globalStore.clear();
     this.definedFns.clear();
+    this.defonceCache.clear();
   }
   /** Register a handler for runtime errors inside `live_loop` bodies. */
   setRuntimeErrorHandler(handler) {
@@ -30788,6 +31110,7 @@ exports.resetUndoManager = resetUndoManager;
 exports.resolveDescriptor = resolveDescriptor;
 exports.restoreSnapshot = restoreSnapshot;
 exports.revealLineInFile = revealLineInFile;
+exports.runPasses = runPasses;
 exports.sanitizePresetName = sanitizePresetName;
 exports.saveSnapshot = saveSnapshot;
 exports.scaleGain = scaleGain;
