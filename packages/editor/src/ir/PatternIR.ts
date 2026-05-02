@@ -12,6 +12,8 @@
  * - All nodes are plain objects — serializable, no methods
  */
 
+import type { SourceLocation } from './IREvent'
+
 export interface PlayParams {
   s?: string            // instrument/sample name
   gain?: number         // 0-1
@@ -27,7 +29,7 @@ export type PatternIR =
   | { tag: 'Pure' }
   | { tag: 'Seq';    children: PatternIR[] }
   | { tag: 'Stack';  tracks: PatternIR[] }
-  | { tag: 'Play';   note: string | number; duration: number; params: PlayParams }
+  | { tag: 'Play';   note: string | number; duration: number; params: PlayParams; loc?: SourceLocation[] }
   | { tag: 'Sleep';  duration: number }
   | { tag: 'Choice'; p: number; then: PatternIR; else_: PatternIR }
   | { tag: 'Every';  n: number; body: PatternIR; default_?: PatternIR }
@@ -44,8 +46,21 @@ export type PatternIR =
 /** Smart constructors — reduce boilerplate when building trees by hand. */
 export const IR = {
   pure: (): PatternIR => ({ tag: 'Pure' }),
-  play: (note: string | number, duration = 0.25, params: Partial<PlayParams> = {}): PatternIR =>
-    ({ tag: 'Play', note, duration, params: { gain: 1, velocity: 1, ...params } }),
+  play: (
+    note: string | number,
+    duration = 0.25,
+    params: Partial<PlayParams> = {},
+    loc?: SourceLocation[],
+  ): PatternIR => {
+    const node: PatternIR = {
+      tag: 'Play',
+      note,
+      duration,
+      params: { gain: 1, velocity: 1, ...params },
+    }
+    if (loc && loc.length > 0) (node as { loc?: SourceLocation[] }).loc = loc
+    return node
+  },
   sleep: (duration: number): PatternIR => ({ tag: 'Sleep', duration }),
   seq: (...children: PatternIR[]): PatternIR => ({ tag: 'Seq', children }),
   stack: (...tracks: PatternIR[]): PatternIR => ({ tag: 'Stack', tracks }),

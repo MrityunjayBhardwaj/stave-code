@@ -304,14 +304,17 @@ export default function StrudelEditorClient({
       // IR Inspector snapshot — only meaningful for Strudel today.
       // parseStrudel + collect are pure and cheap on the user's source
       // string; published via the irInspector store so the panel can
-      // re-render without coupling to the editor lifecycle.
+      // re-render without coupling to the editor lifecycle. `source`
+      // is the workspace fileId (NOT the human-visible path) because
+      // revealLineInFile keys by id; the Inspector's click-to-source
+      // handler depends on this lookup matching.
       if (runtimeId === "strudel" && fileNow) {
         try {
           const ir = parseStrudel(fileNow.content);
           const events = collect(ir);
           publishIRSnapshot({
             ts: Date.now(),
-            source: fileNow.path,
+            source: fileNow.id,
             runtime: "strudel",
             code: fileNow.content,
             ir,

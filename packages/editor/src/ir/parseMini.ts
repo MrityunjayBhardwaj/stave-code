@@ -22,18 +22,30 @@
 
 import { IR, type PatternIR } from './PatternIR'
 
-/** Parse a mini-notation string. Returns Pure for empty input. Never throws. */
+/**
+ * Parse a mini-notation string. Returns Pure for empty input. Never throws.
+ *
+ * `baseOffset` — character offset of `input[0]` within the user's full
+ * source code. Lets the parser attach `loc` to Play nodes so downstream
+ * consumers (Inspector click-to-source, Monaco highlighting) can map
+ * an event back to the exact span of code that produced it. Caller is
+ * responsible for the offset; parseStrudel computes it from the
+ * regex match index of the quoted-string content.
+ */
 export function parseMini(
   input: string,
   isSample = false,
+  baseOffset = 0,
 ): PatternIR {
-  const trimmed = input.trim()
-  if (!trimmed) return IR.pure()
+  if (!input.trim()) return IR.pure()
 
   try {
-    const tokens = tokenize(trimmed)
+    // Tokenize the raw input — NOT a trimmed copy — so atom offsets
+    // line up with the actual character positions the caller's
+    // baseOffset describes. Internal whitespace is still skipped.
+    const tokens = tokenize(input)
     if (tokens.length === 0) return IR.pure()
-    const nodes = parseTokens(tokens, isSample)
+    const nodes = parseTokens(tokens, isSample, baseOffset)
     if (nodes.length === 0) return IR.pure()
     if (nodes.length === 1) return nodes[0]
     return IR.seq(...nodes)
@@ -48,7 +60,7 @@ export function parseMini(
 // ---------------------------------------------------------------------------
 
 type Token =
-  | { type: 'atom';   value: string }
+  | { type: 'atom';   value: string; start: number; end: number }
   | { type: 'rest' }
   | { type: 'lbracket' }
   | { type: 'rbracket' }
@@ -88,11 +100,12 @@ function tokenize(input: string): Token[] {
 
     // Read atom (note name or sample name)
     if (/[a-zA-Z0-9#-]/.test(ch)) {
+      const atomStart = i
       let atom = ''
       while (i < input.length && /[a-zA-Z0-9#\-_.]/.test(input[i])) {
         atom += input[i++]
       }
-      tokens.push({ type: 'atom', value: atom })
+      tokens.push({ type: 'atom', value: atom, start: atomStart, end: i })
 
       // Slice (`a:N`) is parsed as a per-atom modifier so it composes
       // naturally with repeat/sometimes that follow it.
@@ -221,7 +234,7 @@ function rotate<T>(arr: T[], by: number): T[] {
 // Parser
 // ---------------------------------------------------------------------------
 
-function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
+function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): PatternIR[] {
   const nodes: PatternIR[] = []
   let i = 0
 
@@ -230,6 +243,7 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
 
     if (tok.type === 'atom') {
       const note = tok.value
+      const atomLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }]
       i++
 
       // Slice modifier (`a:N`) — applies before repeat/sometimes since
@@ -245,7 +259,7 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
         : {}
       if (sliceIndex !== undefined) params.slice = sliceIndex
       const baseDuration = isSample ? 1 : 0.25
-      let node: PatternIR = IR.play(note, baseDuration, params)
+      let node: PatternIR = IR.play(note, baseDuration, params, atomLoc)
 
       // Euclidean modifier — applies to the just-parsed atom and
       // expands to a Seq of Play / Sleep slots. Must come before
@@ -291,7 +305,7 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
         subTokens.push(t)
         i++
       }
-      const subNodes = parseTokens(subTokens, isSample)
+      const subNodes = parseTokens(subTokens, isSample, baseOffset)
       if (subNodes.length > 0) {
         nodes.push(subNodes.length === 1 ? subNodes[0] : IR.seq(...subNodes))
       }
@@ -318,7 +332,7 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
         i++
       }
       const trackNodes = segments
-        .map(seg => parseTokens(seg, isSample))
+        .map(seg => parseTokens(seg, isSample, baseOffset))
         .filter(s => s.length > 0)
         .map(s => (s.length === 1 ? s[0] : IR.seq(...s)))
       if (trackNodes.length === 0) {
@@ -340,7 +354,7 @@ function parseTokens(tokens: Token[], isSample: boolean): PatternIR[] {
         cycleTokens.push(t)
         i++
       }
-      const cycleNodes = parseTokens(cycleTokens, isSample)
+      const cycleNodes = parseTokens(cycleTokens, isSample, baseOffset)
       if (cycleNodes.length > 0) {
         nodes.push(IR.cycle(...cycleNodes))
       }

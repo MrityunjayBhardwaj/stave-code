@@ -295,6 +295,86 @@ describe('parseMini', () => {
       }
     })
   })
+
+  // ---- Source-location tracking ----------------------------------------
+
+  describe('Play.loc — source-range tracking', () => {
+    it('single atom carries its char range', () => {
+      const tree = parseMini('c4')
+      expect(tree.tag).toBe('Play')
+      if (tree.tag === 'Play') {
+        expect(tree.loc).toEqual([{ start: 0, end: 2 }])
+      }
+    })
+
+    it('atoms in a sequence carry distinct ranges', () => {
+      const tree = parseMini('c4 e4 g4')
+      expect(tree.tag).toBe('Seq')
+      if (tree.tag === 'Seq') {
+        const locs = tree.children.map(c =>
+          c.tag === 'Play' ? c.loc?.[0] : null,
+        )
+        expect(locs).toEqual([
+          { start: 0, end: 2 },
+          { start: 3, end: 5 },
+          { start: 6, end: 8 },
+        ])
+      }
+    })
+
+    it('baseOffset shifts every atom by the same amount', () => {
+      const tree = parseMini('c4 e4', false, 100)
+      if (tree.tag === 'Seq' && tree.children[0].tag === 'Play') {
+        expect(tree.children[0].loc).toEqual([{ start: 100, end: 102 }])
+      }
+    })
+
+    it('atoms inside sub-sequences keep accurate offsets', () => {
+      // [c4 e4] g4 — c4 at 1-3, e4 at 4-6, g4 at 8-10
+      const tree = parseMini('[c4 e4] g4')
+      expect(tree.tag).toBe('Seq')
+      if (tree.tag === 'Seq') {
+        const sub = tree.children[0]
+        const last = tree.children[1]
+        if (sub.tag === 'Seq' && sub.children[0].tag === 'Play') {
+          expect(sub.children[0].loc).toEqual([{ start: 1, end: 3 }])
+        }
+        if (last.tag === 'Play') {
+          expect(last.loc).toEqual([{ start: 8, end: 10 }])
+        }
+      }
+    })
+
+    it('atoms inside a polymeter keep accurate offsets', () => {
+      // {c4, e4} — c4 at 1-3, e4 at 5-7
+      const tree = parseMini('{c4, e4}')
+      expect(tree.tag).toBe('Stack')
+      if (tree.tag === 'Stack') {
+        const a = tree.tracks[0]
+        const b = tree.tracks[1]
+        if (a.tag === 'Play') expect(a.loc).toEqual([{ start: 1, end: 3 }])
+        if (b.tag === 'Play') expect(b.loc).toEqual([{ start: 5, end: 7 }])
+      }
+    })
+  })
+
+  // ---- collect propagates Play.loc → IREvent.loc -----------------------
+
+  describe('collect propagates Play.loc → IREvent.loc', () => {
+    it('events carry the loc set on their producing Play node', () => {
+      const tree = parseMini('c4 e4', false, 50)
+      const events = collect(tree)
+      expect(events.map(e => e.loc?.[0])).toEqual([
+        { start: 50, end: 52 },
+        { start: 53, end: 55 },
+      ])
+    })
+
+    it('Play built without loc produces events with loc undefined', () => {
+      const events = collect(IR.play('c4'))
+      expect(events[0].loc).toBeUndefined()
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -397,6 +477,71 @@ describe('parseStrudel', () => {
     if (tree.tag === 'FX') {
       expect(tree.params.room).toBe(0.8)
     }
+  })
+
+  describe('source-range tracking', () => {
+    it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
+      // 0123456789012345
+      // note("c4 e4")
+      // c4 at 6-8, e4 at 9-11
+      const tree = parseStrudel('note("c4 e4")')
+      expect(tree.tag).toBe('Seq')
+      if (tree.tag === 'Seq') {
+        const c = tree.children[0]
+        const e = tree.children[1]
+        if (c.tag === 'Play') expect(c.loc).toEqual([{ start: 6, end: 8 }])
+        if (e.tag === 'Play') expect(e.loc).toEqual([{ start: 9, end: 11 }])
+      }
+    })
+
+    it('s("bd sd") — sample atoms also carry loc', () => {
+      // s("bd sd")
+      // bd at 3-5, sd at 6-8
+      const tree = parseStrudel('s("bd sd")')
+      expect(tree.tag).toBe('Seq')
+      if (tree.tag === 'Seq') {
+        const a = tree.children[0]
+        const b = tree.children[1]
+        if (a.tag === 'Play') expect(a.loc).toEqual([{ start: 3, end: 5 }])
+        if (b.tag === 'Play') expect(b.loc).toEqual([{ start: 6, end: 8 }])
+      }
+    })
+
+    it('multi-track $: blocks each map to their own absolute offsets', () => {
+      // $: note("c4 e4")\n$: s("bd sd")
+      // 0  3       11
+      // c4 at 9-11 of code; bd at first char after `$: s("` of second track
+      const code = '$: note("c4 e4")\n$: s("bd sd")'
+      const tree = parseStrudel(code)
+      expect(tree.tag).toBe('Stack')
+      if (tree.tag === 'Stack') {
+        // First track: note("c4 e4") with `$: ` prefix → body starts
+        // at offset 3, then `note("` is 6 chars → c4 at 3+6=9
+        const t0 = tree.tracks[0]
+        if (t0.tag === 'Seq' && t0.children[0].tag === 'Play') {
+          expect(t0.children[0].loc?.[0].start).toBe(9)
+        }
+        // Second track: `$: s("` prefix. Code length up to second $: is
+        // 17 ('$: note("c4 e4")\n'). After `$: ` body offset = 17+3=20.
+        // Then `s("` is 3 chars → bd at 20+3=23.
+        const t1 = tree.tracks[1]
+        if (t1.tag === 'Seq' && t1.children[0].tag === 'Play') {
+          expect(t1.children[0].loc?.[0]).toEqual({ start: 23, end: 25 })
+        }
+      }
+    })
+
+    it('events from collect carry loc all the way through', () => {
+      const events = collect(parseStrudel('note("c4 e4")'))
+      expect(events).toHaveLength(2)
+      expect(events[0].loc).toEqual([{ start: 6, end: 8 }])
+      expect(events[1].loc).toEqual([{ start: 9, end: 11 }])
+    })
+
+    it('opaque expressions have no loc (correct — the mapping is unknown)', () => {
+      const events = collect(parseStrudel('mystery(42)'))
+      expect(events.every(e => e.loc === undefined)).toBe(true)
+    })
   })
 })
 
