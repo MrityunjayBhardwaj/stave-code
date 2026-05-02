@@ -114,6 +114,7 @@ declare function scaleGain(events: IREvent[], factor: number): IREvent[];
  * - Code node — opaque fallback for fragments the parser can't handle
  * - All nodes are plain objects — serializable, no methods
  */
+
 interface PlayParams {
     s?: string;
     gain?: number;
@@ -137,6 +138,7 @@ type PatternIR = {
     note: string | number;
     duration: number;
     params: PlayParams;
+    loc?: SourceLocation[];
 } | {
     tag: 'Sleep';
     duration: number;
@@ -192,7 +194,7 @@ type PatternIR = {
 /** Smart constructors — reduce boilerplate when building trees by hand. */
 declare const IR: {
     readonly pure: () => PatternIR;
-    readonly play: (note: string | number, duration?: number, params?: Partial<PlayParams>) => PatternIR;
+    readonly play: (note: string | number, duration?: number, params?: Partial<PlayParams>, loc?: SourceLocation[]) => PatternIR;
     readonly sleep: (duration: number) => PatternIR;
     readonly seq: (...children: PatternIR[]) => PatternIR;
     readonly stack: (...tracks: PatternIR[]) => PatternIR;
@@ -295,8 +297,17 @@ declare function patternFromJSON(json: string): PatternIR;
  * expands to a flat Seq via Bjorklund, polymetric becomes Stack.
  */
 
-/** Parse a mini-notation string. Returns Pure for empty input. Never throws. */
-declare function parseMini(input: string, isSample?: boolean): PatternIR;
+/**
+ * Parse a mini-notation string. Returns Pure for empty input. Never throws.
+ *
+ * `baseOffset` — character offset of `input[0]` within the user's full
+ * source code. Lets the parser attach `loc` to Play nodes so downstream
+ * consumers (Inspector click-to-source, Monaco highlighting) can map
+ * an event back to the exact span of code that produced it. Caller is
+ * responsible for the offset; parseStrudel computes it from the
+ * regex match index of the quoted-string content.
+ */
+declare function parseMini(input: string, isSample?: boolean, baseOffset?: number): PatternIR;
 
 /**
  * parseStrudel — Strudel code string → PatternIR.
