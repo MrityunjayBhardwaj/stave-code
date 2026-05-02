@@ -61,6 +61,7 @@ import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./Workspace
 import { ActivityBar } from "./ActivityBar";
 import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
 import { ConsolePanel } from "./ConsolePanel";
+import { IRInspectorPanel } from "./IRInspectorPanel";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
 import { registerPanel } from "../panels/registry";
@@ -797,6 +798,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       order: 50,
       render: () => null,
     }));
+    unregs.push(registerPanel({
+      id: "ir-inspector",
+      title: "IR Inspector",
+      icon: "inspect",
+      order: 60,
+      render: () => null,
+    }));
     return () => { for (const u of unregs) u(); };
   }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject]);
 
@@ -933,6 +941,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           </div>
         )}
         {!zenMode && activePanelId === "console" && <ConsolePanel />}
+        {!zenMode && activePanelId === "ir-inspector" && <IRInspectorPanel />}
         {!zenMode && activePanelId === "outline" && (
           <div style={styles.panelRoot} data-sidebar>
             <div style={styles.panelHeader}>OUTLINE</div>

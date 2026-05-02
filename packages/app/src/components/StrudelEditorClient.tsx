@@ -29,6 +29,9 @@ import {
   emitLog,
   emitFixed,
   formatFriendlyError,
+  parseStrudel,
+  collect,
+  publishIRSnapshot,
   STRUDEL_DOCS_INDEX,
   SONICPI_DOCS_INDEX,
   type DocsIndex,
@@ -297,6 +300,29 @@ export default function StrudelEditorClient({
       const fileNow = getFile(fileId);
       const runtimeId: RuntimeId = fileNow?.language === "sonicpi" ? "sonicpi" : "strudel";
       emitFixed({ runtime: runtimeId, source: fileNow?.path ?? fileId });
+
+      // IR Inspector snapshot — only meaningful for Strudel today.
+      // parseStrudel + collect are pure and cheap on the user's source
+      // string; published via the irInspector store so the panel can
+      // re-render without coupling to the editor lifecycle.
+      if (runtimeId === "strudel" && fileNow) {
+        try {
+          const ir = parseStrudel(fileNow.content);
+          const events = collect(ir);
+          publishIRSnapshot({
+            ts: Date.now(),
+            source: fileNow.path,
+            runtime: "strudel",
+            code: fileNow.content,
+            ir,
+            events,
+          });
+        } catch {
+          // parseStrudel guarantees graceful fallback to Code node;
+          // collect is total. Anything thrown here is unexpected — keep
+          // the eval-success path quiet.
+        }
+      }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {
       setRuntimeStates(prev => {
