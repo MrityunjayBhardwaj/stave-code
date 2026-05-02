@@ -21,6 +21,10 @@ export { patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ser
 export { parseMini } from './parseMini'
 export { parseStrudel } from './parseStrudel'
 
+// Pass runner — runtime-neutral IR→IR transform machinery
+export type { Pass } from './passes'
+export { runPasses } from './passes'
+
 // Propagation engine
 export { propagate, StrudelParseSystem, IREventCollectSystem } from './propagation'
 export type { ComponentBag, System } from './propagation'
