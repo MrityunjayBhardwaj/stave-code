@@ -71,4 +71,110 @@ describe('normalizeStrudelHap', () => {
     const n = normalizeStrudelHap(hap)
     expect(n.freq).toBeNull()
   })
+
+  describe('IR Tier 1 — loc / trackId / params propagation', () => {
+    it('extracts loc from hap.context.locations', () => {
+      const hap = {
+        whole: { begin: 0, end: 0.5 },
+        value: { note: 'c4' },
+        context: { locations: [{ start: 12, end: 18 }] },
+      }
+      const n = normalizeStrudelHap(hap)
+      expect(n.loc).toEqual([{ start: 12, end: 18 }])
+    })
+
+    it('falls back to hap.context.loc when locations is missing', () => {
+      const hap = {
+        whole: { begin: 0, end: 0.5 },
+        value: { note: 'c4' },
+        context: { loc: [{ start: 5, end: 10 }] },
+      }
+      const n = normalizeStrudelHap(hap)
+      expect(n.loc).toEqual([{ start: 5, end: 10 }])
+    })
+
+    it('omits loc when context is absent', () => {
+      const hap = { whole: { begin: 0, end: 0.5 }, value: { note: 'c4' } }
+      const n = normalizeStrudelHap(hap)
+      expect(n.loc).toBeUndefined()
+    })
+
+    it('drops malformed loc entries (non-numeric start/end)', () => {
+      const hap = {
+        whole: { begin: 0, end: 0.5 },
+        value: { note: 'c4' },
+        context: {
+          locations: [
+            { start: 1, end: 2 },
+            { start: 'oops', end: 4 },
+            { start: 5 }, // missing end
+            { start: 7, end: 9 },
+          ],
+        },
+      }
+      const n = normalizeStrudelHap(hap)
+      expect(n.loc).toEqual([
+        { start: 1, end: 2 },
+        { start: 7, end: 9 },
+      ])
+    })
+
+    it('passes through trackId from caller', () => {
+      const hap = { whole: { begin: 0, end: 0.5 }, value: { note: 'c4' } }
+      const n = normalizeStrudelHap(hap, 'lead')
+      expect(n.trackId).toBe('lead')
+    })
+
+    it('omits trackId when caller does not supply one', () => {
+      const hap = { whole: { begin: 0, end: 0.5 }, value: { note: 'c4' } }
+      const n = normalizeStrudelHap(hap)
+      expect(n.trackId).toBeUndefined()
+    })
+
+    it('captures unknown value fields as params', () => {
+      const hap = {
+        whole: { begin: 0, end: 0.5 },
+        value: {
+          note: 'c4',
+          gain: 0.8,
+          // engine-specific extras — should land in params
+          cutoff: 1200,
+          delay: 0.25,
+          room: 0.5,
+        },
+      }
+      const n = normalizeStrudelHap(hap)
+      expect(n.params).toEqual({ cutoff: 1200, delay: 0.25, room: 0.5 })
+    })
+
+    it('omits params when value carries only known fields', () => {
+      const hap = {
+        whole: { begin: 0, end: 0.5 },
+        value: { note: 'c4', gain: 0.8, s: 'piano' },
+      }
+      const n = normalizeStrudelHap(hap)
+      expect(n.params).toBeUndefined()
+    })
+
+    it('skips undefined param values (avoid noise from defaulted fields)', () => {
+      const hap = {
+        whole: { begin: 0, end: 0.5 },
+        value: { note: 'c4', cutoff: 1000, delay: undefined },
+      }
+      const n = normalizeStrudelHap(hap)
+      expect(n.params).toEqual({ cutoff: 1000 })
+    })
+
+    it('all four new fields land together when present', () => {
+      const hap = {
+        whole: { begin: 1, end: 2 },
+        value: { note: 'd4', cutoff: 800 },
+        context: { locations: [{ start: 30, end: 36 }] },
+      }
+      const n = normalizeStrudelHap(hap, 'bass')
+      expect(n.loc).toEqual([{ start: 30, end: 36 }])
+      expect(n.trackId).toBe('bass')
+      expect(n.params).toEqual({ cutoff: 800 })
+    })
+  })
 })

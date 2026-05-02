@@ -779,8 +779,13 @@ type NormalizedHap = IREvent;
 /**
  * Convert a raw Strudel hap into an IREvent (NormalizedHap).
  * Handles Fraction objects (Number() coercion), missing fields, and optional value bag.
+ *
+ * `trackId` is caller-supplied — Strudel haps don't carry it natively,
+ * but per-track schedulers (`$:` blocks) know their id and pass it
+ * through so downstream consumers (DAW view, transform debugger) can
+ * attribute every event to a producer.
  */
-declare function normalizeStrudelHap(hap: any): NormalizedHap;
+declare function normalizeStrudelHap(hap: any, trackId?: string): NormalizedHap;
 
 /**
  * Engine-agnostic IRPattern built from a live HapStream.

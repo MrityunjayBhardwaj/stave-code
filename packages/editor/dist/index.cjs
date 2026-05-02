@@ -4136,12 +4136,48 @@ function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
 }
 
 // src/engine/NormalizedHap.ts
-function normalizeStrudelHap(hap) {
+var KNOWN_VALUE_FIELDS = /* @__PURE__ */ new Set([
+  "note",
+  "n",
+  "freq",
+  "s",
+  "gain",
+  "velocity",
+  "color"
+]);
+function extractParams(value) {
+  if (!value || typeof value !== "object") return void 0;
+  let extras;
+  for (const [k, v] of Object.entries(value)) {
+    if (KNOWN_VALUE_FIELDS.has(k)) continue;
+    if (v === void 0) continue;
+    if (!extras) extras = {};
+    extras[k] = v;
+  }
+  return extras;
+}
+function extractLoc(hap) {
+  if (!hap || typeof hap !== "object") return void 0;
+  const ctx = hap.context;
+  const raw = ctx?.locations ?? ctx?.loc;
+  if (!Array.isArray(raw)) return void 0;
+  const out2 = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const start2 = r.start;
+    const end = r.end;
+    if (typeof start2 === "number" && typeof end === "number") {
+      out2.push({ start: start2, end });
+    }
+  }
+  return out2.length > 0 ? out2 : void 0;
+}
+function normalizeStrudelHap(hap, trackId) {
   const begin = Number(hap.whole?.begin ?? 0);
   const end = Number(hap.whole?.end ?? begin + 0.25);
   const endClipped = Number(hap.endClipped ?? end);
   const value = hap.value;
-  return {
+  const event = {
     begin,
     end,
     endClipped,
@@ -4152,6 +4188,12 @@ function normalizeStrudelHap(hap) {
     velocity: value?.velocity ?? 1,
     color: value?.color ?? null
   };
+  const loc = extractLoc(hap);
+  if (loc) event.loc = loc;
+  if (trackId) event.trackId = trackId;
+  const params = extractParams(value);
+  if (params) event.params = params;
+  return event;
 }
 
 // src/engine/StrudelEngine.ts
@@ -4369,11 +4411,12 @@ var StrudelEngine = class {
         this.trackSchedulers = /* @__PURE__ */ new Map();
         for (const [id, pattern] of capturedPatterns) {
           const captured = pattern;
+          const trackId = id;
           this.trackSchedulers.set(id, {
             now: () => sched.now(),
             query: (begin, end) => {
               try {
-                return captured.queryArc(begin, end).map(normalizeStrudelHap);
+                return captured.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, trackId));
               } catch {
                 return [];
               }
@@ -23809,10 +23852,14 @@ var DSL_NAMES = [
   "rand_back",
   "rand_skip",
   "rand_reset",
-  // Tier B — recording (#228). Top-level immediate side effects (session
-  // lifecycle, not music events) — no ProgramBuilder methods. recording_*
-  // tap masterOutputNode on SuperSonicBridge, downstream of all SoundLayer
-  // param normalization, so the WAV captures exactly what the user hears.
+  // Tier B — recording (#228). Deferred ProgramBuilder steps that fire at
+  // scheduled virtual time so the lifecycle sequences with the surrounding
+  // play / sleep program — running them at build time would mis-order
+  // recording_save before any audio plays. Rest-arg + length guards in
+  // ProgramBuilder.recording_* enforce Desktop SP fixed-arity. The handler
+  // wired into runProgram's ctx taps masterOutputNode (downstream of all
+  // SoundLayer param normalization), so the WAV captures exactly what the
+  // user hears. Top-level dslValues entries forward to topLevelBuilder.
   "recording_start",
   "recording_stop",
   "recording_save",
@@ -28058,6 +28105,12 @@ var SonicPiEngine = class {
   }
   dispose() {
     if (this.playing) this.stop();
+    if (this.recorder) {
+      this.recorder.cancel();
+      this.recorder = null;
+    }
+    this.lastRecording = null;
+    this.pendingRecordingStop = null;
     this.scheduler?.dispose();
     this.scheduler = null;
     this.eventStream.dispose();

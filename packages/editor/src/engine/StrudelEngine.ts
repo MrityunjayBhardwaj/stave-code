@@ -358,10 +358,17 @@ export class StrudelEngine implements LiveCodingEngine {
         this.trackSchedulers = new Map<string, PatternScheduler>()
         for (const [id, pattern] of capturedPatterns) {
           const captured = pattern // close over this specific pattern instance
+          const trackId = id // capture for the closure below
           this.trackSchedulers.set(id, {
             now: () => sched.now(),
             query: (begin: number, end: number) => {
-              try { return captured.queryArc(begin, end).map(normalizeStrudelHap) } catch { return [] }
+              try {
+                return captured
+                  .queryArc(begin, end)
+                  .map((hap: unknown) => normalizeStrudelHap(hap, trackId))
+              } catch {
+                return []
+              }
             },
           })
         }
