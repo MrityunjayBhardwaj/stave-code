@@ -425,17 +425,21 @@ describe('toStrudel', () => {
     expect(result).toBe('cat(note("c4").fast(2), note("e4"))')
   })
 
-  // --- Fixed: Choice with Pure else_ uses degradeBy ---
-  it('Choice with Pure else_ → degradeBy', () => {
-    expect(toStrudel(IR.choice(0.5, IR.play('c4')))).toBe('note("c4").degradeBy(0.5)')
-    expect(toStrudel(IR.choice(0.7, IR.play('c4')))).toBe('note("c4").degradeBy(0.3)')
+  // --- Choice with Pure else_ uses sometimesBy (per-cycle) ---
+  // Phase 19-03 Task 02: the per-event `.degradeBy()` round-trip target
+  // now belongs to the new `Degrade` tag (introduced in Task 06). Choice
+  // is per-cycle, so `.sometimesBy(p, x => x)` is the semantically-
+  // correct Strudel emit (RESEARCH §2.2 collision note).
+  it('Choice with Pure else_ → sometimesBy', () => {
+    expect(toStrudel(IR.choice(0.5, IR.play('c4')))).toBe('note("c4").sometimesBy(0.5, x => x)')
+    expect(toStrudel(IR.choice(0.7, IR.play('c4')))).toBe('note("c4").sometimesBy(0.7, x => x)')
   })
 
-  it('Choice with non-Pure else_ → stack with degradeBy on both branches', () => {
+  it('Choice with non-Pure else_ → stack with sometimesBy on both branches', () => {
     const result = toStrudel(IR.choice(0.5, IR.play('c4'), IR.play('g4')))
     expect(result).toContain('stack(')
-    expect(result).toContain('note("c4").degradeBy(0.5)')
-    expect(result).toContain('note("g4").degradeBy(0.5)')
+    expect(result).toContain('note("c4").sometimesBy(0.5, x => x)')
+    expect(result).toContain('note("g4").sometimesBy(0.5, x => x)')
   })
 
   // --- Fixed: Every uses extracted transform, not hardcoded fast(2) ---
@@ -462,6 +466,231 @@ describe('toStrudel', () => {
     // no default_ stored → generic fallback
     const result = toStrudel(tree)
     expect(result).toContain('.every(4,')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Late tag — Tier 4 forced tag (Phase 19-03 Task 02)
+// ---------------------------------------------------------------------------
+
+describe('Late tag (Tier 4)', () => {
+  it('IR.late() constructs Late node', () => {
+    const tree = IR.late(0.125, IR.play('c4'))
+    expect(tree.tag).toBe('Late')
+    if (tree.tag === 'Late') {
+      expect(tree.offset).toBe(0.125)
+      expect(tree.body.tag).toBe('Play')
+    }
+  })
+
+  it('collect shifts a single Play forward by offset', () => {
+    // A bare IR.play occupies the full cycle (collect derives event
+    // duration from ctx.duration/ctx.speed, not ir.duration; defaults are
+    // duration=1, speed=1). Late(0.125) shifts begin 0→0.125 and end
+    // 1→1.125 — past the cycle boundary, so the wrap branch fires:
+    // begin wraps to -0.875 + 1 = NO; the wrap check is `begin >=
+    // ctx.cycle+1`, and 0.125 < 1, so no wrap. The shifted event
+    // spans [0.125, 1.125). For a multi-cycle viz consumer this is
+    // fine; for a strict single-cycle query the trailing portion is
+    // outside the window — but we don't clip on query window in this
+    // test. The shape test asserts the shift, not the clip.
+    const tree = IR.late(0.125, IR.play('c4'))
+    const events = collect(tree)
+    expect(events.length).toBe(1)
+    expect(events[0].begin).toBeCloseTo(0.125, 9)
+    expect(events[0].end).toBeCloseTo(1.125, 9)
+  })
+
+  it('collect wraps events past the cycle boundary back into the current cycle', () => {
+    // Play at t=0.9, offset 0.2 → naïve shift to 1.1; should wrap to 0.1.
+    // Build directly: a Play with begin time 0.9 by enclosing in a Seq
+    // that places it in the last 10% of the cycle is fiddly; easier test
+    // is .late(0.5) over a 4-step seq — the back half wraps to the front.
+    const body = IR.seq(
+      IR.play('a'), // 0.00..0.25
+      IR.play('b'), // 0.25..0.50
+      IR.play('c'), // 0.50..0.75
+      IR.play('d'), // 0.75..1.00
+    )
+    const events = collect(IR.late(0.5, body))
+    expect(events.length).toBe(4)
+    const beginsByNote = Object.fromEntries(
+      events.map((e) => [e.note as string, e.begin]),
+    )
+    // a 0.0 → 0.5; b 0.25 → 0.75; c 0.5 → 1.0 → wrap → 0.0; d 0.75 → 1.25 → wrap → 0.25.
+    expect(beginsByNote.a).toBeCloseTo(0.5, 9)
+    expect(beginsByNote.b).toBeCloseTo(0.75, 9)
+    expect(beginsByNote.c).toBeCloseTo(0, 9)
+    expect(beginsByNote.d).toBeCloseTo(0.25, 9)
+  })
+
+  it('propagates loc from underlying Play (PV24)', () => {
+    const loc = [{ start: 7, end: 9 }]
+    const tree = IR.late(0.125, IR.play('c4', 0.25, {}, loc))
+    const events = collect(tree)
+    expect(events.length).toBe(1)
+    expect(events[0].loc).toEqual(loc)
+  })
+
+  it('toStrudel(Late) emits .late(offset) on the body', () => {
+    expect(toStrudel(IR.late(0.125, IR.play('c4')))).toBe('note("c4").late(0.125)')
+    expect(toStrudel(IR.late(0.5, IR.play('e4')))).toBe('note("e4").late(0.5)')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Degrade tag — Tier 4 forced tag (Phase 19-03 Task 06)
+// ---------------------------------------------------------------------------
+
+describe('Degrade tag (Tier 4)', () => {
+  it('IR.degrade() constructs Degrade node with retention probability', () => {
+    const tree = IR.degrade(0.5, IR.play('c4'))
+    expect(tree.tag).toBe('Degrade')
+    if (tree.tag === 'Degrade') {
+      expect(tree.p).toBe(0.5)
+      expect(tree.body.tag).toBe('Play')
+    }
+  })
+
+  it('p=1 keeps every event whose seeded rand > 0 (Strudel parity — strict comparison)', () => {
+    // p=1 ⇒ drop=0 ⇒ keep when rand > 0. Legacy RNG returns 0 at t=0
+    // exactly, so the t=0 onset is dropped. This matches Strudel —
+    // `s("bd hh sd cp").degradeBy(0)` returns 3 haps, not 4.
+    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
+    const events = collect(IR.degrade(1, body))
+    expect(events.length).toBe(3)
+    // The dropped event is the t=0 one (note 'a').
+    expect(events.map((e) => e.note)).toEqual(['b', 'c', 'd'])
+  })
+
+  it('p=0 drops every event (rand > 1 never)', () => {
+    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
+    const events = collect(IR.degrade(0, body))
+    expect(events.length).toBe(0)
+  })
+
+  it('is deterministic: same input produces same output across calls', () => {
+    const body = IR.seq(
+      IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'),
+      IR.play('e'), IR.play('f'), IR.play('g'), IR.play('h'),
+    )
+    const a = collect(IR.degrade(0.5, body)).map((e) => e.note)
+    const b = collect(IR.degrade(0.5, body)).map((e) => e.note)
+    expect(a).toEqual(b)
+  })
+
+  it('retention rate roughly matches p over a large sample', () => {
+    // Build 64 sequential events to get a reasonable sample. The
+    // seededRand used by Degrade is deterministic, so we can assert
+    // a window rather than a probabilistic bound.
+    const children = Array.from({ length: 64 }, (_, i) => IR.play(`n${i}`))
+    const body = IR.seq(...children)
+    const kept = collect(IR.degrade(0.5, body)).length
+    // Empirically the retention rate over 64 events near the start
+    // of the rand signal lands close to 50%. Allow a generous window
+    // (25%..75%) to absorb seed-distribution skew.
+    expect(kept).toBeGreaterThan(16)
+    expect(kept).toBeLessThan(48)
+  })
+
+  it('propagates loc on retained events (PV24)', () => {
+    // The t=0 event is dropped under strict `rand > 0` (rand(0)=0).
+    // Place the Play inside a Seq so its onset is at 0.5 — rand(0.5) =
+    // 0.260481 > 0, so the event is kept and we can assert loc.
+    const loc = [{ start: 7, end: 9 }]
+    const body = IR.seq(IR.play('a'), IR.play('c4', 0.25, {}, loc))
+    const events = collect(IR.degrade(1, body))
+    expect(events.length).toBe(1)
+    expect(events[0].loc).toEqual(loc)
+  })
+
+  it('toStrudel(Degrade) emits .degrade() when p=0.5, else .degradeBy(1-p)', () => {
+    expect(toStrudel(IR.degrade(0.5, IR.play('c4')))).toBe('note("c4").degrade()')
+    // p=0.7 → drop=0.3
+    expect(toStrudel(IR.degrade(0.7, IR.play('c4')))).toBe('note("c4").degradeBy(0.3)')
+    // p=0.2 → drop=0.8
+    expect(toStrudel(IR.degrade(0.2, IR.play('c4')))).toBe('note("c4").degradeBy(0.8)')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Chunk tag — Tier 4 forced tag (Phase 19-03 Task 08)
+// ---------------------------------------------------------------------------
+
+describe('Chunk tag (Tier 4)', () => {
+  it('IR.chunk() constructs Chunk node', () => {
+    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
+    const transform = IR.fast(2, body)
+    const tree = IR.chunk(4, transform, body)
+    expect(tree.tag).toBe('Chunk')
+    if (tree.tag === 'Chunk') {
+      expect(tree.n).toBe(4)
+      expect(tree.transform.tag).toBe('Fast')
+      expect(tree.body.tag).toBe('Seq')
+    }
+  })
+
+  it('plays the full body each cycle, applying transform only to the active slot', () => {
+    // Strudel's chunk(n, func) plays the body in full every cycle and
+    // applies func only to the slot-k events on cycle k (verified
+    // against pattern.mjs:2569-2578 + repeatCycles which repeats —
+    // does not slow). Transform here is gain(0.5) on the body.
+    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
+    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const tree = IR.chunk(4, transform, body)
+    const allEvents: ReturnType<typeof collect> = []
+    for (let c = 0; c < 4; c++) {
+      const cycleEvents = collect(tree, {
+        cycle: c, time: c, begin: c, end: c + 1, duration: 1,
+      })
+      allEvents.push(...cycleEvents)
+    }
+    // Full body plays each cycle — 4 events × 4 cycles = 16.
+    expect(allEvents.length).toBe(16)
+    // Cycle 0: slot 0 active ⇒ event 'a' has gain 0.5; rest are body's default 1.
+    const cycle0 = allEvents.filter((e) => e.begin >= 0 && e.begin < 1)
+    expect(cycle0.find((e) => e.note === 'a')?.gain).toBe(0.5)
+    expect(cycle0.find((e) => e.note === 'b')?.gain).toBe(1)
+    // Cycle 1: slot 1 active ⇒ 'b' has gain 0.5.
+    const cycle1 = allEvents.filter((e) => e.begin >= 1 && e.begin < 2)
+    expect(cycle1.find((e) => e.note === 'b')?.gain).toBe(0.5)
+    expect(cycle1.find((e) => e.note === 'a')?.gain).toBe(1)
+    // Cycle 3: slot 3 active ⇒ 'd' has gain 0.5.
+    const cycle3 = allEvents.filter((e) => e.begin >= 3 && e.begin < 4)
+    expect(cycle3.find((e) => e.note === 'd')?.gain).toBe(0.5)
+  })
+
+  it('applies transform params to slot events on cycle 0', () => {
+    const body = IR.seq(IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'))
+    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const tree = IR.chunk(4, transform, body)
+    const events = collect(tree, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(4)
+    // Slot 0 (begin in [0, 0.25)) is 'a'; transform applies → gain 0.5.
+    expect(events[0].note).toBe('a')
+    expect(events[0].gain).toBe(0.5)
+    // Slot 1..3 are body events with default gain.
+    expect(events[1].note).toBe('b')
+    expect(events[1].gain).toBe(1)
+  })
+
+  it('propagates loc through events on every cycle (PV24)', () => {
+    // n=1 ⇒ slot 0 is the whole cycle ⇒ transform applies to all events.
+    const loc = [{ start: 1, end: 2 }]
+    const body = IR.play('a', 0.25, {}, loc)
+    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const tree = IR.chunk(1, transform, body)
+    const events = collect(tree, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(1)
+    expect(events[0].loc).toEqual(loc)
+  })
+
+  it('toStrudel(Chunk) emits .chunk(n, transform)', () => {
+    const body = IR.play('c4')
+    const transform = IR.fx('gain', { gain: 0.5 }, body)
+    const result = toStrudel(IR.chunk(4, transform, body))
+    expect(result).toContain('.chunk(4,')
+    expect(result).toContain('gain(0.5)')
   })
 })
 

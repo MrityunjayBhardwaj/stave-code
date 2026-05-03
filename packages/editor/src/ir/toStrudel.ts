@@ -52,16 +52,28 @@ function gen(ir: PatternIR): string {
     case 'Choice': {
       const thenCode = gen(ir.then)
       if (ir.else_.tag === 'Pure') {
-        // Simple case: pattern plays with probability p
-        // degradeBy(amount) drops events with probability `amount`
-        const dropAmount = +(1 - ir.p).toFixed(4)
-        return `${thenCode}.degradeBy(${dropAmount})`
+        // Simple case: pattern plays with probability p (per-cycle,
+        // matching Choice's actual semantic — the whole pattern fires
+        // or doesn't on each cycle). `.sometimesBy(retain, x => x)` is
+        // the Strudel method whose semantic matches: per-cycle binary
+        // choice of identity-vs-empty.
+        //
+        // We emit `sometimesBy(p, x => x)` — applies the identity
+        // transform with probability p (i.e., keeps the pattern). The
+        // per-event `.degradeBy()` round-trip target now belongs to the
+        // `Degrade` tag introduced in Tier 4 (Phase 19-03). Keeping
+        // `.degradeBy()` here would collide on round-trip.
+        const p = +ir.p.toFixed(4)
+        return `${thenCode}.sometimesBy(${p}, x => x)`
       }
-      // General case: both branches with complementary degradation
+      // General case: both branches with complementary probabilities.
+      // sometimesBy keeps the per-cycle granularity; the original
+      // .degradeBy() emit was per-event, mismatched with Choice's
+      // per-cycle semantic. Keep the stack shape but use sometimesBy.
       const elseCode = gen(ir.else_)
-      const dropThen = +(1 - ir.p).toFixed(4)
-      const dropElse = +ir.p.toFixed(4)
-      return `stack(\n  ${thenCode}.degradeBy(${dropThen}),\n  ${elseCode}.degradeBy(${dropElse})\n)`
+      const pThen = +ir.p.toFixed(4)
+      const pElse = +(1 - ir.p).toFixed(4)
+      return `stack(\n  ${thenCode}.sometimesBy(${pThen}, x => x),\n  ${elseCode}.sometimesBy(${pElse}, x => x)\n)`
     }
 
     case 'Every': {
@@ -137,6 +149,38 @@ function gen(ir: PatternIR): string {
       // fidelity for elongation in seqs is handled where the parent
       // Seq emits its mini-notation string (Tier 3 work).
       return gen(ir.body)
+
+    case 'Late':
+      // Tier 4 — `late(offset)` shifts events forward by `offset` cycles
+      // while preserving cycle length (pattern.mjs:2081-2089).
+      return `${gen(ir.body)}.late(${ir.offset})`
+
+    case 'Degrade': {
+      // Tier 4 — `Degrade.p` is the per-event RETENTION probability.
+      // Round-trip: `.degrade()` when p === 0.5 (the Strudel shorthand,
+      // signal.mjs:720); `.degradeBy(1 - p)` otherwise (signal.mjs:699-706
+      // — Strudel's amount is the DROP probability).
+      const body = gen(ir.body)
+      if (ir.p === 0.5) return `${body}.degrade()`
+      const dropAmount = +(1 - ir.p).toFixed(4)
+      return `${body}.degradeBy(${dropAmount})`
+    }
+
+    case 'Chunk': {
+      // Tier 4 — `chunk(n, f)` (pattern.mjs:2569-2578). The IR stores
+      // `transform` as the body with the user's transform pre-applied
+      // (extracted at parse time), so we recover the transform string
+      // the same way `Every` does — via `extractTransform`.
+      const baseCode = gen(ir.body)
+      const transformStr = extractTransform(ir.transform, ir.body)
+      return `${baseCode}.chunk(${ir.n}, ${transformStr})`
+    }
+
+    case 'Ply': {
+      // Tier 4 — `ply(n)` (pattern.mjs:1905-1911). 1:1 method↔tag mapping,
+      // so the round-trip is direct: emit `.ply(n)` over the body.
+      return `${gen(ir.body)}.ply(${ir.n})`
+    }
   }
 }
 

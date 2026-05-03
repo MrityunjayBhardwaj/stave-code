@@ -256,6 +256,160 @@ function applyMethod(ir: PatternIR, method: string, args: string): PatternIR {
       return ir
     }
 
+    case 'chunk': {
+      // Tier 4 (Phase 19-03 Task 09). `.chunk(n, transform)` desugars
+      // (pattern.mjs:2569-2578):
+      //   binary = [true, false × (n-1)]
+      //   binary_pat = _iter(n, sequence(binary), true)
+      //   pat = pat.repeatCycles(n)
+      //   return pat.when(binary_pat, transform)
+      //
+      // Because `repeatCycles(n)` slows the body to span n outer cycles,
+      // each outer cycle plays only one slot of the body. Combined with
+      // the rotated binary, the transform is applied to ALL events the
+      // chunk emits in any given outer cycle.
+      //
+      // Our IR's Chunk tag stores `transform` as the body with the user
+      // transform pre-applied (parseTransform), so the slot-replacement
+      // logic in collect can take events directly from `transform`. This
+      // mirrors the existing Every shape (Every.body = transformed,
+      // Every.default_ = base).
+      //
+      // v1 limitation (pre-mortem #3): single-cycle bodies only.
+      // Multi-cycle bodies would require modelling repeatCycles' source
+      // rolling, deferred to a follow-up. parseTransform doesn't thread
+      // baseOffset through (P39 / pre-mortem #10), so loc on transformed
+      // events points back to the body — PV24 presence holds, value
+      // precision is the existing limitation.
+      const [nStr, transformStr] = splitFirstArg(args)
+      const n = parseInt(nStr.trim(), 10)
+      if (isNaN(n) || n < 1) return ir
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir) : ir
+      return IR.chunk(n, transform, ir)
+    }
+
+    case 'degrade': {
+      // Tier 4 (Phase 19-03 Task 07). `.degrade()` shorthand for
+      // `.degradeBy(0.5)` (signal.mjs:720). Our Degrade.p is the
+      // retention probability; 50% drop ⇒ 50% retain ⇒ p = 0.5.
+      return IR.degrade(0.5, ir)
+    }
+
+    case 'degradeBy': {
+      // Tier 4 (Phase 19-03 Task 07). `.degradeBy(amount)` filters each
+      // event with drop probability `amount` (signal.mjs:686-706 — keeps
+      // events where `rand > amount`). Our Degrade.p is the RETENTION
+      // probability — translate via p = 1 - amount.
+      //
+      // Off-by-one trap (CONTEXT pre-mortem #2 / RESEARCH §3.4): the
+      // direction of the inversion silently inverts user intent, so two
+      // boundary tests below land at degradeBy(0) (full retain) and
+      // degradeBy(1) (full drop) plus an asymmetric probe at
+      // degradeBy(0.8) that distinguishes p=0.2 from the wrong p=0.8.
+      const amount = parseFloat(args.trim())
+      if (isNaN(amount)) return ir
+      return IR.degrade(1 - amount, ir)
+    }
+
+    case 'late': {
+      // Tier 4 (Phase 19-03 Task 03). `.late(t)` shifts events forward by
+      // `t` cycles while preserving cycle length (pattern.mjs:2081-2089).
+      // Modeled as the Late IR tag (Task 02). Decimal literals only —
+      // fraction literals like `.late(1/8)` fall back to identity (same
+      // limitation `.fast()` has today).
+      const t = parseFloat(args.trim())
+      if (isNaN(t)) return ir
+      return IR.late(t, ir)
+    }
+
+    case 'jux': {
+      // Tier 4 (Phase 19-03 Task 05). `.jux(f)` desugars per
+      //   pattern.mjs:2379-2381: jux(func, pat) = pat._juxBy(1, func, pat)
+      //   pattern.mjs:2356-2368: juxBy halves the `by` arg, then
+      //     left  = pat.withValue(v => { pan: (v.pan ?? 0.5) - by/2 })
+      //     right = func(pat.withValue(v => { pan: (v.pan ?? 0.5) + by/2 }))
+      //     return stack(left, right)
+      // For `jux(f)` with by=1: by/2 = 0.5 → left pan = 0.0 (full left),
+      // right pan = 1.0 (full right) in Strudel's [0,1] convention.
+      //
+      // Our IR's pan convention is [-1, 1] centered at 0 (PatternIR.ts:23
+      // PlayParams). Mapping: Strudel 0.0 → ours -1; Strudel 1.0 → ours +1.
+      // The parity harness applies `normalizeStrudelPan` (p*2-1) to the
+      // Strudel side before diff so both sides land in [-1, 1].
+      //
+      // Round-trip: no Jux tag exists by design — the desugar is exact.
+      // toStrudel emits the structural Stack(FX(pan,…), FX(pan,…))
+      // form (no `.jux(...)` recovery in this wave). Accepted soft target
+      // per CONTEXT round-trip discipline.
+      //
+      // Known limitation: same parseTransform baseOffset gap as off
+      // (P39, pre-mortem 10). loc PRESENCE asserted, not value.
+      const transformed = args.trim() ? parseTransform(args.trim(), ir) : ir
+      return IR.stack(
+        IR.fx('pan', { pan: -1 }, ir),
+        IR.fx('pan', { pan: 1 }, transformed),
+      )
+    }
+
+    case 'ply': {
+      // Tier 4 (Phase 19-03 Task 10). `.ply(n)` repeats each event of the
+      // body `n` times within its own slot (pattern.mjs:1905-1911):
+      //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()
+      //
+      // Originally the plan called for desugaring to `Fast(n, Seq(body × n))`,
+      // but a probe (W4 T10) showed our Fast scales `ctx.speed` rather than
+      // re-playing the body, so the desugar compresses events into [0, 1/n)
+      // instead of spreading them across [0, 1). With Fast unable to model
+      // ply's per-event multiplication, we promoted Ply to a forced new IR
+      // tag (D-02 rule). Round-trip is then direct: toStrudel emits `.ply(n)`
+      // (no shape recogniser needed).
+      //
+      // Non-integer factors (e.g. `.ply(2.5)`, `.ply("<2 3 4>")`) fall
+      // through silently — same default-branch behaviour the parser uses for
+      // any unrecognised method-arg shape today. Documented as a known
+      // limitation; matches CONTEXT D-02's "non-integer falls through to
+      // Code fallback in v1; revisit in 19-04 if needed."
+      const trimmed = args.trim()
+      const n = Number(trimmed)
+      if (!Number.isInteger(n) || n < 1) return ir
+      if (n === 1) return ir
+      return IR.ply(n, ir)
+    }
+
+    case 'off': {
+      // Tier 4 (Phase 19-03 Task 04). `.off(t, f)` literally desugars to
+      //   stack(pat, func(pat.late(time_pat)))     [pattern.mjs:2236-2238]
+      // i.e., the user-supplied transform is applied to `pat.late(t)` —
+      // late is computed FIRST, then the transform wraps that. So our
+      // mirror is Stack(body, transform(Late(t, body))).
+      //
+      // Order matters. The plan-task draft used Stack(body, Late(t,
+      // transform(body))) — that puts transform inside Late, not outside,
+      // which produces a different event stream when the transform
+      // re-times (e.g., `fast(2)`: applying fast AFTER late differs from
+      // applying late AFTER fast — the latter is what Strudel does).
+      // This was caught by parity diff and corrected; the desugar below
+      // is the one Ground Truth supports.
+      //
+      // Round-trip: no Off tag exists by design — the desugar is exact.
+      // For now toStrudel emits the structural Stack (no recovery); a
+      // future bidirectional-editing pass (#8) can shape-match and
+      // re-emit `.off(t, …)`. Accepted soft target per CONTEXT round-trip
+      // discipline (which applies fully only to 1:1 method↔tag mappings,
+      // not desugars).
+      //
+      // Known limitation: `parseTransform` does not thread `baseOffset`,
+      // so events from the transform sub-tree carry the body's `loc`
+      // rather than the transform-arg position (pre-existing P39 gap;
+      // PRE-MORTEM #10). Parity asserts `loc` PRESENCE, not value.
+      const [tStr, transformStr] = splitFirstArg(args)
+      const t = parseFloat(tStr.trim())
+      if (isNaN(t)) return ir
+      const lateBody = IR.late(t, ir)
+      const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody) : lateBody
+      return IR.stack(ir, transformed)
+    }
+
     case 'room':
     case 'delay':
     case 'reverb':

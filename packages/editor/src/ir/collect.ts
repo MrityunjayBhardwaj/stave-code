@@ -12,6 +12,46 @@
 import type { PatternIR } from './PatternIR'
 import type { IREvent } from './IREvent'
 
+// ---------------------------------------------------------------------------
+// Deterministic seeded PRNG used by the `Degrade` tag. We mirror Strudel's
+// legacy random algorithm (signal.mjs:237-258) so per-event drop decisions
+// match Strudel's `degradeBy` event-for-event when seed=0:
+//   __timeToIntSeed(t) = __xorwise(trunc(frac(t/300) * 2**29))
+//   __xorwise(x)       = ((((x<<13)^x) >> 17) ^ ((x<<13)^x)) << 5 ^ ...
+//   __intSeedToRand(s) = (s % 2**29) / 2**29
+//   rand(t)            = abs(__intSeedToRand(__timeToIntSeed(t + seed)))
+// `degradeBy(x)` keeps an event when `rand(begin) > x`, so retention prob
+// `p` (our IR convention) corresponds to filtering by `rand < p`.
+// All operations done in 32-bit space via Math.imul/|0 to match JS bitwise
+// semantics for negative shifts. `RAND_SEED = 0` is the Strudel default.
+// ---------------------------------------------------------------------------
+const RAND_SEED = 0
+
+function xorwise(x: number): number {
+  // 32-bit signed semantics — match Strudel's __xorwise exactly.
+  const a = ((x << 13) ^ x) | 0
+  const b = ((a >> 17) ^ a) | 0
+  return ((b << 5) ^ b) | 0
+}
+
+function timeToIntSeed(t: number): number {
+  const frac = t / 300 - Math.trunc(t / 300)
+  return xorwise(Math.trunc(frac * 536870912))
+}
+
+function intSeedToRand(s: number): number {
+  return (s % 536870912) / 536870912
+}
+
+/**
+ * `rand` at time `t` with default seed 0 — deterministic, matches
+ * Strudel's `getRandsAtTime(t, 1, 0)` for the legacy RNG path
+ * (signal.mjs:262-264, the default in @strudel/core@1.2.6).
+ */
+function seededRand(t: number, seed: number): number {
+  return Math.abs(intSeedToRand(timeToIntSeed(t + seed)))
+}
+
 export interface CollectContext {
   /** Query window start (cycles) */
   begin: number
@@ -246,6 +286,158 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       // body unchanged. The factor is recoverable from the tree if a
       // future consumer needs structural intent.
       return walk(ir.body, ctx)
+    }
+
+    case 'Late': {
+      // Strudel's late(t) = early(-t). early(t) does
+      //   pat.withQueryTime(t => t.add(offset)).withHapTime(t => t.sub(offset))
+      // (pattern.mjs:2061-2069). The net effect is a forward time shift
+      // by `offset` cycles that PRESERVES cycle length — i.e., events
+      // wrap modulo 1 within the current cycle window.
+      //
+      // Per-cycle collect (ctx.begin..ctx.end == [cycle, cycle+1)) means
+      // the wrap reduces to: shifted begin >= cycle+1 → subtract 1;
+      // shifted begin < cycle → add 1. For offsets in (-1, 1) — the
+      // overwhelming-typical Strudel use case — at most one wrap unit is
+      // needed.
+      const events = walk(ir.body, ctx)
+      return events.map((e) => {
+        let begin = e.begin + ir.offset
+        let end = e.end + ir.offset
+        let endClipped = e.endClipped + ir.offset
+        if (begin >= ctx.cycle + 1) {
+          begin -= 1
+          end -= 1
+          endClipped -= 1
+        } else if (begin < ctx.cycle) {
+          begin += 1
+          end += 1
+          endClipped += 1
+        }
+        return { ...e, begin, end, endClipped }
+      })
+    }
+
+    case 'Degrade': {
+      // Strudel's `degradeBy(x)` (signal.mjs:699-706) is
+      //   pat._degradeByWith(rand, x)
+      //   = pat.fmap(a => _ => a).appLeft(rand.filterValues(v => v > x))
+      // i.e. keep events where `rand` at the event's time STRICTLY
+      // EXCEEDS x. Strudel's amount `x` is the drop probability; our
+      // IR's `p` is the retention probability, so x = 1 - p.
+      // Retention condition: `seededRand(begin) > (1 - p)`.
+      //
+      // The strictness matters at boundaries:
+      //   degradeBy(0) ⇒ keep when rand > 0 — drops events whose rand
+      //                  samples to exactly 0 (e.g. the t=0 hap on
+      //                  legacy RNG). Verified against Strudel:
+      //                  `s("bd hh sd cp").degradeBy(0)` returns 3 haps
+      //                  not 4 (bd@0 dropped because rand(0) = 0 fails
+      //                  `> 0`).
+      //   degradeBy(1) ⇒ keep when rand > 1 — never (rand ∈ [0,1)).
+      //
+      // The seededRand helper mirrors Strudel's legacy __timeToRands
+      // for seed=0 verbatim, so the drop set matches event-for-event
+      // when event onsets match.
+      const events = walk(ir.body, ctx)
+      const dropAmount = 1 - ir.p
+      return events.filter((e) => seededRand(e.begin, RAND_SEED) > dropAmount)
+    }
+
+    case 'Chunk': {
+      // Strudel's `chunk(n, func)` (pattern.mjs:2569-2578):
+      //   binary = [true, false × (n-1)]
+      //   binary_pat = _iter(n, sequence(binary), true)
+      //   pat = pat.repeatCycles(n)
+      //   return pat.when(binary_pat, func)
+      //
+      // `repeatCycles(n)` (pattern.mjs:2530-2545) does NOT slow the body
+      // — it repeats the SAME source cycle on every outer cycle. The
+      // rotated binary pattern picks slot k mod n on cycle k, and `func`
+      // is applied to events whose time-within-cycle falls in the active
+      // slot. So on each outer cycle we see the FULL body, with the
+      // transform applied to the slot-k events and the un-transformed
+      // body events filling the rest. Verified directly:
+      //   s("bd hh sd cp").chunk(4, x=>x.gain(0.5)) over 4 cycles emits
+      //   16 haps (4 per cycle), and exactly 4 of them carry gain=0.5
+      //   (one per cycle, rotating through bd,hh,sd,cp).
+      //
+      // Algorithm: walk both `body` and `transform` for the current
+      // ctx (NOT a rebuilt single-cycle ctx — Strudel queries the full
+      // outer cycle's body unchanged). For events whose time-within-
+      // cycle falls in the active slot [slot/n, (slot+1)/n), take the
+      // transform's version (matched by event begin within tolerance).
+      // For events outside the active slot, take the body version.
+      // `loc` flows through naturally because both walks pass ctx
+      // unchanged (PV24).
+      //
+      // v1 limitation (PLAN pre-mortem #3): bodies that are themselves
+      // multi-cycle aren't fully captured — Strudel's `repeatCycles`
+      // resamples every outer cycle to the SAME source cycle, so a
+      // multi-cycle body would freeze at source cycle 0. Our IR walks
+      // the body with the outer cycle's ctx, so it naturally advances —
+      // the divergence shows up as different events on cycles 1..n-1.
+      // Single-cycle bodies (the common case) are exact.
+      const slot = ((ctx.cycle % ir.n) + ir.n) % ir.n
+      const slotStart = slot / ir.n
+      const slotEnd = (slot + 1) / ir.n
+      const baseEvents = walk(ir.body, ctx)
+      const transformedEvents = walk(ir.transform, ctx)
+      const inSlot = (e: IREvent): boolean => {
+        const cyclePos = e.begin - ctx.cycle
+        return cyclePos >= slotStart - 1e-9 && cyclePos < slotEnd - 1e-9
+      }
+      // Index transformed events by begin so we can swap the matching
+      // body event with its transformed counterpart. We compare with
+      // tolerance because Strudel uses Fraction; our IR uses Number.
+      const findTransformed = (e: IREvent): IREvent | undefined =>
+        transformedEvents.find((t) => Math.abs(t.begin - e.begin) < 1e-9)
+      return baseEvents.map((e) => {
+        if (inSlot(e)) {
+          const replaced = findTransformed(e)
+          return replaced ?? e
+        }
+        return e
+      })
+    }
+
+    case 'Ply': {
+      // Strudel's `ply(factor)` (pattern.mjs:1905-1911):
+      //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()
+      // Per-event semantics: each emitted hap of `pat` becomes `factor` rapid
+      // copies, each filling 1/factor of the original event's slot. The body
+      // itself plays once at its normal time scale; ply only multiplies events
+      // *within* their existing slots.
+      //
+      // Why a tag, not a desugar — empirical probe (Phase 19-03 Task 10):
+      //   Fast(n, Seq(body × n)) compresses everything into [0, 1/n) because
+      //   our Fast scales speed (cursor advances at slotDuration / speed).
+      //   For `s("bd hh sd cp").ply(3)` the desugar gives 12 events spanning
+      //   [0, 1/3) at spacing 1/36 — wrong (Strudel gives [0, 1) at 1/12).
+      //   No structural rewrite using existing primitives reproduces ply's
+      //   per-event multiplication while preserving cycle length, so ply is
+      //   a forced new tag (D-02 rule).
+      //
+      // Algorithm: walk body to get its events, then for each event emit n
+      // copies whose `begin` and `end` carve up the original [begin, end)
+      // window. `loc` flows through the spread (PV24).
+      const baseEvents = walk(ir.body, ctx)
+      if (ir.n <= 1) return baseEvents
+      const out: IREvent[] = []
+      for (const e of baseEvents) {
+        const slotLen = (e.end - e.begin) / ir.n
+        for (let i = 0; i < ir.n; i++) {
+          const newBegin = e.begin + i * slotLen
+          const newEnd = newBegin + slotLen
+          out.push({
+            ...e,
+            begin: newBegin,
+            end: newEnd,
+            endClipped: newEnd,
+          })
+        }
+      }
+      return out
     }
   }
 }

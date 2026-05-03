@@ -2936,11 +2936,31 @@ var IR = {
   fast: (factor, body2) => ({ tag: "Fast", factor, body: body2 }),
   slow: (factor, body2) => ({ tag: "Slow", factor, body: body2 }),
   elongate: (factor, body2) => ({ tag: "Elongate", factor, body: body2 }),
+  late: (offset, body2) => ({ tag: "Late", offset, body: body2 }),
+  degrade: (p, body2) => ({ tag: "Degrade", p, body: body2 }),
+  chunk: (n, transform, body2) => ({ tag: "Chunk", n, transform, body: body2 }),
+  ply: (n, body2) => ({ tag: "Ply", n, body: body2 }),
   loop: (body2) => ({ tag: "Loop", body: body2 }),
   code: (code) => ({ tag: "Code", code, lang: "strudel" })
 };
 
 // src/ir/collect.ts
+var RAND_SEED = 0;
+function xorwise(x) {
+  const a = x << 13 ^ x | 0;
+  const b = a >> 17 ^ a | 0;
+  return b << 5 ^ b | 0;
+}
+function timeToIntSeed(t) {
+  const frac = t / 300 - Math.trunc(t / 300);
+  return xorwise(Math.trunc(frac * 536870912));
+}
+function intSeedToRand(s) {
+  return s % 536870912 / 536870912;
+}
+function seededRand(t, seed) {
+  return Math.abs(intSeedToRand(timeToIntSeed(t + seed)));
+}
 var DEFAULT_CONTEXT = {
   begin: 0,
   end: Infinity,
@@ -3096,6 +3116,67 @@ function walk(ir, ctx) {
     case "Elongate": {
       return walk(ir.body, ctx);
     }
+    case "Late": {
+      const events = walk(ir.body, ctx);
+      return events.map((e) => {
+        let begin = e.begin + ir.offset;
+        let end = e.end + ir.offset;
+        let endClipped = e.endClipped + ir.offset;
+        if (begin >= ctx.cycle + 1) {
+          begin -= 1;
+          end -= 1;
+          endClipped -= 1;
+        } else if (begin < ctx.cycle) {
+          begin += 1;
+          end += 1;
+          endClipped += 1;
+        }
+        return { ...e, begin, end, endClipped };
+      });
+    }
+    case "Degrade": {
+      const events = walk(ir.body, ctx);
+      const dropAmount = 1 - ir.p;
+      return events.filter((e) => seededRand(e.begin, RAND_SEED) > dropAmount);
+    }
+    case "Chunk": {
+      const slot = (ctx.cycle % ir.n + ir.n) % ir.n;
+      const slotStart = slot / ir.n;
+      const slotEnd = (slot + 1) / ir.n;
+      const baseEvents = walk(ir.body, ctx);
+      const transformedEvents = walk(ir.transform, ctx);
+      const inSlot = (e) => {
+        const cyclePos = e.begin - ctx.cycle;
+        return cyclePos >= slotStart - 1e-9 && cyclePos < slotEnd - 1e-9;
+      };
+      const findTransformed = (e) => transformedEvents.find((t) => Math.abs(t.begin - e.begin) < 1e-9);
+      return baseEvents.map((e) => {
+        if (inSlot(e)) {
+          const replaced = findTransformed(e);
+          return replaced ?? e;
+        }
+        return e;
+      });
+    }
+    case "Ply": {
+      const baseEvents = walk(ir.body, ctx);
+      if (ir.n <= 1) return baseEvents;
+      const out2 = [];
+      for (const e of baseEvents) {
+        const slotLen = (e.end - e.begin) / ir.n;
+        for (let i2 = 0; i2 < ir.n; i2++) {
+          const newBegin = e.begin + i2 * slotLen;
+          const newEnd = newBegin + slotLen;
+          out2.push({
+            ...e,
+            begin: newBegin,
+            end: newEnd,
+            endClipped: newEnd
+          });
+        }
+      }
+      return out2;
+    }
   }
 }
 
@@ -3131,15 +3212,15 @@ function gen(ir) {
     case "Choice": {
       const thenCode = gen(ir.then);
       if (ir.else_.tag === "Pure") {
-        const dropAmount = +(1 - ir.p).toFixed(4);
-        return `${thenCode}.degradeBy(${dropAmount})`;
+        const p = +ir.p.toFixed(4);
+        return `${thenCode}.sometimesBy(${p}, x => x)`;
       }
       const elseCode = gen(ir.else_);
-      const dropThen = +(1 - ir.p).toFixed(4);
-      const dropElse = +ir.p.toFixed(4);
+      const pThen = +ir.p.toFixed(4);
+      const pElse = +(1 - ir.p).toFixed(4);
       return `stack(
-  ${thenCode}.degradeBy(${dropThen}),
-  ${elseCode}.degradeBy(${dropElse})
+  ${thenCode}.sometimesBy(${pThen}, x => x),
+  ${elseCode}.sometimesBy(${pElse}, x => x)
 )`;
     }
     case "Every": {
@@ -3196,6 +3277,22 @@ function gen(ir) {
       return gen(ir.body);
     case "Elongate":
       return gen(ir.body);
+    case "Late":
+      return `${gen(ir.body)}.late(${ir.offset})`;
+    case "Degrade": {
+      const body2 = gen(ir.body);
+      if (ir.p === 0.5) return `${body2}.degrade()`;
+      const dropAmount = +(1 - ir.p).toFixed(4);
+      return `${body2}.degradeBy(${dropAmount})`;
+    }
+    case "Chunk": {
+      const baseCode = gen(ir.body);
+      const transformStr = extractTransform(ir.transform, ir.body);
+      return `${baseCode}.chunk(${ir.n}, ${transformStr})`;
+    }
+    case "Ply": {
+      return `${gen(ir.body)}.ply(${ir.n})`;
+    }
   }
 }
 function nodesEqual(a, b) {
@@ -3887,6 +3984,48 @@ function applyMethod(ir, method, args2) {
       const val = parseFloat(args2.trim());
       if (!isNaN(val)) return IR.fx("pan", { pan: val }, ir);
       return ir;
+    }
+    case "chunk": {
+      const [nStr, transformStr] = splitFirstArg(args2);
+      const n = parseInt(nStr.trim(), 10);
+      if (isNaN(n) || n < 1) return ir;
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir) : ir;
+      return IR.chunk(n, transform, ir);
+    }
+    case "degrade": {
+      return IR.degrade(0.5, ir);
+    }
+    case "degradeBy": {
+      const amount = parseFloat(args2.trim());
+      if (isNaN(amount)) return ir;
+      return IR.degrade(1 - amount, ir);
+    }
+    case "late": {
+      const t = parseFloat(args2.trim());
+      if (isNaN(t)) return ir;
+      return IR.late(t, ir);
+    }
+    case "jux": {
+      const transformed = args2.trim() ? parseTransform(args2.trim(), ir) : ir;
+      return IR.stack(
+        IR.fx("pan", { pan: -1 }, ir),
+        IR.fx("pan", { pan: 1 }, transformed)
+      );
+    }
+    case "ply": {
+      const trimmed = args2.trim();
+      const n = Number(trimmed);
+      if (!Number.isInteger(n) || n < 1) return ir;
+      if (n === 1) return ir;
+      return IR.ply(n, ir);
+    }
+    case "off": {
+      const [tStr, transformStr] = splitFirstArg(args2);
+      const t = parseFloat(tStr.trim());
+      if (isNaN(t)) return ir;
+      const lateBody = IR.late(t, ir);
+      const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody) : lateBody;
+      return IR.stack(ir, transformed);
     }
     case "room":
     case "delay":
@@ -19982,6 +20121,7 @@ function cueGlobMatch(pattern, name2) {
 }
 var DEFAULT_SCHED_AHEAD_TIME = 0.3;
 var DEFAULT_TICK_INTERVAL_MS = 25;
+var DEFAULT_TASK_BPM = 60;
 var HEAP_TIEBREAK_EPSILON = 1e-12;
 var VirtualTimeScheduler = class {
   constructor(options = {}) {
@@ -20153,7 +20293,7 @@ var VirtualTimeScheduler = class {
   fireCue(name2, taskId, args2 = []) {
     const task = this.tasks.get(taskId);
     const cueVirtualTime = task?.virtualTime ?? this.getAudioTime();
-    const cueBpm = task?.bpm ?? 60;
+    const cueBpm = task?.bpm ?? DEFAULT_TASK_BPM;
     this.cueMap.set(name2, { time: cueVirtualTime, args: args2, bpm: cueBpm });
     this.emitEvent({
       type: "cue",
@@ -28984,6 +29124,15 @@ var SonicPiEngine = class {
      *  next eval's scopeBase so removing a `define` line from the buffer does not
      *  break a still-running live_loop that calls it. (#215) */
     this.definedFns = /* @__PURE__ */ new Map();
+    /**
+     * True only while evaluating the synchronous top-level body of user code
+     * (the window between `sandbox.execute(...)` start and resolve in
+     * `evaluate()`). Used by `run_code` and `load_example` to refuse calls
+     * that come from inside a live_loop body's later async iteration —
+     * re-entering `evaluate` from there would dispose the running scheduler
+     * mid-iteration. (#240 / #241)
+     */
+    this.inTopLevelEval = false;
     /** Cached `defonce` values (#212 / #233). Survive across re-evals — that's
      *  the whole point. Cleared only on full engine reset / dispose. */
     this.defonceCache = /* @__PURE__ */ new Map();
@@ -29847,24 +29996,30 @@ var SonicPiEngine = class {
         },
         // Tier B PR #3 — sync_bpm (#236). Inside live_loops the transpiler
         // routes `sync_bpm :name` to `__b.sync_bpm(name)` via BUILDER_METHODS.
-        // At top level we forward to topLevelBuilder so the cue waiter runs
-        // when the top-level program reaches it. Top-level programs run
-        // serially (no concurrent context), so nothing actually waits — the
-        // call is a no-op in that case, matching desktop where sync at top
-        // level outside in_thread is unusual but harmless.
+        // At top level outside in_thread/live_loop the call has no effect —
+        // top-level code runs once linearly and there's no concurrent
+        // context to park. Surface that as a printHandler warning so the
+        // user gets an actionable signal instead of a silent no-op (#239).
         (name2) => {
           topLevelBuilder.sync_bpm(name2);
+          if (this.printHandler) {
+            this.printHandler(`[Warning] sync_bpm :${name2} at top level has no effect \u2014 wrap in in_thread or call from inside a live_loop body.`);
+          }
         },
         // Tier B PR #3 — run_code (#236). Host-side dynamic eval. Replaces
         // all running loops with the supplied code, equivalent to pressing
         // Run with a fresh buffer. Returns a Promise that resolves when the
-        // new evaluation completes. Inside live_loops this re-enters the
-        // engine which is undefined behaviour — desktop's spider re-entry
-        // guard would throw; we accept the same risk for now and may add a
-        // strict guard if observed misuse warrants it.
+        // new evaluation completes. Refuses calls from inside a live_loop
+        // body iteration — re-entering evaluate() from there would dispose
+        // the running scheduler mid-iteration. (#240)
         (code2) => {
           if (typeof code2 !== "string") {
             throw new TypeError(`run_code expects a string, got ${typeof code2}`);
+          }
+          if (!this.inTopLevelEval) {
+            throw new Error(
+              "run_code can only be called at top level \u2014 calling it from inside a live_loop body re-enters the engine which is not supported. Use cue/sync to coordinate between loops instead."
+            );
           }
           return this.evaluate(code2);
         },
@@ -29894,6 +30049,11 @@ var SonicPiEngine = class {
           if (typeof name2 !== "string") {
             throw new TypeError(`load_example expects a name (string or symbol), got ${typeof name2}`);
           }
+          if (!this.inTopLevelEval) {
+            throw new Error(
+              "load_example can only be called at top level \u2014 calling it from inside a live_loop replaces the running buffer mid-iteration which is not supported."
+            );
+          }
           const example = getExample(name2);
           if (!example) {
             throw new Error(`load_example: no example named "${name2}". See examples panel for the full list.`);
@@ -29915,7 +30075,13 @@ var SonicPiEngine = class {
       };
       const sandbox = createIsolatedExecutor(transpiledCode, dslNames, persistedFns);
       scopeHandle = sandbox.scopeHandle;
-      await sandbox.execute(...dslValues);
+      const prevInTopLevelEval = this.inTopLevelEval;
+      this.inTopLevelEval = true;
+      try {
+        await sandbox.execute(...dslValues);
+      } finally {
+        this.inTopLevelEval = prevInTopLevelEval;
+      }
       if (isReEvaluate) {
         const oldLoops = scheduler.getRunningLoopNames();
         const removedLoops = oldLoops.filter((name2) => !pendingLoops.has(name2));

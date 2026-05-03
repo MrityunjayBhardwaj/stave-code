@@ -38,6 +38,13 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
   Fast:     "var(--ir-fast, #f97316)",
   Slow:     "var(--ir-slow, #f97316)",
   Elongate: "var(--ir-elongate, #d946ef)",
+  // Tier 4 (Phase 19-03) — late/degrade/chunk/ply each get a distinct
+  // hue so a debugging user can see at a glance which transform shaped
+  // a sub-tree without having to read the tag string.
+  Late:     "var(--ir-late, #f59e0b)",
+  Degrade:  "var(--ir-degrade, #84cc16)",
+  Chunk:    "var(--ir-chunk, #fb7185)",
+  Ply:      "var(--ir-ply, #22d3ee)",
   Loop:     "var(--ir-loop, #6366f1)",
   Code:     "var(--ir-code, #ef4444)",
 };
@@ -59,6 +66,10 @@ function summarize(node: PatternIR): string {
     case "Slow":
     case "Elongate":
       return `factor=${node.factor}`;
+    case "Late":    return `offset=${node.offset}`;
+    case "Degrade": return `p=${node.p}`;
+    case "Chunk":   return `n=${node.n}`;
+    case "Ply":     return `n=${node.n}`;
     case "Loop":   return "";
     case "Code":   return JSON.stringify(node.code).slice(0, 60);
   }
@@ -77,7 +88,11 @@ function children(node: PatternIR): readonly PatternIR[] {
     case "Fast":
     case "Slow":
     case "Elongate":
+    case "Late":
+    case "Degrade":
+    case "Ply":
     case "Loop":  return [node.body];
+    case "Chunk": return [node.body, node.transform];
     default:      return [];
   }
 }

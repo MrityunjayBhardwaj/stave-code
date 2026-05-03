@@ -479,6 +479,108 @@ describe('parseStrudel', () => {
     }
   })
 
+  it('parses .late(0.125) into Late tag (Tier 4)', () => {
+    const tree = parseStrudel('s("bd").late(0.125)')
+    expect(tree.tag).toBe('Late')
+    if (tree.tag === 'Late') {
+      expect(tree.offset).toBe(0.125)
+      // Body is the parsed `s("bd")` — a single Play (parseMini collapses
+      // single-token sequences to a bare Play, see parseMini.ts).
+      expect(tree.body.tag).toBe('Play')
+      if (tree.body.tag === 'Play') expect(tree.body.params.s).toBe('bd')
+    }
+  })
+
+  it('parses .late(0.5) on a multi-token sequence into Late wrapping a Seq', () => {
+    const tree = parseStrudel('note("c4 e4 g4").late(0.5)')
+    expect(tree.tag).toBe('Late')
+    if (tree.tag === 'Late') {
+      expect(tree.offset).toBe(0.5)
+      expect(tree.body.tag).toBe('Seq')
+    }
+  })
+
+  it('parses .jux(x => x.gain(0.5)) into Stack(FX(pan,-1, body), FX(pan,+1, transform(body))) (Tier 4)', () => {
+    // Ground truth: pattern.mjs:2379-2381 (jux) + 2356-2368 (juxBy):
+    //   jux(f)(pat) = juxBy(1, f, pat)
+    //   juxBy(1, …) halves to by=0.5, splits onto two pans:
+    //     left  = pat with pan = (default 0.5) - 0.5 = 0.0  (Strudel [0,1])
+    //     right = f(pat with pan = (default 0.5) + 0.5 = 1.0)
+    // Mapping to our IR's [-1, 1] pan convention: Strudel 0.0 → ours -1,
+    // Strudel 1.0 → ours +1. The parity harness normalises Strudel-side
+    // events before diff (normalizeStrudelPan).
+    const tree = parseStrudel('s("bd hh sd cp").jux(x => x.gain(0.5))')
+    expect(tree.tag).toBe('Stack')
+    if (tree.tag === 'Stack') {
+      expect(tree.tracks.length).toBe(2)
+      const [left, right] = tree.tracks
+      expect(left.tag).toBe('FX')
+      if (left.tag === 'FX') {
+        expect(left.name).toBe('pan')
+        expect(left.params.pan).toBe(-1)
+      }
+      expect(right.tag).toBe('FX')
+      if (right.tag === 'FX') {
+        expect(right.name).toBe('pan')
+        expect(right.params.pan).toBe(1)
+        // Right body is the transformed body — gain(0.5) wraps the body in FX.
+        expect(right.body.tag).toBe('FX')
+        if (right.body.tag === 'FX') {
+          expect(right.body.name).toBe('gain')
+          expect(right.body.params.gain).toBe(0.5)
+        }
+      }
+    }
+  })
+
+  it('parses .off(0.25, x => x.fast(2)) into Stack(body, Fast(2, Late(0.25, body))) (Tier 4)', () => {
+    // Ground truth: pattern.mjs:2236-2238
+    //   off(time_pat, func, pat) = stack(pat, func(pat.late(time_pat)))
+    // The transform is applied to `pat.late(t)`, so Late is INSIDE the
+    // transform, not outside. Our desugar mirrors that order exactly.
+    const tree = parseStrudel('s("bd").off(0.25, x => x.fast(2))')
+    expect(tree.tag).toBe('Stack')
+    if (tree.tag === 'Stack') {
+      expect(tree.tracks.length).toBe(2)
+      // Left track is the original body (s("bd") — a Play).
+      expect(tree.tracks[0].tag).toBe('Play')
+      // Right track is Fast(2, Late(0.25, body)) — transform OUTSIDE Late.
+      const right = tree.tracks[1]
+      expect(right.tag).toBe('Fast')
+      if (right.tag === 'Fast') {
+        expect(right.factor).toBe(2)
+        expect(right.body.tag).toBe('Late')
+        if (right.body.tag === 'Late') {
+          expect(right.body.offset).toBe(0.25)
+          expect(right.body.body.tag).toBe('Play')
+        }
+      }
+    }
+  })
+
+  it('parses .ply(3) into Ply(3, body) (Tier 4)', () => {
+    // Ground truth: pattern.mjs:1905-1911. Originally planned as a desugar
+    // to Fast(n, Seq(body × n)); a W4 T10 probe showed our Fast scales
+    // ctx.speed and so compresses events instead of re-playing them, so
+    // the desugar fails parity. Promoted to a forced new tag.
+    const tree = parseStrudel('s("bd hh sd cp").ply(3)')
+    expect(tree.tag).toBe('Ply')
+    if (tree.tag === 'Ply') {
+      expect(tree.n).toBe(3)
+      expect(tree.body.tag).toBe('Seq')
+    }
+  })
+
+  it('parses .ply(2.5) by silently dropping the method (non-integer falls through)', () => {
+    // CONTEXT D-02 / RESEARCH §2.4: non-integer / pattern factors fall
+    // through to the body — same default-branch behaviour the parser uses
+    // for unrecognised method-arg shapes today. Documented as a v1
+    // limitation; revisit in 19-04 if user demand surfaces.
+    const tree = parseStrudel('s("bd hh sd cp").ply(2.5)')
+    expect(tree.tag).not.toBe('Ply')
+    expect(tree.tag).toBe('Seq')
+  })
+
   describe('source-range tracking', () => {
     it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
       // 0123456789012345

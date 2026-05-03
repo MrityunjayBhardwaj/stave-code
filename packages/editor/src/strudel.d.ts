@@ -79,6 +79,27 @@ declare module '@strudel/mini' {
   // Side-effect only — registers mini() on import
 }
 
+// Source-level submodule paths — used by the parity harness to exercise
+// the documented Strudel evaluator path under vitest. Loose any-typed:
+// the parity test casts what it needs at use sites.
+declare module '@strudel/core/evaluate.mjs' {
+  export function evalScope(...args: unknown[]): Promise<unknown[]>
+  export function evaluate(
+    code: string,
+    transpiler?: unknown,
+    transpilerOptions?: unknown,
+  ): Promise<{ pattern: unknown; mode: string; meta: unknown }>
+  export const strudelScope: Record<string, unknown>
+}
+
+declare module '@strudel/core/pattern.mjs'
+declare module '@strudel/core/signal.mjs'
+declare module '@strudel/core/controls.mjs'
+declare module '@strudel/mini/mini.mjs' {
+  export const mini: (...args: unknown[]) => unknown
+  export function miniAllStrings(): void
+}
+
 declare module '@strudel/tonal' {
   // Side-effect only — registers note(), s(), gain() etc. on import
 }
