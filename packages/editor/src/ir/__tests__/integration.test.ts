@@ -558,6 +558,29 @@ describe('parseStrudel', () => {
     }
   })
 
+  it('parses .ply(3) into Ply(3, body) (Tier 4)', () => {
+    // Ground truth: pattern.mjs:1905-1911. Originally planned as a desugar
+    // to Fast(n, Seq(body × n)); a W4 T10 probe showed our Fast scales
+    // ctx.speed and so compresses events instead of re-playing them, so
+    // the desugar fails parity. Promoted to a forced new tag.
+    const tree = parseStrudel('s("bd hh sd cp").ply(3)')
+    expect(tree.tag).toBe('Ply')
+    if (tree.tag === 'Ply') {
+      expect(tree.n).toBe(3)
+      expect(tree.body.tag).toBe('Seq')
+    }
+  })
+
+  it('parses .ply(2.5) by silently dropping the method (non-integer falls through)', () => {
+    // CONTEXT D-02 / RESEARCH §2.4: non-integer / pattern factors fall
+    // through to the body — same default-branch behaviour the parser uses
+    // for unrecognised method-arg shapes today. Documented as a v1
+    // limitation; revisit in 19-04 if user demand surfaces.
+    const tree = parseStrudel('s("bd hh sd cp").ply(2.5)')
+    expect(tree.tag).not.toBe('Ply')
+    expect(tree.tag).toBe('Seq')
+  })
+
   describe('source-range tracking', () => {
     it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
       // 0123456789012345

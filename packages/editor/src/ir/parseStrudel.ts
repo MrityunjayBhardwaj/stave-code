@@ -351,6 +351,31 @@ function applyMethod(ir: PatternIR, method: string, args: string): PatternIR {
       )
     }
 
+    case 'ply': {
+      // Tier 4 (Phase 19-03 Task 10). `.ply(n)` repeats each event of the
+      // body `n` times within its own slot (pattern.mjs:1905-1911):
+      //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()
+      //
+      // Originally the plan called for desugaring to `Fast(n, Seq(body × n))`,
+      // but a probe (W4 T10) showed our Fast scales `ctx.speed` rather than
+      // re-playing the body, so the desugar compresses events into [0, 1/n)
+      // instead of spreading them across [0, 1). With Fast unable to model
+      // ply's per-event multiplication, we promoted Ply to a forced new IR
+      // tag (D-02 rule). Round-trip is then direct: toStrudel emits `.ply(n)`
+      // (no shape recogniser needed).
+      //
+      // Non-integer factors (e.g. `.ply(2.5)`, `.ply("<2 3 4>")`) fall
+      // through silently — same default-branch behaviour the parser uses for
+      // any unrecognised method-arg shape today. Documented as a known
+      // limitation; matches CONTEXT D-02's "non-integer falls through to
+      // Code fallback in v1; revisit in 19-04 if needed."
+      const trimmed = args.trim()
+      const n = Number(trimmed)
+      if (!Number.isInteger(n) || n < 1) return ir
+      if (n === 1) return ir
+      return IR.ply(n, ir)
+    }
+
     case 'off': {
       // Tier 4 (Phase 19-03 Task 04). `.off(t, f)` literally desugars to
       //   stack(pat, func(pat.late(time_pat)))     [pattern.mjs:2236-2238]

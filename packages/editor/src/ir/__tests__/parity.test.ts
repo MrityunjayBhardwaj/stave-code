@@ -553,4 +553,75 @@ describe('parity harness', () => {
       expect(ir.transform.tag).toBe('FX')
     }
   })
+
+  // ------------------------------------------------------------------
+  // Phase 19-03 Task 10 — `.ply(n)` parity.
+  //
+  // Ground truth: pattern.mjs:1905-1911 — ply repeats each event of the
+  // body `factor` times within the event's own time slot:
+  //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()
+  //
+  // The plan called for desugaring to `Fast(n, Seq(body × n))`. A probe
+  // (W4 T10) showed our Fast scales `ctx.speed` rather than re-playing
+  // the body, so for `s("bd hh sd cp").ply(3)` the desugar compresses
+  // 12 events into [0, 1/3) at spacing 1/36 instead of [0, 1) at 1/12.
+  // No structural rewrite over current primitives reproduces ply's per-
+  // event multiplication while preserving cycle length, so we promoted
+  // Ply to a forced new IR tag (D-02 rule). collect.ts:Ply walks the
+  // body, then for each emitted event substitutes n compressed copies
+  // covering the original [begin, end) window.
+  //
+  // Input: s("bd hh sd cp").ply(3), query [0, 1).
+  //   Body emits 4 events at spacing 0.25 with duration 0.25.
+  //   Ply(3) replaces each with 3 copies at spacing 0.25/3, totalling 12.
+  //
+  // Diff: count + (begin, s) tuple set + loc presence (PV24).
+  // Pan/gain dimensions aren't load-bearing here — ply doesn't touch
+  // them — and verifying the (begin, s) set already pins down both the
+  // event-multiplication count and the per-event time positions.
+  // ------------------------------------------------------------------
+  it('ply parity: s("bd hh sd cp").ply(3) — count, (begin,s) set match Strudel', async () => {
+    const code = 's("bd hh sd cp").ply(3)'
+    const rawExpected = (await strudelEventsFromCode(code, 1)).map(normalizeStrudelPan)
+    const expected = withOnsetInWindow(dedupeByWholeBegin(rawExpected), 0, 1)
+    const ours = collectCycles(parseStrudel(code), 0, 1)
+    // 4 body events × 3 = 12 per cycle.
+    expect(ours.length).toBe(12)
+    expect(ours.length).toBe(expected.length)
+    // (begin, s) tuple set — pins down both the multiplication count and
+    // per-event timing. Strudel reports `whole.begin` per copy via
+    // normalizeStrudelHap, which already uses fractional begins; our IR
+    // also produces fractional begins, so direct set-equality holds.
+    const tuple = (e: IREvent): string =>
+      `${e.begin.toFixed(9)}|${e.s ?? ''}`
+    expect(new Set(ours.map(tuple))).toEqual(new Set(expected.map(tuple)))
+    // PV24 — loc presence on every event (each copy carries the body
+    // event's loc; ply doesn't introduce new source ranges).
+    for (const e of ours) expect(e.loc).toBeDefined()
+  })
+
+  it('parseStrudel routes .ply(3) to Ply tag', () => {
+    const ir = parseStrudel('s("bd hh sd cp").ply(3)')
+    expect(ir.tag).toBe('Ply')
+    if (ir.tag === 'Ply') {
+      expect(ir.n).toBe(3)
+      // Body is the parsed `s("bd hh sd cp")` — a Seq of 4 Plays.
+      expect(ir.body.tag).toBe('Seq')
+    }
+  })
+
+  it('parseStrudel falls through silently on non-integer .ply (drops the method)', () => {
+    // `.ply(2.5)` and `.ply("<2 3 4>")` aren't supported by our v1 desugar
+    // — the case branch returns `ir` unchanged, so the body parses as if
+    // the .ply method weren't present. This matches how parseStrudel
+    // handles any unrecognised method-arg shape today (default branch).
+    const a = parseStrudel('s("bd hh sd cp").ply(2.5)')
+    // Falls through ⇒ tree is the body — no Ply wrapper.
+    expect(a.tag).not.toBe('Ply')
+    const b = parseStrudel('s("bd hh sd cp").ply("<2 3 4>")')
+    expect(b.tag).not.toBe('Ply')
+    // .ply(1) is a no-op identity — no Ply wrapper either.
+    const c = parseStrudel('s("bd hh sd cp").ply(1)')
+    expect(c.tag).not.toBe('Ply')
+  })
 })

@@ -175,6 +175,12 @@ function gen(ir: PatternIR): string {
       const transformStr = extractTransform(ir.transform, ir.body)
       return `${baseCode}.chunk(${ir.n}, ${transformStr})`
     }
+
+    case 'Ply': {
+      // Tier 4 — `ply(n)` (pattern.mjs:1905-1911). 1:1 method↔tag mapping,
+      // so the round-trip is direct: emit `.ply(n)` over the body.
+      return `${gen(ir.body)}.ply(${ir.n})`
+    }
   }
 }
 

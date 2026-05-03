@@ -400,5 +400,44 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
         return e
       })
     }
+
+    case 'Ply': {
+      // Strudel's `ply(factor)` (pattern.mjs:1905-1911):
+      //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()
+      // Per-event semantics: each emitted hap of `pat` becomes `factor` rapid
+      // copies, each filling 1/factor of the original event's slot. The body
+      // itself plays once at its normal time scale; ply only multiplies events
+      // *within* their existing slots.
+      //
+      // Why a tag, not a desugar — empirical probe (Phase 19-03 Task 10):
+      //   Fast(n, Seq(body × n)) compresses everything into [0, 1/n) because
+      //   our Fast scales speed (cursor advances at slotDuration / speed).
+      //   For `s("bd hh sd cp").ply(3)` the desugar gives 12 events spanning
+      //   [0, 1/3) at spacing 1/36 — wrong (Strudel gives [0, 1) at 1/12).
+      //   No structural rewrite using existing primitives reproduces ply's
+      //   per-event multiplication while preserving cycle length, so ply is
+      //   a forced new tag (D-02 rule).
+      //
+      // Algorithm: walk body to get its events, then for each event emit n
+      // copies whose `begin` and `end` carve up the original [begin, end)
+      // window. `loc` flows through the spread (PV24).
+      const baseEvents = walk(ir.body, ctx)
+      if (ir.n <= 1) return baseEvents
+      const out: IREvent[] = []
+      for (const e of baseEvents) {
+        const slotLen = (e.end - e.begin) / ir.n
+        for (let i = 0; i < ir.n; i++) {
+          const newBegin = e.begin + i * slotLen
+          const newEnd = newBegin + slotLen
+          out.push({
+            ...e,
+            begin: newBegin,
+            end: newEnd,
+            endClipped: newEnd,
+          })
+        }
+      }
+      return out
+    }
   }
 }
