@@ -184,6 +184,10 @@ type PatternIR = {
     factor: number;
     body: PatternIR;
 } | {
+    tag: 'Late';
+    offset: number;
+    body: PatternIR;
+} | {
     tag: 'Loop';
     body: PatternIR;
 } | {
@@ -207,6 +211,7 @@ declare const IR: {
     readonly fast: (factor: number, body: PatternIR) => PatternIR;
     readonly slow: (factor: number, body: PatternIR) => PatternIR;
     readonly elongate: (factor: number, body: PatternIR) => PatternIR;
+    readonly late: (offset: number, body: PatternIR) => PatternIR;
     readonly loop: (body: PatternIR) => PatternIR;
     readonly code: (code: string) => PatternIR;
 };

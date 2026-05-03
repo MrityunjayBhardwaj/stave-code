@@ -247,5 +247,35 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       // future consumer needs structural intent.
       return walk(ir.body, ctx)
     }
+
+    case 'Late': {
+      // Strudel's late(t) = early(-t). early(t) does
+      //   pat.withQueryTime(t => t.add(offset)).withHapTime(t => t.sub(offset))
+      // (pattern.mjs:2061-2069). The net effect is a forward time shift
+      // by `offset` cycles that PRESERVES cycle length — i.e., events
+      // wrap modulo 1 within the current cycle window.
+      //
+      // Per-cycle collect (ctx.begin..ctx.end == [cycle, cycle+1)) means
+      // the wrap reduces to: shifted begin >= cycle+1 → subtract 1;
+      // shifted begin < cycle → add 1. For offsets in (-1, 1) — the
+      // overwhelming-typical Strudel use case — at most one wrap unit is
+      // needed.
+      const events = walk(ir.body, ctx)
+      return events.map((e) => {
+        let begin = e.begin + ir.offset
+        let end = e.end + ir.offset
+        let endClipped = e.endClipped + ir.offset
+        if (begin >= ctx.cycle + 1) {
+          begin -= 1
+          end -= 1
+          endClipped -= 1
+        } else if (begin < ctx.cycle) {
+          begin += 1
+          end += 1
+          endClipped += 1
+        }
+        return { ...e, begin, end, endClipped }
+      })
+    }
   }
 }

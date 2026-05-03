@@ -2936,6 +2936,7 @@ var IR = {
   fast: (factor, body2) => ({ tag: "Fast", factor, body: body2 }),
   slow: (factor, body2) => ({ tag: "Slow", factor, body: body2 }),
   elongate: (factor, body2) => ({ tag: "Elongate", factor, body: body2 }),
+  late: (offset, body2) => ({ tag: "Late", offset, body: body2 }),
   loop: (body2) => ({ tag: "Loop", body: body2 }),
   code: (code) => ({ tag: "Code", code, lang: "strudel" })
 };
@@ -3096,6 +3097,24 @@ function walk(ir, ctx) {
     case "Elongate": {
       return walk(ir.body, ctx);
     }
+    case "Late": {
+      const events = walk(ir.body, ctx);
+      return events.map((e) => {
+        let begin = e.begin + ir.offset;
+        let end = e.end + ir.offset;
+        let endClipped = e.endClipped + ir.offset;
+        if (begin >= ctx.cycle + 1) {
+          begin -= 1;
+          end -= 1;
+          endClipped -= 1;
+        } else if (begin < ctx.cycle) {
+          begin += 1;
+          end += 1;
+          endClipped += 1;
+        }
+        return { ...e, begin, end, endClipped };
+      });
+    }
   }
 }
 
@@ -3131,15 +3150,15 @@ function gen(ir) {
     case "Choice": {
       const thenCode = gen(ir.then);
       if (ir.else_.tag === "Pure") {
-        const dropAmount = +(1 - ir.p).toFixed(4);
-        return `${thenCode}.degradeBy(${dropAmount})`;
+        const p = +ir.p.toFixed(4);
+        return `${thenCode}.sometimesBy(${p}, x => x)`;
       }
       const elseCode = gen(ir.else_);
-      const dropThen = +(1 - ir.p).toFixed(4);
-      const dropElse = +ir.p.toFixed(4);
+      const pThen = +ir.p.toFixed(4);
+      const pElse = +(1 - ir.p).toFixed(4);
       return `stack(
-  ${thenCode}.degradeBy(${dropThen}),
-  ${elseCode}.degradeBy(${dropElse})
+  ${thenCode}.sometimesBy(${pThen}, x => x),
+  ${elseCode}.sometimesBy(${pElse}, x => x)
 )`;
     }
     case "Every": {
@@ -3196,6 +3215,8 @@ function gen(ir) {
       return gen(ir.body);
     case "Elongate":
       return gen(ir.body);
+    case "Late":
+      return `${gen(ir.body)}.late(${ir.offset})`;
   }
 }
 function nodesEqual(a, b) {
@@ -19982,6 +20003,7 @@ function cueGlobMatch(pattern, name2) {
 }
 var DEFAULT_SCHED_AHEAD_TIME = 0.3;
 var DEFAULT_TICK_INTERVAL_MS = 25;
+var DEFAULT_TASK_BPM = 60;
 var HEAP_TIEBREAK_EPSILON = 1e-12;
 var VirtualTimeScheduler = class {
   constructor(options = {}) {
@@ -20153,7 +20175,7 @@ var VirtualTimeScheduler = class {
   fireCue(name2, taskId, args2 = []) {
     const task = this.tasks.get(taskId);
     const cueVirtualTime = task?.virtualTime ?? this.getAudioTime();
-    const cueBpm = task?.bpm ?? 60;
+    const cueBpm = task?.bpm ?? DEFAULT_TASK_BPM;
     this.cueMap.set(name2, { time: cueVirtualTime, args: args2, bpm: cueBpm });
     this.emitEvent({
       type: "cue",
@@ -28984,6 +29006,15 @@ var SonicPiEngine = class {
      *  next eval's scopeBase so removing a `define` line from the buffer does not
      *  break a still-running live_loop that calls it. (#215) */
     this.definedFns = /* @__PURE__ */ new Map();
+    /**
+     * True only while evaluating the synchronous top-level body of user code
+     * (the window between `sandbox.execute(...)` start and resolve in
+     * `evaluate()`). Used by `run_code` and `load_example` to refuse calls
+     * that come from inside a live_loop body's later async iteration —
+     * re-entering `evaluate` from there would dispose the running scheduler
+     * mid-iteration. (#240 / #241)
+     */
+    this.inTopLevelEval = false;
     /** Cached `defonce` values (#212 / #233). Survive across re-evals — that's
      *  the whole point. Cleared only on full engine reset / dispose. */
     this.defonceCache = /* @__PURE__ */ new Map();
@@ -29847,24 +29878,30 @@ var SonicPiEngine = class {
         },
         // Tier B PR #3 — sync_bpm (#236). Inside live_loops the transpiler
         // routes `sync_bpm :name` to `__b.sync_bpm(name)` via BUILDER_METHODS.
-        // At top level we forward to topLevelBuilder so the cue waiter runs
-        // when the top-level program reaches it. Top-level programs run
-        // serially (no concurrent context), so nothing actually waits — the
-        // call is a no-op in that case, matching desktop where sync at top
-        // level outside in_thread is unusual but harmless.
+        // At top level outside in_thread/live_loop the call has no effect —
+        // top-level code runs once linearly and there's no concurrent
+        // context to park. Surface that as a printHandler warning so the
+        // user gets an actionable signal instead of a silent no-op (#239).
         (name2) => {
           topLevelBuilder.sync_bpm(name2);
+          if (this.printHandler) {
+            this.printHandler(`[Warning] sync_bpm :${name2} at top level has no effect \u2014 wrap in in_thread or call from inside a live_loop body.`);
+          }
         },
         // Tier B PR #3 — run_code (#236). Host-side dynamic eval. Replaces
         // all running loops with the supplied code, equivalent to pressing
         // Run with a fresh buffer. Returns a Promise that resolves when the
-        // new evaluation completes. Inside live_loops this re-enters the
-        // engine which is undefined behaviour — desktop's spider re-entry
-        // guard would throw; we accept the same risk for now and may add a
-        // strict guard if observed misuse warrants it.
+        // new evaluation completes. Refuses calls from inside a live_loop
+        // body iteration — re-entering evaluate() from there would dispose
+        // the running scheduler mid-iteration. (#240)
         (code2) => {
           if (typeof code2 !== "string") {
             throw new TypeError(`run_code expects a string, got ${typeof code2}`);
+          }
+          if (!this.inTopLevelEval) {
+            throw new Error(
+              "run_code can only be called at top level \u2014 calling it from inside a live_loop body re-enters the engine which is not supported. Use cue/sync to coordinate between loops instead."
+            );
           }
           return this.evaluate(code2);
         },
@@ -29894,6 +29931,11 @@ var SonicPiEngine = class {
           if (typeof name2 !== "string") {
             throw new TypeError(`load_example expects a name (string or symbol), got ${typeof name2}`);
           }
+          if (!this.inTopLevelEval) {
+            throw new Error(
+              "load_example can only be called at top level \u2014 calling it from inside a live_loop replaces the running buffer mid-iteration which is not supported."
+            );
+          }
           const example = getExample(name2);
           if (!example) {
             throw new Error(`load_example: no example named "${name2}". See examples panel for the full list.`);
@@ -29915,7 +29957,13 @@ var SonicPiEngine = class {
       };
       const sandbox = createIsolatedExecutor(transpiledCode, dslNames, persistedFns);
       scopeHandle = sandbox.scopeHandle;
-      await sandbox.execute(...dslValues);
+      const prevInTopLevelEval = this.inTopLevelEval;
+      this.inTopLevelEval = true;
+      try {
+        await sandbox.execute(...dslValues);
+      } finally {
+        this.inTopLevelEval = prevInTopLevelEval;
+      }
       if (isReEvaluate) {
         const oldLoops = scheduler.getRunningLoopNames();
         const removedLoops = oldLoops.filter((name2) => !pendingLoops.has(name2));

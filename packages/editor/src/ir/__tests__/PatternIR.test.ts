@@ -425,17 +425,21 @@ describe('toStrudel', () => {
     expect(result).toBe('cat(note("c4").fast(2), note("e4"))')
   })
 
-  // --- Fixed: Choice with Pure else_ uses degradeBy ---
-  it('Choice with Pure else_ → degradeBy', () => {
-    expect(toStrudel(IR.choice(0.5, IR.play('c4')))).toBe('note("c4").degradeBy(0.5)')
-    expect(toStrudel(IR.choice(0.7, IR.play('c4')))).toBe('note("c4").degradeBy(0.3)')
+  // --- Choice with Pure else_ uses sometimesBy (per-cycle) ---
+  // Phase 19-03 Task 02: the per-event `.degradeBy()` round-trip target
+  // now belongs to the new `Degrade` tag (introduced in Task 06). Choice
+  // is per-cycle, so `.sometimesBy(p, x => x)` is the semantically-
+  // correct Strudel emit (RESEARCH §2.2 collision note).
+  it('Choice with Pure else_ → sometimesBy', () => {
+    expect(toStrudel(IR.choice(0.5, IR.play('c4')))).toBe('note("c4").sometimesBy(0.5, x => x)')
+    expect(toStrudel(IR.choice(0.7, IR.play('c4')))).toBe('note("c4").sometimesBy(0.7, x => x)')
   })
 
-  it('Choice with non-Pure else_ → stack with degradeBy on both branches', () => {
+  it('Choice with non-Pure else_ → stack with sometimesBy on both branches', () => {
     const result = toStrudel(IR.choice(0.5, IR.play('c4'), IR.play('g4')))
     expect(result).toContain('stack(')
-    expect(result).toContain('note("c4").degradeBy(0.5)')
-    expect(result).toContain('note("g4").degradeBy(0.5)')
+    expect(result).toContain('note("c4").sometimesBy(0.5, x => x)')
+    expect(result).toContain('note("g4").sometimesBy(0.5, x => x)')
   })
 
   // --- Fixed: Every uses extracted transform, not hardcoded fast(2) ---
@@ -462,6 +466,75 @@ describe('toStrudel', () => {
     // no default_ stored → generic fallback
     const result = toStrudel(tree)
     expect(result).toContain('.every(4,')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Late tag — Tier 4 forced tag (Phase 19-03 Task 02)
+// ---------------------------------------------------------------------------
+
+describe('Late tag (Tier 4)', () => {
+  it('IR.late() constructs Late node', () => {
+    const tree = IR.late(0.125, IR.play('c4'))
+    expect(tree.tag).toBe('Late')
+    if (tree.tag === 'Late') {
+      expect(tree.offset).toBe(0.125)
+      expect(tree.body.tag).toBe('Play')
+    }
+  })
+
+  it('collect shifts a single Play forward by offset', () => {
+    // A bare IR.play occupies the full cycle (collect derives event
+    // duration from ctx.duration/ctx.speed, not ir.duration; defaults are
+    // duration=1, speed=1). Late(0.125) shifts begin 0→0.125 and end
+    // 1→1.125 — past the cycle boundary, so the wrap branch fires:
+    // begin wraps to -0.875 + 1 = NO; the wrap check is `begin >=
+    // ctx.cycle+1`, and 0.125 < 1, so no wrap. The shifted event
+    // spans [0.125, 1.125). For a multi-cycle viz consumer this is
+    // fine; for a strict single-cycle query the trailing portion is
+    // outside the window — but we don't clip on query window in this
+    // test. The shape test asserts the shift, not the clip.
+    const tree = IR.late(0.125, IR.play('c4'))
+    const events = collect(tree)
+    expect(events.length).toBe(1)
+    expect(events[0].begin).toBeCloseTo(0.125, 9)
+    expect(events[0].end).toBeCloseTo(1.125, 9)
+  })
+
+  it('collect wraps events past the cycle boundary back into the current cycle', () => {
+    // Play at t=0.9, offset 0.2 → naïve shift to 1.1; should wrap to 0.1.
+    // Build directly: a Play with begin time 0.9 by enclosing in a Seq
+    // that places it in the last 10% of the cycle is fiddly; easier test
+    // is .late(0.5) over a 4-step seq — the back half wraps to the front.
+    const body = IR.seq(
+      IR.play('a'), // 0.00..0.25
+      IR.play('b'), // 0.25..0.50
+      IR.play('c'), // 0.50..0.75
+      IR.play('d'), // 0.75..1.00
+    )
+    const events = collect(IR.late(0.5, body))
+    expect(events.length).toBe(4)
+    const beginsByNote = Object.fromEntries(
+      events.map((e) => [e.note as string, e.begin]),
+    )
+    // a 0.0 → 0.5; b 0.25 → 0.75; c 0.5 → 1.0 → wrap → 0.0; d 0.75 → 1.25 → wrap → 0.25.
+    expect(beginsByNote.a).toBeCloseTo(0.5, 9)
+    expect(beginsByNote.b).toBeCloseTo(0.75, 9)
+    expect(beginsByNote.c).toBeCloseTo(0, 9)
+    expect(beginsByNote.d).toBeCloseTo(0.25, 9)
+  })
+
+  it('propagates loc from underlying Play (PV24)', () => {
+    const loc = [{ start: 7, end: 9 }]
+    const tree = IR.late(0.125, IR.play('c4', 0.25, {}, loc))
+    const events = collect(tree)
+    expect(events.length).toBe(1)
+    expect(events[0].loc).toEqual(loc)
+  })
+
+  it('toStrudel(Late) emits .late(offset) on the body', () => {
+    expect(toStrudel(IR.late(0.125, IR.play('c4')))).toBe('note("c4").late(0.125)')
+    expect(toStrudel(IR.late(0.5, IR.play('e4')))).toBe('note("e4").late(0.5)')
   })
 })
 
