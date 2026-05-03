@@ -3936,6 +3936,11 @@ function applyMethod(ir, method, args2) {
       if (!isNaN(val)) return IR.fx("pan", { pan: val }, ir);
       return ir;
     }
+    case "late": {
+      const t = parseFloat(args2.trim());
+      if (isNaN(t)) return ir;
+      return IR.late(t, ir);
+    }
     case "room":
     case "delay":
     case "reverb":

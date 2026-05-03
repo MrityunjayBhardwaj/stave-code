@@ -256,6 +256,17 @@ function applyMethod(ir: PatternIR, method: string, args: string): PatternIR {
       return ir
     }
 
+    case 'late': {
+      // Tier 4 (Phase 19-03 Task 03). `.late(t)` shifts events forward by
+      // `t` cycles while preserving cycle length (pattern.mjs:2081-2089).
+      // Modeled as the Late IR tag (Task 02). Decimal literals only —
+      // fraction literals like `.late(1/8)` fall back to identity (same
+      // limitation `.fast()` has today).
+      const t = parseFloat(args.trim())
+      if (isNaN(t)) return ir
+      return IR.late(t, ir)
+    }
+
     case 'room':
     case 'delay':
     case 'reverb':

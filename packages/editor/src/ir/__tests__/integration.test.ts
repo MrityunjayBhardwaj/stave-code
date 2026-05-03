@@ -479,6 +479,27 @@ describe('parseStrudel', () => {
     }
   })
 
+  it('parses .late(0.125) into Late tag (Tier 4)', () => {
+    const tree = parseStrudel('s("bd").late(0.125)')
+    expect(tree.tag).toBe('Late')
+    if (tree.tag === 'Late') {
+      expect(tree.offset).toBe(0.125)
+      // Body is the parsed `s("bd")` — a single Play (parseMini collapses
+      // single-token sequences to a bare Play, see parseMini.ts).
+      expect(tree.body.tag).toBe('Play')
+      if (tree.body.tag === 'Play') expect(tree.body.params.s).toBe('bd')
+    }
+  })
+
+  it('parses .late(0.5) on a multi-token sequence into Late wrapping a Seq', () => {
+    const tree = parseStrudel('note("c4 e4 g4").late(0.5)')
+    expect(tree.tag).toBe('Late')
+    if (tree.tag === 'Late') {
+      expect(tree.offset).toBe(0.5)
+      expect(tree.body.tag).toBe('Seq')
+    }
+  })
+
   describe('source-range tracking', () => {
     it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
       // 0123456789012345
