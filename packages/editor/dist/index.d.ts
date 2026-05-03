@@ -188,6 +188,19 @@ type PatternIR = {
     offset: number;
     body: PatternIR;
 } | {
+    tag: 'Degrade';
+    p: number;
+    body: PatternIR;
+} | {
+    tag: 'Chunk';
+    n: number;
+    transform: PatternIR;
+    body: PatternIR;
+} | {
+    tag: 'Ply';
+    n: number;
+    body: PatternIR;
+} | {
     tag: 'Loop';
     body: PatternIR;
 } | {
@@ -212,6 +225,9 @@ declare const IR: {
     readonly slow: (factor: number, body: PatternIR) => PatternIR;
     readonly elongate: (factor: number, body: PatternIR) => PatternIR;
     readonly late: (offset: number, body: PatternIR) => PatternIR;
+    readonly degrade: (p: number, body: PatternIR) => PatternIR;
+    readonly chunk: (n: number, transform: PatternIR, body: PatternIR) => PatternIR;
+    readonly ply: (n: number, body: PatternIR) => PatternIR;
     readonly loop: (body: PatternIR) => PatternIR;
     readonly code: (code: string) => PatternIR;
 };

@@ -2937,11 +2937,30 @@ var IR = {
   slow: (factor, body2) => ({ tag: "Slow", factor, body: body2 }),
   elongate: (factor, body2) => ({ tag: "Elongate", factor, body: body2 }),
   late: (offset, body2) => ({ tag: "Late", offset, body: body2 }),
+  degrade: (p, body2) => ({ tag: "Degrade", p, body: body2 }),
+  chunk: (n, transform, body2) => ({ tag: "Chunk", n, transform, body: body2 }),
+  ply: (n, body2) => ({ tag: "Ply", n, body: body2 }),
   loop: (body2) => ({ tag: "Loop", body: body2 }),
   code: (code) => ({ tag: "Code", code, lang: "strudel" })
 };
 
 // src/ir/collect.ts
+var RAND_SEED = 0;
+function xorwise(x) {
+  const a = x << 13 ^ x | 0;
+  const b = a >> 17 ^ a | 0;
+  return b << 5 ^ b | 0;
+}
+function timeToIntSeed(t) {
+  const frac = t / 300 - Math.trunc(t / 300);
+  return xorwise(Math.trunc(frac * 536870912));
+}
+function intSeedToRand(s) {
+  return s % 536870912 / 536870912;
+}
+function seededRand(t, seed) {
+  return Math.abs(intSeedToRand(timeToIntSeed(t + seed)));
+}
 var DEFAULT_CONTEXT = {
   begin: 0,
   end: Infinity,
@@ -3115,6 +3134,49 @@ function walk(ir, ctx) {
         return { ...e, begin, end, endClipped };
       });
     }
+    case "Degrade": {
+      const events = walk(ir.body, ctx);
+      const dropAmount = 1 - ir.p;
+      return events.filter((e) => seededRand(e.begin, RAND_SEED) > dropAmount);
+    }
+    case "Chunk": {
+      const slot = (ctx.cycle % ir.n + ir.n) % ir.n;
+      const slotStart = slot / ir.n;
+      const slotEnd = (slot + 1) / ir.n;
+      const baseEvents = walk(ir.body, ctx);
+      const transformedEvents = walk(ir.transform, ctx);
+      const inSlot = (e) => {
+        const cyclePos = e.begin - ctx.cycle;
+        return cyclePos >= slotStart - 1e-9 && cyclePos < slotEnd - 1e-9;
+      };
+      const findTransformed = (e) => transformedEvents.find((t) => Math.abs(t.begin - e.begin) < 1e-9);
+      return baseEvents.map((e) => {
+        if (inSlot(e)) {
+          const replaced = findTransformed(e);
+          return replaced ?? e;
+        }
+        return e;
+      });
+    }
+    case "Ply": {
+      const baseEvents = walk(ir.body, ctx);
+      if (ir.n <= 1) return baseEvents;
+      const out2 = [];
+      for (const e of baseEvents) {
+        const slotLen = (e.end - e.begin) / ir.n;
+        for (let i2 = 0; i2 < ir.n; i2++) {
+          const newBegin = e.begin + i2 * slotLen;
+          const newEnd = newBegin + slotLen;
+          out2.push({
+            ...e,
+            begin: newBegin,
+            end: newEnd,
+            endClipped: newEnd
+          });
+        }
+      }
+      return out2;
+    }
   }
 }
 
@@ -3217,6 +3279,20 @@ function gen(ir) {
       return gen(ir.body);
     case "Late":
       return `${gen(ir.body)}.late(${ir.offset})`;
+    case "Degrade": {
+      const body2 = gen(ir.body);
+      if (ir.p === 0.5) return `${body2}.degrade()`;
+      const dropAmount = +(1 - ir.p).toFixed(4);
+      return `${body2}.degradeBy(${dropAmount})`;
+    }
+    case "Chunk": {
+      const baseCode = gen(ir.body);
+      const transformStr = extractTransform(ir.transform, ir.body);
+      return `${baseCode}.chunk(${ir.n}, ${transformStr})`;
+    }
+    case "Ply": {
+      return `${gen(ir.body)}.ply(${ir.n})`;
+    }
   }
 }
 function nodesEqual(a, b) {
@@ -3909,10 +3985,47 @@ function applyMethod(ir, method, args2) {
       if (!isNaN(val)) return IR.fx("pan", { pan: val }, ir);
       return ir;
     }
+    case "chunk": {
+      const [nStr, transformStr] = splitFirstArg(args2);
+      const n = parseInt(nStr.trim(), 10);
+      if (isNaN(n) || n < 1) return ir;
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir) : ir;
+      return IR.chunk(n, transform, ir);
+    }
+    case "degrade": {
+      return IR.degrade(0.5, ir);
+    }
+    case "degradeBy": {
+      const amount = parseFloat(args2.trim());
+      if (isNaN(amount)) return ir;
+      return IR.degrade(1 - amount, ir);
+    }
     case "late": {
       const t = parseFloat(args2.trim());
       if (isNaN(t)) return ir;
       return IR.late(t, ir);
+    }
+    case "jux": {
+      const transformed = args2.trim() ? parseTransform(args2.trim(), ir) : ir;
+      return IR.stack(
+        IR.fx("pan", { pan: -1 }, ir),
+        IR.fx("pan", { pan: 1 }, transformed)
+      );
+    }
+    case "ply": {
+      const trimmed = args2.trim();
+      const n = Number(trimmed);
+      if (!Number.isInteger(n) || n < 1) return ir;
+      if (n === 1) return ir;
+      return IR.ply(n, ir);
+    }
+    case "off": {
+      const [tStr, transformStr] = splitFirstArg(args2);
+      const t = parseFloat(tStr.trim());
+      if (isNaN(t)) return ir;
+      const lateBody = IR.late(t, ir);
+      const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody) : lateBody;
+      return IR.stack(ir, transformed);
     }
     case "room":
     case "delay":
