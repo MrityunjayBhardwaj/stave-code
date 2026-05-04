@@ -653,6 +653,68 @@ describe('parseStrudel', () => {
     }
   })
 
+  // Phase 19-04 T-03 — Struct tag shape tests.
+  it('parses .struct("…") into Struct(mask, body) (Tier 4)', () => {
+    // Ground truth: pattern.mjs:1161 — struct(mask) = this.keepif.out(mask).
+    // Re-times body's value-stream to mask onsets; distinct from When/.mask
+    // (which only gates). RESEARCH §1.2.
+    const tree = parseStrudel('note("c d e").struct("x ~ x")')
+    expect(tree.tag).toBe('Struct')
+    if (tree.tag === 'Struct') {
+      expect(tree.mask).toBe('x ~ x')
+      expect(tree.body.tag).toBe('Seq')
+    }
+  })
+
+  it('IR.struct smart constructor produces well-formed Struct node', () => {
+    const body = IR.play('c4')
+    const node = IR.struct('x ~ x ~', body)
+    expect(node.tag).toBe('Struct')
+    if (node.tag === 'Struct') {
+      expect(node.mask).toBe('x ~ x ~')
+      expect(node.body).toBe(body)
+    }
+  })
+
+  it('collect(Struct) re-times body events to mask onsets', () => {
+    // Body is a single Play spanning [0, 1) (default duration 1 cycle).
+    // Mask "x ~ x ~" has 4 slots; truthy at i=0 and i=2. Each slot is 1/4
+    // wide. The body event INTERSECTS every slot, so each truthy slot
+    // re-emits a copy. Net: 2 events at begins {0, 0.5} each with width 0.25.
+    // (Mirrors Strudel's appRight semantics — pattern.mjs:218-237.)
+    const node = IR.struct('x ~ x ~', IR.play('c4'))
+    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(2)
+    const sorted = [...events].sort((a, b) => a.begin - b.begin)
+    expect(sorted[0].begin).toBeCloseTo(0, 9)
+    expect(sorted[0].end).toBeCloseTo(0.25, 9)
+    expect(sorted[0].note).toBe('c4')
+    expect(sorted[1].begin).toBeCloseTo(0.5, 9)
+    expect(sorted[1].note).toBe('c4')
+  })
+
+  it('collect(Struct) samples body across slots when body has multiple events', () => {
+    // Body is Seq("c","d","e","f") — events at begin 0, 1/4, 2/4, 3/4 each
+    // with end at the next slot. Mask "x ~ x ~" has truthy at i=0, i=2.
+    // Slot 0 [0, 1/4) captures the c event → re-emit at 0.
+    // Slot 2 [2/4, 3/4) captures the e event → re-emit at 2/4.
+    const body = IR.seq(IR.play('c'), IR.play('d'), IR.play('e'), IR.play('f'))
+    const node = IR.struct('x ~ x ~', body)
+    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(2)
+    const sorted = [...events].sort((a, b) => a.begin - b.begin)
+    expect(sorted[0].note).toBe('c')
+    expect(sorted[0].begin).toBeCloseTo(0, 9)
+    expect(sorted[1].note).toBe('e')
+    expect(sorted[1].begin).toBeCloseTo(0.5, 9)
+  })
+
+  it('toStrudel(Struct) round-trips to .struct("…")', () => {
+    const node = IR.struct('x ~ x ~', IR.play('c4'))
+    const code = toStrudel(node)
+    expect(code).toContain('.struct("x ~ x ~")')
+  })
+
   describe('source-range tracking', () => {
     it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
       // 0123456789012345

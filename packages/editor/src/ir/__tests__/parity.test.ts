@@ -775,6 +775,48 @@ describe('parity harness', () => {
       expect(ir.selector.tag).toBe('Cycle')
     }
   })
+
+  // ------------------------------------------------------------------
+  // Phase 19-04 Task T-03 — `.struct(mask)` parity.
+  //
+  // Ground truth: pattern.mjs:1161-1163 — struct(mask) = this.keepif.out(mask).
+  // _opOut is "structure from mask, values from this" — re-times this
+  // pattern's value-stream to mask onsets. Distinct from `.mask("…")`
+  // (When tag) which only gates events. RESEARCH §1.2.
+  //
+  // Input: note("c d e f").struct("x ~ x ~ x ~ ~ x") — body is 4 notes
+  // at slots 0, 1/4, 2/4, 3/4 inside [0, 1). Mask has 8 slots at 1/8 each
+  // with truthy at i ∈ {0, 2, 4, 7}. Each truthy slot samples body events
+  // whose cycle-position falls in [i/8, (i+1)/8) and re-emits at i/8.
+  //   slot 0 [0, 1/8)   → captures c at 0   → emit at 0
+  //   slot 2 [2/8, 3/8) → captures d at 1/4 → emit at 2/8
+  //   slot 4 [4/8, 5/8) → captures e at 2/4 → emit at 4/8
+  //   slot 7 [7/8, 8/8) → captures f at 3/4? — 3/4 = 6/8, NOT in [7/8, 1).
+  //                         → no body event in slot 7 → emit nothing
+  // Expected: 3 events at begins {0, 1/4, 1/2} with notes {c, d, e}.
+  //
+  // Diff: count + per-event (begin, note) tuple equality. PV24 loc
+  // presence on every event.
+  // ------------------------------------------------------------------
+  it('struct parity: note("c d e f").struct("x ~ x ~ x ~ ~ x") — count and (begin, note) match Strudel', async () => {
+    const code = 'note("c d e f").struct("x ~ x ~ x ~ ~ x")'
+    const rawExpected = (await strudelEventsFromCode(code, 1)).map(normalizeStrudelPan)
+    const expected = dedupeByWholeBegin(withOnsetInWindow(rawExpected, 0, 1))
+    const ours = collectCycles(parseStrudel(code), 0, 1)
+    // Both sides should yield the same count.
+    expect(ours.length).toBe(expected.length)
+    // Per-event diff on begin and note. PV24 loc presence asserted by helper.
+    diffEvents(expected, ours, ['begin', 'note'])
+  })
+
+  it('parseStrudel routes .struct("…") to Struct tag', () => {
+    const ir = parseStrudel('note("c d e").struct("x ~ x")')
+    expect(ir.tag).toBe('Struct')
+    if (ir.tag === 'Struct') {
+      expect(ir.mask).toBe('x ~ x')
+      expect(ir.body.tag).toBe('Seq')
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

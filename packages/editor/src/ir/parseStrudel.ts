@@ -538,6 +538,21 @@ function applyMethod(ir: PatternIR, method: string, args: string, baseOffset = 0
       return IR.pick(ir, lookup)
     }
 
+    case 'struct': {
+      // Tier 4 (Phase 19-04 Task T-03). `.struct(mask)` per pattern.mjs:1161:
+      //   struct(mask) = this.keepif.out(mask)
+      // _opOut is "structure from mask, values from this" — RE-TIMES this
+      // pattern's value-stream to mask onsets. Distinct from `.mask("…")`
+      // (When tag) which only GATES events through. RESEARCH §1.2; P43
+      // (documented spec ≠ source — keepif.out is the implementation truth).
+      //
+      // mask is a quoted mini-notation string; we carry it raw on the IR
+      // (matches When.gate precedent — sub-IR form deferred per RESEARCH §8.2).
+      const gateMatch = args.trim().match(/^"([^"]*)"$/)
+      if (gateMatch) return IR.struct(gateMatch[1], ir)
+      return ir
+    }
+
     case 'p':
       // .p("trackId") — track assignment, pass through
       return ir

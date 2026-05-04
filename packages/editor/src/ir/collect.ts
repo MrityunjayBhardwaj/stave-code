@@ -452,6 +452,59 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       return out
     }
 
+    case 'Struct': {
+      // Strudel's `struct(mask)` (pattern.mjs:1161-1163):
+      //   struct(mask, pat) = pat.keepif.out(mask)
+      // _opOut is `this.fmap(keepif).appRight(reify(mask))` (pattern.mjs:748).
+      // appRight (pattern.mjs:218-237) queries the mask, then for each mask
+      // hap queries `this` over the MASK HAP'S SPAN, producing one output
+      // hap per (mask hap, intersecting body hap). The output's `whole` and
+      // `part` come from the mask (structure from right), the value comes
+      // from `this`. Net effect: re-times body's value-stream to mask onsets,
+      // and a body event spanning multiple mask slots can produce multiple
+      // output events (one per intersecting mask onset). RESEARCH §1.2; P43
+      // (the Strudel docstring's "draws values from pat" understates the
+      // intersection-based query — it's not "begin in slot" but
+      // "body span intersects slot span").
+      //
+      // Distinct from When/`.mask("…")` (keepif.in / structure from `this`)
+      // which only GATES body events through unchanged.
+      //
+      // Algorithm: split mask into slots, walk body once with current ctx.
+      // For each truthy slot at index i with span [i/N, (i+1)/N), find body
+      // events whose cycle-window INTERSECTS the slot span (not just begin
+      // inside). Re-emit each at the mask onset with slot-width duration.
+      // `loc` flows through unchanged (PV24). Cycle-counter aware via
+      // ctx.cycle (no parallel state — re-uses the field threaded through
+      // Every/Cycle/Chunk).
+      const slots = ir.mask.trim().split(/\s+/)
+      const total = slots.length
+      if (total === 0) return []
+      const bodyEvents = walk(ir.body, ctx)
+      const slotWidth = 1 / total
+      const out: IREvent[] = []
+      for (let i = 0; i < total; i++) {
+        const slot = slots[i]
+        if (slot === '~' || slot === '0' || slot === '') continue
+        const onsetTime = ctx.cycle + i / total
+        const slotLo = ctx.cycle + i / total
+        const slotHi = ctx.cycle + (i + 1) / total
+        for (const e of bodyEvents) {
+          // Span-intersection: event covers [e.begin, e.end). Intersects
+          // slot when e.begin < slotHi AND e.end > slotLo.
+          if (e.begin < slotHi - 1e-9 && e.end > slotLo + 1e-9) {
+            out.push({
+              ...e,
+              begin: onsetTime,
+              end: onsetTime + slotWidth,
+              endClipped: onsetTime + slotWidth,
+            })
+          }
+        }
+      }
+      return out
+    }
+
     case 'Ply': {
       // Strudel's `ply(factor)` (pattern.mjs:1905-1911):
       //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()

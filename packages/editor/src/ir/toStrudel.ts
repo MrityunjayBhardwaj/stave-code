@@ -200,6 +200,13 @@ function gen(ir: PatternIR): string {
       const elems = ir.lookup.map(p => gen(p))
       return `${sel}.pick([${elems.join(', ')}])`
     }
+
+    case 'Struct': {
+      // Tier 4 (Phase 19-04 T-03) — `struct(mask)` (pattern.mjs:1161-1163).
+      // 1:1 method↔tag mapping with mask carried as a raw string (matches
+      // When.gate precedent). Direct round-trip.
+      return `${gen(ir.body)}.struct("${ir.mask}")`
+    }
   }
 }
 
