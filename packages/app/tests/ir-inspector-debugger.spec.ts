@@ -84,7 +84,9 @@ test.describe('IR Inspector — Pass Instrumentation v1', () => {
     await bootInspectorWithPattern(page)
     const tree = page.locator('[data-testid="ir-tree-section"]')
     // 4-note pattern under note("...") parses as a Seq of Play leaves.
-    await expect(tree).toContainText('Seq')
+    // Phase 19-06 (#76): default projected mode renders mini-notation Seq
+    // as the source symbol "[]" (D-03); Play renders as "Play".
+    await expect(tree).toContainText('[]')
     await expect(tree).toContainText('Play')
   })
 
