@@ -20,6 +20,7 @@ import {
   subscribeIRSnapshot,
   revealLineInFile,
 } from "@stave/editor";
+import { LOCALSTORAGE_KEY } from "./irProjection";
 
 // ----- Color tokens by IR tag — keep close to the design system -----------
 
@@ -286,6 +287,28 @@ export function IRInspectorPanel(): React.ReactElement {
   const [selectedTabName, setSelectedTabName] = useState<string | null>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
+  // 19-06 (#76) — IR-mode toggle. Default false (projected mode); true
+  // shows the raw IR shape for IR developers / power users. Persisted
+  // via localStorage (RESEARCH §5.2 colon-prefix convention).
+  const [irMode, setIrMode] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(LOCALSTORAGE_KEY) === "true";
+    } catch {
+      // Private browsing / disabled storage — default to projected.
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(LOCALSTORAGE_KEY, String(irMode));
+    } catch {
+      // Storage quota / private browsing — skip silently.
+    }
+  }, [irMode]);
+
   useEffect(() => {
     return subscribeIRSnapshot((s) => setSnap(s));
   }, []);
@@ -342,8 +365,38 @@ export function IRInspectorPanel(): React.ReactElement {
         }}
       >
         <div style={{ fontWeight: 600 }}>IR INSPECTOR</div>
-        <div style={{ fontSize: "0.8em", opacity: 0.6 }}>
-          {snap.runtime} · {snap.events.length} events · {ageLabel}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <div style={{ fontSize: "0.8em", opacity: 0.6 }}>
+            {snap.runtime} · {snap.events.length} events · {ageLabel}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIrMode((v) => !v)}
+            title={
+              irMode
+                ? "Show projected user-method view"
+                : "Show raw IR shape (developer view)"
+            }
+            aria-label={irMode ? "Show projected view" : "Show raw IR view"}
+            aria-pressed={irMode}
+            data-testid="ir-mode-toggle"
+            style={{
+              padding: "2px 8px",
+              fontSize: "0.75em",
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              color: irMode ? "#86efac" : "var(--text-tertiary, #888)",
+              background: irMode ? "rgba(134,239,172,0.08)" : "transparent",
+              border: `1px solid ${
+                irMode ? "#86efac" : "var(--border-subtle, rgba(128,128,128,0.3))"
+              }`,
+              borderRadius: 3,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            {irMode ? "raw IR" : "IR"}
+          </button>
         </div>
       </div>
 
