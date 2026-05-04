@@ -159,6 +159,19 @@ function parseRoot(root: string, baseOffset = 0): PatternIR {
     return parseMini(sMatch[1], true, innerOffset)
   }
 
+  // mini("...") — raw mini-notation pattern producing values (not notes/samples).
+  // Added for Phase 19-04 T-02 (Pick) — the only Strudel form that produces a
+  // numeric-index Pattern usable as a pick selector in our test environment
+  // (String.prototype.pick is not registered server-side; note("<0 1 2>")
+  // converts numeric strings to MIDI notes which pick can't index by).
+  // RESEARCH §1.4 (pre-mortem #10).
+  const miniMatch = trimmed.match(/^mini\s*\(\s*"([^"]*)"\s*\)/)
+  if (miniMatch) {
+    const quoteIdx = miniMatch[0].indexOf('"')
+    const innerOffset = baseOffset + leadingWs + quoteIdx + 1
+    return parseMini(miniMatch[1], false, innerOffset)
+  }
+
   // stack(a, b, c) — parallel composition. Argument offsets are
   // dropped here for v0 — when a future consumer needs loc through
   // stack(), splitArgs would need to return slice positions too.
@@ -493,6 +506,38 @@ function applyMethod(ir: PatternIR, method: string, args: string, baseOffset = 0
       return ir
     }
 
+    case 'pick': {
+      // Tier 4 (Phase 19-04 Task T-02). `.pick(lookup)` per pick.mjs:44-54:
+      //   pat.fmap(i => lookup[clamp(round(i), 0, len-1)]).innerJoin()
+      // For each event of the receiver (`ir`, the selector pattern), the
+      // value (cast to int + clamp) selects a sub-pattern from the lookup
+      // array; that sub-pattern plays at the selector event's time slot.
+      //
+      // First IR shape that takes a list of sub-patterns as data (not a
+      // transform function) — Pick is the prototype for the family
+      // (inhabit, pickF, pickmod, pickRestart, pickReset, pickOut).
+      // RESEARCH §1.4.
+      //
+      // v1 limitation: array-form lookup only; object/named-key form
+      // (Strudel's `pick({a: ..., b: ...})`) deferred to a follow-up.
+      const inner = args.trim()
+      if (!(inner.startsWith('[') && inner.endsWith(']'))) return ir
+      const arrayBody = inner.slice(1, -1)
+      const elements = splitArgs(arrayBody)
+      if (elements.length === 0) return ir
+      // Compute the absolute baseOffset of the array body within the
+      // user's full code (skip the opening '[' inside args).
+      const arrayBodyOffsetInArgs = args.indexOf('[') + 1
+      const arrayBodyOffset = arrayBodyOffsetInArgs >= 1
+        ? baseOffset + arrayBodyOffsetInArgs
+        : baseOffset
+      const lookup = elements.map(e => {
+        const elemOffset = offsetOfSubArg(arrayBody, e.trim(), arrayBodyOffset)
+        return parseArrayLiteralElement(e, 'note', elemOffset)
+      })
+      return IR.pick(ir, lookup)
+    }
+
     case 'p':
       // .p("trackId") — track assignment, pass through
       return ir
@@ -562,6 +607,62 @@ function parseTransform(transformStr: string, defaultIr: PatternIR, baseOffset =
   }
 
   return defaultIr
+}
+
+/**
+ * Parse a single element of an array-literal arg (used by `.pick([...])`).
+ *
+ * Three shapes are recognised:
+ *   1. Bare quoted-string: `"g a"` or `'c'` — wrapped per receiver context
+ *      (defaults to `note(...)`). This handles the docstring shape from
+ *      pick.mjs:35-37 — `pick(["g a", "e f", ...])` — where bare strings
+ *      need to become miniNotation patterns. Per RESEARCH §1.4 / pre-mortem
+ *      #10: receiver-context detection is v1-limited to a fixed default.
+ *   2. Bare numeric literal: `0`, `1.5` — wrapped as `note(...)` so the
+ *      element produces a Play with that note value.
+ *   3. Already a full Strudel expression: `note("c")`, `s("bd")`,
+ *      `mini("...")` — parsed directly via parseExpression.
+ *
+ * `baseOffset` is the absolute char offset of `elem[0]` within the user's
+ * full code (PV25 — parser preserves offsets at every hop).
+ */
+function parseArrayLiteralElement(
+  elem: string,
+  receiverContext: 'note' | 's',
+  baseOffset = 0,
+): PatternIR {
+  const trimmed = elem.trim()
+  const leadingWs = elem.length - elem.trimStart().length
+  if (!trimmed) return IR.pure()
+
+  // Bare quoted-string: wrap in receiver context to give parseExpression
+  // a parseable shape. Adjust baseOffset to point at the wrapper's quote
+  // — internally parseRoot computes the inner mini's offset from the
+  // wrapper, but the user's code has just `"..."`, so the inner offset
+  // relative to the wrapper compensates by `(receiverContext.length + 1)`
+  // chars (e.g. `note(` = 5 chars). This keeps Play.loc on the actual
+  // user-source positions.
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    const wrapped = `${receiverContext}(${trimmed})`
+    // The wrapper adds `note(` (5 chars) before the quote. parseExpression
+    // → parseRoot parses `note("...")` and reads inner mini at offset
+    // `quoteIdx + 1`. quoteIdx within the wrapper is `receiverContext.length + 1`.
+    // To compensate, pass a baseOffset that's behind by `receiverContext.length + 1`
+    // chars so the absolute innerOffset lands at the user's actual quote+1.
+    const wrapperPrefix = receiverContext.length + 1
+    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix)
+  }
+
+  // Bare numeric literal: wrap in note(...) so it parses as a Play.
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    const wrapped = `${receiverContext}("${trimmed}")`
+    const wrapperPrefix = receiverContext.length + 1 + 1  // note( + opening quote
+    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix)
+  }
+
+  // Full expression — parse as-is.
+  return parseExpression(trimmed, baseOffset + leadingWs)
 }
 
 /**

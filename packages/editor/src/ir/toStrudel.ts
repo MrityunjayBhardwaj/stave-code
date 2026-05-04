@@ -191,6 +191,15 @@ function gen(ir: PatternIR): string {
       // so the round-trip is direct: emit `.ply(n)` over the body.
       return `${gen(ir.body)}.ply(${ir.n})`
     }
+
+    case 'Pick': {
+      // Tier 4 (Phase 19-04 T-02) — `pick(lookup)` (pick.mjs:44-54).
+      // 1:1 method↔tag mapping, so the round-trip is direct: emit
+      // `.pick([...])` with each lookup entry's gen output.
+      const sel = gen(ir.selector)
+      const elems = ir.lookup.map(p => gen(p))
+      return `${sel}.pick([${elems.join(', ')}])`
+    }
   }
 }
 

@@ -581,6 +581,78 @@ describe('parseStrudel', () => {
     expect(tree.tag).toBe('Seq')
   })
 
+  // Phase 19-04 T-02 — Pick tag shape tests.
+  it('parses .pick([…]) into Pick(selector, lookup) (Tier 4)', () => {
+    // Ground truth: pick.mjs:44-54. First IR shape carrying a list of
+    // sub-patterns as data. Receiver becomes selector; array-literal
+    // arg becomes lookup[].
+    const tree = parseStrudel('mini("<0 1 2 3>").pick(["c","e","g","b"])')
+    expect(tree.tag).toBe('Pick')
+    if (tree.tag === 'Pick') {
+      expect(tree.lookup.length).toBe(4)
+      // Selector is the parsed mini-notation (Cycle of Plays).
+      expect(tree.selector.tag).toBe('Cycle')
+      // Each lookup element is a Play — bare strings get wrapped in
+      // note(...) by parseArrayLiteralElement (default receiver context
+      // = 'note' in v1).
+      for (const elem of tree.lookup) {
+        expect(['Play', 'Seq']).toContain(elem.tag)
+      }
+    }
+  })
+
+  it('IR.pick smart constructor produces well-formed Pick node', () => {
+    const sel = IR.cycle(IR.play(0), IR.play(1))
+    const lookup = [IR.play('c'), IR.play('e')]
+    const node = IR.pick(sel, lookup)
+    expect(node.tag).toBe('Pick')
+    if (node.tag === 'Pick') {
+      expect(node.selector).toBe(sel)
+      expect(node.lookup).toEqual(lookup)
+    }
+  })
+
+  it('collect(Pick) yields one event per selector event, picking from lookup by clamped int index', () => {
+    // Selector with numeric notes 0 and 1 alternating; lookup has two
+    // single-note Plays. Each cycle the selector selects the matching
+    // lookup entry — collect should walk the inner Play and emit its
+    // event at the selector event's slot.
+    const sel = IR.cycle(IR.play(0), IR.play(1))
+    const lookup = [IR.play('c'), IR.play('e')]
+    const node = IR.pick(sel, lookup)
+    // Two cycles: cycle 0 picks lookup[0]=c, cycle 1 picks lookup[1]=e.
+    const cyc0 = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    const cyc1 = collect(node, { cycle: 1, time: 1, begin: 1, end: 2, duration: 1 })
+    expect(cyc0.length).toBe(1)
+    expect(cyc1.length).toBe(1)
+    expect(cyc0[0].note).toBe('c')
+    expect(cyc1[0].note).toBe('e')
+  })
+
+  it('toStrudel(Pick) round-trips to .pick([…])', () => {
+    const sel = IR.cycle(IR.play(0), IR.play(1))
+    const lookup = [IR.play('c'), IR.play('e')]
+    const node = IR.pick(sel, lookup)
+    const code = toStrudel(node)
+    expect(code).toContain('.pick([')
+    expect(code).toContain(', ')  // separator between elements
+  })
+
+  it('parseArrayLiteralElement wraps bare quoted strings in note() (v1 receiver default)', () => {
+    // The docstring shape `pick(["g a", ...])` requires bare-string
+    // wrapping per RESEARCH §1.4 / pre-mortem #10. Verify the wrapped
+    // result is a parseable Play / Seq, not a Code fallback.
+    const tree = parseStrudel('mini("<0 1>").pick(["c", "e"])')
+    expect(tree.tag).toBe('Pick')
+    if (tree.tag === 'Pick') {
+      // Each lookup element should be a Play with the bare string as note.
+      expect(tree.lookup[0].tag).toBe('Play')
+      expect(tree.lookup[1].tag).toBe('Play')
+      if (tree.lookup[0].tag === 'Play') expect(tree.lookup[0].note).toBe('c')
+      if (tree.lookup[1].tag === 'Play') expect(tree.lookup[1].note).toBe('e')
+    }
+  })
+
   describe('source-range tracking', () => {
     it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
       // 0123456789012345

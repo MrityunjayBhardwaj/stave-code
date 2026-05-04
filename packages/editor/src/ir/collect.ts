@@ -401,6 +401,57 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       })
     }
 
+    case 'Pick': {
+      // Strudel's `pick(lookup)` (pick.mjs:44-54) is
+      //   pat.fmap(i => lookup[clamp(round(i), 0, len-1)]).innerJoin()
+      // i.e. for each event of `selector`, look up the sub-pattern at
+      // index = clamp(round(value)) and play that pattern at the
+      // selector event's time slot. innerJoin queries the inner pattern
+      // over the outer event's whole window.
+      //
+      // Algorithm: walk the selector with the current ctx. For each
+      // selector event, derive its value-as-index, fetch lookup[idx],
+      // and walk it with a sub-context restricted to the selector
+      // event's [begin, end) slot. The sub-IR walks at its own cycle 0
+      // — matches innerJoin semantics (each outer event resets the
+      // inner pattern's cycle origin).
+      //
+      // v1 limitation (PLAN pre-mortem #2): array-form lookup only;
+      // selector must produce numeric values. Object/named-key form
+      // and non-numeric selectors are deferred to a follow-up.
+      // RESEARCH §1.4.
+      if (ir.lookup.length === 0) return []
+      const selectorEvents = walk(ir.selector, ctx)
+      const out: IREvent[] = []
+      for (const sel of selectorEvents) {
+        const rawIdx = typeof sel.note === 'number'
+          ? sel.note
+          : Number(sel.note ?? 0)
+        const idx = Math.max(0, Math.min(ir.lookup.length - 1, Math.round(rawIdx)))
+        const subIR = ir.lookup[idx]
+        const subDuration = sel.end - sel.begin
+        const subCtx: CollectContext = {
+          ...ctx,
+          time: sel.begin,
+          cycle: 0,
+          duration: subDuration,
+          begin: sel.begin,
+          end: sel.end,
+          // Inherit accumulated speed/params; the sub-pattern walks at
+          // its own cycle 0 within the selector event's slot.
+        }
+        const subEvents = walk(subIR, subCtx)
+        // Propagate the selector event's loc onto sub-events when the
+        // sub-event lacks its own loc (PV24 — every IREvent must carry
+        // loc; the selector's loc is the closest source range).
+        for (const e of subEvents) {
+          if (!e.loc && sel.loc) e.loc = sel.loc
+          out.push(e)
+        }
+      }
+      return out
+    }
+
     case 'Ply': {
       // Strudel's `ply(factor)` (pattern.mjs:1905-1911):
       //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()

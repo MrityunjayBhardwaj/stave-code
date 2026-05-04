@@ -703,6 +703,78 @@ describe('parity harness', () => {
       expect(ir.tracks[1].tag).toBe('FX')
     }
   })
+
+  // ------------------------------------------------------------------
+  // Phase 19-04 Task T-02 — `.pick(lookup)` parity.
+  //
+  // Ground truth: pick.mjs:44-54 — pick(lookup) is
+  //   pat.fmap(i => lookup[clamp(round(i), 0, len-1)]).innerJoin()
+  // For each event of the receiver (selector), look up lookup[i] and
+  // play that pattern at the selector event's time slot.
+  //
+  // Our IR's Pick { selector, lookup[] } collect arm walks the selector
+  // for each cycle, then for each selector event walks the chosen
+  // sub-IR within a sub-context covering the selector event's slot.
+  //
+  // Input: note(mini("<0 1 2 3>").pick(["c","e","g","b"])) — the Strudel
+  // form that works in our test env (String.prototype.pick is not
+  // registered server-side; the docstring's bare-string-pick desugars
+  // to mini(string).pick(...) via Strudel's transpiler in production).
+  // Selector cycles through 0,1,2,3 over 4 cycles; pick selects "c", "e",
+  // "g", "b" respectively.
+  //
+  // Diff: count + per-cycle (begin, note) tuple equality. PV24 loc
+  // presence (selector loc propagates onto picked sub-events when the
+  // sub-event lacks its own).
+  // ------------------------------------------------------------------
+  it('pick parity: mini("<0 1 2 3>").pick(["c","e","g","b"]).note() — count and (begin, note) per cycle match Strudel', async () => {
+    // Wrap the pipeline in `.note()` so Strudel hangs the picked value
+    // off `event.value.note` — that's what normalizeStrudelHap reads.
+    // Without `.note()`, Strudel events carry the raw string in
+    // `event.value` and our normalizer maps it to `note: null`.
+    //
+    // On our side, `.note()` is unhandled by applyMethod and falls
+    // through (default: return ir), so the IR is unchanged from the
+    // bare `mini(...).pick([...])` form. The picked sub-IR is
+    // IR.play("c") (etc.), which already carries `note: "c"`. Both
+    // sides produce note="c","e","g","b" per cycle.
+    //
+    // String.prototype.pick is not registered server-side in our test
+    // env, so the docstring's `"<0 1 2 3>".pick([...])` form is unusable
+    // in the Strudel reference path. `mini("<0 1 2 3>")` is the
+    // canonical equivalent (Strudel's transpiler rewrites string-pick
+    // to mini-pick at parse time in production).
+    const code = 'mini("<0 1 2 3>").pick(["c","e","g","b"]).note()'
+    const rawExpected = (await strudelEventsFromCode(code, 4)).map(normalizeStrudelPan)
+    // Without dedupe — these aren't boundary-clipped events.
+    const expected = withOnsetInWindow(rawExpected, 0, 4)
+    const ours = collectCycles(parseStrudel(code), 0, 4)
+    // 4 cycles, one event per cycle (selector value picks one sub-pattern;
+    // each sub-pattern is a single Play).
+    expect(ours.length).toBe(4)
+    expect(ours.length).toBe(expected.length)
+    // Per-cycle ordering: cycle 0 → "c", cycle 1 → "e", cycle 2 → "g", cycle 3 → "b".
+    const sortedOurs = [...ours].sort((a, b) => a.begin - b.begin)
+    const sortedExp = [...expected].sort((a, b) => a.begin - b.begin)
+    expect(sortedOurs.map(e => e.note)).toEqual(['c', 'e', 'g', 'b'])
+    expect(sortedExp.map(e => e.note)).toEqual(sortedOurs.map(e => e.note))
+    // Per-event begin matches.
+    for (let i = 0; i < sortedOurs.length; i++) {
+      expect(Math.abs(sortedOurs[i].begin - sortedExp[i].begin)).toBeLessThan(1e-9)
+    }
+    // PV24 — loc presence on every event (selector loc propagates onto
+    // the picked sub-event when the sub-event's own loc is not set).
+    for (const e of ours) expect(e.loc).toBeDefined()
+  })
+
+  it('parseStrudel routes .pick([...]) to Pick tag', () => {
+    const ir = parseStrudel('mini("<0 1 2 3>").pick(["c","e","g","b"])')
+    expect(ir.tag).toBe('Pick')
+    if (ir.tag === 'Pick') {
+      expect(ir.lookup.length).toBe(4)
+      expect(ir.selector.tag).toBe('Cycle')
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
