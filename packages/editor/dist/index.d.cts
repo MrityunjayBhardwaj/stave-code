@@ -127,12 +127,18 @@ interface PlayParams {
 }
 type PatternIR = {
     tag: 'Pure';
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Seq';
     children: PatternIR[];
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Stack';
     tracks: PatternIR[];
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Play';
     note: string | number;
@@ -142,28 +148,40 @@ type PatternIR = {
 } | {
     tag: 'Sleep';
     duration: number;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Choice';
     p: number;
     then: PatternIR;
     else_: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Every';
     n: number;
     body: PatternIR;
     default_?: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Cycle';
     items: PatternIR[];
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'When';
     gate: string;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'FX';
     name: string;
     params: Record<string, number | string>;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Ramp';
     param: string;
@@ -171,95 +189,144 @@ type PatternIR = {
     to: number;
     cycles: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Fast';
     factor: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Slow';
     factor: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Elongate';
     factor: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Late';
     offset: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Degrade';
     p: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Chunk';
     n: number;
     transform: PatternIR;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Ply';
     n: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Pick';
     selector: PatternIR;
     lookup: PatternIR[];
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Struct';
     mask: string;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Swing';
     n: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Shuffle';
     n: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Scramble';
     n: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Chop';
     n: number;
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Loop';
     body: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
 } | {
     tag: 'Code';
     code: string;
     lang: 'strudel';
+    loc?: SourceLocation[];
+    userMethod?: string;
+};
+/**
+ * Optional metadata accepted by every non-rest-spread smart constructor
+ * below. The smart constructor mirrors `IR.play`'s convention — only sets
+ * each field when truthy, so test fixtures that build nodes without
+ * metadata and assert via `toEqual({ tag: 'Fast', factor: 2, body: ... })`
+ * keep working unchanged. CONTEXT D-07.
+ *
+ * Rest-spread constructors (`seq`, `stack`, `cycle`) CANNOT take a trailing
+ * positional `meta?` parameter (TypeScript rejects positional-after-rest);
+ * desugar / root sites that need metadata on those tags use literal
+ * construction `{ tag: 'Stack', tracks, loc, userMethod }` directly.
+ * RESEARCH §2 / §11 Q1.
+ */
+type TagMeta = {
+    loc?: SourceLocation[];
+    userMethod?: string;
 };
 /** Smart constructors — reduce boilerplate when building trees by hand. */
 declare const IR: {
-    readonly pure: () => PatternIR;
+    readonly pure: (meta?: TagMeta) => PatternIR;
     readonly play: (note: string | number, duration?: number, params?: Partial<PlayParams>, loc?: SourceLocation[]) => PatternIR;
-    readonly sleep: (duration: number) => PatternIR;
+    readonly sleep: (duration: number, meta?: TagMeta) => PatternIR;
     readonly seq: (...children: PatternIR[]) => PatternIR;
     readonly stack: (...tracks: PatternIR[]) => PatternIR;
-    readonly choice: (p: number, then: PatternIR, else_?: PatternIR) => PatternIR;
-    readonly every: (n: number, body: PatternIR, default_?: PatternIR) => PatternIR;
+    readonly choice: (p: number, then: PatternIR, else_?: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly every: (n: number, body: PatternIR, default_?: PatternIR, meta?: TagMeta) => PatternIR;
     readonly cycle: (...items: PatternIR[]) => PatternIR;
-    readonly when: (gate: string, body: PatternIR) => PatternIR;
-    readonly fx: (name: string, params: Record<string, number | string>, body: PatternIR) => PatternIR;
-    readonly ramp: (param: string, from: number, to: number, cycles: number, body: PatternIR) => PatternIR;
-    readonly fast: (factor: number, body: PatternIR) => PatternIR;
-    readonly slow: (factor: number, body: PatternIR) => PatternIR;
-    readonly elongate: (factor: number, body: PatternIR) => PatternIR;
-    readonly late: (offset: number, body: PatternIR) => PatternIR;
-    readonly degrade: (p: number, body: PatternIR) => PatternIR;
-    readonly chunk: (n: number, transform: PatternIR, body: PatternIR) => PatternIR;
-    readonly ply: (n: number, body: PatternIR) => PatternIR;
-    readonly pick: (selector: PatternIR, lookup: PatternIR[]) => PatternIR;
-    readonly struct: (mask: string, body: PatternIR) => PatternIR;
-    readonly swing: (n: number, body: PatternIR) => PatternIR;
-    readonly shuffle: (n: number, body: PatternIR) => PatternIR;
-    readonly scramble: (n: number, body: PatternIR) => PatternIR;
-    readonly chop: (n: number, body: PatternIR) => PatternIR;
-    readonly loop: (body: PatternIR) => PatternIR;
-    readonly code: (code: string) => PatternIR;
+    readonly when: (gate: string, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly fx: (name: string, params: Record<string, number | string>, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly ramp: (param: string, from: number, to: number, cycles: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly fast: (factor: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly slow: (factor: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly elongate: (factor: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly late: (offset: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly degrade: (p: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly chunk: (n: number, transform: PatternIR, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly ply: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly pick: (selector: PatternIR, lookup: PatternIR[], meta?: TagMeta) => PatternIR;
+    readonly struct: (mask: string, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly swing: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly shuffle: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly scramble: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly chop: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly loop: (body: PatternIR, meta?: TagMeta) => PatternIR;
+    readonly code: (code: string, meta?: TagMeta) => PatternIR;
 };
 
 /**

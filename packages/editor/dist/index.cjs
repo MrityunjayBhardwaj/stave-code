@@ -2939,8 +2939,13 @@ function scaleGain(events, factor) {
 }
 
 // src/ir/PatternIR.ts
+function attachMeta(node, meta) {
+  if (meta?.loc && meta.loc.length > 0) node.loc = meta.loc;
+  if (meta?.userMethod) node.userMethod = meta.userMethod;
+  return node;
+}
 var IR = {
-  pure: () => ({ tag: "Pure" }),
+  pure: (meta) => attachMeta({ tag: "Pure" }, meta),
   play: (note2, duration = 0.25, params = {}, loc) => {
     const node = {
       tag: "Play",
@@ -2951,30 +2956,36 @@ var IR = {
     if (loc && loc.length > 0) node.loc = loc;
     return node;
   },
-  sleep: (duration) => ({ tag: "Sleep", duration }),
+  sleep: (duration, meta) => attachMeta({ tag: "Sleep", duration }, meta),
+  // Rest-spread: cannot accept trailing meta?. Desugar / root sites that need
+  // metadata use literal construction `{ tag: 'Seq', children, loc, userMethod }`.
   seq: (...children) => ({ tag: "Seq", children }),
+  // Rest-spread: cannot accept trailing meta?. Desugar / root sites that need
+  // metadata use literal construction `{ tag: 'Stack', tracks, loc, userMethod }`.
   stack: (...tracks) => ({ tag: "Stack", tracks }),
-  choice: (p, then, else_ = { tag: "Pure" }) => ({ tag: "Choice", p, then, else_ }),
-  every: (n, body2, default_) => ({ tag: "Every", n, body: body2, default_ }),
+  choice: (p, then, else_ = { tag: "Pure" }, meta) => attachMeta({ tag: "Choice", p, then, else_ }, meta),
+  every: (n, body2, default_, meta) => attachMeta({ tag: "Every", n, body: body2, default_ }, meta),
+  // Rest-spread: cannot accept trailing meta?. Sites needing metadata use
+  // literal construction `{ tag: 'Cycle', items, loc, userMethod }`.
   cycle: (...items) => ({ tag: "Cycle", items }),
-  when: (gate, body2) => ({ tag: "When", gate, body: body2 }),
-  fx: (name2, params, body2) => ({ tag: "FX", name: name2, params, body: body2 }),
-  ramp: (param, from, to, cycles, body2) => ({ tag: "Ramp", param, from, to, cycles, body: body2 }),
-  fast: (factor, body2) => ({ tag: "Fast", factor, body: body2 }),
-  slow: (factor, body2) => ({ tag: "Slow", factor, body: body2 }),
-  elongate: (factor, body2) => ({ tag: "Elongate", factor, body: body2 }),
-  late: (offset, body2) => ({ tag: "Late", offset, body: body2 }),
-  degrade: (p, body2) => ({ tag: "Degrade", p, body: body2 }),
-  chunk: (n, transform, body2) => ({ tag: "Chunk", n, transform, body: body2 }),
-  ply: (n, body2) => ({ tag: "Ply", n, body: body2 }),
-  pick: (selector, lookup) => ({ tag: "Pick", selector, lookup }),
-  struct: (mask, body2) => ({ tag: "Struct", mask, body: body2 }),
-  swing: (n, body2) => ({ tag: "Swing", n, body: body2 }),
-  shuffle: (n, body2) => ({ tag: "Shuffle", n, body: body2 }),
-  scramble: (n, body2) => ({ tag: "Scramble", n, body: body2 }),
-  chop: (n, body2) => ({ tag: "Chop", n, body: body2 }),
-  loop: (body2) => ({ tag: "Loop", body: body2 }),
-  code: (code) => ({ tag: "Code", code, lang: "strudel" })
+  when: (gate, body2, meta) => attachMeta({ tag: "When", gate, body: body2 }, meta),
+  fx: (name2, params, body2, meta) => attachMeta({ tag: "FX", name: name2, params, body: body2 }, meta),
+  ramp: (param, from, to, cycles, body2, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body: body2 }, meta),
+  fast: (factor, body2, meta) => attachMeta({ tag: "Fast", factor, body: body2 }, meta),
+  slow: (factor, body2, meta) => attachMeta({ tag: "Slow", factor, body: body2 }, meta),
+  elongate: (factor, body2, meta) => attachMeta({ tag: "Elongate", factor, body: body2 }, meta),
+  late: (offset, body2, meta) => attachMeta({ tag: "Late", offset, body: body2 }, meta),
+  degrade: (p, body2, meta) => attachMeta({ tag: "Degrade", p, body: body2 }, meta),
+  chunk: (n, transform, body2, meta) => attachMeta({ tag: "Chunk", n, transform, body: body2 }, meta),
+  ply: (n, body2, meta) => attachMeta({ tag: "Ply", n, body: body2 }, meta),
+  pick: (selector, lookup, meta) => attachMeta({ tag: "Pick", selector, lookup }, meta),
+  struct: (mask, body2, meta) => attachMeta({ tag: "Struct", mask, body: body2 }, meta),
+  swing: (n, body2, meta) => attachMeta({ tag: "Swing", n, body: body2 }, meta),
+  shuffle: (n, body2, meta) => attachMeta({ tag: "Shuffle", n, body: body2 }, meta),
+  scramble: (n, body2, meta) => attachMeta({ tag: "Scramble", n, body: body2 }, meta),
+  chop: (n, body2, meta) => attachMeta({ tag: "Chop", n, body: body2 }, meta),
+  loop: (body2, meta) => attachMeta({ tag: "Loop", body: body2 }, meta),
+  code: (code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta)
 };
 
 // src/ir/collect.ts
@@ -3762,7 +3773,11 @@ function parseMini(input, isSample = false, baseOffset = 0) {
     const nodes = parseTokens(tokens, isSample, baseOffset);
     if (nodes.length === 0) return IR.pure();
     if (nodes.length === 1) return nodes[0];
-    return IR.seq(...nodes);
+    return {
+      tag: "Seq",
+      children: nodes,
+      loc: [{ start: baseOffset, end: baseOffset + input.length }]
+    };
   } catch {
     return IR.code(input);
   }
@@ -3777,42 +3792,42 @@ function tokenize(input) {
       continue;
     }
     if (ch === "[") {
-      tokens.push({ type: "lbracket" });
+      tokens.push({ type: "lbracket", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
     if (ch === "]") {
-      tokens.push({ type: "rbracket" });
+      tokens.push({ type: "rbracket", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
     if (ch === "<") {
-      tokens.push({ type: "langle" });
+      tokens.push({ type: "langle", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
     if (ch === ">") {
-      tokens.push({ type: "rangle" });
+      tokens.push({ type: "rangle", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
     if (ch === "{") {
-      tokens.push({ type: "lcurly" });
+      tokens.push({ type: "lcurly", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
     if (ch === "}") {
-      tokens.push({ type: "rcurly" });
+      tokens.push({ type: "rcurly", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
     if (ch === ",") {
-      tokens.push({ type: "comma" });
+      tokens.push({ type: "comma", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
     if (ch === "~") {
-      tokens.push({ type: "rest" });
+      tokens.push({ type: "rest", start: i2, end: i2 + 1 });
       i2++;
       continue;
     }
@@ -3824,13 +3839,15 @@ function tokenize(input) {
       }
       tokens.push({ type: "atom", value: atom, start: atomStart, end: i2 });
       if (i2 < input.length && input[i2] === ":") {
+        const sliceStart = i2;
         i2++;
         let numStr = "";
         while (i2 < input.length && /[0-9]/.test(input[i2])) numStr += input[i2++];
         const idx = parseInt(numStr, 10);
-        if (!isNaN(idx) && idx >= 0) tokens.push({ type: "slice", index: idx });
+        if (!isNaN(idx) && idx >= 0) tokens.push({ type: "slice", index: idx, start: sliceStart, end: i2 });
       }
       if (i2 < input.length && input[i2] === "(") {
+        const euclidStart = i2;
         i2++;
         const args2 = [];
         let buf = "";
@@ -3855,28 +3872,33 @@ function tokenize(input) {
             type: "euclid",
             hits: args2[0],
             steps: args2[1],
-            rotation: args2.length >= 3 ? args2[2] : 0
+            rotation: args2.length >= 3 ? args2[2] : 0,
+            start: euclidStart,
+            end: i2
           });
         }
       }
       if (i2 < input.length && input[i2] === "*") {
+        const repeatStart = i2;
         i2++;
         let numStr = "";
         while (i2 < input.length && /[0-9.]/.test(input[i2])) numStr += input[i2++];
         const factor = parseFloat(numStr);
         if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: "repeat", factor });
+          tokens.push({ type: "repeat", factor, start: repeatStart, end: i2 });
         }
       } else if (i2 < input.length && input[i2] === "?") {
+        const someStart = i2;
         i2++;
-        tokens.push({ type: "sometimes" });
+        tokens.push({ type: "sometimes", start: someStart, end: i2 });
       } else if (i2 < input.length && input[i2] === "@") {
+        const elongateStart = i2;
         i2++;
         let numStr = "";
         while (i2 < input.length && /[0-9.]/.test(input[i2])) numStr += input[i2++];
         const factor = parseFloat(numStr);
         if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: "elongate", factor });
+          tokens.push({ type: "elongate", factor, start: elongateStart, end: i2 });
         }
       }
       continue;
@@ -3930,11 +3952,13 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
     const tok = tokens[i2];
     if (tok.type === "atom") {
       const note2 = tok.value;
+      const atomStart = tok.start;
       const atomLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }];
       i2++;
       let sliceIndex;
       if (i2 < tokens.length && tokens[i2].type === "slice") {
-        sliceIndex = tokens[i2].index;
+        const sliceTok = tokens[i2];
+        sliceIndex = sliceTok.index;
         i2++;
       }
       const params = isSample ? { s: note2 } : {};
@@ -3948,26 +3972,40 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         if (e.rotation) pattern = rotate(pattern, e.rotation);
         const restSlot = IR.sleep(1);
         const slots = pattern.map((onset) => onset ? node : restSlot);
-        node = slots.length === 1 ? slots[0] : IR.seq(...slots);
+        if (slots.length === 1) {
+          node = slots[0];
+        } else {
+          node = {
+            tag: "Seq",
+            children: slots,
+            loc: [{ start: baseOffset + atomStart, end: baseOffset + e.end }]
+          };
+        }
       }
       if (i2 < tokens.length) {
         const next = tokens[i2];
         if (next.type === "repeat") {
-          node = IR.fast(next.factor, node);
+          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
+          node = IR.fast(next.factor, node, { loc: modLoc });
           i2++;
         } else if (next.type === "sometimes") {
-          node = IR.choice(0.5, node, IR.pure());
+          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
+          node = IR.choice(0.5, node, IR.pure(), { loc: modLoc });
           i2++;
         } else if (next.type === "elongate") {
-          node = IR.elongate(next.factor, node);
+          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
+          node = IR.elongate(next.factor, node, { loc: modLoc });
           i2++;
         }
       }
       nodes.push(node);
     } else if (tok.type === "rest") {
-      nodes.push(IR.sleep(1));
+      const restLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }];
+      nodes.push(IR.sleep(1, { loc: restLoc }));
       i2++;
     } else if (tok.type === "lbracket") {
+      const openStart = tok.start;
+      let closeEnd = tok.end;
       i2++;
       const subTokens = [];
       let depth = 1;
@@ -3977,6 +4015,7 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         if (t.type === "rbracket") {
           depth--;
           if (depth === 0) {
+            closeEnd = t.end;
             i2++;
             break;
           }
@@ -3986,9 +4025,19 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
       }
       const subNodes = parseTokens(subTokens, isSample, baseOffset);
       if (subNodes.length > 0) {
-        nodes.push(subNodes.length === 1 ? subNodes[0] : IR.seq(...subNodes));
+        if (subNodes.length === 1) {
+          nodes.push(subNodes[0]);
+        } else {
+          nodes.push({
+            tag: "Seq",
+            children: subNodes,
+            loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
+          });
+        }
       }
     } else if (tok.type === "lcurly") {
+      const openStart = tok.start;
+      let closeEnd = tok.end;
       i2++;
       const segments = [[]];
       let depth = 1;
@@ -3998,6 +4047,7 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         if (t.type === "rcurly") {
           depth--;
           if (depth === 0) {
+            closeEnd = t.end;
             i2++;
             break;
           }
@@ -4013,9 +4063,15 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
       if (trackNodes.length === 0) ; else if (trackNodes.length === 1) {
         nodes.push(trackNodes[0]);
       } else {
-        nodes.push(IR.stack(...trackNodes));
+        nodes.push({
+          tag: "Stack",
+          tracks: trackNodes,
+          loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
+        });
       }
     } else if (tok.type === "langle") {
+      const openStart = tok.start;
+      let closeEnd = tok.end;
       i2++;
       const cycleTokens = [];
       let depth = 1;
@@ -4025,6 +4081,7 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         if (t.type === "rangle") {
           depth--;
           if (depth === 0) {
+            closeEnd = t.end;
             i2++;
             break;
           }
@@ -4034,7 +4091,11 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
       }
       const cycleNodes = parseTokens(cycleTokens, isSample, baseOffset);
       if (cycleNodes.length > 0) {
-        nodes.push(IR.cycle(...cycleNodes));
+        nodes.push({
+          tag: "Cycle",
+          items: cycleNodes,
+          loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
+        });
       }
     } else {
       i2++;
@@ -4044,6 +4105,13 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
 }
 
 // src/ir/parseStrudel.ts
+function tagMeta(method, callSiteRange) {
+  const [start2, end] = callSiteRange;
+  return {
+    loc: [{ start: start2, end }],
+    userMethod: method
+  };
+}
 function parseStrudel(code) {
   if (!code.trim()) return IR.pure();
   try {
@@ -4131,7 +4199,16 @@ function parseRoot(root, baseOffset = 0) {
       const tracks = args2.map((a) => parseExpression(a.trim()));
       if (tracks.length === 0) return IR.pure();
       if (tracks.length === 1) return tracks[0];
-      return IR.stack(...tracks);
+      const trimmedAbs = baseOffset + leadingWs;
+      const openIdx = trimmed.indexOf("(");
+      const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1;
+      const fullMatchLen = closeIdx >= 0 ? closeIdx + 1 : trimmed.length;
+      return {
+        tag: "Stack",
+        tracks,
+        loc: [{ start: trimmedAbs, end: trimmedAbs + fullMatchLen }],
+        userMethod: "stack"
+      };
     }
   }
   return IR.code(trimmed);
@@ -4145,23 +4222,28 @@ function applyChain(ir, chain, baseOffset = 0) {
   while (remaining.startsWith(".")) {
     const { method, args: args2, rest, argsOffset } = extractNextMethod(remaining);
     if (!method) break;
+    const consumed = remaining.length - rest.length;
+    const callSiteRange = [
+      remainingOffset,
+      remainingOffset + consumed
+    ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current2 = applyMethod(current2, method, args2, argsAbsoluteOffset);
-    remainingOffset += remaining.length - rest.length;
+    current2 = applyMethod(current2, method, args2, argsAbsoluteOffset, callSiteRange);
+    remainingOffset += consumed;
     remaining = rest;
   }
   return current2;
 }
-function applyMethod(ir, method, args2, baseOffset = 0) {
+function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) {
   switch (method) {
     case "fast": {
       const n = parseFloat(args2.trim());
-      if (!isNaN(n)) return IR.fast(n, ir);
+      if (!isNaN(n)) return IR.fast(n, ir, tagMeta(method, callSiteRange));
       return ir;
     }
     case "slow": {
       const n = parseFloat(args2.trim());
-      if (!isNaN(n)) return IR.slow(n, ir);
+      if (!isNaN(n)) return IR.slow(n, ir, tagMeta(method, callSiteRange));
       return ir;
     }
     case "every": {
@@ -4170,11 +4252,11 @@ function applyMethod(ir, method, args2, baseOffset = 0) {
       if (isNaN(n)) return ir;
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir;
-      return IR.every(n, transform, ir);
+      return IR.every(n, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimes": {
       const transform = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length)) : ir;
-      return IR.choice(0.5, transform, ir);
+      return IR.choice(0.5, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimesBy": {
       const [pStr, transformStr] = splitFirstArg(args2);
@@ -4182,11 +4264,11 @@ function applyMethod(ir, method, args2, baseOffset = 0) {
       if (isNaN(p)) return ir;
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir;
-      return IR.choice(p, transform, ir);
+      return IR.choice(p, transform, ir, tagMeta(method, callSiteRange));
     }
     case "mask": {
       const gateMatch = args2.trim().match(/^"([^"]*)"$/);
-      if (gateMatch) return IR.when(gateMatch[1], ir);
+      if (gateMatch) return IR.when(gateMatch[1], ir, tagMeta(method, callSiteRange));
       return ir;
     }
     case "layer": {
@@ -4202,16 +4284,23 @@ function applyMethod(ir, method, args2, baseOffset = 0) {
         const transformOffset = offsetOfSubArg(args2, trimmed, baseOffset);
         tracks.push(parseTransform(trimmed, ir, transformOffset));
       }
-      return IR.stack(...tracks);
+      const [layerStart, layerEnd] = callSiteRange;
+      return {
+        tag: "Stack",
+        tracks,
+        loc: [{ start: layerStart, end: layerEnd }],
+        userMethod: method
+        // 'layer' — D-08 exact-token from the switch label
+      };
     }
     case "gain": {
       const val = parseFloat(args2.trim());
-      if (!isNaN(val)) return IR.fx("gain", { gain: val }, ir);
+      if (!isNaN(val)) return IR.fx("gain", { gain: val }, ir, tagMeta(method, callSiteRange));
       return ir;
     }
     case "pan": {
       const val = parseFloat(args2.trim());
-      if (!isNaN(val)) return IR.fx("pan", { pan: val }, ir);
+      if (!isNaN(val)) return IR.fx("pan", { pan: val }, ir, tagMeta(method, callSiteRange));
       return ir;
     }
     case "chunk": {
@@ -4220,43 +4309,61 @@ function applyMethod(ir, method, args2, baseOffset = 0) {
       if (isNaN(n) || n < 1) return ir;
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir;
-      return IR.chunk(n, transform, ir);
+      return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange));
     }
     case "degrade": {
-      return IR.degrade(0.5, ir);
+      return IR.degrade(0.5, ir, tagMeta(method, callSiteRange));
     }
     case "degradeBy": {
       const amount = parseFloat(args2.trim());
       if (isNaN(amount)) return ir;
-      return IR.degrade(1 - amount, ir);
+      return IR.degrade(1 - amount, ir, tagMeta(method, callSiteRange));
     }
     case "late": {
       const t = parseFloat(args2.trim());
       if (isNaN(t)) return ir;
-      return IR.late(t, ir);
+      return IR.late(t, ir, tagMeta(method, callSiteRange));
     }
     case "jux": {
       const transformed = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length)) : ir;
-      return IR.stack(
-        IR.fx("pan", { pan: -1 }, ir),
-        IR.fx("pan", { pan: 1 }, transformed)
-      );
+      const leftPan = IR.fx("pan", { pan: -1 }, ir);
+      const rightPan = IR.fx("pan", { pan: 1 }, transformed);
+      const [juxStart, juxEnd] = callSiteRange;
+      return {
+        tag: "Stack",
+        tracks: [leftPan, rightPan],
+        loc: [{ start: juxStart, end: juxEnd }],
+        userMethod: method
+        // 'jux'
+      };
     }
     case "ply": {
       const trimmed = args2.trim();
       const n = Number(trimmed);
       if (!Number.isInteger(n) || n < 1) return ir;
       if (n === 1) return ir;
-      return IR.ply(n, ir);
+      return IR.ply(n, ir, tagMeta(method, callSiteRange));
     }
     case "off": {
       const [tStr, transformStr] = splitFirstArg(args2);
       const t = parseFloat(tStr.trim());
       if (isNaN(t)) return ir;
-      const lateBody = IR.late(t, ir);
+      const tStartAbs = offsetOfSubArg(args2, tStr.trim(), baseOffset);
+      const tEndAbs = tStartAbs + tStr.trim().length;
+      const lateBody = IR.late(t, ir, {
+        loc: [{ start: tStartAbs, end: tEndAbs }]
+        // userMethod intentionally undefined — synthetic intermediate (D-09).
+      });
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset) : lateBody;
-      return IR.stack(ir, transformed);
+      const [offStart, offEnd] = callSiteRange;
+      return {
+        tag: "Stack",
+        tracks: [ir, transformed],
+        loc: [{ start: offStart, end: offEnd }],
+        userMethod: method
+        // 'off'
+      };
     }
     case "room":
     case "delay":
@@ -4273,7 +4380,7 @@ function applyMethod(ir, method, args2, baseOffset = 0) {
     case "lpf":
     case "hpf": {
       const val = parseFloat(args2.trim());
-      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir);
+      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
       return ir;
     }
     case "pick": {
@@ -4288,32 +4395,32 @@ function applyMethod(ir, method, args2, baseOffset = 0) {
         const elemOffset = offsetOfSubArg(arrayBody, e.trim(), arrayBodyOffset);
         return parseArrayLiteralElement(e, "note", elemOffset);
       });
-      return IR.pick(ir, lookup);
+      return IR.pick(ir, lookup, tagMeta(method, callSiteRange));
     }
     case "struct": {
       const gateMatch = args2.trim().match(/^"([^"]*)"$/);
-      if (gateMatch) return IR.struct(gateMatch[1], ir);
+      if (gateMatch) return IR.struct(gateMatch[1], ir, tagMeta(method, callSiteRange));
       return ir;
     }
     case "swing": {
       const n = parseInt(args2.trim(), 10);
       if (isNaN(n) || n < 1) return ir;
-      return IR.swing(n, ir);
+      return IR.swing(n, ir, tagMeta(method, callSiteRange));
     }
     case "shuffle": {
       const n = parseInt(args2.trim(), 10);
       if (isNaN(n) || n < 1) return ir;
-      return IR.shuffle(n, ir);
+      return IR.shuffle(n, ir, tagMeta(method, callSiteRange));
     }
     case "scramble": {
       const n = parseInt(args2.trim(), 10);
       if (isNaN(n) || n < 1) return ir;
-      return IR.scramble(n, ir);
+      return IR.scramble(n, ir, tagMeta(method, callSiteRange));
     }
     case "chop": {
       const n = parseInt(args2.trim(), 10);
       if (isNaN(n) || n < 1) return ir;
-      return IR.chop(n, ir);
+      return IR.chop(n, ir, tagMeta(method, callSiteRange));
     }
     case "p":
       return ir;
@@ -4323,15 +4430,17 @@ function applyMethod(ir, method, args2, baseOffset = 0) {
 }
 function parseTransform(transformStr, defaultIr, baseOffset = 0) {
   const str = transformStr.trim();
+  const trimmedStart = baseOffset + (transformStr.length - transformStr.trimStart().length);
+  const callSiteRange = [trimmedStart, trimmedStart + str.length];
   const fastMatch = str.match(/^fast\s*\(\s*([0-9.]+)\s*\)$/);
   if (fastMatch) {
     const n = parseFloat(fastMatch[1]);
-    if (!isNaN(n)) return IR.fast(n, defaultIr);
+    if (!isNaN(n)) return IR.fast(n, defaultIr, tagMeta("fast", callSiteRange));
   }
   const slowMatch = str.match(/^slow\s*\(\s*([0-9.]+)\s*\)$/);
   if (slowMatch) {
     const n = parseFloat(slowMatch[1]);
-    if (!isNaN(n)) return IR.slow(n, defaultIr);
+    if (!isNaN(n)) return IR.slow(n, defaultIr, tagMeta("slow", callSiteRange));
   }
   const arrowMatch = str.match(/^[a-z]\s*=>\s*[a-z]\s*\.(.+)$/);
   if (arrowMatch) {
