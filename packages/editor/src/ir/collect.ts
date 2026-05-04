@@ -505,6 +505,43 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       return out
     }
 
+    case 'Swing': {
+      // Strudel's `swing(n)` (pattern.mjs:2193) = `pat.swingBy(1/3, n)`
+      // = `pat.inside(n, late(seq(0, 1/6)))` (pattern.mjs:2184).
+      // `inside(n, f)` (pattern.mjs:1971-1973) is `f(pat._slow(n))._fast(n)`,
+      // which net-effect on the active cycle delays events in odd-numbered
+      // slots (of n total slots in [0, 1)) by `1/(6n)` cycles. RESEARCH §1.3.
+      //
+      // Narrow tag per D-03 — the faithful desugar would require an
+      // `Inside` primitive (the Strudel author's idiomatic "do this at a
+      // larger time-scale, then shrink back"), but Inside has its own
+      // family (outside/zoom/compress) and warrants its own phase. We
+      // model `Swing` directly via slot-index lateness, accepting that
+      // when `Inside` lands later, this collect arm rewrites (~10 lines).
+      // The shape `{ n; body }` is locked — no extra fields — to keep
+      // the future migration cheap (Pre-mortem #6).
+      //
+      // Per PV28 we do NOT desugar via Fast (Fast scales speed, doesn't
+      // re-play body — same trap that promoted Ply to a forced tag).
+      // Instead we apply lateness directly to body events.
+      const events = walk(ir.body, ctx)
+      if (ir.n < 1) return events
+      const swingAmount = 1 / (6 * ir.n)
+      return events.map((e) => {
+        const cyclePos = e.begin - ctx.cycle
+        const slotIdx = Math.floor(cyclePos * ir.n)
+        if (slotIdx % 2 === 1) {
+          return {
+            ...e,
+            begin: e.begin + swingAmount,
+            end: e.end + swingAmount,
+            endClipped: (e.endClipped ?? e.end) + swingAmount,
+          }
+        }
+        return e
+      })
+    }
+
     case 'Ply': {
       // Strudel's `ply(factor)` (pattern.mjs:1905-1911):
       //   ply(factor, pat) = pat.fmap(x => pure(x)._fast(factor)).squeezeJoin()

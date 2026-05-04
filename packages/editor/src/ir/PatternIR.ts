@@ -46,6 +46,7 @@ export type PatternIR =
   | { tag: 'Ply';    n: number; body: PatternIR }  // Tier 4 — repeats each event of body n times within its own slot (pattern.mjs:1905-1911)
   | { tag: 'Pick';   selector: PatternIR; lookup: PatternIR[] }  // Tier 4 — for each event of selector, pick lookup[clamp(round(value), 0, len-1)] and play at the selector event's slot (pick.mjs:44-54). First list-of-sub-IRs shape.
   | { tag: 'Struct'; mask: string; body: PatternIR }  // Tier 4 — re-times body's value-stream to mask onsets (pattern.mjs:1161, this.keepif.out). Distinct from When/mask which only gates.
+  | { tag: 'Swing';  n: number; body: PatternIR }  // Tier 4 — narrow tag per D-03; pattern.mjs:2193 swing(n) = pat.swingBy(1/3, n) = pat.inside(n, late(seq(0, 1/6))). Inside primitive deferred.
   | { tag: 'Loop';   body: PatternIR }
   | { tag: 'Code';   code: string; lang: 'strudel' }  // Opaque fallback for unparseable fragments
 
@@ -90,6 +91,7 @@ export const IR = {
   ply: (n: number, body: PatternIR): PatternIR => ({ tag: 'Ply', n, body }),
   pick: (selector: PatternIR, lookup: PatternIR[]): PatternIR => ({ tag: 'Pick', selector, lookup }),
   struct: (mask: string, body: PatternIR): PatternIR => ({ tag: 'Struct', mask, body }),
+  swing: (n: number, body: PatternIR): PatternIR => ({ tag: 'Swing', n, body }),
   loop: (body: PatternIR): PatternIR => ({ tag: 'Loop', body }),
   code: (code: string): PatternIR => ({ tag: 'Code', code, lang: 'strudel' }),
 } as const

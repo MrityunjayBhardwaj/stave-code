@@ -207,6 +207,13 @@ function gen(ir: PatternIR): string {
       // When.gate precedent). Direct round-trip.
       return `${gen(ir.body)}.struct("${ir.mask}")`
     }
+
+    case 'Swing': {
+      // Tier 4 (Phase 19-04 T-04) — `swing(n)` (pattern.mjs:2193). Narrow
+      // tag per D-03 (no Inside primitive yet). Direct 1:1 method↔tag
+      // mapping for round-trip.
+      return `${gen(ir.body)}.swing(${ir.n})`
+    }
   }
 }
 

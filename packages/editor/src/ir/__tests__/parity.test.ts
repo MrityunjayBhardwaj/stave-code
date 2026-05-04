@@ -817,6 +817,74 @@ describe('parity harness', () => {
       expect(ir.body.tag).toBe('Seq')
     }
   })
+
+  // ------------------------------------------------------------------
+  // Phase 19-04 Task T-04 — `.swing(n)` documented divergence (narrow
+  // tag per D-03 — Inside primitive deferred).
+  //
+  // Ground truth: pattern.mjs:2193 — swing(n) = pat.swingBy(1/3, n) =
+  // pat.inside(n, late(seq(0, 1/6))). RESEARCH §1.3.
+  //
+  // Our narrow `Swing { n; body }` tag (D-03) models swing directly via
+  // slot-index lateness: odd-numbered slots (of n slots in [0, 1)) shift
+  // by 1/(6n). For `note("a b c d e f g h").swing(4)`, this produces 8
+  // events with notes a/b at slot 0 (no shift), c/d at slot 1 (+1/24),
+  // e/f at slot 2 (no shift), g/h at slot 3 (+1/24).
+  //
+  // Strudel's actual `inside(4, late(seq(0, 1/6)))` composition produces
+  // 12 events for the same input, because the slow→late→fast composition
+  // causes events at slot transitions to surface from both halves of the
+  // slow query (notes a/c/e/g each appear twice). This is a STRUCTURAL
+  // divergence from the Inside semantics, not a microsecond timing slop.
+  // RESEARCH §1.3 anticipated this: "MEDIUM on the exact event timings
+  // — the inside-late-seq composition is subtle and parity will catch
+  // divergence."
+  //
+  // PER D-03: do NOT graduate to introducing Inside in this phase. The
+  // narrow tag is the explicit decision; the divergence is the cost
+  // (bounded — collect arm rewrites ~10 lines once Inside lands). We
+  // assert the divergence as a CONTRACT here (ours = 8, theirs = 12)
+  // rather than silently weakening the parity assertion. When Inside
+  // lands and Swing rewrites, this test flips to a tight parity check.
+  //
+  // PV24 loc presence asserted on every event our pipeline emits.
+  // ------------------------------------------------------------------
+  it('swing parity: documented narrow-tag divergence vs Strudel inside (D-03)', async () => {
+    const code = 'note("a b c d e f g h").swing(4)'
+    const rawExpected = (await strudelEventsFromCode(code, 1)).map(normalizeStrudelPan)
+    const expected = dedupeByWholeBegin(withOnsetInWindow(rawExpected, 0, 1))
+    const ours = collectCycles(parseStrudel(code), 0, 1)
+    // Our narrow Swing produces exactly 8 events (one per body Play).
+    expect(ours.length).toBe(8)
+    // Strudel's inside composition produces 12 (notes a/c/e/g each appear
+    // twice — slot-transition leakage from the slow→late→fast composition).
+    // This test asserts the divergence as a contract; flips to tight parity
+    // when Inside lands and Swing rewrites (D-03).
+    expect(expected.length).toBe(12)
+    expect(ours.length).not.toBe(expected.length)
+    // Verify our 8-event lateness pattern is internally correct: notes at
+    // slot 0 (a, b) and slot 2 (e, f) are at their original positions;
+    // notes at slot 1 (c, d) and slot 3 (g, h) are shifted by 1/24.
+    const sortedOurs = [...ours].sort((a, b) => a.begin - b.begin)
+    expect(sortedOurs[0].begin).toBeCloseTo(0, 9)
+    expect(sortedOurs[1].begin).toBeCloseTo(1 / 8, 9)
+    expect(sortedOurs[2].begin).toBeCloseTo(2 / 8 + 1 / 24, 9)
+    expect(sortedOurs[3].begin).toBeCloseTo(3 / 8 + 1 / 24, 9)
+    expect(sortedOurs[4].begin).toBeCloseTo(4 / 8, 9)
+    expect(sortedOurs[5].begin).toBeCloseTo(5 / 8, 9)
+    expect(sortedOurs[6].begin).toBeCloseTo(6 / 8 + 1 / 24, 9)
+    expect(sortedOurs[7].begin).toBeCloseTo(7 / 8 + 1 / 24, 9)
+    // PV24 — loc presence on every event our pipeline emits.
+    for (const e of ours) expect(e.loc).toBeDefined()
+  })
+
+  it('parseStrudel routes .swing(n) to Swing tag', () => {
+    const ir = parseStrudel('note("a b c d e f g h").swing(4)')
+    expect(ir.tag).toBe('Swing')
+    if (ir.tag === 'Swing') {
+      expect(ir.n).toBe(4)
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

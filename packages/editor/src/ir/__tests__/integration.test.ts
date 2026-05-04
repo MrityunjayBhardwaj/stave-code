@@ -715,6 +715,62 @@ describe('parseStrudel', () => {
     expect(code).toContain('.struct("x ~ x ~")')
   })
 
+  // Phase 19-04 T-04 — Swing tag shape tests (D-03 narrow shape).
+  it('parses .swing(n) into Swing(n, body) (Tier 4, narrow per D-03)', () => {
+    // Ground truth: pattern.mjs:2193 — swing(n) = pat.swingBy(1/3, n) =
+    // pat.inside(n, late(seq(0, 1/6))). Modeled directly without an
+    // Inside primitive (deferred). RESEARCH §1.3.
+    const tree = parseStrudel('s("hh*8").swing(4)')
+    expect(tree.tag).toBe('Swing')
+    if (tree.tag === 'Swing') {
+      expect(tree.n).toBe(4)
+    }
+  })
+
+  it('IR.swing smart constructor produces well-formed Swing node with NO additional fields (Pre-mortem #6)', () => {
+    // Locked shape: { tag, n, body } only — keeps migration cheap when an
+    // Inside primitive lands later.
+    const body = IR.play('c4')
+    const node = IR.swing(4, body)
+    expect(node.tag).toBe('Swing')
+    if (node.tag === 'Swing') {
+      expect(node.n).toBe(4)
+      expect(node.body).toBe(body)
+      // No additional fields — guards Pre-mortem #6 (Inside-someday churn).
+      expect(Object.keys(node).sort()).toEqual(['body', 'n', 'tag'])
+    }
+  })
+
+  it('collect(Swing) shifts odd-slot events by 1/(6n) within the cycle', () => {
+    // Body = 8 plays as a Seq, so events land at begins {0, 1/8, 2/8, ...,
+    // 7/8} each spanning 1/8. With n=4, slot width = 1/4, so events fall
+    // into slots: {0,0,1,1,2,2,3,3}. Odd-slot events (slot 1 and 3) shift
+    // by 1/24. Even-slot events stay put.
+    const body = IR.seq(
+      IR.play('a'), IR.play('b'), IR.play('c'), IR.play('d'),
+      IR.play('e'), IR.play('f'), IR.play('g'), IR.play('h'),
+    )
+    const node = IR.swing(4, body)
+    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(8)
+    const sorted = [...events].sort((a, b) => a.begin - b.begin)
+    // Slot 0 (events 0, 1) — no shift. Slot 1 (events 2, 3) — +1/24.
+    expect(sorted[0].begin).toBeCloseTo(0, 9)        // a, slot 0
+    expect(sorted[1].begin).toBeCloseTo(1 / 8, 9)    // b, slot 0
+    expect(sorted[2].begin).toBeCloseTo(2 / 8 + 1 / 24, 9)  // c, slot 1 +shift
+    expect(sorted[3].begin).toBeCloseTo(3 / 8 + 1 / 24, 9)  // d, slot 1 +shift
+    expect(sorted[4].begin).toBeCloseTo(4 / 8, 9)    // e, slot 2
+    expect(sorted[5].begin).toBeCloseTo(5 / 8, 9)    // f, slot 2
+    expect(sorted[6].begin).toBeCloseTo(6 / 8 + 1 / 24, 9)  // g, slot 3 +shift
+    expect(sorted[7].begin).toBeCloseTo(7 / 8 + 1 / 24, 9)  // h, slot 3 +shift
+  })
+
+  it('toStrudel(Swing) round-trips to .swing(n)', () => {
+    const node = IR.swing(4, IR.play('c4'))
+    const code = toStrudel(node)
+    expect(code).toContain('.swing(4)')
+  })
+
   describe('source-range tracking', () => {
     it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
       // 0123456789012345

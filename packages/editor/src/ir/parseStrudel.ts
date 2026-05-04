@@ -553,6 +553,22 @@ function applyMethod(ir: PatternIR, method: string, args: string, baseOffset = 0
       return ir
     }
 
+    case 'swing': {
+      // Tier 4 (Phase 19-04 Task T-04). `.swing(n)` per pattern.mjs:2193:
+      //   swing(n, pat) = pat.swingBy(1/3, n)
+      //                 = pat.inside(n, late(seq(0, 1/6)))   (pattern.mjs:2184)
+      //
+      // Narrow tag per D-03 — we model swing directly via slot-index
+      // lateness in the collect arm, NOT through an Inside primitive
+      // (which would warrant its own phase with outside/zoom/compress
+      // siblings). When Inside lands, the Swing collect arm rewrites
+      // (~10 lines); the IR shape `{ n; body }` is locked to keep that
+      // migration cheap. RESEARCH §1.3.
+      const n = parseInt(args.trim(), 10)
+      if (isNaN(n) || n < 1) return ir
+      return IR.swing(n, ir)
+    }
+
     case 'p':
       // .p("trackId") — track assignment, pass through
       return ir
