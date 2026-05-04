@@ -134,6 +134,60 @@ const TIER4_PROBES: Array<{
     code: '$: s("bd hh sd cp").ply(3)',
     tagInTree: ['Ply'],
   },
+  // -------------------------------------------------------------------
+  // Phase 19-04 — Tier 4 second half (Pick, Struct, Swing, Shuffle,
+  // Scramble, Chop forced tags + .layer(...) desugar to Stack).
+  // -------------------------------------------------------------------
+  // .layer(f, g) desugars to Stack(f(body), g(body)) — the Stack node
+  // is the load-bearing observation; no Layer tag exists.
+  {
+    method: 'layer',
+    code: '$: note("c d e f").layer(x => x.add("0,2"))',
+    tagInTree: ['Stack'],
+  },
+  // .pick — numeric-selector + lookup array. Use mini() + .note() so
+  // the test-env transpiler reaches a numeric Pattern selector reliably
+  // (String.prototype.pick maps numeric strings to MIDI which the lookup
+  // can't index by). Inspector renders the tag plus the lookup count.
+  {
+    method: 'pick',
+    code: '$: mini("<0 1 2 3>").pick(["c","e","g","b"]).note()',
+    tagInTree: ['Pick'],
+  },
+  // .struct — re-times body's value-stream to mask onsets (4-step mask
+  // selects 3 onsets out of 4 cycle slots; events panel must be > 0).
+  {
+    method: 'struct',
+    code: '$: note("c d e f").struct("x ~ x ~ x")',
+    tagInTree: ['Struct'],
+  },
+  // .swing(n) — narrow Swing tag (D-03; Inside primitive deferred).
+  // 6-note body so per-cycle events are visible after timing nudges.
+  {
+    method: 'swing',
+    code: '$: note("c d e f g h").swing(2)',
+    tagInTree: ['Swing'],
+  },
+  // .shuffle(n) — per-cycle permutation; n=4 over 4 events makes every
+  // slot a full reordering.
+  {
+    method: 'shuffle',
+    code: '$: note("c d e f").shuffle(4)',
+    tagInTree: ['Shuffle'],
+  },
+  // .scramble(n) — per-slot independent samples (with replacement).
+  {
+    method: 'scramble',
+    code: '$: note("c d e f").scramble(4)',
+    tagInTree: ['Scramble'],
+  },
+  // .chop(n) — per-event sample-range slicing; pattern-level only
+  // (audio-buffer slicing deferred to phase 22 per D-04).
+  {
+    method: 'chop',
+    code: '$: s("bd").chop(4)',
+    tagInTree: ['Chop'],
+  },
 ]
 
 test.describe('IR Inspector — Tier 4 smoke probe', () => {
