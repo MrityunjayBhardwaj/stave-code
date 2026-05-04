@@ -1361,3 +1361,63 @@ describe('19-05 — per-method loc containment (D-04 + D-11)', () => {
     expect(ir.body.body.loc).toEqual([{ start: fastStart, end: fastStart + '.fast(2)'.length }])
   })
 })
+
+// ---------------------------------------------------------------------------
+// 19-05 / #74 — `userMethod` round-trip on representative tags (D-08).
+//
+// D-08 exact-token taxonomy: `userMethod` is the literal method name the
+// user typed. `'degradeBy'` ≠ `'degrade'`; Stack-from-layer carries
+// `'layer'` while Stack-from-jux carries `'jux'` — same Stack tag, distinct
+// metadata. These tests verify the parser preserves the exact-token via
+// direct AST inspection (no toStrudel involvement per D-13). PV28 keep-
+// alive — these are the field's only test consumers in this PR until
+// 19-06's Inspector projection consumes it (#76).
+// ---------------------------------------------------------------------------
+describe('19-05 — userMethod round-trip on representative tags (D-08)', () => {
+  it('Late: parseStrudel(`note("c").late(0.125)`) carries userMethod="late"', () => {
+    const ir = parseStrudel('note("c").late(0.125)') as PatternIR & { userMethod?: string }
+    expect(ir.tag).toBe('Late')
+    expect(ir.userMethod).toBe('late')
+  })
+
+  it('Pick: parseStrudel(`mini("<0 1>").pick(["c","e"]).note()`) — Pick tag carries userMethod="pick"', () => {
+    // .note() at the end is a no-arg method (returns ir unchanged in our
+    // parser) so the root walks: Pick wrapping mini's Cycle selector.
+    const ir = parseStrudel('mini("<0 1>").pick(["c","e"]).note()') as PatternIR & { userMethod?: string }
+    expect(ir.tag).toBe('Pick')
+    expect(ir.userMethod).toBe('pick')
+  })
+
+  it('Struct: parseStrudel(`note("c").struct("x ~ x")`) carries userMethod="struct"', () => {
+    const ir = parseStrudel('note("c").struct("x ~ x")') as PatternIR & { userMethod?: string }
+    expect(ir.tag).toBe('Struct')
+    expect(ir.userMethod).toBe('struct')
+  })
+
+  it('Stack-from-layer: parseStrudel(`note("c").layer(x => x.add("0,2"))`) — Stack carries userMethod="layer"', () => {
+    const ir = parseStrudel('note("c").layer(x => x.add("0,2"))') as PatternIR & { userMethod?: string }
+    expect(ir.tag).toBe('Stack')
+    expect(ir.userMethod).toBe('layer')
+  })
+
+  it('Stack-from-jux: parseStrudel(`note("c").jux(rev)`) — Stack carries userMethod="jux"', () => {
+    const ir = parseStrudel('note("c").jux(rev)') as PatternIR & { userMethod?: string }
+    expect(ir.tag).toBe('Stack')
+    expect(ir.userMethod).toBe('jux')
+  })
+
+  // Bonus: D-08 exact-token sentinel — Degrade tag from `.degradeBy(amount)`
+  // carries `userMethod === 'degradeBy'`, NOT `'degrade'`. The canonical
+  // tag (Degrade) is shared with `.degrade()`; only userMethod distinguishes
+  // them. This is the round-trip property 19-06's projection depends on.
+  it('Degrade-from-degradeBy: userMethod="degradeBy" (NOT "degrade") — D-08 exact-token', () => {
+    const ir = parseStrudel('note("c").degradeBy(0.3)') as PatternIR & { userMethod?: string }
+    expect(ir.tag).toBe('Degrade')
+    expect(ir.userMethod).toBe('degradeBy')
+
+    // Confirm the canonical .degrade() path stays distinct.
+    const ir2 = parseStrudel('note("c").degrade()') as PatternIR & { userMethod?: string }
+    expect(ir2.tag).toBe('Degrade')
+    expect(ir2.userMethod).toBe('degrade')
+  })
+})
