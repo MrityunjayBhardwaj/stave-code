@@ -291,18 +291,16 @@ function applyMethod(
   baseOffset = 0,
   callSiteRange: [number, number] = [0, 0],
 ): PatternIR {
-  // Suppress unused-parameter lint; case bodies that need the range read it.
-  void callSiteRange
   switch (method) {
     case 'fast': {
       const n = parseFloat(args.trim())
-      if (!isNaN(n)) return IR.fast(n, ir)
+      if (!isNaN(n)) return IR.fast(n, ir, tagMeta(method, callSiteRange))
       return ir
     }
 
     case 'slow': {
       const n = parseFloat(args.trim())
-      if (!isNaN(n)) return IR.slow(n, ir)
+      if (!isNaN(n)) return IR.slow(n, ir, tagMeta(method, callSiteRange))
       return ir
     }
 
@@ -313,7 +311,7 @@ function applyMethod(
       if (isNaN(n)) return ir
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir
-      return IR.every(n, transform, ir)
+      return IR.every(n, transform, ir, tagMeta(method, callSiteRange))
     }
 
     case 'sometimes': {
@@ -321,7 +319,7 @@ function applyMethod(
       const transform = args.trim()
         ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length))
         : ir
-      return IR.choice(0.5, transform, ir)
+      return IR.choice(0.5, transform, ir, tagMeta(method, callSiteRange))
     }
 
     case 'sometimesBy': {
@@ -331,13 +329,13 @@ function applyMethod(
       if (isNaN(p)) return ir
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir
-      return IR.choice(p, transform, ir)
+      return IR.choice(p, transform, ir, tagMeta(method, callSiteRange))
     }
 
     case 'mask': {
       // .mask("gate") → When
       const gateMatch = args.trim().match(/^"([^"]*)"$/)
-      if (gateMatch) return IR.when(gateMatch[1], ir)
+      if (gateMatch) return IR.when(gateMatch[1], ir, tagMeta(method, callSiteRange))
       return ir
     }
 
@@ -374,13 +372,13 @@ function applyMethod(
 
     case 'gain': {
       const val = parseFloat(args.trim())
-      if (!isNaN(val)) return IR.fx('gain', { gain: val }, ir)
+      if (!isNaN(val)) return IR.fx('gain', { gain: val }, ir, tagMeta(method, callSiteRange))
       return ir
     }
 
     case 'pan': {
       const val = parseFloat(args.trim())
-      if (!isNaN(val)) return IR.fx('pan', { pan: val }, ir)
+      if (!isNaN(val)) return IR.fx('pan', { pan: val }, ir, tagMeta(method, callSiteRange))
       return ir
     }
 
@@ -414,14 +412,14 @@ function applyMethod(
       if (isNaN(n) || n < 1) return ir
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir
-      return IR.chunk(n, transform, ir)
+      return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange))
     }
 
     case 'degrade': {
       // Tier 4 (Phase 19-03 Task 07). `.degrade()` shorthand for
       // `.degradeBy(0.5)` (signal.mjs:720). Our Degrade.p is the
       // retention probability; 50% drop ⇒ 50% retain ⇒ p = 0.5.
-      return IR.degrade(0.5, ir)
+      return IR.degrade(0.5, ir, tagMeta(method, callSiteRange))
     }
 
     case 'degradeBy': {
@@ -437,7 +435,10 @@ function applyMethod(
       // degradeBy(0.8) that distinguishes p=0.2 from the wrong p=0.8.
       const amount = parseFloat(args.trim())
       if (isNaN(amount)) return ir
-      return IR.degrade(1 - amount, ir)
+      // D-08 exact-token: userMethod is `'degradeBy'`, NOT `'degrade'`. The
+      // tag is Degrade (canonical) but `method` here is the user's literal
+      // `'degradeBy'` from the switch — pass it through, don't substitute.
+      return IR.degrade(1 - amount, ir, tagMeta(method, callSiteRange))
     }
 
     case 'late': {
@@ -448,7 +449,7 @@ function applyMethod(
       // limitation `.fast()` has today).
       const t = parseFloat(args.trim())
       if (isNaN(t)) return ir
-      return IR.late(t, ir)
+      return IR.late(t, ir, tagMeta(method, callSiteRange))
     }
 
     case 'jux': {
@@ -505,7 +506,7 @@ function applyMethod(
       const n = Number(trimmed)
       if (!Number.isInteger(n) || n < 1) return ir
       if (n === 1) return ir
-      return IR.ply(n, ir)
+      return IR.ply(n, ir, tagMeta(method, callSiteRange))
     }
 
     case 'off': {
@@ -557,7 +558,7 @@ function applyMethod(
     case 'lpf':
     case 'hpf': {
       const val = parseFloat(args.trim())
-      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir)
+      if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange))
       return ir
     }
 
@@ -590,7 +591,7 @@ function applyMethod(
         const elemOffset = offsetOfSubArg(arrayBody, e.trim(), arrayBodyOffset)
         return parseArrayLiteralElement(e, 'note', elemOffset)
       })
-      return IR.pick(ir, lookup)
+      return IR.pick(ir, lookup, tagMeta(method, callSiteRange))
     }
 
     case 'struct': {
@@ -604,7 +605,7 @@ function applyMethod(
       // mask is a quoted mini-notation string; we carry it raw on the IR
       // (matches When.gate precedent — sub-IR form deferred per RESEARCH §8.2).
       const gateMatch = args.trim().match(/^"([^"]*)"$/)
-      if (gateMatch) return IR.struct(gateMatch[1], ir)
+      if (gateMatch) return IR.struct(gateMatch[1], ir, tagMeta(method, callSiteRange))
       return ir
     }
 
@@ -621,7 +622,7 @@ function applyMethod(
       // migration cheap. RESEARCH §1.3.
       const n = parseInt(args.trim(), 10)
       if (isNaN(n) || n < 1) return ir
-      return IR.swing(n, ir)
+      return IR.swing(n, ir, tagMeta(method, callSiteRange))
     }
 
     case 'shuffle': {
@@ -634,7 +635,7 @@ function applyMethod(
       // in T-05. Parity test in T-07. RESEARCH §1.5; PK11 step 5.
       const n = parseInt(args.trim(), 10)
       if (isNaN(n) || n < 1) return ir
-      return IR.shuffle(n, ir)
+      return IR.shuffle(n, ir, tagMeta(method, callSiteRange))
     }
 
     case 'scramble': {
@@ -647,7 +648,7 @@ function applyMethod(
       // test in T-07. RESEARCH §1.6; PK11 step 5.
       const n = parseInt(args.trim(), 10)
       if (isNaN(n) || n < 1) return ir
-      return IR.scramble(n, ir)
+      return IR.scramble(n, ir, tagMeta(method, callSiteRange))
     }
 
     case 'chop': {
@@ -662,7 +663,7 @@ function applyMethod(
       // §1.7; PK11 step 5.
       const n = parseInt(args.trim(), 10)
       if (isNaN(n) || n < 1) return ir
-      return IR.chop(n, ir)
+      return IR.chop(n, ir, tagMeta(method, callSiteRange))
     }
 
     case 'p':
