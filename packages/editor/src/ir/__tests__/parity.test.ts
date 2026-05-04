@@ -236,6 +236,40 @@ export function diffEvents(
 }
 
 // --------------------------------------------------------------------------
+// 19-05 / #74 D-11 — containment-match assertion helper.
+//
+// Verifies that the event's `loc` array (Play.loc — preserved unchanged by
+// D-01) contains at least one source range fully within the bounds of
+// `subExpr` as it appears in `code`. The `some()` is necessary because
+// Play.loc is `SourceLocation[]` — mini-notation `!N` repetition can
+// produce multiple ranges per Play node (RESEARCH §10 #5; not implemented
+// today but the helper is forward-compat).
+//
+// Throws via expect() with a hint naming the event + sub-expression so a
+// failure message points directly at the offending case.
+// --------------------------------------------------------------------------
+function assertEventLocWithin(
+  event: IREvent,
+  code: string,
+  subExpr: string,
+  hint?: string,
+): void {
+  expect(
+    event.loc,
+    hint ?? `event.loc missing for note=${String(event.note)} begin=${event.begin}`,
+  ).toBeDefined()
+  const subStart = code.indexOf(subExpr)
+  expect(subStart, `subExpr ${JSON.stringify(subExpr)} not found in code`).toBeGreaterThanOrEqual(0)
+  const subEnd = subStart + subExpr.length
+  const ok = event.loc!.some((l) => l.start >= subStart && l.end <= subEnd)
+  expect(
+    ok,
+    hint ??
+      `no event.loc range falls within ${JSON.stringify(subExpr)} [${subStart},${subEnd})`,
+  ).toBe(true)
+}
+
+// --------------------------------------------------------------------------
 // Boot smoke — verifies evalScope+miniAllStrings ran cleanly and the
 // mini-notation transpiler is wired into the global scope.
 // --------------------------------------------------------------------------
@@ -1088,5 +1122,22 @@ describe('PRE-01 — parseTransform baseOffset threading', () => {
     const b = __getLastParseTransformBaseOffset()
     expect(a).toBeGreaterThan(0)
     expect(b).toBeGreaterThan(a)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 19-05 / #74 — assertEventLocWithin smoke test.
+//
+// Sanity-check that the helper correctly accepts a known-good case (event
+// loc lies inside its source sub-expression). Per-method exhaustive
+// containment assertions land in the next describe block.
+// ---------------------------------------------------------------------------
+describe('19-05 — assertEventLocWithin helper', () => {
+  it('accepts a known-good case: note("c d e f").late(0.125) — events inside "c d e f"', () => {
+    const code = 'note("c d e f").late(0.125)'
+    const subExpr = '"c d e f"'
+    const ours = collectCycles(parseStrudel(code), 0, 1)
+    expect(ours.length).toBeGreaterThan(0)
+    for (const e of ours) assertEventLocWithin(e, code, subExpr)
   })
 })
