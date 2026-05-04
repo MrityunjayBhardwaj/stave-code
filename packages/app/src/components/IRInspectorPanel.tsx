@@ -20,7 +20,11 @@ import {
   subscribeIRSnapshot,
   revealLineInFile,
 } from "@stave/editor";
-import { LOCALSTORAGE_KEY } from "./irProjection";
+import {
+  LOCALSTORAGE_KEY,
+  projectedLabel,
+  projectedChildren,
+} from "./irProjection";
 
 // ----- Color tokens by IR tag — keep close to the design system -----------
 
@@ -129,8 +133,63 @@ function round(n: number): string {
 
 // ----- Components ---------------------------------------------------------
 
-function IRNodeRow({ node, depth }: { node: PatternIR; depth: number }): React.ReactElement {
-  const kids = children(node);
+/**
+ * D-02 hide rule, splicing form. Given a list of children for a parent
+ * in projected mode, replace any hidden child (projectedLabel ===
+ * undefined) with that child's projected children. Recursive — keeps
+ * splicing until the list contains only renderable rows. Mini-notation
+ * symbol tags and Code are NOT hidden (their projectedLabel returns a
+ * value).
+ */
+function spliceHiddenChildren(
+  kids: readonly PatternIR[],
+): readonly PatternIR[] {
+  const out: PatternIR[] = [];
+  for (const k of kids) {
+    if (projectedLabel(k) === undefined) {
+      // Recurse on its projected children (transitive hide).
+      out.push(...spliceHiddenChildren(projectedChildren(k)));
+    } else {
+      out.push(k);
+    }
+  }
+  return out;
+}
+
+function IRNodeRow({
+  node,
+  depth,
+  irMode,
+}: {
+  node: PatternIR;
+  depth: number;
+  irMode: boolean;
+}): React.ReactElement | null {
+  let label: string;
+  let kids: readonly PatternIR[];
+
+  if (irMode) {
+    label = node.tag;
+    kids = children(node);
+  } else {
+    const projLabel = projectedLabel(node);
+    if (projLabel === undefined) {
+      // D-02 hide rule: this node would normally be folded into the parent.
+      // The parent's spliceHiddenChildren removes it upstream; if a hidden
+      // node DOES reach here (e.g., the root has projectedLabel undefined —
+      // possible if a future parser path forgets to set userMethod on a
+      // root tag), fall back to the raw tag for visibility.
+      label = node.tag;
+      kids = spliceHiddenChildren(projectedChildren(node));
+    } else {
+      label = projLabel;
+      kids = spliceHiddenChildren(projectedChildren(node));
+    }
+  }
+
+  // TAG_COLOR keying remains node.tag — color follows structural identity
+  // (a Stack-from-layer is still Stack-purple even when labeled "layer").
+  // Label follows projection. RESEARCH Q9 / NEW pre-mortem #9.
   const tagColor = TAG_COLOR[node.tag];
   const summary = summarize(node);
 
@@ -154,7 +213,7 @@ function IRNodeRow({ node, depth }: { node: PatternIR; depth: number }): React.R
             minWidth: 60,
           }}
         >
-          {node.tag}
+          {label}
         </span>
         <span style={{ opacity: 0.75, fontFamily: "var(--font-mono, monospace)", fontSize: "0.85em" }}>
           {summary}
@@ -167,7 +226,7 @@ function IRNodeRow({ node, depth }: { node: PatternIR; depth: number }): React.R
     <details open={depth < 2} style={{ paddingLeft: depth * 12 }}>
       <summary style={{ cursor: "pointer", padding: "2px 0", listStyle: "none" }}>
         <span style={{ color: tagColor, fontWeight: 600, fontSize: "0.85em" }}>
-          {node.tag}
+          {label}
         </span>
         {summary && (
           <span style={{ opacity: 0.75, fontFamily: "var(--font-mono, monospace)", fontSize: "0.85em", marginLeft: 6 }}>
@@ -176,7 +235,7 @@ function IRNodeRow({ node, depth }: { node: PatternIR; depth: number }): React.R
         )}
       </summary>
       {kids.map((c, i) => (
-        <IRNodeRow key={i} node={c} depth={depth + 1} />
+        <IRNodeRow key={i} node={c} depth={depth + 1} irMode={irMode} />
       ))}
     </details>
   );
@@ -452,7 +511,13 @@ export function IRInspectorPanel(): React.ReactElement {
             IR tree{snap.passes.length > 1 && selectedIndex >= 0 ? ` · ${snap.passes[selectedIndex].name}` : null}
           </summary>
           <div style={{ paddingLeft: 4 }}>
-            {selectedIndex >= 0 && <IRNodeRow node={snap.passes[selectedIndex].ir} depth={0} />}
+            {selectedIndex >= 0 && (
+              <IRNodeRow
+                node={snap.passes[selectedIndex].ir}
+                depth={0}
+                irMode={irMode}
+              />
+            )}
           </div>
         </details>
       </div>
