@@ -49,6 +49,7 @@ export type PatternIR =
   | { tag: 'Swing';  n: number; body: PatternIR }  // Tier 4 — narrow tag per D-03; pattern.mjs:2193 swing(n) = pat.swingBy(1/3, n) = pat.inside(n, late(seq(0, 1/6))). Inside primitive deferred.
   | { tag: 'Shuffle';  n: number; body: PatternIR }  // Tier 4 (Phase 19-04 T-05) — signal.mjs:392 shuffle(n) = _rearrangeWith(randrun(n), n, pat); per-cycle permutation of n slices, each played exactly once per cycle.
   | { tag: 'Scramble'; n: number; body: PatternIR }  // Tier 4 (Phase 19-04 T-05) — signal.mjs:405 scramble(n) = _rearrangeWith(_irand(n)._segment(n), n, pat); per-slot independent samples (with replacement) of n slices.
+  | { tag: 'Chop';   n: number; body: PatternIR }  // Tier 4 (Phase 19-04 T-08) — pattern.mjs:3291-3306 chop(n) = pat.squeezeBind(o => sequence(slice_objects.map(s => merge(o, s)))). Per-event sample-range slicing — each source event becomes n sub-events with progressive begin/end controls. D-04: pattern-level only; audio-buffer slicing deferred to phase 22 (axis 5).
   | { tag: 'Loop';   body: PatternIR }
   | { tag: 'Code';   code: string; lang: 'strudel' }  // Opaque fallback for unparseable fragments
 
@@ -96,6 +97,7 @@ export const IR = {
   swing: (n: number, body: PatternIR): PatternIR => ({ tag: 'Swing', n, body }),
   shuffle: (n: number, body: PatternIR): PatternIR => ({ tag: 'Shuffle', n, body }),
   scramble: (n: number, body: PatternIR): PatternIR => ({ tag: 'Scramble', n, body }),
+  chop: (n: number, body: PatternIR): PatternIR => ({ tag: 'Chop', n, body }),
   loop: (body: PatternIR): PatternIR => ({ tag: 'Loop', body }),
   code: (code: string): PatternIR => ({ tag: 'Code', code, lang: 'strudel' }),
 } as const

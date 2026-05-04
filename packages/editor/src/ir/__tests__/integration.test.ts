@@ -880,6 +880,88 @@ describe('parseStrudel', () => {
     expect(toStrudel(node)).toContain('.scramble(4)')
   })
 
+  // Phase 19-04 T-08 — Chop shape tests (pattern-level only per D-04).
+  it('IR.chop smart constructor produces well-formed Chop node', () => {
+    const body = IR.play('bd', 0.25, { s: 'bd' })
+    const node = IR.chop(4, body)
+    expect(node.tag).toBe('Chop')
+    if (node.tag === 'Chop') {
+      expect(node.n).toBe(4)
+      expect(node.body).toBe(body)
+      expect(Object.keys(node).sort()).toEqual(['body', 'n', 'tag'])
+    }
+  })
+
+  it('collect(Chop) emits n sub-events per source event with progressive begin/end controls', () => {
+    // s("bd").chop(4): one source event @ [0, 1) with no existing begin/end
+    // → 4 sub-events at begins [0, 0.25, 0.5, 0.75] with params.begin/end
+    // ∈ {(0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1)}.
+    const node = IR.chop(4, IR.play('bd', 1, { s: 'bd' }))
+    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(4)
+    const begins = events.map((e) => +e.begin.toFixed(9)).sort((a, b) => a - b)
+    expect(begins).toEqual([0, 0.25, 0.5, 0.75])
+    const params = events
+      .map((e) => [
+        +(e.params?.begin as number).toFixed(9),
+        +(e.params?.end as number).toFixed(9),
+      ])
+      .sort((a, b) => a[0] - b[0])
+    expect(params).toEqual([
+      [0, 0.25],
+      [0.25, 0.5],
+      [0.5, 0.75],
+      [0.75, 1],
+    ])
+  })
+
+  it('collect(Chop) composes nested begin/end via the merge function (Chop(2, Chop(2, body)))', () => {
+    // Inner Chop(2) on a single bd event yields 2 sub-events with params
+    // (0, 0.5) and (0.5, 1). The outer Chop(2) then takes EACH of those
+    // and slices its [b0, e0) range into 2 sub-ranges. Per merge:
+    //   inner slot 0: b0=0,   e0=0.5 → outer slots: (0, 0.25),  (0.25, 0.5)
+    //   inner slot 1: b0=0.5, e0=1   → outer slots: (0.5, 0.75),(0.75, 1)
+    // Net: 4 events with begin/end identical to a flat Chop(4). The
+    // merge function is what makes nested chop compose correctly.
+    const body = IR.play('bd', 1, { s: 'bd' })
+    const node = IR.chop(2, IR.chop(2, body))
+    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(4)
+    const params = events
+      .map((e) => [
+        +(e.params?.begin as number).toFixed(9),
+        +(e.params?.end as number).toFixed(9),
+      ])
+      .sort((a, b) => a[0] - b[0])
+    expect(params).toEqual([
+      [0, 0.25],
+      [0.25, 0.5],
+      [0.5, 0.75],
+      [0.75, 1],
+    ])
+  })
+
+  it('collect(Chop) propagates loc to every sub-event (PV24)', () => {
+    const body = IR.play('bd', 1, { s: 'bd' }, [{ start: 2, end: 4 }])
+    const node = IR.chop(4, body)
+    const events = collect(node, { cycle: 0, time: 0, begin: 0, end: 1, duration: 1 })
+    expect(events.length).toBe(4)
+    for (const e of events) expect(e.loc).toBeDefined()
+  })
+
+  it('toStrudel(Chop) round-trips to .chop(n)', () => {
+    const node = IR.chop(4, IR.play('bd', 1, { s: 'bd' }))
+    expect(toStrudel(node)).toContain('.chop(4)')
+  })
+
+  it('parseStrudel routes .chop(n) to Chop tag', () => {
+    const ir = parseStrudel('s("bd").chop(4)')
+    expect(ir.tag).toBe('Chop')
+    if (ir.tag === 'Chop') {
+      expect(ir.n).toBe(4)
+    }
+  })
+
   describe('source-range tracking', () => {
     it('single-line note("c4 e4") — Play.loc points at exact char ranges', () => {
       // 0123456789012345

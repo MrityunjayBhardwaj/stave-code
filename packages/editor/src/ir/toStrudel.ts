@@ -226,6 +226,13 @@ function gen(ir: PatternIR): string {
       // 1:1 method↔tag mapping; direct round-trip.
       return `${gen(ir.body)}.scramble(${ir.n})`
     }
+
+    case 'Chop': {
+      // Tier 4 (Phase 19-04 T-08) — `chop(n)` (pattern.mjs:3291-3306).
+      // 1:1 method↔tag mapping; direct round-trip. Per D-04 the IR side
+      // is pattern-level only; round-trip preserves the user's source.
+      return `${gen(ir.body)}.chop(${ir.n})`
+    }
   }
 }
 

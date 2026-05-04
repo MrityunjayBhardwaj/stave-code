@@ -979,6 +979,58 @@ describe('parity harness', () => {
     expect(sc.tag).toBe('Scramble')
     if (sc.tag === 'Scramble') expect(sc.n).toBe(4)
   })
+
+  // ------------------------------------------------------------------
+  // Phase 19-04 Task T-08 — `.chop(n)` parity (pattern-level only).
+  //
+  // Ground truth (pattern.mjs:3291-3306):
+  //   chop(n, pat) = pat.squeezeBind(o => sequence(slice_objects.map(s => merge(o, s))))
+  //   slice_objects[i] = { begin: i/n, end: (i+1)/n }
+  //   merge(a, b) = if (a.begin && a.end) {
+  //     d = a.end - a.begin; b = { begin: a.begin + b.begin*d, end: a.begin + b.end*d }
+  //   }; return Object.assign({}, a, b)
+  //
+  // Per source event, n sub-events are emitted whose time spans carve
+  // up the source span AND whose `begin`/`end` PARAMS carve up the
+  // source's existing begin/end (default [0, 1) when absent).
+  //
+  // D-04 known limitation (PV29 axis-1): this asserts pattern-level event
+  // count + params.begin/end set equality. Strudel's audio engine ALSO
+  // slices the rendered sample buffer at playback using the begin/end
+  // controls — that audio-buffer rendering side is axis 5, deferred to
+  // phase 22. If real audio diverges in playback, that is the documented
+  // D-04 limitation, NOT a parity failure.
+  //
+  // Dedupe is safe here: the n sub-events have DIFFERENT `begin` values
+  // (e.begin + i*dt/n), so dedupeByWholeBegin's (begin|s|note|pan) key
+  // does not collide. params.begin/end are NOT in the dedupe key, but
+  // because the time-`begin` already differs, the events are preserved.
+  // ------------------------------------------------------------------
+  it('chop parity: s("bd").chop(4) — pattern-level event count + params.begin/end set match', async () => {
+    const code = 's("bd").chop(4)'
+    const rawExpected = (await strudelEventsFromCode(code, 1)).map(normalizeStrudelPan)
+    const expected = withOnsetInWindow(dedupeByWholeBegin(rawExpected), 0, 1)
+    const ours = collectCycles(parseStrudel(code), 0, 1)
+    // 1 source event × 4 chops = 4 sub-events.
+    expect(ours.length).toBe(4)
+    expect(ours.length).toBe(expected.length)
+    // Per-event params.begin/end set equality — the heart of the chop
+    // parity claim. If this fails: re-read the merge function at
+    // pattern.mjs:3294-3300; the (b0 + (i/n)*d) calc may need adjustment.
+    const beTuple = (e: IREvent): string => {
+      const b = e.params?.begin
+      const en = e.params?.end
+      return `${typeof b === 'number' ? b.toFixed(9) : b}|${typeof en === 'number' ? en.toFixed(9) : en}`
+    }
+    expect(new Set(ours.map(beTuple))).toEqual(new Set(expected.map(beTuple)))
+    // Time-`begin` set match (the sub-event onsets divide the source
+    // event's time span). Strudel's `whole` for each sub-event is the
+    // sub-slot, so its whole.begin matches our newBegin.
+    const timeTuple = (e: IREvent): string => `${e.begin.toFixed(9)}|${e.s ?? ''}`
+    expect(new Set(ours.map(timeTuple))).toEqual(new Set(expected.map(timeTuple)))
+    // PV24 — loc presence on every event our pipeline emits.
+    for (const e of ours) expect(e.loc).toBeDefined()
+  })
 })
 
 // ---------------------------------------------------------------------------

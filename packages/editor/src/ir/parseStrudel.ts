@@ -595,6 +595,21 @@ function applyMethod(ir: PatternIR, method: string, args: string, baseOffset = 0
       return IR.scramble(n, ir)
     }
 
+    case 'chop': {
+      // Tier 4 (Phase 19-04 Task T-08). `.chop(n)` per pattern.mjs:
+      // 3291-3306:
+      //   chop(n, pat) = pat.squeezeBind(o => sequence(slice_objects.map(s => merge(o, s))))
+      // Per-event sample-range slicing: each source event becomes n
+      // sub-events whose time and `begin`/`end` controls carve up the
+      // original event. D-04: pattern-level only — audio buffer slicing
+      // is axis-5 work, deferred to phase 22. Forced tag per PV28
+      // (squeezeBind has no Fast equivalent; same trap as Ply). RESEARCH
+      // §1.7; PK11 step 5.
+      const n = parseInt(args.trim(), 10)
+      if (isNaN(n) || n < 1) return ir
+      return IR.chop(n, ir)
+    }
+
     case 'p':
       // .p("trackId") — track assignment, pass through
       return ir

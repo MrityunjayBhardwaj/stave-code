@@ -718,5 +718,60 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       }
       return _collectRearrange(selector, ir.n, ir.body, ctx)
     }
+
+    case 'Chop': {
+      // Strudel's `chop(n)` (pattern.mjs:3291-3306):
+      //   chop(n, pat) = pat.squeezeBind(o => sequence(slice_objects.map(s => merge(o, s))))
+      //   slice_objects[i] = { begin: i/n, end: (i+1)/n }
+      //   merge(a, b) = if (a.begin && a.end) {
+      //     d = a.end - a.begin
+      //     b = { begin: a.begin + b.begin*d, end: a.begin + b.end*d }
+      //   }; return Object.assign({}, a, b)
+      //
+      // Per-event semantics: each source event becomes n sub-events whose
+      // time spans carve up the source event's [begin, end) window, AND
+      // whose `begin`/`end` PARAMS (sample-buffer addresses) carve up the
+      // source event's existing `begin`/`end` controls (default [0, 1) when
+      // the source has none). The merge composes nested chops correctly —
+      // e.g. Chop(2, Chop(2, body)) yields slot 0: (0, 0.25), slot 1:
+      // (0.25, 0.5), etc. on the OUTER level when each sub-slot is itself
+      // chopped in two. RESEARCH §1.7.
+      //
+      // D-04 limitation (PV29 axis-1): this is the IR-level / pattern-level
+      // model. Strudel's audio engine ALSO slices the rendered sample buffer
+      // at playback using these begin/end controls — that audio-buffer side
+      // is axis-5 work in phase 22. Pattern-level event counts and per-event
+      // begin/end values match Strudel exactly; runtime audio output will
+      // diverge until phase 22 closes the buffer-slicing side.
+      //
+      // PV28: direct emission per source event, NOT a desugar through Fast.
+      // Fast scales speed; it does not re-play the body. The same trap that
+      // promoted Ply to a forced tag.
+      if (ir.n <= 1) return walk(ir.body, ctx)
+      const baseEvents = walk(ir.body, ctx)
+      const out: IREvent[] = []
+      for (const e of baseEvents) {
+        const dur = e.end - e.begin
+        const slotLen = dur / ir.n
+        // Source event's existing begin/end controls (sample-range
+        // addresses). Default to the full buffer [0, 1) when absent.
+        const b0 = (e.params?.begin as number | undefined) ?? 0
+        const e0 = (e.params?.end as number | undefined) ?? 1
+        const d = e0 - b0
+        for (let i = 0; i < ir.n; i++) {
+          const subBegin = b0 + (i / ir.n) * d
+          const subEnd = b0 + ((i + 1) / ir.n) * d
+          const newBegin = e.begin + i * slotLen
+          out.push({
+            ...e,
+            begin: newBegin,
+            end: newBegin + slotLen,
+            endClipped: newBegin + slotLen,
+            params: { ...e.params, begin: subBegin, end: subEnd },
+          })
+        }
+      }
+      return out
+    }
   }
 }
