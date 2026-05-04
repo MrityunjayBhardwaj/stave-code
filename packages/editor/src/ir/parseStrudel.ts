@@ -212,7 +212,23 @@ function parseRoot(root: string, baseOffset = 0): PatternIR {
       const tracks = args.map(a => parseExpression(a.trim()))
       if (tracks.length === 0) return IR.pure()
       if (tracks.length === 1) return tracks[0]
-      return IR.stack(...tracks)
+      // 19-05 / #74: root-level `stack(...)` outer Stack carries the call-
+      // site range + userMethod: 'stack' (D-08 exact-token — distinct from
+      // `'layer'` at T-04 even though both produce Stack tags). Literal
+      // construction — IR.stack is rest-spread (RESEARCH §11 Q1).
+      // The whole `stack(...)` substring spans from `trimmed[0]` (whose
+      // absolute position is `baseOffset + leadingWs`) through the closing
+      // paren matched by extractParenContent.
+      const trimmedAbs = baseOffset + leadingWs
+      const openIdx = trimmed.indexOf('(')
+      const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1
+      const fullMatchLen = closeIdx >= 0 ? closeIdx + 1 : trimmed.length
+      return {
+        tag: 'Stack' as const,
+        tracks,
+        loc: [{ start: trimmedAbs, end: trimmedAbs + fullMatchLen }],
+        userMethod: 'stack',
+      }
     }
   }
 
