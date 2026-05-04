@@ -44,6 +44,16 @@ function gen(ir: PatternIR): string {
     }
 
     case 'Stack': {
+      // TODO(layer round-trip — Phase 19-04 T-01): if all tracks are
+      // non-trivial transforms applied to the same body skeleton, this
+      // is a `.layer(...)` shape. Recogniser ordering must be:
+      //   jux-shape   FIRST  (most specific — 2 tracks, both FX(pan, ±1))
+      //   off-shape   SECOND (2 tracks, second is Late wrapping body)
+      //   layer-shape THIRD  (general N-track, each track is f(body))
+      //   plain stack LAST   (heterogeneous tracks)
+      // v1 emits the structural stack(...) form — matches the soft target
+      // for jux/off from 19-03. Belongs with the bidirectional-editing
+      // follow-up (#8). RESEARCH §1.1 §B4.
       if (ir.tracks.length === 0) return '""'
       const parts = ir.tracks.map(gen)
       return `stack(\n  ${parts.join(',\n  ')}\n)`

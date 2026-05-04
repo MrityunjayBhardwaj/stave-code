@@ -273,6 +273,37 @@ function applyMethod(ir: PatternIR, method: string, args: string, baseOffset = 0
       return ir
     }
 
+    case 'layer': {
+      // Tier 4 (Phase 19-04 Task T-01). `.layer(...funcs)` desugars per
+      // pattern.mjs:796-798 — `stack(...funcs.map(f => f(this)))`. Each
+      // func is applied to the body; the original body is NOT included
+      // (contrast superimpose at pattern.mjs:810-812 which does include
+      // the original via this.stack(...)).
+      //
+      // We split the comma-separated arg list with the existing splitArgs
+      // helper (respects nested parens / strings), parse each func string
+      // with parseTransform threading the absolute baseOffset of that
+      // func within the user's code, then construct Stack(...transformed).
+      //
+      // Round-trip: toStrudel currently emits the structural stack(...)
+      // form for v1 — the layer-shape recogniser is a follow-up for the
+      // bidirectional editing pass (#8). Same soft-target stance taken
+      // for jux/off in 19-03. RESEARCH §1.1; CONTEXT round-trip discipline.
+      const argList = splitArgs(args)
+      if (argList.length === 0) return ir
+      const tracks: PatternIR[] = []
+      for (const funcStr of argList) {
+        const trimmed = funcStr.trim()
+        if (!trimmed) {
+          tracks.push(ir)
+          continue
+        }
+        const transformOffset = offsetOfSubArg(args, trimmed, baseOffset)
+        tracks.push(parseTransform(trimmed, ir, transformOffset))
+      }
+      return IR.stack(...tracks)
+    }
+
     case 'gain': {
       const val = parseFloat(args.trim())
       if (!isNaN(val)) return IR.fx('gain', { gain: val }, ir)

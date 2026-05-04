@@ -634,6 +634,75 @@ describe('parity harness', () => {
     const c = parseStrudel('s("bd hh sd cp").ply(1)')
     expect(c.tag).not.toBe('Ply')
   })
+
+  // ------------------------------------------------------------------
+  // Phase 19-04 Task T-01 — `.layer(...funcs)` parity.
+  //
+  // Ground truth: pattern.mjs:796-798 — layer literally desugars to
+  //   stack(...funcs.map(f => f(this)))
+  // The original body is NOT included (contrast superimpose at
+  // pattern.mjs:810-812 which does via this.stack(...)).
+  //
+  // Our `case 'layer':` mirrors the desugar: split args, parseTransform
+  // each, return Stack(...transformed).
+  //
+  // Input: s("bd hh sd cp").layer(x => x.gain(0.5), x => x.gain(0.7))
+  //   body events @ {0, 0.25, 0.5, 0.75}: bd, hh, sd, cp
+  //   first func wraps each in gain(0.5); second wraps each in gain(0.7).
+  //   Stack of two parallel tracks → 8 events per cycle, four at gain=0.5
+  //   and four at gain=0.7.
+  //
+  // Choice of two `gain(...)` transforms (not `fast(2)`, and avoiding
+  // `pan(...)` which would surface the [-1,1] vs [0,1] convention
+  // divergence already documented at the .pan() boundary in PatternIR.ts:23):
+  // gain is scalar, in the same convention on both sides, and exercises
+  // the parallel-track desugar path. Also serves as the phase composition
+  // test (PLAN pre-mortem #11) — desugar producing a Stack exercises
+  // both the layer-arm and the existing Stack walker.
+  //
+  // Diff: count + (begin, s, gain) tuple multiset (Set since the four
+  // (begin,s) pairs appear at two distinct gain values, both pairs are
+  // distinct keys). PV24 loc presence.
+  // ------------------------------------------------------------------
+  it('layer parity: s("bd hh sd cp").layer(x => x.gain(0.5), x => x.gain(0.7)) — count, (begin,s,gain) match Strudel', async () => {
+    const code = 's("bd hh sd cp").layer(x => x.gain(0.5), x => x.gain(0.7))'
+    const rawExpected = (await strudelEventsFromCode(code, 1)).map(normalizeStrudelPan)
+    // NOTE: dedupeByWholeBegin keys on (begin, s, note, pan) which would
+    // collapse the two gain-distinct layer tracks (both share (begin, s,
+    // note, pan)). For this s("bd hh sd cp") body there are no
+    // boundary-crossing events in [0, 1), so dedupe is unnecessary —
+    // skip it and dedupe with a gain-aware key inline. Same pattern as
+    // jux which includes pan in its key for parallel-track distinction.
+    const expected = withOnsetInWindow(rawExpected, 0, 1)
+    const ours = collectCycles(parseStrudel(code), 0, 1)
+    // 4 body events × 2 layer tracks = 8.
+    expect(ours.length).toBe(8)
+    expect(expected.length).toBe(8)
+    // (begin, s, gain) tuple set — parallel-track count and per-track
+    // gain assignment are load-bearing on diff. Each (begin, s) pair
+    // appears twice with distinct gain values, so the keys remain
+    // distinct under set semantics.
+    const tuple = (e: IREvent): string =>
+      `${e.begin.toFixed(9)}|${e.s ?? ''}|${e.gain ?? 1}`
+    expect(new Set(ours.map(tuple))).toEqual(new Set(expected.map(tuple)))
+    // Both gain values must be present, four events each.
+    const oursGains = ours.map(e => e.gain)
+    expect(oursGains.filter(g => g === 0.5).length).toBe(4)
+    expect(oursGains.filter(g => g === 0.7).length).toBe(4)
+    // PV24 — loc presence on every event.
+    for (const e of ours) expect(e.loc).toBeDefined()
+  })
+
+  it('parseStrudel routes .layer(f1, f2) to Stack(...) (desugar — pattern.mjs:796-798)', () => {
+    const ir = parseStrudel('s("bd hh sd cp").layer(x => x.gain(0.5), x => x.gain(0.7))')
+    expect(ir.tag).toBe('Stack')
+    if (ir.tag === 'Stack') {
+      expect(ir.tracks.length).toBe(2)
+      // Each track is the body wrapped in an FX node (gain, gain).
+      expect(ir.tracks[0].tag).toBe('FX')
+      expect(ir.tracks[1].tag).toBe('FX')
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
