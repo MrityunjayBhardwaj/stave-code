@@ -885,6 +885,100 @@ describe('parity harness', () => {
       expect(ir.n).toBe(4)
     }
   })
+
+  // ------------------------------------------------------------------
+  // Phase 19-04 Task T-07 — `.shuffle(n)` / `.scramble(n)` RNG parity.
+  //
+  // Ground truth:
+  //   - signal.mjs:392-394 — shuffle(n, pat) = _rearrangeWith(randrun(n), n, pat)
+  //   - signal.mjs:405-407 — scramble(n, pat) = _rearrangeWith(_irand(n)._segment(n), n, pat)
+  //   - signal.mjs:365-376 — randrun(n): rands = getRandsAtTime(t.floor()+0.5, n, seed)
+  //                          → sort indices by rand value → permutation
+  //   - signal.mjs:476     — _irand(n) = rand.fmap(x => trunc(x*n))
+  //   - pattern.mjs:2173-2175 — _segment(n) = struct(pure(true)._fast(n))
+  //                              → samples at slot begins (signal.mjs:18-21)
+  //
+  // Determinism is automatic at randSeed=0 (Strudel default; signal.mjs:262)
+  // because the legacy RNG is fully deterministic. We do NOT call withSeed
+  // — the default suffices, matching 19-03's Degrade pattern.
+  //
+  // Per-cycle randomness only surfaces over multiple cycles (single-cycle
+  // tests would silently pass even with a misaligned sampler). We run 4
+  // cycles per RESEARCH §4. P42 covers both the symmetric (Shuffle —
+  // permutation-without-replacement) and asymmetric (Scramble — independent
+  // samples-with-replacement) retention probes.
+  //
+  // Key alignment of our seededRandsAtTime helper (collect.ts) with
+  // Strudel's __timeToRandsPrime (signal.mjs:246-256): for n>1, ONE
+  // time-seed is derived via __timeToIntSeed, then __xorwise chains the
+  // seed n times to produce the n rands. NOT n independent calls at
+  // offset times — that would re-seed the chain n times and diverge.
+  //
+  // Cycle-aware dedupe: across 4 cycles, each event's whole.begin is
+  // unique within (s, note, pan) because begin includes the cycle index
+  // (e.g. cycle 1 events at 1.0, 1.25, …). Within a cycle, shuffle plays
+  // each note exactly once (no collisions); scramble may pick the same
+  // source slot twice but at DIFFERENT destination slots → distinct
+  // begins. So dedupeByWholeBegin (key = begin|s|note|pan) is safe — no
+  // legitimate per-cycle replays get collapsed.
+  // ------------------------------------------------------------------
+  it('shuffle parity: note("c d e f").shuffle(4) over 4 cycles — exact (begin, note) set match', async () => {
+    const code = 'note("c d e f").shuffle(4)'
+    const rawExpected = (await strudelEventsFromCode(code, 4)).map(normalizeStrudelPan)
+    const expected = withOnsetInWindow(dedupeByWholeBegin(rawExpected), 0, 4)
+    const ours = collectCycles(parseStrudel(code), 0, 4)
+    // 4 notes × 4 cycles = 16 (permutation: each cycle plays all 4 once).
+    expect(ours.length).toBe(16)
+    expect(ours.length).toBe(expected.length)
+    // Exact (begin, note) tuple set — RNG sample-point alignment with
+    // Strudel's randrun. If this fails: the seededRandsAtTime helper
+    // diverged from __timeToRandsPrime (RESEARCH §4 / collect.ts).
+    const tuple = (e: IREvent): string =>
+      `${e.begin.toFixed(9)}|${e.note ?? ''}`
+    expect(new Set(ours.map(tuple))).toEqual(new Set(expected.map(tuple)))
+    // PV24 — loc presence on every event our pipeline emits.
+    for (const e of ours) expect(e.loc).toBeDefined()
+  })
+
+  it('shuffle preserves the permutation property over 4 cycles (each source note played exactly once per cycle)', () => {
+    // Internal property test: Shuffle is permutation-without-replacement,
+    // so every cycle plays every body note exactly once. This catches
+    // accidental collapse to scramble semantics or selector duplication.
+    const code = 'note("c d e f").shuffle(4)'
+    const ours = collectCycles(parseStrudel(code), 0, 4)
+    expect(ours.length).toBe(16)
+    for (let c = 0; c < 4; c++) {
+      const cycleEvents = ours.filter((e) => e.begin >= c && e.begin < c + 1)
+      expect(cycleEvents.length).toBe(4)
+      const notes = cycleEvents.map((e) => String(e.note)).sort()
+      expect(notes).toEqual(['c', 'd', 'e', 'f'])
+    }
+  })
+
+  it('scramble parity: note("c d e f").scramble(4) over 4 cycles — exact (begin, note) set match', async () => {
+    const code = 'note("c d e f").scramble(4)'
+    const rawExpected = (await strudelEventsFromCode(code, 4)).map(normalizeStrudelPan)
+    const expected = withOnsetInWindow(dedupeByWholeBegin(rawExpected), 0, 4)
+    const ours = collectCycles(parseStrudel(code), 0, 4)
+    // Scramble: per-slot independent samples → up to 16 events but some
+    // slots may collide on source while others are unused → events count
+    // ≤ 16. Don't hard-code; let the parity assertion verify match with
+    // Strudel.
+    expect(ours.length).toBe(expected.length)
+    const tuple = (e: IREvent): string =>
+      `${e.begin.toFixed(9)}|${e.note ?? ''}`
+    expect(new Set(ours.map(tuple))).toEqual(new Set(expected.map(tuple)))
+    for (const e of ours) expect(e.loc).toBeDefined()
+  })
+
+  it('parseStrudel routes .shuffle(n) and .scramble(n) to Shuffle/Scramble tags', () => {
+    const sh = parseStrudel('note("c d e f").shuffle(4)')
+    expect(sh.tag).toBe('Shuffle')
+    if (sh.tag === 'Shuffle') expect(sh.n).toBe(4)
+    const sc = parseStrudel('note("c d e f").scramble(4)')
+    expect(sc.tag).toBe('Scramble')
+    if (sc.tag === 'Scramble') expect(sc.n).toBe(4)
+  })
 })
 
 // ---------------------------------------------------------------------------
