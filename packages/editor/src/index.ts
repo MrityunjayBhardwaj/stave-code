@@ -285,6 +285,21 @@ export {
   getIRSnapshot,
   subscribeIRSnapshot,
 } from './engine/irInspector'
+
+// Phase 19-08 — IR Inspector streaming timeline capture buffer.
+// Fed by every publishIRSnapshot fan-out (PK9 step 8); consumed by the
+// app-side IRInspectorTimeline strip (PR-B). __resetCaptureForTest is
+// intentionally NOT exported — test-internal; tests import from the
+// module path directly.
+export type { TimelineCaptureEntry } from './engine/timelineCapture'
+export {
+  captureSnapshot,
+  getCaptureBuffer,
+  subscribeCapture,
+  clearCapture,
+  getCaptureCapacity,
+  setCaptureCapacity,
+} from './engine/timelineCapture'
 export type {
   FriendlyErrorParts,
   FuzzyMatch,
