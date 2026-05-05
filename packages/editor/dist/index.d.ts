@@ -1342,7 +1342,7 @@ declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]):
  * cache when the registry mutates.
  */
 
-type Listener$2 = () => void;
+type Listener$3 = () => void;
 /**
  * Register a descriptor under a user-chosen name. Idempotent — calling
  * twice with the same name + descriptor is a no-op and does not fire
@@ -1379,7 +1379,7 @@ declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
  * fire synchronously on subscription — subscribers receive only
  * future changes.
  */
-declare function onNamedVizChanged(cb: Listener$2): () => void;
+declare function onNamedVizChanged(cb: Listener$3): () => void;
 
 /**
  * Central configuration for the Stave visualization system.
@@ -2457,6 +2457,16 @@ interface LiveCodingRuntime$1 {
      */
     getBpm(): number | undefined;
     /**
+     * Current cycle position from the engine's pattern scheduler, or `null`
+     * when the scheduler is unavailable (engine not initialized, transport
+     * stopped, non-Strudel runtime). Used by the IR Inspector timeline
+     * strip's tooltip to anchor each captured snapshot to musical time.
+     * The tooltip falls back to wall-clock when this returns `null`.
+     *
+     * Phase 19-08 (#85). Mirrors `getBpm()` shape.
+     */
+    getCurrentCycle(): number | null;
+    /**
      * Enable or disable live mode (auto-refresh). When enabled and the
      * runtime is playing, every file content change triggers a
      * debounced re-`play()` (which re-evaluates the current code) so
@@ -3295,14 +3305,14 @@ declare function subscribeToDocUpdate(cb: () => void, options?: {
  * existing store functions as usual.
  */
 declare function withStructBatch<T>(fn: () => T): T;
-type Listener$1 = () => void;
+type Listener$2 = () => void;
 /** Call when the active project Y.Doc changes so the undo stack rebuilds. */
 declare function resetUndoManager(): void;
 declare function undo(): boolean;
 declare function redo(): boolean;
 declare function canUndo(): boolean;
 declare function canRedo(): boolean;
-declare function subscribeToUndoState(cb: Listener$1): () => void;
+declare function subscribeToUndoState(cb: Listener$2): () => void;
 
 /**
  * Reveal the given line in the editor for `fileId` and set the cursor
@@ -3926,6 +3936,15 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     onPlayingChanged(cb: (playing: boolean) => void): () => void;
     onEvaluateSuccess(cb: () => void): () => void;
     getBpm(): number | undefined;
+    /**
+     * Current cycle position from the engine's pattern scheduler, or `null`
+     * when the scheduler is unavailable (engine not initialized, transport
+     * stopped, non-Strudel runtime). The IR Inspector timeline strip's
+     * per-tick tooltip falls back to wall-clock when this returns `null`.
+     *
+     * Phase 19-08 (#85). RESEARCH §2.
+     */
+    getCurrentCycle(): number | null;
     private fireOnError;
     private firePlayingChanged;
     private fireEvaluateSuccess;
@@ -4598,11 +4617,86 @@ interface IRSnapshot {
     /** Collected events for one cycle window starting at t=0. */
     events: IREvent[];
 }
-type Listener = (snap: IRSnapshot | null) => void;
-declare function publishIRSnapshot(snap: IRSnapshot): void;
+type Listener$1 = (snap: IRSnapshot | null) => void;
+/**
+ * Publish a snapshot. Two parallel side-effects fire on every publish
+ * (PK9 step 8 — order independent, both must run):
+ *  1. captureSnapshot fan-out — pushes into the timeline ring buffer
+ *     (timelineCapture.ts) so past evals can be scrubbed.
+ *  2. listener fan-out — single-slot consumers (the IR Inspector
+ *     panel's live subscribe) re-render with the new snapshot.
+ *
+ * The optional `meta` parameter carries cycle position (read by the
+ * publisher from `runtime.getCurrentCycle()`) onto the capture entry.
+ * Existing callers pass no `meta` and continue to compile; capture
+ * defaults `cycleCount` to `null` in that case.
+ */
+declare function publishIRSnapshot(snap: IRSnapshot, meta?: {
+    cycleCount?: number | null;
+}): void;
 declare function clearIRSnapshot(): void;
 declare function getIRSnapshot(): IRSnapshot | null;
-declare function subscribeIRSnapshot(fn: Listener): () => void;
+declare function subscribeIRSnapshot(fn: Listener$1): () => void;
+
+/**
+ * timelineCapture — fixed-size FIFO ring buffer of IRSnapshot captures.
+ *
+ * Fed by publishIRSnapshot's capture fan-out (irInspector.ts) on every
+ * successful eval. Default capacity 30 entries; configurable via
+ * setCaptureCapacity (the chrome trace-length input persists capacity in
+ * localStorage — entry storage itself is in-memory per CONTEXT D-06).
+ *
+ * Pin-by-reference contract: UI consumers hold the snapshot reference in
+ * React state. FIFO eviction does NOT invalidate the held reference (JS
+ * GC keeps it alive as long as the React state holds it). Trap #5
+ * mitigation per RESEARCH §7.
+ *
+ * Defensive immutability: Object.freeze(snap) + Object.freeze(snap.passes)
+ * applied at push time (RESEARCH §7 trap #1 mitigation). Shallow only
+ * — the IR tree itself is NOT deep-frozen due to recursion cost on
+ * large trees.
+ *
+ * Phase 19-08 (#85). PR-A.
+ */
+
+/**
+ * Single entry in the capture buffer. `cycleCount` is captured from
+ * `runtime.getCurrentCycle()` at publish time and lives on the entry
+ * (not on `IRSnapshot`) so PV27's per-snapshot alias contract stays
+ * untouched and snapshots remain wire-shaped.
+ */
+type TimelineCaptureEntry = Readonly<{
+    snapshot: IRSnapshot;
+    ts: number;
+    cycleCount: number | null;
+}>;
+type Listener = () => void;
+/**
+ * Push a snapshot into the buffer. Defensive freeze at the snapshot
+ * top-level + passes array prevents future code paths from mutating
+ * captured state. FIFO eviction drops the oldest entry when capacity
+ * is exceeded.
+ */
+declare function captureSnapshot(snap: IRSnapshot, meta?: {
+    ts?: number;
+    cycleCount?: number | null;
+}): void;
+/** Read-only view of the current buffer. Most recent entry is last. */
+declare function getCaptureBuffer(): readonly TimelineCaptureEntry[];
+/**
+ * Subscribe to buffer changes (push, clear, capacity clamp). Listener
+ * fires with no arguments — consumers re-read `getCaptureBuffer()`.
+ */
+declare function subscribeCapture(l: Listener): () => void;
+/** Empty the buffer; notify subscribers. */
+declare function clearCapture(): void;
+/** Current configured capacity (default 30). */
+declare function getCaptureCapacity(): number;
+/**
+ * Set capacity. Clamps existing entries from the oldest if the new
+ * capacity is smaller. No-op for non-finite or sub-1 values.
+ */
+declare function setCaptureCapacity(n: number): void;
 
 /**
  * Shared shape for every runtime's hover/completion documentation index.
@@ -4847,4 +4941,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, type BackdropQuality, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type Pass, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, clearIRSnapshot, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, type BackdropQuality, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type Pass, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TimelineCaptureEntry, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, clearCapture, clearIRSnapshot, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
