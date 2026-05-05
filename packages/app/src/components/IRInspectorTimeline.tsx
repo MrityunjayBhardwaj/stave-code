@@ -46,6 +46,21 @@ export type IRInspectorTimelineProps = {
  * (or capacity clamp / clear) by bumping a version counter. Mirrors
  * the existing useState-based subscribe pattern used by
  * IRInspectorPanel for the live snapshot.
+ *
+ * IMPORTANT — buffer reference stability trap:
+ * `getCaptureBuffer()` returns the LIVE internal array reference
+ * (timelineCapture.ts:88-90). FIFO eviction (`entries.shift()`) mutates
+ * that array in place — same reference, fewer elements. If we returned
+ * `getCaptureBuffer()` directly, downstream `useMemo([entries, ...])`
+ * would skip recomputation because `entries` would be referentially
+ * stable across pushes and the cached value (e.g. `pinnedInBuffer`)
+ * would go stale.
+ *
+ * Slicing here forces a FRESH array reference per call. Cost: one
+ * O(n) copy per render with n ≤ 500 (capacity max) — negligible.
+ * Benefit: every dependent useMemo recomputes when the buffer
+ * changes shape, including evictions of pinned references (probe
+ * (g) ghost marker).
  */
 function useCaptureBuffer(): readonly TimelineCaptureEntry[] {
   const [, setVersion] = useState<number>(0);
@@ -54,7 +69,7 @@ function useCaptureBuffer(): readonly TimelineCaptureEntry[] {
       setVersion((v) => v + 1);
     });
   }, []);
-  return getCaptureBuffer();
+  return [...getCaptureBuffer()];
 }
 
 function formatTooltip(entry: TimelineCaptureEntry, isLive: boolean): string {
