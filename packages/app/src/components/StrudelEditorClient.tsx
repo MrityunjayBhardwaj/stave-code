@@ -29,10 +29,14 @@ import {
   emitLog,
   emitFixed,
   formatFriendlyError,
-  parseStrudel,
   collect,
   runPasses,
   publishIRSnapshot,
+  IR,
+  runRawStage,
+  runMiniExpandedStage,
+  runChainAppliedStage,
+  runFinalStage,
   type Pass,
   type PatternIR,
   STRUDEL_DOCS_INDEX,
@@ -47,9 +51,18 @@ import {
 import { PIANOROLL_P5_CODE, PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
 
-// Future passes that rewrite Play nodes must preserve or compose `loc` (PV24).
+// Phase 19-07 (#79) — 4-stage parser pipeline. Each stage emits its own
+// IRSnapshot.passes[] entry; FINAL output is byte-identical to today's
+// parseStrudel(code). Tab name 'Parsed' kept for IRInspectorPanel
+// persistence backward-compat (RESEARCH §3.2). RAW reads input.code from
+// the pre-pass-0 seed (Code-wrapped raw source); subsequent stages take
+// the previous stage's PatternIR output. Future passes that rewrite Play
+// nodes must preserve or compose `loc` (PV24).
 const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
-  { name: "Parsed", run: (ir) => ir },
+  { name: "RAW",            run: runRawStage           },
+  { name: "MINI-EXPANDED",  run: runMiniExpandedStage  },
+  { name: "CHAIN-APPLIED",  run: runChainAppliedStage  },
+  { name: "Parsed",         run: runFinalStage         },
 ];
 
 
@@ -319,12 +332,18 @@ export default function StrudelEditorClient({
       // handler depends on this lookup matching.
       if (runtimeId === "strudel" && fileNow) {
         try {
-          const ir = parseStrudel(fileNow.content);
-          const passes = runPasses(ir, STRUDEL_PASSES);
+          // Phase 19-07 (#79) — pre-pass-0 seed: wrap raw source as a
+          // Code node so pass 0 (RAW) reads input.code and runs
+          // extractTracks. runPasses signature unchanged. End-to-end
+          // FINAL output (passes[last].ir) is byte-identical to today's
+          // parseStrudel(code) (D-06 regression gate; verified by
+          // parity.test.ts + parseStrudel.stages.test.ts).
+          const seed: PatternIR = IR.code(fileNow.content);
+          const passes = runPasses(seed, STRUDEL_PASSES);
           // finalIR drives both `collect` (events reflect post-pass IR
           // when real passes land later) and the `ir` alias on the
           // snapshot. Single source of truth — passes[last].ir and the
-          // alias cannot drift apart.
+          // alias cannot drift apart (PV27).
           const finalIR = passes[passes.length - 1].ir;
           const events = collect(finalIR);
           publishIRSnapshot({

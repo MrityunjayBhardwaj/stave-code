@@ -70,14 +70,22 @@ async function bootInspectorWithPattern(page: Page): Promise<void> {
 }
 
 test.describe('IR Inspector — Pass Instrumentation v1', () => {
-  test('Parsed tab is the only tab and is selected by default', async ({ page }) => {
+  test('4 stage tabs render; rightmost (Parsed) is selected by default', async ({ page }) => {
+    // Phase 19-07 (#79) — the parser pipeline produces 4 named stages
+    // (RAW / MINI-EXPANDED / CHAIN-APPLIED / Parsed). The Inspector's
+    // tablist defaults to the rightmost (FINAL) tab via the
+    // passes.length - 1 fallback (RESEARCH §3.2).
     await bootInspectorWithPattern(page)
     const tabs = page.locator('[data-testid="ir-passes-tablist"] [role="tab"]')
-    await expect(tabs).toHaveCount(1)
-    await expect(tabs.first()).toHaveText('Parsed')
-    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true')
-    await expect(tabs.first()).toHaveAttribute('tabindex', '0')
-    await expect(tabs.first()).toHaveAttribute('aria-controls', 'ir-tree-panel')
+    await expect(tabs).toHaveCount(4)
+    await expect(tabs.nth(0)).toHaveText('RAW')
+    await expect(tabs.nth(1)).toHaveText('MINI-EXPANDED')
+    await expect(tabs.nth(2)).toHaveText('CHAIN-APPLIED')
+    await expect(tabs.nth(3)).toHaveText('Parsed')
+    // The rightmost (FINAL) tab is selected by default.
+    await expect(tabs.nth(3)).toHaveAttribute('aria-selected', 'true')
+    await expect(tabs.nth(3)).toHaveAttribute('tabindex', '0')
+    await expect(tabs.nth(3)).toHaveAttribute('aria-controls', 'ir-tree-panel')
   })
 
   test('IR tree renders parsed PatternIR for the evaluated code', async ({ page }) => {
@@ -127,16 +135,19 @@ test.describe('IR Inspector — Pass Instrumentation v1', () => {
     expect(cursorLineHasNoteCall).toBe(true)
   })
 
-  test('Parsed tab stays selected across a re-eval of the same code', async ({
+  test('Parsed (FINAL) tab stays selected across a re-eval of the same code', async ({
     page,
   }) => {
+    // Phase 19-07 (#79) — selectedTabName persistence keys on 'Parsed'
+    // (kept as the FINAL pass name for tab-persistence backward-compat
+    // per RESEARCH §3.2). Re-eval must not flip to a different tab.
     await bootInspectorWithPattern(page)
     await evalStrudel(page) // re-eval
     const tab = page.locator('[data-testid="ir-pass-tab-Parsed"]')
     await expect(tab).toHaveAttribute('aria-selected', 'true')
-    // Tablist still has exactly one tab — schema didn't drift.
+    // Tablist now has 4 tabs (was 1 before 19-07); schema is stable.
     const tabs = page.locator('[data-testid="ir-passes-tablist"] [role="tab"]')
-    await expect(tabs).toHaveCount(1)
+    await expect(tabs).toHaveCount(4)
   })
 
   test('IR tree is collapsible via its <details> element', async ({ page }) => {
@@ -147,7 +158,7 @@ test.describe('IR Inspector — Pass Instrumentation v1', () => {
     await expect(details).toHaveJSProperty('open', false)
   })
 
-  test('arrow keys on the single-tab strip do not change selection or surface errors', async ({
+  test('arrow keys round-trip on the tab strip return to Parsed without errors', async ({
     page,
   }) => {
     const consoleErrors: string[] = []

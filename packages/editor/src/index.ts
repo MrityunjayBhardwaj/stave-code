@@ -5,6 +5,12 @@ export type { PatternIR, PlayParams, CollectContext, ComponentBag, System } from
 export { IR, collect, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
 export { parseMini, parseStrudel, propagate, StrudelParseSystem, IREventCollectSystem } from './ir'
 
+// Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported
+// from the top-level barrel so the app can `import { runRawStage, ... }
+// from "@stave/editor"`. Phase 19-02 hit this exact bug — runPasses was
+// added to the sub-barrel only and was missing from dist/index.cjs.
+export { runRawStage, runMiniExpandedStage, runChainAppliedStage, runFinalStage } from './ir'
+
 // Pass runner — runtime-neutral IR→IR transform machinery
 export type { Pass } from './ir'
 export { runPasses } from './ir'

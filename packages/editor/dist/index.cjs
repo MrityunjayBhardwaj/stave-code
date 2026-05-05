@@ -4586,6 +4586,117 @@ function splitFirstArg(argsStr) {
   return [parts2[0], parts2.slice(1).join(", ")];
 }
 
+// src/ir/parseStrudelStages.ts
+function runRawStage(input) {
+  if (input.tag !== "Code") {
+    return input;
+  }
+  const code = input.code;
+  if (!code.trim()) {
+    return {
+      tag: "Code",
+      code: "",
+      lang: "strudel",
+      loc: [{ start: 0, end: code.length }]
+    };
+  }
+  const tracks = extractTracks(code);
+  if (tracks.length === 0) {
+    const trimStart = code.search(/\S/);
+    const start2 = trimStart >= 0 ? trimStart : 0;
+    return {
+      tag: "Code",
+      code: code.trim(),
+      lang: "strudel",
+      loc: [{ start: start2, end: code.length }]
+    };
+  }
+  if (tracks.length === 1) {
+    const t = tracks[0];
+    return {
+      tag: "Code",
+      code: t.expr,
+      lang: "strudel",
+      loc: [{ start: t.offset, end: t.offset + t.expr.length }]
+    };
+  }
+  const trackCodes = tracks.map((t) => ({
+    tag: "Code",
+    code: t.expr,
+    lang: "strudel",
+    loc: [{ start: t.offset, end: t.offset + t.expr.length }]
+  }));
+  return {
+    tag: "Stack",
+    tracks: trackCodes,
+    loc: [{ start: 0, end: code.length }]
+    // userMethod intentionally undefined — synthetic-from-RAW outer
+    // wrapper. Projects to mini polymetric `{}` symbol per 19-06.
+  };
+}
+function runMiniExpandedStage(input) {
+  if (input.tag === "Code") {
+    if (!input.code.trim()) return IR.pure();
+    return parseRootWithChainMeta(input.code, input.loc?.[0]?.start ?? 0);
+  }
+  if (input.tag === "Stack" && input.userMethod === void 0) {
+    const tracks = input.tracks.map((t) => {
+      if (t.tag !== "Code") return t;
+      return parseRootWithChainMeta(t.code, t.loc?.[0]?.start ?? 0);
+    });
+    return { ...input, tracks };
+  }
+  return input;
+}
+function parseRootWithChainMeta(expr, baseOffset) {
+  if (!expr.trim()) return IR.pure();
+  const leadingWs = expr.length - expr.trimStart().length;
+  const trimmedOffset = baseOffset + leadingWs;
+  const trimmed = expr.trim();
+  const { root, chain } = splitRootAndChain(trimmed);
+  const rootIR = parseRoot(root, trimmedOffset);
+  if (rootIR.tag === "Code") {
+    return IR.code(expr);
+  }
+  if (chain.trim()) {
+    const chainOffset = trimmedOffset + root.length;
+    return {
+      ...rootIR,
+      unresolvedChain: chain,
+      chainOffset
+    };
+  }
+  return rootIR;
+}
+function runChainAppliedStage(input) {
+  if (input.tag === "Stack" && input.userMethod === void 0) {
+    return IR.stack(...input.tracks.map(applyOnTrack));
+  }
+  return applyOnTrack(input);
+}
+function applyOnTrack(node) {
+  const m = node;
+  if (m.unresolvedChain === void 0) {
+    return stripStageMeta(node);
+  }
+  const chain = m.unresolvedChain;
+  const chainOffset = m.chainOffset ?? 0;
+  const clean = stripStageMeta(node);
+  if (chain.trim()) {
+    return applyChain(clean, chain, chainOffset);
+  }
+  return clean;
+}
+function stripStageMeta(node) {
+  const n = node;
+  if (!("unresolvedChain" in n) && !("chainOffset" in n)) return node;
+  const { unresolvedChain: _u, chainOffset: _o, ...clean } = n;
+  return clean;
+}
+function runFinalStage(input) {
+  return input;
+}
+
 // src/ir/passes.ts
 function runPasses(input, passes) {
   const out2 = [];
@@ -33535,7 +33646,11 @@ exports.resetUndoManager = resetUndoManager;
 exports.resolveDescriptor = resolveDescriptor;
 exports.restoreSnapshot = restoreSnapshot;
 exports.revealLineInFile = revealLineInFile;
+exports.runChainAppliedStage = runChainAppliedStage;
+exports.runFinalStage = runFinalStage;
+exports.runMiniExpandedStage = runMiniExpandedStage;
 exports.runPasses = runPasses;
+exports.runRawStage = runRawStage;
 exports.sanitizePresetName = sanitizePresetName;
 exports.saveSnapshot = saveSnapshot;
 exports.scaleGain = scaleGain;
