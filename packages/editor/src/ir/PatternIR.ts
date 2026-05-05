@@ -31,15 +31,26 @@ export interface PlayParams {
 // the call site, per D-08 exact-token taxonomy). Both are optional because
 // non-parser code paths (test fixtures, IR transforms) construct nodes
 // without metadata. CONTEXT D-03, D-07, D-12.
+//
+// 19-07 (#79) — the 6 root-eligible union members (Pure, Seq, Stack, Play,
+// Cycle, Code) carry two optional stage-transition metadata fields:
+// `unresolvedChain?: string` and `chainOffset?: number`. These are SET by
+// `runMiniExpandedStage` on each track root, READ + DROPPED by
+// `runChainAppliedStage`, and IRRELEVANT for engine consumption (collect,
+// toStrudel, irProjection ignore them per CONTEXT D-03). The other 16
+// union members (Fast, Slow, Every, ...) are constructed only inside
+// applyChain and never sit at a track root post-parseRoot, so they do
+// NOT carry these fields. Narrow-union additive change preserves PV32
+// (implicit-IR principle). RESEARCH §3.1 fallback option.
 export type PatternIR =
-  | { tag: 'Pure'; loc?: SourceLocation[]; userMethod?: string }
-  | { tag: 'Seq';    children: PatternIR[]; loc?: SourceLocation[]; userMethod?: string }
-  | { tag: 'Stack';  tracks: PatternIR[]; loc?: SourceLocation[]; userMethod?: string }
-  | { tag: 'Play';   note: string | number; duration: number; params: PlayParams; loc?: SourceLocation[] }
+  | { tag: 'Pure'; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+  | { tag: 'Seq';    children: PatternIR[]; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+  | { tag: 'Stack';  tracks: PatternIR[]; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+  | { tag: 'Play';   note: string | number; duration: number; params: PlayParams; loc?: SourceLocation[]; unresolvedChain?: string; chainOffset?: number }
   | { tag: 'Sleep';  duration: number; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Choice'; p: number; then: PatternIR; else_: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Every';  n: number; body: PatternIR; default_?: PatternIR; loc?: SourceLocation[]; userMethod?: string }
-  | { tag: 'Cycle';  items: PatternIR[]; loc?: SourceLocation[]; userMethod?: string }
+  | { tag: 'Cycle';  items: PatternIR[]; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
   | { tag: 'When';   gate: string; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'FX';     name: string; params: Record<string, number | string>; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Ramp';   param: string; from: number; to: number; cycles: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
@@ -57,7 +68,7 @@ export type PatternIR =
   | { tag: 'Scramble'; n: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 (Phase 19-04 T-05) — signal.mjs:405 scramble(n) = _rearrangeWith(_irand(n)._segment(n), n, pat); per-slot independent samples (with replacement) of n slices.
   | { tag: 'Chop';   n: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 (Phase 19-04 T-08) — pattern.mjs:3291-3306 chop(n) = pat.squeezeBind(o => sequence(slice_objects.map(s => merge(o, s)))). Per-event sample-range slicing — each source event becomes n sub-events with progressive begin/end controls. D-04: pattern-level only; audio-buffer slicing deferred to phase 22 (axis 5).
   | { tag: 'Loop';   body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
-  | { tag: 'Code';   code: string; lang: 'strudel'; loc?: SourceLocation[]; userMethod?: string }  // Opaque fallback for unparseable fragments
+  | { tag: 'Code';   code: string; lang: 'strudel'; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }  // Opaque fallback for unparseable fragments
 
 /**
  * Optional metadata accepted by every non-rest-spread smart constructor
