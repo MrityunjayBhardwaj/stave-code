@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../../../../editor/src/ir/parseStrudel'
 import { IR, type PatternIR } from '../../../../editor/src/ir/PatternIR'
+import { runRawStage } from '../../../../editor/src/ir/parseStrudelStages'
 import {
   projectedLabel,
   projectedChildren,
@@ -468,5 +469,59 @@ describe('stripInnerLate', () => {
   it('stops at Code leaf', () => {
     const code: PatternIR = IR.code('foo')
     expect(stripInnerLate(code)).toBe(code)
+  })
+})
+
+// -----------------------------------------------------------------------------
+// T-12.5 (REV-3) — RAW tab projection probe
+//
+// CONTEXT D-04 mandates uniform projection across all 4 stages
+// (RAW, MINI-EXPANDED, CHAIN-APPLIED, Parsed). T-12 audits the FINAL
+// (rightmost-by-default) tab via Playwright; the RAW tab — which renders
+// a multi-track $: source as Stack(userMethod=undefined) > Code, Code,
+// Code (RESEARCH §2.1) — has no explicit projection probe. P46 (display-
+// layer projection whitelist) is the catalogue ref: a missing rule would
+// fail silently as a thrown render error or blank row, neither of which
+// the existing FINAL-tab tests catch.
+// -----------------------------------------------------------------------------
+
+describe('RAW tab projection (D-04 uniform projection — REV-3)', () => {
+  it('multi-track $: RAW IR projects without errors; outer Stack(undefined) → "{}" mini polymetric symbol', () => {
+    const code = '$: note("c d")\n$: s("bd hh")'
+    const raw = runRawStage(IR.code(code))
+    // Sanity: RAW returned the expected shape (multi-track outer Stack).
+    expect(raw.tag).toBe('Stack')
+    expect((raw as { userMethod?: string }).userMethod).toBeUndefined()
+    // Outer Stack with userMethod undefined projects to the polymetric
+    // mini symbol per RESEARCH §6 D-04 risk acceptance — no thrown error.
+    expect(() => projectedLabel(raw)).not.toThrow()
+    expect(projectedLabel(raw)).toBe('{}')
+    // projectedChildren returns the per-track Code lifts (D-04 uniform
+    // — Code is whitelisted out of D-02 hide rule).
+    const kids = projectedChildren(raw)
+    expect(kids.length).toBe(2)
+    for (const k of kids) {
+      expect(k.tag).toBe('Code')
+      expect(projectedLabel(k)).toBe('Code')
+    }
+    // Each track's expr text is recoverable from its Code node.
+    const codes = (kids as Array<{ tag: 'Code'; code: string }>)
+      .filter((k) => k.tag === 'Code')
+      .map((k) => k.code)
+    expect(codes[0]).toContain('note("c d")')
+    expect(codes[1]).toContain('s("bd hh")')
+  })
+
+  it('single-track RAW IR projects to one Code row with the expected text', () => {
+    const code = 'note("c d")'
+    const raw = runRawStage(IR.code(code))
+    expect(raw.tag).toBe('Code')
+    expect(() => projectedLabel(raw)).not.toThrow()
+    expect(projectedLabel(raw)).toBe('Code')
+    // Code is a leaf at projection — no children.
+    const kids = projectedChildren(raw)
+    expect(kids).toHaveLength(0)
+    // The Code's text contains the source.
+    expect((raw as { code: string }).code).toBe('note("c d")')
   })
 })
