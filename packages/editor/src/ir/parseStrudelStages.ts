@@ -181,8 +181,16 @@ function parseRootWithChainMeta(expr: string, baseOffset: number): PatternIR {
  */
 export function runChainAppliedStage(input: PatternIR): PatternIR {
   if (input.tag === 'Stack' && input.userMethod === undefined) {
-    // Multi-track from MINI-EXPANDED — applyChain per track, keep Stack.
-    return { ...input, tracks: input.tracks.map(applyOnTrack) }
+    // Multi-track from MINI-EXPANDED — applyChain per track, then
+    // rebuild the outer Stack via IR.stack so the FINAL shape matches
+    // today's parseStrudel (`IR.stack(...tracks.map(parseExpression))`
+    // at parseStrudel.ts:66) which produces `{ tag: 'Stack', tracks }`
+    // with NO outer loc/userMethod. RAW's synthetic outer loc is
+    // intentionally dropped here — it was only useful at the RAW tab
+    // for visualizing the source span, NOT a real source-correspondence
+    // for the multi-track Stack node. T-05.c regression sentinel
+    // enforces byte-equality.
+    return IR.stack(...input.tracks.map(applyOnTrack))
   }
   // Single-track case (or any non-multi-track shape).
   return applyOnTrack(input)
