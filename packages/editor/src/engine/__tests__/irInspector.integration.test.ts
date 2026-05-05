@@ -11,7 +11,7 @@
  * backward-compat (RESEARCH §3.2). The PV27 alias contract holds via
  * snap.ir === snap.passes[passes.length - 1].ir.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   parseStrudel,
   collect,
@@ -24,6 +24,8 @@ import {
   type Pass,
 } from '../../ir'
 import type { PatternIR } from '../../ir/PatternIR'
+import { publishIRSnapshot, clearIRSnapshot, type IRSnapshot } from '../irInspector'
+import { getCaptureBuffer, __resetCaptureForTest } from '../timelineCapture'
 
 const v4Passes: readonly Pass<PatternIR>[] = [
   { name: 'RAW',           run: runRawStage           },
@@ -85,5 +87,58 @@ describe('irInspector integration — parse → run → collect', () => {
       runPasses(IR.code(code), v4Passes)[3].ir,
     )
     expect(run2).toEqual(run1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 19-08 — publishIRSnapshot also captures into timelineCapture (PK9 §8a)
+// ---------------------------------------------------------------------------
+//
+// PR-A boundary probe: confirm the cross-module hook (irInspector
+// publish → timelineCapture push) lands on every publish. Future
+// refactors that accidentally break the fan-out trip a clear test
+// here, separate from the unit-level coverage in timelineCapture.test.ts.
+
+function buildSnap(code: string = 'note("c3")'): IRSnapshot {
+  const seed = IR.code(code)
+  const passes = runPasses(seed, v4Passes)
+  const finalIR = passes[passes.length - 1].ir
+  return {
+    ts: 1234,
+    source: 'integration.strudel',
+    runtime: 'strudel',
+    code,
+    passes,
+    ir: finalIR, // PV27 alias: passes[last].ir
+    events: collect(finalIR),
+  }
+}
+
+describe('publishIRSnapshot also captures into timelineCapture (PK9 step 8a)', () => {
+  beforeEach(() => {
+    clearIRSnapshot()
+    __resetCaptureForTest()
+  })
+
+  it('every publish pushes one entry into the capture buffer', () => {
+    expect(getCaptureBuffer()).toHaveLength(0)
+    const snap = buildSnap()
+    publishIRSnapshot(snap, { cycleCount: 1.5 })
+    expect(getCaptureBuffer()).toHaveLength(1)
+    // PV27-cousin: snapshot stored BY REFERENCE, not cloned.
+    expect(getCaptureBuffer()[0].snapshot).toBe(snap)
+    expect(getCaptureBuffer()[0].cycleCount).toBe(1.5)
+  })
+
+  it('publish without meta records cycleCount: null (existing callers stay source-compatible)', () => {
+    publishIRSnapshot(buildSnap())
+    expect(getCaptureBuffer()).toHaveLength(1)
+    expect(getCaptureBuffer()[0].cycleCount).toBeNull()
+  })
+
+  it('publish forwards snap.ts onto the capture entry by default', () => {
+    const snap = buildSnap()
+    publishIRSnapshot(snap)
+    expect(getCaptureBuffer()[0].ts).toBe(1234)
   })
 })

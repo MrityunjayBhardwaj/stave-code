@@ -7011,9 +7011,9 @@ function ensureUndoManager() {
     }
   };
   files.observe(filesObserver);
-  const listeners5 = /* @__PURE__ */ new Set();
+  const listeners6 = /* @__PURE__ */ new Set();
   const notify2 = () => {
-    for (const l of listeners5) l();
+    for (const l of listeners6) l();
   };
   const onStackItemAdded = () => notify2();
   const onStackItemPopped = () => notify2();
@@ -7023,7 +7023,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners5,
+    listeners: listeners6,
     cleanup: () => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -7060,10 +7060,10 @@ function canRedo() {
 }
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners5 = active.listeners;
-  listeners5.add(cb);
+  const listeners6 = active.listeners;
+  listeners6.add(cb);
   return () => {
-    listeners5.delete(cb);
+    listeners6.delete(cb);
   };
 }
 
@@ -7335,14 +7335,14 @@ function getChildOrder(parentPath) {
   const arr = map.get(parentPath);
   return arr ? arr.toArray() : [];
 }
-function setChildOrder(parentPath, entries) {
+function setChildOrder(parentPath, entries2) {
   ensureDoc();
   ensureFolderOrderObserver();
   const map = getChildOrderMap();
   const doc = ensureDoc();
   doc.transact(() => {
     const next = new Y3__namespace.Array();
-    next.push(entries);
+    next.push(entries2);
     map.set(parentPath, next);
   }, STRUCT_ORIGIN);
 }
@@ -7650,11 +7650,11 @@ function createIdentifierCompletionProvider(monaco, index) {
         startColumn: word.startColumn,
         endColumn: word.endColumn
       };
-      const entries = Object.entries(index.docs).filter(
+      const entries2 = Object.entries(index.docs).filter(
         ([name2]) => prefix.length === 0 ? true : name2.toLowerCase().startsWith(prefix.toLowerCase())
       );
       return {
-        suggestions: entries.map(
+        suggestions: entries2.map(
           ([name2, doc]) => toSuggestion(monaco, name2, doc, range2)
         )
       };
@@ -20043,6 +20043,18 @@ var LiveCodingRuntime = class {
   getBpm() {
     return this.currentBpm;
   }
+  /**
+   * Current cycle position from the engine's pattern scheduler, or `null`
+   * when the scheduler is unavailable (engine not initialized, transport
+   * stopped, non-Strudel runtime). The IR Inspector timeline strip's
+   * per-tick tooltip falls back to wall-clock when this returns `null`.
+   *
+   * Phase 19-08 (#85). RESEARCH §2.
+   */
+  getCurrentCycle() {
+    const v = this.engine.components.queryable?.scheduler?.now();
+    return Number.isFinite(v) ? v : null;
+  }
   // -------------------------------------------------------------------------
   // Internal listener dispatchers — snapshot-then-iterate so a listener
   // that unsubscribes itself during the callback doesn't break the loop.
@@ -31487,8 +31499,8 @@ function mountVizRenderer(container, source, components, size, onError) {
   renderer.mount(container, components, size, onError);
   let lastW = size.w;
   let lastH = size.h;
-  const ro = new ResizeObserver((entries) => {
-    const { width, height } = entries[0].contentRect;
+  const ro = new ResizeObserver((entries2) => {
+    const { width, height } = entries2[0].contentRect;
     if (width > 0 && height > 0 && (Math.abs(width - lastW) > 1 || Math.abs(height - lastH) > 1)) {
       lastW = width;
       lastH = height;
@@ -33459,12 +33471,71 @@ function emitFromGlobal(err2, _kind) {
   });
 }
 
+// src/engine/timelineCapture.ts
+var DEFAULT_CAPACITY = 30;
+var entries = [];
+var capacity = DEFAULT_CAPACITY;
+var listeners4 = /* @__PURE__ */ new Set();
+function fanOut() {
+  for (const l of listeners4) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+function captureSnapshot(snap, meta = {}) {
+  try {
+    Object.freeze(snap);
+    Object.freeze(snap.passes);
+  } catch {
+  }
+  const entry = Object.freeze({
+    snapshot: snap,
+    ts: meta.ts ?? snap.ts ?? Date.now(),
+    cycleCount: meta.cycleCount ?? null
+  });
+  entries.push(entry);
+  while (entries.length > capacity) {
+    entries.shift();
+  }
+  fanOut();
+}
+function getCaptureBuffer() {
+  return entries;
+}
+function subscribeCapture(l) {
+  listeners4.add(l);
+  return () => {
+    listeners4.delete(l);
+  };
+}
+function clearCapture() {
+  entries = [];
+  fanOut();
+}
+function getCaptureCapacity() {
+  return capacity;
+}
+function setCaptureCapacity(n) {
+  if (!Number.isFinite(n) || n < 1) return;
+  capacity = Math.floor(n);
+  if (entries.length > capacity) {
+    entries = entries.slice(-capacity);
+  }
+  fanOut();
+}
+
 // src/engine/irInspector.ts
 var current = null;
-var listeners4 = /* @__PURE__ */ new Set();
-function publishIRSnapshot(snap) {
+var listeners5 = /* @__PURE__ */ new Set();
+function publishIRSnapshot(snap, meta) {
   current = snap;
-  for (const l of listeners4) {
+  captureSnapshot(snap, {
+    ts: snap.ts,
+    cycleCount: meta?.cycleCount ?? null
+  });
+  for (const l of listeners5) {
     try {
       l(snap);
     } catch {
@@ -33473,7 +33544,7 @@ function publishIRSnapshot(snap) {
 }
 function clearIRSnapshot() {
   current = null;
-  for (const l of listeners4) {
+  for (const l of listeners5) {
     try {
       l(null);
     } catch {
@@ -33484,8 +33555,8 @@ function getIRSnapshot() {
   return current;
 }
 function subscribeIRSnapshot(fn) {
-  listeners4.add(fn);
-  return () => listeners4.delete(fn);
+  listeners5.add(fn);
+  return () => listeners5.delete(fn);
 }
 
 exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
@@ -33549,6 +33620,8 @@ exports.bumpEditorFontSize = bumpEditorFontSize;
 exports.bundledPresetId = bundledPresetId;
 exports.canRedo = canRedo;
 exports.canUndo = canUndo;
+exports.captureSnapshot = captureSnapshot;
+exports.clearCapture = clearCapture;
 exports.clearIRSnapshot = clearIRSnapshot;
 exports.clearLog = clearLog;
 exports.collect = collect;
@@ -33572,6 +33645,8 @@ exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveProjectId = getActiveProjectId;
 exports.getBackdropOpacity = getBackdropOpacity;
 exports.getBackdropQuality = getBackdropQuality;
+exports.getCaptureBuffer = getCaptureBuffer;
+exports.getCaptureCapacity = getCaptureCapacity;
 exports.getChildOrder = getChildOrder;
 exports.getEditorBackdropBlur = getEditorBackdropBlur;
 exports.getEditorFontSize = getEditorFontSize;
@@ -33659,6 +33734,7 @@ exports.seedFromPresetId = seedFromPresetId;
 exports.seedWorkspaceFile = seedWorkspaceFile;
 exports.setBackdropOpacity = setBackdropOpacity;
 exports.setBackdropQuality = setBackdropQuality;
+exports.setCaptureCapacity = setCaptureCapacity;
 exports.setChildOrder = setChildOrder;
 exports.setContent = setContent;
 exports.setEditorBackdropBlur = setEditorBackdropBlur;
@@ -33675,6 +33751,7 @@ exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.startSampleSound = startSampleSound;
 exports.stopSampleSound = stopSampleSound;
+exports.subscribeCapture = subscribeCapture;
 exports.subscribeFixed = subscribeFixed;
 exports.subscribeIRSnapshot = subscribeIRSnapshot;
 exports.subscribeLog = subscribeLog;

@@ -627,6 +627,17 @@ export interface LiveCodingRuntime {
   getBpm(): number | undefined
 
   /**
+   * Current cycle position from the engine's pattern scheduler, or `null`
+   * when the scheduler is unavailable (engine not initialized, transport
+   * stopped, non-Strudel runtime). Used by the IR Inspector timeline
+   * strip's tooltip to anchor each captured snapshot to musical time.
+   * The tooltip falls back to wall-clock when this returns `null`.
+   *
+   * Phase 19-08 (#85). Mirrors `getBpm()` shape.
+   */
+  getCurrentCycle(): number | null
+
+  /**
    * Enable or disable live mode (auto-refresh). When enabled and the
    * runtime is playing, every file content change triggers a
    * debounced re-`play()` (which re-evaluates the current code) so

@@ -346,15 +346,23 @@ export default function StrudelEditorClient({
           // alias cannot drift apart (PV27).
           const finalIR = passes[passes.length - 1].ir;
           const events = collect(finalIR);
-          publishIRSnapshot({
-            ts: Date.now(),
-            source: fileNow.id,
-            runtime: "strudel",
-            code: fileNow.content,
-            passes,
-            ir: finalIR, // alias of passes[last].ir per IRSnapshot contract
-            events,
-          });
+          publishIRSnapshot(
+            {
+              ts: Date.now(),
+              source: fileNow.id,
+              runtime: "strudel",
+              code: fileNow.content,
+              passes,
+              ir: finalIR, // alias of passes[last].ir per IRSnapshot contract
+              events,
+            },
+            // Phase 19-08: cycleCount lands on the timeline capture entry
+            // (not on IRSnapshot) so PV27's per-snapshot alias contract
+            // stays untouched. `getCurrentCycle()` returns null when the
+            // scheduler is unavailable; the timeline tooltip falls back
+            // to wall-clock in that case.
+            { cycleCount: runtime.getCurrentCycle() },
+          );
         } catch {
           // parseStrudel guarantees graceful fallback to Code node;
           // collect is total. Anything thrown here is unexpected — keep

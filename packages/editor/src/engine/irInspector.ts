@@ -11,6 +11,7 @@
 import type { PatternIR } from '../ir/PatternIR'
 import type { IREvent } from '../ir/IREvent'
 import type { RuntimeId } from './engineLog'
+import { captureSnapshot } from './timelineCapture'
 
 export interface IRSnapshot {
   /** Epoch ms when the snapshot was captured. */
@@ -34,8 +35,30 @@ type Listener = (snap: IRSnapshot | null) => void
 let current: IRSnapshot | null = null
 const listeners = new Set<Listener>()
 
-export function publishIRSnapshot(snap: IRSnapshot): void {
+/**
+ * Publish a snapshot. Two parallel side-effects fire on every publish
+ * (PK9 step 8 — order independent, both must run):
+ *  1. captureSnapshot fan-out — pushes into the timeline ring buffer
+ *     (timelineCapture.ts) so past evals can be scrubbed.
+ *  2. listener fan-out — single-slot consumers (the IR Inspector
+ *     panel's live subscribe) re-render with the new snapshot.
+ *
+ * The optional `meta` parameter carries cycle position (read by the
+ * publisher from `runtime.getCurrentCycle()`) onto the capture entry.
+ * Existing callers pass no `meta` and continue to compile; capture
+ * defaults `cycleCount` to `null` in that case.
+ */
+export function publishIRSnapshot(
+  snap: IRSnapshot,
+  meta?: { cycleCount?: number | null },
+): void {
   current = snap
+  // PK9 step 8a — timeline capture fan-out (Phase 19-08).
+  captureSnapshot(snap, {
+    ts: snap.ts,
+    cycleCount: meta?.cycleCount ?? null,
+  })
+  // PK9 step 8b — listener fan-out (single-slot consumers).
   for (const l of listeners) {
     try { l(snap) } catch { /* listener errors don't block the publish */ }
   }
