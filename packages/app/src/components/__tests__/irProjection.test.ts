@@ -505,8 +505,8 @@ describe('RAW tab projection (D-04 uniform projection — REV-3)', () => {
       expect(projectedLabel(k)).toBe('Code')
     }
     // Each track's expr text is recoverable from its Code node.
-    const codes = (kids as Array<{ tag: 'Code'; code: string }>)
-      .filter((k) => k.tag === 'Code')
+    const codes = kids
+      .filter((k): k is Extract<PatternIR, { tag: 'Code' }> => k.tag === 'Code')
       .map((k) => k.code)
     expect(codes[0]).toContain('note("c d")')
     expect(codes[1]).toContain('s("bd hh")')
