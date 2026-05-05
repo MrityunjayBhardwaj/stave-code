@@ -35,7 +35,7 @@ import { parseMini } from './parseMini'
  * mini-notation `!N` repetition (not implemented today). RESEARCH §10 #12
  * for the load-bearing arithmetic gotcha (consumed = remaining - rest).
  */
-function tagMeta(
+export function tagMeta(
   method: string,
   callSiteRange: [number, number],
 ): { loc: SourceLocation[]; userMethod: string } {
@@ -83,7 +83,7 @@ export function parseStrudel(code: string): PatternIR {
  * offset within the slice is also a valid offset within `code`.
  * Returns [] if no $: lines found (caller handles single-expression case).
  */
-function extractTracks(code: string): { expr: string; offset: number }[] {
+export function extractTracks(code: string): { expr: string; offset: number }[] {
   const tracks: { expr: string; offset: number }[] = []
   // Match `$:` at the start of a line (allowing leading whitespace).
   const dollarRe = /^[ \t]*\$:/gm
@@ -123,7 +123,7 @@ function extractTracks(code: string): { expr: string; offset: number }[] {
  *
  * e.g. 'note("c4 e4").fast(2).every(4, fast(2))'
  */
-function parseExpression(expr: string, baseOffset = 0): PatternIR {
+export function parseExpression(expr: string, baseOffset = 0): PatternIR {
   if (!expr.trim()) return IR.pure()
 
   try {
@@ -167,7 +167,7 @@ function parseExpression(expr: string, baseOffset = 0): PatternIR {
  * Parse the root function call: note("..."), s("..."), stack(...), or bare expression.
  * `baseOffset` is the absolute char offset of `root[0]` within the user's code.
  */
-function parseRoot(root: string, baseOffset = 0): PatternIR {
+export function parseRoot(root: string, baseOffset = 0): PatternIR {
   const trimmed = root.trim()
   const leadingWs = root.length - root.trimStart().length
 
@@ -248,7 +248,7 @@ function parseRoot(root: string, baseOffset = 0): PatternIR {
  * full code. Used to thread method-arg positions through parseTransform
  * (PRE-01 precursor — P39 / PV25 signature-level threading).
  */
-function applyChain(ir: PatternIR, chain: string, baseOffset = 0): PatternIR {
+export function applyChain(ir: PatternIR, chain: string, baseOffset = 0): PatternIR {
   if (!chain.trim()) return ir
 
   const leadingWs = chain.length - chain.trimStart().length
@@ -876,7 +876,7 @@ function offsetOfSubArg(args: string, subArg: string, argsBaseOffset: number): n
  * Split expression into root function call and method chain.
  * e.g. 'note("c4").fast(2).slow(3)' → { root: 'note("c4")', chain: '.fast(2).slow(3)' }
  */
-function splitRootAndChain(expr: string): { root: string; chain: string } {
+export function splitRootAndChain(expr: string): { root: string; chain: string } {
   // Find the end of the first balanced function call
   let i = 0
 
