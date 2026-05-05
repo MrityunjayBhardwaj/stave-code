@@ -623,6 +623,19 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     return this.currentBpm
   }
 
+  /**
+   * Current cycle position from the engine's pattern scheduler, or `null`
+   * when the scheduler is unavailable (engine not initialized, transport
+   * stopped, non-Strudel runtime). The IR Inspector timeline strip's
+   * per-tick tooltip falls back to wall-clock when this returns `null`.
+   *
+   * Phase 19-08 (#85). RESEARCH §2.
+   */
+  getCurrentCycle(): number | null {
+    const v = this.engine.components.queryable?.scheduler?.now()
+    return Number.isFinite(v) ? (v as number) : null
+  }
+
   // -------------------------------------------------------------------------
   // Internal listener dispatchers — snapshot-then-iterate so a listener
   // that unsubscribes itself during the callback doesn't break the loop.
