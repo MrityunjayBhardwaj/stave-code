@@ -16,15 +16,26 @@ import {
   type IRSnapshot,
   type IREvent,
   type PatternIR,
+  type SourceLocation,
   getIRSnapshot,
   subscribeIRSnapshot,
   revealLineInFile,
+  setCaptureCapacity,
 } from "@stave/editor";
 import {
   LOCALSTORAGE_KEY,
   projectedLabel,
   projectedChildren,
 } from "./irProjection";
+import { IRInspectorTimeline } from "./IRInspectorTimeline";
+
+// Phase 19-08 PR-B — localStorage keys for the timeline UI.
+// Convention matches `stave:inspector.irMode` at irProjection.ts:37.
+const TIMELINE_COLLAPSED_KEY = "stave:inspector.timeline.collapsed";
+const TIMELINE_CAPACITY_KEY = "stave:inspector.timeline.capacity";
+const TIMELINE_CAPACITY_DEFAULT = 30;
+const TIMELINE_CAPACITY_MIN = 1;
+const TIMELINE_CAPACITY_MAX = 500;
 
 // ----- Color tokens by IR tag — keep close to the design system -----------
 
@@ -160,10 +171,20 @@ function IRNodeRow({
   node,
   depth,
   irMode,
+  highlightedLoc,
 }: {
   node: PatternIR;
   depth: number;
   irMode: boolean;
+  /**
+   * Phase 19-08 PR-B T-12 — when the user steps J/K through a pinned
+   * snapshot's events, the panel resolves `events[playheadIndex].loc[0]`
+   * and drills it down through this prop. A node whose own
+   * `loc[0].start` matches gets the .ir-node-highlight class.
+   * `null` means no highlight (live mode or synthetic event without loc
+   * — graceful fallback per PV24).
+   */
+  highlightedLoc?: SourceLocation | null;
 }): React.ReactElement | null {
   let label: string;
   let kids: readonly PatternIR[];
@@ -193,9 +214,21 @@ function IRNodeRow({
   const tagColor = TAG_COLOR[node.tag];
   const summary = summarize(node);
 
+  // Phase 19-08 PR-B T-12 — highlight when the J/K-driven event loc
+  // matches this node's primary loc start. PV24 fallback: missing loc
+  // on either side is a no-op (no crash; just no highlight).
+  const isHighlighted =
+    highlightedLoc != null &&
+    node.loc != null &&
+    node.loc.length > 0 &&
+    node.loc[0].start === highlightedLoc.start;
+  const highlightClass = isHighlighted ? "ir-node-highlight" : undefined;
+
   if (kids.length === 0) {
     return (
       <div
+        className={highlightClass}
+        data-ir-node-highlight={isHighlighted ? "true" : undefined}
         style={{
           display: "flex",
           gap: 6,
@@ -203,6 +236,13 @@ function IRNodeRow({
           paddingLeft: depth * 12,
           paddingTop: 2,
           paddingBottom: 2,
+          ...(isHighlighted
+            ? {
+                outline: "2px solid var(--accent, #4a9eff)",
+                background: "rgba(74, 158, 255, 0.12)",
+                borderRadius: 2,
+              }
+            : null),
         }}
       >
         <span
@@ -223,7 +263,21 @@ function IRNodeRow({
   }
 
   return (
-    <details open={depth < 2} style={{ paddingLeft: depth * 12 }}>
+    <details
+      open={depth < 2}
+      className={highlightClass}
+      data-ir-node-highlight={isHighlighted ? "true" : undefined}
+      style={{
+        paddingLeft: depth * 12,
+        ...(isHighlighted
+          ? {
+              outline: "2px solid var(--accent, #4a9eff)",
+              background: "rgba(74, 158, 255, 0.12)",
+              borderRadius: 2,
+            }
+          : null),
+      }}
+    >
       <summary style={{ cursor: "pointer", padding: "2px 0", listStyle: "none" }}>
         <span style={{ color: tagColor, fontWeight: 600, fontSize: "0.85em" }}>
           {label}
@@ -235,7 +289,13 @@ function IRNodeRow({
         )}
       </summary>
       {kids.map((c, i) => (
-        <IRNodeRow key={i} node={c} depth={depth + 1} irMode={irMode} />
+        <IRNodeRow
+          key={i}
+          node={c}
+          depth={depth + 1}
+          irMode={irMode}
+          highlightedLoc={highlightedLoc}
+        />
       ))}
     </details>
   );
@@ -345,6 +405,62 @@ export function IRInspectorPanel(): React.ReactElement {
   // snapshot still has that pass. Falls back to the last pass otherwise.
   const [selectedTabName, setSelectedTabName] = useState<string | null>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // Phase 19-08 PR-B — pinning state. When pinnedSnapshot is non-null,
+  // the four pass-tabs render that snapshot's tree (frozen) while the
+  // live publisher continues to feed setSnap(s) in the background.
+  // playheadIndex is the J/K event-step cursor (T-12).
+  const [pinnedSnapshot, setPinnedSnapshot] = useState<IRSnapshot | null>(null);
+  const [playheadIndex, setPlayheadIndex] = useState<number>(0);
+
+  // Phase 19-08 PR-B T-14 — collapsed state for the timeline strip.
+  const [timelineCollapsed, setTimelineCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(TIMELINE_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        TIMELINE_COLLAPSED_KEY,
+        timelineCollapsed ? "1" : "0",
+      );
+    } catch {
+      // Storage quota / private browsing — skip silently.
+    }
+  }, [timelineCollapsed]);
+
+  // Phase 19-08 PR-B T-13 — trace-length (capture buffer capacity). The
+  // user-configured value persists in localStorage (UI preference per
+  // RESEARCH §8 question #2); the buffer entries themselves remain
+  // in-memory per CONTEXT D-06.
+  const [traceLength, setTraceLength] = useState<number>(() => {
+    if (typeof window === "undefined") return TIMELINE_CAPACITY_DEFAULT;
+    try {
+      const v = window.localStorage.getItem(TIMELINE_CAPACITY_KEY);
+      const n = v == null ? TIMELINE_CAPACITY_DEFAULT : Number(v);
+      if (!Number.isFinite(n) || n < TIMELINE_CAPACITY_MIN) {
+        return TIMELINE_CAPACITY_DEFAULT;
+      }
+      return Math.min(Math.floor(n), TIMELINE_CAPACITY_MAX);
+    } catch {
+      return TIMELINE_CAPACITY_DEFAULT;
+    }
+  });
+  useEffect(() => {
+    setCaptureCapacity(traceLength);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(TIMELINE_CAPACITY_KEY, String(traceLength));
+    } catch {
+      // Storage quota / private browsing — skip silently.
+    }
+  }, [traceLength]);
 
   // 19-06 (#76) — IR-mode toggle. Default false (projected mode); true
   // shows the raw IR shape for IR developers / power users. Persisted
@@ -369,24 +485,100 @@ export function IRInspectorPanel(): React.ReactElement {
   }, [irMode]);
 
   useEffect(() => {
+    // The publisher fires every successful eval REGARDLESS of pin state
+    // (CONTEXT D-02 publisher-vs-consumer). The pin gate is purely
+    // render-side via `displaySnapshot` below.
     return subscribeIRSnapshot((s) => setSnap(s));
   }, []);
 
+  // Phase 19-08 — display gating. When pinnedSnapshot is set, the four
+  // pass-tabs derive from it. Live `snap` continues to update in the
+  // background; we just don't read it. PV27 alias contract holds against
+  // the captured snapshot's `passes[last].ir` per per-snapshot semantics.
+  const displaySnapshot = pinnedSnapshot ?? snap;
+
   const ageLabel = useMemo(() => {
+    if (pinnedSnapshot) {
+      const ms = Date.now() - pinnedSnapshot.ts;
+      if (ms < 1000) return "pinned · just now";
+      if (ms < 60_000) return `pinned · ${Math.round(ms / 1000)}s old`;
+      return `pinned · ${Math.round(ms / 60_000)}m old`;
+    }
     if (!snap) return "";
     const ms = Date.now() - snap.ts;
     if (ms < 1000) return "just now";
     if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
     return `${Math.round(ms / 60_000)}m ago`;
-  }, [snap]);
+  }, [snap, pinnedSnapshot]);
 
   const selectedIndex = useMemo<number>(() => {
-    if (!snap || snap.passes.length === 0) return -1;
-    const i = selectedTabName ? snap.passes.findIndex((p) => p.name === selectedTabName) : -1;
-    return i >= 0 ? i : snap.passes.length - 1;
-  }, [snap, selectedTabName]);
+    if (!displaySnapshot || displaySnapshot.passes.length === 0) return -1;
+    const i = selectedTabName
+      ? displaySnapshot.passes.findIndex((p) => p.name === selectedTabName)
+      : -1;
+    return i >= 0 ? i : displaySnapshot.passes.length - 1;
+  }, [displaySnapshot, selectedTabName]);
 
-  if (!snap) {
+  // Phase 19-08 PR-B T-11 — ESC unpins. Scoped to the panel ref
+  // (RESEARCH §3 step 6 — avoids global keybinding pollution and
+  // does not collide with the tab strip's ←/→ at lines 472-480).
+  useEffect(() => {
+    if (!pinnedSnapshot) return;
+    const node = panelRef.current;
+    if (!node) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPinnedSnapshot(null);
+        setPlayheadIndex(0);
+      }
+    };
+    node.addEventListener("keydown", onKey);
+    return () => node.removeEventListener("keydown", onKey);
+  }, [pinnedSnapshot]);
+
+  // Phase 19-08 PR-B T-12 — J/K event step-through (only when pinned).
+  // Walks displaySnapshot.events[] (audible-time order, not tree order
+  // per CONTEXT D-03 + PV28). Vim-style J=forward, K=back. Scoped to
+  // panelRef so it does NOT collide with the tab strip's ←/→ at
+  // lines 472-480 (handled separately on the tablist's onKeyDown).
+  // PV18 dep array: explicit list of every value the closure reads
+  // — pinnedSnapshot, the event array length (used for clamping),
+  // and setPlayheadIndex. P29 stale-closure trap mitigated.
+  const eventCount = displaySnapshot?.events.length ?? 0;
+  useEffect(() => {
+    if (!pinnedSnapshot) return;
+    if (eventCount === 0) return;
+    const node = panelRef.current;
+    if (!node) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "j" && e.key !== "J" && e.key !== "k" && e.key !== "K") return;
+      // Don't fight typing in form fields.
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      setPlayheadIndex((i) => {
+        if (e.key === "j" || e.key === "J") {
+          return Math.min(i + 1, eventCount - 1);
+        }
+        return Math.max(i - 1, 0);
+      });
+    };
+    node.addEventListener("keydown", onKey);
+    return () => node.removeEventListener("keydown", onKey);
+  }, [pinnedSnapshot, eventCount]);
+
+  // Phase 19-08 PR-B T-12 — derive the highlighted source location
+  // from the current playhead index. Null when not pinned, when the
+  // playhead is past the events array, or when the indexed event has
+  // no `loc` (synthetic event — PV24 fallback).
+  const highlightedLoc = useMemo<SourceLocation | null>(() => {
+    if (!pinnedSnapshot || !displaySnapshot) return null;
+    const evt = displaySnapshot.events[playheadIndex];
+    if (!evt || !evt.loc || evt.loc.length === 0) return null;
+    return evt.loc[0];
+  }, [pinnedSnapshot, displaySnapshot, playheadIndex]);
+
+  if (!displaySnapshot) {
     return (
       <div
         role="region"
@@ -406,13 +598,16 @@ export function IRInspectorPanel(): React.ReactElement {
 
   return (
     <div
+      ref={panelRef}
       role="region"
       aria-label="IR Inspector"
+      tabIndex={-1}
       style={{
         padding: 12,
         fontSize: "0.9em",
         height: "100%",
         overflow: "auto",
+        outline: "none",
       }}
     >
       <div
@@ -426,8 +621,47 @@ export function IRInspectorPanel(): React.ReactElement {
         <div style={{ fontWeight: 600 }}>IR INSPECTOR</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
           <div style={{ fontSize: "0.8em", opacity: 0.6 }}>
-            {snap.runtime} · {snap.events.length} events · {ageLabel}
+            {displaySnapshot.runtime} · {displaySnapshot.events.length} events · {ageLabel}
           </div>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: "0.75em",
+              opacity: 0.85,
+            }}
+            title="Capture buffer length (trace) — how many past evals to keep"
+          >
+            <span style={{ opacity: 0.7 }}>trace</span>
+            <input
+              type="number"
+              min={TIMELINE_CAPACITY_MIN}
+              max={TIMELINE_CAPACITY_MAX}
+              value={traceLength}
+              onChange={(e) => {
+                const raw = Number(e.target.value);
+                if (!Number.isFinite(raw)) return;
+                const clamped = Math.min(
+                  Math.max(Math.floor(raw), TIMELINE_CAPACITY_MIN),
+                  TIMELINE_CAPACITY_MAX,
+                );
+                setTraceLength(clamped);
+              }}
+              data-testid="ir-timeline-capacity-input"
+              aria-label="Timeline capacity"
+              style={{
+                width: "3.5rem",
+                padding: "1px 4px",
+                fontSize: "0.85em",
+                background: "transparent",
+                color: "inherit",
+                border:
+                  "1px solid var(--border-subtle, rgba(128,128,128,0.3))",
+                borderRadius: 3,
+              }}
+            />
+          </label>
           <button
             type="button"
             onClick={() => setIrMode((v) => !v)}
@@ -470,16 +704,18 @@ export function IRInspectorPanel(): React.ReactElement {
           marginBottom: 6,
         }}
         onKeyDown={(e) => {
-          if (snap == null || snap.passes.length === 0) return;
+          if (displaySnapshot == null || displaySnapshot.passes.length === 0) return;
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
           const dir = e.key === "ArrowRight" ? 1 : -1;
-          const next = (selectedIndex + dir + snap.passes.length) % snap.passes.length;
-          setSelectedTabName(snap.passes[next].name);
+          const next =
+            (selectedIndex + dir + displaySnapshot.passes.length) %
+            displaySnapshot.passes.length;
+          setSelectedTabName(displaySnapshot.passes[next].name);
           tabRefs.current[next]?.focus();
           e.preventDefault();
         }}
       >
-        {snap.passes.map((p, i) => (
+        {displaySnapshot.passes.map((p, i) => (
           <button
             key={p.name}
             ref={(el) => { tabRefs.current[i] = el; }}
@@ -508,14 +744,15 @@ export function IRInspectorPanel(): React.ReactElement {
       <div role="tabpanel" id="ir-tree-panel" data-testid="ir-tree-section">
         <details open>
           <summary style={{ cursor: "pointer", fontWeight: 600, padding: "4px 0", opacity: 0.85, listStyle: "none" }}>
-            IR tree{snap.passes.length > 1 && selectedIndex >= 0 ? ` · ${snap.passes[selectedIndex].name}` : null}
+            IR tree{displaySnapshot.passes.length > 1 && selectedIndex >= 0 ? ` · ${displaySnapshot.passes[selectedIndex].name}` : null}
           </summary>
           <div style={{ paddingLeft: 4 }}>
             {selectedIndex >= 0 && (
               <IRNodeRow
-                node={snap.passes[selectedIndex].ir}
+                node={displaySnapshot.passes[selectedIndex].ir}
                 depth={0}
                 irMode={irMode}
+                highlightedLoc={highlightedLoc}
               />
             )}
           </div>
@@ -524,10 +761,24 @@ export function IRInspectorPanel(): React.ReactElement {
 
       <details open data-testid="ir-events-section" style={{ marginTop: 12 }}>
         <summary style={{ cursor: "pointer", fontWeight: 600, padding: "4px 0" }}>
-          Events ({snap.events.length})
+          Events ({displaySnapshot.events.length})
         </summary>
-        <EventsTable events={snap.events} source={snap.source} />
+        <EventsTable events={displaySnapshot.events} source={displaySnapshot.source} />
       </details>
+
+      <IRInspectorTimeline
+        pinnedSnapshot={pinnedSnapshot}
+        onPin={(s) => {
+          setPinnedSnapshot(s);
+          setPlayheadIndex(0);
+        }}
+        onUnpin={() => {
+          setPinnedSnapshot(null);
+          setPlayheadIndex(0);
+        }}
+        collapsed={timelineCollapsed}
+        onToggleCollapsed={setTimelineCollapsed}
+      />
     </div>
   );
 }
