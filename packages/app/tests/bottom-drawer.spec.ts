@@ -61,7 +61,7 @@ test.describe('Bottom drawer — infra (Phase 20-01 PR-A)', () => {
     await expect(tab).toHaveCount(1)
   })
 
-  test('default state is closed; toggling opens and shows the placeholder', async ({
+  test('default state is closed; toggling opens and reveals the Timeline body', async ({
     page,
   }) => {
     await clearDrawerStorage(page)
@@ -72,10 +72,14 @@ test.describe('Bottom drawer — infra (Phase 20-01 PR-A)', () => {
     // open
     await drawer.locator('[data-bottom-panel="toggle"]').click()
     await expect(drawer.locator('[data-bottom-panel="body"]')).toHaveCount(1)
-    // body contains the placeholder text
-    await expect(drawer.locator('[data-bottom-panel="body"]')).toContainText(
-      '(empty — wired in PR-B)',
-    )
+    // Body now hosts the real MusicalTimeline content (PR-B replaced
+    // PR-A's "(empty — wired in PR-B)" placeholder via the registry's
+    // idempotent re-register in StaveApp). Assert the Timeline subtree
+    // is mounted; specific copy is asserted in
+    // tests/musical-timeline.spec.ts.
+    await expect(
+      drawer.locator('[data-bottom-panel-tab="musical-timeline"]'),
+    ).toHaveCount(1)
   })
 
   test('persisted open + height survive reload at first paint (Trap 7)', async ({

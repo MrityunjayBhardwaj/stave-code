@@ -308,6 +308,13 @@ export {
   BOTTOM_PANEL_HEIGHT_MIN,
   BOTTOM_PANEL_HEIGHT_MAX,
   BOTTOM_PANEL_HEIGHT_DEFAULT,
+  // Phase 20-01 PR-B (DB-08) — readers exposed so @stave/app's
+  // MusicalTimeline can sample drawer-open + active-tab state via
+  // localStorage on every rAF tick (rAF is gated downstream so the
+  // O(1) reads are cheap). Mirrors the readers used by BottomPanel
+  // internally; no new state coupling.
+  readPersistedOpen,
+  readPersistedActiveTabId,
 } from './workspace/bottomPanel/persistence'
 
 // Phase 19-08 — IR Inspector streaming timeline capture buffer.
