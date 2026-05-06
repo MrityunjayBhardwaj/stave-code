@@ -1,4 +1,5 @@
-import React, { forwardRef, useRef, useState, useEffect, useMemo, useCallback, useImperativeHandle, useSyncExternalStore } from 'react';
+import * as React6 from 'react';
+import React6__default, { forwardRef, useRef, useState, useEffect, useMemo, useCallback, useImperativeHandle, useSyncExternalStore } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw from '@monaco-editor/react';
@@ -6643,8 +6644,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React.Children.count(children);
-  const childArray = React.Children.toArray(children);
+  const count = React6__default.Children.count(children);
+  const childArray = React6__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -6689,7 +6690,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React.useEffect(() => {
+  React6__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -6705,7 +6706,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i2) => /* @__PURE__ */ jsxs(React.Fragment, { children: [
+      children: childArray.map((child, i2) => /* @__PURE__ */ jsxs(React6__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -6984,19 +6985,19 @@ function ensureUndoManager() {
     }
   };
   files.observe(filesObserver);
-  const listeners6 = /* @__PURE__ */ new Set();
-  const notify2 = () => {
-    for (const l of listeners6) l();
+  const listeners7 = /* @__PURE__ */ new Set();
+  const notify3 = () => {
+    for (const l of listeners7) l();
   };
-  const onStackItemAdded = () => notify2();
-  const onStackItemPopped = () => notify2();
-  const onStackCleared = () => notify2();
+  const onStackItemAdded = () => notify3();
+  const onStackItemPopped = () => notify3();
+  const onStackCleared = () => notify3();
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners6,
+    listeners: listeners7,
     cleanup: () => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -7033,10 +7034,10 @@ function canRedo() {
 }
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners6 = active.listeners;
-  listeners6.add(cb);
+  const listeners7 = active.listeners;
+  listeners7.add(cb);
   return () => {
-    listeners6.delete(cb);
+    listeners7.delete(cb);
   };
 }
 
@@ -17025,7 +17026,7 @@ function EditorView({
     }
   );
 }
-var ErrorBoundary = class extends React.Component {
+var ErrorBoundary = class extends React6__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -17237,7 +17238,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React.useMemo(() => {
+  const providerNode = React6__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -18126,6 +18127,482 @@ var BUILTIN_SOURCE_IDS = new Set(
 );
 function findBuiltinExampleSource(sourceId) {
   return BUILTIN_EXAMPLE_SOURCES.find((s) => s.sourceId === sourceId);
+}
+
+// src/workspace/bottomPanel/bottomPanelRegistry.ts
+var tabs = /* @__PURE__ */ new Map();
+var listeners4 = /* @__PURE__ */ new Set();
+function notify2() {
+  for (const l of listeners4) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+function registerBottomPanelTab(tab) {
+  tabs.set(tab.id, tab);
+  notify2();
+  return () => {
+    if (tabs.get(tab.id) === tab) {
+      tabs.delete(tab.id);
+      notify2();
+    }
+  };
+}
+function unregisterBottomPanelTab(id) {
+  if (tabs.delete(id)) {
+    notify2();
+  }
+}
+function listBottomPanelTabs() {
+  return Array.from(tabs.values());
+}
+function getBottomPanelTab(id) {
+  return tabs.get(id);
+}
+function subscribeToBottomPanelTabs(cb) {
+  listeners4.add(cb);
+  return () => {
+    listeners4.delete(cb);
+  };
+}
+
+// src/workspace/bottomPanel/persistence.ts
+var BOTTOM_PANEL_HEIGHT_KEY = "stave:bottomPanel.height";
+var BOTTOM_PANEL_OPEN_KEY = "stave:bottomPanel.open";
+var BOTTOM_PANEL_ACTIVE_TAB_KEY = "stave:bottomPanel.activeTabId";
+var BOTTOM_PANEL_HEIGHT_MIN = 80;
+var BOTTOM_PANEL_HEIGHT_MAX = 600;
+var BOTTOM_PANEL_HEIGHT_DEFAULT = 240;
+function clampHeight(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return BOTTOM_PANEL_HEIGHT_DEFAULT;
+  }
+  if (value < BOTTOM_PANEL_HEIGHT_MIN) return BOTTOM_PANEL_HEIGHT_MIN;
+  if (value > BOTTOM_PANEL_HEIGHT_MAX) return BOTTOM_PANEL_HEIGHT_MAX;
+  return value;
+}
+function safeLocalStorage3() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+function safeGetItem(key) {
+  const ls = safeLocalStorage3();
+  if (!ls) return null;
+  try {
+    return ls.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function safeSetItem(key, value) {
+  const ls = safeLocalStorage3();
+  if (!ls) return;
+  try {
+    ls.setItem(key, value);
+  } catch {
+  }
+}
+function safeRemoveItem(key) {
+  const ls = safeLocalStorage3();
+  if (!ls) return;
+  try {
+    ls.removeItem(key);
+  } catch {
+  }
+}
+function readPersistedHeight() {
+  const raw = safeGetItem(BOTTOM_PANEL_HEIGHT_KEY);
+  if (raw == null) return BOTTOM_PANEL_HEIGHT_DEFAULT;
+  const parsed = Number.parseFloat(raw);
+  return clampHeight(parsed);
+}
+function readPersistedOpen() {
+  const raw = safeGetItem(BOTTOM_PANEL_OPEN_KEY);
+  return raw === "true";
+}
+function readPersistedActiveTabId() {
+  const raw = safeGetItem(BOTTOM_PANEL_ACTIVE_TAB_KEY);
+  if (raw == null || raw === "") return null;
+  return raw;
+}
+function writePersistedHeight(value) {
+  safeSetItem(BOTTOM_PANEL_HEIGHT_KEY, String(clampHeight(value)));
+}
+function writePersistedOpen(value) {
+  safeSetItem(BOTTOM_PANEL_OPEN_KEY, value ? "true" : "false");
+}
+function writePersistedActiveTabId(value) {
+  if (value == null) {
+    safeRemoveItem(BOTTOM_PANEL_ACTIVE_TAB_KEY);
+    return;
+  }
+  safeSetItem(BOTTOM_PANEL_ACTIVE_TAB_KEY, value);
+}
+function EmptyTimelineStub() {
+  return React6.createElement(
+    "div",
+    {
+      "data-bottom-panel-tab": "musical-timeline-empty",
+      style: {
+        padding: 24,
+        color: "var(--foreground-muted, #a0a0aa)",
+        fontSize: 12,
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      }
+    },
+    "(empty \u2014 wired in PR-B)"
+  );
+}
+registerBottomPanelTab({
+  id: "musical-timeline",
+  title: "Timeline",
+  content: React6.createElement(EmptyTimelineStub)
+});
+var HEADER_HEIGHT = 28;
+var RESIZE_HANDLE_HEIGHT = 4;
+var CLOSED_HEIGHT = HEADER_HEIGHT + 1;
+function computeNewHeight(startY, currentY, startHeight) {
+  return startHeight + (startY - currentY);
+}
+function useDragResize(opts) {
+  const [value, setValueState] = React6.useState(opts.initial);
+  const [dragging, setDragging] = React6.useState(false);
+  const startYRef = React6.useRef(0);
+  const startValueRef = React6.useRef(opts.initial);
+  const pointerIdRef = React6.useRef(null);
+  const draggingRef = React6.useRef(false);
+  const minRef = React6.useRef(opts.min);
+  const maxRef = React6.useRef(opts.max);
+  React6.useEffect(() => {
+    minRef.current = opts.min;
+    maxRef.current = opts.max;
+  }, [opts.min, opts.max]);
+  const setValue2 = React6.useCallback((v) => {
+    const clamped = clampHeight(v);
+    startValueRef.current = clamped;
+    setValueState(clamped);
+  }, []);
+  const onPointerDown = React6.useCallback(
+    (e) => {
+      e.preventDefault();
+      pointerIdRef.current = e.pointerId;
+      startYRef.current = e.clientY;
+      startValueRef.current = value;
+      draggingRef.current = true;
+      setDragging(true);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+      }
+    },
+    [value]
+  );
+  const endDrag = React6.useCallback(
+    (e, commit) => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      setDragging(false);
+      const id = pointerIdRef.current;
+      pointerIdRef.current = null;
+      try {
+        if (id != null) e.currentTarget.releasePointerCapture(id);
+      } catch {
+      }
+      if (commit) opts.onCommit(value);
+    },
+    [opts, value]
+  );
+  const onPointerMove = React6.useCallback(
+    (e) => {
+      if (!draggingRef.current) return;
+      const next = computeNewHeight(
+        startYRef.current,
+        e.clientY,
+        startValueRef.current
+      );
+      const clamped = Math.max(
+        minRef.current,
+        Math.min(maxRef.current, Number.isFinite(next) ? next : startValueRef.current)
+      );
+      setValueState(clamped);
+    },
+    []
+  );
+  const onPointerUp = React6.useCallback(
+    (e) => {
+      endDrag(e, true);
+    },
+    [endDrag]
+  );
+  const onPointerCancel = React6.useCallback(
+    (e) => {
+      endDrag(e, false);
+    },
+    [endDrag]
+  );
+  return {
+    value,
+    setValue: setValue2,
+    handleProps: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
+    dragging
+  };
+}
+function renderTabBody(tab) {
+  if (typeof tab.content === "function") {
+    return tab.content();
+  }
+  return tab.content;
+}
+function pickInitialActiveTabId(tabs2) {
+  const stored = readPersistedActiveTabId();
+  if (stored && tabs2.some((t) => t.id === stored)) return stored;
+  return tabs2[0]?.id ?? null;
+}
+function BottomPanel() {
+  const [tabs2, setTabs] = React6.useState(
+    () => listBottomPanelTabs()
+  );
+  const [open, setOpen] = React6.useState(readPersistedOpen);
+  const [height, setHeight] = React6.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React6.useState(
+    () => pickInitialActiveTabId(listBottomPanelTabs())
+  );
+  React6.useEffect(() => {
+    return subscribeToBottomPanelTabs(() => {
+      const next = listBottomPanelTabs();
+      setTabs(next);
+      setActiveTabId((curr) => {
+        if (curr && next.some((t) => t.id === curr)) return curr;
+        return next[0]?.id ?? null;
+      });
+    });
+  }, []);
+  React6.useEffect(() => {
+    writePersistedOpen(open);
+  }, [open]);
+  React6.useEffect(() => {
+    writePersistedActiveTabId(activeTabId);
+  }, [activeTabId]);
+  const drag = useDragResize({
+    initial: height,
+    min: BOTTOM_PANEL_HEIGHT_MIN,
+    max: BOTTOM_PANEL_HEIGHT_MAX,
+    onCommit: (v) => {
+      setHeight(v);
+      writePersistedHeight(v);
+    }
+  });
+  React6.useEffect(() => {
+    const flush = () => writePersistedHeight(height);
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, [height]);
+  const tabButtonRefs = React6.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React6.useCallback(
+    (id) => (el) => {
+      if (el) tabButtonRefs.current.set(id, el);
+      else tabButtonRefs.current.delete(id);
+    },
+    []
+  );
+  const focusTab = React6.useCallback((id) => {
+    const el = tabButtonRefs.current.get(id);
+    if (el) el.focus();
+  }, []);
+  const onTabsKeyDown = React6.useCallback(
+    (e) => {
+      if (tabs2.length === 0) return;
+      const idx = tabs2.findIndex((t) => t.id === activeTabId);
+      const safeIdx = idx < 0 ? 0 : idx;
+      let next = safeIdx;
+      if (e.key === "ArrowRight") {
+        next = (safeIdx + 1) % tabs2.length;
+      } else if (e.key === "ArrowLeft") {
+        next = (safeIdx - 1 + tabs2.length) % tabs2.length;
+      } else if (e.key === "Home") {
+        next = 0;
+      } else if (e.key === "End") {
+        next = tabs2.length - 1;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      const target = tabs2[next];
+      if (target) {
+        setActiveTabId(target.id);
+        queueMicrotask(() => focusTab(target.id));
+      }
+    },
+    [tabs2, activeTabId, focusTab]
+  );
+  if (tabs2.length === 0) return null;
+  const renderHeight = drag.dragging ? drag.value : height;
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-bottom-panel": "root",
+      role: "region",
+      "aria-label": "Bottom panel",
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        flexBasis: open ? renderHeight : CLOSED_HEIGHT,
+        flexShrink: 0,
+        flexGrow: 0,
+        borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.08))",
+        background: "var(--background, #0f0f12)",
+        color: "var(--foreground, #e6e6ec)",
+        overflow: "hidden",
+        position: "relative"
+      },
+      children: [
+        open && /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-bottom-panel": "resize-handle",
+            role: "separator",
+            "aria-orientation": "horizontal",
+            "aria-label": "Resize bottom panel",
+            tabIndex: -1,
+            ...drag.handleProps,
+            style: {
+              height: RESIZE_HANDLE_HEIGHT,
+              cursor: "ns-resize",
+              background: "transparent",
+              // A subtle hover affordance via the user agent's outline isn't
+              // enough — give the handle a visible top hairline so the user
+              // sees something to grab. Stays inside the closed-state budget.
+              flex: "0 0 auto",
+              touchAction: "none"
+            }
+          }
+        ),
+        /* @__PURE__ */ jsxs(
+          "div",
+          {
+            "data-bottom-panel": "header",
+            style: {
+              height: HEADER_HEIGHT,
+              minHeight: HEADER_HEIGHT,
+              display: "flex",
+              alignItems: "stretch",
+              borderBottom: open ? "1px solid var(--border-subtle, rgba(255,255,255,0.06))" : "none",
+              flex: "0 0 auto"
+            },
+            children: [
+              /* @__PURE__ */ jsx(
+                "div",
+                {
+                  role: "tablist",
+                  "aria-label": "Bottom panel tabs",
+                  onKeyDown: onTabsKeyDown,
+                  style: {
+                    display: "flex",
+                    alignItems: "stretch",
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: "hidden"
+                  },
+                  children: tabs2.map((tab) => {
+                    const selected = tab.id === activeTabId;
+                    return /* @__PURE__ */ jsx(
+                      "button",
+                      {
+                        ref: setTabButtonRef(tab.id),
+                        role: "tab",
+                        type: "button",
+                        "aria-selected": selected,
+                        tabIndex: selected ? 0 : -1,
+                        "data-tab-id": tab.id,
+                        onClick: () => {
+                          if (!open) setOpen(true);
+                          setActiveTabId(tab.id);
+                        },
+                        style: {
+                          appearance: "none",
+                          border: "none",
+                          background: "transparent",
+                          color: selected ? "var(--foreground, #e6e6ec)" : "var(--foreground-muted, #a0a0aa)",
+                          padding: "0 12px",
+                          fontSize: 12,
+                          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+                          cursor: "pointer",
+                          borderTop: selected ? "1px solid var(--accent, #8b5cf6)" : "1px solid transparent",
+                          outline: "none"
+                        },
+                        children: tab.title
+                      },
+                      tab.id
+                    );
+                  })
+                }
+              ),
+              /* @__PURE__ */ jsx(
+                "button",
+                {
+                  "data-bottom-panel": "toggle",
+                  type: "button",
+                  "aria-label": open ? "Hide panel" : "Show panel",
+                  "aria-expanded": open,
+                  onClick: () => setOpen((v) => !v),
+                  style: {
+                    appearance: "none",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--foreground-muted, #a0a0aa)",
+                    padding: "0 10px",
+                    cursor: "pointer",
+                    fontSize: 12
+                  },
+                  children: open ? "\u25BE" : "\u25B4"
+                }
+              )
+            ]
+          }
+        ),
+        open && /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-bottom-panel": "body",
+            style: {
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden"
+            },
+            children: tabs2.map((tab) => {
+              const selected = tab.id === activeTabId;
+              return /* @__PURE__ */ jsx(
+                "div",
+                {
+                  role: "tabpanel",
+                  "aria-labelledby": tab.id,
+                  hidden: !selected,
+                  style: {
+                    display: selected ? "flex" : "none",
+                    flexDirection: "column",
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: "auto"
+                  },
+                  children: renderTabBody(tab)
+                },
+                tab.id
+              );
+            })
+          }
+        )
+      ]
+    }
+  );
 }
 var tabbarScrollStyleInjected = false;
 function ensureTabbarScrollStyle() {
@@ -19564,40 +20041,53 @@ var WorkspaceShell = forwardRef(function WorkspaceShell2({
             }
           }
         ),
-        totalGroupCount === 0 ? /* @__PURE__ */ jsx(
+        /* @__PURE__ */ jsx(
           "div",
           {
-            "data-testid": "workspace-shell-empty",
+            "data-workspace-groups": "container",
             style: {
               flex: 1,
+              minHeight: 0,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--foreground-muted)",
-              fontSize: 12
+              flexDirection: "column"
             },
-            children: "Drop a tab here"
+            children: totalGroupCount === 0 ? /* @__PURE__ */ jsx(
+              "div",
+              {
+                "data-testid": "workspace-shell-empty",
+                style: {
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--foreground-muted)",
+                  fontSize: 12
+                },
+                children: "Drop a tab here"
+              }
+            ) : layout.length === 1 && layout[0].length === 1 ? (() => {
+              const g = groups.get(layout[0][0]);
+              return g ? renderGroup(g) : null;
+            })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
+              if (column.length === 1) {
+                const g = groups.get(column[0]);
+                return /* @__PURE__ */ jsx(React6__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+              }
+              return /* @__PURE__ */ jsx(
+                SplitPane,
+                {
+                  direction: "vertical",
+                  children: column.map((gid) => {
+                    const g = groups.get(gid);
+                    return /* @__PURE__ */ jsx(React6__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                  })
+                },
+                `col-${colIdx}-${column.join("+")}`
+              );
+            }) })
           }
-        ) : layout.length === 1 && layout[0].length === 1 ? (() => {
-          const g = groups.get(layout[0][0]);
-          return g ? renderGroup(g) : null;
-        })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
-          if (column.length === 1) {
-            const g = groups.get(column[0]);
-            return /* @__PURE__ */ jsx(React.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
-          }
-          return /* @__PURE__ */ jsx(
-            SplitPane,
-            {
-              direction: "vertical",
-              children: column.map((gid) => {
-                const g = groups.get(gid);
-                return /* @__PURE__ */ jsx(React.Fragment, { children: g ? renderGroup(g) : null }, gid);
-              })
-            },
-            `col-${colIdx}-${column.join("+")}`
-          );
-        }) }),
+        ),
+        /* @__PURE__ */ jsx(BottomPanel, {}),
         tabDragInProgress && dragOverTarget && /* @__PURE__ */ jsx(
           QuadrantGuideOverlay,
           {
@@ -22643,12 +23133,10 @@ var ProgramBuilder = class _ProgramBuilder {
 
 // ../../../sonicPiWeb/src/engine/config.ts
 var MIXER = {
-  /** [TAU] Mixer pre-amplification. Desktop SP uses 0.2 but needs driver attenuation.
-   *  Sonic Tau uses 0.3 for browser WASM context (app.bundle.js:1787). */
-  PRE_AMP: 0.3,
-  /** [TUNED] Mixer final amplification. Desktop SP uses 6 (clips in WASM).
-   *  Sonic Tau uses 0.8 (too quiet). A/B tuned to 1.2 for balanced dynamics. */
-  AMP: 1.2,
+  /** [SP] Mixer pre-amplification. Matches Desktop SP exactly (SP67). */
+  PRE_AMP: 0.2,
+  /** [SP] Mixer final amplification. Matches Desktop SP exactly (SP67). */
+  AMP: 6,
   /** [TAU] High-pass filter cutoff (Hz). Removes subsonic rumble that can
    *  damage speakers. Desktop SP uses synthdef default. Sonic Tau sends 21
    *  explicitly (app.bundle.js:1788-1789). */
@@ -24610,10 +25098,17 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     }
     this.loopMonitors.clear();
   }
-  /** Allocate a private audio bus for FX routing. */
+  /** Allocate a private audio bus for FX routing. Reserves a stereo pair
+   *  (bus N and N+1) — every relevant synthdef in our chain
+   *  (basic_stereo_player, fx_*) reads or writes 2 channels. Adjacent
+   *  mono allocations would collide on the inner channel, summing the
+   *  upstream stereo write into a downstream stereo write at the same
+   *  address (exp-008). NUM_OUTPUT_CHANNELS is even by construction. */
   allocateBus() {
     if (this.freeBuses.length > 0) return this.freeBuses.pop();
-    return this.nextBusNum++;
+    const bus = this.nextBusNum;
+    this.nextBusNum += 2;
+    return bus;
   }
   /** Release a private audio bus back to the pool. Guards against duplicate frees. */
   freeBus(busNum) {
@@ -31921,22 +32416,22 @@ function VizEditor({
   }, [theme]);
   useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
-      const tabs = [];
+      const tabs2 = [];
       for (const preset of presets) {
         const fileId = seedFromPreset(preset);
-        tabs.push({
+        tabs2.push({
           kind: "editor",
           id: `editor-${fileId}`,
           fileId
         });
-        tabs.push({
+        tabs2.push({
           kind: "preview",
           id: `preview-${fileId}`,
           fileId,
           sourceRef: { kind: "none" }
         });
       }
-      setInitialTabs(tabs.length > 0 ? tabs : []);
+      setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
   const handleSaveFile = useCallback(
@@ -33448,9 +33943,9 @@ function emitFromGlobal(err2, _kind) {
 var DEFAULT_CAPACITY = 30;
 var entries = [];
 var capacity = DEFAULT_CAPACITY;
-var listeners4 = /* @__PURE__ */ new Set();
+var listeners5 = /* @__PURE__ */ new Set();
 function fanOut() {
-  for (const l of listeners4) {
+  for (const l of listeners5) {
     try {
       l();
     } catch {
@@ -33478,9 +33973,9 @@ function getCaptureBuffer() {
   return entries;
 }
 function subscribeCapture(l) {
-  listeners4.add(l);
+  listeners5.add(l);
   return () => {
-    listeners4.delete(l);
+    listeners5.delete(l);
   };
 }
 function clearCapture() {
@@ -33501,14 +33996,14 @@ function setCaptureCapacity(n) {
 
 // src/engine/irInspector.ts
 var current = null;
-var listeners5 = /* @__PURE__ */ new Set();
+var listeners6 = /* @__PURE__ */ new Set();
 function publishIRSnapshot(snap, meta) {
   current = snap;
   captureSnapshot(snap, {
     ts: snap.ts,
     cycleCount: meta?.cycleCount ?? null
   });
-  for (const l of listeners5) {
+  for (const l of listeners6) {
     try {
       l(snap);
     } catch {
@@ -33517,7 +34012,7 @@ function publishIRSnapshot(snap, meta) {
 }
 function clearIRSnapshot() {
   current = null;
-  for (const l of listeners5) {
+  for (const l of listeners6) {
     try {
       l(null);
     } catch {
@@ -33528,10 +34023,10 @@ function getIRSnapshot() {
   return current;
 }
 function subscribeIRSnapshot(fn) {
-  listeners5.add(fn);
-  return () => listeners5.delete(fn);
+  listeners6.add(fn);
+  return () => listeners6.delete(fn);
 }
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, clearCapture, clearIRSnapshot, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError2 as formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine2 as SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, clearCapture, clearIRSnapshot, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError2 as formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

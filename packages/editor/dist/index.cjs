@@ -1,6 +1,6 @@
 'use strict';
 
-var React = require('react');
+var React6 = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
@@ -26,7 +26,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React__default = /*#__PURE__*/_interopDefault(React);
+var React6__namespace = /*#__PURE__*/_interopNamespace(React6);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -6670,14 +6670,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React__default.default.Children.count(children);
-  const childArray = React__default.default.Children.toArray(children);
+  const count = React6__namespace.default.Children.count(children);
+  const childArray = React6__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React.useState(defaultSizes);
-  const containerRef = React.useRef(null);
-  const draggingRef = React.useRef(null);
+  const [sizes, setSizes] = React6.useState(defaultSizes);
+  const containerRef = React6.useRef(null);
+  const draggingRef = React6.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React6.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -6716,7 +6716,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React__default.default.useEffect(() => {
+  React6__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -6732,7 +6732,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i2) => /* @__PURE__ */ jsxRuntime.jsxs(React__default.default.Fragment, { children: [
+      children: childArray.map((child, i2) => /* @__PURE__ */ jsxRuntime.jsxs(React6__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -7011,19 +7011,19 @@ function ensureUndoManager() {
     }
   };
   files.observe(filesObserver);
-  const listeners6 = /* @__PURE__ */ new Set();
-  const notify2 = () => {
-    for (const l of listeners6) l();
+  const listeners7 = /* @__PURE__ */ new Set();
+  const notify3 = () => {
+    for (const l of listeners7) l();
   };
-  const onStackItemAdded = () => notify2();
-  const onStackItemPopped = () => notify2();
-  const onStackCleared = () => notify2();
+  const onStackItemAdded = () => notify3();
+  const onStackItemPopped = () => notify3();
+  const onStackCleared = () => notify3();
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners6,
+    listeners: listeners7,
     cleanup: () => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -7060,10 +7060,10 @@ function canRedo() {
 }
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners6 = active.listeners;
-  listeners6.add(cb);
+  const listeners7 = active.listeners;
+  listeners7.add(cb);
   return () => {
-    listeners6.delete(cb);
+    listeners7.delete(cb);
   };
 }
 
@@ -7474,13 +7474,13 @@ function resetFileStore() {
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe3 = React.useCallback(
+  const subscribe3 = React6.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React.useCallback(() => getFile(id), [id]);
-  const file = React.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const setContent2 = React.useCallback(
+  const getSnapshot = React6.useCallback(() => getFile(id), [id]);
+  const file = React6.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const setContent2 = React6.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -15648,13 +15648,13 @@ function teardown(timeoutIds, collections) {
   collections.clear();
 }
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React.useRef([]);
-  const hapCollectionsRef = React.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React.useRef(0);
-  const clearAll = React.useCallback(() => {
+  const timeoutIdsRef = React6.useRef([]);
+  const hapCollectionsRef = React6.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React6.useRef(0);
+  const clearAll = React6.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
   }, []);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     const handler = (event) => {
@@ -16879,23 +16879,23 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React.useRef(null);
-  const editorRef = React.useRef(null);
-  const monacoRef = React.useRef(null);
-  const viewZoneHandleRef = React.useRef(null);
-  const lastPayloadRef = React.useRef(null);
-  const [hapStream, setHapStream] = React.useState(null);
-  const [editorReady, setEditorReady] = React.useState(false);
-  React.useEffect(() => {
+  const containerRef = React6.useRef(null);
+  const editorRef = React6.useRef(null);
+  const monacoRef = React6.useRef(null);
+  const viewZoneHandleRef = React6.useRef(null);
+  const lastPayloadRef = React6.useRef(null);
+  const [hapStream, setHapStream] = React6.useState(null);
+  const [editorReady, setEditorReady] = React6.useState(false);
+  React6.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -16924,7 +16924,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!fileId) return;
     const remount = () => {
       const payload = lastPayloadRef.current;
@@ -16947,12 +16947,12 @@ function EditorView({
     };
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -16964,9 +16964,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React.useRef(onPlay);
+  const onPlayRef = React6.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React.useRef(onStop);
+  const onStopRef = React6.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -17052,7 +17052,7 @@ function EditorView({
     }
   );
 }
-var ErrorBoundary = class extends React__default.default.Component {
+var ErrorBoundary = class extends React6__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -17189,34 +17189,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React.useRef(null);
-  const [audioPayload, setAudioPayload] = React.useState(null);
-  const [reloadTick, setReloadTick] = React.useState(0);
-  const [, forceSourcesRerender] = React.useState(0);
-  const catchUpNeededRef = React.useRef(false);
-  const [liveOn, setLiveOn] = React.useState(() => getVizLive(fileId));
-  React.useEffect(() => {
+  const containerRef = React6.useRef(null);
+  const [audioPayload, setAudioPayload] = React6.useState(null);
+  const [reloadTick, setReloadTick] = React6.useState(0);
+  const [, forceSourcesRerender] = React6.useState(0);
+  const catchUpNeededRef = React6.useRef(false);
+  const [liveOn, setLiveOn] = React6.useState(() => getVizLive(fileId));
+  React6.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -17246,8 +17246,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React.useRef(effectivelyHidden);
-  React.useEffect(() => {
+  const prevEffectivelyHiddenRef = React6.useRef(effectivelyHidden);
+  React6.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -17255,8 +17255,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React.useRef(liveOn);
-  React.useEffect(() => {
+  const prevLiveOnRef = React6.useRef(liveOn);
+  React6.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -17264,7 +17264,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React__default.default.useMemo(() => {
+  const providerNode = React6__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -17436,9 +17436,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React.useRef(opts);
+  const optsRef = React6.useRef(opts);
   optsRef.current = opts;
-  React.useEffect(() => {
+  React6.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -18154,6 +18154,482 @@ var BUILTIN_SOURCE_IDS = new Set(
 function findBuiltinExampleSource(sourceId) {
   return BUILTIN_EXAMPLE_SOURCES.find((s) => s.sourceId === sourceId);
 }
+
+// src/workspace/bottomPanel/bottomPanelRegistry.ts
+var tabs = /* @__PURE__ */ new Map();
+var listeners4 = /* @__PURE__ */ new Set();
+function notify2() {
+  for (const l of listeners4) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+function registerBottomPanelTab(tab) {
+  tabs.set(tab.id, tab);
+  notify2();
+  return () => {
+    if (tabs.get(tab.id) === tab) {
+      tabs.delete(tab.id);
+      notify2();
+    }
+  };
+}
+function unregisterBottomPanelTab(id) {
+  if (tabs.delete(id)) {
+    notify2();
+  }
+}
+function listBottomPanelTabs() {
+  return Array.from(tabs.values());
+}
+function getBottomPanelTab(id) {
+  return tabs.get(id);
+}
+function subscribeToBottomPanelTabs(cb) {
+  listeners4.add(cb);
+  return () => {
+    listeners4.delete(cb);
+  };
+}
+
+// src/workspace/bottomPanel/persistence.ts
+var BOTTOM_PANEL_HEIGHT_KEY = "stave:bottomPanel.height";
+var BOTTOM_PANEL_OPEN_KEY = "stave:bottomPanel.open";
+var BOTTOM_PANEL_ACTIVE_TAB_KEY = "stave:bottomPanel.activeTabId";
+var BOTTOM_PANEL_HEIGHT_MIN = 80;
+var BOTTOM_PANEL_HEIGHT_MAX = 600;
+var BOTTOM_PANEL_HEIGHT_DEFAULT = 240;
+function clampHeight(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return BOTTOM_PANEL_HEIGHT_DEFAULT;
+  }
+  if (value < BOTTOM_PANEL_HEIGHT_MIN) return BOTTOM_PANEL_HEIGHT_MIN;
+  if (value > BOTTOM_PANEL_HEIGHT_MAX) return BOTTOM_PANEL_HEIGHT_MAX;
+  return value;
+}
+function safeLocalStorage3() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+function safeGetItem(key) {
+  const ls = safeLocalStorage3();
+  if (!ls) return null;
+  try {
+    return ls.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function safeSetItem(key, value) {
+  const ls = safeLocalStorage3();
+  if (!ls) return;
+  try {
+    ls.setItem(key, value);
+  } catch {
+  }
+}
+function safeRemoveItem(key) {
+  const ls = safeLocalStorage3();
+  if (!ls) return;
+  try {
+    ls.removeItem(key);
+  } catch {
+  }
+}
+function readPersistedHeight() {
+  const raw = safeGetItem(BOTTOM_PANEL_HEIGHT_KEY);
+  if (raw == null) return BOTTOM_PANEL_HEIGHT_DEFAULT;
+  const parsed = Number.parseFloat(raw);
+  return clampHeight(parsed);
+}
+function readPersistedOpen() {
+  const raw = safeGetItem(BOTTOM_PANEL_OPEN_KEY);
+  return raw === "true";
+}
+function readPersistedActiveTabId() {
+  const raw = safeGetItem(BOTTOM_PANEL_ACTIVE_TAB_KEY);
+  if (raw == null || raw === "") return null;
+  return raw;
+}
+function writePersistedHeight(value) {
+  safeSetItem(BOTTOM_PANEL_HEIGHT_KEY, String(clampHeight(value)));
+}
+function writePersistedOpen(value) {
+  safeSetItem(BOTTOM_PANEL_OPEN_KEY, value ? "true" : "false");
+}
+function writePersistedActiveTabId(value) {
+  if (value == null) {
+    safeRemoveItem(BOTTOM_PANEL_ACTIVE_TAB_KEY);
+    return;
+  }
+  safeSetItem(BOTTOM_PANEL_ACTIVE_TAB_KEY, value);
+}
+function EmptyTimelineStub() {
+  return React6__namespace.createElement(
+    "div",
+    {
+      "data-bottom-panel-tab": "musical-timeline-empty",
+      style: {
+        padding: 24,
+        color: "var(--foreground-muted, #a0a0aa)",
+        fontSize: 12,
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      }
+    },
+    "(empty \u2014 wired in PR-B)"
+  );
+}
+registerBottomPanelTab({
+  id: "musical-timeline",
+  title: "Timeline",
+  content: React6__namespace.createElement(EmptyTimelineStub)
+});
+var HEADER_HEIGHT = 28;
+var RESIZE_HANDLE_HEIGHT = 4;
+var CLOSED_HEIGHT = HEADER_HEIGHT + 1;
+function computeNewHeight(startY, currentY, startHeight) {
+  return startHeight + (startY - currentY);
+}
+function useDragResize(opts) {
+  const [value, setValueState] = React6__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React6__namespace.useState(false);
+  const startYRef = React6__namespace.useRef(0);
+  const startValueRef = React6__namespace.useRef(opts.initial);
+  const pointerIdRef = React6__namespace.useRef(null);
+  const draggingRef = React6__namespace.useRef(false);
+  const minRef = React6__namespace.useRef(opts.min);
+  const maxRef = React6__namespace.useRef(opts.max);
+  React6__namespace.useEffect(() => {
+    minRef.current = opts.min;
+    maxRef.current = opts.max;
+  }, [opts.min, opts.max]);
+  const setValue2 = React6__namespace.useCallback((v) => {
+    const clamped = clampHeight(v);
+    startValueRef.current = clamped;
+    setValueState(clamped);
+  }, []);
+  const onPointerDown = React6__namespace.useCallback(
+    (e) => {
+      e.preventDefault();
+      pointerIdRef.current = e.pointerId;
+      startYRef.current = e.clientY;
+      startValueRef.current = value;
+      draggingRef.current = true;
+      setDragging(true);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+      }
+    },
+    [value]
+  );
+  const endDrag = React6__namespace.useCallback(
+    (e, commit) => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      setDragging(false);
+      const id = pointerIdRef.current;
+      pointerIdRef.current = null;
+      try {
+        if (id != null) e.currentTarget.releasePointerCapture(id);
+      } catch {
+      }
+      if (commit) opts.onCommit(value);
+    },
+    [opts, value]
+  );
+  const onPointerMove = React6__namespace.useCallback(
+    (e) => {
+      if (!draggingRef.current) return;
+      const next = computeNewHeight(
+        startYRef.current,
+        e.clientY,
+        startValueRef.current
+      );
+      const clamped = Math.max(
+        minRef.current,
+        Math.min(maxRef.current, Number.isFinite(next) ? next : startValueRef.current)
+      );
+      setValueState(clamped);
+    },
+    []
+  );
+  const onPointerUp = React6__namespace.useCallback(
+    (e) => {
+      endDrag(e, true);
+    },
+    [endDrag]
+  );
+  const onPointerCancel = React6__namespace.useCallback(
+    (e) => {
+      endDrag(e, false);
+    },
+    [endDrag]
+  );
+  return {
+    value,
+    setValue: setValue2,
+    handleProps: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
+    dragging
+  };
+}
+function renderTabBody(tab) {
+  if (typeof tab.content === "function") {
+    return tab.content();
+  }
+  return tab.content;
+}
+function pickInitialActiveTabId(tabs2) {
+  const stored = readPersistedActiveTabId();
+  if (stored && tabs2.some((t) => t.id === stored)) return stored;
+  return tabs2[0]?.id ?? null;
+}
+function BottomPanel() {
+  const [tabs2, setTabs] = React6__namespace.useState(
+    () => listBottomPanelTabs()
+  );
+  const [open, setOpen] = React6__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React6__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React6__namespace.useState(
+    () => pickInitialActiveTabId(listBottomPanelTabs())
+  );
+  React6__namespace.useEffect(() => {
+    return subscribeToBottomPanelTabs(() => {
+      const next = listBottomPanelTabs();
+      setTabs(next);
+      setActiveTabId((curr) => {
+        if (curr && next.some((t) => t.id === curr)) return curr;
+        return next[0]?.id ?? null;
+      });
+    });
+  }, []);
+  React6__namespace.useEffect(() => {
+    writePersistedOpen(open);
+  }, [open]);
+  React6__namespace.useEffect(() => {
+    writePersistedActiveTabId(activeTabId);
+  }, [activeTabId]);
+  const drag = useDragResize({
+    initial: height,
+    min: BOTTOM_PANEL_HEIGHT_MIN,
+    max: BOTTOM_PANEL_HEIGHT_MAX,
+    onCommit: (v) => {
+      setHeight(v);
+      writePersistedHeight(v);
+    }
+  });
+  React6__namespace.useEffect(() => {
+    const flush = () => writePersistedHeight(height);
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, [height]);
+  const tabButtonRefs = React6__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React6__namespace.useCallback(
+    (id) => (el) => {
+      if (el) tabButtonRefs.current.set(id, el);
+      else tabButtonRefs.current.delete(id);
+    },
+    []
+  );
+  const focusTab = React6__namespace.useCallback((id) => {
+    const el = tabButtonRefs.current.get(id);
+    if (el) el.focus();
+  }, []);
+  const onTabsKeyDown = React6__namespace.useCallback(
+    (e) => {
+      if (tabs2.length === 0) return;
+      const idx = tabs2.findIndex((t) => t.id === activeTabId);
+      const safeIdx = idx < 0 ? 0 : idx;
+      let next = safeIdx;
+      if (e.key === "ArrowRight") {
+        next = (safeIdx + 1) % tabs2.length;
+      } else if (e.key === "ArrowLeft") {
+        next = (safeIdx - 1 + tabs2.length) % tabs2.length;
+      } else if (e.key === "Home") {
+        next = 0;
+      } else if (e.key === "End") {
+        next = tabs2.length - 1;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      const target = tabs2[next];
+      if (target) {
+        setActiveTabId(target.id);
+        queueMicrotask(() => focusTab(target.id));
+      }
+    },
+    [tabs2, activeTabId, focusTab]
+  );
+  if (tabs2.length === 0) return null;
+  const renderHeight = drag.dragging ? drag.value : height;
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-bottom-panel": "root",
+      role: "region",
+      "aria-label": "Bottom panel",
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        flexBasis: open ? renderHeight : CLOSED_HEIGHT,
+        flexShrink: 0,
+        flexGrow: 0,
+        borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.08))",
+        background: "var(--background, #0f0f12)",
+        color: "var(--foreground, #e6e6ec)",
+        overflow: "hidden",
+        position: "relative"
+      },
+      children: [
+        open && /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-bottom-panel": "resize-handle",
+            role: "separator",
+            "aria-orientation": "horizontal",
+            "aria-label": "Resize bottom panel",
+            tabIndex: -1,
+            ...drag.handleProps,
+            style: {
+              height: RESIZE_HANDLE_HEIGHT,
+              cursor: "ns-resize",
+              background: "transparent",
+              // A subtle hover affordance via the user agent's outline isn't
+              // enough — give the handle a visible top hairline so the user
+              // sees something to grab. Stays inside the closed-state budget.
+              flex: "0 0 auto",
+              touchAction: "none"
+            }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            "data-bottom-panel": "header",
+            style: {
+              height: HEADER_HEIGHT,
+              minHeight: HEADER_HEIGHT,
+              display: "flex",
+              alignItems: "stretch",
+              borderBottom: open ? "1px solid var(--border-subtle, rgba(255,255,255,0.06))" : "none",
+              flex: "0 0 auto"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "div",
+                {
+                  role: "tablist",
+                  "aria-label": "Bottom panel tabs",
+                  onKeyDown: onTabsKeyDown,
+                  style: {
+                    display: "flex",
+                    alignItems: "stretch",
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: "hidden"
+                  },
+                  children: tabs2.map((tab) => {
+                    const selected = tab.id === activeTabId;
+                    return /* @__PURE__ */ jsxRuntime.jsx(
+                      "button",
+                      {
+                        ref: setTabButtonRef(tab.id),
+                        role: "tab",
+                        type: "button",
+                        "aria-selected": selected,
+                        tabIndex: selected ? 0 : -1,
+                        "data-tab-id": tab.id,
+                        onClick: () => {
+                          if (!open) setOpen(true);
+                          setActiveTabId(tab.id);
+                        },
+                        style: {
+                          appearance: "none",
+                          border: "none",
+                          background: "transparent",
+                          color: selected ? "var(--foreground, #e6e6ec)" : "var(--foreground-muted, #a0a0aa)",
+                          padding: "0 12px",
+                          fontSize: 12,
+                          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+                          cursor: "pointer",
+                          borderTop: selected ? "1px solid var(--accent, #8b5cf6)" : "1px solid transparent",
+                          outline: "none"
+                        },
+                        children: tab.title
+                      },
+                      tab.id
+                    );
+                  })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  "data-bottom-panel": "toggle",
+                  type: "button",
+                  "aria-label": open ? "Hide panel" : "Show panel",
+                  "aria-expanded": open,
+                  onClick: () => setOpen((v) => !v),
+                  style: {
+                    appearance: "none",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--foreground-muted, #a0a0aa)",
+                    padding: "0 10px",
+                    cursor: "pointer",
+                    fontSize: 12
+                  },
+                  children: open ? "\u25BE" : "\u25B4"
+                }
+              )
+            ]
+          }
+        ),
+        open && /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-bottom-panel": "body",
+            style: {
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden"
+            },
+            children: tabs2.map((tab) => {
+              const selected = tab.id === activeTabId;
+              return /* @__PURE__ */ jsxRuntime.jsx(
+                "div",
+                {
+                  role: "tabpanel",
+                  "aria-labelledby": tab.id,
+                  hidden: !selected,
+                  style: {
+                    display: selected ? "flex" : "none",
+                    flexDirection: "column",
+                    flex: 1,
+                    minHeight: 0,
+                    overflow: "auto"
+                  },
+                  children: renderTabBody(tab)
+                },
+                tab.id
+              );
+            })
+          }
+        )
+      ]
+    }
+  );
+}
 var tabbarScrollStyleInjected = false;
 function ensureTabbarScrollStyle() {
   if (tabbarScrollStyleInjected) return;
@@ -18192,7 +18668,7 @@ function tabFileName(tab) {
   const parts2 = file.path.split("/");
   return parts2[parts2.length - 1];
 }
-var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
+var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
   initialTabs = [],
   theme = "dark",
   height = "100%",
@@ -18208,59 +18684,59 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
   onEditViz,
   onCropViz
 }, forwardedRef) {
-  const shellRootRef = React.useRef(null);
-  const initialState = React.useRef(createInitialGroupState(initialTabs));
-  const [groups, setGroups] = React.useState(
+  const shellRootRef = React6.useRef(null);
+  const initialState = React6.useRef(createInitialGroupState(initialTabs));
+  const [groups, setGroups] = React6.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React.useState(
+  const [layout, setLayout] = React6.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React.useState(
+  const [activeGroupId, setActiveGroupId] = React6.useState(
     () => initialState.current.activeGroupId
   );
-  const [dragOverTarget, setDragOverTarget] = React.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React.useState(
+  const [dragOverTarget, setDragOverTarget] = React6.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React6.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React6.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React6.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React.useState(
+  const [backdropQuality, setBackdropQualityState] = React6.useState(
     () => getBackdropQuality()
   );
-  React.useEffect(
+  React6.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React6.useState(
     () => getBackdropOpacity()
   );
-  React.useEffect(
+  React6.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React.useMemo(() => {
+  const activeTab = React6.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React.useRef(void 0);
-  React.useEffect(() => {
+  const prevActiveTabRef = React6.useRef(void 0);
+  React6.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React.useCallback(
+  const updateGroup = React6.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -18272,14 +18748,14 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     []
   );
-  const handleTabClick = React.useCallback(
+  const handleTabClick = React6.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const handleTabClose = React.useCallback(
+  const handleTabClose = React6.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -18344,7 +18820,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [groups, layout, onTabClose]
   );
-  const handleSplit = React.useCallback(
+  const handleSplit = React6.useCallback(
     (groupId, direction = "east") => {
       const newId = generateGroupId();
       setGroups((prev) => {
@@ -18356,7 +18832,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     []
   );
-  const findNeighborGroupId = React.useCallback(
+  const findNeighborGroupId = React6.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -18365,7 +18841,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [layout]
   );
-  const handleCloseGroup = React.useCallback(
+  const handleCloseGroup = React6.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -18392,7 +18868,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React.useCallback(
+  const splitGroupWithTab = React6.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId = generateGroupId();
       setGroups((prev) => {
@@ -18408,7 +18884,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     []
   );
-  const moveTabToNewQuadrant = React.useCallback(
+  const moveTabToNewQuadrant = React6.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -18448,7 +18924,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React.useCallback(
+  const moveTabToNewEdgeGroup = React6.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -18483,7 +18959,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [groups]
   );
-  const updateGroupBackground = React.useCallback(
+  const updateGroupBackground = React6.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -18495,7 +18971,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [groups, updateGroup, onBackgroundFileChange]
   );
-  const closeTabById = React.useCallback(
+  const closeTabById = React6.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -18528,7 +19004,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React.useCallback(
+  const findTabByFileId = React6.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -18541,14 +19017,14 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React.useCallback(() => {
+  const findGroupWithAnyPreview = React6.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React.useRef(null);
-  const shellActions = React.useMemo(
+  const shellActionsRef = React6.useRef(null);
+  const shellActions = React6.useMemo(
     () => ({
       addTab: (groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -18565,12 +19041,12 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React.useCallback(() => {
+  const getActiveTab = React6.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React6.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React6.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React.useCallback(
+  const getPreviewProviderForCommand = React6.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -18595,7 +19071,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React.useCallback(
+  const handleEdgeDrop = React6.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -18612,7 +19088,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React.useCallback(
+  const handleEdgeDragOver = React6.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -18621,12 +19097,12 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React.useCallback(() => {
+  const handleEdgeDragLeave = React6.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React.useRef(onSaveFile);
+  const onSaveFileRef = React6.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const handler = (e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -18640,7 +19116,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React.useCallback(
+  const handleTabDragStart = React6.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -18649,7 +19125,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     []
   );
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const onDragEnd = () => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -18662,7 +19138,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React.useCallback(
+  const computeQuadrant = React6.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -18687,7 +19163,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     []
   );
-  const handleTabBarDrop = React.useCallback(
+  const handleTabBarDrop = React6.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -18759,7 +19235,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     []
   );
-  const handleDropOnGroup = React.useCallback(
+  const handleDropOnGroup = React6.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -18828,7 +19304,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     },
     [computeQuadrant, groups, moveTabToNewQuadrant]
   );
-  const renderTabContent = React.useCallback(
+  const renderTabContent = React6.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -19032,7 +19508,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
       editorExtrasForTab
     ]
   );
-  const renderGroup = React.useCallback(
+  const renderGroup = React6.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -19350,11 +19826,11 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
       theme
     ]
   );
-  const totalGroupCount = React.useMemo(
+  const totalGroupCount = React6.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React.useMemo(() => {
+  const previewTabIds = React6.useMemo(() => {
     const out2 = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -19365,7 +19841,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
     }
     return out2;
   }, [groups]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -19388,7 +19864,7 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React.useImperativeHandle(
+  React6.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: (fileId, options) => {
@@ -19591,40 +20067,53 @@ var WorkspaceShell = React.forwardRef(function WorkspaceShell2({
             }
           }
         ),
-        totalGroupCount === 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+        /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
-            "data-testid": "workspace-shell-empty",
+            "data-workspace-groups": "container",
             style: {
               flex: 1,
+              minHeight: 0,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--foreground-muted)",
-              fontSize: 12
+              flexDirection: "column"
             },
-            children: "Drop a tab here"
+            children: totalGroupCount === 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+              "div",
+              {
+                "data-testid": "workspace-shell-empty",
+                style: {
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--foreground-muted)",
+                  fontSize: 12
+                },
+                children: "Drop a tab here"
+              }
+            ) : layout.length === 1 && layout[0].length === 1 ? (() => {
+              const g = groups.get(layout[0][0]);
+              return g ? renderGroup(g) : null;
+            })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
+              if (column.length === 1) {
+                const g = groups.get(column[0]);
+                return /* @__PURE__ */ jsxRuntime.jsx(React6__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+              }
+              return /* @__PURE__ */ jsxRuntime.jsx(
+                SplitPane,
+                {
+                  direction: "vertical",
+                  children: column.map((gid) => {
+                    const g = groups.get(gid);
+                    return /* @__PURE__ */ jsxRuntime.jsx(React6__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                  })
+                },
+                `col-${colIdx}-${column.join("+")}`
+              );
+            }) })
           }
-        ) : layout.length === 1 && layout[0].length === 1 ? (() => {
-          const g = groups.get(layout[0][0]);
-          return g ? renderGroup(g) : null;
-        })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
-          if (column.length === 1) {
-            const g = groups.get(column[0]);
-            return /* @__PURE__ */ jsxRuntime.jsx(React__default.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
-          }
-          return /* @__PURE__ */ jsxRuntime.jsx(
-            SplitPane,
-            {
-              direction: "vertical",
-              children: column.map((gid) => {
-                const g = groups.get(gid);
-                return /* @__PURE__ */ jsxRuntime.jsx(React__default.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
-              })
-            },
-            `col-${colIdx}-${column.join("+")}`
-          );
-        }) }),
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(BottomPanel, {}),
         tabDragInProgress && dragOverTarget && /* @__PURE__ */ jsxRuntime.jsx(
           QuadrantGuideOverlay,
           {
@@ -20145,14 +20634,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React.useRef(null);
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const [error, setError] = React.useState(null);
-  const [bpm, setBpm] = React.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React.useState(false);
-  const fileIdRef = React.useRef(FILE_ID);
-  const [seeded, setSeeded] = React.useState(false);
-  React.useEffect(() => {
+  const runtimeRef = React6.useRef(null);
+  const [isPlaying, setIsPlaying] = React6.useState(false);
+  const [error, setError] = React6.useState(null);
+  const [bpm, setBpm] = React6.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React6.useState(false);
+  const fileIdRef = React6.useRef(FILE_ID);
+  const [seeded, setSeeded] = React6.useState(false);
+  React6.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -20161,7 +20650,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -20197,41 +20686,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React.useRef(false);
-  React.useEffect(() => {
+  const autoPlayedRef = React6.useRef(false);
+  React6.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React.useRef(onChange);
+  const onChangeRef = React6.useRef(onChange);
   onChangeRef.current = onChange;
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React.useCallback(() => {
+  const handlePlay = React6.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React.useCallback(() => {
+  const handleStop = React6.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React.useCallback(() => {
+  const handleToggleAutoRefresh = React6.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React.useCallback(
+  const chromeForTab = React6.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -20254,7 +20743,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React.useCallback(
+  const editorExtrasForTab = React6.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -20301,10 +20790,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React.useRef(null);
-  const [bpm, setBpm] = React.useState(120);
-  const [soundNames, setSoundNames] = React.useState([]);
-  const [isExporting, setIsExporting] = React.useState(false);
+  const engineRef = React6.useRef(null);
+  const [bpm, setBpm] = React6.useState(120);
+  const [soundNames, setSoundNames] = React6.useState([]);
+  const [isExporting, setIsExporting] = React6.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -20312,19 +20801,19 @@ function StrudelEditor({
     }
     return engineRef.current;
   }
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React.useEffect(() => {
+  React6.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React.useRef(controlledCode ?? defaultCode);
+  const codeRef = React6.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React.useCallback((engine2) => {
+  const handlePostEvaluate = React6.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -20337,7 +20826,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React.useCallback(async () => {
+  const handleExport = React6.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -22670,12 +23159,10 @@ var ProgramBuilder = class _ProgramBuilder {
 
 // ../../../sonicPiWeb/src/engine/config.ts
 var MIXER = {
-  /** [TAU] Mixer pre-amplification. Desktop SP uses 0.2 but needs driver attenuation.
-   *  Sonic Tau uses 0.3 for browser WASM context (app.bundle.js:1787). */
-  PRE_AMP: 0.3,
-  /** [TUNED] Mixer final amplification. Desktop SP uses 6 (clips in WASM).
-   *  Sonic Tau uses 0.8 (too quiet). A/B tuned to 1.2 for balanced dynamics. */
-  AMP: 1.2,
+  /** [SP] Mixer pre-amplification. Matches Desktop SP exactly (SP67). */
+  PRE_AMP: 0.2,
+  /** [SP] Mixer final amplification. Matches Desktop SP exactly (SP67). */
+  AMP: 6,
   /** [TAU] High-pass filter cutoff (Hz). Removes subsonic rumble that can
    *  damage speakers. Desktop SP uses synthdef default. Sonic Tau sends 21
    *  explicitly (app.bundle.js:1788-1789). */
@@ -24637,10 +25124,17 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     }
     this.loopMonitors.clear();
   }
-  /** Allocate a private audio bus for FX routing. */
+  /** Allocate a private audio bus for FX routing. Reserves a stereo pair
+   *  (bus N and N+1) — every relevant synthdef in our chain
+   *  (basic_stereo_player, fx_*) reads or writes 2 channels. Adjacent
+   *  mono allocations would collide on the inner channel, summing the
+   *  upstream stereo write into a downstream stereo write at the same
+   *  address (exp-008). NUM_OUTPUT_CHANNELS is even by construction. */
   allocateBus() {
     if (this.freeBuses.length > 0) return this.freeBuses.pop();
-    return this.nextBusNum++;
+    const bus = this.nextBusNum;
+    this.nextBusNum += 2;
+    return bus;
   }
   /** Release a private audio bus back to the pool. Guards against duplicate frees. */
   freeBus(busNum) {
@@ -31516,7 +32010,7 @@ function mountVizRenderer(container, source, components, size, onError) {
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React.useRef(null);
+  const rendererRef = React6.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -31530,7 +32024,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -31552,7 +32046,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   }, [source]);
 }
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React.useRef(null);
+  const containerRef = React6.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -31700,9 +32194,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef(null);
-  React.useEffect(() => {
+  const [open, setOpen] = React6.useState(false);
+  const ref = React6.useRef(null);
+  React6.useEffect(() => {
     if (!open) return;
     const handler = (e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -31941,32 +32435,32 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React.useRef(null);
-  const [initialTabs, setInitialTabs] = React.useState(null);
-  React.useEffect(() => {
+  const containerRef = React6.useRef(null);
+  const [initialTabs, setInitialTabs] = React6.useState(null);
+  React6.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
-      const tabs = [];
+      const tabs2 = [];
       for (const preset of presets) {
         const fileId = seedFromPreset(preset);
-        tabs.push({
+        tabs2.push({
           kind: "editor",
           id: `editor-${fileId}`,
           fileId
         });
-        tabs.push({
+        tabs2.push({
           kind: "preview",
           id: `preview-${fileId}`,
           fileId,
           sourceRef: { kind: "none" }
         });
       }
-      setInitialTabs(tabs.length > 0 ? tabs : []);
+      setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React.useCallback(
+  const handleSaveFile = React6.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -31980,7 +32474,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React.useCallback(
+  const previewProviderFor = React6.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -32932,21 +33426,21 @@ function VizEditorChrome({
   onToggleBackground,
   isBackground
 }) {
-  const [liveOn, setLiveOn] = React.useState(() => getVizLive(file.id));
-  React.useEffect(() => {
+  const [liveOn, setLiveOn] = React6.useState(() => getVizLive(file.id));
+  React6.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React.useState({
+  const [selectedSource, setSelectedSource] = React6.useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = React.useState(0);
-  React.useEffect(() => {
+  const [, forceSourcesRerender] = React6.useState(0);
+  React6.useEffect(() => {
     return workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
   }, []);
-  const handleSourceChange = React.useCallback(
+  const handleSourceChange = React6.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -32964,7 +33458,7 @@ function VizEditorChrome({
     },
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = React.useCallback(() => {
+  const handlePrimaryButtonClick = React6.useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
       onTogglePausePreview();
       return;
@@ -33128,7 +33622,7 @@ function createCompiledVizProvider(opts) {
 }
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React.useMemo(() => {
+  const { descriptor, compileError } = React6.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -33164,9 +33658,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React.useRef(null);
-  const rendererRef = React.useRef(null);
-  const components = React.useMemo(() => {
+  const containerRef = React6.useRef(null);
+  const rendererRef = React6.useRef(null);
+  const components = React6.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -33188,7 +33682,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -33242,7 +33736,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -33250,7 +33744,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -33265,7 +33759,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React.useEffect(() => {
+  React6.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -33475,9 +33969,9 @@ function emitFromGlobal(err2, _kind) {
 var DEFAULT_CAPACITY = 30;
 var entries = [];
 var capacity = DEFAULT_CAPACITY;
-var listeners4 = /* @__PURE__ */ new Set();
+var listeners5 = /* @__PURE__ */ new Set();
 function fanOut() {
-  for (const l of listeners4) {
+  for (const l of listeners5) {
     try {
       l();
     } catch {
@@ -33505,9 +33999,9 @@ function getCaptureBuffer() {
   return entries;
 }
 function subscribeCapture(l) {
-  listeners4.add(l);
+  listeners5.add(l);
   return () => {
-    listeners4.delete(l);
+    listeners5.delete(l);
   };
 }
 function clearCapture() {
@@ -33528,14 +34022,14 @@ function setCaptureCapacity(n) {
 
 // src/engine/irInspector.ts
 var current = null;
-var listeners5 = /* @__PURE__ */ new Set();
+var listeners6 = /* @__PURE__ */ new Set();
 function publishIRSnapshot(snap, meta) {
   current = snap;
   captureSnapshot(snap, {
     ts: snap.ts,
     cycleCount: meta?.cycleCount ?? null
   });
-  for (const l of listeners5) {
+  for (const l of listeners6) {
     try {
       l(snap);
     } catch {
@@ -33544,7 +34038,7 @@ function publishIRSnapshot(snap, meta) {
 }
 function clearIRSnapshot() {
   current = null;
-  for (const l of listeners5) {
+  for (const l of listeners6) {
     try {
       l(null);
     } catch {
@@ -33555,13 +34049,20 @@ function getIRSnapshot() {
   return current;
 }
 function subscribeIRSnapshot(fn) {
-  listeners5.add(fn);
-  return () => listeners5.delete(fn);
+  listeners6.add(fn);
+  return () => listeners6.delete(fn);
 }
 
 exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
 exports.BACKDROP_BLUR_VAR = BACKDROP_BLUR_VAR;
+exports.BOTTOM_PANEL_ACTIVE_TAB_KEY = BOTTOM_PANEL_ACTIVE_TAB_KEY;
+exports.BOTTOM_PANEL_HEIGHT_DEFAULT = BOTTOM_PANEL_HEIGHT_DEFAULT;
+exports.BOTTOM_PANEL_HEIGHT_KEY = BOTTOM_PANEL_HEIGHT_KEY;
+exports.BOTTOM_PANEL_HEIGHT_MAX = BOTTOM_PANEL_HEIGHT_MAX;
+exports.BOTTOM_PANEL_HEIGHT_MIN = BOTTOM_PANEL_HEIGHT_MIN;
+exports.BOTTOM_PANEL_OPEN_KEY = BOTTOM_PANEL_OPEN_KEY;
 exports.BUNDLED_PREFIX = BUNDLED_PREFIX;
+exports.BottomPanel = BottomPanel;
 exports.BufferedScheduler = BufferedScheduler;
 exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
 exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
@@ -33645,6 +34146,7 @@ exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveProjectId = getActiveProjectId;
 exports.getBackdropOpacity = getBackdropOpacity;
 exports.getBackdropQuality = getBackdropQuality;
+exports.getBottomPanelTab = getBottomPanelTab;
 exports.getCaptureBuffer = getCaptureBuffer;
 exports.getCaptureCapacity = getCaptureCapacity;
 exports.getChildOrder = getChildOrder;
@@ -33683,6 +34185,7 @@ exports.isBundledPresetId = isBundledPresetId;
 exports.isDocReady = isDocReady;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
 exports.levenshtein = levenshtein;
+exports.listBottomPanelTabs = listBottomPanelTabs;
 exports.listNamedVizEntries = listNamedVizEntries;
 exports.listNamedVizNames = listNamedVizNames;
 exports.listProjects = listProjects;
@@ -33709,7 +34212,10 @@ exports.previewProviderRegistry = previewProviderRegistry;
 exports.propagate = propagate;
 exports.pruneZoneOverrides = pruneZoneOverrides;
 exports.publishIRSnapshot = publishIRSnapshot;
+exports.readPersistedActiveTabId = readPersistedActiveTabId;
+exports.readPersistedOpen = readPersistedOpen;
 exports.redo = redo;
+exports.registerBottomPanelTab = registerBottomPanelTab;
 exports.registerNamedViz = registerNamedViz;
 exports.registerPresetAsNamedViz = registerPresetAsNamedViz;
 exports.registerPreviewProvider = registerPreviewProvider;
@@ -33755,6 +34261,7 @@ exports.subscribeCapture = subscribeCapture;
 exports.subscribeFixed = subscribeFixed;
 exports.subscribeIRSnapshot = subscribeIRSnapshot;
 exports.subscribeLog = subscribeLog;
+exports.subscribeToBottomPanelTabs = subscribeToBottomPanelTabs;
 exports.subscribeToDocUpdate = subscribeToDocUpdate;
 exports.subscribeToFileList = subscribeToFileList;
 exports.subscribeToFolderOrder = subscribeToFolderOrder;
@@ -33768,6 +34275,7 @@ exports.toggleEditorMinimap = toggleEditorMinimap;
 exports.touchProject = touchProject;
 exports.transpose = transpose;
 exports.undo = undo;
+exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.withStructBatch = withStructBatch;

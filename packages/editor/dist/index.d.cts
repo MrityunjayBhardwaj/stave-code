@@ -1,5 +1,6 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
-import React, { RefObject, ReactNode } from 'react';
+import * as React from 'react';
+import React__default, { RefObject, ReactNode } from 'react';
 import * as p5 from 'p5';
 import p5__default from 'p5';
 
@@ -896,7 +897,7 @@ interface StrudelEditorProps {
     showToolbar?: boolean;
     readOnly?: boolean;
     onExport?: (blob: Blob, stemName?: string) => Promise<string>;
-    engineRef?: React.MutableRefObject<StrudelEngine | null>;
+    engineRef?: React__default.MutableRefObject<StrudelEngine | null>;
 }
 declare function StrudelEditor({ code: controlledCode, defaultCode, onChange, autoPlay, onPlay, onStop, onError, theme, height, vizHeight, showToolbar, showVizPicker, readOnly, activeHighlight, visualizer, vizDescriptors, onExport, engineRef: engineRefProp, }: StrudelEditorProps): react_jsx_runtime.JSX.Element;
 
@@ -918,13 +919,13 @@ interface LiveCodingEditorProps {
     vizHeight?: number | string;
     showToolbar?: boolean;
     readOnly?: boolean;
-    toolbarExtra?: React.ReactNode;
+    toolbarExtra?: React__default.ReactNode;
     onPostEvaluate?: (engine: LiveCodingEngine) => void;
     soundNames?: string[];
     bpm?: number;
     isExporting?: boolean;
     onExport?: () => void;
-    engineRef?: React.MutableRefObject<LiveCodingEngine | null>;
+    engineRef?: React__default.MutableRefObject<LiveCodingEngine | null>;
     /** Monaco language ID (e.g. 'strudel', 'sonicpi'). Defaults to 'strudel'. */
     language?: string;
 }
@@ -1342,7 +1343,7 @@ declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]):
  * cache when the registry mutates.
  */
 
-type Listener$3 = () => void;
+type Listener$4 = () => void;
 /**
  * Register a descriptor under a user-chosen name. Idempotent — calling
  * twice with the same name + descriptor is a no-op and does not fire
@@ -1379,7 +1380,7 @@ declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
  * fire synchronously on subscription — subscribers receive only
  * future changes.
  */
-declare function onNamedVizChanged(cb: Listener$3): () => void;
+declare function onNamedVizChanged(cb: Listener$4): () => void;
 
 /**
  * Central configuration for the Stave visualization system.
@@ -1638,7 +1639,7 @@ declare function mountVizRenderer(container: HTMLDivElement, source: VizRenderer
 
 interface SplitPaneProps {
     direction: 'horizontal' | 'vertical';
-    children: React.ReactNode[];
+    children: React__default.ReactNode[];
     /** Initial sizes as percentages (must sum to 100). Defaults to equal splits. */
     initialSizes?: number[];
     /** Minimum size in pixels for each pane. */
@@ -2913,7 +2914,7 @@ interface WorkspaceShellHandle {
      */
     getBackgroundFileId(groupId?: string): string | undefined;
 }
-declare const WorkspaceShell: React.ForwardRefExoticComponent<WorkspaceShellProps & React.RefAttributes<WorkspaceShellHandle>>;
+declare const WorkspaceShell: React__default.ForwardRefExoticComponent<WorkspaceShellProps & React__default.RefAttributes<WorkspaceShellHandle>>;
 
 /**
  * EditorView — Phase 10.2 Tasks 03 + 07.
@@ -2947,12 +2948,12 @@ declare const WorkspaceShell: React.ForwardRefExoticComponent<WorkspaceShellProp
  *    shim or shell integration) manages the runtime's `onError` subscription.
  */
 
-declare function EditorView({ fileId, theme, chromeSlot, onMount, error, onPlay, onStop, onEditViz, onCropViz, }: EditorViewProps): React.ReactElement;
+declare function EditorView({ fileId, theme, chromeSlot, onMount, error, onPlay, onStop, onEditViz, onCropViz, }: EditorViewProps): React__default.ReactElement;
 
 interface ErrorBoundaryProps {
-    children: React.ReactNode;
-    fallback?: (error: Error, reset: () => void) => React.ReactNode;
-    onError?: (error: Error, info: React.ErrorInfo) => void;
+    children: React__default.ReactNode;
+    fallback?: (error: Error, reset: () => void) => React__default.ReactNode;
+    onError?: (error: Error, info: React__default.ErrorInfo) => void;
     /**
      * When this key changes, the boundary resets. Use the tab id so
      * switching tabs (or reloading a file) clears a prior crash state.
@@ -2968,13 +2969,13 @@ interface ErrorBoundaryState {
  * trace — hetvabhasa P37) tears down only the crashing pane, not the
  * surrounding shell (status bar, activity bar, Console panel).
  */
-declare class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+declare class ErrorBoundary extends React__default.Component<ErrorBoundaryProps, ErrorBoundaryState> {
     state: ErrorBoundaryState;
     static getDerivedStateFromError(error: Error): ErrorBoundaryState;
-    componentDidCatch(error: Error, info: React.ErrorInfo): void;
+    componentDidCatch(error: Error, info: React__default.ErrorInfo): void;
     componentDidUpdate(prev: ErrorBoundaryProps): void;
     private reset;
-    render(): React.ReactNode;
+    render(): React__default.ReactNode;
 }
 
 /**
@@ -3076,7 +3077,7 @@ declare class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBou
  * Task 04 / Task 05 may dress it up further.
  */
 
-declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, theme, hidden, paused, }: PreviewViewProps): React.ReactElement;
+declare function PreviewView({ fileId, provider, sourceRef, onSourceRefChange, theme, hidden, paused, }: PreviewViewProps): React__default.ReactElement;
 
 /**
  * WorkspaceFile store — Yjs-backed (PM Phase 1).
@@ -3305,14 +3306,14 @@ declare function subscribeToDocUpdate(cb: () => void, options?: {
  * existing store functions as usual.
  */
 declare function withStructBatch<T>(fn: () => T): T;
-type Listener$2 = () => void;
+type Listener$3 = () => void;
 /** Call when the active project Y.Doc changes so the undo stack rebuilds. */
 declare function resetUndoManager(): void;
 declare function undo(): boolean;
 declare function redo(): boolean;
 declare function canUndo(): boolean;
 declare function canRedo(): boolean;
-declare function subscribeToUndoState(cb: Listener$2): () => void;
+declare function subscribeToUndoState(cb: Listener$3): () => void;
 
 /**
  * Reveal the given line in the editor for `fileId` and set the cursor
@@ -4617,7 +4618,7 @@ interface IRSnapshot {
     /** Collected events for one cycle window starting at t=0. */
     events: IREvent[];
 }
-type Listener$1 = (snap: IRSnapshot | null) => void;
+type Listener$2 = (snap: IRSnapshot | null) => void;
 /**
  * Publish a snapshot. Two parallel side-effects fire on every publish
  * (PK9 step 8 — order independent, both must run):
@@ -4636,7 +4637,129 @@ declare function publishIRSnapshot(snap: IRSnapshot, meta?: {
 }): void;
 declare function clearIRSnapshot(): void;
 declare function getIRSnapshot(): IRSnapshot | null;
-declare function subscribeIRSnapshot(fn: Listener$1): () => void;
+declare function subscribeIRSnapshot(fn: Listener$2): () => void;
+
+/**
+ * BottomPanel — reusable bottom-drawer component for the editor surface.
+ *
+ * Mounted by `WorkspaceShell` below the groups area. Hosts a tab bar
+ * with one active tab + a body. Tab content is contributed externally
+ * via `bottomPanelRegistry` (DA-05); PR-A seeds a placeholder
+ * "Timeline" tab so the surface is reviewable before PR-B fills it.
+ *
+ * Closed-state pixel cost: ~29px (28px header + 1px top border). When
+ * zero tabs are registered the component returns `null` (true zero
+ * shift — Trap 2). Default open=false so existing users see only the
+ * 29px header strip until they expand the drawer.
+ *
+ * Persistence: height + open + activeTabId hydrate from localStorage in
+ * `useState` initializers (Trap 7 — no first-paint flicker). Writes
+ * happen in commit-time effects + a pagehide flush for the height.
+ *
+ * Audience: musician (PV35). Vocabulary lock (PV32 / D-06): the only
+ * strings PR-A introduces are "Hide panel" / "Show panel" /
+ * "Bottom panel" / "Bottom panel tabs" / "Resize bottom panel". Tab
+ * titles are sourced from the registry (PR-A's seed uses "Timeline").
+ *
+ * Phase 20-01 PR-A.
+ */
+
+declare function BottomPanel(): React.ReactElement | null;
+
+/**
+ * bottomPanelRegistry — module-level singleton registry of tabs that the
+ * BottomPanel component renders.
+ *
+ * Mirrors the activity-bar panel registry shape at
+ * `packages/app/src/panels/registry.ts` (DA-05). Idempotent register
+ * (re-registering by id REPLACES the existing entry) so a re-mount /
+ * hot-reload doesn't double-up tabs.
+ *
+ * `listBottomPanelTabs()` returns a FRESH array on every call (PV34) so
+ * React subscribers using `useMemo([])` or shallow-prop comparison don't
+ * go stale on register/unregister.
+ *
+ * `__resetBottomPanelRegistryForTest` is intentionally NOT exported from
+ * the top-level barrel — it's test-internal. Tests import directly from
+ * this module path. (Trap 9 — vitest test isolation.)
+ *
+ * Phase 20-01 PR-A.
+ */
+
+interface BottomPanelTab {
+    readonly id: string;
+    /** User-facing tab title. Vocabulary discipline (PV32 / PV35) is the
+     *  responsibility of the registering caller — the registry stores
+     *  whatever string it's given. */
+    readonly title: string;
+    /** Optional codicon name without the `codicon-` prefix. */
+    readonly icon?: string;
+    /**
+     * Tab body. Either a ReactNode rendered directly, or a function that
+     * returns one (function form lets a future tab defer expensive mount
+     * until first activation). PR-A always uses the ReactNode form.
+     */
+    readonly content: React.ReactNode | (() => React.ReactNode);
+}
+type Listener$1 = () => void;
+/**
+ * Register a tab. Idempotent — re-registering by `id` REPLACES the
+ * existing entry (matches activity-bar `registerPanel` semantics, lets
+ * PR-B re-register `'musical-timeline'` to swap the placeholder for the
+ * real component without an explicit unregister).
+ *
+ * Returns an unsubscribe function that removes the tab IF it's still the
+ * registered one (a later replace is the new owner).
+ */
+declare function registerBottomPanelTab(tab: BottomPanelTab): () => void;
+/** Remove a tab by id. No-op if the id isn't registered. */
+declare function unregisterBottomPanelTab(id: string): void;
+/**
+ * Fresh array of all registered tabs (insertion order). PV34 — never
+ * cache between renders without subscribing.
+ */
+declare function listBottomPanelTabs(): readonly BottomPanelTab[];
+/** Direct lookup by id. */
+declare function getBottomPanelTab(id: string): BottomPanelTab | undefined;
+/**
+ * Subscribe to register / unregister / replace events. Listener fires
+ * with no arguments — consumers re-read `listBottomPanelTabs()`.
+ */
+declare function subscribeToBottomPanelTabs(cb: Listener$1): () => void;
+
+/**
+ * persistence — SSR-safe localStorage helpers for BottomPanel state +
+ * the `clampHeight` pure function shared with `useDragResize`.
+ *
+ * All readers MUST be safe to call from a `useState` initializer
+ * (DA-06 + Trap 7). That means: no DOM access without the
+ * `typeof window !== 'undefined'` guard, no throws on Safari private
+ * mode (where `localStorage.getItem` raises), and a sensible default
+ * return on every error path.
+ *
+ * Constants are exported so Playwright assertions (T-10) and component
+ * tests (T-07) can reference the canonical key names.
+ *
+ * Phase 20-01 PR-A.
+ */
+declare const BOTTOM_PANEL_HEIGHT_KEY = "stave:bottomPanel.height";
+declare const BOTTOM_PANEL_OPEN_KEY = "stave:bottomPanel.open";
+declare const BOTTOM_PANEL_ACTIVE_TAB_KEY = "stave:bottomPanel.activeTabId";
+declare const BOTTOM_PANEL_HEIGHT_MIN = 80;
+declare const BOTTOM_PANEL_HEIGHT_MAX = 600;
+declare const BOTTOM_PANEL_HEIGHT_DEFAULT = 240;
+/**
+ * Read the persisted open state. Default is `false` (closed) — the
+ * drawer is opt-in for existing users (Trap 2 — closed-state pixel
+ * cost is documented and bounded).
+ */
+declare function readPersistedOpen(): boolean;
+/**
+ * Read the persisted active tab id. Returns `null` when missing — the
+ * caller decides the fallback (typically the first registered tab).
+ * Empty string is treated as null.
+ */
+declare function readPersistedActiveTabId(): string | null;
 
 /**
  * timelineCapture — fixed-size FIFO ring buffer of IRSnapshot captures.
@@ -4941,4 +5064,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BUNDLED_PREFIX, type BackdropQuality, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type Pass, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TimelineCaptureEntry, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, clearCapture, clearIRSnapshot, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, redo, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type Pass, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TimelineCaptureEntry, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, clearCapture, clearIRSnapshot, clearLog, collect, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
