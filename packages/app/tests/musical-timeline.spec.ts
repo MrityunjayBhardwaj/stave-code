@@ -17,6 +17,8 @@
  *   6. Empty-state vocabulary regression — same regex on a never-eval'd
  *      drawer, in case the empty path leaks something the populated
  *      path didn't.
+ *   7. Ruler renders cycle labels 0/1/2 verbatim on populated DOM
+ *      (Phase 20-02 DV-09).
  *
  * The forbidden-vocabulary regex literal is duplicated here (the
  * source-of-truth is `packages/app/src/components/musicalTimeline/
@@ -326,5 +328,27 @@ test.describe('MusicalTimeline — slice β (Phase 20-01 PR-B)', () => {
         `Vocabulary leak in MusicalTimeline empty-state DOM: "${s}"`,
       ).not.toMatch(FORBIDDEN_VOCABULARY)
     }
+  })
+
+  test('ruler renders cycle labels 0/1/2 on populated DOM (Phase 20-02 DV-09)', async ({ page }) => {
+    await clearDrawerStorage(page)
+    await preOpenDrawer(page)
+    await bootShell(page)
+    await page.locator('.monaco-editor').waitFor({ timeout: 15_000 })
+
+    await setStrudelCode(page, 's("bd hh cp bd")')
+    await evalStrudel(page)
+
+    const labelsLocator = page.locator('[data-musical-timeline-ruler-label]')
+    await expect(labelsLocator).toHaveCount(3, { timeout: 5000 })
+    const labelTexts = await labelsLocator.evaluateAll((els) =>
+      els.map((el) => (el as HTMLElement).textContent),
+    )
+    expect(labelTexts).toEqual(['0', '1', '2'])
+
+    const gutter = page.locator('[data-musical-timeline="ruler-gutter"]')
+    await expect(gutter).toHaveText('CYCLES')
+
+    await stopStrudel(page)
   })
 })

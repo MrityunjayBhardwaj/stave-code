@@ -541,3 +541,86 @@ describe('MusicalTimeline status line (Trap 1 + Trap NEW-3 wrap math)', () => {
     expect(cycle).toBeGreaterThan(0) // anchor for the assertion above
   })
 })
+
+describe('MusicalTimeline active-event glow (Phase 20-02 DV-05 / DV-07 / DV-15)', () => {
+  it('marks ONLY events where begin <= currentCycle < endClipped as active', async () => {
+    const { container } = await renderSettled(
+      <MusicalTimeline
+        {...defaultProps({ getCycle: () => 1.2 })}
+      />,
+    )
+    await act(async () => {
+      pushSnapshot(
+        makeSnapshot({
+          events: [
+            // Event 0: ends before 1.2 — NOT active.
+            evt({ trackId: 'a', s: 'a', begin: 0.0, end: 0.5, endClipped: 0.5 }),
+            // Event 1: begin=1.0 <= 1.2 < endClipped=1.5 — ACTIVE.
+            evt({ trackId: 'b', s: 'b', begin: 1.0, end: 1.5, endClipped: 1.5 }),
+            // Event 2: begin=1.5 > 1.2 — NOT active.
+            evt({ trackId: 'c', s: 'c', begin: 1.5, end: 1.8, endClipped: 1.8 }),
+          ],
+        }),
+      )
+      await Promise.resolve()
+      await Promise.resolve()
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    const blockB = container.querySelector(
+      '[data-musical-timeline-track-row="b"] [data-musical-timeline-note]',
+    )
+    const blockA = container.querySelector(
+      '[data-musical-timeline-track-row="a"] [data-musical-timeline-note]',
+    )
+    const blockC = container.querySelector(
+      '[data-musical-timeline-track-row="c"] [data-musical-timeline-note]',
+    )
+    expect(blockA?.getAttribute('data-musical-timeline-active')).toBeNull()
+    expect(blockB?.getAttribute('data-musical-timeline-active')).toBe('true')
+    expect(blockC?.getAttribute('data-musical-timeline-active')).toBeNull()
+  })
+
+  it('marks no event active when currentCycle is null (Trap 8)', async () => {
+    const { container } = await renderSettled(
+      <MusicalTimeline {...defaultProps({ getCycle: () => null })} />,
+    )
+    await act(async () => {
+      pushSnapshot(
+        makeSnapshot({
+          events: [
+            evt({ trackId: 'a', s: 'a', begin: 0.0, end: 0.5, endClipped: 0.5 }),
+            evt({ trackId: 'b', s: 'b', begin: 1.0, end: 1.5, endClipped: 1.5 }),
+          ],
+        }),
+      )
+      await Promise.resolve()
+    })
+    const actives = container.querySelectorAll(
+      '[data-musical-timeline-active="true"]',
+    )
+    expect(actives.length).toBe(0)
+  })
+
+  it('respects endClipped, not end (DV-05)', async () => {
+    const { container } = await renderSettled(
+      <MusicalTimeline {...defaultProps({ getCycle: () => 1.2 })} />,
+    )
+    await act(async () => {
+      pushSnapshot(
+        makeSnapshot({
+          events: [
+            // end=2.0 looks like it would extend past 1.2, but
+            // endClipped=1.0 means the event already ended.
+            evt({ trackId: 'a', s: 'a', begin: 0.0, end: 2.0, endClipped: 1.0 }),
+          ],
+        }),
+      )
+      await Promise.resolve()
+      await Promise.resolve()
+      await new Promise((r) => setTimeout(r, 50))
+    })
+    const block = container.querySelector('[data-musical-timeline-note]')
+    expect(block?.getAttribute('data-musical-timeline-active')).toBeNull()
+  })
+})

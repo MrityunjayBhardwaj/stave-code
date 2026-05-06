@@ -28,30 +28,31 @@
  *     editor tab), the slot map is cleared so File A's tracks don't
  *     leak into File B's row order (Trap NEW-5).
  *
- * Read-only this slice — click-to-source is slice γ; pan/zoom is a
- * follow-up; bidirectional editing is axis-4 multi-week (19-11+).
+ * Slice γ (click-to-source) is wired — clicking a note block reveals the
+ * source line in Monaco via revealLineInFile.
  */
 'use client'
 
 import * as React from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type IRSnapshot,
   type IREvent,
   getIRSnapshot,
   subscribeIRSnapshot,
+  revealLineInFile,
 } from '@stave/editor'
 import { groupEventsByTrack } from './musicalTimeline/groupEventsByTrack'
 import { stableTrackOrder } from './musicalTimeline/stableTrackOrder'
 import {
   WINDOW_CYCLES,
-  BEATS_PER_CYCLE,
   eventToRect,
   cycleToPlayheadX,
   formatBarBeat,
   cpsToBpm,
 } from './musicalTimeline/timeAxis'
-import { trackColorFromHash } from './musicalTimeline/colors'
+import { trackColorFromStem } from './musicalTimeline/colors'
+import { Ruler } from './musicalTimeline/Ruler'
 import {
   EMPTY_STATE_COPY,
   STOPPED_STATUS_COPY,
@@ -74,9 +75,10 @@ export interface MusicalTimelineProps {
 }
 
 const TAB_ID = 'musical-timeline'
-const TRACK_LABEL_WIDTH = 80
+const TRACK_LABEL_WIDTH = 90 // mockup: .daw-gutter width 90px (DV-02)
 const ROW_HEIGHT = 24
 const STATUS_HEIGHT = 24
+const EMPTY_SET: ReadonlySet<string> = Object.freeze(new Set())
 
 /**
  * Tiny MIDI int → note name converter. C4 = 60. Used in tooltips when
@@ -114,6 +116,19 @@ function formatNoteTooltip(event: IREvent, fallbackTrackId: string): string {
   return [sample, noteSegment, barBeat, velocitySegment]
     .filter((s): s is string => typeof s === 'string' && s.length > 0)
     .join(' · ')
+}
+
+/**
+ * Count newlines in `src` up to character offset `offset`.
+ * Returns 1-based line number. Mirrors IRInspectorPanel.tsx's countLines.
+ */
+function countLines(src: string, offset: number): number {
+  if (offset <= 0) return 1
+  let line = 1
+  for (let i = 0; i < offset && i < src.length; i++) {
+    if (src[i] === '\n') line++
+  }
+  return line
 }
 
 export function MusicalTimeline(
@@ -249,7 +264,42 @@ export function MusicalTimeline(
       events: groups.find((g) => g.trackId === trackId)?.events ?? [],
     }))
 
+  // DV-12: Active-event derivation — memoized to avoid thrash on rAF ticks.
+  // Half-open interval [begin, endClipped). When currentCycle is null (paused
+  // or non-Strudel runtime), short-circuits to EMPTY_SET (Trap 8).
+  const activeKeys = useMemo<ReadonlySet<string>>(() => {
+    if (currentCycle == null || !Number.isFinite(currentCycle)) {
+      return EMPTY_SET
+    }
+    const out = new Set<string>()
+    for (const { trackId, events } of orderedTracks) {
+      for (let i = 0; i < events.length; i++) {
+        const e = events[i]
+        if (e.begin <= currentCycle && currentCycle < e.endClipped) {
+          out.add(`${trackId}-${i}`)
+        }
+      }
+    }
+    return out
+    // orderedTracks identity is stable across rAF ticks (only changes on
+    // snapshot-driven slot-map updates). Including it in deps doesn't
+    // trigger spurious recomputes on cycle-only changes.
+  }, [orderedTracks, currentCycle])
+
   const playheadX = cycleToPlayheadX(currentCycle, { gridContentWidth })
+
+  // Slice γ — click-to-source: convert event.loc character offset to
+  // a line number and reveal it in Monaco (mirrors IRInspectorPanel.tsx).
+  const handleNoteClick = React.useCallback(
+    (evt: IREvent) => {
+      if (!evt.loc || evt.loc.length === 0 || !snapshot?.source) return
+      const offset = evt.loc[0].start
+      const line = countLines(snapshot.code, offset)
+      revealLineInFile(snapshot.source, line)
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -284,6 +334,7 @@ export function MusicalTimeline(
       <div data-musical-timeline="status" style={styles.status}>
         {statusContent}
       </div>
+      <Ruler currentCycle={currentCycle} gridContentWidth={gridContentWidth} />
       <div style={styles.body}>
         <div data-musical-timeline="track-labels" style={styles.labels}>
           {empty ? (
@@ -294,16 +345,29 @@ export function MusicalTimeline(
               {EMPTY_STATE_COPY}
             </div>
           ) : (
-            orderedTracks.map(({ trackId }) => (
-              <div
-                key={trackId}
-                data-musical-timeline-track-label={trackId}
-                title={trackId}
-                style={styles.trackLabel}
-              >
-                {trackId}
-              </div>
-            ))
+            orderedTracks.map(({ trackId, events }) => {
+              const firstEventSample = events[0]?.s ?? undefined
+              const dotColor = trackColorFromStem(trackId, firstEventSample)
+              return (
+                <div
+                  key={trackId}
+                  data-musical-timeline-track-label={trackId}
+                  title={trackId}
+                  style={styles.trackLabel}
+                >
+                  <span
+                    data-musical-timeline="track-dot"
+                    style={{ ...styles.trackDot, background: dotColor }}
+                  />
+                  <span
+                    data-musical-timeline="track-name"
+                    style={styles.trackName}
+                  >
+                    {trackId}
+                  </span>
+                </div>
+              )
+            })
           )}
         </div>
         <div
@@ -311,25 +375,20 @@ export function MusicalTimeline(
           ref={gridRef}
           style={styles.grid}
         >
-          {/* Beat grid lines — every beat for visual reference */}
+          {/* Bar lines — one per cycle boundary (DV-16). The 1/4-beat
+              sub-grid was removed in Phase 20-02; the Ruler above carries
+              minor-tick cues. */}
           {gridContentWidth > 0 &&
-            Array.from({ length: WINDOW_CYCLES * BEATS_PER_CYCLE + 1 }).map(
-              (_, i) => {
-                const left = (i / (WINDOW_CYCLES * BEATS_PER_CYCLE)) * gridContentWidth
-                const isBarLine = i % BEATS_PER_CYCLE === 0
-                return (
-                  <div
-                    key={i}
-                    data-musical-timeline-beat-line={i}
-                    style={{
-                      ...styles.beatLine,
-                      left,
-                      opacity: isBarLine ? 0.5 : 0.18,
-                    }}
-                  />
-                )
-              },
-            )}
+            Array.from({ length: WINDOW_CYCLES + 1 }).map((_, cycleIdx) => {
+              const left = (cycleIdx / WINDOW_CYCLES) * gridContentWidth
+              return (
+                <div
+                  key={cycleIdx}
+                  data-musical-timeline-bar-line={cycleIdx}
+                  style={{ ...styles.barLine, left }}
+                />
+              )
+            })}
           {/* Track rows + note blocks */}
           {orderedTracks.map(({ trackId, events }, slotIndex) => (
             <div
@@ -339,25 +398,30 @@ export function MusicalTimeline(
             >
               {events.map((evt, i) => {
                 const { x, w } = eventToRect(evt, { gridContentWidth })
+                const isActive = activeKeys.has(`${trackId}-${i}`)
                 return (
                   <div
                     key={`${trackId}-${i}`}
                     data-musical-timeline-note={trackId}
+                    data-musical-timeline-active={isActive ? 'true' : undefined}
                     title={formatNoteTooltip(evt, trackId)}
+                    onClick={() => handleNoteClick(evt)}
                     style={{
                       ...styles.noteBlock,
                       left: x,
                       width: w,
-                      background: evt.color ?? trackColorFromHash(trackId),
+                      background:
+                        evt.color ??
+                        trackColorFromStem(trackId, evt.s ?? undefined),
+                      ...(isActive ? styles.noteBlockActive : null),
                     }}
                   />
                 )
               })}
             </div>
           ))}
-          {/* Playhead — fixed-position marker, pointer-events: none so
-              it doesn't intercept future click handlers when slice γ
-              wires click-to-source. */}
+          {/* Playhead — fixed-position marker, pointer-events: none so it
+              doesn't intercept click-to-source on note blocks behind it. */}
           <div
             data-musical-timeline="playhead"
             style={{ ...styles.playhead, left: playheadX }}
@@ -369,9 +433,11 @@ export function MusicalTimeline(
 }
 
 // ───── Styles ───────────────────────────────────────────────────────────────
-// Inline styles to keep the component self-contained; matches PR-A's
-// BottomPanel which uses the same convention. CSS variables fall back
-// to plain values so the tab is legible without a theme installed.
+// Inline styles with mockup-literal values (Phase 20-02 DV-08). All CSS
+// variable references from PR #92 replaced with the mockup's color tokens.
+// No external theme dependency — the tab is a self-contained visual unit.
+
+const FONT_MONO = '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
 
 const styles = {
   root: {
@@ -380,10 +446,10 @@ const styles = {
     height: '100%',
     width: '100%',
     overflow: 'hidden',
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-    fontSize: 12,
-    color: 'var(--foreground, #d4d4d8)',
-    background: 'var(--bg-elevated, #1f1f23)',
+    fontFamily: FONT_MONO,
+    fontSize: 11, // mockup body font-size: 11px (DV-02)
+    color: '#e2e8f0',
+    background: '#090912',
   },
   status: {
     height: STATUS_HEIGHT,
@@ -391,36 +457,53 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     padding: '0 12px',
-    borderBottom: '1px solid var(--border-subtle, #2a2a30)',
-    color: 'var(--foreground-muted, #a0a0aa)',
+    borderBottom: '1px solid rgba(255,255,255,0.08)',
+    color: 'rgba(255,255,255,0.4)',
+    background: '#14141f',
     fontVariantNumeric: 'tabular-nums' as const,
+    fontSize: 11,
   },
   body: {
     flex: 1,
     minHeight: 0,
     display: 'flex',
     overflow: 'auto',
+    background: '#090912',
   },
   labels: {
-    width: TRACK_LABEL_WIDTH,
+    width: TRACK_LABEL_WIDTH, // 90px (DV-02)
     flexShrink: 0,
-    borderRight: '1px solid var(--border-subtle, #2a2a30)',
+    borderRight: '1px solid rgba(255,255,255,0.08)',
+    display: 'flex',
+    flexDirection: 'column' as const,
   },
   trackLabel: {
     height: ROW_HEIGHT,
     padding: '0 8px',
     display: 'flex',
     alignItems: 'center',
-    fontSize: 11,
-    color: 'var(--foreground, #d4d4d8)',
-    whiteSpace: 'nowrap' as const,
+    gap: 6, // mockup: .track-label gap: 6px
+    borderBottom: '1px solid rgba(255,255,255,0.08)',
+    cursor: 'pointer' as const,
+  },
+  trackDot: {
+    width: 7, // mockup: .track-dot 7×7
+    height: 7,
+    borderRadius: '50%',
+    flexShrink: 0,
+    display: 'inline-block',
+  },
+  trackName: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 10,
     overflow: 'hidden',
     textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
   },
   emptyLabel: {
     padding: 8,
     fontStyle: 'italic' as const,
-    color: 'var(--foreground-muted, #a0a0aa)',
+    color: 'rgba(255,255,255,0.4)',
     fontSize: 11,
     lineHeight: 1.4,
   },
@@ -429,13 +512,14 @@ const styles = {
     minWidth: 200,
     position: 'relative' as const,
     overflow: 'hidden',
+    background: '#0f0f1a',
   },
-  beatLine: {
+  barLine: {
     position: 'absolute' as const,
     top: 0,
     bottom: 0,
     width: 1,
-    background: 'var(--border-subtle, #2a2a30)',
+    background: 'rgba(255,255,255,0.04)', // Trap 9 — faint cycle cue
     pointerEvents: 'none' as const,
   },
   row: {
@@ -443,7 +527,7 @@ const styles = {
     left: 0,
     right: 0,
     height: ROW_HEIGHT,
-    borderBottom: '1px dashed var(--border-very-subtle, #25252b)',
+    borderBottom: '1px solid rgba(255,255,255,0.08)',
   },
   noteBlock: {
     position: 'absolute' as const,
@@ -451,15 +535,20 @@ const styles = {
     height: 16,
     borderRadius: 2,
     opacity: 0.85,
-    cursor: 'default',
+    cursor: 'pointer' as const,
     boxSizing: 'border-box' as const,
+  },
+  noteBlockActive: {
+    outline: '1px solid rgba(139,92,246,0.8)',
+    boxShadow: '0 0 6px rgba(139,92,246,0.5)',
   },
   playhead: {
     position: 'absolute' as const,
     top: 0,
     bottom: 0,
     width: 1,
-    background: 'var(--accent, #4a9eff)',
+    background: 'rgba(255,255,255,0.55)', // mockup: .playhead
+    boxShadow: '0 0 4px rgba(255,255,255,0.3)', // mockup: .playhead box-shadow
     pointerEvents: 'none' as const,
   },
 } satisfies Record<string, React.CSSProperties>

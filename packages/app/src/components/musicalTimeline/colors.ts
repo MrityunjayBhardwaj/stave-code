@@ -1,34 +1,71 @@
 /**
- * colors — track-color fallback derived from a stable hash of the
- * track id. Used when an event carries no explicit `color` field.
+ * colors — stem-aware track-color fallback (Phase 20-02 DV-04).
  *
- * Stable per id; "bd" always returns the same hue. No theme integration
- * for slice β — slice β is read-only and per-track color is decorative;
- * a future polish phase may wire the inline-viz palette in.
+ * The mockup's Variant A panel uses 4 stem-family colors derived
+ * from the design tokens at artifacts/daw-level1-mockup.html:18-22:
+ *   --stem-drums:  #f97316  (orange)
+ *   --stem-bass:   #06b6d4  (cyan)
+ *   --stem-pad:    #10b981  (green)
+ *   --stem-melody: #a78bfa  (purple)
  *
- * Phase 20-01 PR-B (T-02, DB-05).
+ * Match precedence (DV-11): drums → bass → pad → melody. First match
+ * wins. Fallback (no match) returns melody/purple — chosen so that an
+ * unrecognized sample lands in the most-musical visual register
+ * rather than a neutral gray.
+ *
+ * Match input: `event.s ?? trackId`. Sample name (when present)
+ * outranks trackId because users author with `s("bd")` and the
+ * trackId is often a synthetic dedupe of the sample.
+ *
+ * `evt.color` per-event override is honored at the call site (D-06
+ * user-override) — `MusicalTimeline.tsx`'s
+ * `evt.color ?? trackColorFromStem(...)` chain. This module owns
+ * only the fallback.
+ *
+ * Phase 20-02 (T-02). Replaces the PR #92 hash-based fallback.
  */
 
+/** Stem palette literals — copied verbatim from the mockup tokens. */
+export const STEM_DRUMS = '#f97316'
+export const STEM_BASS = '#06b6d4'
+export const STEM_PAD = '#10b981'
+export const STEM_MELODY = '#a78bfa'
+export const STEM_FALLBACK = STEM_MELODY // DV-04 — fallback equals melody.
+
 /**
- * String → 0-359 hash. Cheap, deterministic, no crypto needed.
- * djb2-ish accumulator with a degree-of-spread mod 360 at the end.
+ * Stem regex precedence (DV-11). Order matters — first match wins.
+ * Each pattern is anchored with `^` so prefixes match without
+ * accidentally hitting embedded substrings (e.g. `pre-bd` should
+ * not match `bd`).
  */
-function hashHue(s: string): number {
-  let h = 5381
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h) + s.charCodeAt(i) // h * 33 + c
-    h |= 0 // force int32 to keep numbers bounded
+const STEM_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  // Drums.
+  [/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i, STEM_DRUMS],
+  // Bass.
+  [/^(?:bass|sub|808)/i,                                          STEM_BASS],
+  // Pads.
+  [/^(?:pad|pads)/i,                                               STEM_PAD],
+  // Melody / lead / synth / piano / keys / guitar.
+  [/^(?:lead|melody|synth|piano|keys|guitar)/i,                    STEM_MELODY],
+] as const
+
+/**
+ * Map a track to its stem color.
+ *
+ * @param trackId  the row's stable track id (never null — '$default'
+ *                 is the sentinel from groupEventsByTrack)
+ * @param sample   optional first-seen sample name from the row's
+ *                 events (`event.s`). Outranks `trackId` for matching.
+ * @returns        a hex color string from the stem palette, or
+ *                 STEM_FALLBACK if no pattern matches.
+ */
+export function trackColorFromStem(
+  trackId: string,
+  sample?: string,
+): string {
+  const candidate = sample ?? trackId
+  for (const [pattern, color] of STEM_PATTERNS) {
+    if (pattern.test(candidate)) return color
   }
-  // |h| % 360 — branch on sign to avoid negative modulo surprises.
-  const positive = h < 0 ? -h : h
-  return positive % 360
-}
-
-/**
- * Track id → HSL color string. Fixed saturation + lightness so all
- * tracks share visual weight; only hue varies.
- */
-export function trackColorFromHash(trackId: string): string {
-  const hue = hashHue(trackId)
-  return `hsl(${hue}, 60%, 55%)`
+  return STEM_FALLBACK
 }
