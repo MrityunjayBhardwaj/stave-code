@@ -28,8 +28,8 @@
  *     editor tab), the slot map is cleared so File A's tracks don't
  *     leak into File B's row order (Trap NEW-5).
  *
- * Read-only this slice — click-to-source is slice γ; pan/zoom is a
- * follow-up; bidirectional editing is axis-4 multi-week (19-11+).
+ * Slice γ (click-to-source) is wired — clicking a note block reveals the
+ * source line in Monaco via revealLineInFile.
  */
 'use client'
 
@@ -40,6 +40,7 @@ import {
   type IREvent,
   getIRSnapshot,
   subscribeIRSnapshot,
+  revealLineInFile,
 } from '@stave/editor'
 import { groupEventsByTrack } from './musicalTimeline/groupEventsByTrack'
 import { stableTrackOrder } from './musicalTimeline/stableTrackOrder'
@@ -115,6 +116,19 @@ function formatNoteTooltip(event: IREvent, fallbackTrackId: string): string {
   return [sample, noteSegment, barBeat, velocitySegment]
     .filter((s): s is string => typeof s === 'string' && s.length > 0)
     .join(' · ')
+}
+
+/**
+ * Count newlines in `src` up to character offset `offset`.
+ * Returns 1-based line number. Mirrors IRInspectorPanel.tsx's countLines.
+ */
+function countLines(src: string, offset: number): number {
+  if (offset <= 0) return 1
+  let line = 1
+  for (let i = 0; i < offset && i < src.length; i++) {
+    if (src[i] === '\n') line++
+  }
+  return line
 }
 
 export function MusicalTimeline(
@@ -273,6 +287,19 @@ export function MusicalTimeline(
   }, [orderedTracks, currentCycle])
 
   const playheadX = cycleToPlayheadX(currentCycle, { gridContentWidth })
+
+  // Slice γ — click-to-source: convert event.loc character offset to
+  // a line number and reveal it in Monaco (mirrors IRInspectorPanel.tsx).
+  const handleNoteClick = React.useCallback(
+    (evt: IREvent) => {
+      if (!evt.loc || evt.loc.length === 0 || !snapshot?.source) return
+      const offset = evt.loc[0].start
+      const line = countLines(snapshot.code, offset)
+      revealLineInFile(snapshot.source, line)
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -378,6 +405,7 @@ export function MusicalTimeline(
                     data-musical-timeline-note={trackId}
                     data-musical-timeline-active={isActive ? 'true' : undefined}
                     title={formatNoteTooltip(evt, trackId)}
+                    onClick={() => handleNoteClick(evt)}
                     style={{
                       ...styles.noteBlock,
                       left: x,
@@ -392,9 +420,8 @@ export function MusicalTimeline(
               })}
             </div>
           ))}
-          {/* Playhead — fixed-position marker, pointer-events: none so
-              it doesn't intercept future click handlers when slice γ
-              wires click-to-source. */}
+          {/* Playhead — fixed-position marker, pointer-events: none so it
+              doesn't intercept click-to-source on note blocks behind it. */}
           <div
             data-musical-timeline="playhead"
             style={{ ...styles.playhead, left: playheadX }}
@@ -508,7 +535,7 @@ const styles = {
     height: 16,
     borderRadius: 2,
     opacity: 0.85,
-    cursor: 'default' as const,
+    cursor: 'pointer' as const,
     boxSizing: 'border-box' as const,
   },
   noteBlockActive: {
