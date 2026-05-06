@@ -73,6 +73,12 @@ import {
   installGlobalErrorCatch,
 } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
+import { MusicalTimeline } from "./MusicalTimeline";
+import {
+  registerBottomPanelTab,
+  readPersistedOpen,
+  readPersistedActiveTabId,
+} from "@stave/editor";
 
 interface StaveAppProps {
   initialProject: ProjectMeta;
@@ -477,8 +483,32 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     };
   }, [activeProject.id]);
 
+  // Phase 20-01 PR-B (DB-01) — refs hold the latest runtime accessors
+  // so the registered MusicalTimeline element never re-registers when
+  // the active runtime swaps. Drawer-open + active-tab read through
+  // localStorage on every accessor invocation; the rAF loop downstream
+  // gates the cost of those reads (DB-08).
+  const getCycleRef = useRef<() => number | null>(() => null);
+  const getCpsRef = useRef<() => number | null>(() => null);
+
   const handleRuntimeStateChange = useCallback(
-    (s: { isPlaying: boolean; bpm?: number; error: string | null } | null) => {
+    (
+      s:
+        | {
+            isPlaying: boolean;
+            bpm?: number;
+            error: string | null;
+            getCycle?: () => number | null;
+            getCps?: () => number | null;
+          }
+        | null,
+    ) => {
+      // Always update the accessor refs first — even when the status
+      // payload didn't change shape, the underlying runtime may have
+      // swapped (active tab changed). When `s` is null, swap in
+      // no-op accessors so the rAF loop reads `null` and goes idle.
+      getCycleRef.current = s?.getCycle ?? (() => null);
+      getCpsRef.current = s?.getCps ?? (() => null);
       setActiveRuntime((prev) => {
         if (!s) return prev === null ? prev : null;
         if (
@@ -494,6 +524,31 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     },
     [],
   );
+
+  // Phase 20-01 PR-B (DA-05 idempotent replace) — register the real
+  // MusicalTimeline content once on mount. PR-A's seedTabs registered
+  // a placeholder at editor-bundle load; this useEffect runs after the
+  // app mounts and replaces it. Re-registration on every active-tab
+  // change would race the BottomPanel subscriber and cause flicker;
+  // ref pattern keeps the registered element identity stable.
+  useEffect(() => {
+    registerBottomPanelTab({
+      id: "musical-timeline",
+      title: "Timeline",
+      content: (
+        <MusicalTimeline
+          getCycle={() => getCycleRef.current()}
+          getCps={() => getCpsRef.current()}
+          getDrawerOpen={() => readPersistedOpen()}
+          getActiveTabId={() => readPersistedActiveTabId()}
+        />
+      ),
+    });
+    // No unregister — the tab lives for the lifetime of the app. PR-A's
+    // placeholder seed is benign even after a hot reload because the
+    // registry's idempotent semantics (DA-05) make re-registration a
+    // no-fanfare swap.
+  }, []);
 
   const refreshProjects = useCallback(async () => {
     setProjects(await listProjects());

@@ -97,6 +97,14 @@ interface StrudelEditorClientProps {
     isPlaying: boolean;
     bpm?: number;
     error: string | null;
+    /**
+     * Phase 20-01 PR-B (DB-01) — live runtime accessors carried alongside
+     * the status payload so subscribers (notably MusicalTimeline) can
+     * sample `getCurrentCycle()` / cps on a hot loop without coupling to
+     * the runtime map. Both return `null` when the engine isn't running.
+     */
+    getCycle: () => number | null;
+    getCps: () => number | null;
   } | null) => void;
   onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void;
   /** Navigate to a viz file when the user clicks the edit icon on an inline viz. */
@@ -578,16 +586,27 @@ export default function StrudelEditorClient({
     const fid = activeFileIdRef.current;
     if (!fid) return;
     const st = runtimeStates.get(fid);
-    onActiveRuntimeStateChange(
-      st
-        ? {
-            fileId: fid,
-            isPlaying: st.isPlaying,
-            bpm: st.bpm,
-            error: st.error ? st.error.message : null,
-          }
-        : null,
-    );
+    if (!st) {
+      onActiveRuntimeStateChange(null);
+      return;
+    }
+    // Phase 20-01 PR-B (DB-01) — pass live accessors that read through
+    // runtimesRef so the closures stay valid across active-tab swaps
+    // without re-registering the bottom-panel content.
+    const accessorFid = fid;
+    onActiveRuntimeStateChange({
+      fileId: fid,
+      isPlaying: st.isPlaying,
+      bpm: st.bpm,
+      error: st.error ? st.error.message : null,
+      getCycle: () =>
+        runtimesRef.current.get(accessorFid)?.getCurrentCycle?.() ?? null,
+      getCps: () => {
+        const bpm = runtimesRef.current.get(accessorFid)?.getBpm?.();
+        // cps = bpm / (60 sec/min * 4 beats/cycle).
+        return bpm != null && Number.isFinite(bpm) ? bpm / 240 : null;
+      },
+    });
   }, [runtimeStates, onActiveRuntimeStateChange]);
 
   return (
@@ -620,16 +639,30 @@ export default function StrudelEditorClient({
           return;
         }
         const st = runtimeStates.get(fid);
-        onActiveRuntimeStateChange(
-          st
-            ? {
-                fileId: fid,
-                isPlaying: st.isPlaying,
-                bpm: st.bpm,
-                error: st.error ? st.error.message : null,
-              }
-            : null,
-        );
+        if (!st) {
+          onActiveRuntimeStateChange(null);
+          return;
+        }
+        // Phase 20-01 PR-B (DB-01) — same accessor wiring as the
+        // useEffect above; both sites push state to the parent so any
+        // call must include the cycle/cps closures.
+        const accessorFid = fid;
+        onActiveRuntimeStateChange({
+          fileId: fid,
+          isPlaying: st.isPlaying,
+          bpm: st.bpm,
+          error: st.error ? st.error.message : null,
+          getCycle: () =>
+            runtimesRef.current
+              .get(accessorFid)
+              ?.getCurrentCycle?.() ?? null,
+          getCps: () => {
+            const bpm = runtimesRef.current
+              .get(accessorFid)
+              ?.getBpm?.();
+            return bpm != null && Number.isFinite(bpm) ? bpm / 240 : null;
+          },
+        });
       }}
     />
   );
