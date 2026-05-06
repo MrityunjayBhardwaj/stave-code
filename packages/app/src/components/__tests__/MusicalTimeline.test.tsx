@@ -134,8 +134,7 @@ beforeEach(() => {
   mockCurrent = null
   mockListeners.clear()
   mockGridWidth = 800
-  // @ts-expect-error — install mock on the global jsdom window.
-  globalThis.ResizeObserver = MockResizeObserver
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 })
 
 afterEach(() => {
