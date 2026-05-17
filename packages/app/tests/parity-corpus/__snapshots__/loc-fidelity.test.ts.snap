@@ -1,0 +1,3334 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > amensister — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".reset("<x@7 x(5,8,-1)>")",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+  // amen
+  n("0 1 2 3 4 5 6 7")
+  .sometimes(x=>x.ply(2))
+  .rarely(x=>x.speed("2 | -2"))
+  .sometimesBy(.4, x=>x.delay(".5"))
+  .s("amencutup")
+  .slow(2)
+  .room(.5)
+  ,
+  // bass
+  sine.add(saw.slow(4)).range(0,7).segment(8)
+  .superimpose(x=>x.add(.1))
+  .scale('G0 minor').note()
+  .s("sawtooth")
+  .gain(.4).decay(.1).sustain(0)
+  .lpa(.1).lpenv(-4).lpq(10)
+  .cutoff(perlin.range(300,3000).slow(8))
+  .degradeBy("0 0.1 .5 .1")
+  .rarely(add(note("12")))
+  ,
+  // chord
+  note("Bb3,D4".superimpose(x=>x.add(.2)))
+  .s('sawtooth').lpf(1000).struct("<~@3 [~ x]>")
+  .decay(.05).sustain(.0).delay(.8).delaytime(.125).room(.8)
+  ,
+  // alien
+  s("breath").room(1).shape(.6).chop(16).rev().mask("<x ~@7>")
+  ,
+  n("0 1").s("east").delay(.5).degradeBy(.8).speed(rand.range(.5,1.5))
+)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.5)",
+  },
+  {
+    "tag": "Slow",
+    "text": ".slow(2)",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("amencutup")",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimesBy(.4, x=>x.delay(".5"))",
+  },
+  {
+    "tag": "Code",
+    "text": ".delay(".5")",
+  },
+  {
+    "tag": "Code",
+    "text": ".rarely(x=>x.speed("2 | -2"))",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(x=>x.ply(2))",
+  },
+  {
+    "tag": "Ply",
+    "text": ".ply(2)",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 1 2 3 4 5 6 7",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 1 2 3 4 5 6 7",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Code",
+    "text": ".rarely(x=>x.speed("2 | -2"))",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(x=>x.ply(2))",
+  },
+  {
+    "tag": "Ply",
+    "text": ".ply(2)",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 1 2 3 4 5 6 7",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 1 2 3 4 5 6 7",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(.125)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(.0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.05)",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("<~@3 [~ x]>")",
+  },
+  {
+    "tag": "FX",
+    "text": ".lpf(1000)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(x=>x.add(.2))",
+  },
+  {
+    "tag": "Seq",
+    "text": "Bb3,D4",
+  },
+  {
+    "tag": "Play",
+    "text": "Bb3",
+  },
+  {
+    "tag": "Play",
+    "text": "D4",
+  },
+  {
+    "tag": "When",
+    "text": ".mask("<x ~@7>")",
+  },
+  {
+    "tag": "Code",
+    "text": ".rev()",
+  },
+  {
+    "tag": "Chop",
+    "text": ".chop(16)",
+  },
+  {
+    "tag": "Code",
+    "text": ".shape(.6)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(1)",
+  },
+  {
+    "tag": "Play",
+    "text": "breath",
+  },
+  {
+    "tag": "Code",
+    "text": ".speed(rand.range(.5,1.5))",
+  },
+  {
+    "tag": "Degrade",
+    "text": ".degradeBy(.8)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.5)",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("east")",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 1",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > arpoon — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".stack(s("bd*4, [~ [hh hh? hh?]]*2,~ [sd ~ [sd:2? bd?]]").bank('RolandTR909').gain(.5).slow(2))",
+  },
+  {
+    "tag": "Slow",
+    "text": ".slow(4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".stack(
+    "<<A1 C2>!2 F2 F2>"
+    .add.out("0 -5".fast(2))
+    .add("0,.12").note()
+    .s('sawtooth').cutoff(180)
+    .lpa(.1).lpenv(2)
+  )",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('piano')",
+  },
+  {
+    "tag": "Code",
+    "text": ".pan(sine.range(.3,.6))",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.5)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0.5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.16)",
+  },
+  {
+    "tag": "Param",
+    "text": ".gain("<.5 .8>*16")",
+  },
+  {
+    "tag": "Seq",
+    "text": "<.5 .8>*16",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<.5 .8>",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Play",
+    "text": "16",
+  },
+  {
+    "tag": "FX",
+    "text": ".resonance(12)",
+  },
+  {
+    "tag": "Code",
+    "text": ".cutoff(perlin.range(500,4000))",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(perlin.range(0,0.2).add("<-12 0>/8").note())",
+  },
+  {
+    "tag": "Code",
+    "text": ".voicing()",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict('lefthand')",
+  },
+  {
+    "tag": "Code",
+    "text": ".chord("<<Am7 C^7> C7 F^7 [Fm7 E7b9]>")",
+  },
+  {
+    "tag": "Code",
+    "text": ".offset("<<1 2> 2 1 1>")",
+  },
+  {
+    "tag": "Code",
+    "text": ".clip(2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lastOf(4, fast(2))",
+  },
+  {
+    "tag": "Fast",
+    "text": ".fast(3)",
+  },
+  {
+    "tag": "Seq",
+    "text": "[0,3] 2 [1,3] 2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[0,3]",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[1,3]",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-132-recursive-args — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".clip(2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lastOf(4, fast(2))",
+  },
+  {
+    "tag": "Fast",
+    "text": ".fast(3)",
+  },
+  {
+    "tag": "Seq",
+    "text": "[0,3] 2 [1,3] 2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[0,3]",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[1,3]",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-G1-let-binding — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(p1, p2)",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("piano")",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 2 4",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("piano")",
+  },
+  {
+    "tag": "Seq",
+    "text": "7 5 3",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-G2-setCpm-camel — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(s("bd"), s("hh*4"))",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-G2-setCps-camel — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(s("bd"), s("hh*4"))",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-G2-setcpm — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(s("bd"), s("hh*4"))",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-G3-backtick — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Track",
+    "text": "$: sound(\`
+<bd*3 [hh:1 hh:1 hh:1]*2 casio:2 - hh:1>*4 ,
+< - - - metal:1 - >*4\`).cpm(213/7)
+",
+  },
+  {
+    "tag": "Code",
+    "text": ".cpm(213/7)",
+  },
+  {
+    "tag": "Seq",
+    "text": "
+<bd*3 [hh:1 hh:1 hh:1]*2 casio:2 - hh:1>*4 ,
+< - - - metal:1 - >*4",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<bd*3 [hh:1 hh:1 hh:1]*2 casio:2 - hh:1>",
+  },
+  {
+    "tag": "Fast",
+    "text": "*3",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Seq",
+    "text": "[hh:1 hh:1 hh:1]",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "casio",
+  },
+  {
+    "tag": "Play",
+    "text": "-",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Cycle",
+    "text": "< - - - metal:1 - >",
+  },
+  {
+    "tag": "Play",
+    "text": "-",
+  },
+  {
+    "tag": "Play",
+    "text": "-",
+  },
+  {
+    "tag": "Play",
+    "text": "-",
+  },
+  {
+    "tag": "Play",
+    "text": "metal",
+  },
+  {
+    "tag": "Play",
+    "text": "-",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-G4-comment-args — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(
+// Harter Industrial Kick
+s("bd ~ ~ ~").gain(1.5),
+// Industrial bass
+note("e3 d#3").s("sawtooth")
+)",
+  },
+  {
+    "tag": "Param",
+    "text": ".gain(1.5)",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd ~ ~ ~",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("sawtooth")",
+  },
+  {
+    "tag": "Seq",
+    "text": "e3 d#3",
+  },
+  {
+    "tag": "Play",
+    "text": "e3",
+  },
+  {
+    "tag": "Play",
+    "text": "d#3",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-G5-named-label — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Track",
+    "text": "p1: stack(s("bd cp"), s("hh*4"))
+",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(s("bd cp"), s("hh*4"))",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd cp",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "cp",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > barryHarris — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".color('#00B8D4')",
+  },
+  {
+    "tag": "Code",
+    "text": ".piano()",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
+  },
+  {
+    "tag": "Slow",
+    "text": ".slow(2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".transpose("<0 1 2 1>/8")",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('C bebop major')",
+  },
+  {
+    "tag": "Code",
+    "text": ".add("<0 1 2 3 4 5 7 8>")",
+  },
+  {
+    "tag": "Seq",
+    "text": "0,2,[7 6]",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[7 6]",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bassFuge — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".pianoroll({vertical:1})",
+  },
+  {
+    "tag": "Code",
+    "text": ".stack(s("bd:1*2,~ sd:0,[~ hh:0]*2"))",
+  },
+  {
+    "tag": "Code",
+    "text": ".clip(1)",
+  },
+  {
+    "tag": "FX",
+    "text": ".resonance(10)",
+  },
+  {
+    "tag": "Code",
+    "text": ".cutoff(sine.slow(7).range(200,4000))",
+  },
+  {
+    "tag": "Code",
+    "text": ".mul(gain(.3))",
+  },
+  {
+    "tag": "Param",
+    "text": ".n(0)",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("flbass")",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('A1 minor')",
+  },
+  {
+    "tag": "Code",
+    "text": ".n()",
+  },
+  {
+    "tag": "Stack",
+    "text": ".layer(
+x=>x,
+x=>x.add(7)
+.off(1/8,x=>x.add("2,4").off(1/8,x=>x.add(5).echo(4,.125,.5)))
+.slow(2),
+)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sub(1)",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<8(3,8) <7 7*2> [4 5@3] 8>",
+  },
+  {
+    "tag": "Seq",
+    "text": "8(3,8)",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<7 7*2>",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 5@3]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Elongate",
+    "text": "@3",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Code",
+    "text": ".sub(1)",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<8(3,8) <7 7*2> [4 5@3] 8>",
+  },
+  {
+    "tag": "Seq",
+    "text": "8(3,8)",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<7 7*2>",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "7",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 5@3]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Elongate",
+    "text": "@3",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "8",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > belldub — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Slow",
+    "text": ".slow(5)",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+  // bass
+  note("[0 ~] [2 [0 2]] [4 4*2] [[4 ~] [2 ~] 0@2]".scale('g1 dorian').superimpose(x=>x.add(.02)))
+  .s('sawtooth').cutoff(200).resonance(20).gain(.15).shape(.6).release(.05),
+  // perc
+  s("[~ hh]*4").room("0 0.5".fast(2)).end(perlin.range(0.02,1)),
+  s("mt lt ht").struct("x(3,8)").fast(2).gain(.5).room(.5).sometimes(x=>x.speed(".5")),
+  s("misc:2").speed(1).delay(.5).delaytime(1/3).gain(.4),
+  // chords
+  chord("[~ Gm7] ~ [~ Dm7] ~")
+  .dict('lefthand').voicing()
+  .add(note("0,.1"))
+  .s('sawtooth').gain(.8)
+  .cutoff(perlin.range(400,3000).slow(8))
+  .decay(perlin.range(0.05,.2)).sustain(0)
+  .delay(.9).room(1),
+  // blips
+  note(
+    "0 5 4 2".iter(4)
+    .off(1/3, add(7))
+    .scale('g4 dorian')
+  ).s('square').cutoff(2000).decay(.03).sustain(0)
+  .degradeBy(.2)
+  .orbit(2).delay(.2).delaytime(".33 | .6 | .166 | .25")
+  .room(1).gain(.5).mask("<0 1>/8"),
+  // bell
+  note(rand.range(0,12).struct("x(5,8,-1)").scale('g2 minor pentatonic')).s('bell').begin(.05)
+  .delay(.2).degradeBy(.4).gain(.4)
+  .mask("<1 0>/8")
+)",
+  },
+  {
+    "tag": "Code",
+    "text": ".release(.05)",
+  },
+  {
+    "tag": "Code",
+    "text": ".shape(.6)",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.15)",
+  },
+  {
+    "tag": "FX",
+    "text": ".resonance(20)",
+  },
+  {
+    "tag": "FX",
+    "text": ".cutoff(200)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(x=>x.add(.02))",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('g1 dorian')",
+  },
+  {
+    "tag": "Seq",
+    "text": "[0 ~] [2 [0 2]] [4 4*2] [[4 ~] [2 ~] 0@2]",
+  },
+  {
+    "tag": "Seq",
+    "text": "[0 ~]",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Seq",
+    "text": "[2 [0 2]]",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[0 2]",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 4*2]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Seq",
+    "text": "[[4 ~] [2 ~] 0@2]",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 ~]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Seq",
+    "text": "[2 ~]",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Elongate",
+    "text": "@2",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Code",
+    "text": ".end(perlin.range(0.02,1))",
+  },
+  {
+    "tag": "Code",
+    "text": ".room("0 0.5".fast(2))",
+  },
+  {
+    "tag": "Seq",
+    "text": "[~ hh]*4",
+  },
+  {
+    "tag": "Seq",
+    "text": "[~ hh]",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(x=>x.speed(".5"))",
+  },
+  {
+    "tag": "Param",
+    "text": ".speed(".5")",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.5)",
+  },
+  {
+    "tag": "Fast",
+    "text": ".fast(2)",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("x(3,8)")",
+  },
+  {
+    "tag": "Seq",
+    "text": "mt lt ht",
+  },
+  {
+    "tag": "Play",
+    "text": "mt",
+  },
+  {
+    "tag": "Play",
+    "text": "lt",
+  },
+  {
+    "tag": "Play",
+    "text": "ht",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.5)",
+  },
+  {
+    "tag": "Fast",
+    "text": ".fast(2)",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("x(3,8)")",
+  },
+  {
+    "tag": "Seq",
+    "text": "mt lt ht",
+  },
+  {
+    "tag": "Play",
+    "text": "mt",
+  },
+  {
+    "tag": "Play",
+    "text": "lt",
+  },
+  {
+    "tag": "Play",
+    "text": "ht",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(1/3)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.5)",
+  },
+  {
+    "tag": "Param",
+    "text": ".speed(1)",
+  },
+  {
+    "tag": "Play",
+    "text": "misc",
+  },
+  {
+    "tag": "When",
+    "text": ".mask("<0 1>/8")",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.5)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(".33 | .6 | .166 | .25")",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".orbit(2)",
+  },
+  {
+    "tag": "Degrade",
+    "text": ".degradeBy(.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.03)",
+  },
+  {
+    "tag": "FX",
+    "text": ".cutoff(2000)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('square')",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('g4 dorian')",
+  },
+  {
+    "tag": "Stack",
+    "text": ".off(1/3, add(7))",
+  },
+  {
+    "tag": "Code",
+    "text": ".iter(4)",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 5 4 2",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Late",
+    "text": "1/3",
+  },
+  {
+    "tag": "Code",
+    "text": ".iter(4)",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 5 4 2",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > chop — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".sustain(.6)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".shape(.4)",
+  },
+  {
+    "tag": "Stack",
+    "text": ".jux(rev)",
+  },
+  {
+    "tag": "Chop",
+    "text": ".chop(128)",
+  },
+  {
+    "tag": "Code",
+    "text": ".loopAt(32)",
+  },
+  {
+    "tag": "Play",
+    "text": "p",
+  },
+  {
+    "tag": "Chop",
+    "text": ".chop(128)",
+  },
+  {
+    "tag": "Code",
+    "text": ".loopAt(32)",
+  },
+  {
+    "tag": "Play",
+    "text": "p",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > delay — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Choice",
+    "text": ".sometimes(x=>x.speed("-1"))",
+  },
+  {
+    "tag": "Param",
+    "text": ".speed("-1")",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(".6 | .8")",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(".16 | .33")",
+  },
+  {
+    "tag": "Code",
+    "text": ".delay("<0 .5>")",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd <sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "cp",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(".6 | .8")",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(".16 | .33")",
+  },
+  {
+    "tag": "Code",
+    "text": ".delay("<0 .5>")",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd <sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "cp",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > dinofunk — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(
+s('bass').loopAt(8).clip(1),
+s("bd*2, ~ sd,hh*4"),
+chord("Abm7")
+  .mode("below:G4")
+  .dict('lefthand')
+  .voicing()
+  .struct("x(3,8,1)".slow(2)),
+"0 1 2 3".scale('ab4 minor pentatonic')
+.superimpose(x=>x.add(.1))
+.sometimes(x=>x.add(12))
+.note().s('sawtooth')
+.cutoff(sine.range(400,2000).slow(16)).gain(.8)
+.decay(perlin.range(.05,.2)).sustain(0)
+.delay(sine.range(0,.5).slow(32))
+.degradeBy(.4).room(1),
+note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
+)",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd*2, ~ sd,hh*4",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(1)",
+  },
+  {
+    "tag": "Degrade",
+    "text": ".degradeBy(.4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delay(sine.range(0,.5).slow(32))",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(perlin.range(.05,.2))",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".cutoff(sine.range(400,2000).slow(16))",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(x=>x.add(12))",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(12)",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(x=>x.add(.1))",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('ab4 minor pentatonic')",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 1 2 3",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(x=>x.add(.1))",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('ab4 minor pentatonic')",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 1 2 3",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "1",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.5)",
+  },
+  {
+    "tag": "Slow",
+    "text": ".slow(8)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('dino')",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<b4 eb4>",
+  },
+  {
+    "tag": "Play",
+    "text": "b4",
+  },
+  {
+    "tag": "Play",
+    "text": "eb4",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > echoPiano — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".pianoroll()",
+  },
+  {
+    "tag": "Code",
+    "text": ".piano()",
+  },
+  {
+    "tag": "Code",
+    "text": ".clip(.5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".echo(4, 1/8, .5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('D minor')",
+  },
+  {
+    "tag": "Stack",
+    "text": ".off(1/2, x=>x.add(n(6)).color('steelblue'))",
+  },
+  {
+    "tag": "Stack",
+    "text": ".off(1/4, x=>x.add(n(2)).color('green'))",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('salmon')",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<0 2 [4 6](3,4,2) 3*2>",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 6]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('green')",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(n(2))",
+  },
+  {
+    "tag": "Late",
+    "text": "1/4",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('salmon')",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<0 2 [4 6](3,4,2) 3*2>",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 6]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('steelblue')",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(n(6))",
+  },
+  {
+    "tag": "Late",
+    "text": "1/2",
+  },
+  {
+    "tag": "Stack",
+    "text": ".off(1/4, x=>x.add(n(2)).color('green'))",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('salmon')",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<0 2 [4 6](3,4,2) 3*2>",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 6]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('green')",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(n(2))",
+  },
+  {
+    "tag": "Late",
+    "text": "1/4",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('salmon')",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<0 2 [4 6](3,4,2) 3*2>",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "[4 6]",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "6",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "4",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > flatrave — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(
+  s("bd*2,~ [cp,sd]").bank('RolandTR909'),
+  
+  s("hh:1*4").sometimes(fast("2"))
+  .rarely(x=>x.speed(".5").delay(.5))
+  .end(perlin.range(0.02,.05).slow(8))
+  .bank('RolandTR909').room(.5)
+  .gain("0.4,0.4(5,8,-1)"),
+  
+  note("<0 2 5 3>".scale('G1 minor')).struct("x(5,8,-1)")
+  .s('sawtooth').decay(.1).sustain(0)
+  .lpa(.1).lpenv(-4).lpf(800).lpq(8),
+  
+  note("<G4 A4 Bb4 A4>,Bb3,D3").struct("~ x*2").s('square').clip(1)
+  .cutoff(sine.range(500,4000).slow(16)).resonance(10)
+  .decay(sine.slow(15).range(.05,.2)).sustain(0)
+  .room(.5).gain(.3).delay(.2).mask("<0 1@3>/8"),
+  
+  "0 5 3 2".sometimes(slow(2)).off(1/8,add(5)).scale('G4 minor').note()
+  .decay(.05).sustain(0).delay(.2).degradeBy(.5).mask("<0 1>/16")
+)",
+  },
+  {
+    "tag": "Code",
+    "text": ".bank('RolandTR909')",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd*2,~ [cp,sd]",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Seq",
+    "text": "[cp,sd]",
+  },
+  {
+    "tag": "Play",
+    "text": "cp",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Param",
+    "text": ".gain("0.4,0.4(5,8,-1)")",
+  },
+  {
+    "tag": "Seq",
+    "text": "0.4,0.4(5,8,-1)",
+  },
+  {
+    "tag": "Play",
+    "text": "0.4",
+  },
+  {
+    "tag": "Seq",
+    "text": "0.4(5,8,-1)",
+  },
+  {
+    "tag": "Play",
+    "text": "0.4",
+  },
+  {
+    "tag": "Play",
+    "text": "0.4",
+  },
+  {
+    "tag": "Play",
+    "text": "0.4",
+  },
+  {
+    "tag": "Play",
+    "text": "0.4",
+  },
+  {
+    "tag": "Play",
+    "text": "0.4",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".bank('RolandTR909')",
+  },
+  {
+    "tag": "Code",
+    "text": ".end(perlin.range(0.02,.05).slow(8))",
+  },
+  {
+    "tag": "Code",
+    "text": ".rarely(x=>x.speed(".5").delay(.5))",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(fast("2"))",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpq(8)",
+  },
+  {
+    "tag": "FX",
+    "text": ".lpf(800)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpenv(-4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpa(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("x(5,8,-1)")",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('G1 minor')",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<0 2 5 3>",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "When",
+    "text": ".mask("<0 1@3>/8")",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.3)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(sine.slow(15).range(.05,.2))",
+  },
+  {
+    "tag": "FX",
+    "text": ".resonance(10)",
+  },
+  {
+    "tag": "Code",
+    "text": ".cutoff(sine.range(500,4000).slow(16))",
+  },
+  {
+    "tag": "Code",
+    "text": ".clip(1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('square')",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("~ x*2")",
+  },
+  {
+    "tag": "Seq",
+    "text": "<G4 A4 Bb4 A4>,Bb3,D3",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<G4 A4 Bb4 A4>",
+  },
+  {
+    "tag": "Play",
+    "text": "G4",
+  },
+  {
+    "tag": "Play",
+    "text": "A4",
+  },
+  {
+    "tag": "Play",
+    "text": "Bb4",
+  },
+  {
+    "tag": "Play",
+    "text": "A4",
+  },
+  {
+    "tag": "Play",
+    "text": "Bb3",
+  },
+  {
+    "tag": "Play",
+    "text": "D3",
+  },
+  {
+    "tag": "When",
+    "text": ".mask("<0 1>/16")",
+  },
+  {
+    "tag": "Degrade",
+    "text": ".degradeBy(.5)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.05)",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('G4 minor')",
+  },
+  {
+    "tag": "Stack",
+    "text": ".off(1/8,add(5))",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(slow(2))",
+  },
+  {
+    "tag": "Slow",
+    "text": "slow(2)",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 5 3 2",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 5 3 2",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Late",
+    "text": "1/8",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(slow(2))",
+  },
+  {
+    "tag": "Slow",
+    "text": "slow(2)",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 5 3 2",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Seq",
+    "text": "0 5 3 2",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Play",
+    "text": "5",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > holyflute — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".pianoroll({fold:0,autorange:0,vertical:0,cycles:12,smear:0,minMidi:40})",
+  },
+  {
+    "tag": "Param",
+    "text": ".color("salmon | orange | darkseagreen")",
+  },
+  {
+    "tag": "Seq",
+    "text": "salmon | orange | darkseagreen",
+  },
+  {
+    "tag": "Play",
+    "text": "salmon",
+  },
+  {
+    "tag": "Play",
+    "text": "orange",
+  },
+  {
+    "tag": "Play",
+    "text": "darkseagreen",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.2)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".release(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".clip(1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('ocarina_vib')",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
+  },
+  {
+    "tag": "Code",
+    "text": ".add("<0 1>/16")",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(
+  x=>x.slow(2).add(12),
+  x=>x.slow(4).sub(5)
+)",
+  },
+  {
+    "tag": "Seq",
+    "text": "c3 eb3(3,8) c4/2 g3*2",
+  },
+  {
+    "tag": "Play",
+    "text": "c3",
+  },
+  {
+    "tag": "Seq",
+    "text": "eb3(3,8)",
+  },
+  {
+    "tag": "Play",
+    "text": "eb3",
+  },
+  {
+    "tag": "Play",
+    "text": "eb3",
+  },
+  {
+    "tag": "Play",
+    "text": "eb3",
+  },
+  {
+    "tag": "Play",
+    "text": "c4",
+  },
+  {
+    "tag": "Play",
+    "text": "2",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "g3",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > juxUndTollerei — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".pianoroll()",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(.4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(.1)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.5)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(.6)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.05)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpenv(-2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpa(.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpf(sine.range(200,2000).slow(8))",
+  },
+  {
+    "tag": "Stack",
+    "text": ".off(1/4, x=>x.add(note("<7 12>/2")).slow(2).late(.005).s('triangle'))",
+  },
+  {
+    "tag": "Stack",
+    "text": ".jux(x=>x.rev().color('green').s('sawtooth'))",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".palindrome()",
+  },
+  {
+    "tag": "Seq",
+    "text": "c3 eb3 g3 bb3",
+  },
+  {
+    "tag": "Play",
+    "text": "c3",
+  },
+  {
+    "tag": "Play",
+    "text": "eb3",
+  },
+  {
+    "tag": "Play",
+    "text": "g3",
+  },
+  {
+    "tag": "Play",
+    "text": "bb3",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('green')",
+  },
+  {
+    "tag": "Code",
+    "text": ".rev()",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".palindrome()",
+  },
+  {
+    "tag": "Seq",
+    "text": "c3 eb3 g3 bb3",
+  },
+  {
+    "tag": "Play",
+    "text": "c3",
+  },
+  {
+    "tag": "Play",
+    "text": "eb3",
+  },
+  {
+    "tag": "Play",
+    "text": "g3",
+  },
+  {
+    "tag": "Play",
+    "text": "bb3",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('triangle')",
+  },
+  {
+    "tag": "Late",
+    "text": ".late(.005)",
+  },
+  {
+    "tag": "Slow",
+    "text": ".slow(2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(note("<7 12>/2"))",
+  },
+  {
+    "tag": "Late",
+    "text": "1/4",
+  },
+  {
+    "tag": "Stack",
+    "text": ".jux(x=>x.rev().color('green').s('sawtooth'))",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".palindrome()",
+  },
+  {
+    "tag": "Seq",
+    "text": "c3 eb3 g3 bb3",
+  },
+  {
+    "tag": "Play",
+    "text": "c3",
+  },
+  {
+    "tag": "Play",
+    "text": "eb3",
+  },
+  {
+    "tag": "Play",
+    "text": "g3",
+  },
+  {
+    "tag": "Play",
+    "text": "bb3",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('green')",
+  },
+  {
+    "tag": "Code",
+    "text": ".rev()",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".palindrome()",
+  },
+  {
+    "tag": "Seq",
+    "text": "c3 eb3 g3 bb3",
+  },
+  {
+    "tag": "Play",
+    "text": "c3",
+  },
+  {
+    "tag": "Play",
+    "text": "eb3",
+  },
+  {
+    "tag": "Play",
+    "text": "g3",
+  },
+  {
+    "tag": "Play",
+    "text": "bb3",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > meltingsubmarine — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".echoWith(4,.125,(x,n)=>x.gain(.15*1/(n+1)))",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+  s("bd:5,[~ <sd:1!3 sd:1(3,4,3)>],hh27(3,4,1)") // drums
+  .speed(perlin.range(.7,.9)) // random sample speed variation
+  //.hush()
+  ,"<a1 b1*2 a1(3,8) e2>" // bassline
+  .off(1/8,x=>x.add(12).degradeBy(.5)) // random octave jumps
+  .add(perlin.range(0,.5)) // random pitch variation
+  .superimpose(add(.05)) // add second, slightly detuned voice
+  .note() // wrap in "note"
+  .decay(.15).sustain(0) // make each note of equal length
+  .s('sawtooth') // waveform
+  .gain(.4) // turn down
+  .cutoff(sine.slow(7).range(300,5000)) // automate cutoff
+  .lpa(.1).lpenv(-2)
+  //.hush()
+  ,chord("<Am7!3 <Em7 E7b13 Em7 Ebm7b5>>")
+  .dict('lefthand').voicing() // chords
+  .add(note("0,.04")) // add second, slightly detuned voice
+  .add(note(perlin.range(0,.5))) // random pitch variation
+  .s('sawtooth') // waveform
+  .gain(.16) // turn down
+  .cutoff(500) // fixed cutoff
+  .attack(1) // slowly fade in
+  //.hush()
+  ,"a4 c5 <e6 a6>".struct("x(5,8,-1)")
+  .superimpose(x=>x.add(.04)) // add second, slightly detuned voice
+  .add(perlin.range(0,.5)) // random pitch variation
+  .note() // wrap in "note"
+  .decay(.1).sustain(0) // make notes short
+  .s('triangle') // waveform
+  .degradeBy(perlin.range(0,.5)) // randomly controlled random removal :)",
+  },
+  {
+    "tag": "Code",
+    "text": ".speed(perlin.range(.7,.9))",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd:5,[~ <sd:1!3 sd:1(3,4,3)>],hh27(3,4,1)",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Seq",
+    "text": "[~ <sd:1!3 sd:1(3,4,3)>]",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sd:1!3 sd:1(3,4,3)>",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Seq",
+    "text": "sd:1(3,4,3)",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Seq",
+    "text": "hh27(3,4,1)",
+  },
+  {
+    "tag": "Play",
+    "text": "hh27",
+  },
+  {
+    "tag": "Play",
+    "text": "hh27",
+  },
+  {
+    "tag": "Play",
+    "text": "hh27",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(add(.05))",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(perlin.range(0,.5))",
+  },
+  {
+    "tag": "Stack",
+    "text": ".off(1/8,x=>x.add(12).degradeBy(.5))",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<a1 b1*2 a1(3,8) e2>",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "b1",
+  },
+  {
+    "tag": "Seq",
+    "text": "a1(3,8)",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Play",
+    "text": "e2",
+  },
+  {
+    "tag": "Degrade",
+    "text": ".degradeBy(.5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(12)",
+  },
+  {
+    "tag": "Late",
+    "text": "1/8",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<a1 b1*2 a1(3,8) e2>",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "b1",
+  },
+  {
+    "tag": "Seq",
+    "text": "a1(3,8)",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Play",
+    "text": "a1",
+  },
+  {
+    "tag": "Play",
+    "text": "e2",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(x=>x.add(.04))",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("x(5,8,-1)")",
+  },
+  {
+    "tag": "Seq",
+    "text": "a4 c5 <e6 a6>",
+  },
+  {
+    "tag": "Play",
+    "text": "a4",
+  },
+  {
+    "tag": "Play",
+    "text": "c5",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<e6 a6>",
+  },
+  {
+    "tag": "Play",
+    "text": "e6",
+  },
+  {
+    "tag": "Play",
+    "text": "a6",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > orbit — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Choice",
+    "text": ".sometimes(x=>x.speed("-1"))",
+  },
+  {
+    "tag": "Param",
+    "text": ".speed("-1")",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+    s("bd <sd cp>")
+    .delay(.5)
+    .delaytime(.33)
+    .delayfeedback(.6),
+    s("hh*2")
+    .delay(.8)
+    .delaytime(.08)
+    .delayfeedback(.7)
+    .orbit(2)
+  )",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(.6)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(.33)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.5)",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd <sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "cp",
+  },
+  {
+    "tag": "Code",
+    "text": ".orbit(2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(.7)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(.08)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.8)",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+    s("bd <sd cp>")
+    .delay(.5)
+    .delaytime(.33)
+    .delayfeedback(.6),
+    s("hh*2")
+    .delay(.8)
+    .delaytime(.08)
+    .delayfeedback(.7)
+    .orbit(2)
+  )",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(.6)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(.33)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.5)",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd <sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sd cp>",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "cp",
+  },
+  {
+    "tag": "Code",
+    "text": ".orbit(2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(.7)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(.08)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.8)",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > randomBells — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".pianoroll({vertical:1})",
+  },
+  {
+    "tag": "Slow",
+    "text": ".slow(6)",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+  // bells
+  n("0").euclidLegato(3,8)
+  .echo(3, 1/16, .5)
+  .add(n(rand.range(0,12)))
+  .scale("D:minor:pentatonic")
+  .velocity(rand.range(.5,1))
+  .s('bell').gain(.6).delay(.2).delaytime(1/3).delayfeedback(.8),
+  // bass
+  note("<D2 A2 G2 F2>").euclidLegatoRot(6,8,4).s('bass').clip(1).gain(.8)
+)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delayfeedback(.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".delaytime(1/3)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.6)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('bell')",
+  },
+  {
+    "tag": "Code",
+    "text": ".velocity(rand.range(.5,1))",
+  },
+  {
+    "tag": "Param",
+    "text": ".scale("D:minor:pentatonic")",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(n(rand.range(0,12)))",
+  },
+  {
+    "tag": "Code",
+    "text": ".echo(3, 1/16, .5)",
+  },
+  {
+    "tag": "Code",
+    "text": ".euclidLegato(3,8)",
+  },
+  {
+    "tag": "Play",
+    "text": "0",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".clip(1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('bass')",
+  },
+  {
+    "tag": "Code",
+    "text": ".euclidLegatoRot(6,8,4)",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<D2 A2 G2 F2>",
+  },
+  {
+    "tag": "Play",
+    "text": "D2",
+  },
+  {
+    "tag": "Play",
+    "text": "A2",
+  },
+  {
+    "tag": "Play",
+    "text": "G2",
+  },
+  {
+    "tag": "Play",
+    "text": "F2",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > sampleDrums — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".pianoroll({fold:1})",
+  },
+  {
+    "tag": "Code",
+    "text": ".s()",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+  "<bd!3 bd(3,4,3)>".color('#F5A623'),
+  "hh*4".color('#673AB7'),
+  "~ <sn!3 sn(3,4,2)>".color('#4CAF50')
+)",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('#F5A623')",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<bd!3 bd(3,4,3)>",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Seq",
+    "text": "bd(3,4,3)",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('#673AB7')",
+  },
+  {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('#4CAF50')",
+  },
+  {
+    "tag": "Seq",
+    "text": "~ <sn!3 sn(3,4,2)>",
+  },
+  {
+    "tag": "Sleep",
+    "text": "~",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sn!3 sn(3,4,2)>",
+  },
+  {
+    "tag": "Play",
+    "text": "sn",
+  },
+  {
+    "tag": "Play",
+    "text": "3",
+  },
+  {
+    "tag": "Seq",
+    "text": "sn(3,4,2)",
+  },
+  {
+    "tag": "Play",
+    "text": "sn",
+  },
+  {
+    "tag": "Play",
+    "text": "sn",
+  },
+  {
+    "tag": "Play",
+    "text": "sn",
+  },
+]
+`;

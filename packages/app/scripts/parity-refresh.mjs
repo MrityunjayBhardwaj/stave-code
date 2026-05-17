@@ -37,6 +37,15 @@ const sourceFile = path.join(corpusDir, 'CORPUS-SOURCE.md')
 
 // Tunes to re-extract. Keep in lockstep with the CORPUS-SOURCE.md curated
 // list — if a tune is added/removed there, mirror the change here.
+//
+// 20-15 V-2: the `bakery-*.strudel` fixtures (the 6 closed Bakery
+// gap-class repros) live in the same corpus dir but are NOT upstream
+// `tunes.mjs` exports — they are minimal repros distilled from issues
+// #132/#134-#138 (provenance in BAKERY-FIXTURES.md). They MUST NOT appear
+// in TARGETS or this maintainer tool would report them as permanent
+// "missing upstream" drift forever. The list below is upstream-only by
+// construction; the assertion further down enforces it so a future edit
+// can't accidentally add a `bakery-*` entry.
 const TARGETS = [
   'chop',
   'delay',
@@ -55,6 +64,15 @@ const TARGETS = [
   'meltingsubmarine',
   'arpoon',
 ]
+
+// 20-15 V-2 guard: TARGETS is upstream-only. A `bakery-*` entry here
+// would make this tool falsely report a vendored repro as upstream drift.
+if (TARGETS.some((t) => t.startsWith('bakery-'))) {
+  throw new Error(
+    'parity-refresh TARGETS must be upstream tunes only — a bakery-* ' +
+      'fixture leaked in (see BAKERY-FIXTURES.md; these are non-upstream).',
+  )
+}
 
 const args = process.argv.slice(2)
 let overrideSha

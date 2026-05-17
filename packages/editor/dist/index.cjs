@@ -1,5 +1,6 @@
 'use strict';
 
+var core = require('@strudel/core');
 var React6 = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
@@ -43,6 +44,9 @@ var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require
   if (typeof require !== "undefined") return require.apply(this, arguments);
   throw Error('Dynamic require of "' + x + '" is not supported');
 });
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __commonJS = (cb, mod) => function __require2() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
@@ -62,6 +66,23 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   __defProp(target, "default", { value: mod, enumerable: true }) ,
   mod
 ));
+
+// src/engine/vendored/piano.ts
+var piano_exports = {};
+var maxPan, panwidth;
+var init_piano = __esm({
+  "src/engine/vendored/piano.ts"() {
+    maxPan = core.noteToMidi("C8");
+    panwidth = (pan, width) => pan * width + (1 - width) / 2;
+    core.Pattern.prototype.piano = function() {
+      return this.fmap((v) => ({ ...v, clip: v.clip ?? 1 })).s("piano").release(0.1).fmap((value) => {
+        const midi = core.valueToMidi(value);
+        const pan = panwidth(Math.min(Math.round(midi) / maxPan, 1), 0.5);
+        return { ...value, pan: (value.pan || 1) * pan };
+      });
+    };
+  }
+});
 
 // ../../../sonicPiWeb/node_modules/web-tree-sitter/tree-sitter.js
 var require_tree_sitter = __commonJS({
@@ -3124,6 +3145,11 @@ function makeEvent(ctx, note2, params) {
     // Avoids polluting IREvent with enumerable `trackId: undefined`
     // (CONTEXT pre-mortem #6 — IREvent.trackId is optional).
     ...ctx.trackId !== void 0 ? { trackId: ctx.trackId } : {},
+    // Phase 20-12.1 follow-up — conditional spread for dollarPos. Absent
+    // for hand-built IR (no `$:` Track wrapper); present for parser-
+    // produced events. MusicalTimeline uses this as the slot identity
+    // when present so `.p()` rename doesn't relocate the row.
+    ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
     ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {}
   };
 }
@@ -3177,6 +3203,7 @@ function walk(ir, ctx) {
       const childCtx = {
         ...ctx,
         trackId: ir.trackId,
+        dollarPos: ctx.dollarPos !== void 0 ? ctx.dollarPos : ir.loc?.[0]?.start,
         leafIndex: void 0
       };
       return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
@@ -4378,65 +4405,324 @@ function wrapAsOpaque(inner, method, args2, callSiteRange) {
     via: { method, args: args2, callSiteRange, inner }
   };
 }
+function stripParserPrelude(code) {
+  const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
+  let i2 = 0;
+  while (i2 < code.length) {
+    let lineEnd = code.indexOf("\n", i2);
+    if (lineEnd === -1) lineEnd = code.length;
+    const line2 = code.slice(i2, lineEnd);
+    const trimmed = line2.trim();
+    if (trimmed === "") {
+      i2 = lineEnd + 1;
+      continue;
+    }
+    if (trimmed.startsWith("//")) {
+      i2 = lineEnd + 1;
+      continue;
+    }
+    if (PRELUDE_CALL_RE.test(line2)) {
+      let j = i2;
+      let depth = 0;
+      let inString = false;
+      let stringChar = "";
+      let escaped = false;
+      let sawOpenParen = false;
+      while (j < code.length) {
+        const ch = code[j];
+        if (escaped) {
+          escaped = false;
+          j++;
+          continue;
+        }
+        if (inString) {
+          if (ch === "\\") {
+            escaped = true;
+          } else if (ch === stringChar) {
+            inString = false;
+          }
+          j++;
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === "`") {
+          inString = true;
+          stringChar = ch;
+          j++;
+          continue;
+        }
+        if (ch === "(" || ch === "[" || ch === "{") {
+          depth++;
+          if (ch === "(") sawOpenParen = true;
+          j++;
+          continue;
+        }
+        if (ch === ")" || ch === "]" || ch === "}") {
+          depth--;
+          j++;
+          if (depth === 0 && sawOpenParen) {
+            while (j < code.length && (code[j] === " " || code[j] === "	" || code[j] === ";")) {
+              j++;
+            }
+            if (j < code.length && code[j] === "\n") j++;
+            break;
+          }
+          continue;
+        }
+        if (ch === "\n") {
+          j++;
+          continue;
+        }
+        j++;
+      }
+      if (depth !== 0) break;
+      i2 = j;
+      continue;
+    }
+    break;
+  }
+  return { body: code.slice(i2), offset: i2 };
+}
+function splitTopLevelStatements(body2, baseOffset) {
+  const out2 = [];
+  let depth = 0;
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  let segStart = 0;
+  let i2 = 0;
+  const flush = (end) => {
+    const raw = body2.slice(segStart, end);
+    if (raw.trim().length > 0) {
+      const lead = raw.length - raw.trimStart().length;
+      out2.push({ text: raw.trim(), offset: baseOffset + segStart + lead });
+    }
+    segStart = end + 1;
+  };
+  while (i2 < body2.length) {
+    const ch = body2[i2];
+    if (escaped) {
+      escaped = false;
+      i2++;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") escaped = true;
+      else if (ch === stringChar) inString = false;
+      i2++;
+      continue;
+    }
+    if (ch === "/" && body2[i2 + 1] === "/") {
+      while (i2 < body2.length && body2[i2] !== "\n") i2++;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = true;
+      stringChar = ch;
+      i2++;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+      i2++;
+      continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      depth--;
+      i2++;
+      continue;
+    }
+    if (depth === 0 && (ch === ";" || ch === "\n")) {
+      flush(i2);
+      i2++;
+      continue;
+    }
+    i2++;
+  }
+  flush(body2.length);
+  return out2;
+}
+var BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
+function buildBindingMap(body2, baseOffset) {
+  const stmts = splitTopLevelStatements(body2, baseOffset);
+  if (stmts.length < 2) return null;
+  const bindings = /* @__PURE__ */ new Map();
+  let finalIdx = -1;
+  for (let s = 0; s < stmts.length; s++) {
+    const { text, offset } = stmts[s];
+    const bm = text.match(BINDING_RE);
+    if (!bm) {
+      finalIdx = s;
+      break;
+    }
+    const name2 = bm[1];
+    const rhs = bm[2].trim();
+    if (bindings.has(name2)) return null;
+    const rhsStartInText = text.length - rhs.length;
+    const rhsOffset = offset + rhsStartInText;
+    const rhsIR = parseExpression(rhs, rhsOffset);
+    const rhsIsBareCode = rhsIR.tag === "Code" && rhsIR.via === void 0;
+    if (rhsIsBareCode) return null;
+    bindings.set(name2, rhsIR);
+  }
+  if (finalIdx === -1) return null;
+  if (finalIdx !== stmts.length - 1) return null;
+  return {
+    bindings,
+    finalExpr: stmts[finalIdx].text,
+    finalOffset: stmts[finalIdx].offset
+  };
+}
 function parseStrudel(code) {
   if (!code.trim()) return IR.pure();
   try {
     const tracks = extractTracks(code);
     if (tracks.length === 0) {
-      const trimStart = code.search(/\S/);
-      const inner = parseExpression(code.trim(), trimStart >= 0 ? trimStart : 0);
+      const stripped = stripParserPrelude(code);
+      if (!stripped.body.trim()) {
+        return IR.track("d1", IR.pure());
+      }
+      const bodyTrimStart = stripped.body.search(/\S/);
+      const innerOffset = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0);
+      const bound = buildBindingMap(stripped.body, stripped.offset);
+      if (bound) {
+        const inner2 = parseExpression(bound.finalExpr, bound.finalOffset, void 0, bound.bindings);
+        const innerIsBareCode = inner2.tag === "Code" && inner2.via === void 0;
+        if (!innerIsBareCode) {
+          return IR.track("d1", inner2);
+        }
+      }
+      const inner = parseExpression(stripped.body.trim(), innerOffset);
       return IR.track("d1", inner);
     }
     if (tracks.length === 1) {
       const t = tracks[0];
-      return IR.track("d1", parseExpression(t.expr, t.offset), {
+      const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset);
+      const trackId0 = t.label && t.label !== "$" ? t.label : "d1";
+      return IR.track(trackId0, body2, {
         loc: [{ start: t.dollarStart, end: t.end }]
       });
     }
     return IR.stack(
-      ...tracks.map(
-        (t, i2) => IR.track(`d${i2 + 1}`, parseExpression(t.expr, t.offset), {
+      ...tracks.map((t, i2) => {
+        const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset);
+        const trackId = t.label && t.label !== "$" ? t.label : `d${i2 + 1}`;
+        return IR.track(trackId, body2, {
           loc: [{ start: t.dollarStart, end: t.end }]
-        })
-      )
+        });
+      })
     );
   } catch {
     return IR.code(code);
   }
 }
+function lexStateAt(code, idx) {
+  let depth = 0;
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+  let i2 = 0;
+  while (i2 < idx) {
+    const ch = code[i2];
+    if (escaped) {
+      escaped = false;
+      i2++;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") escaped = true;
+      else if (ch === stringChar) inString = false;
+      i2++;
+      continue;
+    }
+    if (ch === "/" && code[i2 + 1] === "/") {
+      while (i2 < idx && code[i2] !== "\n") i2++;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = true;
+      stringChar = ch;
+      i2++;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+      i2++;
+      continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      depth--;
+      i2++;
+      continue;
+    }
+    i2++;
+  }
+  return { depth, inString };
+}
+var RESERVED_LABEL_IDENTS = /* @__PURE__ */ new Set(["let", "const", "var", "default", "case"]);
 function extractTracks(code) {
   const tracks = [];
-  const dollarRe = /^[ \t]*\$:/gm;
+  const dollarRe = /^[ \t]*(\/\/[ \t]*)?([A-Za-z_$][\w$]*)\s*:/gm;
   const starts = [];
   let m;
   while (m = dollarRe.exec(code)) {
+    const label = m[2];
+    const st = lexStateAt(code, m.index);
+    if (st.depth > 0 || st.inString || RESERVED_LABEL_IDENTS.has(label)) {
+      continue;
+    }
     const after = m.index + m[0].length;
     let bodyStart = after;
     while (bodyStart < code.length && (code[bodyStart] === " " || code[bodyStart] === "	")) {
       bodyStart++;
     }
-    starts.push({ dollarStart: m.index, bodyStart });
+    const commented = !!m[1];
+    starts.push({ dollarStart: m.index, bodyStart, commented, label });
   }
   if (starts.length === 0) return [];
   for (let i2 = 0; i2 < starts.length; i2++) {
-    const { dollarStart, bodyStart } = starts[i2];
+    const { dollarStart, bodyStart, commented, label } = starts[i2];
     const end = i2 + 1 < starts.length ? starts[i2 + 1].dollarStart : code.length;
+    if (commented) {
+      tracks.push({ expr: "", offset: bodyStart, dollarStart, end, commented: true, label });
+      continue;
+    }
     const slice = code.slice(bodyStart, end);
-    tracks.push({ expr: slice, offset: bodyStart, dollarStart, end });
+    tracks.push({ expr: slice, offset: bodyStart, dollarStart, end, commented: false, label });
   }
   return tracks;
 }
-function parseExpression(expr, baseOffset = 0) {
+function skipWhitespaceAndLineComments(src, pos) {
+  let i2 = pos;
+  for (; ; ) {
+    while (i2 < src.length && /\s/.test(src[i2])) i2++;
+    if (src[i2] === "/" && src[i2 + 1] === "/") {
+      i2 += 2;
+      while (i2 < src.length && src[i2] !== "\n") i2++;
+      if (i2 < src.length && src[i2] === "\n") i2++;
+      continue;
+    }
+    break;
+  }
+  return i2;
+}
+function parseExpression(expr, baseOffset = 0, isSampleKey, bindings) {
   if (!expr.trim()) return IR.pure();
+  if (bindings) {
+    const bareId = expr.trim();
+    if (/^[A-Za-z_$][\w$]*$/.test(bareId) && bindings.has(bareId)) {
+      return bindings.get(bareId);
+    }
+  }
   try {
     const leadingWs = expr.length - expr.trimStart().length;
     const trimmedOffset = baseOffset + leadingWs;
     const { root, chain } = splitRootAndChain(expr.trim());
-    const rootIR = parseRoot(root, trimmedOffset);
-    if (rootIR.tag === "Code" && !chain.trim()) {
+    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings);
+    const rootIsBareCode = rootIR.tag === "Code" && rootIR.via === void 0;
+    if (rootIsBareCode && !chain.trim()) {
       return IR.code(expr);
     }
-    if (rootIR.tag === "Code") {
+    if (rootIsBareCode) {
       return IR.code(expr);
     }
     const chainOffset = trimmedOffset + root.length;
@@ -4446,26 +4732,74 @@ function parseExpression(expr, baseOffset = 0) {
     return IR.code(expr);
   }
 }
-function parseRoot(root, baseOffset = 0) {
+function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
   const trimmed = root.trim();
   const leadingWs = root.length - root.trimStart().length;
+  const backtickInnerToIR = (inner, isSample, innerOffset) => {
+    if (inner.includes("${")) return IR.code(trimmed);
+    return parseMini(inner, isSample, innerOffset);
+  };
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/);
   if (noteMatch) {
     const quoteIdx = noteMatch[0].indexOf('"');
     const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
     return parseMini(noteMatch[1], false, innerOffset);
   }
-  const sMatch = trimmed.match(/^s\s*\(\s*"([^"]*)"\s*\)/);
+  const noteBtMatch = trimmed.match(/^(?:note|n)\s*\(\s*`([^`]*)`\s*\)/);
+  if (noteBtMatch) {
+    const btIdx = noteBtMatch[0].indexOf("`");
+    const innerOffset = baseOffset + leadingWs + btIdx + 1;
+    return backtickInnerToIR(noteBtMatch[1], false, innerOffset);
+  }
+  const sMatch = trimmed.match(/^(?:s|sound)\s*\(\s*"([^"]*)"\s*\)/);
   if (sMatch) {
     const quoteIdx = sMatch[0].indexOf('"');
     const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
     return parseMini(sMatch[1], true, innerOffset);
+  }
+  const sBtMatch = trimmed.match(/^(?:s|sound)\s*\(\s*`([^`]*)`\s*\)/);
+  if (sBtMatch) {
+    const btIdx = sBtMatch[0].indexOf("`");
+    const innerOffset = baseOffset + leadingWs + btIdx + 1;
+    return backtickInnerToIR(sBtMatch[1], true, innerOffset);
   }
   const miniMatch = trimmed.match(/^mini\s*\(\s*"([^"]*)"\s*\)/);
   if (miniMatch) {
     const quoteIdx = miniMatch[0].indexOf('"');
     const innerOffset = baseOffset + leadingWs + quoteIdx + 1;
     return parseMini(miniMatch[1], false, innerOffset);
+  }
+  const miniBtMatch = trimmed.match(/^mini\s*\(\s*`([^`]*)`\s*\)/);
+  if (miniBtMatch) {
+    const btIdx = miniBtMatch[0].indexOf("`");
+    const innerOffset = baseOffset + leadingWs + btIdx + 1;
+    return backtickInnerToIR(miniBtMatch[1], false, innerOffset);
+  }
+  const looseMatch = trimmed.match(/^(note|n|s|sound|mini)\s*\(/);
+  if (looseMatch) {
+    const fnName = looseMatch[1];
+    const openParenIdx = trimmed.indexOf("(", looseMatch[0].length - 1);
+    const closeIdx = openParenIdx >= 0 ? findMatchingParen(trimmed, openParenIdx) : -1;
+    if (closeIdx > openParenIdx) {
+      const inner = trimmed.slice(openParenIdx + 1, closeIdx);
+      const innerTrimmed = inner.trim();
+      const isPlainQuoted = /^"[^"]*"$/.test(innerTrimmed);
+      const isPlainBacktick = /^`[^`]*`$/.test(innerTrimmed);
+      if (!isPlainQuoted && !isPlainBacktick && innerTrimmed.length > 0) {
+        const innerLeadingWs = inner.length - inner.trimStart().length;
+        const innerAbsOffset = baseOffset + leadingWs + openParenIdx + 1 + innerLeadingWs;
+        const callerIsSample = fnName === "s" || fnName === "sound";
+        const innerIR = parseExpression(
+          innerTrimmed,
+          innerAbsOffset,
+          callerIsSample
+        );
+        const innerIsBareCode = innerIR.tag === "Code" && innerIR.via === void 0;
+        if (!innerIsBareCode) {
+          return innerIR;
+        }
+      }
+    }
   }
   const stackMatch = trimmed.match(/^stack\s*\(/);
   if (stackMatch) {
@@ -4476,7 +4810,7 @@ function parseRoot(root, baseOffset = 0) {
       const innerAbsOffset = baseOffset + leadingWs + innerStartInTrimmed;
       const argsWithOffsets = splitArgsWithOffsets(inner);
       const tracks = argsWithOffsets.map(
-        (a) => parseExpression(a.value, innerAbsOffset + a.offset)
+        (a) => parseExpression(a.value, innerAbsOffset + a.offset, void 0, bindings)
       );
       if (tracks.length === 0) return IR.pure();
       if (tracks.length === 1) return tracks[0];
@@ -4492,6 +4826,16 @@ function parseRoot(root, baseOffset = 0) {
       };
     }
   }
+  const bareStringMatch = trimmed.match(/^"([^"]*)"$/);
+  if (bareStringMatch) {
+    const innerOffset = baseOffset + leadingWs + 1;
+    return parseMini(bareStringMatch[1], isSampleKey ?? false, innerOffset);
+  }
+  const bareBtMatch = trimmed.match(/^`([^`]*)`$/);
+  if (bareBtMatch) {
+    const innerOffset = baseOffset + leadingWs + 1;
+    return backtickInnerToIR(bareBtMatch[1], isSampleKey ?? false, innerOffset);
+  }
   return IR.code(trimmed);
 }
 function applyChain(ir, chain, baseOffset = 0) {
@@ -4500,7 +4844,13 @@ function applyChain(ir, chain, baseOffset = 0) {
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
   let current2 = ir;
-  while (remaining.startsWith(".")) {
+  while (true) {
+    const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
+    if (consumedSep > 0) {
+      remainingOffset += consumedSep;
+      remaining = remaining.slice(consumedSep);
+    }
+    if (!remaining.startsWith(".")) break;
     const { method, args: args2, rest, argsOffset } = extractNextMethod(remaining);
     if (!method) break;
     const consumed = remaining.length - rest.length;
@@ -4792,11 +5142,33 @@ function offsetOfSubArg(args2, subArg, argsBaseOffset) {
 }
 function splitRootAndChain(expr) {
   let i2 = 0;
-  while (i2 < expr.length && /[a-zA-Z0-9_$]/.test(expr[i2])) i2++;
-  if (i2 < expr.length && expr[i2] === "(") {
-    const closeIdx = findMatchingParen(expr, i2);
-    if (closeIdx !== -1) {
-      i2 = closeIdx + 1;
+  if (expr[0] === '"') {
+    i2 = 1;
+    while (i2 < expr.length && expr[i2] !== '"') {
+      if (expr[i2] === "\\" && i2 + 1 < expr.length) {
+        i2 += 2;
+        continue;
+      }
+      i2++;
+    }
+    if (i2 < expr.length) i2++;
+  } else if (expr[0] === "`") {
+    i2 = 1;
+    while (i2 < expr.length && expr[i2] !== "`") {
+      if (expr[i2] === "\\" && i2 + 1 < expr.length) {
+        i2 += 2;
+        continue;
+      }
+      i2++;
+    }
+    if (i2 < expr.length) i2++;
+  } else {
+    while (i2 < expr.length && /[a-zA-Z0-9_$]/.test(expr[i2])) i2++;
+    if (i2 < expr.length && expr[i2] === "(") {
+      const closeIdx = findMatchingParen(expr, i2);
+      if (closeIdx !== -1) {
+        i2 = closeIdx + 1;
+      }
     }
   }
   return {
@@ -4835,7 +5207,7 @@ function findMatchingParen(str, startIdx) {
       if (ch === stringChar && str[i2 - 1] !== "\\") inString = false;
       continue;
     }
-    if (ch === '"' || ch === "'") {
+    if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
       continue;
@@ -4868,9 +5240,11 @@ function splitArgsWithOffsets(argsStr) {
   let stringChar = "";
   const pushCurrent = () => {
     if (current2.trim().length === 0) return;
-    let leading = 0;
-    while (leading < current2.length && /\s/.test(current2[leading])) leading += 1;
-    args2.push({ value: current2.trim(), offset: currentStart + leading });
+    const consumed = skipWhitespaceAndLineComments(current2, 0);
+    args2.push({
+      value: current2.slice(consumed).trimEnd(),
+      offset: currentStart + consumed
+    });
   };
   for (let i2 = 0; i2 < argsStr.length; i2++) {
     const ch = argsStr[i2];
@@ -4879,7 +5253,7 @@ function splitArgsWithOffsets(argsStr) {
       if (ch === stringChar && argsStr[i2 - 1] !== "\\") inString = false;
       continue;
     }
-    if (ch === '"' || ch === "'") {
+    if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
       if (current2.length === 0) currentStart = i2;
@@ -5540,6 +5914,99 @@ function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
   osc.stop(endTime + 1e-3);
 }
 
+// src/engine/tierFlags.ts
+var STORAGE_PREFIX = "stave.strudel.tier.";
+var ALL_TIERS = [
+  "csound",
+  "tidal",
+  "midi",
+  "osc",
+  "serial",
+  "gamepad",
+  "motion",
+  "mqtt"
+];
+function safeLocalStorage() {
+  try {
+    if (typeof window === "undefined") return null;
+    const ls = window.localStorage;
+    if (!ls || typeof ls.getItem !== "function") return null;
+    return ls;
+  } catch {
+    return null;
+  }
+}
+function readTierFlag(name2) {
+  const ls = safeLocalStorage();
+  if (!ls) return false;
+  return ls.getItem(`${STORAGE_PREFIX}${name2}`) === "1";
+}
+function writeTierFlag(name2, on) {
+  safeLocalStorage()?.setItem(`${STORAGE_PREFIX}${name2}`, on ? "1" : "0");
+}
+function getTierFlags() {
+  const out2 = {};
+  for (const name2 of ALL_TIERS) {
+    out2[name2] = readTierFlag(name2);
+  }
+  return out2;
+}
+function setTierFlag(name2, on) {
+  writeTierFlag(name2, on);
+}
+function listTiers() {
+  return ALL_TIERS;
+}
+
+// src/engine/aliases.ts
+var SOUND_ALIASES = Object.freeze({
+  // ── Kick / bass drum ──────────────────────────────────────────────────
+  kick: "bd",
+  bassdrum: "bd",
+  // ── Snare ─────────────────────────────────────────────────────────────
+  snare: "sd",
+  snaredrum: "sd",
+  // ── Hi-hats ───────────────────────────────────────────────────────────
+  hat: "hh",
+  hihat: "hh",
+  closedhat: "hh",
+  openhat: "oh",
+  openhihat: "oh",
+  // ── Claps / rims ──────────────────────────────────────────────────────
+  clap: "cp",
+  handclap: "cp",
+  rim: "rs",
+  rimshot: "rs",
+  sidestick: "rs",
+  // ── Cymbals ───────────────────────────────────────────────────────────
+  crash: "cr",
+  crashcymbal: "cr",
+  ride: "rd",
+  ridecymbal: "rd",
+  // Generic "cymbal" → crash; ride is the deliberate one users spell out.
+  cymbal: "cr",
+  // ── Toms ──────────────────────────────────────────────────────────────
+  // Dirt-Samples uses lt/mt/ht for low/mid/high toms. A bare "tom" is
+  // ambiguous in tracker land; mapping to mid-tom is the least-wrong default.
+  tom: "mt",
+  lowtom: "lt",
+  midtom: "mt",
+  hightom: "ht",
+  floortom: "lt",
+  // ── Misc percussion ───────────────────────────────────────────────────
+  cowbell: "cb",
+  bell: "cb",
+  // Dirt-Samples has no separate 'bell' sample; cb is the
+  // sleighbell-adjacent cowbell from analog kits.
+  tambourine: "tb",
+  shaker: "sh",
+  clave: "cl"
+  // Conga/bongo bare names already exist in Dirt-Samples; no alias needed.
+});
+function resolveAlias(rawS) {
+  return SOUND_ALIASES[rawS.toLowerCase()];
+}
+
 // src/engine/StrudelEngine.ts
 function extractVizName(rawArg) {
   if (typeof rawArg === "string") return rawArg || void 0;
@@ -5614,19 +6081,76 @@ var StrudelEngine = class {
     // method. Idempotence guarded by setPaused().
     this.isPausedState = false;
     this.pauseChangedListeners = /* @__PURE__ */ new Set();
+    // Phase 20-14 α-5 — tier flags read at boot. β-4 wires `midi` to call
+    // enableWebMidi(); the other 7 (csound, tidal, osc, serial, gamepad,
+    // motion, mqtt) land as one follow-up issue each. Mid-session toggle
+    // changes are NOT picked up here — settings modal shows the "Changes
+    // take effect on reload" caption.
+    this.tierFlags = null;
+    // Phase 20-14 β-2 — alias-resolution accumulator. Reset at `evaluate()`
+    // entry; appended to by `wrappedOutput` whenever the alias map rewrites
+    // a hap's `s` field. β-5's friendly-error builder reads this to surface
+    // "tried alias `kick` → `bd` (resolved)" on a related error. Owned by
+    // the engine instance (NOT module state) so concurrent engines don't
+    // collide and a stale accumulator can't leak across evals.
+    this.lastAliasResolutions = [];
+    // Phase 20-14 β-2 — live reference to superdough's `soundMap`. Captured
+    // at init() (when `@strudel/webaudio` resolves). `wrappedOutput` reads
+    // `soundMap.get()[name]` at trigger time to honour the Strategy A guard
+    // — user-registered names always win over the curated alias map.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.soundMapRef = null;
+  }
+  /** Read-only snapshot of the tier flags consumed at this engine's init(). */
+  getTierFlagsSnapshot() {
+    return this.tierFlags;
+  }
+  /**
+   * Phase 20-14 β-2 — read-only snapshot of alias rewrites that have fired
+   * during the current evaluate() window. Each entry is one hap rewrite;
+   * the same `from → to` pair may appear multiple times if the rewrite
+   * fired across multiple cycles.
+   *
+   * Lifecycle: reset to empty at `evaluate()` entry, appended to by
+   * `wrappedOutput`, read by friendlyErrors at message-build time.
+   */
+  getLastAliasResolutions() {
+    return this.lastAliasResolutions;
   }
   async init() {
     if (this.initialized) return;
-    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod] = await Promise.all([
+    this.tierFlags = getTierFlags();
+    console.log("[StrudelEngine] tierFlags read at init:", this.tierFlags);
+    const [coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod] = await Promise.all([
       import('@strudel/core'),
       import('@strudel/mini'),
       import('@strudel/tonal'),
       import('@strudel/webaudio'),
       import('@strudel/soundfonts'),
       import('@strudel/xen'),
-      import('@strudel/midi')
+      import('@strudel/midi'),
+      // Phase 20-14 α-1: audio-pure addition. Exposes `mondo`, `mondi`,
+      // `mondolang`, `getLocations` on globalThis via evalScope. Verified
+      // exports against upstream npm @strudel/mondo@1.1.6 (dist/mondough.mjs).
+      // @strudel/edo (also called for by upstream loadModules at the pinned SHA)
+      // is intentionally NOT added here — it is not yet published to npm
+      // (registry.npmjs.org returns 404 for @strudel/edo on 2026-05-15).
+      // Tracked as a follow-up when upstream publishes it.
+      import('@strudel/mondo')
     ]);
-    await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod);
+    await coreMod.evalScope(coreMod, miniMod, tonalMod, webaudioMod, soundfontsMod, xenMod, midiMod, mondoMod);
+    if (this.tierFlags?.midi) {
+      try {
+        const enableWebMidi = midiMod?.enableWebMidi;
+        if (typeof enableWebMidi === "function") {
+          await enableWebMidi();
+        } else {
+          console.warn("[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.");
+        }
+      } catch (err2) {
+        console.warn("[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.", err2);
+      }
+    }
     miniMod.miniAllStrings();
     const { transpiler } = await import('@strudel/transpiler');
     const { initAudio, getAudioContext, webaudioOutput, webaudioRepl } = webaudioMod;
@@ -5635,6 +6159,152 @@ var StrudelEngine = class {
     webaudioMod.registerZZFXSounds();
     soundfontsMod.registerSoundfonts();
     await webaudioMod.samples("github:tidalcycles/Dirt-Samples/master");
+    const samplesFn = webaudioMod.samples;
+    const baseCDN = "https://strudel.b-cdn.net";
+    const safeSamples = async (label, fn) => {
+      try {
+        await fn();
+      } catch (e) {
+        console.warn(`[StrudelEngine] sample manifest "${label}" failed to load; continuing without it.`, e);
+      }
+    };
+    await Promise.all([
+      // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
+      safeSamples("piano", () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
+      // VCSL orchestral library (CC0).
+      safeSamples("vcsl", () => samplesFn(`${baseCDN}/vcsl.json`, `${baseCDN}/VCSL/`, { prebake: true })),
+      // tidal-drum-machines — unlocks `.bank("tr909")`, `.bank("RolandTR808")`, etc.
+      safeSamples("tidal-drum-machines", () => samplesFn(`${baseCDN}/tidal-drum-machines.json`, `${baseCDN}/tidal-drum-machines/machines/`, { prebake: true, tag: "drum-machines" })),
+      // uzu-drumkit — extra drum banks.
+      safeSamples("uzu-drumkit", () => samplesFn(`${baseCDN}/uzu-drumkit.json`, `${baseCDN}/uzu-drumkit/`, { prebake: true, tag: "drum-machines" })),
+      // uzu-wavetables — wavetable synth fodder.
+      safeSamples("uzu-wavetables", () => samplesFn(`${baseCDN}/uzu-wavetables.json`, `${baseCDN}/uzu-wavetables/`, { prebake: true })),
+      // mridangam — percussion bank.
+      safeSamples("mridangam", () => samplesFn(`${baseCDN}/mridangam.json`, `${baseCDN}/mrid/`, { prebake: true, tag: "drum-machines" })),
+      // Inline Dirt-Samples categories (casio/crow/insect/wind/jazz/metal/east/
+      // space/numbers/num) served from b-cdn. Upstream prebake.mjs:42-155.
+      // The earlier `github:tidalcycles/Dirt-Samples/master` call (above) registers
+      // bd/hh/sd/etc.; soundMap.setKey overwrites on duplicate so this call wins
+      // for shared keys — matches upstream behavior (RESEARCH §1c).
+      safeSamples("dirt-extras", () => samplesFn({
+        casio: ["casio/high.wav", "casio/low.wav", "casio/noise.wav"],
+        crow: ["crow/000_crow.wav", "crow/001_crow2.wav", "crow/002_crow3.wav", "crow/003_crow4.wav"],
+        insect: [
+          "insect/000_everglades_conehead.wav",
+          "insect/001_robust_shieldback.wav",
+          "insect/002_seashore_meadow_katydid.wav"
+        ],
+        wind: [
+          "wind/000_wind1.wav",
+          "wind/001_wind10.wav",
+          "wind/002_wind2.wav",
+          "wind/003_wind3.wav",
+          "wind/004_wind4.wav",
+          "wind/005_wind5.wav",
+          "wind/006_wind6.wav",
+          "wind/007_wind7.wav",
+          "wind/008_wind8.wav",
+          "wind/009_wind9.wav"
+        ],
+        jazz: [
+          "jazz/000_BD.wav",
+          "jazz/001_CB.wav",
+          "jazz/002_FX.wav",
+          "jazz/003_HH.wav",
+          "jazz/004_OH.wav",
+          "jazz/005_P1.wav",
+          "jazz/006_P2.wav",
+          "jazz/007_SN.wav"
+        ],
+        metal: [
+          "metal/000_0.wav",
+          "metal/001_1.wav",
+          "metal/002_2.wav",
+          "metal/003_3.wav",
+          "metal/004_4.wav",
+          "metal/005_5.wav",
+          "metal/006_6.wav",
+          "metal/007_7.wav",
+          "metal/008_8.wav",
+          "metal/009_9.wav"
+        ],
+        east: [
+          "east/000_nipon_wood_block.wav",
+          "east/001_ohkawa_mute.wav",
+          "east/002_ohkawa_open.wav",
+          "east/003_shime_hi.wav",
+          "east/004_shime_hi_2.wav",
+          "east/005_shime_mute.wav",
+          "east/006_taiko_1.wav",
+          "east/007_taiko_2.wav",
+          "east/008_taiko_3.wav"
+        ],
+        space: [
+          "space/000_0.wav",
+          "space/001_1.wav",
+          "space/002_11.wav",
+          "space/003_12.wav",
+          "space/004_13.wav",
+          "space/005_14.wav",
+          "space/006_15.wav",
+          "space/007_16.wav",
+          "space/008_17.wav",
+          "space/009_18.wav",
+          "space/010_2.wav",
+          "space/011_3.wav",
+          "space/012_4.wav",
+          "space/013_5.wav",
+          "space/014_6.wav",
+          "space/015_7.wav",
+          "space/016_8.wav",
+          "space/017_9.wav"
+        ],
+        numbers: [
+          "numbers/0.wav",
+          "numbers/1.wav",
+          "numbers/2.wav",
+          "numbers/3.wav",
+          "numbers/4.wav",
+          "numbers/5.wav",
+          "numbers/6.wav",
+          "numbers/7.wav",
+          "numbers/8.wav"
+        ],
+        num: [
+          "num/00.wav",
+          "num/01.wav",
+          "num/02.wav",
+          "num/03.wav",
+          "num/04.wav",
+          "num/05.wav",
+          "num/06.wav",
+          "num/07.wav",
+          "num/08.wav",
+          "num/09.wav",
+          "num/10.wav",
+          "num/11.wav",
+          "num/12.wav",
+          "num/13.wav",
+          "num/14.wav",
+          "num/15.wav",
+          "num/16.wav",
+          "num/17.wav",
+          "num/18.wav",
+          "num/19.wav",
+          "num/20.wav"
+        ]
+      }, `${baseCDN}/Dirt-Samples/`, { prebake: true }))
+    ]);
+    const soundMapRef = webaudioMod.soundMap;
+    this.soundMapRef = soundMapRef;
+    const preAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
+    try {
+      await webaudioMod.aliasBank(`${baseCDN}/tidal-drum-machines-alias.json`);
+    } catch (e) {
+      console.warn("[StrudelEngine] aliasBank fetch failed; .bank() aliases unavailable.", e);
+    }
+    const postAliasCount = soundMapRef?.get ? Object.keys(soundMapRef.get()).length : 0;
+    console.log(`[StrudelEngine] aliasBank: soundMap keys ${preAliasCount} \u2192 ${postAliasCount} (\u0394 ${postAliasCount - preAliasCount}; expect non-negative)`);
     const soundMapData = webaudioMod.soundMap?.get() ?? {};
     this.loadedSoundNames = Object.keys(soundMapData).filter((k) => !k.startsWith("_"));
     this.audioCtx = getAudioContext();
@@ -5648,6 +6318,18 @@ var StrudelEngine = class {
     const hapStream = this.hapStream;
     const audioCtxRef = audioCtx;
     const wrappedOutput = async (hap, deadline, duration, cps, t) => {
+      const rawS = hap?.value?.s;
+      if (typeof rawS === "string") {
+        const lower = rawS.toLowerCase();
+        const liveSoundMap = this.soundMapRef?.get?.() ?? void 0;
+        if (!liveSoundMap || liveSoundMap[lower] === void 0) {
+          const aliased = resolveAlias(rawS);
+          if (aliased && aliased !== rawS) {
+            this.lastAliasResolutions.push({ from: rawS, to: aliased });
+            hap.value = { ...hap.value, s: aliased };
+          }
+        }
+      }
       const enriched = hapStream.emit(hap, deadline, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0);
       if (enriched.irNodeId && this.breakpointStore.has(enriched.irNodeId)) {
         this.repl?.scheduler?.pause();
@@ -5669,11 +6351,13 @@ var StrudelEngine = class {
         this.evalResolve = null;
       }
     });
+    await Promise.resolve().then(() => (init_piano(), piano_exports));
     this.initialized = true;
   }
   async evaluate(code) {
     if (!this.initialized) await this.init();
     this.lastEvaluatedCode = code;
+    this.lastAliasResolutions = [];
     const capturedPatterns = /* @__PURE__ */ new Map();
     const capturedVizRequests = /* @__PURE__ */ new Map();
     let anonIndex = 0;
@@ -5692,17 +6376,17 @@ var StrudelEngine = class {
       }
       return false;
     };
-    const { Pattern } = await import('@strudel/core');
-    const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, "p");
-    const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, "viz");
+    const { Pattern: Pattern2 } = await import('@strudel/core');
+    const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
+    const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
     const legacyVizNames = ["pianoroll", "punchcard", "wordfall", "scope", "fscope", "spectrum", "spiral", "pitchwheel", "markCSS"];
     const savedLegacyDescriptors = /* @__PURE__ */ new Map();
-    Object.defineProperty(Pattern.prototype, "p", {
+    Object.defineProperty(Pattern2.prototype, "p", {
       configurable: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       set(strudelFn) {
-        const strudelViz = Pattern.prototype.viz;
-        Object.defineProperty(Pattern.prototype, "viz", {
+        const strudelViz = Pattern2.prototype.viz;
+        Object.defineProperty(Pattern2.prototype, "viz", {
           configurable: true,
           writable: true,
           value: function(vizName) {
@@ -5716,9 +6400,9 @@ var StrudelEngine = class {
         });
         for (const name2 of legacyVizNames) {
           const methodName = `_${name2}`;
-          savedLegacyDescriptors.set(methodName, Object.getOwnPropertyDescriptor(Pattern.prototype, methodName));
-          const strudelLegacy = Pattern.prototype[methodName];
-          Object.defineProperty(Pattern.prototype, methodName, {
+          savedLegacyDescriptors.set(methodName, Object.getOwnPropertyDescriptor(Pattern2.prototype, methodName));
+          const strudelLegacy = Pattern2.prototype[methodName];
+          Object.defineProperty(Pattern2.prototype, methodName, {
             configurable: true,
             writable: true,
             value: function(...args2) {
@@ -5728,7 +6412,7 @@ var StrudelEngine = class {
             }
           });
         }
-        Object.defineProperty(Pattern.prototype, "p", {
+        Object.defineProperty(Pattern2.prototype, "p", {
           configurable: true,
           writable: true,
           value: function(id) {
@@ -5814,20 +6498,20 @@ var StrudelEngine = class {
       return result;
     } finally {
       if (savedDescriptor) {
-        Object.defineProperty(Pattern.prototype, "p", savedDescriptor);
+        Object.defineProperty(Pattern2.prototype, "p", savedDescriptor);
       } else {
-        delete Pattern.prototype.p;
+        delete Pattern2.prototype.p;
       }
       if (savedVizDescriptor) {
-        Object.defineProperty(Pattern.prototype, "viz", savedVizDescriptor);
+        Object.defineProperty(Pattern2.prototype, "viz", savedVizDescriptor);
       } else {
-        delete Pattern.prototype.viz;
+        delete Pattern2.prototype.viz;
       }
       for (const [methodName, desc] of savedLegacyDescriptors) {
         if (desc) {
-          Object.defineProperty(Pattern.prototype, methodName, desc);
+          Object.defineProperty(Pattern2.prototype, methodName, desc);
         } else {
-          delete Pattern.prototype[methodName];
+          delete Pattern2.prototype[methodName];
         }
       }
     }
@@ -16843,7 +17527,7 @@ var UI_ICON_SIZE_VAR = "--ui-icon-size";
 var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
 var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
 var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
-function safeLocalStorage() {
+function safeLocalStorage2() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -16853,20 +17537,20 @@ function safeLocalStorage() {
   }
 }
 function readFontSize() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_FONT_SIZE;
   const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
   return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
 }
 function readMinimap() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   return ls?.getItem(MINIMAP_STORAGE) === "1";
 }
 function writeFontSize(size) {
-  safeLocalStorage()?.setItem(FONT_SIZE_STORAGE, String(size));
+  safeLocalStorage2()?.setItem(FONT_SIZE_STORAGE, String(size));
 }
 function writeMinimap(on) {
-  safeLocalStorage()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
+  safeLocalStorage2()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
 }
 function applyOptionsToEditor(editor) {
   const fontSize = readFontSize();
@@ -16894,13 +17578,13 @@ function toggleEditorMinimap() {
 }
 var uiIconSizeListeners = /* @__PURE__ */ new Set();
 function readUiIconSize() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_UI_ICON_SIZE;
   const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
   return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
 }
 function writeUiIconSize(size) {
-  safeLocalStorage()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
+  safeLocalStorage2()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
 }
 function applyUiIconSizeVar(size) {
   if (typeof document === "undefined") return;
@@ -16926,13 +17610,13 @@ function applyPersistedUiIconSize() {
 }
 var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
 function readInlineVizActionSize() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
   const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
   return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
 }
 function writeInlineVizActionSize(size) {
-  safeLocalStorage()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
+  safeLocalStorage2()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
 }
 function applyInlineVizActionSizeVar(size) {
   if (typeof document === "undefined") return;
@@ -16963,13 +17647,13 @@ var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
 function readMusicalTimelineSubRowHeight() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
   const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
   return Number.isFinite(saved) && saved >= 12 && saved <= 48 ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
 }
 function writeMusicalTimelineSubRowHeight(h) {
-  safeLocalStorage()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
+  safeLocalStorage2()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
 }
 function getMusicalTimelineSubRowHeight() {
   return readMusicalTimelineSubRowHeight();
@@ -16989,13 +17673,13 @@ var DEFAULT_BACKDROP_BLUR = 8;
 var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
 var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
 function readBackdropBlur() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_BACKDROP_BLUR;
   const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE));
   return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
 }
 function writeBackdropBlur(size) {
-  safeLocalStorage()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
+  safeLocalStorage2()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
 }
 function applyBackdropBlurVar(size) {
   if (typeof document === "undefined") return;
@@ -17019,13 +17703,13 @@ var DEFAULT_BACKDROP_OPACITY = 1;
 var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
 var backdropOpacityListeners = /* @__PURE__ */ new Set();
 function readBackdropOpacity() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_BACKDROP_OPACITY;
   const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
   return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
 }
 function writeBackdropOpacity(o) {
-  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
+  safeLocalStorage2()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
 }
 function getBackdropOpacity() {
   return readBackdropOpacity();
@@ -17045,12 +17729,12 @@ var DEFAULT_BACKDROP_QUALITY = "half";
 var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
 var backdropQualityListeners = /* @__PURE__ */ new Set();
 function readBackdropQuality() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
   return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
 }
 function writeBackdropQuality(q) {
-  safeLocalStorage()?.setItem(BACKDROP_QUALITY_STORAGE, q);
+  safeLocalStorage2()?.setItem(BACKDROP_QUALITY_STORAGE, q);
 }
 function getBackdropQuality() {
   return readBackdropQuality();
@@ -17073,12 +17757,12 @@ function applyPersistedEditorOptions(editor) {
 }
 var THEME_STORAGE = "stave:editorTheme";
 function readTheme() {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   const v = ls?.getItem(THEME_STORAGE);
   return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
 }
 function writeTheme(t) {
-  safeLocalStorage()?.setItem(THEME_STORAGE, t);
+  safeLocalStorage2()?.setItem(THEME_STORAGE, t);
 }
 function systemPrefersLight() {
   if (typeof window === "undefined" || !window.matchMedia) return false;
@@ -18197,8 +18881,8 @@ var ErrorBoundary = class extends React6__namespace.default.Component {
 };
 
 // src/workspace/preview/vizLiveToggle.ts
-var STORAGE_PREFIX = "stave:vizLive:";
-function safeLocalStorage2() {
+var STORAGE_PREFIX2 = "stave:vizLive:";
+function safeLocalStorage3() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -18210,12 +18894,12 @@ function safeLocalStorage2() {
 var values = /* @__PURE__ */ new Map();
 var listeners5 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
-  return `${STORAGE_PREFIX}${fileId}`;
+  return `${STORAGE_PREFIX2}${fileId}`;
 }
 function getVizLive(fileId) {
   const cached = values.get(fileId);
   if (cached !== void 0) return cached;
-  const ls = safeLocalStorage2();
+  const ls = safeLocalStorage3();
   const raw = ls?.getItem(keyFor(fileId));
   const on = raw === "0" ? false : true;
   values.set(fileId, on);
@@ -18225,7 +18909,7 @@ function setVizLive(fileId, on) {
   const prev = getVizLive(fileId);
   if (prev === on) return;
   values.set(fileId, on);
-  safeLocalStorage2()?.setItem(keyFor(fileId), on ? "1" : "0");
+  safeLocalStorage3()?.setItem(keyFor(fileId), on ? "1" : "0");
   const set = listeners5.get(fileId);
   if (set) for (const cb of Array.from(set)) cb(on);
 }
@@ -19289,7 +19973,7 @@ function clampHeight(value) {
   if (value > BOTTOM_PANEL_HEIGHT_MAX) return BOTTOM_PANEL_HEIGHT_MAX;
   return value;
 }
-function safeLocalStorage3() {
+function safeLocalStorage4() {
   try {
     if (typeof window === "undefined") return null;
     if (typeof window.localStorage?.getItem !== "function") return null;
@@ -19299,7 +19983,7 @@ function safeLocalStorage3() {
   }
 }
 function safeGetItem(key) {
-  const ls = safeLocalStorage3();
+  const ls = safeLocalStorage4();
   if (!ls) return null;
   try {
     return ls.getItem(key);
@@ -19308,7 +19992,7 @@ function safeGetItem(key) {
   }
 }
 function safeSetItem(key, value) {
-  const ls = safeLocalStorage3();
+  const ls = safeLocalStorage4();
   if (!ls) return;
   try {
     ls.setItem(key, value);
@@ -19316,7 +20000,7 @@ function safeSetItem(key, value) {
   }
 }
 function safeRemoveItem(key) {
-  const ls = safeLocalStorage3();
+  const ls = safeLocalStorage4();
   if (!ls) return;
   try {
     ls.removeItem(key);
@@ -21627,6 +22311,7 @@ var LiveCodingRuntime = class {
    * Phase 19-08 (#85). RESEARCH §2.
    */
   getCurrentCycle() {
+    if (!this.isPlayingState) return null;
     const v = this.engine.components.queryable?.scheduler?.now();
     return Number.isFinite(v) ? v : null;
   }
@@ -22294,6 +22979,8 @@ var VirtualTimeScheduler = class {
     this.cueMap = /* @__PURE__ */ new Map();
     /** Tasks waiting for a cue */
     this.syncWaiters = /* @__PURE__ */ new Map();
+    /** One-shot audio-time-bound callbacks (SV41 — backs scheduleAtVirtualTime). */
+    this.pendingCallbacks = [];
     this.getAudioTime = options.getAudioTime ?? (() => 0);
     this.schedAheadTime = options.schedAheadTime ?? DEFAULT_SCHED_AHEAD_TIME;
     this.tickInterval = options.tickInterval ?? DEFAULT_TICK_INTERVAL_MS;
@@ -22418,6 +23105,31 @@ var VirtualTimeScheduler = class {
       this.queue.push({ time: wakeTime, taskId, resolve, order });
     });
   }
+  /**
+   * Schedule a one-shot callback to fire when audio time reaches `audioTime` (SV41).
+   *
+   * Distinct from `scheduleSleep`:
+   * - sleep entries fire at `audioTime + schedAhead >= entry.time` (lookahead horizon)
+   * - pending callbacks fire at `audioTime >= entry.audioTime` (no lookahead)
+   *
+   * The schedAhead-stripped horizon is intentional: it gives a task that resumed
+   * from a sleep firing in the same tick (lookahead horizon) time to drain its
+   * microtask queue and call `.cancel()` before the corresponding callback's
+   * horizon is checked. Used by `AudioInterpreter.reusableFx` to schedule
+   * inner-FX kill_delay in virtual time instead of real-time setTimeout
+   * (SP87, SV41 — iter pacing in real time is unstable post SV40 purge).
+   *
+   * Returns `{ cancel }` — call it to prevent the callback from firing.
+   */
+  scheduleAtVirtualTime(audioTime, cb) {
+    const entry = { audioTime, cb, cancelled: false };
+    this.pendingCallbacks.push(entry);
+    return {
+      cancel: () => {
+        entry.cancelled = true;
+      }
+    };
+  }
   // ---------------------------------------------------------------------------
   // Event dispatch
   // ---------------------------------------------------------------------------
@@ -22501,6 +23213,28 @@ var VirtualTimeScheduler = class {
       const entry = this.queue.pop();
       entry.resolve();
     }
+    if (this.pendingCallbacks.length > 0) {
+      const cbHorizon = target - this.schedAheadTime;
+      let writeIdx = 0;
+      for (let i2 = 0; i2 < this.pendingCallbacks.length; i2++) {
+        const pc = this.pendingCallbacks[i2];
+        if (pc.cancelled) continue;
+        if (pc.audioTime <= cbHorizon) {
+          const fired = pc;
+          queueMicrotask(() => {
+            if (fired.cancelled) return;
+            try {
+              fired.cb();
+            } catch (err2) {
+              if (this.loopErrorHandler) this.loopErrorHandler("__pendingCallback__", err2);
+            }
+          });
+          continue;
+        }
+        this.pendingCallbacks[writeIdx++] = pc;
+      }
+      this.pendingCallbacks.length = writeIdx;
+    }
   }
   // ---------------------------------------------------------------------------
   // Start / Stop
@@ -22544,6 +23278,7 @@ var VirtualTimeScheduler = class {
     this.eventHandlers.length = 0;
     this.cueMap.clear();
     this.syncWaiters.clear();
+    this.pendingCallbacks.length = 0;
   }
   // ---------------------------------------------------------------------------
   // Internal: loop execution
@@ -22750,7 +23485,7 @@ var NOTE_NAMES2 = {
   a: 9,
   b: 11
 };
-function noteToMidi2(note2) {
+function noteToMidi3(note2) {
   if (typeof note2 === "number") return note2;
   const str = note2.toLowerCase().trim();
   const num = Number(str);
@@ -22772,7 +23507,7 @@ function hzToMidi(freq) {
   return SEMITONES_PER_OCTAVE * Math.log2(freq / A4_FREQ_HZ) + A4_MIDI;
 }
 function noteToFreq2(note2) {
-  return midiToFreq5(noteToMidi2(note2));
+  return midiToFreq5(noteToMidi3(note2));
 }
 var PITCH_CLASS_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"];
 var NoteInfo = class {
@@ -22793,7 +23528,7 @@ var NoteInfo = class {
   }
 };
 function noteInfo(n) {
-  return new NoteInfo(noteToMidi2(n));
+  return new NoteInfo(noteToMidi3(n));
 }
 
 // ../../../sonicPiWeb/src/engine/Ring.ts
@@ -23246,7 +23981,7 @@ var SCALE_TYPES = {
 };
 function chord(root, type = "major", numOctavesOrOpts = 1) {
   const numOctaves = typeof numOctavesOrOpts === "number" ? numOctavesOrOpts : numOctavesOrOpts.num_octaves ?? 1;
-  const rootMidi = noteToMidi2(root);
+  const rootMidi = noteToMidi3(root);
   const intervals = CHORD_TYPES[type];
   if (!intervals) {
     console.warn(`[SonicPi] Unknown chord type: ${type}, using major`);
@@ -23262,7 +23997,7 @@ function chord(root, type = "major", numOctavesOrOpts = 1) {
 }
 function scale(root, type = "major", numOctavesOrOpts = 1) {
   const numOctaves = typeof numOctavesOrOpts === "number" ? numOctavesOrOpts : numOctavesOrOpts.num_octaves ?? 1;
-  const rootMidi = noteToMidi2(root);
+  const rootMidi = noteToMidi3(root);
   const intervals = SCALE_TYPES[type];
   if (!intervals) {
     console.warn(`[SonicPi] Unknown scale type: ${type}, using major`);
@@ -23287,11 +24022,11 @@ function chord_invert(notes, inversion) {
   return new Ring(arr);
 }
 function note(n) {
-  return noteToMidi2(n);
+  return noteToMidi3(n);
 }
 function note_range(low, high) {
-  const lo = noteToMidi2(low);
-  const hi = noteToMidi2(high);
+  const lo = noteToMidi3(low);
+  const hi = noteToMidi3(high);
   const notes = [];
   const maxNotes = 1e4;
   for (let n = lo; n <= hi && notes.length < maxNotes; n++) {
@@ -23311,12 +24046,12 @@ function chord_degree(degreeVal, root, scaleType = "major", chordNumNotes = 3) {
     console.warn(`[SonicPi] chord_degree index ${idx} out of range for scale ${scaleType}`);
     return chord(root, "major");
   }
-  const rootMidi = noteToMidi2(root) + scaleIntervals[idx];
+  const rootMidi = noteToMidi3(root) + scaleIntervals[idx];
   const notes = [rootMidi];
   for (let i2 = 1; i2 < chordNumNotes; i2++) {
     const degIdx = (idx + i2 * 2) % len;
     const octOffset = Math.floor((idx + i2 * 2) / len) * 12;
-    notes.push(noteToMidi2(root) + scaleIntervals[degIdx] + octOffset);
+    notes.push(noteToMidi3(root) + scaleIntervals[degIdx] + octOffset);
   }
   return new Ring(notes);
 }
@@ -23326,7 +24061,7 @@ function degree(degreeVal, root, scaleType = "major") {
   const len = scaleIntervals.length;
   const octOffset = Math.floor(idx / len) * 12;
   const degIdx = (idx % len + len) % len;
-  return noteToMidi2(root) + scaleIntervals[degIdx] + octOffset;
+  return noteToMidi3(root) + scaleIntervals[degIdx] + octOffset;
 }
 function parseDegree(d) {
   if (typeof d === "number") return d - 1;
@@ -23402,7 +24137,7 @@ var ProgramBuilder = class _ProgramBuilder {
     this.chord_invert = chord_invert;
     this.note = note;
     this.note_range = note_range;
-    this.noteToMidi = noteToMidi2;
+    this.noteToMidi = noteToMidi3;
     this.midiToFreq = midiToFreq5;
     this.note_info = noteInfo;
     // --- Wave 1 DSL additions ---
@@ -23440,7 +24175,7 @@ var ProgramBuilder = class _ProgramBuilder {
   }
   _pushPlayStep(noteVal, opts) {
     if (noteVal === null || noteVal === void 0 || noteVal === "rest") return;
-    const midi = (typeof noteVal === "string" ? noteToMidi2(noteVal) : noteVal) + this._transpose;
+    const midi = (typeof noteVal === "string" ? noteToMidi3(noteVal) : noteVal) + this._transpose;
     const synth = opts?.synth;
     const srcLine = opts?._srcLine;
     const cleanOpts = { ...this._synthDefaults, ...opts };
@@ -24288,7 +25023,7 @@ var ProgramBuilder = class _ProgramBuilder {
     return 1;
   }
   noteToFreq(n) {
-    return midiToFreq5(noteToMidi2(n));
+    return midiToFreq5(noteToMidi3(n));
   }
   /** Round val to nearest multiple of step. */
   quantise(val, step) {
@@ -24956,7 +25691,7 @@ async function runProgram(program, ctx, fxCounter) {
         const existing = ctx.reusableFx.get(fxKey);
         if (existing) {
           if (existing.killTimer) {
-            clearTimeout(existing.killTimer);
+            existing.killTimer.cancel();
             existing.killTimer = void 0;
           }
           if (step.nodeRef && existing.nodeId !== void 0) {
@@ -24968,12 +25703,16 @@ async function runProgram(program, ctx, fxCounter) {
           } finally {
             task.outBus = prevOutBus;
             ctx.bridge.flushMessages();
-            const killDelay = step.opts.kill_delay ?? 1;
-            existing.killTimer = setTimeout(() => {
-              ctx.bridge.freeGroup(existing.groupId);
-              ctx.bridge.freeBus(existing.bus);
-              ctx.reusableFx.delete(fxKey);
-            }, killDelay * 1e3);
+            if (ctx.reusableFx.get(fxKey) === existing) {
+              const killDelay = step.opts.kill_delay ?? 1;
+              const killAt = task.virtualTime + killDelay;
+              existing.killTimer = ctx.scheduler.scheduleAtVirtualTime(killAt, () => {
+                ctx.bridge.freeNode(existing.nodeId);
+                ctx.bridge.freeGroup(existing.groupId);
+                ctx.bridge.freeBus(existing.bus);
+                ctx.reusableFx.delete(fxKey);
+              });
+            }
           }
         } else {
           const newBus = ctx.bridge.allocateBus();
@@ -25003,11 +25742,13 @@ async function runProgram(program, ctx, fxCounter) {
             const killDelay = step.opts.kill_delay ?? 1;
             const state4 = ctx.reusableFx.get(fxKey);
             if (state4) {
-              state4.killTimer = setTimeout(() => {
+              const killAt = task.virtualTime + killDelay;
+              state4.killTimer = ctx.scheduler.scheduleAtVirtualTime(killAt, () => {
+                ctx.bridge.freeNode(state4.nodeId);
                 ctx.bridge.freeGroup(state4.groupId);
                 ctx.bridge.freeBus(state4.bus);
                 ctx.reusableFx.delete(fxKey);
-              }, killDelay * 1e3);
+              });
             }
           }
         }
@@ -25096,13 +25837,13 @@ async function runProgram(program, ctx, fxCounter) {
         switch (step.kind) {
           case "noteOn": {
             const [note2, vel, ch] = a;
-            const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
+            const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
             mb.noteOn(n, vel, ch);
             break;
           }
           case "noteOff": {
             const [note2, ch, sustainBeats] = a;
-            const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
+            const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
             if (sustainBeats > 0) {
               const seconds = sustainBeats * 60 / currentBpm;
               mb.scheduleNoteOff(n, ch, seconds);
@@ -25953,6 +26694,7 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     if (!this.sonic) throw new Error("SuperSonic not initialized");
     const p = this.sonic.loadSynthDef(fullName).then(() => {
       this.loadedSynthDefs.add(fullName);
+    }).finally(() => {
       this.pendingSynthDefLoads.delete(fullName);
     });
     this.pendingSynthDefLoads.set(fullName, p);
@@ -25967,9 +26709,10 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     const bufNum = this.nextBufNum++;
     const p = this.sonic.loadSample(bufNum, `${name2}.flac`).then(() => {
       this.loadedSamples.set(name2, bufNum);
-      this.pendingSampleLoads.delete(name2);
       this.fetchSampleDuration(name2).catch((err2) => console.warn(`[SonicPi] Could not determine duration for ${name2}: ${err2.message}`));
       return bufNum;
+    }).finally(() => {
+      this.pendingSampleLoads.delete(name2);
     });
     this.pendingSampleLoads.set(name2, p);
     return p;
@@ -26416,6 +27159,29 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     this.sonic.send("/g_freeAll", 102);
     this.clearLoopMonitors();
   }
+  /**
+   * Drain future-scheduled bundles from the WASM scheduler queue WITHOUT
+   * killing currently-rendering synths.
+   *
+   * Use case: hot-swap (#296). Each iteration of a live_loop batches its
+   * /s_new bundles per SV9 and ships them with future timetags spanning the
+   * iteration. On hot-swap, those queued bundles belong to the OLD body; if
+   * left alone, they fire on top of the new body's bundles, audibly stacking
+   * samples on rapid changed-code re-runs. /g_freeAll would also kill
+   * already-rendering envelopes (the click-on-Run), so this separates the
+   * two concerns: cancel queued plans, preserve rendered audio.
+   *
+   * Bundles that have ALREADY been processed by scsynth (synth node spawned,
+   * currently rendering) are NOT affected — those live in group 100 and
+   * decay naturally per their envelopes. This matches Desktop SP behavior,
+   * where Kernel.sleep blocks the Ruby thread so no future bundles are ever
+   * queued in the first place.
+   */
+  purgePendingBundles() {
+    if (!this.sonic) return;
+    this.sonic.purge().catch(() => {
+    });
+  }
   /** Create a new group inside the FX group (101). Returns group ID. */
   createFxGroup() {
     if (!this.sonic) throw new Error("SuperSonic not initialized");
@@ -26694,7 +27460,6 @@ var Recorder = class _Recorder {
 var ALL_FX_NAMES = [
   "reverb",
   "echo",
-  "delay",
   "distortion",
   "slicer",
   "wobble",
@@ -26711,7 +27476,6 @@ var ALL_FX_NAMES = [
   "krush",
   "bitcrusher",
   "ring_mod",
-  "chorus",
   "octaver",
   "vowel",
   "tanh",
@@ -30557,7 +31321,6 @@ var KNOWN_SAMPLES = [
 var KNOWN_FX = [
   "reverb",
   "echo",
-  "delay",
   "distortion",
   "slicer",
   "wobble",
@@ -30574,7 +31337,6 @@ var KNOWN_FX = [
   "krush",
   "bitcrusher",
   "ring_mod",
-  "chorus",
   "octaver",
   "vowel",
   "tanh",
@@ -31743,12 +32505,12 @@ var SonicPiEngine = class {
     /** Maps DSL nodeRef → SuperSonic nodeId for control messages */
     this.nodeRefMap = /* @__PURE__ */ new Map();
     /** Reusable inner FX nodes — persists across loop iterations. See issue #70.
-     *  `killTimer` is the pending `setTimeout` handle that frees this FX 1s after
-     *  its last iteration if no follow-up iteration cancels it. On hot-swap /
-     *  stop we MUST clearTimeout these before dropping the map entries, otherwise
-     *  the stale timer fires later and calls freeBus/freeGroup on what are by
-     *  then NEW live FX resources — corrupting the bus pool and silently killing
-     *  groups (issue #290). */
+     *  `killTimer` is the pending virtual-time-scheduled kill handle (SV41) that
+     *  frees this FX after kill_delay seconds of virtual time if no follow-up
+     *  iteration cancels it. On hot-swap / stop we MUST `.cancel()` these before
+     *  dropping the map entries, otherwise the stale callback fires later and
+     *  calls freeBus/freeGroup on what are by then NEW live FX resources —
+     *  corrupting the bus pool and silently killing groups (issue #290, SP82). */
     this.reusableFx = /* @__PURE__ */ new Map();
     /** Pending volume to apply when bridge initializes */
     this.pendingVolume = null;
@@ -32170,18 +32932,20 @@ var SonicPiEngine = class {
               let currentOutBus = task.outBus;
               const buses = [];
               const groups = [];
+              const nodeIds = [];
               for (const fx of fxChain) {
                 const bus = this.bridge.allocateBus();
                 const groupId = this.bridge.createFxGroup();
                 const fxWarn = this.printHandler ? (m) => this.printHandler(`[Warning] with_fx :${fx.name} \u2014 ${m}`) : void 0;
                 const fxOpts = normalizeFxParams(fx.name, fx.opts, task.bpm, fxWarn);
-                await this.bridge.applyFx(fx.name, audioTime, fxOpts, bus, currentOutBus);
+                const nodeId = await this.bridge.applyFx(fx.name, audioTime, fxOpts, bus, currentOutBus);
                 this.bridge.flushMessages();
                 buses.push(bus);
                 groups.push(groupId);
+                nodeIds.push(nodeId);
                 currentOutBus = bus;
               }
-              this.persistentFx.set(scopeId, { buses, groups, outBus: currentOutBus });
+              this.persistentFx.set(scopeId, { buses, groups, nodeIds, outBus: currentOutBus });
             }
           }
           if (scopeId) {
@@ -32382,7 +33146,7 @@ var SonicPiEngine = class {
         return this.bridge.getSampleDuration(name2) ?? 0;
       };
       const midi = (note2, opts = {}) => {
-        const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
+        const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
         const vel = opts.velocity ?? opts.vel ?? 100;
         const sus = opts.sustain ?? 1;
         const ch = opts.channel ?? 1;
@@ -32390,11 +33154,11 @@ var SonicPiEngine = class {
         this.midiBridge.scheduleNoteOff(n, ch, sus);
       };
       const midi_note_on = (note2, velocity = 100, opts = {}) => {
-        const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
+        const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
         this.midiBridge.noteOn(n, velocity, opts.channel ?? 1);
       };
       const midi_note_off = (note2, opts = {}) => {
-        const n = typeof note2 === "string" ? noteToMidi2(note2) : note2;
+        const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
         this.midiBridge.noteOff(n, opts.channel ?? 1);
       };
       const midi_cc = (controller, value, opts = {}) => this.midiBridge.cc(controller, value, opts.channel ?? 1);
@@ -32474,7 +33238,7 @@ var SonicPiEngine = class {
         degree,
         chord_names,
         scale_names,
-        noteToMidi2,
+        noteToMidi3,
         midiToFreq5,
         noteToFreq2,
         noteInfo,
@@ -32910,15 +33674,18 @@ var SonicPiEngine = class {
         }
         scheduler.pauseTick();
         if (this.bridge) {
+          this.bridge.purgePendingBundles();
           const survivingScopes = new Set(this.fxScopeChains.keys());
           for (const [scopeId, state4] of this.persistentFx) {
             if (survivingScopes.has(scopeId)) continue;
+            for (const nodeId of state4.nodeIds) this.bridge.freeNode(nodeId);
             for (const group of state4.groups) this.bridge.freeGroup(group);
             for (const bus of state4.buses) this.bridge.freeBus(bus);
             this.persistentFx.delete(scopeId);
           }
           for (const state4 of this.reusableFx.values()) {
-            if (state4.killTimer) clearTimeout(state4.killTimer);
+            state4.killTimer?.cancel();
+            this.bridge.freeNode(state4.nodeId);
             this.bridge.freeGroup(state4.groupId);
             this.bridge.freeBus(state4.bus);
           }
@@ -32984,18 +33751,20 @@ var SonicPiEngine = class {
       let currentOutBus = 0;
       const buses = [];
       const groups = [];
+      const nodeIds = [];
       for (const fx of fxChain) {
         const bus = this.bridge.allocateBus();
         const groupId = this.bridge.createFxGroup();
         const fxWarn = this.printHandler ? (m) => this.printHandler(`[Warning] with_fx :${fx.name} \u2014 ${m}`) : void 0;
         const fxOpts = normalizeFxParams(fx.name, fx.opts, bpm, fxWarn);
-        await this.bridge.applyFx(fx.name, 0, fxOpts, bus, currentOutBus);
+        const nodeId = await this.bridge.applyFx(fx.name, 0, fxOpts, bus, currentOutBus);
         this.bridge.flushMessages(0);
         buses.push(bus);
         groups.push(groupId);
+        nodeIds.push(nodeId);
         currentOutBus = bus;
       }
-      this.persistentFx.set(scopeId, { buses, groups, outBus: currentOutBus });
+      this.persistentFx.set(scopeId, { buses, groups, nodeIds, outBus: currentOutBus });
     }
   }
   /** Start the scheduler. Call after the first `evaluate()`. */
@@ -33035,7 +33804,7 @@ var SonicPiEngine = class {
     }
     this.persistentFx.clear();
     for (const state4 of this.reusableFx.values()) {
-      if (state4.killTimer) clearTimeout(state4.killTimer);
+      state4.killTimer?.cancel();
       this.bridge?.freeBus(state4.bus);
     }
     this.reusableFx.clear();
@@ -33999,6 +34768,40 @@ function extractReferenceIdentifier(err2) {
   }
   return null;
 }
+var SOUND_NOT_FOUND_PATTERNS = [
+  /sound\s+["']?([\w.-]+)["']?\s+not\s+found/i
+];
+function extractMissingSoundName(rawMessage) {
+  for (const re of SOUND_NOT_FOUND_PATTERNS) {
+    const m = re.exec(rawMessage);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+function buildAliasSuffix(missingName, ctx) {
+  if (!ctx) return "";
+  const parts2 = [];
+  if (ctx.resolutions && ctx.resolutions.length > 0) {
+    const seen = /* @__PURE__ */ new Set();
+    const lines = [];
+    for (const r of ctx.resolutions) {
+      const key = `${r.from}\u2192${r.to}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
+    }
+    parts2.push(`tried alias ${lines.join(", ")}`);
+  }
+  if (missingName && ctx.lookupAlias) {
+    const target = ctx.lookupAlias(missingName);
+    if (target) {
+      parts2.push(`alias map: \`${missingName}\` \u2192 \`${target}\` (but \`${target}\` is not loaded)`);
+    } else {
+      parts2.push(`alias map: no entry for \`${missingName}\``);
+    }
+  }
+  return parts2.length > 0 ? ` (${parts2.join("; ")})` : "";
+}
 function asRegExp(match) {
   return match instanceof RegExp ? match : new RegExp(match, "i");
 }
@@ -34077,6 +34880,9 @@ function formatFriendlyError2(err2, runtime, options = {}) {
   const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 && typeof err2.stack === "string" ? err2.stack : void 0;
   const loc = parseStackLocation(err2);
   const identifier = extractReferenceIdentifier(err2);
+  const missingName = extractMissingSoundName(rawMessage);
+  const aliasSuffix = buildAliasSuffix(missingName, options.aliasContext);
+  const appendAlias = (msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg;
   if (options.index) {
     const hit = collectMistakes(options.index, {
       rawMessage,
@@ -34100,7 +34906,7 @@ function formatFriendlyError2(err2, runtime, options = {}) {
         example: hit.mistake.example
       } : void 0;
       return {
-        message: hit.mistake.hint,
+        message: appendAlias(hit.mistake.hint),
         suggestion,
         stack,
         line: loc?.line,
@@ -34126,7 +34932,7 @@ function formatFriendlyError2(err2, runtime, options = {}) {
         description: hit?.description
       };
       return {
-        message: `\`${identifier}\` is not defined. Did you mean \`${matches[0].name}\`?`,
+        message: appendAlias(`\`${identifier}\` is not defined. Did you mean \`${matches[0].name}\`?`),
         suggestion,
         stack,
         line: loc?.line,
@@ -34134,14 +34940,14 @@ function formatFriendlyError2(err2, runtime, options = {}) {
       };
     }
     return {
-      message: `\`${identifier}\` is not defined.`,
+      message: appendAlias(`\`${identifier}\` is not defined.`),
       stack,
       line: loc?.line,
       column: loc?.column
     };
   }
   return {
-    message: rawMessage || "Unknown error",
+    message: appendAlias(rawMessage || "Unknown error"),
     stack,
     line: loc?.line,
     column: loc?.column
@@ -35440,6 +36246,7 @@ exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
 exports.SAMPLE_SOUND_SOURCE_ID = SAMPLE_SOUND_SOURCE_ID;
 exports.SONICPI_DOCS_INDEX = SONICPI_DOCS_INDEX;
 exports.SONICPI_RUNTIME = SONICPI_RUNTIME;
+exports.SOUND_ALIASES = SOUND_ALIASES;
 exports.STRUDEL_DOCS_INDEX = STRUDEL_DOCS_INDEX;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
 exports.ScopeSketch = ScopeSketch;
@@ -35464,6 +36271,7 @@ exports.applyPersistedTheme = applyPersistedTheme;
 exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyTheme = applyTheme;
 exports.backdropQualityFactor = backdropQualityFactor;
+exports.buildAliasSuffix = buildAliasSuffix;
 exports.bumpEditorFontSize = bumpEditorFontSize;
 exports.bundledPresetId = bundledPresetId;
 exports.canRedo = canRedo;
@@ -35520,6 +36328,7 @@ exports.getResolvedTheme = getResolvedTheme;
 exports.getRuntimeProviderForExtension = getRuntimeProviderForExtension;
 exports.getRuntimeProviderForLanguage = getRuntimeProviderForLanguage;
 exports.getSubfolderOrder = getSubfolderOrder;
+exports.getTierFlags = getTierFlags;
 exports.getTrackMeta = getTrackMeta;
 exports.getVizConfig = getVizConfig;
 exports.getZoneCropOverride = getZoneCropOverride;
@@ -35540,6 +36349,7 @@ exports.listNamedVizEntries = listNamedVizEntries;
 exports.listNamedVizNames = listNamedVizNames;
 exports.listProjects = listProjects;
 exports.listSnapshots = listSnapshots;
+exports.listTiers = listTiers;
 exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.makeFixedKey = makeFixedKey;
@@ -35575,6 +36385,7 @@ exports.renameProject = renameProject;
 exports.renameWorkspaceFile = renameWorkspaceFile;
 exports.resetFileStore = resetFileStore;
 exports.resetUndoManager = resetUndoManager;
+exports.resolveAlias = resolveAlias;
 exports.resolveDescriptor = resolveDescriptor;
 exports.restoreSnapshot = restoreSnapshot;
 exports.revealLineInFile = revealLineInFile;
@@ -35604,6 +36415,7 @@ exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setProjectBackgroundFileId = setProjectBackgroundFileId;
 exports.setSubfolderOrder = setSubfolderOrder;
+exports.setTierFlag = setTierFlag;
 exports.setTrackMeta = setTrackMeta;
 exports.setVizConfig = setVizConfig;
 exports.setZoneCropOverride = setZoneCropOverride;

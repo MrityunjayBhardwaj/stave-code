@@ -633,11 +633,54 @@ through 3+4 so loc stays valid against the ORIGINAL source. Extends PK15
 (μ-α parse cycle) — same shape as μ's pre-parse normalisations, one stage
 earlier.
 
+**Phase 20-15 — NEW stage 0.5 + the label branch.**
+
+```
+parseStrudel(code), no-$: branch (20-15-updated):
+1.   stripParserPrelude(code) → { body, offset }   (set* family now
+                                                     {setcps,setCps,setcpm,setCpm}, α-1)
+0.5  buildBindingMap(body) → ReadonlyMap<name,IR>?  ← NEW (γ-3, G1/#134)
+                                                       AFTER prelude-strip,
+                                                       BEFORE splitRootAndChain
+2.   splitRootAndChain(body) → root + chain
+3.   parseRoot(root, offset, isSampleKey, bindings) (bindings threaded into
+                                                     the stack-arg resolver)
+4.   applyChain(chain)        (PV49 shared primitive — α-3 reroute)
+```
+
+**Why stage 0.5 sits exactly there:** the prelude STILL does not strip
+`let`/`const` (pS comment unchanged — bindings are musical, not boot
+side-effects), so stage 1 leaves them in `body`. stage 0.5 splits
+top-level statements (depth/string-aware, REUSING the lexStateAt walker —
+PV49 spirit, no hand-roll), parses each binding RHS at its definition-site
+offset (R6), and threads a `ReadonlyMap` into stage 3's stack-arg
+resolver. It MUST run before splitRootAndChain or `splitRootAndChain`
+reads `let` as the root identifier → whole-program Code-fallback (the
+exact #134 BEFORE behaviour). Statement order is load-bearing: a reference
+before its definition → D-02 graceful single Code node (NEVER a throw,
+NEVER partial-eval — the matcher-not-interpreter line).
+
+**The G5 label branch (the OTHER branch, NOT PK16(b)):** when
+`extractTracks` finds a `name:`/`$:` label (generalized regex + γ-1
+depth/string guard, γ-2), the pipeline is
+`extractTracks → parseExpression(t.expr, t.offset)` with loc covering the
+label line. `label` → `trackId` (D-01); `dollarStart` (LINE-START) →
+collect.ts OUTER-WINS → every event's `dollarPos` → MusicalTimeline
+`$${pos}` slotKey. Single-pass, synchronous. The extractTracks return
+tuple is APPEND-ONLY (`label?` appended; RAW consumer parseStrudelStages
+reads by field — verified intact, γ-2).
+
 **Common violation:** adding a new boot-side-effect call (e.g. `setcpm`,
-gap #135) WITHOUT adding it to stripParserPrelude's skip set → that whole
-class of programs regresses to Code-fallback. The skip set must be
-cross-referenced against the α-6 `settingPatterns` audit, not
-hand-maintained ad hoc.
+gap #135 — now closed, family {setcps,setCps,setcpm,setCpm}) WITHOUT
+adding it to stripParserPrelude's skip set → that whole class of programs
+regresses to Code-fallback. R2 anti-drift (20-15): the skip set is
+HAND-MAINTAINED (upstream list is not vendored — no programmatic
+cross-ref is possible; the #135-misread note: 20-14 α-6's
+`settingPatterns` audit covers UI theme/font CHAIN methods, NOT tempo
+boot calls — it is NOT this list's source). The real anti-drift is a
+code comment citing the upstream file + pinned Codeberg SHA f73b3956
+PLUS one CI fixture per added setter (V-3: bakery-G2-setcpm /
+-setCpm-camel / -setCps-camel).
 
 **REF:** PK15 (MusicalTimeline slot-map lifecycle — sibling parse-cycle
 krama), PV49 (the stage-4 walker invariant), P67 (stage-3 Code

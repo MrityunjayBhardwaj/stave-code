@@ -49,6 +49,11 @@ packages/**/tsconfig.tsbuildinfo
 # ──────────────────────────────────────────────────────────────
 # Test + coverage output
 # ──────────────────────────────────────────────────────────────
+# Raw live community code pulled by `pnpm parity:bakery` (20-15 V-1).
+# Never vendored — it is unreviewed third-party source; only the dated
+# `result-*.json` % is transcribed by hand into the phase SUMMARY, and
+# the 6 reviewed bakery-*.strudel fixtures are the tracked CI floor.
+packages/app/tests/parity-corpus/.bakery-runs/
 test-results/
 packages/**/test-results/
 playwright-report/

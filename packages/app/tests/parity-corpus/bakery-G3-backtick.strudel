@@ -1,0 +1,3 @@
+$: sound(`
+<bd*3 [hh:1 hh:1 hh:1]*2 casio:2 - hh:1>*4 ,
+< - - - metal:1 - >*4`).cpm(213/7)

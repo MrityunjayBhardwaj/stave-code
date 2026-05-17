@@ -1,0 +1,6 @@
+stack(
+// Harter Industrial Kick
+s("bd ~ ~ ~").gain(1.5),
+// Industrial bass
+note("e3 d#3").s("sawtooth")
+)

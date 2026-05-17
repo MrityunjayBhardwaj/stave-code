@@ -1800,3 +1800,57 @@ overload lineage), PV37 (wrap-never-drop — the invariant the wrapper
 serves); `packages/editor/src/ir/parseStrudel.ts` (`wrapAsOpaque`,
 `parseExpression` rootIR guard). Ground Truth: 20-14-γ-SUMMARY.md
 "Parser-gap fix" §.
+
+## P68 — `tsup --watch` terminates ENTIRELY on a DTS-build failure (does NOT degrade to JS-only watch)
+
+**Symptom:** you start `pnpm --filter @stave/editor dev` (tsup --watch) per
+the P66 protocol, edit `packages/editor/src/`, and the consuming app STILL
+runs old code — exactly the P66 symptom — even though the watcher was
+"running". The committed `dist/index.{js,cjs}` lacks the just-added source
+symbol despite the source being correct and tests (run against `src/`)
+passing.
+
+**The trap:** assume `tsup --watch` is resilient — that a type error in an
+UNRELATED file (here: a pre-existing `error TS7016: Could not find a
+declaration file for module '@strudel/mondo'` in `StrudelEngine.ts`) only
+fails the `.d.ts` emit and the JS watch keeps rebuilding. It does not. The
+DTS worker error propagates and the watch process exits; subsequent source
+edits are NOT rebuilt. The watcher LOOKS started (you ran the command) but
+is dead. This compounds P66: you followed the P66 fix (start the watch)
+and are still stale because the watch silently died on an orthogonal
+type error.
+
+**The real cause:** tsup runs the JS bundle and the DTS build; on a DTS
+error in watch mode the whole tsup process terminates rather than
+continuing JS-only. A pre-existing/unrelated DTS error (missing third-party
+`.d.ts`) is enough to take down the watch for ALL packages' source edits.
+
+**Detection signal (cheap, deterministic):** after any
+`packages/editor/src/` edit, BEFORE committing, run
+`grep -c '<newSymbol>' packages/editor/dist/index.js`. If it returns `0`,
+the bundle is stale (watch died or never rebuilt). One-shot
+`pnpm --filter @stave/editor build` writes the JS bundle even though it
+exits 1 on the DTS step — re-grep: `> 0` confirms the JS DID rebuild
+(tsup writes the JS bundle before the DTS step fails). Commit the
+JS/CJS+maps; the pre-existing `.d.ts` deletion is unrelated churn, not
+yours.
+
+**The fix:** do NOT rely on `tsup --watch` for editor-src work. Per
+editor-src commit: one-shot `pnpm --filter @stave/editor build`, then
+`grep -c <newSymbol> dist/index.js > 0` as the gate BEFORE `git commit`.
+The DTS exit-1 is acceptable iff it is the known pre-existing
+`@strudel/mondo` TS7016 (verify the error is that one, not a new one your
+change introduced).
+
+**ORIGIN:** Phase 20-15 γ-3 discovered the watch-death; 20-15 V-2
+re-confirmed it on the `sound`-alias editor-src change (DTS exit 1, but
+`grep -c '(?:s|sound)' dist/index.js` = 3 > 0 → JS bundle WAS written;
+committed safely). Extends P66 (stale dist) + PV48 (editor watch-mode
+requirement) — P66/PV48 say "start the watch"; P68 says "the watch is not
+reliable; verify dist by grep per commit regardless".
+
+**REF:** P66 (stale workspace dist — the parent failure mode), PV48
+(editor watch-mode start requirement — the protocol P68 hardens),
+`feedback_editor_watch_mode.md`; `packages/editor/tsup.config.ts`,
+`packages/editor/src/engine/StrudelEngine.ts:194` (the pre-existing
+@strudel/mondo TS7016). Ground Truth: 20-15-SUMMARY.md (γ-3 + V-2).

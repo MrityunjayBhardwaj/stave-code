@@ -1,0 +1,2 @@
+setCps(0.5)
+stack(s("bd"), s("hh*4"))

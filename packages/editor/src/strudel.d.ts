@@ -123,3 +123,9 @@ declare module '@strudel/midi' {
   export function enableWebMidi(options?: Record<string, unknown>): Promise<void>
   export const WebMidi: unknown
 }
+
+declare module '@strudel/mondo' {
+  // Side-effect only — registers mondo()/mondolang()/getLocations() via
+  // evalScope on import. Added Phase 20-14 α; dynamic-imported in
+  // StrudelEngine as Promise<any>. Untyped: upstream ships no .d.ts (#145).
+}

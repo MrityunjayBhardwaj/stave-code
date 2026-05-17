@@ -1465,10 +1465,39 @@ holds.
 JS, not whitespace — Code-fallback is the correct behavior there, not a
 walker bug.
 
-**REF:** P67 (Code-discrimination — the same parser surface); Phase 20-15
-roadmap (the shared-walker substrate is α-wave); gaps #136/#137/#138;
-`packages/editor/src/ir/parseStrudel.ts` (`applyChain`,
-`stripParserPrelude`). Ground Truth: 20-14-γ-SUMMARY.md vyapti candidate.
+**Phase 20-15 — REALIZED + R1 DIVERGENCE (grounding instance):** the
+shared primitive `skipWhitespaceAndLineComments(src, pos) → absolute idx`
+was extracted (α-2, commit 888e4e4) and is the **realized PV49 substrate**.
+It serves the **3 genuinely inter-token sites**: `applyChain` (the PV49
+reference behaviour — α-3 rerouted it onto the primitive AS the
+equivalence oracle: 16 snapshots + loc-fidelity + editor suite all
+byte-unchanged proves equivalence), `splitArgsWithOffsets` (#137/G4, α-4),
+`extractTracks` label scan (#138/G5, γ-2). **R1 divergence (deliberate, do
+NOT "fix"):** `stripParserPrelude`'s whole-line skip (pS:139-148) is a
+LINE-CLASSIFIER, structurally distinct from inter-token skip — migrating
+it risks the multi-line boot-call depth logic (pS:161-212). It is
+intentionally NOT routed through the primitive. The PV49 span is therefore
+"3 inter-token sites + 1 deliberately-separate line-classifier", not "4
+identical sites". Offset-additivity held: the 20-15 loc-fidelity harness
+(full 25-file corpus) is empty-diff — the pre-mortem (right tokens, wrong
+absolute index) provably did not occur.
+
+**Span addendum (20-15 V-2, the alias corollary):** the same "match the
+forms the target language treats as equivalent" obligation extends to
+ROOT-FN ALIASES, not just whitespace. `sound` is upstream Strudel's
+documented alias of `s` (controls.mjs); parseRoot recognised only `s`, so
+EVERY `sound(...)` form fell to bare Code. Detection: a corpus fixture
+vending the issue's LITERAL repro (#136 used `sound(`…`)`) caught a gap
+the ad-hoc REPL checks (which used `s(`…`)`) missed. Lesson: gap-class
+fixtures must use the ISSUE'S verbatim repro, not a convenient
+paraphrase — the paraphrase silently substitutes a working alias.
+
+**REF:** P67 (Code-discrimination — the same parser surface); PV-NEW
+(s/sound isSampleKey threading — sibling parseRoot-recursion invariant);
+gaps #136/#137/#138; `packages/editor/src/ir/parseStrudel.ts`
+(`skipWhitespaceAndLineComments`, `applyChain`, `splitArgsWithOffsets`,
+`extractTracks`, the `(?:s|sound)` parseRoot arms). Ground Truth:
+20-14-γ-SUMMARY.md vyapti candidate; 20-15-SUMMARY.md (α-2/α-3/V-2).
 
 ## PV50 — Per-evaluate engine-owned accumulators reset at `evaluate()` entry, top-of-function
 
@@ -1501,3 +1530,42 @@ the WRONG pass after an eval error or instance switch.
 `packages/editor/src/engine/StrudelEngine.ts` (`wrappedOutput`,
 `lastAliasResolutions`, `evaluate()` entry). Ground Truth:
 20-14-β-SUMMARY.md.
+
+## PV51 — `s(...)`/sample-key context MUST be threaded through recursive parseExpression
+
+**Invariant:** when `parseRoot` recursively parses an inner string
+argument of a sample-context call (`s(...)` / `sound(...)`), the caller's
+`isSampleKey=true` discriminator MUST be threaded into the recursive
+`parseExpression`/`parseRoot` call. `note`/`n`/`mini` thread `false`. A
+plain recursive parse that defaults the inner bare string silently drops
+`params.s` and the `duration:1` sample semantics for `s(...)` — the IR is
+structurally green (Play nodes present) but semantically wrong (no sample
+key, wrong duration).
+
+**Why a vyapti, not a one-off:** the discriminator is a single boolean but
+its span reaches every recursive arm on the parseRoot surface — the #132
+loose arm (`callerIsSample = fnName === 's' || fnName === 'sound'`), the
+strict `s`/`sound` `"…"` arm (`parseMini(…, true, …)`), the backtick arm
+(`backtickInnerToIR(…, true, …)`), and any future nested-arg recursion.
+Miss it in ONE arm and that arm's `s(...)` outputs lose sample semantics
+while every other arm is correct — a per-arm coupled-correctness bug.
+
+**ORIGIN:** 20-15 β-1 Lokāyata probe. It was run specifically because the
+20-15 RESEARCH carried a MEDIUM-confidence inference that "naive
+`parseExpression` recursion is semantically safe for `s("…".chain())`".
+The probe OVERTURNED that inference by direct observation — `isSampleKey`
+is NOT inert; it must be threaded. This is why β-1 was a mandatory gate
+BEFORE β-2's impl, and why the conclusion is recorded in β-2's commit body.
+
+**Breaks when:** a new recursive arm (or the V-2 `sound`-alias widening)
+forgets the `true` for the sample context. Detection: `s("…".method())`
+produces Play nodes WITHOUT `params.s` set / with wrong duration, while
+`s("…")` (strict non-recursive arm) is correct — the divergence between
+the recursive and non-recursive arm is the signal.
+
+**REF:** PV49 (same parseRoot/recursion surface — the walker invariant),
+P67 (the recursion's bare-Code-vs-structured chokepoint); β-1 probe +
+β-2 impl + V-2 sound-alias of Phase 20-15;
+`packages/editor/src/ir/parseStrudel.ts` (`parseRoot` `(?:s|sound)` arms,
+`isSampleKey` param, the `callerIsSample` loose-arm thread). Ground
+Truth: 20-15-SUMMARY.md (β-1 conclusion + V-2).

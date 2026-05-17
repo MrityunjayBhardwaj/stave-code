@@ -101,7 +101,9 @@ export const __test_wrapAsOpaque = wrapAsOpaque
  *     code is untouched)
  *   - a TOP-LEVEL call to a recognised boot-side-effect function:
  *     `samples(…)`, `useRNG(…)`, `setcps(…)`, `setVoicingRange(…)`,
- *     `initAudio(…)`, `aliasBank(…)`. The call may span multiple lines
+ *     `initAudio(…)`, `aliasBank(…)`, and the tempo-setter family
+ *     `setcpm(…)` / `setCpm(…)` / `setCps(…)` (#135 / 20-15 G2). The call
+ *     may span multiple lines
  *     (multi-line `samples({ … })` is the common case); we track paren /
  *     brace / bracket depth across newlines and consume the whole call
  *     as one unit. The call ends at the line whose end-of-line depth is
@@ -124,8 +126,37 @@ export const __test_wrapAsOpaque = wrapAsOpaque
 export function stripParserPrelude(code: string): { body: string; offset: number } {
   // Top-level boot-side-effect calls we recognise. Exact tokens — D-08
   // (no aliasing). Anchored to the start of the trimmed line.
+  //
+  // SETTER FAMILY PROVENANCE (#135 / 20-15 G2) — HAND-MAINTAINED LIST.
+  // Upstream source audited: `packages/core/repl.mjs` (uzu/strudel) at
+  // pinned Codeberg SHA f73b395648645aabe699f91ba0989f35a6fd8a3c
+  // (the same SHA pinned in
+  // packages/app/tests/parity-corpus/CORPUS-SOURCE.md).
+  //   - repl.mjs:284-287  `setCps  = (cps) => { scheduler.setCps(unpure(cps)); return silence }`
+  //   - repl.mjs:301-303  `setCpm  = (cpm) => { scheduler.setCps(unpure(cpm)/60); return silence }`
+  //   - repl.mjs:393-400  `evalScope({ ... setCps, setcps: setCps, setCpm, setcpm: setCpm })`
+  // i.e. the top-level tempo-setter family is exactly
+  // {setcps, setCps, setcpm, setCpm} — all pure no-return side effects
+  // (they mutate the scheduler tempo and return `silence`, which the user
+  // discards at statement level — identical class to the already-present
+  // `setcps`). Tokens ADDED by 20-15 G2 beyond the existing `setcps`:
+  // `setcpm`, `setCpm`, `setCps`. No other `set*` in core's evalScope
+  // (all/each/hush/cpm) is a top-level pure setter — `cpm` is a chain
+  // method (`register('cpm',…)`), `all`/`each` take pattern transforms,
+  // `hush` is a silence control — NONE are prelude boot calls.
+  //
+  // There is NO programmatic cross-ref: the upstream setter export list
+  // is NOT vendored in this repo, so this regex is hand-maintained. The
+  // anti-drift mechanism is (a) this comment's file:line + SHA citation
+  // and (b) one CI fixture per setter (task V-3). #135's premise that the
+  // 20-14 α-6 `settingPatterns` audit is the authoritative source is a
+  // MISREAD: α-6 covers strudel.cc UI setters {theme,fontFamily,fontSize}
+  // (20-14-OBSERVATIONS.md:13-71) — those are CHAIN methods
+  // (`$: theme("dracula")`), UI-only (`onTrigger(...,false)` = no audio),
+  // NOT top-level tempo boot calls. α-6 is therefore NOT the source for
+  // THIS list; the @strudel/core repl.mjs audit above is.
   const PRELUDE_CALL_RE =
-    /^[ \t]*(?:samples|useRNG|setcps|setVoicingRange|initAudio|aliasBank)\s*\(/
+    /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/
 
   let i = 0
   while (i < code.length) {
@@ -225,6 +256,153 @@ export function stripParserPrelude(code: string): { body: string; offset: number
   return { body: code.slice(i), offset: i }
 }
 
+/**
+ * 20-15 G1 (#134 / D-02) — minimal single-assignment binding map.
+ *
+ * NEW PK16(b) stage 0.5 — runs AFTER prelude-strip (stage 1; prelude still
+ * does NOT skip let/const, pS:~127) and BEFORE splitRootAndChain (stage 2).
+ *
+ * Scope (D-02, the matcher-not-interpreter line — DO NOT cross it):
+ *   - ONLY `let/const/var x = <pattern>` where `x` is a SINGLE identifier
+ *     (destructuring `{a}=`/`[a]=` does not match `[A-Za-z_$]` → returns
+ *     null → caller falls back to whole-program Code).
+ *   - Each name defined EXACTLY ONCE (reassignment/shadowing → null).
+ *   - No use-before-def is enforced at the SUBSTITUTION site (a ref whose
+ *     name is not yet in the map when its arg is resolved → not
+ *     substituted → that arg parses as a bare ident → bare Code → the
+ *     stack arm's existing fallback → whole expression Code; topology
+ *     preserved, never a crash).
+ *   - The RHS is parsed via `parseExpression` and KEEPS its definition-site
+ *     source offsets (R6 — click-to-source lands on the DEFINITION).
+ *   - RHS that itself parses to bare Code → null (the binding is opaque;
+ *     do not pretend it is structured).
+ *
+ * Returns:
+ *   - `null` when the body is NOT a clean "N bindings then one final
+ *     expression" shape, or any D-02 violation → caller MUST fall back to
+ *     the existing whole-program `IR.code(code)` (topology-preserving, one
+ *     Code node — NEVER a throw; the parseStrudel try/catch stays the last
+ *     resort, not the mechanism).
+ *   - `{ bindings, finalExpr, finalOffset }` on success; `bindings` is the
+ *     resolved subtree map, `finalExpr`/`finalOffset` the trailing
+ *     non-binding expression + its absolute offset into ORIGINAL source.
+ */
+function splitTopLevelStatements(
+  body: string,
+  baseOffset: number,
+): { text: string; offset: number }[] {
+  // Split on `;` or newline at depth 0, string/comment aware. REUSE the
+  // lexStateAt walker discipline inline (PV49 spirit) — a statement
+  // boundary is a `;`/`\n` that is at brace/paren/bracket depth 0 and not
+  // inside a string/template/`//` comment.
+  const out: { text: string; offset: number }[] = []
+  let depth = 0
+  let inString = false
+  let stringChar = ''
+  let escaped = false
+  let segStart = 0
+  let i = 0
+  const flush = (end: number): void => {
+    const raw = body.slice(segStart, end)
+    if (raw.trim().length > 0) {
+      const lead = raw.length - raw.trimStart().length
+      out.push({ text: raw.trim(), offset: baseOffset + segStart + lead })
+    }
+    segStart = end + 1
+  }
+  while (i < body.length) {
+    const ch = body[i]
+    if (escaped) {
+      escaped = false
+      i++
+      continue
+    }
+    if (inString) {
+      if (ch === '\\') escaped = true
+      else if (ch === stringChar) inString = false
+      i++
+      continue
+    }
+    if (ch === '/' && body[i + 1] === '/') {
+      while (i < body.length && body[i] !== '\n') i++
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = true
+      stringChar = ch
+      i++
+      continue
+    }
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth++
+      i++
+      continue
+    }
+    if (ch === ')' || ch === ']' || ch === '}') {
+      depth--
+      i++
+      continue
+    }
+    if (depth === 0 && (ch === ';' || ch === '\n')) {
+      flush(i)
+      i++
+      continue
+    }
+    i++
+  }
+  flush(body.length)
+  return out
+}
+
+const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
+
+function buildBindingMap(
+  body: string,
+  baseOffset: number,
+):
+  | { bindings: ReadonlyMap<string, PatternIR>; finalExpr: string; finalOffset: number }
+  | null {
+  const stmts = splitTopLevelStatements(body, baseOffset)
+  if (stmts.length < 2) return null // need ≥1 binding + 1 final expr
+
+  const bindings = new Map<string, PatternIR>()
+  let finalIdx = -1
+  for (let s = 0; s < stmts.length; s++) {
+    const { text, offset } = stmts[s]
+    const bm = text.match(BINDING_RE)
+    if (!bm) {
+      // First non-binding statement is the final expression. Anything
+      // AFTER it (a trailing binding) makes this not a clean
+      // "bindings then expr" shape → D-02 fallback.
+      finalIdx = s
+      break
+    }
+    const name = bm[1]
+    const rhs = bm[2].trim()
+    // D-02: reassignment / shadowing (duplicate name) → fallback.
+    if (bindings.has(name)) return null
+    // RHS absolute offset = statement offset + (where rhs starts in text).
+    const rhsStartInText = text.length - rhs.length // bm[2] was end-anchored, then trimmed
+    const rhsOffset = offset + rhsStartInText
+    const rhsIR = parseExpression(rhs, rhsOffset)
+    const rhsIsBareCode =
+      rhsIR.tag === 'Code' && (rhsIR as { via?: unknown }).via === undefined
+    // D-02: an RHS that itself parses to bare Code is opaque — do not
+    // pretend the binding is structured. Whole-program fallback.
+    if (rhsIsBareCode) return null
+    bindings.set(name, rhsIR)
+  }
+  if (finalIdx === -1) return null // all statements were bindings, no final expr
+  // Everything AFTER finalIdx must NOT exist (no trailing bindings /
+  // multiple final expressions — keep the shape strictly "bindings*, expr").
+  if (finalIdx !== stmts.length - 1) return null
+  return {
+    bindings,
+    finalExpr: stmts[finalIdx].text,
+    finalOffset: stmts[finalIdx].offset,
+  }
+}
+
 /** Parse a Strudel code string. Always returns a tree (Code node for unsupported). */
 export function parseStrudel(code: string): PatternIR {
   if (!code.trim()) return IR.pure()
@@ -263,6 +441,29 @@ export function parseStrudel(code: string): PatternIR {
       }
       const bodyTrimStart = stripped.body.search(/\S/)
       const innerOffset = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0)
+      // 20-15 G1 (#134 / D-02) — NEW PK16(b) stage 0.5: try the minimal
+      // single-assignment binding map. Only the clean
+      // `let p1=… / let p2=… / stack(p1,p2)` shape (R4 partial — the
+      // measured 2/10 Bakery case). buildBindingMap returns null on ANY
+      // D-02 violation (reassignment / shadowing / opaque RHS / not a
+      // "bindings* then one expr" shape) → fall through to the existing
+      // whole-program parse below (topology-preserving; use-before-def is
+      // handled at the substitution site, never a throw).
+      const bound = buildBindingMap(stripped.body, stripped.offset)
+      if (bound) {
+        const inner = parseExpression(bound.finalExpr, bound.finalOffset, undefined, bound.bindings)
+        // P67: if the final expression resolved to bare Code (the binding
+        // map did not help — e.g. a non-stack final expr), keep the
+        // existing whole-program fallback shape rather than wrapping a
+        // bare-Code body in a Track. Otherwise the substituted subtrees
+        // are real structured IR flowing through the pS:~620 chokepoint.
+        const innerIsBareCode =
+          inner.tag === 'Code' && (inner as { via?: unknown }).via === undefined
+        if (!innerIsBareCode) {
+          return IR.track('d1', inner)
+        }
+        // else: fall through to the plain parse (whole-program Code).
+      }
       const inner = parseExpression(stripped.body.trim(), innerOffset)
       return IR.track('d1', inner)
     }
@@ -277,7 +478,15 @@ export function parseStrudel(code: string): PatternIR {
       // the user toggles a line's comment prefix.
       const t = tracks[0]
       const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset)
-      return IR.track('d1', body, {
+      // 20-15 G5 (#138 / D-01) — a named label becomes the trackId so the
+      // label IS the timeline row name (no `.p()` needed). `$` (the legacy
+      // `$:` marker) keeps the synthetic `d1` numbering — byte-identical to
+      // pre-G5. dollarStart = label-line start → collect.ts:447-450
+      // OUTER-WINS dollarPos → MusicalTimeline `$${pos}` source-anchored
+      // slot (PV47 / #119 substrate). Same mechanism `$:` uses, NOT a
+      // parallel path.
+      const trackId0 = t.label && t.label !== '$' ? t.label : 'd1'
+      return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }],
       })
     }
@@ -289,7 +498,14 @@ export function parseStrudel(code: string): PatternIR {
     return IR.stack(
       ...tracks.map((t, i) => {
         const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset)
-        return IR.track(`d${i + 1}`, body, {
+        // 20-15 G5 (#138 / D-01) — labelled tracks carry trackId = label;
+        // legacy `$:` (label === '$') keeps `d{i+1}` so existing multi-$:
+        // tunes are byte-identical. dollarStart (label-line start) is the
+        // source-anchored slot identity for BOTH forms — mixed `$:` +
+        // `name:` interleave correctly because the unified regex matches
+        // both in one scan and dollarStart is always line-start.
+        const trackId = t.label && t.label !== '$' ? t.label : `d${i + 1}`
+        return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }],
         })
       }),
@@ -313,9 +529,85 @@ export function parseStrudel(code: string): PatternIR {
  * offset within the slice is also a valid offset within `code`.
  * Returns [] if no $: lines found (caller handles single-expression case).
  */
+/**
+ * 20-15 G5 (#138) — scan `code[0 .. idx)` and report the lexical state at
+ * `idx`: paren/brace/bracket nesting depth + whether `idx` is inside a
+ * string / template literal or a `//` line comment.
+ *
+ * REUSE of the `stripParserPrelude` depth-walker discipline (pS:~192-243):
+ * same string/escape/`//`-comment handling, same depth bookkeeping. It is
+ * lifted here as a small shared scanner (PV49 spirit — do not hand-roll a
+ * second divergent walker) so the generalized label matcher can reject a
+ * `name:` that is actually an object-literal key (`{ a: 1 }` multi-line),
+ * a colon inside a string/template (`` s(`bd:3`) ``), or a comment.
+ *
+ * The γ-1 probe proved single-line false-positives are already rejected by
+ * the label regex shape itself; this guard is load-bearing for the
+ * MULTI-LINE forms where the colon-bearing token sits at a physical line
+ * start (matrix in 20-15-OBSERVATIONS.md).
+ */
+function lexStateAt(code: string, idx: number): { depth: number; inString: boolean } {
+  let depth = 0
+  let inString = false
+  let stringChar = ''
+  let escaped = false
+  let i = 0
+  while (i < idx) {
+    const ch = code[i]
+    if (escaped) {
+      escaped = false
+      i++
+      continue
+    }
+    if (inString) {
+      if (ch === '\\') escaped = true
+      else if (ch === stringChar) inString = false
+      i++
+      continue
+    }
+    // `//` line comment (only outside strings) — consume to EOL. The
+    // newline itself is left for the outer loop (depth/string unchanged).
+    if (ch === '/' && code[i + 1] === '/') {
+      while (i < idx && code[i] !== '\n') i++
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = true
+      stringChar = ch
+      i++
+      continue
+    }
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth++
+      i++
+      continue
+    }
+    if (ch === ')' || ch === ']' || ch === '}') {
+      depth--
+      i++
+      continue
+    }
+    i++
+  }
+  return { depth, inString }
+}
+
+// 20-15 G5 (#138) — reserved identifiers that the generalized `name:`
+// matcher must NOT treat as a track label. `let/const/var` would be a
+// binding (G1, γ-3 / D-02); `default/case` are statement-label keywords.
+// Strudel has no `switch`, so these only appear as false-positives.
+const RESERVED_LABEL_IDENTS = new Set(['let', 'const', 'var', 'default', 'case'])
+
 export function extractTracks(
   code: string,
-): { expr: string; offset: number; dollarStart: number; end: number; commented: boolean }[] {
+): {
+  expr: string
+  offset: number
+  dollarStart: number
+  end: number
+  commented: boolean
+  label?: string
+}[] {
   // Phase 20-11 α-2 — return shape additively widened. `dollarStart` (start
   // of the literal `$:` token) and `end` (exclusive end of the track body
   // slice — either the next `$:` line start or `code.length`) are exposed
@@ -336,16 +628,42 @@ export function extractTracks(
     dollarStart: number
     end: number
     commented: boolean
+    label?: string
   }[] = []
-  // Match `$:` at the start of a line, allowing leading whitespace and an
-  // optional `//` line-comment prefix. Group 1 captures the `//...` if
-  // present; its presence flips `commented` for that entry.
-  const dollarRe = /^[ \t]*(\/\/[ \t]*)?\$:/gm
-  const starts: { dollarStart: number; bodyStart: number; commented: boolean }[] = []
+  // 20-15 G5 (#138) — generalized from the literal `$:` matcher to a
+  // named-label matcher. Group 1 = optional `//` line-comment prefix
+  // (→ `commented`); group 2 = the label identifier. `$` ∈ `[A-Za-z_$]`
+  // so `$:` STILL matches with label === '$' — exact pre-G5 behavior is
+  // preserved (the `$` label falls back to the synthetic `d{N}` numbering
+  // in parseStrudel, so `$:` tracks are byte-identical to before).
+  // `\s*:` (not `[ \t]*:`) tolerates the rare `name :` spacing; the γ-1
+  // probe proved this does not introduce false-positives (ternary `?`
+  // breaks the `\s*:` adjacency before any `:` is reached).
+  const dollarRe = /^[ \t]*(\/\/[ \t]*)?([A-Za-z_$][\w$]*)\s*:/gm
+  const starts: {
+    dollarStart: number
+    bodyStart: number
+    commented: boolean
+    label: string
+  }[] = []
   let m: RegExpExecArray | null
   while ((m = dollarRe.exec(code))) {
-    // bodyStart points after `$:` and any post-colon whitespace on the
-    // same physical line. Tracks may continue on subsequent lines.
+    const label = m[2]
+    // γ-1-validated guard: reject a match that is NOT a real top-level
+    // track label — inside `{}`/`()`/`[]`, inside a string/template/
+    // comment, or a reserved non-track keyword. lexStateAt REUSES the
+    // stripParserPrelude depth-walker discipline (PV49 spirit). `$:` is
+    // never reserved and is virtually always depth-0, so its behavior is
+    // unchanged. A `//`-commented label sits at line start; the `//` is
+    // captured by group 1 (not consumed by the lexState `//` rule because
+    // we scan UP TO m.index, which is the line start BEFORE the `//`).
+    const st = lexStateAt(code, m.index)
+    if (st.depth > 0 || st.inString || RESERVED_LABEL_IDENTS.has(label)) {
+      continue
+    }
+    // bodyStart points after the matched prefix (`[ws][//]label:`) and any
+    // post-colon whitespace on the same physical line. Tracks may continue
+    // on subsequent lines.
     const after = m.index + m[0].length
     let bodyStart = after
     while (bodyStart < code.length && (code[bodyStart] === ' ' || code[bodyStart] === '\t')) {
@@ -355,25 +673,26 @@ export function extractTracks(
     // dollarStart anchors at the LINE START (m.index) — consistent across
     // commented vs uncommented forms since the regex matches from `^`.
     // This keeps slice boundaries clean (`end` of one entry == line start
-    // of the next entry) regardless of comment toggling.
-    starts.push({ dollarStart: m.index, bodyStart, commented })
+    // of the next entry) regardless of comment toggling, AND makes the
+    // label-line start the source-anchored slot identity (PV47 / D-01).
+    starts.push({ dollarStart: m.index, bodyStart, commented, label })
   }
   if (starts.length === 0) return []
 
   for (let i = 0; i < starts.length; i++) {
-    const { dollarStart, bodyStart, commented } = starts[i]
+    const { dollarStart, bodyStart, commented, label } = starts[i]
     const end = i + 1 < starts.length ? starts[i + 1].dollarStart : code.length
     if (commented) {
-      // Commented `$:` — emit an empty-body track. Body extent is irrelevant
-      // (we don't parse it), but slot-map identity for this position is
-      // preserved so the timeline shows a ghost row in place.
-      tracks.push({ expr: '', offset: bodyStart, dollarStart, end, commented: true })
+      // Commented `$:` / `// name:` — emit an empty-body track. Body extent
+      // is irrelevant (we don't parse it), but slot-map identity for this
+      // position is preserved so the timeline shows a ghost row in place.
+      tracks.push({ expr: '', offset: bodyStart, dollarStart, end, commented: true, label })
       continue
     }
     const slice = code.slice(bodyStart, end)
     // Trailing whitespace can stay — parseExpression handles it. We
     // keep the leading slice intact so offsets line up.
-    tracks.push({ expr: slice, offset: bodyStart, dollarStart, end, commented: false })
+    tracks.push({ expr: slice, offset: bodyStart, dollarStart, end, commented: false, label })
   }
   return tracks
 }
@@ -383,14 +702,86 @@ export function extractTracks(
 // ---------------------------------------------------------------------------
 
 /**
+ * PV49 shared inter-token skip primitive (20-15 α substrate).
+ *
+ * Returns the ABSOLUTE index into `src` after any run of whitespace
+ * (incl. `\n`) and whole-line / inline `// …` comments starting at
+ * `pos`. Offset-additive: a caller threads it as
+ * `base += skipWhitespaceAndLineComments(src, pos) - pos`.
+ *
+ * Behaviour MUST exactly mirror the reference regex used by the
+ * already-tolerant chain walker, `applyChain`'s
+ * `INTER_METHOD_SEP = /^(?:\s+|\/\/[^\n]*\n?)+/`: it consumes runs of
+ * `\s` (newlines included) and `//`-to-end-of-line where the trailing
+ * `\n` is ALSO consumed (matching the regex's `\n?`), looping until
+ * neither whitespace nor a `//` comment starts at the cursor.
+ *
+ * `${` is NOT whitespace (it is real JS template interpolation) and is
+ * NEVER consumed — PV49 scope explicitly excludes it (D-04). A `/` that
+ * is not followed by a second `/` (e.g. a division operator) is also
+ * not consumed.
+ *
+ * Pure: no state, no engine (PV50 N/A). The three genuine inter-token
+ * consumers (applyChain — α-3 reference; splitArgsWithOffsets — #137/G4;
+ * extractTracks label scan — #138/G5) own their additive arithmetic.
+ * `stripParserPrelude`'s whole-line classifier is a structurally
+ * distinct concern (R1) and is intentionally NOT migrated onto this.
+ */
+export function skipWhitespaceAndLineComments(src: string, pos: number): number {
+  let i = pos
+  for (;;) {
+    // 1. Whitespace run (includes \n) — same as the regex's `\s+`.
+    while (i < src.length && /\s/.test(src[i])) i++
+    // 2. A `//` line comment: consume up to and INCLUDING the trailing
+    //    `\n` (mirrors `\/\/[^\n]*\n?`). At EOF with no newline the
+    //    `\n?` matches empty — consume to end of string.
+    if (src[i] === '/' && src[i + 1] === '/') {
+      i += 2
+      while (i < src.length && src[i] !== '\n') i++
+      if (i < src.length && src[i] === '\n') i++
+      continue
+    }
+    // Neither whitespace nor a `//` comment at the cursor — done.
+    // (`${`, `/x`, and any non-ws char fall here and are NOT consumed.)
+    break
+  }
+  return i
+}
+
+/**
  * Parse a single Strudel expression (with optional method chain).
  * `baseOffset` is the absolute char offset of `expr[0]` within the
  * user's full code, so leaf parsers can attach `loc` to Play nodes.
  *
  * e.g. 'note("c4 e4").fast(2).every(4, fast(2))'
  */
-export function parseExpression(expr: string, baseOffset = 0): PatternIR {
+export function parseExpression(
+  expr: string,
+  baseOffset = 0,
+  // #132 (β-2) — when set, threads the caller's s-vs-note context into
+  // the inner bare-string root. β-1 probe proved `s(...)` inner bare
+  // strings MUST parse with isSampleKey=true (params.s + duration:1 are
+  // lost otherwise); note/n/mini stay false. `undefined` = unchanged
+  // pre-β-2 behavior (the bare-string arm's own default of false).
+  isSampleKey?: boolean,
+  // 20-15 G1 (#134 / D-02) — when set, a bare-identifier stack arg that
+  // matches a key is substituted with the bound (definition-site) subtree.
+  // `undefined` = no binding map (every call site except the no-`$:`
+  // G1 entry). Threaded ONLY parseExpression → parseRoot → stack-arg.
+  bindings?: ReadonlyMap<string, PatternIR>,
+): PatternIR {
   if (!expr.trim()) return IR.pure()
+
+  // 20-15 G1 — if the WHOLE expression is a bare identifier bound in the
+  // map, substitute its subtree directly (covers the single-arg
+  // `stack(p1)` path which unwraps to one arg before reaching here, and
+  // any bare-ident root). Definition-site loc preserved (R6).
+  if (bindings) {
+    const bareId = expr.trim()
+    if (/^[A-Za-z_$][\w$]*$/.test(bareId) && bindings.has(bareId)) {
+      return bindings.get(bareId) as PatternIR
+    }
+  }
 
   try {
     // Compute the offset of `expr.trim()[0]` within `code` so the
@@ -410,7 +801,7 @@ export function parseExpression(expr: string, baseOffset = 0): PatternIR {
     // those wrappers as opaque and discarded the entire structure — surfaces
     // for `stack(single-arg-with-unmapped-pattern-chain)` shapes such as
     // `stack(s("bd").delay("<0 .5>")...).sometimes(...)` in delay.strudel.
-    const rootIR = parseRoot(root, trimmedOffset)
+    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings)
     const rootIsBareCode =
       rootIR.tag === 'Code' && (rootIR as { via?: unknown }).via === undefined
     if (rootIsBareCode && !chain.trim()) {
@@ -443,11 +834,38 @@ export function parseExpression(expr: string, baseOffset = 0): PatternIR {
  * Parse the root function call: note("..."), s("..."), stack(...), or bare expression.
  * `baseOffset` is the absolute char offset of `root[0]` within the user's code.
  */
-export function parseRoot(root: string, baseOffset = 0): PatternIR {
+export function parseRoot(
+  root: string,
+  baseOffset = 0,
+  // #132 (β-2) — caller's s-vs-note context for the bare-string root
+  // arm. `undefined` keeps the pre-β-2 default (false). Threaded from
+  // the loose recursive arm so `s("bd".jux(rev))`'s inner `"bd"` parses
+  // with sample semantics (β-1 probe resolution).
+  isSampleKey?: boolean,
+  // 20-15 G1 (#134 / D-02) — binding map threaded to the stack-arg loop
+  // so a bare-identifier arg matching a key substitutes the bound subtree
+  // (the cleanest hook per research R4). `undefined` everywhere except the
+  // no-`$:` G1 entry.
+  bindings?: ReadonlyMap<string, PatternIR>,
+): PatternIR {
   const trimmed = root.trim()
   const leadingWs = root.length - root.trimStart().length
 
-  // note("...") or n("...")
+  // 20-15 G3 (#136) — a captured backtick inner that contains a `${`
+  // interpolation is REAL JS evaluation (D-04): the matcher must NOT
+  // attempt parseMini — return the canonical bare IR.code fallback
+  // (via===undefined, the pS:~414 shape). Clean branch, never a throw
+  // (PV37 wrap-never-drop; the outer try/catch stays a backstop only).
+  const backtickInnerToIR = (
+    inner: string,
+    isSample: boolean,
+    innerOffset: number,
+  ): PatternIR => {
+    if (inner.includes('${')) return IR.code(trimmed)
+    return parseMini(inner, isSample, innerOffset)
+  }
+
+  // note("...") or n("...") — plus G3 backtick `` `…` `` (multi-line ok).
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/)
   if (noteMatch) {
     // Position of the opening quote within `trimmed`, then +1 to skip it.
@@ -455,13 +873,31 @@ export function parseRoot(root: string, baseOffset = 0): PatternIR {
     const innerOffset = baseOffset + leadingWs + quoteIdx + 1
     return parseMini(noteMatch[1], false, innerOffset)
   }
+  const noteBtMatch = trimmed.match(/^(?:note|n)\s*\(\s*`([^`]*)`\s*\)/)
+  if (noteBtMatch) {
+    const btIdx = noteBtMatch[0].indexOf('`')
+    const innerOffset = baseOffset + leadingWs + btIdx + 1
+    return backtickInnerToIR(noteBtMatch[1], false, innerOffset)
+  }
 
-  // s("...") — sample pattern
-  const sMatch = trimmed.match(/^s\s*\(\s*"([^"]*)"\s*\)/)
+  // s("...") / sound("...") — sample pattern — plus G3 backtick.
+  // `sound` is Strudel's documented alias of `s` (upstream controls.mjs
+  // registers `sound` as an alias of the `s` control). 20-15 V-2 surfaced
+  // it: issue #136's literal repro is `sound(`…`)`, and `sound` was never
+  // a recognised root form (every `sound(...)` shape — dq, bare, backtick
+  // — fell to bare Code while the `s(...)` equivalents parsed). It threads
+  // isSampleKey=true identically to `s` (sets params.s + duration:1).
+  const sMatch = trimmed.match(/^(?:s|sound)\s*\(\s*"([^"]*)"\s*\)/)
   if (sMatch) {
     const quoteIdx = sMatch[0].indexOf('"')
     const innerOffset = baseOffset + leadingWs + quoteIdx + 1
     return parseMini(sMatch[1], true, innerOffset)
+  }
+  const sBtMatch = trimmed.match(/^(?:s|sound)\s*\(\s*`([^`]*)`\s*\)/)
+  if (sBtMatch) {
+    const btIdx = sBtMatch[0].indexOf('`')
+    const innerOffset = baseOffset + leadingWs + btIdx + 1
+    return backtickInnerToIR(sBtMatch[1], true, innerOffset)
   }
 
   // mini("...") — raw mini-notation pattern producing values (not notes/samples).
@@ -475,6 +911,72 @@ export function parseRoot(root: string, baseOffset = 0): PatternIR {
     const quoteIdx = miniMatch[0].indexOf('"')
     const innerOffset = baseOffset + leadingWs + quoteIdx + 1
     return parseMini(miniMatch[1], false, innerOffset)
+  }
+  const miniBtMatch = trimmed.match(/^mini\s*\(\s*`([^`]*)`\s*\)/)
+  if (miniBtMatch) {
+    const btIdx = miniBtMatch[0].indexOf('`')
+    const innerOffset = baseOffset + leadingWs + btIdx + 1
+    return backtickInnerToIR(miniBtMatch[1], false, innerOffset)
+  }
+
+  // #132 (β-2) — LOOSE recursive arm for note/n/s/mini args that carry
+  // an inner method chain, e.g. `n("[0,3]".fast(3).lastOf(4, fast(2)))`.
+  // Fires ONLY after the strict `"…"\)` fast-paths above (so the common
+  // single-string case keeps its exact 20-14 snapshot), and ONLY when
+  // the inner is NOT a plain `"…"` / `` `…` `` (those belong to the
+  // strict/backtick arms). The inner is delegated to parseExpression —
+  // there is NO IR.note(parsed) constructor (research conflict); the
+  // inner ROOT is a mini string and the rest is a CHAIN, exactly what
+  // parseExpression already decomposes (split-root/chain + parseMini +
+  // applyChain). The β-1 probe proved the s-vs-note `isSampleKey`
+  // context is NOT inert and MUST be threaded (s→true, note/n/mini→
+  // false). P67: if the recursion returns BARE Code
+  // (tag==='Code' && via===undefined), fall THROUGH to the existing
+  // IR.code(trimmed) fallback below — never emit a half-wrapped node to
+  // a via-expecting consumer.
+  const looseMatch = trimmed.match(/^(note|n|s|sound|mini)\s*\(/)
+  if (looseMatch) {
+    const fnName = looseMatch[1]
+    const openParenIdx = trimmed.indexOf('(', looseMatch[0].length - 1)
+    const closeIdx =
+      openParenIdx >= 0 ? findMatchingParen(trimmed, openParenIdx) : -1
+    if (closeIdx > openParenIdx) {
+      const inner = trimmed.slice(openParenIdx + 1, closeIdx)
+      const innerTrimmed = inner.trim()
+      // Let the strict regexes (above) own the plain single-string case
+      // — both `"…"` and backtick `` `…` `` (β-3) — to avoid churn on
+      // the 15 structured tunes. Only enter for chained / non-plain
+      // inners (the actual #132 shape).
+      const isPlainQuoted = /^"[^"]*"$/.test(innerTrimmed)
+      const isPlainBacktick = /^`[^`]*`$/.test(innerTrimmed)
+      if (!isPlainQuoted && !isPlainBacktick && innerTrimmed.length > 0) {
+        // Absolute offset of inner[0] within the user's full source:
+        // baseOffset + leadingWs already points at trimmed[0]; the inner
+        // starts at openParenIdx+1 within `trimmed` (additive — same
+        // shape as the stack arm).
+        const innerLeadingWs = inner.length - inner.trimStart().length
+        const innerAbsOffset =
+          baseOffset + leadingWs + openParenIdx + 1 + innerLeadingWs
+        // β-1 resolution: thread the caller's sample context.
+        const callerIsSample = fnName === 's' || fnName === 'sound'
+        const innerIR = parseExpression(
+          innerTrimmed,
+          innerAbsOffset,
+          callerIsSample,
+        )
+        const innerIsBareCode =
+          innerIR.tag === 'Code' &&
+          (innerIR as { via?: unknown }).via === undefined
+        // P67: bare-Code inner → DO NOT wrap; fall through to the
+        // canonical IR.code(trimmed) fallback at the bottom of parseRoot
+        // (single bare-Code shape, via===undefined). Only a structured
+        // (or via-wrapped) inner is accepted here.
+        if (!innerIsBareCode) {
+          return innerIR
+        }
+        // else: fall through to the opaque fallback below.
+      }
+    }
   }
 
   // stack(a, b, c) — parallel composition. Issue #107 — each arg's
@@ -496,8 +998,15 @@ export function parseRoot(root: string, baseOffset = 0): PatternIR {
       const innerStartInTrimmed = stackKwIdx + 'stack('.length
       const innerAbsOffset = baseOffset + leadingWs + innerStartInTrimmed
       const argsWithOffsets = splitArgsWithOffsets(inner)
+      // 20-15 G1 (#134 / D-02) — thread the binding map so a bare-ident
+      // arg (`stack(p1, p2)`) substitutes the bound subtree at THIS
+      // insertion point (the cleanest hook per R4). A ref whose name is
+      // NOT in the map (use-before-def, undefined ident) is NOT
+      // substituted → parses as a bare ident → bare Code → the
+      // whole-expression Code fallback (D-02 topology-preserving, no
+      // throw). Substituted subtrees keep definition-site loc (R6).
       const tracks = argsWithOffsets.map((a) =>
-        parseExpression(a.value, innerAbsOffset + a.offset),
+        parseExpression(a.value, innerAbsOffset + a.offset, undefined, bindings),
       )
       if (tracks.length === 0) return IR.pure()
       if (tracks.length === 1) return tracks[0]
@@ -532,7 +1041,18 @@ export function parseRoot(root: string, baseOffset = 0): PatternIR {
   if (bareStringMatch) {
     // innerOffset points at the FIRST char inside the quotes.
     const innerOffset = baseOffset + leadingWs + 1
-    return parseMini(bareStringMatch[1], false, innerOffset)
+    // #132 (β-2): when the loose recursive arm threaded the caller's
+    // s-vs-note context, honour it here; otherwise keep the pre-β-2
+    // default of `false` (snapshot-preserving for the 15 tunes).
+    return parseMini(bareStringMatch[1], isSampleKey ?? false, innerOffset)
+  }
+  // 20-15 G3 (#136) — bare backtick `` `…` `` template-literal root.
+  // `[^`]*` spans newlines (multi-line mini-notation, e.g.
+  // `` `<bd hh>\n<sn ~>`.cpm(2) ``). `${}` → graceful Code (D-04).
+  const bareBtMatch = trimmed.match(/^`([^`]*)`$/)
+  if (bareBtMatch) {
+    const innerOffset = baseOffset + leadingWs + 1
+    return backtickInnerToIR(bareBtMatch[1], isSampleKey ?? false, innerOffset)
   }
 
   // Fallback: treat as opaque
@@ -566,16 +1086,27 @@ export function applyChain(ir: PatternIR, chain: string, baseOffset = 0): Patter
   // only progressed while `remaining.startsWith('.')` after a single
   // initial `.trim()` — so the first newline between methods exited the
   // loop and every subsequent method was silently dropped to Code-fallback.
-  // SEP regex: any mix of inter-method whitespace (incl. newlines) and
-  // line comments (`// …` up to and including the trailing newline). The
-  // `+` is anchored to `^` so it ONLY trims at the head of `remaining`.
-  const INTER_METHOD_SEP = /^(?:\s+|\/\/[^\n]*\n?)+/
+  //
+  // 20-15 α-3: the inter-method separator skip is now the shared PV49
+  // `skipWhitespaceAndLineComments` primitive (was the inline
+  // `INTER_METHOD_SEP = /^(?:\s+|\/\/[^\n]*\n?)+/` regex, now removed —
+  // it was referenced ONLY here). The primitive is byte-equivalent to
+  // that regex (asserted by skipWhitespaceAndLineComments.test.ts), so
+  // this reroute is the PV49 EQUIVALENCE ORACLE: applyChain is already
+  // fully tolerant, therefore the 16 corpus IR-shape snapshots, the
+  // loc-fidelity snapshot, and the 1551 editor tests MUST all stay
+  // byte-for-byte unchanged — that three-way invariance is the proof the
+  // primitive matches the reference before any GAP fix builds on it.
+  // The offset arithmetic is unchanged and stays owned by applyChain:
+  // `remaining` is a 0-based working buffer, so the absolute index the
+  // primitive returns IS the consumed length (== the old `sep[0].length`).
   while (true) {
-    // Skip inter-method separator (whitespace + line comments).
-    const sep = remaining.match(INTER_METHOD_SEP)
-    if (sep) {
-      remainingOffset += sep[0].length
-      remaining = remaining.slice(sep[0].length)
+    // Skip inter-method separator (whitespace + line comments) via the
+    // shared primitive — same additive shape as the old regex head-match.
+    const consumedSep = skipWhitespaceAndLineComments(remaining, 0)
+    if (consumedSep > 0) {
+      remainingOffset += consumedSep
+      remaining = remaining.slice(consumedSep)
     }
     if (!remaining.startsWith('.')) break
     const { method, args, rest, argsOffset } = extractNextMethod(remaining)
@@ -1336,6 +1867,23 @@ export function splitRootAndChain(expr: string): { root: string; chain: string }
       i++
     }
     if (i < expr.length) i++ // consume closing quote
+  } else if (expr[0] === '`') {
+    // 20-15 G3 (#136) — backtick template-literal root. Mirrors the `"`
+    // scan but DELIBERATELY allows `\n` inside: backtick mini-notation
+    // strings legitimately span multiple lines (the single-line note on
+    // the `"` arm above does NOT apply to backticks). Escape-aware for
+    // `` \` ``. `${` is NOT special here — splitRootAndChain only finds
+    // the root *boundary*; the `${}` → Code-fallback decision (D-04) is
+    // made later in parseRoot where the captured inner is inspected.
+    i = 1
+    while (i < expr.length && expr[i] !== '`') {
+      if (expr[i] === '\\' && i + 1 < expr.length) {
+        i += 2
+        continue
+      }
+      i++
+    }
+    if (i < expr.length) i++ // consume closing backtick
   } else {
     // Skip identifier
     while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) i++
@@ -1408,7 +1956,10 @@ function findMatchingParen(str: string, startIdx: number): number {
       continue
     }
 
-    if (ch === '"' || ch === "'") {
+    if (ch === '"' || ch === "'" || ch === '`') {
+      // 20-15 G3 (#136): backtick is a string delimiter too — without
+      // this a `` ` `` inside args (e.g. `stack(s(`bd hh`))`) would not
+      // suppress paren/bracket counting and the matcher mis-depths.
       inString = true
       stringChar = ch
       continue
@@ -1470,10 +2021,29 @@ function splitArgsWithOffsets(
 
   const pushCurrent = (): void => {
     if (current.trim().length === 0) return
-    // Trimmed value's offset = currentStart + leadingWs-of-current.
-    let leading = 0
-    while (leading < current.length && /\s/.test(current[leading])) leading += 1
-    args.push({ value: current.trim(), offset: currentStart + leading })
+    // 20-15 α-4 / #137 (G4): generalise the per-arg leading scan from
+    // whitespace-only to the shared PV49 primitive so a leading
+    // `// comment\n` (a whole-line comment between `stack()` args, OR a
+    // comment after a `,` that the comma branch folded into the next
+    // arg's leading region) is treated as consumed prefix — not as the
+    // arg's first real char. Without this the arg substring begins with
+    // `/`, `splitRootAndChain` reads `/` as the root, and the arg falls
+    // to Code() (`Stack[Code,Code]` instead of `Stack[Play,Play]`).
+    //
+    // OFFSET CONTRACT (the α-4 pre-mortem mitigation): `consumed` is the
+    // SINGLE source of truth — the trimmed value is sliced FROM
+    // `consumed` and the offset is computed FROM the same `consumed`, so
+    // they can never drift apart by the comment length. For the
+    // no-comment case `consumed` === the old leading-`\s` count exactly
+    // (the primitive consumes `\s` runs identically), so every existing
+    // corpus snapshot + loc-fidelity entry is byte-for-byte unchanged.
+    // Trailing whitespace is still trimmed (parity with the old
+    // `current.trim()`); trailing trim never moves the START offset.
+    const consumed = skipWhitespaceAndLineComments(current, 0)
+    args.push({
+      value: current.slice(consumed).trimEnd(),
+      offset: currentStart + consumed,
+    })
   }
 
   for (let i = 0; i < argsStr.length; i++) {
@@ -1485,7 +2055,11 @@ function splitArgsWithOffsets(
       continue
     }
 
-    if (ch === '"' || ch === "'") {
+    if (ch === '"' || ch === "'" || ch === '`') {
+      // 20-15 G3 (#136): backtick is a string delimiter — a `,` inside a
+      // `` `…` `` arg must NOT split it (e.g. `stack(s(`bd, hh`))`), and
+      // a backtick inside an arg must not let comma-splitting see commas
+      // that belong to the template literal.
       inString = true
       stringChar = ch
       if (current.length === 0) currentStart = i
