@@ -688,3 +688,62 @@ discrimination); `feedback_strudel_init.md` (the evalScope→mini→synths
 ordering this extends); `packages/editor/src/ir/parseStrudel.ts`,
 `packages/editor/src/engine/StrudelEngine.ts`. Ground Truth:
 20-14-{RESEARCH,α-SUMMARY,γ-SUMMARY}.md.
+
+## PK17 — Friction-first parity-hardening cycle (measure real-world → classify → fix highest-frequency → re-measure)
+
+Recurred twice: surfaced 20-14 (the Bakery reality check exposed curated
+15/16 over-states real-world ~2:1), formalized 20-15 (the
+`parity-bakery.mjs` maintainer sampler + the named-gap-class → issue →
+fixture pipeline). Promoted from method-worth-reusing to a catalogued
+lifecycle because the project will run it every parity cycle.
+
+```
+1. MEASURE real-world: pull N≈50 fresh live samples from the actual
+   user-content backend (Supabase code_v1, anon key public in upstream
+   website/src/repl/util.mjs), run each through the PURE parser
+   (parseStrudel), classify structured vs Code-fallback. NEVER trust a
+   curated corpus to estimate real-world coverage — it over-states ~2:1.
+   `pnpm parity:bakery`; result is dated + upstream-SHA-pinned;
+   raw pull gitignored (.bakery-runs/, unreviewed 3rd-party code).
+2. CLASSIFY every Code-fallback into a NAMED gap class with a minimal
+   repro + the live fixture URL. Count frequency per class.
+3. FILE each class as its own GitHub issue (AnviDev issue-before-fix).
+   Do NOT fix during measurement. The backlog IS the prioritization.
+4. SCOPE a phase: fix the highest-FREQUENCY classes first (not the
+   easiest). 20-15 fixed the 6 from the 10-sample probe; the 50-sample
+   re-measure surfaced #140–#144 with #141 (var/binding-refs) dominant
+   at 6/14 → next cycle's wave-1.
+5. VENDOR each fixed class's repro as a PERMANENT regression fixture
+   (packages/app/tests/parity-corpus/bakery-*.strudel) — the wall so a
+   closed class can never silently regress.
+6. RE-MEASURE on a fresh pull; the % is the goal metric (40%→72% in
+   20-15). New fallback classes → back to step 3 (next cycle), NOT
+   fixed in-phase (scope discipline).
+```
+
+**Why the order is load-bearing:** measuring AFTER fixing on the same
+samples you fixed for is circular — step 6 must be a FRESH pull. Fixing
+by ease instead of frequency (step 4) wastes a cycle on long-tail cases
+while the dominant class still fails most real code. Skipping step 5
+means regression is invisible until the next manual measure.
+
+**Common violation:** quoting a curated-corpus parity % as "real-world"
+(the 20-14 mistake — "~75–80% in the wild" was 2x optimistic; actual
+40%). Any parity claim MUST cite a Bakery-sampled N, a date, and the
+upstream SHA, or it is inadmissible.
+
+**Anti-pattern at step 1:** trusting the sampler/merge/sync STATUS
+signal instead of observing the artifact — see the post-merge near-miss
+generalization (a "MERGED" badge / "Updating x..y" string is not the
+code on main; verify HEAD==merge + 0/0 divergence + code grep-present +
+the test-count gate). Same class as P67's tag-vs-via: the discriminator
+is the artifact, not the label.
+
+**REF:** PK16 (the no-`$:` parse pipeline these gap classes live in),
+PV49 (shared-walker substrate the fixes route through), P67 (Code
+tri-state — "structured" classifier must count Code-with-`via` as
+structured, bare-Code-`via===undefined` as fallback);
+`packages/app/scripts/parity-bakery.mjs`,
+`packages/app/tests/parity-corpus/`. Ground Truth:
+20-15-SUMMARY.md, memory/project_phase_20_musician_timeline.md
+(the 20-14 Bakery reality check + 20-15 measured 72%).
