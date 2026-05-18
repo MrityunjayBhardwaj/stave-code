@@ -323,3 +323,46 @@ Wave 0 stands. For D-01:
 - **(C) Proceed with Wave A as planned, accepting partial D-01 payoff:** A-1/A-2 will be correct for stack-arg bare-ident bindings (the γ-3 case) but won't move `--LsnlgQ6osk`. We get a smaller-than-hoped D-01 win + #142/#143/#144. Most consistent with the resequenced plan but knowingly partial.
 
 Wave 0 source change is in the working tree, uncommitted (parseStrudel.ts modified). Editor 1564 + parity 50 baselines hold. The 4 new issues #148/#150/#151/#152 should be reflected in the commit message when Wave 0 lands.
+
+---
+
+# WAVE A-0 — D-01 mechanism investigation (2026-05-18, user-requested deep scan)
+
+**FINDING: CONTEXT D-01's load-bearing premise is FALSIFIED by source scan.** CONTEXT/RESEARCH stated *"parseExpression is ALREADY re-entrant with a bindings arg; D-01 is a fixpoint ITERATION around the existing RHS parse, NOT a new evaluator — keep the change minimal."* The scan shows `bindings` is a **narrow stack-arg hook**, not a pervasive substitution context. D-01 done correctly is a parser-wide threading refactor.
+
+## The complete `bindings` reach map (parseStrudel.ts, current source)
+
+REACHES (substitution works):
+- `parseExpression:832-837` — WHOLE-expression bare ident (`expr.trim()` is exactly `/^[A-Za-z_$][\w$]*$/` and in map). Covers `stack(p1)` single-arg unwrap.
+- `parseRoot:1061-1062` — the `stack(a,b,c)` arg loop: each arg via `parseExpression(a.value, …, bindings)`. The γ-3 / #134 case (`stack(boundId, boundId)`).
+
+DOES NOT REACH (4 gaps, exact sites):
+- **D-01-G1 (chain-arg).** `parseStrudel.ts:1015` — the loose recursive arm for `note|n|s|sound|mini(...)` calls `parseExpression(innerTrimmed, innerAbsOffset, callerIsSample)` — the 4th `bindings` arg is OMITTED. So `sound(rp1)` with `rp1` resolved still parses `rp1` bare → bareCode. One-line-ish fix (add `, bindings`), but see G4 — it must also be threaded onward.
+- **D-01-G2 (root-ident).** `parseRoot` (arms start ~pS:921) has note/n/s/sound/mini/stack/backtick arms but NO "bare ident bound in `bindings` → splice bound IR as root" arm. `chords2.rootNotes(2).note()` splits to root=`chords2` (not whole-expr, so pS:833 misses it) + chain; `parseRoot('chords2', …, bindings)` matches no arm → bareCode. Fix: add a bound-ident-root arm in parseRoot (before the note/n arm), returning `bindings.get(trimmed)` then letting applyChain run.
+- **D-01-G3 (literal RHS opaque).** `var numChords = 4`: buildBindingMap parses RHS `4` → parseRoot('4') matches no arm → bareCode → the opaque-RHS fence (pS:~440) returns null → whole program bails. A numeric / quoted-string literal is a VALID value, not opaque. Fix options: (a) parseExpression recognises bare number/string literals as a non-opaque passthrough IR; (b) buildBindingMap treats a literal-shaped RHS as non-opaque. (a) is more correct but ripples; (b) is narrower. Needs a design call.
+- **D-01-G4 (method-arg / applyChain).** `parseExpression:874` calls `applyChain(rootIR, chain, chainOffset)` with NO bindings arg. So `.slow(numChords)` / `.scale(scales.slow(numChords))` inside a chain NEVER substitutes. `-LHtBlF8peGC` needs this (numChords used in `.slow(numChords)`). This is the deepest gap: applyChain + parseTransform + every nested-arg recursion must thread `bindings`. This is the "pervasive context" refactor.
+
+## Scope reality (the honest correction to CONTEXT)
+
+D-01 that actually moves the dominant real-world #141 class = thread `bindings` as a **pervasive parse context** through the full recursive descent: `parseExpression → splitRootAndChain → parseRoot (all arms incl. a NEW bound-ident-root arm) → applyChain → parseTransform → nested parseExpression`. Plus the G3 literal-passthrough decision. This is a real signature + recursion refactor of the core parser, NOT "a bounded fixpoint iteration around an existing primitive." The CONTEXT D-01 design (A-1 behavior-identical refactor + A-2 fixpoint loop) is necessary but FAR from sufficient — A-2's "iterate the RHS parse" only helps if the RHS parse itself can resolve refs, which (G1/G2/G4) it cannot today.
+
+The fixpoint is still needed (binding-references-binding ordering), but it sits ON TOP of a substitution mechanism that must first be made pervasive. Sequencing: pervasive-threading (G1+G2+G3+G4) → THEN the bounded fixpoint → THEN occurs-check/OQ1.
+
+## Estimated blast radius
+
+- G1: 1 call site (+bindings arg + ensure recursion carries it).
+- G2: 1 new arm in parseRoot (~5 lines, mirrors pS:833 logic but for root token).
+- G3: 1 design decision + ~3-10 lines (literal passthrough).
+- G4: the big one — `applyChain` signature + every internal `parseExpression`/`parseTransform` recursion gains a `bindings` param threaded through. Multiple call sites; the loc/offset contract (PV49 additivity) must hold at each. This is where "minimal change" was wrong.
+
+Editor 1564/1564 + parity-corpus 50/50 still hold (Wave 0 only; no D-01 code written — investigation only, observation over inference).
+
+## Decision required (escalated to user)
+
+D-01 is bigger than CONTEXT scoped. Options:
+
+- **(A) Full pervasive-threading D-01 in 20-16** (G1+G2+G3+G4 + fixpoint + occurs-check). Correct and complete; closes the dominant class. Largest change; the core parser's recursion all gains a `bindings` context. Re-gate after.
+- **(B) Reframe: 20-16 = Wave 0 + Wave B/C (#142/#143/#144, D-01-independent) + fresh measurement; D-01 → dedicated 20-17** with pervasive-threading as its explicit design (not "minimal change"). Most honest given the cascade; ships Wave 0 + the cheap strip/root wins now; D-01 gets the design attention it needs.
+- **(C) Minimal D-01 (G1+G2 only, skip G3/G4)** — closes `--LsnlgQ6osk`-like chain-arg/root-ident cases but NOT `-LHtBlF8peGC` (needs G3+G4). Partial, but bigger than γ-3. Re-gate to measure exactly which repros it moves.
+
+Wave 0 remains shipped on-branch (committed ff93c65). No D-01 source written.
