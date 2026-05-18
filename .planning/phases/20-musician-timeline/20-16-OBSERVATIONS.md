@@ -263,3 +263,63 @@ The PLAN's GATE-PASS criterion is unmet. Three options:
 - **(C) Reframe 20-16 as a "segmenter robustness" phase, do all four fixes + measurement, defer D-01 + #142/#143/#144 to 20-17.** Cleanest reframing.
 
 SEG-1 is preserved in the working tree (uncommitted, ready to be committed alone or expanded into a bundle). Pre-existing baselines unchanged.
+
+---
+
+# POST-WAVE-0-BUNDLE RE-RUN (2026-05-18, gate iteration 3)
+
+**VERDICT: Wave 0 IS COMPLETE AND CORRECT. The bottleneck shifts to D-01 mechanism completeness — narrower than CONTEXT assumed.** All 4 segmenter fixes (#148+#150+#151+#152) are implemented, mirrored in the prototype, build-hygiene gate passed (P68), editor 1564/1564 GREEN, app/parity 347/347 GREEN, per-file STOP gate vacuously green (no existing snapshot moved). One new D-01-eligible repro (`-L13nBhrqGR_`) grounds structured — real PK17-step-4 progress.
+
+## Wave 0 bundle implementation
+
+- **#148** parseStrudel.ts:346 `;` branch (unconditional flush) + `\n` branch (peek-forward via `skipWhitespaceAndLineComments` for `.` continuation).
+- **#150** same `\n` branch: backward-peek skipping whitespace from `i-1` to `segStart`; if last non-ws char is `=`, suppress flush.
+- **#151** `flush()` augmented: strip `/* … */` blocks + `// …` line comments from `raw`; if residue is empty/whitespace, skip the segment (no phantom comment-only statements).
+- **#152** new branch in comment-recognition (mirrors `//` skip's structure): if `ch === '/' && body[i+1] === '*'`, walk to `*/`, consume the closing `*/`, continue (no flush inside the block).
+
+## Production-pipeline classification (the truth, not the proto)
+
+| repro | pre-Wave-0 | post-Wave-0 (production) | delta |
+|---|---|---|---|
+| `--LsnlgQ6osk` | code | **code (still)** | segmentation now perfect (7 stmts, 6 bindings + final stack); D-01 mechanism doesn't substitute in `sound(ident)` / `chords2.method(...)` positions |
+| `-1j62z5xjyCN` | code | code | #142 strip needed (samples('github:…')); SEG-1/150/151/152 inapplicable |
+| `-72eEl7NwK9e` | code | code | #149 (template-root + `.cpm(binding)`); D-01 not the fix vehicle |
+| `-CyO42BOyp5a` | structured | structured | stable |
+| `-L13nBhrqGR_` | code | **structured (NEW WIN)** | Wave 0 unblocked it — segmenter fixes alone were sufficient |
+| `-LHtBlF8peGC` | code | **code (still)** | segmentation now correct; production's pre-D-01 `buildBindingMap` opaque-fences on `var numChords = 4` (a number-literal RHS parses bareCode, fires the fence) |
+
+**Score: 2/6 production-structured** (was 1/6 post-SEG-1, was 1/6 pre-SEG-1).
+
+## The bottleneck has shifted: D-01 mechanism completeness
+
+CONTEXT D-01 stated *"the substitution primitive is ALREADY BUILT"* (re-entrant `parseExpression` with `bindings` arg at pS:758, whole-ident substitution at pS:779-784 per RESEARCH, stack-arg threading at pS:1009 per RESEARCH). The prototype's iter1 on `--LsnlgQ6osk` falsifies that for non-stack-arg positions:
+
+```
+[R:__LsnlgQ6osk] iter1 beat rhs="sound(rp1).bank(\"RolandTR707\")..." -> tag=Code bareCode=true   (rp1 IS resolved, but sub doesn't reach into sound(rp1))
+[R:__LsnlgQ6osk] iter1 bass rhs="chords2.rootNotes(2).note()..."     -> tag=Code bareCode=true   (chords2 IS resolved, but sub doesn't reach root-ident `chords2.method(...)`)
+[R:__LsnlgQ6osk] iter1 harm2 rhs="chords2.voicings('ireal')..."      -> tag=Code bareCode=true   (same — root-ident position)
+[R:__LsnlgQ6osk] iter1 az2 rhs="irand(12).struct(\"x(8,8)|x(4,8)\")…" -> tag=Code bareCode=true   (no binding refs! parser doesn't recognise irand(...) root form?)
+```
+
+Two newly-observed D-01 mechanism gaps:
+- **D-01-G1: Chain-arg substitution.** `sound(rp1)` with `rp1` resolved → still bareCode. The `bindings` arg doesn't reach into chain-arg positions inside calls like `sound(...)` / `n(...)` / `note(...)` etc. (Only stack-arg threading per RESEARCH.) Need: thread `bindings` into the recursive `parseExpression`/`parseRoot` arms that parse fn-call inner args.
+- **D-01-G2: Root-ident substitution.** `chords2.rootNotes(2).note()` with `chords2` resolved → still bareCode. `parseRoot` (pS:837) doesn't have an arm that recognises a *bound* ident as a root (it has arms for `"…"`, `` `…` ``, `ident(…)`, etc.). Need: an arm that, when the root token is a bare ident present in `bindings`, splices the bound IR as the root and applies the chain.
+- **D-01-G3 (separate):** opaque-RHS fence on a number-literal RHS (`var numChords = 4`). `4` parses to bareCode → fence fires → `-LHtBlF8peGC` bails even though `numChords` is correctly referenced and the use position (`.slow(numChords)`) would happily accept a Code passthrough. Need: either parseExpression recognises number/string literals as non-opaque, OR the opaque fence is bypassed for chain-arg-position references (similar to the OQ1 relaxation but for "literal-RHS referenced from a chain-arg position").
+
+Plus `az2`'s `irand(12).struct(...)` bareCode despite no bindings — suggests `irand` isn't a recognised root form either (a separate parseRoot gap, file as new issue if it matters; for D-01 it's orthogonal).
+
+## What this changes for the plan
+
+- **Wave 0 (4 segmenter fixes) is COMPLETE and CORRECT** — implemented, tested, no regression, 1 new D-01-eligible repro grounds. Ship it.
+- **Wave A (D-01) original framing is INCOMPLETE.** The "primitive already built" claim was right for stack-arg bare-ident substitution (`stack(bound,bound,bound)`) but wrong for the chain-arg and root-ident positions that dominate real Bakery code. A-2's "bounded fixpoint iteration" alone won't unblock `--LsnlgQ6osk` (the canonical D-01 transitive repro); D-01-G1 + D-01-G2 need their own design + implementation.
+- **`-LHtBlF8peGC` (`var numChords = 4`)** is independently blocked by D-01-G3 (literal-RHS opaque) — a small targeted fix; possibly fold into Wave A.
+
+## Decision required (escalated to user)
+
+Wave 0 stands. For D-01:
+
+- **(A) Pause + investigate D-01 mechanism (Wave A-0):** before committing to A-1/A-2, deepen the surface scan into `parseRoot`/`parseExpression`/chain-arg recursion. Map where `bindings` actually reaches vs where it doesn't. Then revise A-1/A-2 to also implement D-01-G1 + D-01-G2 (broader than current spec). HIGHEST confidence path to actually unblocking `--LsnlgQ6osk`.
+- **(B) Ship Wave 0 alone (small 20-16), defer Wave A entirely to 20-17:** the smallest honest phase given the cascade. Closes #148+#150+#151+#152, picks up 1 new D-01-eligible repro + presumably more in the wider Bakery population (segmenter fixes affect many code shapes). 20-17 = D-01 phase with proper mechanism investigation.
+- **(C) Proceed with Wave A as planned, accepting partial D-01 payoff:** A-1/A-2 will be correct for stack-arg bare-ident bindings (the γ-3 case) but won't move `--LsnlgQ6osk`. We get a smaller-than-hoped D-01 win + #142/#143/#144. Most consistent with the resequenced plan but knowingly partial.
+
+Wave 0 source change is in the working tree, uncommitted (parseStrudel.ts modified). Editor 1564 + parity 50 baselines hold. The 4 new issues #148/#150/#151/#152 should be reflected in the commit message when Wave 0 lands.
