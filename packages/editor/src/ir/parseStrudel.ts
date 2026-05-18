@@ -1145,6 +1145,55 @@ export function parseRoot(
     return backtickInnerToIR(bareBtMatch[1], isSampleKey ?? false, innerOffset)
   }
 
+  // #144 (20-15 V-1 backlog) — parenthesized SINGLE string-literal root:
+  // `("1*1, 2*2 … 16*16").mul(60).freq()…` (Bakery sample --cHhfOZ6ON1).
+  // `splitRootAndChain` ALREADY slices `("…").chain` into
+  // root=`("…")` + the correct leading-dot chain (the ident-else
+  // branch's `findMatchingParen` at pS:~1945-1949; the leading-dot
+  // multi-line continuation is sliced too). The ONLY gap is parseRoot
+  // had no arm for `( <string-lit> )` → it fell through to bare
+  // IR.code below. This arm strips the wrapping parens and recurses the
+  // inner string through the EXISTING bare-string / backtick logic
+  // (quote-agnostic mini semantics — same parseMini / backtickInnerToIR
+  // used by the arms above).
+  //
+  // SCOPE BOUNDARY (CONTEXT D-03 / issue #144 — root-shape RECOGNITION
+  // only, NOT arbitrary parenthesized JS): the regex matches a SINGLE
+  // `"…"` OR `` `…` `` between the parens with NOTHING else — not
+  // `( s("bd") )`, not `( a, b )`, not nested calls. Any other
+  // parenthesized content falls through to the existing IR.code
+  // fallback UNCHANGED (pre-mortem mitigation: never mis-parse a
+  // non-string-literal root as a mini string).
+  const parenStrMatch = trimmed.match(/^\(\s*("[^"]*"|`[^`]*`)\s*\)$/)
+  if (parenStrMatch) {
+    const litRaw = parenStrMatch[1]
+    const isBacktick = litRaw[0] === '`'
+    const innerLit = litRaw.slice(1, -1)
+    // Offset of the inner string's FIRST char in ORIGINAL source.
+    // baseOffset+leadingWs points at trimmed[0] = the `(`. The inner
+    // quote sits after the `(` + any leading whitespace inside the
+    // parens. Compute that gap via the PV49 shared primitive
+    // (`skipWhitespaceAndLineComments`) — do NOT hand-roll the scan
+    // (PV49: route every new inter-token scan through the primitive so
+    // the loc offset stays additive against ORIGINAL source). The
+    // primitive returns the index of the opening quote within
+    // `trimmed`; +1 skips the quote to the first inner char.
+    const quotePosInTrimmed = skipWhitespaceAndLineComments(trimmed, 1)
+    const innerOffset = baseOffset + leadingWs + quotePosInTrimmed + 1
+    const inner = isBacktick
+      ? backtickInnerToIR(innerLit, isSampleKey ?? false, innerOffset)
+      : parseMini(innerLit, isSampleKey ?? false, innerOffset)
+    // P67: if the inner recursion returns BARE Code
+    // (tag==='Code' && via===undefined) — e.g. a backtick carrying
+    // `${}` (D-04) — fall THROUGH to the canonical IR.code(trimmed)
+    // fallback below; never emit a half-wrapped node to a via-expecting
+    // consumer (mirror the loose-arm discrimination at pS:~1027).
+    const innerIsBareCode =
+      inner.tag === 'Code' && (inner as { via?: unknown }).via === undefined
+    if (!innerIsBareCode) return inner
+    // else: fall through to the opaque fallback below.
+  }
+
   // Fallback: treat as opaque
   return IR.code(trimmed)
 }

@@ -4862,6 +4862,17 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
     const innerOffset = baseOffset + leadingWs + 1;
     return backtickInnerToIR(bareBtMatch[1], isSampleKey ?? false, innerOffset);
   }
+  const parenStrMatch = trimmed.match(/^\(\s*("[^"]*"|`[^`]*`)\s*\)$/);
+  if (parenStrMatch) {
+    const litRaw = parenStrMatch[1];
+    const isBacktick = litRaw[0] === "`";
+    const innerLit = litRaw.slice(1, -1);
+    const quotePosInTrimmed = skipWhitespaceAndLineComments(trimmed, 1);
+    const innerOffset = baseOffset + leadingWs + quotePosInTrimmed + 1;
+    const inner = isBacktick ? backtickInnerToIR(innerLit, isSampleKey ?? false, innerOffset) : parseMini(innerLit, isSampleKey ?? false, innerOffset);
+    const innerIsBareCode = inner.tag === "Code" && inner.via === void 0;
+    if (!innerIsBareCode) return inner;
+  }
   return IR.code(trimmed);
 }
 function applyChain(ir, chain, baseOffset = 0) {
