@@ -192,3 +192,26 @@ never merges. Branch first (never code on main). Single non-stacked PR →
 main. `.anvi/` + `.planning/` gitignored — `git add -f`. No
 Co-Authored-By. Post-merge: verify the artifact (HEAD==merge + 0/0
 divergence + code grep + test count), not the badge.
+
+## REFRAME (2026-05-18, locked — after Wave A-0 investigation)
+
+The Task-1 gate fired 4 times; Wave A-0 proved D-01 = a pervasive-context
+parser refactor (G1 chain-arg / G2 root-ident / G3 literal-RHS / G4
+applyChain threading), NOT the "minimal bounded fixpoint" CONTEXT D-01
+assumed. User decision: **(B) reframe.**
+
+**20-16 final scope (REFRAMED):**
+- Wave 0 (#148+#150+#151+#152 segmenter) — SHIPPED (commit ff93c65).
+- Wave B (#142 strip-only + #143 guarded-boot) — D-01-independent.
+- Wave C (#144 paren-string root) — D-01-independent.
+- Verification (PK17 step 6): fresh `pnpm parity:bakery` re-measure;
+  vendor #148/#150/#151/#152/#142/#143/#144 fixtures; per-file
+  loc-fidelity STOP gate; SUMMARY + catalogues.
+- **D-01 (#140/#141) is REMOVED from 20-16** → dedicated **Phase 20-17**
+  with pervasive-bindings-threading as the EXPLICIT design premise (its
+  own discuss→research→plan→check). #149 stays backlog.
+
+CONTEXT D-01 decision (least-fixpoint substitution / Datalog discipline)
+remains VALID as 20-17's north star — only its host phase + the
+"primitive already built" scoping premise changed. The Wave A-0
+OBSERVATIONS section (the 4-gap map) is 20-17's RESEARCH seed.
