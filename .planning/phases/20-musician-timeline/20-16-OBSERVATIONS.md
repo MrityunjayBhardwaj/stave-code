@@ -217,3 +217,49 @@ make the D-01 fixpoint actually reachable:
 
 The 20-15 baseline (72.0% / N=50 / sha f73b3956 / 2026-05-15) is
 unchanged — no source was modified in this task.
+
+---
+
+# POST-SEG-1 RE-RUN (2026-05-18, gate iteration 2)
+
+**VERDICT: GATE FAILED AGAIN.** SEG-1 (`splitTopLevelStatements` leading-dot peek via PV49 primitive) IS a correct, narrow fix — it eliminates the leading-dot phantom-split — but the dominant 6/14 #141 class has **at least 3 compounding segmenter recognition gaps**, not 1. The gate's GATE-PASS criterion ("`--LsnlgQ6osk` grounds STRUCTURED") is not met; SEG-1 alone reduces phantoms but does not unblock the dominant repro.
+
+## SEG-1 effect (observed)
+
+Editor: 1564/1564 GREEN. Parity-corpus: 25/25 + loc-fidelity 25/25 (per-file STOP gate VACUOUSLY GREEN — no existing corpus snapshot moved). SEG-1 implementation: `parseStrudel.ts:346` split — `;` flushes always; `\n` peeks via `skipWhitespaceAndLineComments(body, i+1)`; if next char is `.`, do not flush. Build-hygiene gate (P68): one-shot build OK; grep verifies the compiled output (`dist/index.js:4513-4521`).
+
+## Post-SEG repro classification (verbatim diagnostics)
+
+| repro | pre-SEG | post-SEG | verdict | new finding |
+|---|---|---|---|---|
+| `--LsnlgQ6osk` | stmts=32 `descs=rp1,beat` finalIdx=2 `.gain(...)` | stmts=8 `descs=rp1,beat,az2,chords2,bass` finalIdx=5 `"const harm2 ="` | **STILL code** | `=`-continuation phantom (#150) |
+| `-1j62z5xjyCN` | stmts=3 descs=cpm finalIdx=1 `samples('github:…')` | **UNCHANGED** stmts=3, same bail | code | #142 (samples strip); SEG-1 inapplicable |
+| `-72eEl7NwK9e` | stmts=2 (reaches fixpoint, bails on opaque) | **UNCHANGED** stmts=2 | code | #149 (template-root + `.cpm(binding)`); SEG-1 inapplicable |
+| `-CyO42BOyp5a` | structured | **structured** | structured | already-grounds (no D-01 needed) |
+| `-L13nBhrqGR_` | stmts=11 finalIdx=1 `.steps(12)` | stmts=5 `descs=polyrhythm,polymeter` finalIdx=2 `"// poly rhythm + meter in one!"` | **STILL code** | comment-only phantom (#151) |
+| `-LHtBlF8peGC` | stmts=9 finalIdx=3 `stack(...` | stmts=6 `descs=chordProgression,scales,numChords` finalIdx=3 `stack(...` (correct), but finalIdx 3 != last 5 | **STILL code** | trailing `/* … */` block comment NOT skipped by segmenter (#152) |
+
+## The 3 new compounding segmenter gaps (filed, not fixed)
+
+- **#150 `=`-continuation:** `const harm2 = \n  chords2.voicings('ireal')…` — `=` at end of line is NOT a JS statement terminator; the next line is the RHS. Fix surface: at `parseStrudel.ts:346` `\n` branch, ALSO suppress flush iff the **preceding** non-ws/non-`//` char (looking backward) is `=` (and likely `,`, `(`, `[`, `{`, `?`, `:` — but `(`/`[`/`{` are already depth-guarded). Narrow recognition extension on the matcher line.
+- **#151 comment-only phantom:** a `// comment` on its own line becomes a phantom segment because `flush()` keeps any segment with `raw.trim().length > 0`. Fix surface: at `flush()` (pS:305-312), additionally skip segments whose trim is entirely `//`-prefixed comment lines (no executable content). Or: in the segmenter's `//` skip-to-EOL, consume the trailing `\n` BEFORE the depth-0 flush check. Either preserves loc-offset semantics.
+- **#152 block-comment not skipped:** `/* … */` blocks are not recognized; the segmenter walks their content as code, and any `\n` at depth 0 inside the block flushes. Fix surface: at the segmenter's comment-recognition site (currently only `//` at pS:326-329), add a `/*`/`*/` block-comment skip identical to `//`'s structure. Narrow.
+
+## Synthetics post-SEG-1 (re-confirmed)
+
+- (b) forward-ref: structured ✓
+- (c) cyclic: graceful Code (occurs-check terminal) ✓
+- (d) dup-key: graceful Code ✓
+- (5c) dead-opaque + relax: structured ✓; ref-opaque + relax: graceful Code ✓
+
+D-01 mechanism is still validated where reached. The blocker is upstream segmenter completeness, not D-01.
+
+## Decision required (escalated to user)
+
+The PLAN's GATE-PASS criterion is unmet. Three options:
+
+- **(A) Expand Wave 0 to SEG-1 + #150 + #151 + #152.** All four are narrow, same-surface recognition extensions; bundle them, re-run the gate. Cleanest if the user wants D-01 to actually unblock in this phase.
+- **(B) Land SEG-1 alone, file #150/#151/#152 as backlog, defer D-01 to a later phase.** Most disciplined per scope; loses D-01's payoff for now.
+- **(C) Reframe 20-16 as a "segmenter robustness" phase, do all four fixes + measurement, defer D-01 + #142/#143/#144 to 20-17.** Cleanest reframing.
+
+SEG-1 is preserved in the working tree (uncommitted, ready to be committed alone or expanded into a bundle). Pre-existing baselines unchanged.
