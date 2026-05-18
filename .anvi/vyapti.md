@@ -1492,12 +1492,55 @@ the ad-hoc REPL checks (which used `s(`…`)`) missed. Lesson: gap-class
 fixtures must use the ISSUE'S verbatim repro, not a convenient
 paraphrase — the paraphrase silently substitutes a working alias.
 
-**REF:** P67 (Code-discrimination — the same parser surface); PV-NEW
+**Span addendum (20-16 — second R1-divergent line-classifier + a new
+PV49-routed parseRoot arm):**
+- **R1 divergence extends (B-2 / #143):** `GUARDED_BOOT_RE`
+  (`typeof X !== 'undefined' && X(...)`) is a SECOND line-classifier
+  added alongside `PRELUDE_CALL_RE`, deliberately NOT routed through
+  `skipWhitespaceAndLineComments` — same structural class as the
+  existing whole-line prelude skip (line classification ≠ inter-token
+  scan). The PV49 span is now "3 inter-token sites + 2
+  deliberately-separate line-classifiers (`PRELUDE_CALL_RE`,
+  `GUARDED_BOOT_RE`)". Confirmed by observation: the verbatim #143
+  issue body strips to a structured Play; the negative
+  `s("bd").every(2, x => typeof x)` is NOT mis-classified
+  (line-start anchored).
+- **New PV49-routed site (C-1 / #144):** the new parseRoot arm for
+  `( <string-literal> )` computes the inner-string offset via
+  `skipWhitespaceAndLineComments(trimmed, 1)` — a 4th genuine
+  inter-token site, correctly routed through the shared primitive (NOT
+  hand-rolled). Offset-additivity held: V-3's per-file loc-fidelity
+  correlation over the full (grown) corpus is empty-diff vs the
+  Wave-0 baseline (552 insertions / 0 deletions — purely additive);
+  the new arm's loc slices correct tokens from ORIGINAL source
+  (`Seq[2,10]="1*1, 2*2"`, `Play[2,3]="1"`). The pre-mortem (right
+  tokens, wrong absolute index) provably did not occur across the
+  B-2+C-1 composition.
+- **Alias-corollary instance (B-1 / #142):** the same "match the forms
+  the target treats as equivalent" obligation was satisfied WITHOUT a
+  code change — the EXISTING `stripParserPrelude` depth walker is
+  shape-agnostic over `{`/`[`/`(`, so object-literal `samples({…})`
+  and `samples('github:…')`/`'https://…'` string forms were already
+  consumed. Verified by running the walker against the verbatim
+  `gh issue view 142` body (observation, not inference). The lesson
+  holds: the OQ2 decision rested on observed walker output, and the
+  fixture uses the issue's verbatim repro.
+
+**Confirmed by:** Phase 20-16 B-1 (vite-node observation of
+`stripParserPrelude` on the verbatim #142 body), B-2 (`GUARDED_BOOT_RE`
+probe), C-1 (`parenStrMatch` arm probe + loc dump), V-3 (full-corpus
+per-file loc-fidelity correlation, zero drift).
+
+**REF:** P67 (Code-discrimination — the same parser surface); PV51
 (s/sound isSampleKey threading — sibling parseRoot-recursion invariant);
-gaps #136/#137/#138; `packages/editor/src/ir/parseStrudel.ts`
+gaps #136/#137/#138/#142/#143/#144;
+`packages/editor/src/ir/parseStrudel.ts`
 (`skipWhitespaceAndLineComments`, `applyChain`, `splitArgsWithOffsets`,
-`extractTracks`, the `(?:s|sound)` parseRoot arms). Ground Truth:
-20-14-γ-SUMMARY.md vyapti candidate; 20-15-SUMMARY.md (α-2/α-3/V-2).
+`extractTracks`, the `(?:s|sound)` parseRoot arms, `GUARDED_BOOT_RE`,
+the `parenStrMatch` parseRoot arm). Ground Truth:
+20-14-γ-SUMMARY.md vyapti candidate; 20-15-SUMMARY.md (α-2/α-3/V-2);
+20-16-SUMMARY.md (B-1/B-2/C-1/V-3); 20-16-OBSERVATIONS.md (B-1 OQ2
+verbatim output).
 
 ## PV50 — Per-evaluate engine-owned accumulators reset at `evaluate()` entry, top-of-function
 

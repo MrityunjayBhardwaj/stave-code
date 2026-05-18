@@ -158,6 +158,39 @@ export function stripParserPrelude(code: string): { body: string; offset: number
   const PRELUDE_CALL_RE =
     /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/
 
+  // #143 (20-15 V-1 backlog) — SECOND line classifier: a guarded boot
+  // side-effect of the defensive idiom
+  // `typeof X !== 'undefined' && X(...)` (sample `-7LU6zgzViSM`,
+  // "Doubly-Linked Liszt"). It is NOT matched by PRELUDE_CALL_RE (the
+  // line starts with `typeof`, not a recognised call name). This is a
+  // RECOGNITION extension only (issue #143 scope — explicitly NOT
+  // evaluation): once the line is classified as prelude, the EXISTING
+  // multi-line depth walker (pS:~205) consumes the `&& X(...)` call to
+  // depth 0 UNCHANGED — the walker only needs `sawOpenParen` + a
+  // depth-0 close, which `X(...)` provides; the leading
+  // `typeof X !== '…' &&` is plain non-paren/non-brace text the walker
+  // already walks past.
+  //
+  // R2 ANTI-DRIFT (mandatory, mirrors the PRELUDE_CALL_RE provenance
+  // block above): this guarded-boot idiom is a HAND-MAINTAINED skip
+  // shape — there is NO programmatic cross-ref (the upstream Bakery
+  // corpus is not vendored). The anti-drift mechanism is (a) this
+  // comment + the Codeberg pin SHA f73b395648645aabe699f91ba0989f35a6fd8a3c
+  // (same SHA as packages/app/tests/parity-corpus/CORPUS-SOURCE.md) and
+  // (b) the per-shape CI fixture `bakery-143-guarded-boot.strudel`
+  // (task V-2). The shape mirrors the V-1 classifier
+  // `_bakery-classify.spec.ts:53` (`typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&`)
+  // so the recogniser and the classifier stay in lockstep.
+  //
+  // PV49 R1 DIVERGENCE (deliberate): this is a LINE classifier — it is
+  // intentionally NOT routed through `skipWhitespaceAndLineComments`
+  // (the inter-token walker primitive), exactly the same structural
+  // class as the existing `PRELUDE_CALL_RE` whole-line skip. The PV49
+  // primitive governs inter-ELEMENT scanning; whole-line prelude
+  // classification is a different (R1-divergent) concern.
+  const GUARDED_BOOT_RE =
+    /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/
+
   let i = 0
   while (i < code.length) {
     // Walk to end of current line (exclusive of '\n').
@@ -179,7 +212,11 @@ export function stripParserPrelude(code: string): { body: string; offset: number
     }
 
     // 3. Top-level recognised prelude call — possibly multi-line.
-    if (PRELUDE_CALL_RE.test(line)) {
+    //    Either a direct boot call (PRELUDE_CALL_RE) OR the #143
+    //    guarded-boot idiom `typeof X !== 'undefined' && X(...)`
+    //    (GUARDED_BOOT_RE). Both route into the SAME unchanged depth
+    //    walker — recognition widens, the consume mechanism does not.
+    if (PRELUDE_CALL_RE.test(line) || GUARDED_BOOT_RE.test(line)) {
       // Track paren/brace/bracket depth + string state from the line start,
       // advancing across newlines until depth returns to zero AT THE END
       // OF A LINE whose final non-ws char is `)` (allow trailing `;`).
@@ -305,8 +342,22 @@ function splitTopLevelStatements(
   const flush = (end: number): void => {
     const raw = body.slice(segStart, end)
     if (raw.trim().length > 0) {
-      const lead = raw.length - raw.trimStart().length
-      out.push({ text: raw.trim(), offset: baseOffset + segStart + lead })
+      // #151 / #152: strip `/* … */` blocks AND `//` line-comments from
+      // the segment's residue; if nothing executable remains, skip.
+      // Prevents comment-only physical lines (and trailing `/* … */`
+      // blocks left between real statements) from becoming phantom
+      // statements after a depth-0 `\n` flush. Inline trailing `// …`
+      // on a code line is unaffected (the line's residue is the code).
+      const stripped = raw
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, ''))
+        .join('\n')
+        .trim()
+      if (stripped.length > 0) {
+        const lead = raw.length - raw.trimStart().length
+        out.push({ text: raw.trim(), offset: baseOffset + segStart + lead })
+      }
     }
     segStart = end + 1
   }
@@ -327,6 +378,15 @@ function splitTopLevelStatements(
       while (i < body.length && body[i] !== '\n') i++
       continue
     }
+    if (ch === '/' && body[i + 1] === '*') {
+      // #152: skip `/* … */` block comments (the segmenter walked their
+      // content as code before, so any depth-0 `\n` inside the block
+      // flushed). Mirror of the `//` skip's structure.
+      i += 2
+      while (i < body.length && !(body[i] === '*' && body[i + 1] === '/')) i++
+      if (i < body.length) i += 2 // consume the closing `*/`
+      continue
+    }
     if (ch === '"' || ch === "'" || ch === '`') {
       inString = true
       stringChar = ch
@@ -343,7 +403,37 @@ function splitTopLevelStatements(
       i++
       continue
     }
-    if (depth === 0 && (ch === ';' || ch === '\n')) {
+    if (depth === 0 && ch === ';') {
+      // Explicit JS terminator — always flush (ASI: `;` ends the
+      // statement even when the next non-ws char is `.`).
+      flush(i)
+      i++
+      continue
+    }
+    if (depth === 0 && ch === '\n') {
+      // ASI / line-continuation aware (#148, PK16 stage-0.5 input).
+      // Two cases suppress the depth-0 `\n` flush; both are recognition
+      // only (matcher line, no eval):
+      //   (a) #148 forward-peek for `.` — leading-dot multi-line method
+      //       chain continuation (`sound("x")\n  .gain(...)`). Peek past
+      //       whitespace + `//` line-comments via the PV49 primitive.
+      //   (b) #150 backward-peek for `=` — binding RHS on next line
+      //       (`const harm2 = \n  chords2.voicings(...)`). `=` is not a
+      //       JS statement terminator. Skip backward over whitespace;
+      //       if the last non-ws char is `=`, do NOT flush.
+      // Either suppression: do not flush, keep walking; the segment
+      // accumulates across the physical line break.
+      const peek = skipWhitespaceAndLineComments(body, i + 1)
+      if (body[peek] === '.') {
+        i++
+        continue
+      }
+      let k = i - 1
+      while (k >= segStart && /\s/.test(body[k])) k--
+      if (k >= segStart && body[k] === '=') {
+        i++
+        continue
+      }
       flush(i)
       i++
       continue
@@ -1053,6 +1143,55 @@ export function parseRoot(
   if (bareBtMatch) {
     const innerOffset = baseOffset + leadingWs + 1
     return backtickInnerToIR(bareBtMatch[1], isSampleKey ?? false, innerOffset)
+  }
+
+  // #144 (20-15 V-1 backlog) — parenthesized SINGLE string-literal root:
+  // `("1*1, 2*2 … 16*16").mul(60).freq()…` (Bakery sample --cHhfOZ6ON1).
+  // `splitRootAndChain` ALREADY slices `("…").chain` into
+  // root=`("…")` + the correct leading-dot chain (the ident-else
+  // branch's `findMatchingParen` at pS:~1945-1949; the leading-dot
+  // multi-line continuation is sliced too). The ONLY gap is parseRoot
+  // had no arm for `( <string-lit> )` → it fell through to bare
+  // IR.code below. This arm strips the wrapping parens and recurses the
+  // inner string through the EXISTING bare-string / backtick logic
+  // (quote-agnostic mini semantics — same parseMini / backtickInnerToIR
+  // used by the arms above).
+  //
+  // SCOPE BOUNDARY (CONTEXT D-03 / issue #144 — root-shape RECOGNITION
+  // only, NOT arbitrary parenthesized JS): the regex matches a SINGLE
+  // `"…"` OR `` `…` `` between the parens with NOTHING else — not
+  // `( s("bd") )`, not `( a, b )`, not nested calls. Any other
+  // parenthesized content falls through to the existing IR.code
+  // fallback UNCHANGED (pre-mortem mitigation: never mis-parse a
+  // non-string-literal root as a mini string).
+  const parenStrMatch = trimmed.match(/^\(\s*("[^"]*"|`[^`]*`)\s*\)$/)
+  if (parenStrMatch) {
+    const litRaw = parenStrMatch[1]
+    const isBacktick = litRaw[0] === '`'
+    const innerLit = litRaw.slice(1, -1)
+    // Offset of the inner string's FIRST char in ORIGINAL source.
+    // baseOffset+leadingWs points at trimmed[0] = the `(`. The inner
+    // quote sits after the `(` + any leading whitespace inside the
+    // parens. Compute that gap via the PV49 shared primitive
+    // (`skipWhitespaceAndLineComments`) — do NOT hand-roll the scan
+    // (PV49: route every new inter-token scan through the primitive so
+    // the loc offset stays additive against ORIGINAL source). The
+    // primitive returns the index of the opening quote within
+    // `trimmed`; +1 skips the quote to the first inner char.
+    const quotePosInTrimmed = skipWhitespaceAndLineComments(trimmed, 1)
+    const innerOffset = baseOffset + leadingWs + quotePosInTrimmed + 1
+    const inner = isBacktick
+      ? backtickInnerToIR(innerLit, isSampleKey ?? false, innerOffset)
+      : parseMini(innerLit, isSampleKey ?? false, innerOffset)
+    // P67: if the inner recursion returns BARE Code
+    // (tag==='Code' && via===undefined) — e.g. a backtick carrying
+    // `${}` (D-04) — fall THROUGH to the canonical IR.code(trimmed)
+    // fallback below; never emit a half-wrapped node to a via-expecting
+    // consumer (mirror the loose-arm discrimination at pS:~1027).
+    const innerIsBareCode =
+      inner.tag === 'Code' && (inner as { via?: unknown }).via === undefined
+    if (!innerIsBareCode) return inner
+    // else: fall through to the opaque fallback below.
   }
 
   // Fallback: treat as opaque

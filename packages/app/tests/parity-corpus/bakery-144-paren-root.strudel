@@ -1,0 +1,5 @@
+("1*1, 2*2, 3*3, ... 16*16")
+.mul(60)
+.freq().sound("kawai").rel(0.02)
+.pianoroll()
+.cpm(1)

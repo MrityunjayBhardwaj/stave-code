@@ -1,0 +1,4 @@
+const polyrhythm = sound("bd*3")
+// poly rhythm + meter in one!
+const polymeter = sound("hh*4")
+stack(polyrhythm, polymeter)

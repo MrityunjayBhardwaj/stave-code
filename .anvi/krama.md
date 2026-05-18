@@ -682,9 +682,147 @@ code comment citing the upstream file + pinned Codeberg SHA f73b3956
 PLUS one CI fixture per added setter (V-3: bakery-G2-setcpm /
 -setCpm-camel / -setCps-camel).
 
+**Phase 20-16 — stage-1 second line-classifier + stage-0.5 segmenter
+ASI/comment-awareness (REFRAMED; D-01 stage-0.5 fixpoint deferred to
+20-17).**
+
+- **stage 1 (`stripParserPrelude`) widened — recognition only:** a
+  SECOND line-classifier `GUARDED_BOOT_RE`
+  (`typeof X !== 'undefined' && X(...)`, #143) was added alongside
+  `PRELUDE_CALL_RE`. It routes into the SAME unchanged multi-line depth
+  walker — WHICH lines are classified prelude widens; the
+  `{body,offset}` consume contract does not. #142 needed NO stage-1
+  change: the existing depth walker is already shape-agnostic over
+  `{`/`[`/`(`, so object-literal `samples({…})` + `samples('github:…')`
+  string forms were already consumed (B-1 OQ2, observed via vite-node
+  on the verbatim issue body — NOT inferred).
+- **stage 0.5 segmenter (`splitTopLevelStatements`) ASI/comment-aware
+  (Wave 0, pre-shipped `ff93c65`, #148/#150/#151/#152):** a depth-0
+  `\n` no longer unconditionally flushes — it suppresses the flush on
+  (a) a leading-`.` continuation (forward peek via the PV49
+  `skipWhitespaceAndLineComments` primitive) and (b) an `=`-tailed line
+  (backward peek); `flush()` strips `// `/`/* … */` residue (no phantom
+  comment-only statements); the walker skips `/* … */` blocks. A bare
+  `;` always flushes (explicit ASI terminator). This is the segmenter
+  the (deferred) D-01 fixpoint will sit ON TOP of in 20-17 — the
+  stage-0.5 binding-resolution fixpoint amendment CONTEXT D-01 planned
+  is NOT in 20-16 (REFRAME: D-01 → Phase 20-17, pervasive-context
+  threading as its explicit premise).
+- **stage 3 (`parseRoot`) new arm (C-1, #144):** a
+  `( <string-literal> )` arm placed AFTER the strict
+  note/n/s/mini/loose/stack/bare-string/backtick regexes (no existing
+  snapshot moved) and BEFORE the bare-Code fallback; the inner-string
+  offset is computed via the PV49 primitive (additive, no hand-roll).
+  `splitRootAndChain` already sliced `("…").chain` correctly (the
+  ident-else `findMatchingParen` branch) — the gap was purely the
+  missing parseRoot arm.
+
+**Common violation (20-16 addendum):** widening stage-1 recognition with
+a too-greedy line classifier that matches a real musical line (e.g. a
+chain method whose text contains `typeof`) → that program silently
+strips a pattern line. Mitigation: anchor the classifier to line-start +
+the exact guarded-call shape (mirrors `_bakery-classify.spec.ts:53`);
+the `bakery-143-guarded-boot.strudel` fixture asserts the guard line is
+skipped AND the following pattern parses structurally.
+
+**Update (Phase 20-16):** stage-1 second classifier + stage-0.5
+ASI/comment-awareness + stage-3 paren-root arm. D-01 stage-0.5 fixpoint
+amendment explicitly DEFERRED to Phase 20-17 (the Task-1 HARD GATE fired
+4× — D-01 is a parser-wide recursion refactor, not a bounded fixpoint;
+REFRAME locked).
+
 **REF:** PK15 (MusicalTimeline slot-map lifecycle — sibling parse-cycle
-krama), PV49 (the stage-4 walker invariant), P67 (stage-3 Code
+krama), PV49 (the stage-4 walker invariant + the 20-16 span addendum:
+2 line-classifiers + the new paren-root site), P67 (stage-3 Code
 discrimination); `feedback_strudel_init.md` (the evalScope→mini→synths
-ordering this extends); `packages/editor/src/ir/parseStrudel.ts`,
-`packages/editor/src/engine/StrudelEngine.ts`. Ground Truth:
-20-14-{RESEARCH,α-SUMMARY,γ-SUMMARY}.md.
+ordering this extends); `packages/editor/src/ir/parseStrudel.ts`
+(`GUARDED_BOOT_RE`, `splitTopLevelStatements`, the `parenStrMatch`
+parseRoot arm), `packages/editor/src/engine/StrudelEngine.ts`. Ground
+Truth: 20-14-{RESEARCH,α-SUMMARY,γ-SUMMARY}.md; 20-16-SUMMARY.md;
+20-16-OBSERVATIONS.md (B-1 OQ2 + the 4-iteration Task-1 gate).
+
+## PK17 — Friction-first parity-hardening cycle (measure real-world → classify → fix highest-frequency → re-measure)
+
+Recurred twice: surfaced 20-14 (the Bakery reality check exposed curated
+15/16 over-states real-world ~2:1), formalized 20-15 (the
+`parity-bakery.mjs` maintainer sampler + the named-gap-class → issue →
+fixture pipeline). Promoted from method-worth-reusing to a catalogued
+lifecycle because the project will run it every parity cycle.
+
+```
+1. MEASURE real-world: pull N≈50 fresh live samples from the actual
+   user-content backend (Supabase code_v1, anon key public in upstream
+   website/src/repl/util.mjs), run each through the PURE parser
+   (parseStrudel), classify structured vs Code-fallback. NEVER trust a
+   curated corpus to estimate real-world coverage — it over-states ~2:1.
+   `pnpm parity:bakery`; result is dated + upstream-SHA-pinned;
+   raw pull gitignored (.bakery-runs/, unreviewed 3rd-party code).
+2. CLASSIFY every Code-fallback into a NAMED gap class with a minimal
+   repro + the live fixture URL. Count frequency per class.
+3. FILE each class as its own GitHub issue (AnviDev issue-before-fix).
+   Do NOT fix during measurement. The backlog IS the prioritization.
+4. SCOPE a phase: fix the highest-FREQUENCY classes first (not the
+   easiest). 20-15 fixed the 6 from the 10-sample probe; the 50-sample
+   re-measure surfaced #140–#144 with #141 (var/binding-refs) dominant
+   at 6/14 → next cycle's wave-1.
+5. VENDOR each fixed class's repro as a PERMANENT regression fixture
+   (packages/app/tests/parity-corpus/bakery-*.strudel) — the wall so a
+   closed class can never silently regress.
+6. RE-MEASURE on a fresh pull; the % is the goal metric (40%→72% in
+   20-15). New fallback classes → back to step 3 (next cycle), NOT
+   fixed in-phase (scope discipline).
+```
+
+**Why the order is load-bearing:** measuring AFTER fixing on the same
+samples you fixed for is circular — step 6 must be a FRESH pull. Fixing
+by ease instead of frequency (step 4) wastes a cycle on long-tail cases
+while the dominant class still fails most real code. Skipping step 5
+means regression is invisible until the next manual measure.
+
+**Common violation:** quoting a curated-corpus parity % as "real-world"
+(the 20-14 mistake — "~75–80% in the wild" was 2x optimistic; actual
+40%). Any parity claim MUST cite a Bakery-sampled N, a date, and the
+upstream SHA, or it is inadmissible.
+
+**Anti-pattern at step 1:** trusting the sampler/merge/sync STATUS
+signal instead of observing the artifact — see the post-merge near-miss
+generalization (a "MERGED" badge / "Updating x..y" string is not the
+code on main; verify HEAD==merge + 0/0 divergence + code grep-present +
+the test-count gate). Same class as P67's tag-vs-via: the discriminator
+is the artifact, not the label.
+
+**This cycle's measured numbers (Phase 20-16, REFRAMED):**
+
+| cycle | measured % | N | stamp | upstream SHA | closed |
+|---|---|---|---|---|---|
+| 20-15 | 72.0% (36/50) | 50 | 2026-05-15T23-13-07Z | f73b3956 | #132/#134-#138 |
+| 20-16 | **80.0% (40/50)** | 50 | 2026-05-18T14-34-02-237Z | f73b3956 | #142/#143/#144 (+#148/#150/#151/#152 pre-shipped `ff93c65`) |
+
+Movement +8.0 pp. The 10 residual fallbacks: 8× #141 (D-01 — REMOVED to
+Phase 20-17 by REFRAME, the dominant class), 1× classifier-ordering
+artifact over a real D-02 arrow-fn (`-7LU6zgzViSM`, not a regression —
+B-2's classifier verified-correct on the isolated repro), 1× GENUINE
+NEW class → backlog **#153** (multiple sibling bare top-level pattern
+statements). Step-6 fresh-pull discipline held (stamp ≠ the fixed-for
+2026-05-15 stamp). The Task-1 HARD GATE fired 4× before the REFRAME
+locked D-01 OUT of this cycle — a PK17 instance where step-4 SCOPE was
+itself corrected by observation (D-01 = parser-wide refactor, not the
+bounded fixpoint CONTEXT assumed); the cheap D-01-independent classes
+shipped while D-01 got its own phase.
+
+**Common violation (20-16 instance):** the maintainer classifier's
+first-match ordering binned `-7LU6zgzViSM` as #143 when its real
+blocker is a D-02 arrow-fn `.layer(x=>…)`. Lesson: a step-2 class label
+is a HEURISTIC triage signal, not ground truth — confirm the actual
+blocker by parsing the isolated shape before treating a re-measure
+class count as a regression.
+
+**REF:** PK16 (the no-`$:` parse pipeline these gap classes live in),
+PV49 (shared-walker substrate the fixes route through), P67 (Code
+tri-state — "structured" classifier must count Code-with-`via` as
+structured, bare-Code-`via===undefined` as fallback);
+`packages/app/scripts/parity-bakery.mjs`,
+`packages/app/tests/parity-corpus/`. Ground Truth:
+20-15-SUMMARY.md, 20-16-SUMMARY.md, 20-16-OBSERVATIONS.md,
+memory/project_phase_20_musician_timeline.md
+(the 20-14 Bakery reality check + 20-15 measured 72% + 20-16 80%).

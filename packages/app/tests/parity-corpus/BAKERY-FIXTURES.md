@@ -1,4 +1,4 @@
-# Bakery Regression Fixtures — the 6 closed parser-gap classes
+# Bakery Regression Fixtures — closed parser-gap classes (20-15 + 20-16)
 
 These `bakery-*.strudel` files are **NOT** upstream `tunes.mjs` exports
 (unlike the 16 curated tunes documented in `CORPUS-SOURCE.md`). They are
@@ -25,6 +25,41 @@ opaque `Code(BARE-FALLBACK)`).
 | `bakery-G4-comment-args.strudel` | G4 — comment-only lines between `stack()` args | [#137](https://github.com/MrityunjayBhardwaj/stave-code/issues/137) | issue #137 minimal repro | `Stack[Play, Play]`, not `Stack[Code, Code]` |
 | `bakery-G5-named-label.strudel` | G5 — `name: pattern` named-label syntax | [#138](https://github.com/MrityunjayBhardwaj/stave-code/issues/138) | issue #138 minimal repro | `Track(trackId='p1', …)` structured |
 | `bakery-132-recursive-args.strudel` | #132 — recursive mini+chain inside `note`/`n`/`s` args | [#132](https://github.com/MrityunjayBhardwaj/stave-code/issues/132) · arpoon | issue #132 minimal repro (β-2 verify form) | structured `Fast`/`LastOf` over `Play`, not Code |
+
+### Phase 20-16 fixtures (#142–#144 + #148/#150/#151/#152 segmenter)
+
+Phase 20-16 (REFRAMED): Wave 0 (#148/#150/#151/#152 — the
+`splitTopLevelStatements` ASI/comment-aware segmenter, shipped on this
+branch at commit `ff93c65`) + Wave B (#142 fixture-only / #143 classifier)
++ Wave C (#144 paren-string root arm). D-01 (#140/#141 binding resolution)
+was REMOVED from 20-16 and deferred to Phase 20-17, so there is **no**
+`bakery-140-binding-transitive` fixture in this phase.
+
+**Provenance note (20-15 V-2 lesson):** the named Bakery hashes
+(`-P398OK_eprf` #142, `-7LU6zgzViSM` #143, `--cHhfOZ6ON1` #144) are NOT
+in the local V-1 file — the `gh issue view N` **issue body** is the
+verbatim ground-truth fixture source (a paraphrase silently substitutes
+a working form; PV49 alias corollary). The #148/#150/#151/#152 fixtures
+are minimal distillations of the Task-1 `--LsnlgQ6osk` segmenter slice
+recorded in `20-16-OBSERVATIONS.md` (the 4-gap segmenter map).
+
+| Fixture | Gap | Issue | Repro source | Asserts |
+|---|---|---|---|---|
+| `bakery-148-leading-dot-chain.strudel` | #148 — leading-dot multi-line method-chain continuation split by the segmenter | [#148](https://github.com/MrityunjayBhardwaj/stave-code/issues/148) · Bakery `--LsnlgQ6osk` (not local) | Task-1 `--LsnlgQ6osk` segmenter slice (20-16-OBSERVATIONS) | structured `Code`-with-`via` chain off `sound(...)`, not bare Code |
+| `bakery-150-eq-continuation.strudel` | #150 — `const x =\n  rhs` (`=`-terminated line is not a JS stmt boundary) | [#150](https://github.com/MrityunjayBhardwaj/stave-code/issues/150) · Bakery `--LsnlgQ6osk` (not local) | Task-1 segmenter slice (20-16-OBSERVATIONS) | `Stack` over the bound voices, not whole-program Code |
+| `bakery-151-comment-only.strudel` | #151 — a `// comment` on its own physical line became a phantom statement | [#151](https://github.com/MrityunjayBhardwaj/stave-code/issues/151) · Bakery `-L13nBhrqGR_` (not local) | Task-1 segmenter slice (20-16-OBSERVATIONS) | `Stack` over the bound voices, not whole-program Code |
+| `bakery-152-block-comment.strudel` | #152 — `/* … */` block comment not skipped → depth-0 `\n` inside it flushed | [#152](https://github.com/MrityunjayBhardwaj/stave-code/issues/152) · Bakery `-LHtBlF8peGC` (not local) | Task-1 segmenter slice (20-16-OBSERVATIONS) | `Stack` over the bound voices, not whole-program Code |
+| `bakery-142-samples-objlit.strudel` | #142 — `samples({…})` object-literal / `github:`/`https:` boot arg | [#142](https://github.com/MrityunjayBhardwaj/stave-code/issues/142) · Bakery `-P398OK_eprf` (not local) | **verbatim `gh issue view 142` body** | `s("o0 o1")` Seq structured (the existing depth walker already strips it — B-1 OQ2 = fixture-only, NO code change) |
+| `bakery-143-guarded-boot.strudel` | #143 — `typeof X !== 'undefined' && X(...)` guarded boot expr | [#143](https://github.com/MrityunjayBhardwaj/stave-code/issues/143) · Bakery `-7LU6zgzViSM` (not local) | **verbatim `gh issue view 143` body** | guard line stripped, `stack( s("bd") )` → structured Play (B-2 `GUARDED_BOOT_RE`) |
+| `bakery-144-paren-root.strudel` | #144 — `("…")` parenthesized-string root + leading-dot chain | [#144](https://github.com/MrityunjayBhardwaj/stave-code/issues/144) · Bakery `--cHhfOZ6ON1` (not local) | **verbatim `gh issue view 144` body** | structured `Code`-with-`via` chain off the parsed mini root (C-1 `parenStrMatch` arm) |
+
+**parity-refresh exclusion:** `parity-refresh.mjs` TARGETS is upstream-only
+by construction and has a structural guard (`parity-refresh.mjs:70-75`)
+that **throws** if any `bakery-*` slug leaks into TARGETS. The 7 new
+fixtures are excluded automatically by NOT being added to TARGETS — no
+edit to the script is needed (the guard IS the enforcement; adding the
+fixtures would trip it). The upstream-drift tool therefore never reports
+these vendored repros as "missing upstream".
 
 ### Per-setter G2 fixtures (V-3 — α-1 → V-3 contract)
 
