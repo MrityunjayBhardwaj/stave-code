@@ -1,0 +1,4 @@
+const beat = sound("bd sd")
+   .gain(0.4)
+   .clip(1)
+stack(beat)

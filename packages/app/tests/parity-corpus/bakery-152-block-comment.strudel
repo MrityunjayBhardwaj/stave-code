@@ -1,0 +1,8 @@
+const chordProgression = "<Gsus G7 Em7 D7>"
+/* arp keys
+   over the progression */
+const scales = "<C:major D:minor>"
+stack(
+  note(chordProgression),
+  note(scales),
+)

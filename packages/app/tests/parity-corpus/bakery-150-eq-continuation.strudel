@@ -1,0 +1,4 @@
+const harm2 =
+  "<Gsus G7 Em7 D7>"
+const beat = sound("bd sd")
+stack(beat, harm2)

@@ -1,0 +1,2 @@
+samples({ o0: 'samples/ocean/ocean_00.wav', o1: 'samples/ocean/ocean_01.wav' })
+s("o0 o1")
