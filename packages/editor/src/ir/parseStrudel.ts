@@ -158,6 +158,39 @@ export function stripParserPrelude(code: string): { body: string; offset: number
   const PRELUDE_CALL_RE =
     /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/
 
+  // #143 (20-15 V-1 backlog) — SECOND line classifier: a guarded boot
+  // side-effect of the defensive idiom
+  // `typeof X !== 'undefined' && X(...)` (sample `-7LU6zgzViSM`,
+  // "Doubly-Linked Liszt"). It is NOT matched by PRELUDE_CALL_RE (the
+  // line starts with `typeof`, not a recognised call name). This is a
+  // RECOGNITION extension only (issue #143 scope — explicitly NOT
+  // evaluation): once the line is classified as prelude, the EXISTING
+  // multi-line depth walker (pS:~205) consumes the `&& X(...)` call to
+  // depth 0 UNCHANGED — the walker only needs `sawOpenParen` + a
+  // depth-0 close, which `X(...)` provides; the leading
+  // `typeof X !== '…' &&` is plain non-paren/non-brace text the walker
+  // already walks past.
+  //
+  // R2 ANTI-DRIFT (mandatory, mirrors the PRELUDE_CALL_RE provenance
+  // block above): this guarded-boot idiom is a HAND-MAINTAINED skip
+  // shape — there is NO programmatic cross-ref (the upstream Bakery
+  // corpus is not vendored). The anti-drift mechanism is (a) this
+  // comment + the Codeberg pin SHA f73b395648645aabe699f91ba0989f35a6fd8a3c
+  // (same SHA as packages/app/tests/parity-corpus/CORPUS-SOURCE.md) and
+  // (b) the per-shape CI fixture `bakery-143-guarded-boot.strudel`
+  // (task V-2). The shape mirrors the V-1 classifier
+  // `_bakery-classify.spec.ts:53` (`typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&`)
+  // so the recogniser and the classifier stay in lockstep.
+  //
+  // PV49 R1 DIVERGENCE (deliberate): this is a LINE classifier — it is
+  // intentionally NOT routed through `skipWhitespaceAndLineComments`
+  // (the inter-token walker primitive), exactly the same structural
+  // class as the existing `PRELUDE_CALL_RE` whole-line skip. The PV49
+  // primitive governs inter-ELEMENT scanning; whole-line prelude
+  // classification is a different (R1-divergent) concern.
+  const GUARDED_BOOT_RE =
+    /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/
+
   let i = 0
   while (i < code.length) {
     // Walk to end of current line (exclusive of '\n').
@@ -179,7 +212,11 @@ export function stripParserPrelude(code: string): { body: string; offset: number
     }
 
     // 3. Top-level recognised prelude call — possibly multi-line.
-    if (PRELUDE_CALL_RE.test(line)) {
+    //    Either a direct boot call (PRELUDE_CALL_RE) OR the #143
+    //    guarded-boot idiom `typeof X !== 'undefined' && X(...)`
+    //    (GUARDED_BOOT_RE). Both route into the SAME unchanged depth
+    //    walker — recognition widens, the consume mechanism does not.
+    if (PRELUDE_CALL_RE.test(line) || GUARDED_BOOT_RE.test(line)) {
       // Track paren/brace/bracket depth + string state from the line start,
       // advancing across newlines until depth returns to zero AT THE END
       // OF A LINE whose final non-ws char is `)` (allow trailing `;`).

@@ -4381,6 +4381,7 @@ function wrapAsOpaque(inner, method, args2, callSiteRange) {
 }
 function stripParserPrelude(code) {
   const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
+  const GUARDED_BOOT_RE = /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/;
   let i2 = 0;
   while (i2 < code.length) {
     let lineEnd = code.indexOf("\n", i2);
@@ -4395,7 +4396,7 @@ function stripParserPrelude(code) {
       i2 = lineEnd + 1;
       continue;
     }
-    if (PRELUDE_CALL_RE.test(line2)) {
+    if (PRELUDE_CALL_RE.test(line2) || GUARDED_BOOT_RE.test(line2)) {
       let j = i2;
       let depth = 0;
       let inString = false;
@@ -4467,8 +4468,11 @@ function splitTopLevelStatements(body2, baseOffset) {
   const flush = (end) => {
     const raw = body2.slice(segStart, end);
     if (raw.trim().length > 0) {
-      const lead = raw.length - raw.trimStart().length;
-      out2.push({ text: raw.trim(), offset: baseOffset + segStart + lead });
+      const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((line2) => line2.replace(/\/\/.*$/, "")).join("\n").trim();
+      if (stripped.length > 0) {
+        const lead = raw.length - raw.trimStart().length;
+        out2.push({ text: raw.trim(), offset: baseOffset + segStart + lead });
+      }
     }
     segStart = end + 1;
   };
@@ -4489,6 +4493,12 @@ function splitTopLevelStatements(body2, baseOffset) {
       while (i2 < body2.length && body2[i2] !== "\n") i2++;
       continue;
     }
+    if (ch === "/" && body2[i2 + 1] === "*") {
+      i2 += 2;
+      while (i2 < body2.length && !(body2[i2] === "*" && body2[i2 + 1] === "/")) i2++;
+      if (i2 < body2.length) i2 += 2;
+      continue;
+    }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
@@ -4505,7 +4515,23 @@ function splitTopLevelStatements(body2, baseOffset) {
       i2++;
       continue;
     }
-    if (depth === 0 && (ch === ";" || ch === "\n")) {
+    if (depth === 0 && ch === ";") {
+      flush(i2);
+      i2++;
+      continue;
+    }
+    if (depth === 0 && ch === "\n") {
+      const peek = skipWhitespaceAndLineComments(body2, i2 + 1);
+      if (body2[peek] === ".") {
+        i2++;
+        continue;
+      }
+      let k = i2 - 1;
+      while (k >= segStart && /\s/.test(body2[k])) k--;
+      if (k >= segStart && body2[k] === "=") {
+        i2++;
+        continue;
+      }
       flush(i2);
       i2++;
       continue;
@@ -24342,34 +24368,14 @@ var ProgramBuilder = class _ProgramBuilder {
     }
     const fxRef = this.nextRef++;
     this._lastRef = fxRef;
-    const inner = new _ProgramBuilder(this.rng.next() * 4294967295);
-    inner.currentSynth = this.currentSynth;
-    inner.densityFactor = this.densityFactor;
-    inner._argBpmScaling = this._argBpmScaling;
-    inner._transpose = this._transpose;
-    inner._synthDefaults = { ...this._synthDefaults };
-    inner._sampleDefaults = { ...this._sampleDefaults };
-    inner._iterationStartAudioTime = this._iterationStartAudioTime;
-    inner._currentBuildSeconds = this._currentBuildSeconds;
-    inner._currentBeat = this._currentBeat;
-    inner._schedAheadTime = this._schedAheadTime;
+    const inner = this.forkBuilder("same-thread");
     fn(inner, fxRef);
     const fxOpts = !this._argBpmScaling ? { ...opts, _argBpmScaling: 0 } : opts;
     this.steps.push({ tag: "fx", name: name2, opts: fxOpts, body: inner.build(), nodeRef: fxRef });
     return this;
   }
   in_thread(buildFn) {
-    const inner = new _ProgramBuilder(this.rng.next() * 4294967295);
-    inner.currentSynth = this.currentSynth;
-    inner.densityFactor = this.densityFactor;
-    inner._argBpmScaling = this._argBpmScaling;
-    inner._transpose = this._transpose;
-    inner._synthDefaults = { ...this._synthDefaults };
-    inner._sampleDefaults = { ...this._sampleDefaults };
-    inner._iterationStartAudioTime = this._iterationStartAudioTime;
-    inner._currentBuildSeconds = this._currentBuildSeconds;
-    inner._currentBeat = this._currentBeat;
-    inner._schedAheadTime = this._schedAheadTime;
+    const inner = this.forkBuilder("forked");
     buildFn(inner);
     this.steps.push({ tag: "thread", body: inner.build() });
     return this;
@@ -24378,18 +24384,43 @@ var ProgramBuilder = class _ProgramBuilder {
     for (let i2 = 0; i2 < times.length; i2++) {
       const offset = times[i2];
       const val = values2 ? values2[i2 % values2.length] : i2;
-      const inner = new _ProgramBuilder(this.rng.next() * 4294967295);
-      inner.currentSynth = this.currentSynth;
-      inner.densityFactor = this.densityFactor;
-      inner._argBpmScaling = this._argBpmScaling;
-      inner._transpose = this._transpose;
-      inner._synthDefaults = { ...this._synthDefaults };
-      inner._sampleDefaults = { ...this._sampleDefaults };
+      const inner = this.forkBuilder("forked");
       if (offset > 0) inner.sleep(offset);
       buildFn(inner, val);
       this.steps.push({ tag: "thread", body: inner.build() });
     }
     return this;
+  }
+  /**
+   * Single source of truth for which per-thread / per-build state threads into
+   * a nested block's sub-builder. Replaces three hand-maintained copies that
+   * had drifted (#343). Desktop SP semantics (ref/sources/desktop-sp):
+   *  - 'same-thread' (with_fx): no thread fork → ALL thread-locals continue,
+   *    including the tick map and the random STREAM, shared by reference.
+   *  - 'forked' (in_thread / at): forks a thread → inherits a SNAPSHOT of
+   *    thread-locals but gets a FRESH tick scope and a RE-SEEDED rng
+   *    (runtime.rb:1062-1067 only re-seeds on a new thread).
+   */
+  forkBuilder(mode) {
+    const inner = mode === "forked" ? new _ProgramBuilder(this.rng.next() * 4294967295) : new _ProgramBuilder();
+    inner.currentSynth = this.currentSynth;
+    inner.densityFactor = this.densityFactor;
+    inner._argBpmScaling = this._argBpmScaling;
+    inner._transpose = this._transpose;
+    inner._synthDefaults = { ...this._synthDefaults };
+    inner._sampleDefaults = { ...this._sampleDefaults };
+    inner._currentBpm = this._currentBpm;
+    inner._oscHost = this._oscHost;
+    inner._oscPort = this._oscPort;
+    inner._iterationStartAudioTime = this._iterationStartAudioTime;
+    inner._currentBuildSeconds = this._currentBuildSeconds;
+    inner._currentBeat = this._currentBeat;
+    inner._schedAheadTime = this._schedAheadTime;
+    if (mode === "same-thread") {
+      inner.ticks = this.ticks;
+      inner.rng = this.rng;
+    }
+    return inner;
   }
   live_audio(name2, optsOrStop, maybeOpts) {
     if (optsOrStop === "stop") {
@@ -26659,6 +26690,26 @@ var _SuperSonicBridge = class _SuperSonicBridge {
         })
       )
     );
+  }
+  /**
+   * Preload ONE synth synthdef binary, REJECTING on failure. The
+   * non-swallowing counterpart to `preloadFxSynthDefs` — the #318/#323
+   * pre-Run preflight needs a truthful per-name pass/fail so it can block
+   * Run (or surface it) instead of the SP5 silent-drop-at-/s_new. Pass the
+   * synth name WITHOUT prefix ('saw', 'prophet'); `ensureSynthDefLoaded`
+   * adds `sonic-pi-`. Safe only because #320 fixed the reject-leak — a
+   * failed preflight no longer poisons the later real /s_new.
+   */
+  preloadSynth(name2) {
+    return this.ensureSynthDefLoaded(name2);
+  }
+  /**
+   * Preload ONE FX synthdef binary, REJECTING on failure (see
+   * `preloadSynth`). Pass the FX name WITHOUT prefix ('reverb', 'echo') —
+   * `sonic-pi-fx_` is added here to match `preloadFxSynthDefs`'s contract.
+   */
+  preloadFx(name2) {
+    return this.ensureSynthDefLoaded(`sonic-pi-fx_${name2}`);
   }
   ensureSynthDefLoaded(name2) {
     const fullName = name2.startsWith("sonic-pi-") ? name2 : `sonic-pi-${name2}`;
@@ -31713,6 +31764,68 @@ function formatFriendlyError(fe) {
 ${fe.message}`;
 }
 
+// ../../../sonicPiWeb/src/engine/ComponentScan.ts
+function stripComments(code) {
+  const withoutBlocks = code.replace(/^=begin\b[\s\S]*?^=end\b.*$/gm, "");
+  return withoutBlocks.split("\n").map((line2) => {
+    for (let i2 = 0; i2 < line2.length; i2++) {
+      if (line2[i2] === "#" && line2[i2 + 1] !== "{") return line2.slice(0, i2);
+    }
+    return line2;
+  }).join("\n");
+}
+var NAME = "([a-zA-Z_][a-zA-Z0-9_]*)";
+var PATTERNS = [
+  ["samples", new RegExp(`\\bsample\\s*\\(?\\s*[:"']${NAME}`, "g")],
+  ["synths", new RegExp(`\\buse_synth\\s*\\(?\\s*[:"']${NAME}`, "g")],
+  ["synths", new RegExp(`\\bsynth\\s*\\(?\\s*[:"']${NAME}`, "g")],
+  ["fx", new RegExp(`\\bwith_fx\\s*\\(?\\s*[:"']${NAME}`, "g")]
+];
+function scanComponentNames(code) {
+  const manifest = {
+    samples: /* @__PURE__ */ new Set(),
+    fx: /* @__PURE__ */ new Set(),
+    synths: /* @__PURE__ */ new Set()
+  };
+  const src = stripComments(code);
+  for (const [bucket, re] of PATTERNS) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      manifest[bucket].add(bucket === "synths" ? resolveSynthName(m[1]) : m[1]);
+    }
+  }
+  return manifest;
+}
+
+// ../../../sonicPiWeb/src/engine/ComponentResolver.ts
+function isCustomSampleName(name2) {
+  return name2.startsWith("user_");
+}
+async function resolveComponentManifest(manifest, loaders) {
+  const hardMisses = [];
+  const warnings = [];
+  const settle = async (name2, loader, kind) => {
+    try {
+      await loader(name2);
+    } catch {
+      if (kind === "sample" && isCustomSampleName(name2)) {
+        warnings.push(name2);
+      } else {
+        hardMisses.push(name2);
+      }
+    }
+  };
+  await Promise.all([
+    ...[...manifest.samples].map((n) => settle(n, loaders.sample, "sample")),
+    ...[...manifest.fx].map((n) => settle(n, loaders.fx, "fx")),
+    ...[...manifest.synths].map((n) => settle(n, loaders.synth, "synth"))
+  ]);
+  hardMisses.sort();
+  warnings.sort();
+  return { hardMisses, warnings };
+}
+
 // ../../../sonicPiWeb/src/engine/Stratum.ts
 function detectStratum(code) {
   const joined = code.replace(/\/\/.*$/gm, "");
@@ -32452,6 +32565,7 @@ async function loadAllCustomSamples() {
 
 // ../../../sonicPiWeb/src/engine/SonicPiEngine.ts
 var CLAMP_WARN_RE = /clamped to .+ \((min|max)\)$/;
+var PREFLIGHT_TIMEOUT_MS = 5e3;
 var randomSuffix = () => Math.random().toString(36).slice(2, 6);
 var SonicPiEngine = class {
   constructor(options) {
@@ -32642,6 +32756,42 @@ var SonicPiEngine = class {
       this.currentStratum = detectStratum(code);
       this.warnDedup.clear();
       if (!isReEvaluate) {
+        if (this.bridge) {
+          const manifest = scanComponentNames(code);
+          let timer;
+          const timeout = new Promise((resolve) => {
+            timer = setTimeout(() => resolve("timeout"), PREFLIGHT_TIMEOUT_MS);
+          });
+          const resolved = await Promise.race([
+            resolveComponentManifest(manifest, {
+              sample: (n) => this.bridge.preloadSample(n),
+              synth: (n) => this.bridge.preloadSynth(n),
+              fx: (n) => this.bridge.preloadFx(n)
+            }),
+            timeout
+          ]);
+          if (timer) clearTimeout(timer);
+          if (resolved === "timeout") {
+            if (this.printHandler) {
+              this.printHandler(
+                "[Warning] component preflight timed out \u2014 starting anyway; any missing sounds will load when available"
+              );
+            }
+          } else {
+            const { hardMisses, warnings } = resolved;
+            for (const w of warnings) {
+              if (this.printHandler) {
+                this.printHandler(
+                  `[Warning] sample :${w} isn't loaded yet \u2014 it will play once registered`
+                );
+              }
+            }
+            if (hardMisses.length > 0) {
+              const list = hardMisses.map((n) => `:${n}`).join(", ");
+              return { error: new Error(`Couldn't load: ${list}`) };
+            }
+          }
+        }
         if (this.scheduler) {
           this.scheduler.dispose();
         }
@@ -33770,7 +33920,6 @@ var SonicPiEngine = class {
     this.loopTicks.clear();
     this.loopBeats.clear();
     this.loopSynced.clear();
-    this.globalStore.clear();
     this.definedFns.clear();
     this.defonceCache.clear();
     for (const state4 of this.persistentFx.values()) {
