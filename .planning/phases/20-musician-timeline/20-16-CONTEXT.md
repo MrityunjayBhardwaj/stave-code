@@ -1,15 +1,46 @@
 ---
 phase: 20-16
 created: 2026-05-18
+revised: 2026-05-18 (Task-1 gate finding — resequenced segmenter-first)
 decisions: 3
 closes: ["#140", "#141", "#142", "#143", "#144"]
-spun_out: ["#147"]
+new_predecessor: ["#148"]
+spun_out: ["#147", "#149"]
 upstream_pin_sha: f73b395648645aabe699f91ba0989f35a6fd8a3c
 baseline_parity: "72.0% (36/50, N=50, 2026-05-15T23-13-07Z, sha f73b3956)"
 gate: verification-wave-passed
 ---
 
 # Phase 20-16 Context — close the next Bakery parser-gap classes (#140–#144)
+
+## GATE FINDING (2026-05-18, locked fact — corrects the dominant-blocker framing)
+
+The Task-1 Lokāyata HARD GATE ran the D-01 prototype against the 6
+measured #141 repros (commit `f54bb6b`, verbatim output in
+`20-16-OBSERVATIONS.md`) and **falsified the original framing by direct
+observation**: the dominant 6/14 #141 class does NOT bail at the
+opaque-RHS fence on transitive bindings. It bails UPSTREAM —
+`splitTopLevelStatements` (`parseStrudel.ts:346`) flushes on every
+depth-0 `\n`, so a leading-dot multi-line chain continuation
+(`const beat=sound(rp1)\n .gain(...)`) becomes a phantom statement and
+`buildBindingMap`'s shape fence (pS:395-398) bails the whole program
+**before the binding loop runs**. 4/6 repros never reach D-01.
+
+**Consequence — resequence, NOT redesign. D-01/D-02/D-03 are UNCHANGED.**
+- **Wave A is now #148** (NEW issue): make `splitTopLevelStatements`
+  ASI/line-continuation aware — at a depth-0 `\n`, peek past
+  whitespace + `//` via the existing PV49 `skipWhitespaceAndLineComments`
+  primitive (pS:730 — do NOT hand-roll, per PV49); if the next non-ws
+  token is `.`, it is a chain continuation, do NOT flush. Recognition
+  only, stays a matcher. Orthogonal to bindings, testable in isolation.
+- **Wave B is now D-01** (#140/#141, the design below, UNCHANGED) —
+  re-gated: re-run the preserved prototype (`/tmp/proto-d01-fixpoint.spec.ts`)
+  AFTER #148 lands to OBSERVE whether the 4 then reach + pass the
+  fixpoint. D-01's payoff is only measurable post-#148.
+- **Wave C / Verification** unchanged (#142/#143 strip, #144 root).
+- **#149** (NEW, backlog, D-03 discipline): `note(\`template\`)` root +
+  `.cpm(binding)` for `-72eEl7NwK9e`/`-1j62z5xjyCN` — measure frequency
+  AFTER #148+D-01 (PK17: no circular re-measure on stale samples).
 
 This phase is a **PK17 instance** (friction-first parity-hardening cycle:
 measure real-world → classify → fix highest-frequency → re-measure →
