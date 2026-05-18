@@ -305,8 +305,22 @@ function splitTopLevelStatements(
   const flush = (end: number): void => {
     const raw = body.slice(segStart, end)
     if (raw.trim().length > 0) {
-      const lead = raw.length - raw.trimStart().length
-      out.push({ text: raw.trim(), offset: baseOffset + segStart + lead })
+      // #151 / #152: strip `/* … */` blocks AND `//` line-comments from
+      // the segment's residue; if nothing executable remains, skip.
+      // Prevents comment-only physical lines (and trailing `/* … */`
+      // blocks left between real statements) from becoming phantom
+      // statements after a depth-0 `\n` flush. Inline trailing `// …`
+      // on a code line is unaffected (the line's residue is the code).
+      const stripped = raw
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, ''))
+        .join('\n')
+        .trim()
+      if (stripped.length > 0) {
+        const lead = raw.length - raw.trimStart().length
+        out.push({ text: raw.trim(), offset: baseOffset + segStart + lead })
+      }
     }
     segStart = end + 1
   }
@@ -327,6 +341,15 @@ function splitTopLevelStatements(
       while (i < body.length && body[i] !== '\n') i++
       continue
     }
+    if (ch === '/' && body[i + 1] === '*') {
+      // #152: skip `/* … */` block comments (the segmenter walked their
+      // content as code before, so any depth-0 `\n` inside the block
+      // flushed). Mirror of the `//` skip's structure.
+      i += 2
+      while (i < body.length && !(body[i] === '*' && body[i + 1] === '/')) i++
+      if (i < body.length) i += 2 // consume the closing `*/`
+      continue
+    }
     if (ch === '"' || ch === "'" || ch === '`') {
       inString = true
       stringChar = ch
@@ -343,7 +366,37 @@ function splitTopLevelStatements(
       i++
       continue
     }
-    if (depth === 0 && (ch === ';' || ch === '\n')) {
+    if (depth === 0 && ch === ';') {
+      // Explicit JS terminator — always flush (ASI: `;` ends the
+      // statement even when the next non-ws char is `.`).
+      flush(i)
+      i++
+      continue
+    }
+    if (depth === 0 && ch === '\n') {
+      // ASI / line-continuation aware (#148, PK16 stage-0.5 input).
+      // Two cases suppress the depth-0 `\n` flush; both are recognition
+      // only (matcher line, no eval):
+      //   (a) #148 forward-peek for `.` — leading-dot multi-line method
+      //       chain continuation (`sound("x")\n  .gain(...)`). Peek past
+      //       whitespace + `//` line-comments via the PV49 primitive.
+      //   (b) #150 backward-peek for `=` — binding RHS on next line
+      //       (`const harm2 = \n  chords2.voicings(...)`). `=` is not a
+      //       JS statement terminator. Skip backward over whitespace;
+      //       if the last non-ws char is `=`, do NOT flush.
+      // Either suppression: do not flush, keep walking; the segment
+      // accumulates across the physical line break.
+      const peek = skipWhitespaceAndLineComments(body, i + 1)
+      if (body[peek] === '.') {
+        i++
+        continue
+      }
+      let k = i - 1
+      while (k >= segStart && /\s/.test(body[k])) k--
+      if (k >= segStart && body[k] === '=') {
+        i++
+        continue
+      }
       flush(i)
       i++
       continue
