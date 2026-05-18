@@ -437,3 +437,39 @@ offset=0    body=<<<typeof setDefaultVoicings… [UNCHANGED]>>>  parseStrudel �
 Observation mechanism: a throwaway `tests/parity-corpus/_probe-b1.test.ts`
 (deleted post-observation) using the proven `../../../editor/src/ir/parseStrudel`
 deep-path import — byte-identical parser to CI. No source modified.
+
+---
+
+# VERIFICATION WAVE — V-1 FRESH RE-MEASURE (2026-05-18, PK17 step 6)
+
+**Fresh real-world parity = 80.0% (40 structured / 50, N=50).**
+- Stamp: `2026-05-18T14-34-02-237Z` (≠ baseline `2026-05-15T23-13-07Z` —
+  PK17-valid: a FRESH live Supabase pull, NOT the V-1 file Task-1
+  prototyped against; circular-measurement pre-mortem mitigated).
+- Upstream pin SHA: `f73b395648645aabe699f91ba0989f35a6fd8a3c` (unchanged
+  Codeberg pin — parity-bakery.mjs resolves the `code_v1` column at this
+  SHA; same SHA as CORPUS-SOURCE.md).
+- N = 50. Script exited 0, made no commits, is in no CI job.
+- **Baseline comparison: 72.0% → 80.0% = +8.0 pp.** Materially above the
+  72.0% / N=50 / f73b3956 / 2026-05-15 baseline (PASS criterion met).
+- 20-15 stress baseline (the script's own footer ref): 4/10 = 40.0%.
+- Artifact (gitignored, dated/SHA'd):
+  `.bakery-runs/{samples,result}-2026-05-18T14-34-02-237Z.json`.
+
+## The 10 Code-fallbacks — classified (D-03: NOT fixed this phase)
+
+| class | count | disposition |
+|---|---|---|
+| #141 binding ref outside stack()-bare-arg | 8 | D-01 — REMOVED to Phase 20-17 (REFRAME). Already filed #140/#141. OUT of 20-16 scope by design. |
+| #143-binned (`-7LU6zgzViSM`) | 1 | NOT a #143-strip regression. B-2's classifier DOES strip the `typeof … && …('legacy')` guard line (proven on the isolated verbatim repro, B-2 probe). This sample has a SECOND independent blocker — `chord(...).dict("ireal").layer(x=>n(...).set(x)…)`, an ARROW-FN inside `.layer()` = KNOWN D-02 correct Code-fallback. The maintainer classifier bins it #143 only because the `typeof` regex matches first (classifier-ordering artifact, not a parser gap). No backlog issue needed beyond the existing D-02 boundary; recorded here for audit. |
+| NEW uncategorised (`-G2drHRNFueu`) | 1 | GENUINE NEW gap class → V-4 backlog issue. `sound ("hh…")\nsound ("[bd…]")` — TWO bare top-level pattern statements, no `stack`/`$:`/binding wrapper. `buildBindingMap` returns null (2 non-binding stmts ≠ "bindings then one expr") → whole-program Code. Class: **multiple sibling bare top-level pattern statements**. D-03: file, do NOT fix (phase cascaded 4×, hold the line). |
+
+## V-1 conclusion
+
+GOAL metric achieved: real-world parity materially up (72.0% → 80.0%,
++8.0 pp, N=50, dated+SHA'd, fresh pull). The 8 #141 fallbacks are the
+deliberately-deferred D-01 class (20-17). One genuine NEW class
+(`-G2drHRNFueu`, multiple bare top-level statements) → V-4 backlog
+issue. The `-7LU6zgzViSM` #143-bin is a classifier-ordering artifact
+over a real D-02 arrow-fn boundary (correct Code-fallback), not a
+regression — B-2 verified-correct on the isolated repro.
