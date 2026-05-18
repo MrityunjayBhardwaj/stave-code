@@ -366,3 +366,74 @@ D-01 is bigger than CONTEXT scoped. Options:
 - **(C) Minimal D-01 (G1+G2 only, skip G3/G4)** — closes `--LsnlgQ6osk`-like chain-arg/root-ident cases but NOT `-LHtBlF8peGC` (needs G3+G4). Partial, but bigger than γ-3. Re-gate to measure exactly which repros it moves.
 
 Wave 0 remains shipped on-branch (committed ff93c65). No D-01 source written.
+
+---
+
+# WAVE B — Task B-1 OQ2 OBSERVATION (2026-05-18, REFRAMED scope)
+
+**OQ2 DECISION: #142 needs NO code change — FIXTURE-ONLY.** Established by
+direct observation of the EXISTING `stripParserPrelude` (pS:126) run via
+vite-node against the VERBATIM issue-body repros, NOT by inference.
+
+## Cited verbatim from `gh issue view 142`
+
+> 1. `samples({ o0: 'samples/ocean/ocean_00.wav', o1: ... })` — multi-line
+>    **object-literal** arg (sample `-P398OK_eprf`).
+> 2. `samples('github:yaxu/clean-breaks')` /
+>    `samples('https://raw.githubusercontent.com/...')` co-occurring with
+>    `var cpm=30; stack(...)` (samples `-1j62z5xjyCN`, `-6c1hEXe8Agi`,
+>    `-HyFCSbuSlq5`) — here the binding (#141) is the primary blocker, but
+>    the multi-line `samples(...)` prelude recognition is a secondary
+>    contributor.
+
+(Named Bakery hash `-P398OK_eprf` is NOT in the local V-1 file — the issue
+body is the ground-truth fixture source, 20-15 V-2 lesson.)
+
+## Cited verbatim from `gh issue view 143`
+
+> ```
+> typeof setDefaultVoicings !== 'undefined' && setDefaultVoicings('legacy') // ...
+> // @title ...
+> stack( ... )
+> ```
+
+(Named Bakery hash `-7LU6zgzViSM` is NOT local — issue body is ground truth.)
+
+## Verbatim `stripParserPrelude` + `parseStrudel` output (observed, not inferred)
+
+```
+--- #142 single-line objlit ---
+offset=80   body=<<<s("o0 o1")>>>                    parseStrudel → tag=Seq  via=undefined
+--- #142 multi-line objlit ---
+offset=84   body=<<<s("o0 o1")>>>                    parseStrudel → tag=Seq  via=undefined
+--- #142 samples('github:…') ---
+offset=36   body=<<<var cpm = 30\nstack(s("bd"))>>>  parseStrudel → tag=Code via=undefined
+--- #142 samples('https://…') ---
+offset=71   body=<<<s("bd")>>>                        parseStrudel → tag=Play via=undefined
+--- #143 guarded boot ---
+offset=0    body=<<<typeof setDefaultVoicings… [UNCHANGED]>>>  parseStrudel → tag=Code via=undefined
+```
+
+## Decision
+
+- **#142 — code change needed: NO (fixture-only).** The EXISTING depth
+  walker (pS:182-250) already brace-balances the object-literal `{…}` arg
+  (single-line AND multi-line: bodies start exactly at the musical expr,
+  offsets 80/84 correct) and already consumes the `samples('github:…')` /
+  `samples('https://…')` string forms (offsets 36/71 correct; the
+  `'github:…'` residual `var cpm = 30` Code-fallback is the #141 binding
+  blocker — D-01, REMOVED to 20-17 per REFRAME — NOT a #142 strip gap).
+  `samples` is already in `PRELUDE_CALL_RE` (pS:159); the multi-line depth
+  walker's `{`/`[`/`(` tracking (pS:214-220) is shape-agnostic, so the
+  object-literal arg was always consumed. #142's "secondary contributor"
+  is closed by the existing walker; B-2 vendors a regression fixture only.
+- **#143 — code change needed: YES (always, per plan).** offset=0, body
+  UNCHANGED, `parseStrudel → tag=Code via=undefined`: the
+  `typeof X !== 'undefined' && X(...)` line is NOT matched by
+  `PRELUDE_CALL_RE` (line starts with `typeof`, not a recognised call) →
+  the whole program falls to Code-fallback even though `stack( s("bd") )`
+  is fully parseable. B-2 adds the second line-classifier.
+
+Observation mechanism: a throwaway `tests/parity-corpus/_probe-b1.test.ts`
+(deleted post-observation) using the proven `../../../editor/src/ir/parseStrudel`
+deep-path import — byte-identical parser to CI. No source modified.
