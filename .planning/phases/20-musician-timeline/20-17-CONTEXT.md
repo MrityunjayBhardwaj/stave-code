@@ -184,3 +184,56 @@ blocking. Do not lower the bar.
 - Post-merge artifact verification (not the badge): `git merge-base --is-ancestor <PR-head> main` exit 0; HEAD==merge; code grep present on main's `dist`; editor 1564 + parity-corpus & loc-fidelity baselines hold (grown if fixtures added).
 - AnviDev manual-issue-close lesson (20-15/20-16): GitHub honours only one `closes #N` per keyword in the PR body — manually close any additional issues on merge.
 - Cognitive OS as needed; the gate cascade discipline (observation over inference, STOP on framing-falsification) carries forward.
+
+## D-02 CORRECTION (2026-05-19 — supersedes the original D-02 above)
+
+The plan-checker (PASS-gate) proved the original D-02 mechanism
+**unconstructible as stated**: `Code.via` (PatternIR.ts:99-105) is
+specifically the `wrapAsOpaque` shape `{ method, args, callSiteRange,
+inner: PatternIR }` — a literal `4` has no method/args/inner, and the
+only constructor is `wrapAsOpaque` (parseStrudel.ts). "Store as
+Code-with-via, no consumer ripple" was false.
+
+**Corrected D-02 (LOCKED, user decision 2026-05-19): G3 via Option 2 —
+widen the `Code.via` union with an additive literal arm.**
+
+- **Product principle (the WHY):** Strudel code IS JavaScript. Standard
+  JS literal bindings (`var numChords = 4`, `const tag = "bd"`) are
+  first-class and MUST be supported alongside standard Strudel practice.
+  G3 ships **by principle, not by measured frequency** — the
+  "measurement-gated drop G3" path is REJECTED. Re-measure still
+  happens (D-03 criterion 2 / PK17 step 6) but it does not gate G3's
+  existence.
+- **Mechanism:** extend `Code.via` to a discriminated union: the
+  EXISTING `wrapAsOpaque` arm stays **byte-unchanged** (minimize ripple
+  — do NOT add a `kind` field to it) + a NEW additive arm
+  `{ literal: true; raw: string }`. Discriminate by `'literal' in via`
+  (or `via.inner === undefined`) at the deep-walker sites only.
+- **The kept opaque fence is byte-identical:** it tests
+  `tag === 'Code' && via === undefined`. A literal sets
+  `via = { literal: true, raw }` → `via !== undefined` → already on the
+  "structured, don't bail" side with ZERO fence-code change (P67
+  tri-state preserved exactly).
+- **Constructor:** a named helper (e.g. `IR.codeLiteral(raw)` or
+  `classifyLiteralRhs`) builds `{ tag:'Code', code:raw, lang:'strudel',
+  via:{ literal:true, raw } }`. Extract it as a named function in the
+  G3 wave so the fixpoint wave can call it (resolves the checker's
+  provenance MINOR).
+- **Strict scope (matcher line held):** ONLY bare literals match —
+  `^-?\d+(\.\d+)?$` (number) | `^"[^"]*"$` | `^'[^']*'$` (plain
+  string). `4 + 1`, template-with-`${}`, any expression → NOT a literal
+  → stays bare Code → opaque fence fires correctly. Substitution of a
+  literal into `.slow(4)` is term-splicing, NEVER evaluation — inside
+  the locked Datalog-discipline matcher line.
+- **Accepted ripple budget (now IN scope, mandatory audit):** grep
+  every `via.` reader + every `tag === 'Code'` wrapper-shape assumer
+  across `packages/editor/src` + `packages/app/src`; add the literal
+  guard at each. Known suspects: `toStrudel` (round-trip MUST emit
+  `via.raw` verbatim so `.slow(numChords)` → `.slow(4)` preserves
+  code-invariance), `IRInspectorPanel` / `irProjection` deep walk,
+  `collect`. A missed site is a silent-wrong (P67) failure — the audit
+  is the phase's primary risk surface and gets its own verification.
+
+The original D-02 block above is RETAINED for provenance (the
+falsified premise + why) but is SUPERSEDED by this correction. D-01
+and D-03 are unchanged. G3 is firmly IN 20-17 scope.
