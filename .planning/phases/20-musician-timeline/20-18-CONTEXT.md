@@ -225,3 +225,68 @@ V-1 is the source of record for the 7.
   manual-close any 2nd+ issue per GitHub's 1-keyword limit).
 - Cognitive OS as needed; this phase is a P70 exemplar (the
   classification-honesty discipline is the spine).
+
+## P70 R-1 FINDING (2026-05-19 — empirical, supersedes the issue's 5/7 premise)
+
+RESEARCH R-1 ran all 7 V-1 N=50 Code-fallbacks through the PRODUCTION
+parser (observation, not inference — `/tmp/r1-classify-output.txt`).
+**The issue #155 "5/7 unbound-chain-root" is FALSE** — it came from a
+shallow text-regex auto-classifier (`_bakery-classify.spec.ts:48-62`
+binning on `/(let|const|var)\s+\w+=/` presence, not the real blocking
+construct). P70 fired exactly as the pre-mortem warned. TRUE
+distribution: **genuine chain-root/builder class ≈ 3/7** — #1
+`--LsnlgQ6osk` (`az2`'s `irand`), #3 `-6c1hEXe8Agi`
+(`chord(...).voicing()`), #7 `-KLGNJUtyyj1` (`arrange(...)`). The
+other 4 are out-of-scope classes: #2 boot-stmt-then-expr, #4
+guarded-boot (#143, filed), #5 multi-top-level-expr, #6 non-Strudel
+Hydra mashup (= #156 — classified, NOT folded, correctly out of
+scope). Realistic uplift ≈ 3/50 ≈ 6pp → ~92%.
+
+**Orchestrator direct-observation correction (current main `300ca95`,
+`pnpm test:proto`):** the RESEARCH R-1/R-5 "`--LsnlgQ6osk`
+multi-blocker" framing is an ISOLATED-DESCRIPTOR-PROBE artifact
+(`sound(rp1)` standalone, `rp1` unbound). In the WHOLE-PROGRAM
+fixpoint (production path) the observed trace is
+`post-fixpoint resolved=[rp1,beat,chords2,bass,harm2] pending=[2]` —
+`beat`/`bass`/`harm2` ALL resolve; **the ONLY remaining blocker is
+`az2` (the `irand` chain-root)**. `--LsnlgQ6osk` is a CLEAN
+single-blocker reclaim once `irand`-chain-root is modelled — exactly
+as the original D-03 intended. (The planner must use the
+whole-program-fixpoint reality, NOT the isolated-probe pessimism.)
+
+## D-03 AMENDMENT (2026-05-19 — user decision; supersedes the original D-03 gate, on EVIDENCE not bar-lowering)
+
+The original D-03 `≥90.0%` crit-2 was LOCKED under the issue's
+falsified `5/7 ≈ 10%` premise (see P70 R-1 FINDING above). With the
+empirically-corrected ~3/50 closeable, `≥90%` is feasible but at
+near-zero margin; under the LOCKED no-bar-lowering contract a single
+sub-blocker (e.g. `az2`'s deep chain `irand(12).struct(...)
+.sometimesBy(perlin.range(...),...)...` whose signal-valued ARGS may
+themselves block) → multi-wave modelling work then NOT-PASS. Re-posed
+to the user (PK18 + the CONTEXT P70 directive that exists to force
+this surfacing). **User decision: Crit-1-primary, parity
+informational.**
+
+**Amended D-03 (LOCKED 2026-05-19):**
+1. **HARD GATE (crit-1):** `--LsnlgQ6osk` grounds STRUCTURED in
+   production (`parseStrudel(<verbatim repro>)` → `az2` resolves →
+   whole program `body.tag !== 'Code' || body.via !== undefined`) —
+   the clean single-blocker reclaim — **AND** permanent CI fixtures
+   for #3 (`chord(...).voicing()`, `-6c1hEXe8Agi`) and #7
+   (`arrange(...)`, `-KLGNJUtyyj1`) both ground STRUCTURED.
+2. **INFORMATIONAL (NOT a hard ≥N threshold):** fresh PK17-step-6
+   `pnpm parity:bakery --n 50` is RECORDED + tracked; it MUST NOT
+   regress below the 86.0% baseline (a regression IS a STOP), but
+   there is NO hard ≥90/≥88 pass threshold. The genuine-modelling
+   deliverable is the signal/builder IR substrate (axis-1 honesty);
+   the parity number is the honesty-check that the model is real and
+   not over-fit, not the phase goal.
+3. **No-bar-lowering still applies** to crit-1 and to the
+   must-not-regress floor: if `--LsnlgQ6osk`/#3/#7 do not ground
+   STRUCTURED, or parity regresses < 86.0%, the phase does NOT pass;
+   residual → backlog → 20-19, NEVER patched in 20-18.
+
+The original D-03 block (top of this file) is RETAINED for provenance
+but is SUPERSEDED by this amendment. D-01/D-02/D-04 unchanged. The
+distilled CI fixtures expand from one (`bakery-141-irand-chain-root`)
+to three (irand/`--LsnlgQ6osk`-faithful + chord + arrange).
