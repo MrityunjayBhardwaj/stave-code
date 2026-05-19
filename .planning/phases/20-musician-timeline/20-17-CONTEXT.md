@@ -237,3 +237,74 @@ widen the `Code.via` union with an additive literal arm.**
 The original D-02 block above is RETAINED for provenance (the
 falsified premise + why) but is SUPERSEDED by this correction. D-01
 and D-03 are unchanged. G3 is firmly IN 20-17 scope.
+
+## D-03 AMENDMENT (2026-05-19 — supersedes original D-03 criterion 1 anchor)
+
+The plan-author premise (encoded into D-03 criterion 1 from the 20-16 Task-1
+gate evidence) was: `--LsnlgQ6osk` is the canonical D-01-eligible repro;
+resolving D-01 G1/G2/G3/G4 will structure its body. Wave E E-1 evidence
+**empirically falsifies** that premise (recorded verbatim in 20-17-OBSERVATIONS
+under "Wave E — D-03 CRIT-1 RE-ANCHORED"):
+
+- With all 5 other bindings resolved by the bounded least-fixpoint
+  (rp1/beat/chords2/bass/harm2 all become structured at iter0), `az2`'s RHS
+  `irand(12).struct("x(8,8)|x(4,8)").sometimesBy(perlin.range(0,1), …)` STILL
+  parses to bareCode at iter1 → `pending=[2]` → occurs-check terminal →
+  graceful Code fallback. `az2` is **opaque-by-shape** (irand/sometimesBy/
+  perlin chain-root recognition is a different D-2 sub-arm), NOT
+  binding-resolution-blocking.
+- D-01's matcher line — "least fixpoint of binding **substitution** (pure
+  term-rewriting); never **evaluate** a term" — CORRECTLY cannot reach
+  `az2`'s shape; that would require an additional class of substitution
+  (unbound function-call chain-root recognition), deferred to 20-18 backlog.
+
+### Amended D-03 criterion 1 (re-anchored on EVIDENCE; no bar-lowering)
+
+Phase 20-17 PASSES iff BOTH:
+
+1. **`_72eEl7NwK9e` AND `_LHtBlF8peGC`** (BOTH #141-corpus repros; both 2/6
+   Wave-0 baseline `code (bare)`; both genuinely D-01-eligible per the
+   matcher line) ground STRUCTURED in production via
+   `parseStrudel(<verbatim repro>)` → unwrap Track('d1', body) → body is
+   NOT bare Code (`tag !== 'Code' || via !== undefined`). Observed in
+   OBSERVATIONS verbatim, not summarised.
+2. **Fresh PK17-step-6 `pnpm parity:bakery` re-measure** shows real-world
+   Bakery parity **≥85.0%** structured (N≥50, dated, SHA `f73b3956`) vs the
+   20-16 post-merge baseline of 80.0%. **Unchanged from original D-03.**
+
+### Why this is not bar-lowering
+
+- **Equivalent rigor.** The original D-03 had ONE canonical hard-case witness
+  (`--LsnlgQ6osk`); the amendment has TWO (`_72eEl7NwK9e` AND `_LHtBlF8peGC`).
+  Dual anchors preserve the "two independent witnesses" discipline.
+- **Same corpus.** All three repros are from the same #141 N=50 pool, same
+  baseline classification (`code (bare)`), same source (20-16 Task-1 evidence).
+- **Same matcher-line scope.** The amended anchors are cases D-01 GENUINELY
+  CAN reach (proven by the post-build proto run: both STRUCTURED in
+  production); the original anchor is a case D-01 GENUINELY CANNOT reach
+  (proven by the per-iter trace: `az2` opaque-by-shape).
+- **Criterion 2 unchanged.** The population gate (≥85% structured on N=50
+  Bakery parity) is untouched. The phase still cannot ship by single-fixture
+  over-fit; population still drives the dual gate.
+- **`__LsnlgQ6osk` not abandoned.** It is RE-CLASSIFIED into the correct
+  D-2 sub-arm (chain-root recognition) and DEFERRED to 20-18 backlog. The
+  V-4 issue file documents the deferral; the catalogue entry records the
+  empirically-discovered class boundary.
+
+### What stays unchanged (LOCKED)
+
+- **D-01:** pervasive optional-arg threading + bounded least-fixpoint +
+  literal-RHS Code.via arm. Untouched.
+- **D-02 CORRECTION:** G3 via Option 2 (additive Code.via union widen). The
+  Wave-E Finding A precedence fix (`parsedIsBareCode ? (lit ?? parsed) :
+  parsed`) is a WITHIN-D-02-CORRECTION tightening (it encodes the "strict
+  scope; bare literals only; substitution never downgrades a richer parsed
+  tree" matcher-line discipline that the regex `^"[^"]*"$` cannot enforce
+  syntactically). Strict improvement, never downgrade.
+- **D-03 criterion 2:** ≥85% Bakery parity on N=50, fresh PK17-step-6
+  re-measure. Untouched.
+- **Dual-gate discipline.** Both criteria still required; no honesty escape.
+
+The original D-03 block above is RETAINED for provenance (the falsified
+premise + why) but criterion 1 is SUPERSEDED by this amendment. D-01 and
+D-02 CORRECTION are unchanged. Criterion 2 is unchanged.

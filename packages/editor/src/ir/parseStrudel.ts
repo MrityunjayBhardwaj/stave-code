@@ -492,7 +492,21 @@ function buildBindingMap(
   const stmts = splitTopLevelStatements(body, baseOffset)
   if (stmts.length < 2) return null // need ≥1 binding + 1 final expr
 
-  const bindings = new Map<string, PatternIR>()
+  // 20-17 E-1 — descriptor list + bounded least-fixpoint.
+  //
+  // FIRST PASS (kept γ-3 fences UNCHANGED — predicates byte-identical):
+  //   - `< 2 statements` (above)
+  //   - dup-key (`bindings.has(name)` → `seen.has(name)` keyed on the
+  //     in-progress descriptor list, first-dup-wins)
+  //   - shape (`finalIdx !== stmts.length - 1`)
+  //   - BINDING_RE LHS filter
+  // Build `descs = [{ name, rhs, rhsOffset }, …]`. The RHS-absolute
+  // offset (`rhsOffset = offset + rhsStartInText`) is computed ONCE here
+  // and STORED on the descriptor — never recomputed inside the fixpoint
+  // (the 20-16 lesson: silent offset drift comes from re-basing
+  // mid-loop; the def-site arithmetic is fixed at first pass).
+  const descs: { name: string; rhs: string; rhsOffset: number }[] = []
+  const seen = new Set<string>()
   let finalIdx = -1
   for (let s = 0; s < stmts.length; s++) {
     const { text, offset } = stmts[s]
@@ -507,22 +521,73 @@ function buildBindingMap(
     const name = bm[1]
     const rhs = bm[2].trim()
     // D-02: reassignment / shadowing (duplicate name) → fallback.
-    if (bindings.has(name)) return null
+    if (seen.has(name)) return null
+    seen.add(name)
     // RHS absolute offset = statement offset + (where rhs starts in text).
     const rhsStartInText = text.length - rhs.length // bm[2] was end-anchored, then trimmed
     const rhsOffset = offset + rhsStartInText
-    const rhsIR = parseExpression(rhs, rhsOffset)
-    const rhsIsBareCode =
-      rhsIR.tag === 'Code' && (rhsIR as { via?: unknown }).via === undefined
-    // D-02: an RHS that itself parses to bare Code is opaque — do not
-    // pretend the binding is structured. Whole-program fallback.
-    if (rhsIsBareCode) return null
-    bindings.set(name, rhsIR)
+    descs.push({ name, rhs, rhsOffset })
   }
   if (finalIdx === -1) return null // all statements were bindings, no final expr
   // Everything AFTER finalIdx must NOT exist (no trailing bindings /
   // multiple final expressions — keep the shape strictly "bindings*, expr").
   if (finalIdx !== stmts.length - 1) return null
+
+  // BOUNDED LEAST-FIXPOINT (Datalog discipline: total + PTIME +
+  // order-independent + occurs-check stratified):
+  //   - Iterate up to `descs.length` times: in a non-cyclic graph each
+  //     iter resolves ≥1 new descriptor, so all resolve within N iters.
+  //   - At each iter, re-parse every pending RHS with the partially-
+  //     resolved `bindings` map. Apply D-1a's `classifyLiteralRhs`
+  //     POST-PARSE (literal-RHS arm consumes the named helper). If the
+  //     result is non-bareCode, add to `bindings` + drop from pending +
+  //     mark progress.
+  //   - Exit on `pending.size === 0` OR `!progress` (monotone — each
+  //     iter only ADDS; cycles + persistently-opaque RHSs trigger
+  //     `!progress` early exit). Belt-and-suspenders: iter-bound AND
+  //     progress-check; either alone suffices.
+  const bindings = new Map<string, PatternIR>()
+  const pending = new Set<number>(descs.map((_, i) => i))
+  for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
+    let progress = false
+    for (const i of [...pending]) {
+      const d = descs[i]
+      const parsed = parseExpression(d.rhs, d.rhsOffset, undefined, bindings)
+      // D-1a provenance: classifyLiteralRhs is the NAMED helper defined
+      // in Wave D (D-1a). E-1 consumes it POST-PARSE so a bare literal
+      // RHS becomes the structured {literal:true;raw} Code-with-via node
+      // instead of bareCode (the D-1c consumer audit guards every
+      // production via-reader against the literal arm).
+      const lit = classifyLiteralRhs(d.rhs)
+      // 20-17 E-1 precedence (within D-02 CORRECTION "strict scope; bare
+      // literals only; substitution never downgrades a richer parsed
+      // tree"). The classifyLiteralRhs regex `^"[^"]*"$` cannot
+      // syntactically distinguish a plain string from a Strudel mini-
+      // pattern string ("<Gsus G7 Em7 D7>" matches both). Encode the
+      // bare-only intent via precedence: prefer the literal arm ONLY
+      // when `parsed` is itself bareCode (no richer structured IR to
+      // preserve). Strict improvement — never downgrade.
+      const parsedIsBareCode =
+        parsed.tag === 'Code' && (parsed as { via?: unknown }).via === undefined
+      const ir = parsedIsBareCode ? (lit ?? parsed) : parsed
+      const bare =
+        ir.tag === 'Code' && (ir as { via?: unknown }).via === undefined
+      if (!bare) {
+        bindings.set(d.name, ir)
+        pending.delete(i)
+        progress = true
+      }
+    }
+    if (!progress) break
+  }
+  // OCCURS-CHECK TERMINAL — the kept opaque-RHS fence, repositioned
+  // post-fixpoint, predicate TEXT byte-unchanged from the old in-loop
+  // form (`tag === 'Code' && via === undefined` now lives inside the
+  // `bare` computation above; this terminal turns the residual pending
+  // set — bindings whose RHS still parses to bareCode even with all
+  // OTHER bindings resolved = cyclic or genuinely opaque — into the
+  // same whole-program fallback the old single-pass produced inline).
+  if (pending.size > 0) return null
   return {
     bindings,
     finalExpr: stmts[finalIdx].text,

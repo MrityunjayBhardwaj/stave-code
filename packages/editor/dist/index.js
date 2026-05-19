@@ -4718,7 +4718,8 @@ var BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
 function buildBindingMap(body2, baseOffset) {
   const stmts = splitTopLevelStatements(body2, baseOffset);
   if (stmts.length < 2) return null;
-  const bindings = /* @__PURE__ */ new Map();
+  const descs = [];
+  const seen = /* @__PURE__ */ new Set();
   let finalIdx = -1;
   for (let s = 0; s < stmts.length; s++) {
     const { text, offset } = stmts[s];
@@ -4729,16 +4730,34 @@ function buildBindingMap(body2, baseOffset) {
     }
     const name2 = bm[1];
     const rhs = bm[2].trim();
-    if (bindings.has(name2)) return null;
+    if (seen.has(name2)) return null;
+    seen.add(name2);
     const rhsStartInText = text.length - rhs.length;
     const rhsOffset = offset + rhsStartInText;
-    const rhsIR = parseExpression(rhs, rhsOffset);
-    const rhsIsBareCode = rhsIR.tag === "Code" && rhsIR.via === void 0;
-    if (rhsIsBareCode) return null;
-    bindings.set(name2, rhsIR);
+    descs.push({ name: name2, rhs, rhsOffset });
   }
   if (finalIdx === -1) return null;
   if (finalIdx !== stmts.length - 1) return null;
+  const bindings = /* @__PURE__ */ new Map();
+  const pending = new Set(descs.map((_, i2) => i2));
+  for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
+    let progress = false;
+    for (const i2 of [...pending]) {
+      const d = descs[i2];
+      const parsed = parseExpression(d.rhs, d.rhsOffset, void 0, bindings);
+      const lit = classifyLiteralRhs(d.rhs);
+      const parsedIsBareCode = parsed.tag === "Code" && parsed.via === void 0;
+      const ir = parsedIsBareCode ? lit ?? parsed : parsed;
+      const bare = ir.tag === "Code" && ir.via === void 0;
+      if (!bare) {
+        bindings.set(d.name, ir);
+        pending.delete(i2);
+        progress = true;
+      }
+    }
+    if (!progress) break;
+  }
+  if (pending.size > 0) return null;
   return {
     bindings,
     finalExpr: stmts[finalIdx].text,

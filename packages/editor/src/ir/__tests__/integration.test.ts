@@ -455,12 +455,62 @@ describe('parseStrudel', () => {
     }
   })
 
+  // 20-17 E-1 — input updated. The original `const x = 42; note(x)` is now
+  // resolvable end-to-end: D-01 G3 (additive Code.via literal arm via
+  // `classifyLiteralRhs`, per the LOCKED D-02 CORRECTION 2026-05-19 — "Strudel
+  // code IS JavaScript; standard JS literal bindings are first-class and MUST
+  // be supported") + D-01 G4 (optional `bindings` threaded through every
+  // recursion) splice the literal `42` into the chain arg. The purpose of this
+  // test — "verify graceful Code fallback for opaque code" — is preserved by
+  // replacing the input with a genuinely-still-opaque post-D-01 case:
+  // `foo() + 1` is a function call + arithmetic → bareCode RHS → opaque
+  // post-fixpoint terminal → graceful Code fallback. The complementary
+  // assertion on the original input lives below as
+  // `bound-literal binding resolves end-to-end (D-01 G3+G4)`.
   it('unsupported code returns Code node', () => {
-    const tree = parseStrudel('const x = 42; note(x)')
+    const tree = parseStrudel('const x = foo() + 1; note(x)')
     expect(tree.tag).toBe('Code')
     if (tree.tag === 'Code') {
       expect(tree.code).toContain('const x')
     }
+  })
+
+  // 20-17 E-1 — complementary test documenting the new D-01 contract.
+  // `const x = 42; note(x)` was previously graceful-Code (pre-D-01 invariant).
+  // Per the LOCKED D-02 CORRECTION (2026-05-19), it now structures: the literal
+  // `42` is recognised by `classifyLiteralRhs` and spliced into the chain arg.
+  // Asserts: the result is NOT bare Code, AND a `Code.via` literal arm
+  // with `raw === '42'` appears at the splice site (term-spliced subtree).
+  it('bound-literal binding resolves end-to-end (D-01 G3+G4)', () => {
+    const tree = parseStrudel('const x = 42; note(x)')
+    // Not bare Code — D-01 resolved the binding and structured the program.
+    const isBareCode =
+      tree.tag === 'Code' && (tree as { via?: unknown }).via === undefined
+    expect(isBareCode).toBe(false)
+    // Locate the spliced `Code.via { literal:true; raw:'42' }` node by
+    // walking the tree. The exact wrapper tag depends on how `note(x)`
+    // structures post-substitution; the load-bearing invariant is the
+    // literal arm's presence + raw equality.
+    const found: { literal: true; raw: string }[] = []
+    const walk = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return
+      const obj = node as Record<string, unknown>
+      const via = obj.via
+      if (
+        via &&
+        typeof via === 'object' &&
+        (via as Record<string, unknown>).literal === true
+      ) {
+        found.push(via as { literal: true; raw: string })
+      }
+      for (const v of Object.values(obj)) {
+        if (Array.isArray(v)) v.forEach(walk)
+        else if (v && typeof v === 'object') walk(v)
+      }
+    }
+    walk(tree)
+    expect(found.length).toBeGreaterThan(0)
+    expect(found.some((v) => v.raw === '42')).toBe(true)
   })
 
   it('empty string returns Pure', () => {
@@ -1142,8 +1192,19 @@ describe('full pipeline', () => {
     expect(code1).toBe(code2)
   })
 
+  // 20-17 E-1 — input updated. Same rationale as the integration test at
+  // line ~462: `const x = 42; note(x)` is now resolvable end-to-end via
+  // D-01 G3 (literal-RHS `Code.via` arm) + G4 (`bindings` threaded through
+  // every recursion), per the LOCKED D-02 CORRECTION (2026-05-19). The
+  // purpose of this test — "verify graceful Code fallback + round-trip
+  // identity for unparseable code" — is preserved by replacing the input
+  // with a genuinely-still-opaque post-D-01 case (`foo() + 1` → bareCode
+  // RHS → opaque post-fixpoint terminal → graceful Code fallback). The
+  // complementary post-D-01 round-trip on the original input is asserted
+  // by the `bound-literal binding resolves end-to-end` test above and by
+  // the parity-corpus + proto gates.
   it('test 7: unparseable code returns Code node (graceful fallback)', () => {
-    const input = 'const x = 42; note(x)'
+    const input = 'const x = foo() + 1; note(x)'
     const patternIR = parseStrudel(input)
     expect(patternIR.tag).toBe('Code')
     // toStrudel(Code) = original code

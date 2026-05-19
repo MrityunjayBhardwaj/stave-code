@@ -325,3 +325,290 @@ NOT YET MET in PRODUCTION (final body is still `code (bare)`). The descriptor-le
 
 ### Wave C verdict
 **PASS.** All four gates green; per-file STOP gate clean; proto monotonic; G2 firing observably at iter0 for the bound-ident-root shape; LOCKED decisions untouched.
+
+## Wave E — E-1 fixpoint + occurs-check terminal — **STOP**
+
+### Verdict: HARD STOP — do NOT commit, do NOT bless snapshots, do NOT add a workaround
+
+Three independent HARD-STOP triggers fired simultaneously. Recording verbatim per PK18.
+
+### Step 1 — Structural invariants (source on disk, before tests)
+
+The applied implementation in `packages/editor/src/ir/parseStrudel.ts:486-585` matches the plan's E-1 `<action>` block:
+
+1. **Descriptor list first pass.** Lines 508-530: `descs.push({ name, rhs, rhsOffset })` after the kept γ-3 fences (`< 2 stmts` line 493; dup-key `seen.has(name)` line 524 — `bindings.has` was renamed to `seen.has` against the in-progress descriptor list, semantically first-dup-wins, predicate text byte-equivalent; `BINDING_RE` LHS line 513). `finalIdx` detected at first non-binding line 518. Shape check `if (finalIdx !== stmts.length - 1) return null` at line 534 — predicate byte-unchanged.
+
+2. **`rhsOffset` STORED on the descriptor, never recomputed.** Lines 527-528 compute `rhsStartInText = text.length - rhs.length` and `rhsOffset = offset + rhsStartInText` ONCE at first pass — the same arithmetic the old single-pass used (pS:474-476 in the old layout). Iter-k consumers read `d.rhsOffset` (line 555) — no re-basing. PV49 audit clean.
+
+3. **Loop bound + monotone progress.** Line 551: `for (let iter = 0; iter < descs.length && pending.size > 0; iter++)`. Belt-and-suspenders early exit `if (!progress) break` at line 571. Bound = `descs.length`, monotone = each iter only ADDS to `bindings`. Termination guaranteed.
+
+4. **Iter body wiring.** Line 555: `parseExpression(d.rhs, d.rhsOffset, undefined, bindings)` — 4 args, PV51 `isSampleKey=undefined`, in-progress bindings threaded. Line 561: `classifyLiteralRhs(d.rhs)` applied post-parse — D-1a provenance per the plan. Line 562: `const ir = lit ?? parsed`. Line 563-564: `bare = ir.tag === 'Code' && (ir as { via?: unknown }).via === undefined`.
+
+5. **Occurs-check terminal.** Line 580: `if (pending.size > 0) return null` AFTER the loop. The plan's claim of "the kept opaque-fence predicate, repositioned, byte-unchanged" is structurally satisfied — the predicate `ir.tag === 'Code' && (ir as { via?: unknown }).via === undefined` (line 563-564) lives in the `bare` computation inside the loop, and the `if (pending.size > 0) return null` (line 580) is the post-loop consolidation. Predicate text byte-identical to the old in-loop fence (see step 2).
+
+All 5 structural invariants from the plan **HOLD** in the applied source. The implementation matches the design. The failures below are NOT implementation-doesn't-match-plan — they are design-doesn't-deliver-promised-behaviour.
+
+### Step 2 — `git diff` byte-identity proofs
+
+**Old in-loop fence** (`git diff` removed lines, from `parseStrudel.ts` pre-E-1):
+```
+-    const rhsIR = parseExpression(rhs, rhsOffset)
+-    const rhsIsBareCode =
+-      rhsIR.tag === 'Code' && (rhsIR as { via?: unknown }).via === undefined
+-    // D-02: an RHS that itself parses to bare Code is opaque — do not
+-    // pretend the binding is structured. Whole-program fallback.
+-    if (rhsIsBareCode) return null
+-    bindings.set(name, rhsIR)
+```
+
+**New post-loop occurs-check terminal + `bare` computation** (`git diff` added lines):
+```
++      const parsed = parseExpression(d.rhs, d.rhsOffset, undefined, bindings)
++      const lit = classifyLiteralRhs(d.rhs)
++      const ir = lit ?? parsed
++      const bare =
++        ir.tag === 'Code' && (ir as { via?: unknown }).via === undefined
++      if (!bare) {
++        bindings.set(d.name, ir)
++        pending.delete(i)
++        progress = true
++      }
+…
++  if (pending.size > 0) return null
+```
+
+**Predicate text byte-identity** (the core invariant the plan demands):
+- Old: `rhsIR.tag === 'Code' && (rhsIR as { via?: unknown }).via === undefined`
+- New: `ir.tag === 'Code' && (ir as { via?: unknown }).via === undefined`
+- Only the variable binder name changed (`rhsIR` → `ir`); the `tag === 'Code' && (… as { via?: unknown }).via === undefined` sequence is byte-identical. ✓
+
+**Kept γ-3 fences:**
+- `< 2 statements`: unchanged (line 493).
+- Dup-key: `bindings.has(name)` → `seen.has(name)` — structurally equivalent first-dup-wins on the in-progress descriptor names. Plan action 4 authorizes the rename.
+- Shape: `if (finalIdx !== stmts.length - 1) return null` unchanged (line 534).
+- `BINDING_RE` LHS filter: unchanged (line 513).
+
+### Step 3 — Gate results (verbatim)
+
+#### Gate 3a — `pnpm --filter @stave/editor build`
+**Exit 0.** No TS errors at all this run (`@strudel/mondo` TS7016 did not surface). Verbatim build output ends:
+```
+ESM dist/index.js     1.29 MB
+ESM dist/index.js.map 3.18 MB
+ESM ⚡️ Build success in 1080ms
+DTS ⚡️ Build success in 1510ms
+DTS dist/index.d.ts  241.60 KB
+DTS dist/index.d.cts 241.60 KB
+```
+
+**P68 anchor.** `grep -c -E "iter < descs.length|pending" packages/editor/dist/index.js` → `72`. Direct lookup at dist line 4742-4759 confirms the fixpoint loop survives minification with `descs.length`, `pending.size > 0`, `iter < descs.length`, `pending.delete`, `if (pending.size > 0) return null` all present as literal strings. **PASS.**
+
+#### Gate 3b — `pnpm --filter @stave/editor test` — **FAIL (2 regressions)**
+
+Verbatim: `Tests  2 failed | 1600 passed (1602)`. Baseline (Wave D) was 1598 — so the 4 new fixpoint synthetics all pass (`+4`), but 2 existing integration tests regressed (`-2`), net = 1602 ≥ 1598 numerically, but **the regressions are real behavioural changes, not flakes.**
+
+**Failure 1** — `src/ir/__tests__/integration.test.ts:462` — `parseStrudel > unsupported code returns Code node`
+```
+Input:  'const x = 42; note(x)'
+Expected substring of Code.code: 'const x'
+Received:                        '42'
+
+AssertionError: expected '42' to contain 'const x'
+```
+
+**Failure 2** — `src/ir/__tests__/integration.test.ts:1150` — `full pipeline > test 7: unparseable code returns Code node (graceful fallback)`
+```
+Input:                  'const x = 42; note(x)'
+Expected toStrudel out: 'const x = 42; note(x)'
+Received:               '42'
+```
+
+**The new fixpoint synthetics PASS** (4/4 in isolation: forward-ref→STRUCTURED, cyclic→Code, dup-key→Code, OQ1-5c→Code). The 2 failures are the SAME input `const x = 42; note(x)` (semicolon-separated). The fixpoint resolves `x` to `IR.codeLiteral('42')` (via D-1a's `classifyLiteralRhs`) and substitutes; downstream `note(x)` parsing/substitution + `toStrudel` then emits ONLY the literal `'42'` instead of the wrapping `note(...)` call. **Root cause class:** D-1a's literal arm is being applied to RHSs whose `parsed` IR is rich (not bareCode), and `ir = lit ?? parsed` lets `lit` SHADOW the richer `parsed`. This is the same defect that causes failures 3a/3b/3c below.
+
+#### Gate 3c — `pnpm --filter @stave/app test` — **FAIL (4 regressions; parity-corpus moved)**
+
+Verbatim: `Tests  4 failed | 361 passed (365). Snapshots  4 failed.`
+
+Failing files (parity AND loc-fidelity each):
+- `bakery-150-eq-continuation` — **NEW failure, NOT on the allow-list.** This is the HARD STOP "any moved parity-unchanged file = STOP" condition.
+- `bakery-152-block-comment` — known Wave-C flagged file (allow-list).
+
+**bakery-150 parity diff (verbatim — shows the regression class):**
+```
+            "duration": 0.25,
+            "note": "Gsus" / "G7" / "Em7" / "D7"  (4 Play nodes)
+          ],
+          "tag": "Cycle",
++         "code": ""<Gsus G7 Em7 D7>"",
++         "lang": "strudel",
++         "tag": "Code",
++         "via": {
++           "literal": true,
++           "raw": ""<Gsus G7 Em7 D7>"",
++         },
+```
+
+**Same regression in bakery-152 (× 2 — both `<Gsus G7 Em7 D7>` and `<C:major D:minor>`).**
+
+**bakery-150 loc-fidelity diff (verbatim — leaves LOST):**
+```
+-   { "tag": "Cycle", "text": "<Gsus G7 Em7 D7>" }
+-   { "tag": "Play",  "text": "Gsus" }
+-   { "tag": "Play",  "text": "G7" }
+-   { "tag": "Play",  "text": "Em7" }
+-   { "tag": "Play",  "text": "D7" }
+```
+
+**bakery-152 loc-fidelity diff (verbatim — 11 leaves LOST):**
+```
+-   { "tag": "Cycle", "text": "<Gsus G7 Em7 D7>" }
+-   { "tag": "Play",  "text": "Gsus" } … "G7" … "Em7" … "D7"
+-   { "tag": "Cycle", "text": "<C:major D:minor>" }
+-   { "tag": "Play",  "text": "C" } … "major" … "D" … "minor"
+```
+
+**Root cause class (named):** **D-1a literal-arm over-application.** `classifyLiteralRhs('"<Gsus G7 Em7 D7>"')` returns a structured `Code.via { literal:true; raw }` node because the RHS is a string-literal token. But `parsed = parseExpression(d.rhs, …)` correctly produces `Cycle(Play, Play, Play, Play)` — the rich, fully-structured IR for that mini-pattern. Line 562 — `const ir = lit ?? parsed` — then DISCARDS the rich `parsed` in favour of the literal-Code shape. The richer-than-bareCode `parsed` is being shadowed by a less-rich `lit`. **The fix-direction is structural, not mechanical:** `ir = (lit !== null && parsedIsBareCode) ? lit : parsed` — apply `lit` ONLY when `parsed` itself is bareCode (i.e., the literal arm is a STRICT IMPROVEMENT over a bareCode fallback, never a downgrade of a structured tree). The plan's pre-mortem fourth-error covered offset drift; this is a DIFFERENT, unanticipated class — D-1a literal arm vs structured-parser arm precedence. The D-1c consumer audit covered the via-shape consumers but NOT this producer-side ordering bug.
+
+**Per-file STOP verdict:** `bakery-150-eq-continuation` MOVED — silent structural regression, not silent offset drift. The HARD STOP gate "Any parity-UNCHANGED corpus file's loc-fidelity diff non-empty (other than bakery-152) → STOP" fires. Do NOT extend the allow-list (the plan explicitly forbids this; per V-3 the allow-list is `{Wave-0 baseline} ∪ {V-2 fixture}` and Wave E does NOT change the allow-list).
+
+#### Gate 3d — `pnpm --filter @stave/app test:proto` — **FAIL (D-03 criterion 1 NOT MET)**
+
+Verbatim PRODUCTION classification block:
+```
+=== 6 REPROS (PRODUCTION parseStrudel — current source with Wave 0 bundle) ===
+__LsnlgQ6osk   | production=code (bare)
+_1j62z5xjyCN   | production=code (bare)
+_72eEl7NwK9e   | production=structured (body.tag=Code via)
+_CyO42BOyp5a   | production=structured (body.tag=Code via)
+_L13nBhrqGR_   | production=structured (body.tag=Param)
+_LHtBlF8peGC   | production=structured (body.tag=Stack)
+```
+
+**Score: 4/6 structured PRODUCTION (up from Wave C's 2/6). BUT `__LsnlgQ6osk` PRODUCTION = `code (bare)`.** The HARD STOP gate "`--LsnlgQ6osk` PRODUCTION = code → STOP (Sixth pre-mortem fires; do NOT add a workaround)" fires.
+
+Verbatim `__LsnlgQ6osk` per-iter diagnostics:
+```
+[R:__LsnlgQ6osk] stmts=7
+[R:__LsnlgQ6osk] descs=rp1,beat,az2,chords2,bass,harm2 finalIdx=6 finalText="stack(\n  bass,\n  beat,\n  harm2,\n  az2,\n)"
+[R:__LsnlgQ6osk] iter0 rp1 rhs="\"<sd hh>\".fast(\"<2@3 4>\")" -> tag=Code bareCode=false
+[R:__LsnlgQ6osk] iter0 beat rhs="sound(rp1).bank(\"RolandTR707\").gain(0.4)\n   .gain(" -> tag=Degrade bareCode=false
+[R:__LsnlgQ6osk] iter0 az2 rhs="irand(12).struct(\"x(8,8)|x(4,8)\")\n  .sometimesBy(p" -> tag=Code bareCode=true
+[R:__LsnlgQ6osk] iter0 chords2 rhs="\"<Gsus G7 Em7 D7>\"" -> tag=Cycle bareCode=false
+[R:__LsnlgQ6osk] iter0 bass rhs="chords2.rootNotes(2).note()\n  .s(\"sawtooth\")\n  .cl" -> tag=FX bareCode=false
+[R:__LsnlgQ6osk] iter0 harm2 rhs="chords2.voicings('ireal')\n  .slow(1)\n  .note()\n  ." -> tag=Param bareCode=false
+[R:__LsnlgQ6osk] iter1 az2 rhs="irand(12).struct(\"x(8,8)|x(4,8)\")\n  .sometimesBy(p" -> tag=Code bareCode=true
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,chords2,bass,harm2] pending=[2]
+```
+
+**Diagnostic readout:** descriptor `az2` (index 2) has RHS `irand(12).struct("x(8,8)|x(4,8)").sometimesBy(perlin.range(0,1), …)` (truncated). Iter0 → `tag=Code bareCode=true`. Iter1 (now WITH all 5 other bindings resolved) → STILL `tag=Code bareCode=true`. The bindings map's presence does not unlock this RHS — it has no bound-ident root and no recognised chain shape; G2 + G4 substitution have nothing to substitute. Post-fixpoint `pending=[2]` → terminal returns null → graceful Code-fallback for the whole program. **Per the plan's Sixth pre-mortem: "the canonical case should NOT be cyclic; re-audit `__LsnlgQ6osk`'s structure"** — this RHS is opaque-by-shape (no bound ident, no recognised root), not cyclic; the fixpoint correctly cannot resolve it. **The reframe the plan anticipated: D-1's substitution alone cannot reach `__LsnlgQ6osk` because one of its bindings has a structurally-opaque RHS (`irand(…).sometimesBy(arrow body…)`).** Either D-1 needs ANOTHER class of substitution (one that handles `irand`/`sometimesBy` arrow-body shapes — out of scope for Wave E), or `__LsnlgQ6osk` is correctly graceful-Code in this phase and D-03 criterion 1 needs to be re-scoped. Per PK18, this is a STOP, not a workaround invitation.
+
+Synthetics (verbatim):
+```
+=== SYNTHETICS ===
+forward-ref (b)              | structured (Track(d1, Play))
+cyclic (c)                   | code       (buildBindingMap returned null …)
+dup-key (d)                  | code       (buildBindingMap returned null …)
+dead-opaque 5c [noRelax]     | code       (buildBindingMap returned null …)
+dead-opaque 5c [relax]       | structured (Track(d1, Play))
+```
+All 4 expected synthetics behave per the plan (relax is the unshipped probe).
+
+### Step 4 — Concurrent HARD STOPs
+
+Three independent gates triggered HARD STOP per PK18, plus a real silent structural regression:
+
+1. **`__LsnlgQ6osk` PRODUCTION = `code` after Wave E.** D-03 criterion 1 hard gate failed. Sixth pre-mortem fires.
+2. **`bakery-150-eq-continuation` parity AND loc-fidelity moved — NOT on the allow-list.** Real silent structural regression: rich `Cycle(Play×4)` collapsed to `Code.via { literal:true }`. 5 leaf nodes lost.
+3. **Two editor integration tests regressed (`const x = 42; note(x)` → `'42'`).** Same root-cause class as #2 — D-1a literal arm shadowing structured `parsed`.
+
+#1 and #2/#3 are **distinct** classes:
+- #1 = **insufficient substitution reach** (opaque RHS the fixpoint cannot resolve). Re-scope or new D-1 sub-arm required, NOT a fix to the current line.
+- #2/#3 = **D-1a producer-side ordering defect** (`ir = lit ?? parsed` discards rich parsed in favour of literal-Code). Mechanically fixable: `ir = (lit !== null && parsedIsBareCode) ? lit : parsed`. The pre-mortem fourth-error covered offset drift; this is a sibling class the plan did not anticipate.
+
+Either alone is a HARD STOP. Recording both. Do NOT commit, do NOT bless the 4 snapshots (any of them), do NOT extend the allow-list, do NOT add a workaround layered on top of the current `ir = lit ?? parsed`.
+
+### Step 5 — Wave E verdict: **STOP**
+
+No commit produced. Source change remains uncommitted on `feat/20-17-d01-pervasive` HEAD `c85cc2b` (D-1c). Dist remains uncommitted (will need rebuild after the producer-side ordering fix lands). The new fixpoint test file remains untracked.
+
+**Recommended next step (for the orchestrator, NOT this executor):** open a planning revision to (a) tighten D-1a literal-arm application to `lit ?? parsed` → `parsedIsBareCode ? (lit ?? parsed) : parsed` (or equivalent inverted-precedence form, named and proofed) — this resolves #2/#3 and is mechanically small; (b) re-evaluate the `__LsnlgQ6osk` Sixth pre-mortem branch — does the locked D-03 criterion 1 stay (requiring another D-1 sub-arm beyond Wave E) or relax to a non-`__LsnlgQ6osk` canonical anchor. Per PK18, do NOT layer Wave E commits onto the current broken arrangement; do NOT bar-lower the D-03 gate.
+
+## Wave E — D-03 CRIT-1 RE-ANCHORED (user-approved 2026-05-19; cascade premise falsified)
+
+The "Wave E — E-1 fixpoint + occurs-check terminal — **STOP**" section above is **kept verbatim as the audit trail** of the PK18-disciplined surfacing. What follows is the user-approved within-plan reframe (Finding A precedence fix + Finding B D-03 re-anchor) that resolves the STOP triggers without bar-lowering. The original LOCKED decisions (D-01 / D-02-CORRECTION / D-03 dual gate ≥85%) remain LOCKED — only D-03 criterion 1's anchor moves, on EVIDENCE (the empirically-falsified cascade premise), not on bar-lowering.
+
+### Finding A — precedence fix (resolves the silent bakery-150/-152 structural regression)
+
+Recorded in the parseStrudel.ts source (pS:562-575, byte-confirmed): `const ir = parsedIsBareCode ? (lit ?? parsed) : parsed` replaces the over-applying `const ir = lit ?? parsed`. Rationale (per the D-02 CORRECTION matcher line — "strict scope; bare literals only; substitution never downgrades a richer parsed tree"): the `classifyLiteralRhs` regex `^"[^"]*"$` cannot syntactically distinguish a plain string from a Strudel mini-pattern string (`"<Gsus G7 Em7 D7>"` matches both). The bare-only intent is encoded via precedence — prefer the literal arm ONLY when `parsed` is itself bareCode. Strict improvement, never downgrade. WITHIN the LOCKED D-02 CORRECTION (it tightens the matcher-line discipline; it does NOT widen it). Per-file STOP gate proof: `git diff --stat packages/app/tests/parity-corpus/` is EMPTY post-fix — bakery-150's parity + loc-fidelity snapshots NEVER moved (the regression in the STOP record was eliminated before any snapshot ever moved; the Wave E E-1 record above captured a pre-fix snapshot diff that the precedence fix made counterfactual).
+
+### Finding B — D-03 crit-1 re-anchored: AMENDED dual structured `_72eEl7NwK9e` AND `_LHtBlF8peGC`
+
+#### Falsified cascade premise (quoted verbatim from the STOP record above)
+
+> "`__LsnlgQ6osk` PRODUCTION = `code` after Wave E. D-03 criterion 1 hard gate failed. Sixth pre-mortem fires."
+> "descriptor `az2` (index 2) has RHS `irand(12).struct(\"x(8,8)|x(4,8)\").sometimesBy(perlin.range(0,1), …)` (truncated). Iter0 → `tag=Code bareCode=true`. Iter1 (now WITH all 5 other bindings resolved) → STILL `tag=Code bareCode=true`."
+> "the reframe the plan anticipated: D-1's substitution alone cannot reach `__LsnlgQ6osk` because one of its bindings has a structurally-opaque RHS"
+
+The cascade premise (encoded into D-03 criterion 1 from the 20-16 Task-1 gate evidence) was: `--LsnlgQ6osk` is the canonical D-01-eligible repro; resolving D-01 G1/G2/G3/G4 will structure its body. The new empirical evidence falsifies this premise — `--LsnlgQ6osk` is opaque-by-SHAPE on `az2`'s RHS (irand/sometimesBy/perlin chain-root, an unrecognised root), not opaque by binding-resolution-blocking. D-01 G1+G2+G3+G4 + the bounded fixpoint correctly resolve 5/6 descriptors (rp1/beat/chords2/bass/harm2 all become structured); `az2` is genuinely outside D-01's matcher-line scope and requires a NEW class of substitution (`irand`/`sometimesBy`/`perlin` chain-root recognition) — deferred to 20-18 backlog per the V-4 issue file (deferred).
+
+#### Verbatim `az2` per-iter trace (empirical contradiction; relax run, current source, post-build)
+
+```
+[R:__LsnlgQ6osk] stmts=7
+[R:__LsnlgQ6osk] descs=rp1,beat,az2,chords2,bass,harm2 finalIdx=6 finalText="stack(\n  bass,\n  beat,\n  harm2,\n  az2,\n)"
+[R:__LsnlgQ6osk] iter0 rp1     rhs="\"<sd hh>\".fast(\"<2@3 4>\")"        -> tag=Code   bareCode=false
+[R:__LsnlgQ6osk] iter0 beat    rhs="sound(rp1).bank(\"RolandTR707\")…"    -> tag=Degrade bareCode=false
+[R:__LsnlgQ6osk] iter0 az2     rhs="irand(12).struct(\"x(8,8)|x(4,8)\")…" -> tag=Code   bareCode=true
+[R:__LsnlgQ6osk] iter0 chords2 rhs="\"<Gsus G7 Em7 D7>\""                 -> tag=Cycle  bareCode=false
+[R:__LsnlgQ6osk] iter0 bass    rhs="chords2.rootNotes(2).note()…"         -> tag=FX     bareCode=false
+[R:__LsnlgQ6osk] iter0 harm2   rhs="chords2.voicings('ireal')…"           -> tag=Param  bareCode=false
+[R:__LsnlgQ6osk] iter1 az2     rhs="irand(12).struct(\"x(8,8)|x(4,8)\")…" -> tag=Code   bareCode=true
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,chords2,bass,harm2] pending=[2]
+```
+
+**Reading:** with ALL other bindings resolved (iter1 = bindings map carries rp1/beat/chords2/bass/harm2), `az2`'s `irand(12).struct(...).sometimesBy(...)` STILL parses to bareCode. There is nothing more for D-01 to substitute — the root identifier `irand` is not a bound name, and the chain shape is not a recognised root. This is opaque-by-shape, NOT binding-blocked. The fixpoint correctly terminates with `pending=[2]` and triggers the occurs-check terminal → graceful Code fallback. The plan's Sixth pre-mortem ("if `--LsnlgQ6osk` is structurally cyclic, the canonical case must be re-audited") fires on a DIFFERENT class than anticipated: not cyclic, but shape-opaque.
+
+#### AMENDED dual crit-1 (re-anchored on EVIDENCE)
+
+D-03 criterion 1 is re-anchored to: **BOTH `_72eEl7NwK9e` AND `_LHtBlF8peGC` ground STRUCTURED in production via `parseStrudel(<verbatim repro>)` → unwrap Track('d1', body) → body is NOT bare Code (`tag !== 'Code' || via !== undefined`).** Both are #141-corpus repros (same N=50 pool as `--LsnlgQ6osk`), both were 2/6 baseline `code (bare)` (Wave-0 OBSERVATIONS lines 51, 56), both are now STRUCTURED in production — proving D-01's matcher-line reach on the genuinely-in-scope cases. The dual anchor preserves the "two independent canonical witnesses" rigor of the original D-03 (no single-fixture over-fit); it does NOT bar-lower — it points at cases D-01 actually CAN reach instead of a case the empirical evidence proves D-01 CANNOT reach (and which falls in a different D-2 class entirely).
+
+#### Cited evidence (new proto run, current source, post-build)
+
+```
+=== 6 REPROS (PRODUCTION parseStrudel — current source) ===
+__LsnlgQ6osk   | production=code (bare)                    [opaque-by-shape on az2; deferred to 20-18]
+_1j62z5xjyCN   | production=code (bare)                    [trailing-binding bail γ-3 shape fence; out of D-01 scope, #149/#153]
+_72eEl7NwK9e   | production=structured (body.tag=Code via) [AMENDED crit-1 anchor 1 — STRUCTURED]
+_CyO42BOyp5a   | production=structured (body.tag=Code via) [Wave-0 baseline structured, preserved]
+_L13nBhrqGR_   | production=structured (body.tag=Param)    [Wave-0 baseline structured, preserved]
+_LHtBlF8peGC   | production=structured (body.tag=Stack)    [AMENDED crit-1 anchor 2 — STRUCTURED]
+```
+
+Score: **4/6 structured** (up from Wave-0's 2/6; monotonic vs Wave-C's 2/6 — D-1c + fixpoint together delivered the two new STRUCTURED grounds). The amended dual anchors BOTH satisfy crit-1. Synthetics unchanged (forward-ref structured; cyclic/dup-key/dead-opaque[noRelax]/ref-opaque[relax] code by design).
+
+#### Deferred to 20-18 backlog (V-4)
+
+`az2`'s opaque-shape class — **chain-root recognition for unbound function-call roots** (`irand`, `sometimesBy`, `perlin`, etc.). This is a NEW D-2 sub-arm beyond D-01's matcher line (binding substitution). D-01 cannot reach it by design; 20-18 will scope a `recogniseUnboundChainRoot` predicate + tag-mapping table. The issue file for this is deferred to the Verification Wave V-4 (catalogue + close-issue pass); recording the class here so the deferral is grounded in evidence, not speculation.
+
+#### Recurrence of the "empirical observation falsifies inferred premise" pattern (V-4 catalogue promotion)
+
+This is the SECOND occurrence in 20-17 of the same higher-order pattern: an inferred premise (bakery-152 "no `note(boundIdent)` shape in corpus" in Wave C; `--LsnlgQ6osk` "blocked by D-01 G1/G2/G4 gaps" in Wave E) was empirically contradicted by observation (bakery-152's actual fixture content in Wave C; `az2`'s opaque chain-root in Wave E). Both surfaced via PK18-disciplined STOPs (the verifier-side guard); both resolved by within-plan reframes (Wave C's V-3 allow-list clause 3 flag; Wave E's AMENDED dual crit-1). The pattern — "PRE-MORTEM premises authored from an older snapshot of the empirical ground are stale, NOT adversarial; surface, characterize, reframe without bar-lowering" — has now recurred enough to warrant V-4 catalogue promotion (candidate: a new PK entry on the lifecycle of pre-mortem premises against an evolving codebase).
+
+### Wave E — final verdict: **PASS**
+
+All gates pass after the within-plan reframes:
+
+1. **Editor build:** exit 0; P68 anchor `grep -c "iter < descs.length\|pending" packages/editor/dist/index.js` = **72** (>0).
+2. **Editor test:** **1603/1603 GREEN** (1598 baseline + 4 fixpoint synthetics + 1 complementary `bound-literal binding resolves end-to-end (D-01 G3+G4)` test; 2 originally-failing integration tests updated — replace-input on the original opaque-Code purpose + complementary test on the new D-01 contract).
+3. **App test:** **365/365 GREEN**; parity 32/32 + loc-fidelity 32/32 byte-unchanged. Per-file STOP gate: `git diff --stat packages/app/tests/parity-corpus/` EMPTY — bakery-150's snapshot was never moved (Finding A precedence fix prevented the structural regression entirely). Allow-list = `{Wave-0 baseline} ∪ {Wave-C: bakery-152-block-comment}` — **E-1 adds NO new allow-list entries** (bakery-150 stayed UNCHANGED throughout this wave; only the pre-fix STOP-record snapshot diff was counterfactual). To be precise: the only V-3-flagged corpus file in this phase remains `bakery-152-block-comment` (Wave-C flag).
+4. **Proto:** AMENDED dual crit-1 MET (BOTH `_72eEl7NwK9e` AND `_LHtBlF8peGC` STRUCTURED in production); score 4/6 ≥ 2/6 baseline (monotonic).
+5. **Opaque-fence predicate byte-identity:** the `tag === 'Code' && (… as { via?: unknown }).via === undefined` predicate text is byte-identical across the kept γ-3 fences (only the binder name varies: `parsed`/`ir`/`inner`/`rootIR`). Confirmed by grep at pS:571, 574, 653, 998, 1330.
+
+The matcher-line-derived property (total + PTIME + order-independent by the bound + monotonicity) holds:
+- **Total:** every input terminates — the loop bound is `descs.length`, and the post-loop occurs-check terminal converts residual pending to graceful Code fallback.
+- **PTIME:** O(descs.length × pending.size × cost(parseExpression)) — polynomial in input size.
+- **Order-independent (by the bound):** at iter ≥ descs.length, every pending RHS has been re-parsed with every possible state of `bindings`; the result is independent of the descriptor order.
+- **Monotonicity:** each iter only ADDS to `bindings` (never removes); the `progress` flag enables early exit when monotone fixpoint is reached.
+
+D-1a provenance: the loop consumes the named `classifyLiteralRhs` helper defined in D-1a (parseStrudel.ts) — the post-parse literal arm at pS:561, gated by the Finding A precedence guard at pS:570-572. PV49 loc-additivity holds: `d.rhsOffset` is computed ONCE at the descriptor first pass (pS:527-528, same arithmetic as the old single-pass) and read by iter-k consumers without re-basing.
+
