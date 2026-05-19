@@ -1420,3 +1420,159 @@ The Wave A Signal/Builder arms COMPOSE with the existing RNG modelling — they 
 ### Wave D VERDICT: PASS
 
 All four amendment deliverables satisfied; zero defects found; all gates green; crit-1 Wave-C state preserved (`__LsnlgQ6osk` STRUCTURED, all 6 descriptors resolved). The Wave-A Option-3 closure is PROVEN COMPLETE + CORRECT. Wave E gated open by orchestrator (per prompt: "do NOT proceed to Wave E").
+
+---
+
+## WAVE E — flagged-general fallback (off-by-default, measurement-only, NEVER gate-counted)
+
+### Wave E never-gate-counted invariant (durable contract — VERBATIM)
+
+The 20-17 G4 optional-arg-threading idiom mirrored exactly:
+
+**Live signatures (post-Wave-E):**
+
+```ts
+export function parseStrudel(
+  code: string,
+  _opts?: { recogniseGeneralChainRoots?: boolean },
+): PatternIR
+
+export function parseExpression(
+  expr: string,
+  baseOffset = 0,
+  isSampleKey?: boolean,
+  bindings?: ReadonlyMap<string, PatternIR>,
+  opts?: { recogniseGeneralChainRoots?: boolean },
+): PatternIR
+
+export function parseRoot(
+  root: string,
+  baseOffset = 0,
+  isSampleKey?: boolean,
+  bindings?: ReadonlyMap<string, PatternIR>,
+  opts?: { recogniseGeneralChainRoots?: boolean },
+): PatternIR
+```
+
+`opts` is OPTIONAL TRAILING + threaded EXACTLY like `bindings` (every
+existing caller omits it → default-undefined → general arm dormant).
+
+**PV50 (no module-state) — `git diff` proof:**
+
+ZERO module-level mutable accumulator added. The flag flows on the
+STACK only — `parseStrudel → parseExpression → parseRoot` recursion
+threading sites verified:
+
+- `pS:599` `parseStrudel` signature + `pS:646` `pS:659` `pS:672` `pS:692`
+  threading sites pass `opts` to the 4 `parseExpression` call sites.
+- `pS:1024` `parseExpression` signature + `pS:1070` `parseRoot(root, …,
+  opts)` + `pS:1346` loose-recursive `parseExpression(…, opts)` +
+  `pS:1415` stack-arg `parseExpression(…, opts)` (all stack-flowing).
+- `pS:1107` `parseRoot` signature + the new general arm (pS:~1513-1561)
+  consumes `opts?.recogniseGeneralChainRoots === true` to fire.
+
+The `CHAIN_ROOT_RECOGNISER` Map stays a module-const immutable literal
+(same idiom as `RESERVED_LABEL_IDENTS` pS:791) — NOT mutated by Wave E.
+
+### Wave E general-arm location + wrapper shape
+
+**Location:** `parseStrudel.ts:~1513-1561` — LAST arm before the bare-Code
+fallback at `parseRoot:return IR.code(trimmed)`. AFTER:
+- Curated `CHAIN_ROOT_RECOGNISER.get(trimmed)` (Wave B-1)
+- Curated `<token>(<args>)` argMatch (Wave B-1 + Wave C)
+- All strict named arms (note/n/s/sound/mini/loose/stack/bareString/
+  bareBacktick/parenStr)
+- G2 bound-ident-root substitution (`pS:1155-1157`)
+
+The strict arms either return on match or fall through. Reaching the
+general arm = strictly the unhandled `identifier(...)` or bare
+`identifier` shape — the long tail.
+
+**Wrapper shape — `identifier(args)` form (general-arm primary):**
+
+```ts
+return {
+  tag: 'Code',
+  code: '',
+  lang: 'strudel',
+  loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+  via: { method: token, args: rawArgs, callSiteRange, inner: IR.code(trimmed) },
+}
+```
+
+**Wrapper shape — bare identifier form (general-arm secondary):**
+
+```ts
+return {
+  tag: 'Code',
+  code: '',
+  lang: 'strudel',
+  loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+  via: { method: trimmed, args: '', callSiteRange, inner: IR.code(trimmed) },
+}
+```
+
+Mirrors `wrapAsOpaque` (pS:73-86) verbatim — tag 'Code' + `via.method/
+args/callSiteRange/inner` (the structured-OPAQUE shape; NOT a
+`Signal`/`Builder` tag, which are reserved for curated kinds; NOT the
+literal-RHS arm which has `via.literal === true`). The chain
+(.bar()/.baz(...)) rides the EXISTING `applyChain` over the wrapper —
+same composition contract as Wave A's Signal/Builder roots.
+
+### Wave E three structural invariants — VERBATIM test results
+
+`pnpm --filter @stave/editor test parseStrudel.generalChainRootFlag`:
+
+```
+ ✓ src/ir/__tests__/parseStrudel.generalChainRootFlag.test.ts  (5 tests) 3ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+```
+
+The 5 tests encode the 3 invariants:
+
+- **(i) default-off byte-identical** — `parseStrudel('foo(1).bar()')` has
+  NO general-opaque wrapper for `foo` in the tree → the parity oracle's
+  opaque-fence treats this as fallback → the long tail does NOT inflate
+  parity. **PASS.**
+- **(i.b) curated arm UNCHANGED with flag on** — `parseStrudel('sine.range(0,1)',
+  { recogniseGeneralChainRoots: true })` still produces a `Signal` (curated
+  arm fires before the general arm; the general arm has an explicit
+  `!CHAIN_ROOT_RECOGNISER.has(token)` exclusion). NO `sine` wrapper.
+  **PASS.**
+- **(ii) enabled-works** — `parseStrudel('foo(1).bar()', { recogniseGeneralChainRoots:
+  true })` → top-level NOT bare-Code; deep walk finds wrapper with
+  `via.method === 'foo' && via.args === '1'` (byte-verbatim source slice).
+  **PASS.**
+- **(ii.b) enabled-works bare** — `parseStrudel('foo.bar()',
+  { recogniseGeneralChainRoots: true })` → wrapper with `via.method === 'foo'
+  && via.args === ''`. **PASS.**
+- **(iii) oracle-one-arg-grep-asserted** — read
+  `_bakery-classify.spec.ts`, find exactly ONE `parseStrudel(s.code)`
+  call site, assert it has NO comma after `s.code` (no opts construct);
+  assert the file does NOT contain the string `recogniseGeneralChainRoots`.
+  **PASS.**
+
+The 3-invariant STRUCTURAL never-gate-counted proof is GREEN.
+
+### Wave E gate results
+
+| Gate | Result |
+|------|--------|
+| 1. opts threading is OPTIONAL trailing + stack-threaded; ZERO module-state added (PV50) | PASS — verified by `git diff` (no `let`/`var` at module scope; all threading via parameter passing) |
+| 2. editor test count | 1622 → **1627** (= 1622 + 5 new spec tests; the new `parseStrudel.generalChainRootFlag` spec) — **PASS** |
+| 3. editor build + anchor | `pnpm --filter @stave/editor build` exit 0; `grep -c 'recogniseGeneralChainRoots' packages/editor/dist/index.js = 1` (property-access form; esbuild keepNames preserves it, minification-stable) — **PASS** |
+| 4. app 381/381 + parity 33/33 + loc 33/33 byte-unchanged | `pnpm --filter @stave/app test` → 381/381; parity → 33/33; loc-fidelity → 33/33. Per-file STOP gate CLEAN (default-off → oracle path byte-identical → zero corpus file moved) — **PASS** |
+| 5. proto verdict unchanged | `pnpm --filter @stave/app test:proto` → `--LsnlgQ6osk | production=structured (body.tag=Stack)` UNCHANGED from Wave D. MINOR-3 ASSERTION PASS (all 6 LsnlgQ6osk descriptors resolved) — **PASS** |
+| 6. commit via COMMIT_TEMPLATE | gitmoji `:sparkles:` + Problem/Fix body cites the 3 structural invariants + PV50 stack-threaded discipline — **PASS** |
+
+### Wave E VERDICT: PASS
+
+The flagged-general fallback is threaded as an OFF-BY-DEFAULT optional
+stack param `parseStrudel→parseExpression→parseRoot` (the 20-17 G4 idiom;
+PV50: no module state — `git diff` proves it). The general arm emits
+structured-OPAQUE `Code.via` ONLY when explicitly enabled. The one-arg
+oracle-call-site guard is grep-asserted + recorded (the flag is
+STRUCTURALLY never-gate-counted). editor 1627 / app 381 / parity 33 /
+loc 33 / proto MINOR-3 — every gate green.

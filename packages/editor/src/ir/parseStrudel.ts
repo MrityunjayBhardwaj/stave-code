@@ -596,8 +596,24 @@ function buildBindingMap(
 }
 
 /** Parse a Strudel code string. Always returns a tree (Code node for unsupported). */
-export function parseStrudel(code: string): PatternIR {
+export function parseStrudel(
+  code: string,
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). When `true`, the general arm
+  // in `parseRoot` emits a structured-OPAQUE `Code.via{method,args,inner}`
+  // wrapper for unbound `identifier(...)` chain heads NOT in the curated
+  // `CHAIN_ROOT_RECOGNISER` set. Default `undefined` → general arm
+  // dormant → every existing path byte-identical (the 20-17 G4
+  // optional-arg-threading idiom; PV50: STACK param, NOT module state).
+  // Threaded `parseStrudel → parseExpression → parseRoot` only. The
+  // parity oracle (`_bakery-classify.spec.ts:77`) calls
+  // `parseStrudel(s.code)` with EXACTLY one arg → opts is never
+  // constructed by the gate → the flag is STRUCTURALLY never-gate-counted
+  // (Wave-0 ACTION 7 invariant, hardened in this wave's spec).
+  _opts?: { recogniseGeneralChainRoots?: boolean },
+): PatternIR {
   if (!code.trim()) return IR.pure()
+  const opts = _opts
 
   try {
     // Split into track blocks ($: lines). Each carries the absolute
@@ -643,7 +659,7 @@ export function parseStrudel(code: string): PatternIR {
       // handled at the substitution site, never a throw).
       const bound = buildBindingMap(stripped.body, stripped.offset)
       if (bound) {
-        const inner = parseExpression(bound.finalExpr, bound.finalOffset, undefined, bound.bindings)
+        const inner = parseExpression(bound.finalExpr, bound.finalOffset, undefined, bound.bindings, opts)
         // P67: if the final expression resolved to bare Code (the binding
         // map did not help — e.g. a non-stack final expr), keep the
         // existing whole-program fallback shape rather than wrapping a
@@ -656,7 +672,7 @@ export function parseStrudel(code: string): PatternIR {
         }
         // else: fall through to the plain parse (whole-program Code).
       }
-      const inner = parseExpression(stripped.body.trim(), innerOffset)
+      const inner = parseExpression(stripped.body.trim(), innerOffset, undefined, undefined, opts)
       return IR.track('d1', inner)
     }
     if (tracks.length === 1) {
@@ -669,7 +685,7 @@ export function parseStrudel(code: string): PatternIR {
       // empty-body Track wrapper so d{N} numbering stays stable when
       // the user toggles a line's comment prefix.
       const t = tracks[0]
-      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset)
+      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, undefined, opts)
       // 20-15 G5 (#138 / D-01) — a named label becomes the trackId so the
       // label IS the timeline row name (no `.p()` needed). `$` (the legacy
       // `$:` marker) keeps the synthetic `d1` numbering — byte-identical to
@@ -689,7 +705,7 @@ export function parseStrudel(code: string): PatternIR {
     // they keep their slot in the numbering.
     return IR.stack(
       ...tracks.map((t, i) => {
-        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset)
+        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, undefined, opts)
         // 20-15 G5 (#138 / D-01) — labelled tracks carry trackId = label;
         // legacy `$:` (label === '$') keeps `d{i+1}` so existing multi-$:
         // tunes are byte-identical. dollarStart (label-line start) is the
@@ -1035,6 +1051,11 @@ export function parseExpression(
   // `undefined` = no binding map (every call site except the no-`$:`
   // G1 entry). Threaded ONLY parseExpression → parseRoot → stack-arg.
   bindings?: ReadonlyMap<string, PatternIR>,
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). See `parseStrudel` for the
+  // full contract. Threaded EXACTLY as `bindings` (optional trailing
+  // STACK param; PV50). `undefined` → general arm dormant → byte-identical.
+  opts?: { recogniseGeneralChainRoots?: boolean },
 ): PatternIR {
   if (!expr.trim()) return IR.pure()
 
@@ -1067,7 +1088,7 @@ export function parseExpression(
     // those wrappers as opaque and discarded the entire structure — surfaces
     // for `stack(single-arg-with-unmapped-pattern-chain)` shapes such as
     // `stack(s("bd").delay("<0 .5>")...).sometimes(...)` in delay.strudel.
-    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings)
+    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings, opts)
     const rootIsBareCode =
       rootIR.tag === 'Code' && (rootIR as { via?: unknown }).via === undefined
     if (rootIsBareCode && !chain.trim()) {
@@ -1117,6 +1138,15 @@ export function parseRoot(
   // (the cleanest hook per research R4). `undefined` everywhere except the
   // no-`$:` G1 entry.
   bindings?: ReadonlyMap<string, PatternIR>,
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). See `parseStrudel` for the
+  // full contract. Threaded EXACTLY as `bindings` (optional trailing
+  // STACK param; PV50). When `opts?.recogniseGeneralChainRoots === true`
+  // AND the root token is an unbound `identifier(...)` chain head NOT in
+  // `CHAIN_ROOT_RECOGNISER`, the general arm emits a structured-OPAQUE
+  // `Code.via{method, args, inner}` wrapper. `undefined`/`false` →
+  // dormant → byte-identical.
+  opts?: { recogniseGeneralChainRoots?: boolean },
 ): PatternIR {
   const trimmed = root.trim()
   const leadingWs = root.length - root.trimStart().length
@@ -1338,6 +1368,7 @@ export function parseRoot(
           innerAbsOffset,
           callerIsSample,
           bindings,
+          opts,
         )
         const innerIsBareCode =
           innerIR.tag === 'Code' &&
@@ -1381,7 +1412,7 @@ export function parseRoot(
       // whole-expression Code fallback (D-02 topology-preserving, no
       // throw). Substituted subtrees keep definition-site loc (R6).
       const tracks = argsWithOffsets.map((a) =>
-        parseExpression(a.value, innerAbsOffset + a.offset, undefined, bindings),
+        parseExpression(a.value, innerAbsOffset + a.offset, undefined, bindings, opts),
       )
       if (tracks.length === 0) return IR.pure()
       if (tracks.length === 1) return tracks[0]
@@ -1477,6 +1508,84 @@ export function parseRoot(
       inner.tag === 'Code' && (inner as { via?: unknown }).via === undefined
     if (!innerIsBareCode) return inner
     // else: fall through to the opaque fallback below.
+  }
+
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). When `opts.recogniseGeneralChainRoots
+  // === true` AND `trimmed` is an unbound `identifier(...)` chain head NOT
+  // already handled by the strict arms above AND NOT in the curated
+  // `CHAIN_ROOT_RECOGNISER` set, emit a structured-OPAQUE
+  // `Code.via{method, args, callSiteRange, inner}` wrapper (D-01: unknowns
+  // CANNOT be modelled — opaque is correct for the general path; this is
+  // NOT a `Signal`/`Builder` tag — those are reserved for curated-set
+  // kinds). `inner` is the canonical bare `IR.code(trimmed)` (the same
+  // shape this function returns at the bottom for an unrecognised root),
+  // so the produced node is byte-identical to bare-Code MODULO the `via`
+  // structural marker — every existing consumer that walks `via.inner`
+  // still sees the same code-string content.
+  //
+  // PV50: `opts` flows on the STACK from `parseStrudel` (the 20-17 G4
+  // optional-arg-threading idiom; NOT module state). Default-undefined →
+  // this branch is unreachable → byte-identical to pre-E-1 output. The
+  // parity oracle (`_bakery-classify.spec.ts:77`) calls `parseStrudel`
+  // with EXACTLY one arg → opts is never constructed by the gate → this
+  // arm is STRUCTURALLY never-gate-counted (the never-gate-counted
+  // invariant, asserted in parseStrudel.generalChainRootFlag.test.ts).
+  //
+  // Placement: LAST arm before the bare-Code fallback. Any strict arm
+  // (curated set / note / s / sound / mini / loose recursive / stack /
+  // bareString / bareBacktick / parenStr) that already matched returned;
+  // any bound identifier root was substituted by the G2 arm
+  // (pS:~1155-1157). Reaching here = strictly the unhandled
+  // `identifier(...)` (or bare `identifier`) shape — the long tail.
+  //
+  // The chain (.bar()/.baz(...)) rides the EXISTING `applyChain` over
+  // this wrapped root unchanged — same composition contract as Wave A's
+  // Signal/Builder roots.
+  if (opts?.recogniseGeneralChainRoots === true) {
+    const genArgMatch = trimmed.match(/^([A-Za-z_$][\w$]*)\s*\(/)
+    if (genArgMatch) {
+      const token = genArgMatch[1]
+      // Exclude curated tokens — they are owned by the curated arm above
+      // (this is a strict NON-curated complement; the curated arm fires
+      // when present, this arm fires when not).
+      if (!CHAIN_ROOT_RECOGNISER.has(token)) {
+        const openParenIdx = trimmed.indexOf('(', genArgMatch[0].length - 1)
+        const closeIdx =
+          openParenIdx >= 0 ? findMatchingParen(trimmed, openParenIdx) : -1
+        if (closeIdx > openParenIdx) {
+          const rawArgs = trimmed.slice(openParenIdx + 1, closeIdx)
+          const rootStart = baseOffset + leadingWs
+          const callSiteRange: [number, number] = [rootStart, rootStart + closeIdx + 1]
+          // Structured-OPAQUE wrapper — `Code.via{method, args, inner}`
+          // shape. Mirrors `wrapAsOpaque` (pS:73-86): tag 'Code' with a
+          // structural `via` marker; toStrudel branches on via. The inner
+          // is the canonical bare-Code form of `trimmed` (the same shape
+          // the bare fallback below produces) — every consumer of `via.inner`
+          // walks it the same way it walks the wrapper's inner today.
+          return {
+            tag: 'Code',
+            code: '',
+            lang: 'strudel',
+            loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+            via: { method: token, args: rawArgs, callSiteRange, inner: IR.code(trimmed) },
+          }
+        }
+      }
+    }
+    // Bare identifier (no `(`) — also long-tail unbound. Wrap as
+    // structured-OPAQUE with empty args.
+    if (/^[A-Za-z_$][\w$]*$/.test(trimmed) && !CHAIN_ROOT_RECOGNISER.has(trimmed)) {
+      const rootStart = baseOffset + leadingWs
+      const callSiteRange: [number, number] = [rootStart, rootStart + trimmed.length]
+      return {
+        tag: 'Code',
+        code: '',
+        lang: 'strudel',
+        loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+        via: { method: trimmed, args: '', callSiteRange, inner: IR.code(trimmed) },
+      }
+    }
   }
 
   // Fallback: treat as opaque

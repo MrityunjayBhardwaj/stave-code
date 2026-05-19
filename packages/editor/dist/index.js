@@ -4857,8 +4857,9 @@ function buildBindingMap(body2, baseOffset) {
   };
 }
 __name(buildBindingMap, "buildBindingMap");
-function parseStrudel(code) {
+function parseStrudel(code, _opts) {
   if (!code.trim()) return IR.pure();
+  const opts = _opts;
   try {
     const tracks = extractTracks(code);
     if (tracks.length === 0) {
@@ -4870,18 +4871,18 @@ function parseStrudel(code) {
       const innerOffset = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0);
       const bound = buildBindingMap(stripped.body, stripped.offset);
       if (bound) {
-        const inner2 = parseExpression(bound.finalExpr, bound.finalOffset, void 0, bound.bindings);
+        const inner2 = parseExpression(bound.finalExpr, bound.finalOffset, void 0, bound.bindings, opts);
         const innerIsBareCode = inner2.tag === "Code" && inner2.via === void 0;
         if (!innerIsBareCode) {
           return IR.track("d1", inner2);
         }
       }
-      const inner = parseExpression(stripped.body.trim(), innerOffset);
+      const inner = parseExpression(stripped.body.trim(), innerOffset, void 0, void 0, opts);
       return IR.track("d1", inner);
     }
     if (tracks.length === 1) {
       const t = tracks[0];
-      const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset);
+      const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
       const trackId0 = t.label && t.label !== "$" ? t.label : "d1";
       return IR.track(trackId0, body2, {
         loc: [{ start: t.dollarStart, end: t.end }]
@@ -4889,7 +4890,7 @@ function parseStrudel(code) {
     }
     return IR.stack(
       ...tracks.map((t, i2) => {
-        const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset);
+        const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
         const trackId = t.label && t.label !== "$" ? t.label : `d${i2 + 1}`;
         return IR.track(trackId, body2, {
           loc: [{ start: t.dollarStart, end: t.end }]
@@ -5049,7 +5050,7 @@ function skipWhitespaceAndLineComments(src, pos) {
   return i2;
 }
 __name(skipWhitespaceAndLineComments, "skipWhitespaceAndLineComments");
-function parseExpression(expr, baseOffset = 0, isSampleKey, bindings) {
+function parseExpression(expr, baseOffset = 0, isSampleKey, bindings, opts) {
   if (!expr.trim()) return IR.pure();
   if (bindings) {
     const bareId = expr.trim();
@@ -5061,7 +5062,7 @@ function parseExpression(expr, baseOffset = 0, isSampleKey, bindings) {
     const leadingWs = expr.length - expr.trimStart().length;
     const trimmedOffset = baseOffset + leadingWs;
     const { root, chain } = splitRootAndChain(expr.trim());
-    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings);
+    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings, opts);
     const rootIsBareCode = rootIR.tag === "Code" && rootIR.via === void 0;
     if (rootIsBareCode && !chain.trim()) {
       return IR.code(expr);
@@ -5077,7 +5078,7 @@ function parseExpression(expr, baseOffset = 0, isSampleKey, bindings) {
   }
 }
 __name(parseExpression, "parseExpression");
-function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
+function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
   const trimmed = root.trim();
   const leadingWs = root.length - root.trimStart().length;
   const backtickInnerToIR = /* @__PURE__ */ __name((inner, isSample, innerOffset) => {
@@ -5174,7 +5175,8 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
           innerTrimmed,
           innerAbsOffset,
           callerIsSample,
-          bindings
+          bindings,
+          opts
         );
         const innerIsBareCode = innerIR.tag === "Code" && innerIR.via === void 0;
         if (!innerIsBareCode) {
@@ -5192,7 +5194,7 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
       const innerAbsOffset = baseOffset + leadingWs + innerStartInTrimmed;
       const argsWithOffsets = splitArgsWithOffsets(inner);
       const tracks = argsWithOffsets.map(
-        (a) => parseExpression(a.value, innerAbsOffset + a.offset, void 0, bindings)
+        (a) => parseExpression(a.value, innerAbsOffset + a.offset, void 0, bindings, opts)
       );
       if (tracks.length === 0) return IR.pure();
       if (tracks.length === 1) return tracks[0];
@@ -5228,6 +5230,39 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
     const inner = isBacktick ? backtickInnerToIR(innerLit, isSampleKey ?? false, innerOffset) : parseMini(innerLit, isSampleKey ?? false, innerOffset);
     const innerIsBareCode = inner.tag === "Code" && inner.via === void 0;
     if (!innerIsBareCode) return inner;
+  }
+  if (opts?.recogniseGeneralChainRoots === true) {
+    const genArgMatch = trimmed.match(/^([A-Za-z_$][\w$]*)\s*\(/);
+    if (genArgMatch) {
+      const token = genArgMatch[1];
+      if (!CHAIN_ROOT_RECOGNISER.has(token)) {
+        const openParenIdx = trimmed.indexOf("(", genArgMatch[0].length - 1);
+        const closeIdx = openParenIdx >= 0 ? findMatchingParen(trimmed, openParenIdx) : -1;
+        if (closeIdx > openParenIdx) {
+          const rawArgs = trimmed.slice(openParenIdx + 1, closeIdx);
+          const rootStart = baseOffset + leadingWs;
+          const callSiteRange = [rootStart, rootStart + closeIdx + 1];
+          return {
+            tag: "Code",
+            code: "",
+            lang: "strudel",
+            loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+            via: { method: token, args: rawArgs, callSiteRange, inner: IR.code(trimmed) }
+          };
+        }
+      }
+    }
+    if (/^[A-Za-z_$][\w$]*$/.test(trimmed) && !CHAIN_ROOT_RECOGNISER.has(trimmed)) {
+      const rootStart = baseOffset + leadingWs;
+      const callSiteRange = [rootStart, rootStart + trimmed.length];
+      return {
+        tag: "Code",
+        code: "",
+        lang: "strudel",
+        loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+        via: { method: trimmed, args: "", callSiteRange, inner: IR.code(trimmed) }
+      };
+    }
   }
   return IR.code(trimmed);
 }

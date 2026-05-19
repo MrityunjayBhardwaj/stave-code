@@ -615,7 +615,9 @@ declare function classifyLiteralRhs(rhs: string): {
     };
 } | null;
 /** Parse a Strudel code string. Always returns a tree (Code node for unsupported). */
-declare function parseStrudel(code: string): PatternIR;
+declare function parseStrudel(code: string, _opts?: {
+    recogniseGeneralChainRoots?: boolean;
+}): PatternIR;
 
 /**
  * parseStrudel — staged pipeline.
