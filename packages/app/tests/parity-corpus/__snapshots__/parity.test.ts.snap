@@ -392,17 +392,150 @@ exports[`strudel.cc parity corpus — structural IR shape > amensister parses to
             "userMethod": "room",
           },
           {
-            "code": "sine.add(saw.slow(4)).range(0,7).segment(8)
-  .superimpose(x=>x.add(.1))
-  .scale('G0 minor').note()
-  .s("sawtooth")
-  .gain(.4).decay(.1).sustain(0)
-  .lpa(.1).lpenv(-4).lpq(10)
-  .cutoff(perlin.range(300,3000).slow(8))
-  .degradeBy("0 0.1 .5 .1")
-  .rarely(add(note("12")))",
+            "code": "",
             "lang": "strudel",
             "tag": "Code",
+            "via": {
+              "args": "add(note("12"))",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": ""0 0.1 .5 .1"",
+                  "inner": {
+                    "code": "",
+                    "lang": "strudel",
+                    "tag": "Code",
+                    "via": {
+                      "args": "perlin.range(300,3000).slow(8)",
+                      "inner": {
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "10",
+                          "inner": {
+                            "code": "",
+                            "lang": "strudel",
+                            "tag": "Code",
+                            "via": {
+                              "args": "-4",
+                              "inner": {
+                                "code": "",
+                                "lang": "strudel",
+                                "tag": "Code",
+                                "via": {
+                                  "args": ".1",
+                                  "inner": {
+                                    "code": "",
+                                    "lang": "strudel",
+                                    "tag": "Code",
+                                    "via": {
+                                      "args": "0",
+                                      "inner": {
+                                        "code": "",
+                                        "lang": "strudel",
+                                        "tag": "Code",
+                                        "via": {
+                                          "args": ".1",
+                                          "inner": {
+                                            "code": "",
+                                            "lang": "strudel",
+                                            "tag": "Code",
+                                            "via": {
+                                              "args": ".4",
+                                              "inner": {
+                                                "body": {
+                                                  "code": "",
+                                                  "lang": "strudel",
+                                                  "tag": "Code",
+                                                  "via": {
+                                                    "args": "",
+                                                    "inner": {
+                                                      "code": "",
+                                                      "lang": "strudel",
+                                                      "tag": "Code",
+                                                      "via": {
+                                                        "args": "'G0 minor'",
+                                                        "inner": {
+                                                          "code": "",
+                                                          "lang": "strudel",
+                                                          "tag": "Code",
+                                                          "via": {
+                                                            "args": "x=>x.add(.1)",
+                                                            "inner": {
+                                                              "code": "",
+                                                              "lang": "strudel",
+                                                              "tag": "Code",
+                                                              "via": {
+                                                                "args": "8",
+                                                                "inner": {
+                                                                  "code": "",
+                                                                  "lang": "strudel",
+                                                                  "tag": "Code",
+                                                                  "via": {
+                                                                    "args": "0,7",
+                                                                    "inner": {
+                                                                      "code": "",
+                                                                      "lang": "strudel",
+                                                                      "tag": "Code",
+                                                                      "via": {
+                                                                        "args": "saw.slow(4)",
+                                                                        "inner": {
+                                                                          "kind": "sine",
+                                                                          "tag": "Signal",
+                                                                        },
+                                                                        "method": "add",
+                                                                      },
+                                                                    },
+                                                                    "method": "range",
+                                                                  },
+                                                                },
+                                                                "method": "segment",
+                                                              },
+                                                            },
+                                                            "method": "superimpose",
+                                                          },
+                                                        },
+                                                        "method": "scale",
+                                                      },
+                                                    },
+                                                    "method": "note",
+                                                  },
+                                                },
+                                                "key": "s",
+                                                "rawArgs": ""sawtooth"",
+                                                "tag": "Param",
+                                                "userMethod": "s",
+                                                "value": "sawtooth",
+                                              },
+                                              "method": "gain",
+                                            },
+                                          },
+                                          "method": "decay",
+                                        },
+                                      },
+                                      "method": "sustain",
+                                    },
+                                  },
+                                  "method": "lpa",
+                                },
+                              },
+                              "method": "lpenv",
+                            },
+                          },
+                          "method": "lpq",
+                        },
+                      },
+                      "method": "cutoff",
+                    },
+                  },
+                  "method": "degradeBy",
+                },
+              },
+              "method": "rarely",
+            },
           },
           {
             "body": {
@@ -3188,11 +3321,75 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
           "userMethod": "mask",
         },
         {
-          "code": "note(rand.range(0,12).struct("x(5,8,-1)").scale('g2 minor pentatonic')).s('bell').begin(.05)
-  .delay(.2).degradeBy(.4).gain(.4)
-  .mask("<1 0>/8")",
-          "lang": "strudel",
-          "tag": "Code",
+          "body": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ".4",
+              "inner": {
+                "body": {
+                  "body": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "'bell'",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "'g2 minor pentatonic'",
+                            "inner": {
+                              "body": {
+                                "code": "",
+                                "lang": "strudel",
+                                "tag": "Code",
+                                "via": {
+                                  "args": "0,12",
+                                  "inner": {
+                                    "kind": "rand",
+                                    "tag": "Signal",
+                                  },
+                                  "method": "range",
+                                },
+                              },
+                              "mask": "x(5,8,-1)",
+                              "tag": "Struct",
+                              "userMethod": "struct",
+                            },
+                            "method": "scale",
+                          },
+                        },
+                        "method": "s",
+                      },
+                    },
+                    "name": "begin",
+                    "params": {
+                      "begin": 0.05,
+                    },
+                    "tag": "FX",
+                    "userMethod": "begin",
+                  },
+                  "name": "delay",
+                  "params": {
+                    "delay": 0.2,
+                  },
+                  "tag": "FX",
+                  "userMethod": "delay",
+                },
+                "p": 0.6,
+                "tag": "Degrade",
+                "userMethod": "degradeBy",
+              },
+              "method": "gain",
+            },
+          },
+          "gate": "<1 0>/8",
+          "tag": "When",
+          "userMethod": "mask",
         },
       ],
       "userMethod": "stack",

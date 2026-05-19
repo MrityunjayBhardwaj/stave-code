@@ -4972,6 +4972,37 @@ function lexStateAt(code, idx) {
 }
 __name(lexStateAt, "lexStateAt");
 var RESERVED_LABEL_IDENTS = /* @__PURE__ */ new Set(["let", "const", "var", "default", "case"]);
+var CHAIN_ROOT_RECOGNISER = /* @__PURE__ */ new Map([
+  // Continuous + random Signal roots (21)
+  ["sine", { tag: "Signal", kind: "sine" }],
+  ["cosine", { tag: "Signal", kind: "cosine" }],
+  ["saw", { tag: "Signal", kind: "saw" }],
+  ["isaw", { tag: "Signal", kind: "isaw" }],
+  ["tri", { tag: "Signal", kind: "tri" }],
+  ["square", { tag: "Signal", kind: "square" }],
+  ["pulse", { tag: "Signal", kind: "pulse" }],
+  ["perlin", { tag: "Signal", kind: "perlin" }],
+  ["berlin", { tag: "Signal", kind: "berlin" }],
+  ["time", { tag: "Signal", kind: "time" }],
+  ["rand", { tag: "Signal", kind: "rand" }],
+  ["rand2", { tag: "Signal", kind: "rand2" }],
+  ["brand", { tag: "Signal", kind: "brand" }],
+  ["sine2", { tag: "Signal", kind: "sine2" }],
+  ["cosine2", { tag: "Signal", kind: "cosine2" }],
+  ["saw2", { tag: "Signal", kind: "saw2" }],
+  ["isaw2", { tag: "Signal", kind: "isaw2" }],
+  ["tri2", { tag: "Signal", kind: "tri2" }],
+  ["square2", { tag: "Signal", kind: "square2" }],
+  ["mousex", { tag: "Signal", kind: "mousex" }],
+  ["mousey", { tag: "Signal", kind: "mousey" }],
+  // Discrete Builder roots (6)
+  ["run", { tag: "Builder", kind: "run" }],
+  ["irand", { tag: "Builder", kind: "irand" }],
+  ["binary", { tag: "Builder", kind: "binary" }],
+  ["binaryN", { tag: "Builder", kind: "binaryN" }],
+  ["binaryL", { tag: "Builder", kind: "binaryL" }],
+  ["binaryNL", { tag: "Builder", kind: "binaryNL" }]
+]);
 function extractTracks(code) {
   const tracks = [];
   const dollarRe = /^[ \t]*(\/\/[ \t]*)?([A-Za-z_$][\w$]*)\s*:/gm;
@@ -5057,6 +5088,39 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
   }, "backtickInnerToIR");
   if (bindings && /^[A-Za-z_$][\w$]*$/.test(trimmed) && bindings.has(trimmed)) {
     return bindings.get(trimmed);
+  }
+  const recognised = CHAIN_ROOT_RECOGNISER.get(trimmed);
+  if (recognised) {
+    const rootStart = baseOffset + leadingWs;
+    const rootLoc = {
+      start: rootStart,
+      end: rootStart + trimmed.length
+    };
+    if (recognised.tag === "Signal") {
+      return IR.signal(recognised.kind, void 0, { loc: [rootLoc] });
+    }
+    return IR.builder(recognised.kind, "", void 0, { loc: [rootLoc] });
+  }
+  const argMatch = trimmed.match(/^([A-Za-z_$][\w$]*)\s*\(/);
+  if (argMatch) {
+    const token = argMatch[1];
+    const argRecognised = CHAIN_ROOT_RECOGNISER.get(token);
+    if (argRecognised) {
+      const openParenIdx = trimmed.indexOf("(", argMatch[0].length - 1);
+      const closeIdx = openParenIdx >= 0 ? findMatchingParen(trimmed, openParenIdx) : -1;
+      if (closeIdx > openParenIdx) {
+        const rawArgs = trimmed.slice(openParenIdx + 1, closeIdx);
+        const rootStart = baseOffset + leadingWs;
+        const rootLoc = {
+          start: rootStart,
+          end: rootStart + token.length
+        };
+        if (argRecognised.tag === "Signal") {
+          return IR.signal(argRecognised.kind, rawArgs, { loc: [rootLoc] });
+        }
+        return IR.builder(argRecognised.kind, rawArgs, void 0, { loc: [rootLoc] });
+      }
+    }
   }
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/);
   if (noteMatch) {

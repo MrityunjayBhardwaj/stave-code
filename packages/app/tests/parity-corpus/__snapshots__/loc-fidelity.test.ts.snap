@@ -229,6 +229,74 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "7",
   },
   {
+    "tag": "Code",
+    "text": ".rarely(add(note("12")))",
+  },
+  {
+    "tag": "Code",
+    "text": ".degradeBy("0 0.1 .5 .1")",
+  },
+  {
+    "tag": "Code",
+    "text": ".cutoff(perlin.range(300,3000).slow(8))",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpq(10)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpenv(-4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpa(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.4)",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("sawtooth")",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('G0 minor')",
+  },
+  {
+    "tag": "Code",
+    "text": ".superimpose(x=>x.add(.1))",
+  },
+  {
+    "tag": "Code",
+    "text": ".segment(8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".range(0,7)",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(saw.slow(4))",
+  },
+  {
+    "tag": "Signal",
+    "text": "sine",
+  },
+  {
     "tag": "FX",
     "text": ".room(.8)",
   },
@@ -1729,6 +1797,46 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "2",
+  },
+  {
+    "tag": "When",
+    "text": ".mask("<1 0>/8")",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.4)",
+  },
+  {
+    "tag": "Degrade",
+    "text": ".degradeBy(.4)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.2)",
+  },
+  {
+    "tag": "FX",
+    "text": ".begin(.05)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('bell')",
+  },
+  {
+    "tag": "Code",
+    "text": ".scale('g2 minor pentatonic')",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("x(5,8,-1)")",
+  },
+  {
+    "tag": "Code",
+    "text": ".range(0,12)",
+  },
+  {
+    "tag": "Signal",
+    "text": "rand",
   },
 ]
 `;

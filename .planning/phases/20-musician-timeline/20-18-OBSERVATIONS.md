@@ -550,3 +550,414 @@ gate's surface artifact.
   (chord/arrange ground-first) NOT started. LOCKED decisions
   (D-01/D-02/D-04/amended-D-03) NOT relitigated.
 - No PK18 STOP. No second-workaround. No bar-lower.
+
+---
+
+## WAVE B — PK18 HARD STOP (per-file loc-fidelity allow-list-empty premise FALSIFIED — 2 parity-UNCHANGED corpus files moved)
+
+**Run timestamp (UTC):** 2026-05-19 (executor, task B-1)
+**Branch/HEAD at STOP:** `feat/20-18-chain-root` @ `f66b1c4` (Wave-A
+Option-3 closure tip; Wave-B edit present in working tree, UNCOMMITTED
+— additive-only, +123 lines / 0 deletions to `parseStrudel.ts`).
+
+### ACTION 1 — live re-grep reconciliation (NO drift from Wave-0)
+
+`parseRoot(` def at **pS:1033**; G2 return at **pS:1082**; `noteMatch`
+at **pS:1086**; `applyChain` at **pS:1351**; `RESERVED_LABEL_IDENTS`
+at **pS:791**. All match the Wave-0 ACTION 2 table verbatim. The new
+`recogniseChainRoot`-style arm sits between **pS:1085** (immediately
+after the G2 return at :1082, a blank-line gap) and **pS:1163** (above
+the live `noteMatch` regex, now shifted to pS:~1166 post-insertion).
+Placement is AFTER G2, BEFORE `noteMatch` — the proven-correct slot.
+
+### ACTION 2-4 — the additive edit + the EXECUTED strict-widen probe (all three parts GREEN)
+
+Per-file `git diff --stat` after the Wave-B edit:
+```
+packages/editor/src/ir/parseStrudel.ts  | 123 +++++++++++++++++++++++++++++++++
+1 file changed, 123 insertions(+), 0 deletions(-)
+```
+Two pure-`+` hunks: the FROZEN curated-set `CHAIN_ROOT_RECOGNISER`
+`ReadonlyMap` (next to `RESERVED_LABEL_IDENTS`:791, the same idiom)
+and the two-arm recogniser block (bare-ident 0-arity + arg-taking)
+inserted between the G2 return and `noteMatch`. ZERO edits to any
+existing arm. Curated set = the FROZEN Wave-0 ACTION 6 membership
+VERBATIM (21 Signal kinds + 6 Builder kinds, chord/arrange EXCLUDED).
+
+Executed strict-widen probe (`_waveB-strict-widen.spec.ts`, production
+`parseExpression`, isolation, via `pnpm exec vitest run --config
+/dev/null tests/parity-corpus/_waveB-strict-widen.spec.ts`) — all
+three parts GREEN (1/1 test passed):
+
+```
+=== Wave B-1 strict-widen probe — production parseExpression ===
+--- (i) R-1 chain-roots → STRUCTURED + deep-walk hits ---
+irand bare             tag=Builder  bare=false  deep:Builder/irand=HIT  src="irand(12)"
+irand.struct           tag=Struct   bare=false  deep:Builder/irand=HIT  src="irand(12).struct(\"x(8,8)|x(4,8)\")"
+sine bare              tag=Signal   bare=false  deep:Signal/sine=HIT  src="sine"
+sine.range             tag=Code     bare=false  deep:Signal/sine=HIT  src="sine.range(200,2000)"
+perlin bare            tag=Signal   bare=false  deep:Signal/perlin=HIT  src="perlin"
+perlin.range           tag=Code     bare=false  deep:Signal/perlin=HIT  src="perlin.range(0.3,0.8)"
+rand bare              tag=Signal   bare=false  deep:Signal/rand=HIT  src="rand"
+run                    tag=Builder  bare=false  deep:Builder/run=HIT  src="run(8)"
+saw.range              tag=Code     bare=false  deep:Signal/saw=HIT  src="saw.range(0,1)"
+--- (ii) CONTROLS — byte-identical to pre-arm ---
+sound("hh hh hh hh")    tag=Seq      bare=false
+note(`<e5 d5>`).slow(4) tag=Slow     bare=false
+n("0 1 2")              tag=Seq      bare=false
+--- (iii) USER-SHADOW via G2 (bound sine wins) ---
+bound sine bare-ref     tag=Play     bare=false  isSignal=false
+```
+
+VERDICT (a) ROOT-recognition-suffices CONFIRMED in production: `sine`
+emits as `{tag:'Signal', kind:'sine'}` leaf; `sine.range(200,2000)`
+emits as `{tag:'Code', via:{method:'range', inner:{tag:'Signal',
+kind:'sine'}}}` — the existing `applyChain`'s `wrapAsOpaque` default
+carried `.range` over the new Signal root EXACTLY as predicted. Zero
+new chain code needed. User-shadow correct (G2 fires first; the bound
+`s("bd")` Play subtree wins; the curated arm never sees `sine` as a
+bare ident).
+
+### ACTION 5 — P68 build hygiene: PASS
+
+`pnpm --filter @stave/editor build` exits 0 (after a SINGLE
+SourceLocation-shape fix mid-execution: `{offset, length}` →
+`{start, end}` matching `IREvent.ts:15-18` — the convention every
+existing arm uses, e.g. pS:1376 `loc: [{ start: trimmedAbs, end: ... }]`):
+```
+ESM dist/index.js     1.30 MB
+CJS dist/index.cjs    1.31 MB
+DTS dist/index.d.ts  242.47 KB
+ESM/CJS/DTS ⚡️ Build success
+```
+Anchor counts (runtime literals, NOT type-erased — proving the curated
+arm reached the bundle):
+```
+grep -c "'irand'"  dist/index.js  = 1   (curated-Map key — runtime literal in CHAIN_ROOT_RECOGNISER)
+grep -c "'sine'"   dist/index.js  = 11  (curated-Map keys + IR.signal call sites)
+grep -c "'perlin'" dist/index.js  = 1   (curated-Map key)
+grep -c "CHAIN_ROOT_RECOGNISER" dist/index.js = 3 (declaration + 2 use sites)
+```
+Build gate INTENT satisfied (proof the arm reached production JS).
+
+### ACTION 6 — PER-FILE LOC-FIDELITY STOP GATE TRIGGERED (the falsified premise)
+
+`pnpm --filter @stave/app test` — `parity.test.ts` and
+`loc-fidelity.test.ts` BOTH report **2 of 33 corpus files moved**:
+```
+FAIL  tests/parity-corpus/loc-fidelity.test.ts > amensister — loc→source-slice map is stable & in-bounds
+FAIL  tests/parity-corpus/loc-fidelity.test.ts > belldub    — loc→source-slice map is stable & in-bounds
+FAIL  tests/parity-corpus/parity.test.ts       > amensister parses to a stable IR shape
+FAIL  tests/parity-corpus/parity.test.ts       > belldub    parses to a stable IR shape
+ Tests  4 failed | 363 passed (367)
+```
+Per-wave allow-list is **EMPTY** (no Wave-V fixture exists yet); per
+the PLAN ACTION 6 contract: "**ANY moved corpus file = silent drift =
+STOP.**"
+
+### FALSIFIED PREMISE (the PK18 trigger)
+
+The Wave-B `<pre_mortem>` Third Error states:
+> *"a parity-UNCHANGED corpus file silently moves … Mitigation: the
+> per-file loc-fidelity STOP gate — the set MUST be empty this wave
+> (no Wave-V fixture exists yet); any move = STOP."*
+
+The PLAN ACTION 6 + RESEARCH R-4 + the prompt's PK18 discipline all
+asserted **"every R-1-probe input that reaches this arm was bareCode
+(Wave-0 observed) → NOT in any current 33-file snapshot → ZERO
+existing corpus file may legitimately move."**
+
+**Observation falsifies that premise.** The Wave-0 R-1 BAKERY-slice
+classification (ACTION 4, the 7 Code-fallback samples) did NOT scan
+the full 33-file parity corpus — the 33 files were assumed to not
+contain curated-set tokens at parseable chain-root positions because
+R-1's 7 fallbacks didn't include them. Direct grep against the corpus:
+
+```
+amensister.strudel:20    sine.add(saw.slow(4)).range(0,7).segment(8)
+amensister.strudel:26    .cutoff(perlin.range(300,3000).slow(8))
+amensister.strudel:38    .speed(rand.range(.5,1.5))
+belldub.strudel:15       .end(perlin.range(0.02,1))
+belldub.strudel:23       .cutoff(perlin.range(400,3000).slow(8))
+belldub.strudel:24       .decay(perlin.range(0.05,.2)).sustain(0)
+belldub.strudel:31       ).s('square').cutoff(2000)
+belldub.strudel:36       note(rand.range(0,12).struct(...))
+```
+
+These tokens (`sine`, `saw`, `perlin`, `rand`) appear inside
+**partially-structured** tunes: the outer track/stack/note shape
+parses; the curated-root sub-expression (e.g. `sine.add(saw.slow(4)).
+range(0,7).segment(8)`) was previously bareCoded into an opaque
+`Code.via` fence. The new arm makes the sub-expression STRUCTURED —
+now `{tag:'Signal', kind:'sine'}` with `Code.via{method:'add', inner:
+{tag:'Signal', kind:'sine'}, args:'saw.slow(4)'}` wrappers carrying
+the chain (verdict (a) working exactly). The OUTER snapshot moves
+because the inner IR shape changed.
+
+**The "parity-IMPROVED" framing does NOT rescue this** — the prompt's
+HARD STOP discipline is explicit: "ANY parity-UNCHANGED corpus file
+moves loc → STOP (silent offset drift)." The 4 failing snapshots are
+not regressions (they are improvements: bareCode → structured), but
+the allow-list-empty contract is binary — moved is moved, and the
+gate fires. Pushing through would (a) regenerate snapshots without
+re-posing the LOCKED decision; (b) bar-lower the per-wave gate that
+the AMENDED D-03 explicitly retains; (c) be the 20-16 4×-cascade /
+P70 push-through trap.
+
+### GATE results at STOP
+
+| Gate | Status | Evidence |
+|------|--------|----------|
+| Action 1 — placement live-regrep | **PASS** | AFTER G2 (:1082), BEFORE `noteMatch` (:1166 post-insertion) |
+| Action 2 — curated module-const | **PASS** | 21 Signal + 6 Builder kinds = FROZEN Wave-0 set verbatim; module-const `ReadonlyMap`, NOT module state |
+| Action 3 — arm insertion | **PASS** | Two-arm shape (bare 0-arity + arg-taking balanced-paren); chord/arrange fall through |
+| Action 4 — strict-widen probe (i/ii/iii) | **PASS** | All three parts GREEN — recorded verbatim above |
+| Action 5 — P68 build + anchor | **PASS** | Build exits 0; runtime literal `'irand'`/`'sine'`/`'perlin'`/`CHAIN_ROOT_RECOGNISER` present in `dist/index.js` |
+| Action 6 — per-file loc-fidelity | **FAIL/STOP** | `amensister` + `belldub` moved (4 snapshots); allow-list empty this wave |
+| Action 7 — MINOR-3 proto trace | **PASS — provisional crit-1 hit** | See below |
+| Action 8 — commit | **NOT REACHED** — no commit made |
+
+### ACTION 7 — MINOR-3 PROTO TRACE (verbatim — recorded for the V-1 audit trail even though Wave B stops here)
+
+`pnpm exec vitest run --config /dev/null tests/parity-corpus/_proto-d01.spec.ts` (the `_proto-d01` harness `:run-by-vite-node-bypassing-the-exclude`):
+```
+=== 6 REPROS (PRODUCTION parseStrudel — current source with Wave B edit) ===
+__LsnlgQ6osk   | production=structured (body.tag=Stack)
+_1j62z5xjyCN   | production=code (bare)
+_72eEl7NwK9e   | production=structured (body.tag=Code via)
+_CyO42BOyp5a   | production=structured (body.tag=Code via)
+_L13nBhrqGR_   | production=structured (body.tag=Param)
+_LHtBlF8peGC   | production=structured (body.tag=Stack)
+```
+DIAGNOSTICS (relax run, `--LsnlgQ6osk`):
+```
+[R:__LsnlgQ6osk] iter0 az2 rhs="irand(12).struct(\"x(8,8)|x(4,8)\")\n  .sometimesBy(p" -> tag=Code bareCode=false
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]
+[R:__LsnlgQ6osk] FINAL parse -> tag=Stack via=false bareCode=false
+```
+
+**MINOR-3 ASSERTION: PASS.** `rp1,beat,chords2,bass,harm2` — all 5
+protected descriptors STILL RESOLVED (zero consumer-wave regression);
+`az2` flips from `bareCode=true pending=[2]` (Wave-0 baseline,
+ACTION 3 line 76) → `bareCode=false resolved` (Wave B-1) → the whole
+program `--LsnlgQ6osk` flips from `production=code (bare)` (Wave-0
+ACTION 3 line 56) → `production=structured (body.tag=Stack)`. **The
+Wave-0 (a) verdict CONFIRMED in production: ROOT-recognition alone
+sufficed — `applyChain` carried `.struct/.sometimesBy/.fm/.pan/...`
+opaquely over the new `{tag:'Builder', kind:'irand'}` root, including
+the signal-VALUED chain args. Crit-1 evidence provisional — V-1
+confirms.**
+
+### DISPOSITION (PK18 — no push-through, no workaround, no bar-lower)
+
+NOT fixed in Wave B. The amended `parseStrudel.ts` is left
+UNCOMMITTED in the working tree (additive-only, +123/-0; build green;
+crit-1 hit; per-file loc-fidelity STOP-gate fail) pending a re-pose.
+The mechanism WORKS — the falsified premise is about the SCOPE of
+"parity-UNCHANGED" files, not about the recogniser's correctness.
+
+**Candidate reframes for the user (NOT decided here — LOCKED-decision re-pose required):**
+
+1. **Allow-list widening (the V-2 path, pulled forward):** the PLAN
+   V-2 explicitly creates 3 permanent CI fixtures + UPDATES affected
+   corpus snapshots once the producer + audit are in. The natural
+   resolution is: the 2 moved files are the (previously-unrecognised)
+   first-found instances of the V-2 corpus update — list `amensister`
+   + `belldub` in the per-wave allow-list with a `git diff` audit
+   (every diff line is bareCode → STRUCTURED, never STRUCTURED →
+   bareCode; loc-fidelity diffs are all PV49-loc-additive
+   shape-changes, not coordinate drift). This is the cleanest path —
+   it does NOT lower the gate; it widens the EVIDENCED allow-list
+   with provenance.
+
+2. **Pre-mortem-Third-Error reframe:** the PLAN's Third Error
+   pre-mortem (`<pre_mortem>` and ACTION 6) assumed the curated-root
+   tokens never appeared in any of the 33 currently-structured files.
+   Observation falsifies that. The premise needs an explicit grep
+   sweep over the corpus for curated tokens at chain-root position
+   BEFORE asserting allow-list-empty (the Wave-0 R-1 7-sample slice
+   is not the corpus-wide claim it was used as). Apply this grep
+   sweep retroactively → the moved set is provably ≤ {`amensister`,
+   `belldub`} (the only corpus files with chain-root-positioned
+   curated tokens — verified above), and reframe (1)'s allow-list
+   widening lands the wave with EVIDENCED non-regressing parity-up.
+
+3. **Sequence: fold V-2 corpus-snapshot regeneration into Wave B**
+   conditional on a per-file `git diff` audit (every snapshot's diff
+   = bareCode→STRUCTURED + PV49 loc-additivity preserved on every
+   surviving entry; never STRUCTURED→bareCode; never an entry whose
+   coordinates drift independent of an IR-shape change). This is
+   structurally equivalent to reframe (1) but explicit about WHICH
+   wave owns the allow-list update.
+
+**Recommended (executor, for user decision):** reframe (1) — the
+moved files are the EVIDENCE of the producer working (crit-1 hit
+verbatim above), not silent drift. The allow-list-empty premise was
+based on the R-1 7-sample slice, not the full 33-file corpus; this
+is a SCOPE error in the premise, not a recogniser bug. Re-pose to
+the user before any Wave-B re-attempt. **Wave B VERDICT: STOP
+(PK18) — do NOT proceed to Wave C.**
+
+### CROSS-REFERENCE — Wave-A precedent (the SAME class of falsified premise)
+
+Wave A STOPPED on a similar "premise falsified by build observation"
+class (the "type-only / Wave-D-deferred" claim, vs. TS exhaustiveness
+breaking every `switch(.tag)` consumer). Wave B STOPS on the symmetric
+class: "allow-list-empty for parity-UNCHANGED files" vs. observation
+that 2 of 33 corpus files DO contain curated tokens at chain-root
+position. **Both STOPs are EVIDENCE the recogniser/closure mechanism
+WORKS** — and both are SCOPE errors in the per-wave preconditions
+that need a re-pose before continuing. The Wave-A user decision
+folded the right work into the right wave (Option 3: full closure in
+A); the Wave-B decision should mirror — fold V-2's allow-list update
+into B with the EVIDENCED bareCode→STRUCTURED audit.
+
+---
+
+## Wave B — RECLASSIFIED (user-approved within-plan reframe, 2026-05-20)
+
+**The "Wave B — STOP (PK18)" section above is PRESERVED verbatim as
+the audit trail of the discipline.** This section records the
+user-approved within-plan reframe that lands Wave B as a PASS via
+the plan's V-3 per-wave commit-body-flagged allow-list mechanism
+(PLAN.md V-3 line ~593 — the explicit `{Wave-0} ∪ {V-2 fixtures} ∪
+{per-wave commit-body-flagged}` envelope).
+
+### The falsified plan brief (quoted verbatim from the STOP record)
+
+> "allow-list EMPTY this wave; ZERO existing corpus file may
+> legitimately move"
+
+This brief was a SCOPE error — the 7-sample bakery slice from
+Wave-0 R-1 was used as a corpus-wide claim, but the 33-file corpus
+contains tunes with signal-roots at parseRoot-reachable positions
+(`amensister.strudel`, `belldub.strudel`) that the 7-sample slice
+did not survey. The "allow-list empty" premise survived planning
+only because the survey was scoped to the slice, not the corpus.
+
+### The empirical contradiction (post-Wave-B observation)
+
+Corpus-wide grep for FROZEN Wave-0 curated tokens (`sine`/`cosine`/
+`saw`/`isaw`/`tri`/`square`/`pulse`/`perlin`/`berlin`/`time`/`rand`/
+`rand2`/`brand`/`sine2`/`cosine2`/`saw2`/`isaw2`/`tri2`/`square2`/
+`mousex`/`mousey`/`run`/`irand`/`binary`/`binaryN`/`binaryL`/
+`binaryNL`) over the 33-file `tests/parity-corpus/fixtures/`
+returned 9 signal-containing files. Position analysis:
+
+- **At parseRoot-reachable positions** (top-level RHS or loose-arm
+  inner) → **2 files**: `amensister.strudel:20`
+  (`sine.add(saw.slow(4)).range(0,7).segment(8)…` — top-level
+  binding RHS); `belldub.strudel:36`
+  (`note(rand.range(...).struct(...).scale(...))` — loose-arm inner
+  reachable via the existing loose-arm split).
+- **At chain-method-arg positions** (inside `.range(...)`,
+  `.fast(...)`, `.cutoff(...)`, etc.) → **7 files**: `arpoon`,
+  `bassFuge`, `dinofunk`, `flatrave`, `juxUndTollerei`,
+  `meltingsubmarine`, `randomBells`. These are wrapped opaquely by
+  `applyChain`'s existing arg machinery — `applyChain` does NOT
+  recursively `parseRoot` chain args.
+
+### The reclassification
+
+**(i) Legitimate bareCode→STRUCTURED improvements on
+amensister + belldub.** Mechanism: Wave B's `recogniseChainRoot`
+arm working exactly as designed. Direction at every changed leaf
+verified bareCode→STRUCTURED (audit below). Sample of the new
+structured IR:
+- `amensister` (was monolithic `Code{code:"sine.add(saw.slow(4)).range(...)..."}`):
+  now innermost is `{tag:'Signal', kind:'sine'}`, wrapped by
+  `Code.via{method:'add', args:'saw.slow(4)', inner:{tag:'Signal',
+  kind:'sine'}}`, then `.range(0,7)`, then `.segment(8)`, then
+  `.superimpose(...)`, then `.scale('G0 minor')`, then `.note()`,
+  then `.s("sawtooth")` (which the EXISTING `.s` arm recognises as
+  `Param`), then `.gain(.4)`, `.decay(.1)`, `.sustain(0)`,
+  `.lpa(.1)`, `.lpenv(-4)`, `.lpq(10)`, `.cutoff(perlin.range(...).slow(8))`,
+  `.degradeBy("0 0.1 .5 .1")`, `.rarely(add(note("12")))`. Every
+  layer is the EXISTING chain arms composing over the newly
+  recognised Signal root — the (a)-verdict from Wave 0 ACTION 5
+  realised at corpus scale: zero new chain code needed.
+- `belldub` (was monolithic `Code{code:"rand.range(0,12).struct(...).scale(...).s('bell')...:.mask(...)"}`):
+  now innermost is `{tag:'Signal', kind:'rand'}`, wrapped by
+  `.range(0,12)`, then the EXISTING `Struct` arm fires on
+  `.struct("x(5,8,-1)")`, then `.scale('g2 minor pentatonic')`,
+  then `.s('bell')`, then the EXISTING `FX` arms on `.begin(.05)` +
+  `.delay(.2)`, then the EXISTING `Degrade` arm on `.degradeBy(.4)`
+  (numeric arg — meets the existing Degrade arm's contract), then
+  `.gain(.4)`, then the EXISTING `When` arm on `.mask("<1 0>/8")`.
+  All existing chain arms compose over the new Signal root — same
+  mechanism, exact same arms.
+
+**(ii) Corpus-scale (a)-verdict CORROBORATED.** The 7
+method-arg files' snapshots stayed UNCHANGED — confirming the
+Wave-0 ACTION 5 (a)-verdict at corpus scale, not just in the
+isolated probe: signal-valued chain ARGS ride existing `applyChain`
+opaquely because `applyChain` wraps args without recursing into
+them; signal-valued chain ROOTS at parseRoot-reachable positions
+flow through the `recogniseChainRoot` arm; the two paths are
+disjoint by `applyChain`'s structure. This is the empirical
+corroboration the Wave-B pre-mortem now demands.
+
+### V-3 allow-list extension (per PLAN.md V-3 mechanism)
+
+The plan's V-3 allow-list is explicitly defined as `{Wave-0} ∪
+{V-2 fixtures} ∪ {per-wave commit-body-flagged}` (PLAN.md V-3 line
+~593). The "per-wave commit-body-flagged" envelope is the within-
+plan mechanism for legitimate first-found bareCode→STRUCTURED
+moves whose mechanism was not surveyed at plan-time. This is the
+SAME mechanism the 20-17 Wave-C bakery-152 precedent used (user-
+approved within-plan reframe for first-found legitimate moves the
+plan didn't survey). It is NOT bar-lowering — every flagged entry
+carries `git diff` provenance (every changed leaf verified
+bareCode→STRUCTURED; PV49 loc-additivity preserved on every
+surviving entry; no STRUCTURED→bareCode regressions; no coordinate
+drift independent of IR-shape change).
+
+**Wave-B V-3 allow-list entries** (commit-body-flagged):
+- `tests/parity-corpus/fixtures/amensister.strudel` — legitimate
+  bareCode→STRUCTURED improvement; mechanism = `recogniseChainRoot`
+  arm matching `sine` at line 20 (top-level binding RHS, parseRoot-
+  reachable). Audit: 1 parity snapshot key + 1 loc-fidelity
+  snapshot key changed; every changed leaf is bareCode→STRUCTURED;
+  PV49 loc-additivity preserved.
+- `tests/parity-corpus/fixtures/belldub.strudel` — legitimate
+  bareCode→STRUCTURED improvement; mechanism = `recogniseChainRoot`
+  arm matching `rand` at line 36 (loose-arm inner via the existing
+  `note(...)` loose-arm split, parseRoot-reachable). Audit: 1 parity
+  snapshot key + 1 loc-fidelity snapshot key changed; every changed
+  leaf is bareCode→STRUCTURED; PV49 loc-additivity preserved.
+
+### Crit-1 evidence callout (provisional hit)
+
+`--LsnlgQ6osk` flipped STRUCTURED in production (the
+MICROVAULT-152 D-01 reclaim sample):
+
+```
+__LsnlgQ6osk   | production=structured (body.tag=Stack)
+[R:__LsnlgQ6osk] iter0 rp1 rhs="\"<sd hh>\".fast(\"<2@3 4>\")" -> tag=Code bareCode=false
+[R:__LsnlgQ6osk] iter0 beat rhs="sound(rp1).bank(\"RolandTR707\").gain(0.4)\n   .gain(" -> tag=Degrade bareCode=false
+[R:__LsnlgQ6osk] iter0 az2 rhs="irand(12).struct(\"x(8,8)|x(4,8)\")\n  .sometimesBy(p" -> tag=Code bareCode=false
+[R:__LsnlgQ6osk] iter0 chords2 rhs="\"<Gsus G7 Em7 D7>\"" -> tag=Cycle bareCode=false
+[R:__LsnlgQ6osk] iter0 bass rhs="chords2.rootNotes(2).note()\n  .s(\"sawtooth\")\n  .cl" -> tag=FX bareCode=false
+[R:__LsnlgQ6osk] iter0 harm2 rhs="chords2.voicings('ireal')\n  .slow(1)\n  .note()\n  ." -> tag=Param bareCode=false
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]
+[R:__LsnlgQ6osk] FINAL parse -> tag=Stack via=false bareCode=false
+```
+
+Pre-Wave-B, `az2` resolved to bareCode (the `irand(12)` root was
+opaque); post-Wave-B, `az2`'s root `irand(12)` is recognised by the
+`recogniseChainRoot` arm, the existing `Struct` arm fires on
+`.struct("x(8,8)|x(4,8)")`, and the binding resolves. The remaining
+chain `.sometimesBy(perlin.range(0,1), sub(8))` rides existing
+`applyChain` opaquely (a)-verdict — the signal-valued ARG stays
+opaque, which is precisely the Wave-C boundary, but no longer
+blocks the binding from resolving STRUCTURED. **MINOR-3 ASSERTION
+PASS**: all 6 of `rp1,beat,az2,chords2,bass,harm2` post-fixpoint
+resolved with `pending=[]`.
+
+`--LsnlgQ6osk` is the provisional crit-1 reclaim the amended D-03
+anchors on; V-1 (the final crit-1 dual gate) will confirm at the
+end of the wave sequence. LOCKED D-01/D-02-CORRECTION/D-03 (dual
+gate ≥85%, no bar-lower) — all untouched.
+
+**Wave B VERDICT: PASS (user-approved within-plan reframe per the
+20-17 Wave-C bakery-152 precedent).**
