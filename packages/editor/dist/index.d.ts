@@ -356,7 +356,7 @@ type PatternIR = {
     chainOffset?: number;
 } | {
     tag: 'Builder';
-    kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL';
+    kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL' | 'chord' | 'arrange';
     args: string;
     body?: PatternIR;
     loc?: SourceLocation[];

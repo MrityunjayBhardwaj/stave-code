@@ -831,13 +831,37 @@ const CHAIN_ROOT_RECOGNISER: ReadonlyMap<string, ChainRootDescriptor> = new Map(
   ['square2', { tag: 'Signal', kind: 'square2' }],
   ['mousex',  { tag: 'Signal', kind: 'mousex'  }],
   ['mousey',  { tag: 'Signal', kind: 'mousey'  }],
-  // Discrete Builder roots (6)
+  // Discrete Builder roots (6 Wave-B closed-set + 2 Wave-C GROUNDED additions)
   ['run',      { tag: 'Builder', kind: 'run'      }],
   ['irand',    { tag: 'Builder', kind: 'irand'    }],
   ['binary',   { tag: 'Builder', kind: 'binary'   }],
   ['binaryN',  { tag: 'Builder', kind: 'binaryN'  }],
   ['binaryL',  { tag: 'Builder', kind: 'binaryL'  }],
   ['binaryNL', { tag: 'Builder', kind: 'binaryNL' }],
+  // 20-18 Wave C — `chord`/`arrange` GROUNDED against real source
+  // (~/.anvideck/projects/struCode/ref/GROUND_TRUTH_SIGNAL_MJS.md §2/§3):
+  //   `chord` → @strudel/core@1.2.6 controls.mjs:2130 (registerControl) →
+  //     :10-54 createParam → :41-49 root path (reify(value).withValue(withVal))
+  //     — arg is a chord-symbol sublanguage, NOT a Strudel-pattern → `args`
+  //     RAW, **no `body`** (modelling body would be inferred-taxonomy — the
+  //     domain-specific sublanguage is non-recursable in the matcher's
+  //     competence; D-02 matcher line, EXECUTOR NOTES line 842).
+  //   `arrange` → @strudel/core@1.2.6 pattern.mjs:1469-1473 — varargs of
+  //     `[cycles, pattern]` two-element JS arrays. The arg surface is a
+  //     JS-array-literal-of-tuples shape, NOT a single pattern expression.
+  //     Parsing it would require JS-array-literal + tuple recursion, which
+  //     is structurally outside the matcher's competence → `args` RAW,
+  //     **no `body`** (the disposition RESEARCH R-3 specifies for OPAQUE
+  //     gate-critical builders: args-raw-only until grounded; grounded
+  //     evidence here closes the gate by EXCLUDING a body shape, not by
+  //     constructing one).
+  // Both builders ride the EXISTING Wave-B arm path unchanged (arg-taking →
+  // balanced-paren-slice the raw args → emit `IR.builder(kind, rawArgs,
+  // undefined, {loc})`). The chain (.voicing/.dict/.mode/.struct/...) rides
+  // the EXISTING `applyChain` over the new Builder root — same composition
+  // contract as the 6 Wave-B kinds.
+  ['chord',    { tag: 'Builder', kind: 'chord'    }],
+  ['arrange',  { tag: 'Builder', kind: 'arrange'  }],
 ])
 
 export function extractTracks(

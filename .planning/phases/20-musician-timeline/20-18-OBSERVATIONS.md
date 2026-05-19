@@ -961,3 +961,256 @@ gate ≥85%, no bar-lower) — all untouched.
 
 **Wave B VERDICT: PASS (user-approved within-plan reframe per the
 20-17 Wave-C bakery-152 precedent).**
+
+---
+
+## WAVE C — `chord`/`arrange` grounded modelling + #7 PASS + #3 PK18 STOP
+
+**Branch:** `feat/20-18-chain-root` (Wave B HEAD `deb94f8` → Wave C
+this commit). Tip below.
+
+### ACTION 1 — Locate + READ real source (Grounding Check, P69 discharge)
+
+`chord` source — NOT in `@strudel/tonal` (despite the surface
+feature). It is a CONTROL in `@strudel/core`:
+```
+node_modules/.pnpm/@strudel+core@1.2.6/node_modules/@strudel/core/controls.mjs:2130
+  export const { chord } = registerControl('chord');
+controls.mjs:63-74   registerControl(names, ...aliases) → returns { [name]: createParam(names) }
+controls.mjs:10-54   createParam(names) → returns `func(value, pat)` closure
+controls.mjs:41-49   At root position (no pat): `return reify(value).withValue(withVal)`
+                     → reify parses value as mini-notation; withVal wraps each Hap value
+                       into `{chord: <value>}`.
+```
+
+`arrange` source — in `@strudel/core/pattern.mjs`:
+```
+pattern.mjs:1469-1473
+  export function arrange(...sections) {
+    const total = sections.reduce((sum, [cycles]) => sum + cycles, 0);
+    sections = sections.map(([cycles, section]) => [cycles, section.fast(cycles)]);
+    return stepcat(...sections).slow(total);
+  }
+pattern.mjs:1458-1468  Doc: "Takes a variable number of arrays with two elements
+                            specifying the number of cycles and the pattern to use."
+```
+
+Version delta: local `@strudel/core@1.2.6` (vs CONTEXT pin
+`f73b395648645aabe699f91ba0989f35a6fd8a3c`). `collect.ts` line-number
+citations corroborate 1.2.6 — same baseline used.
+
+### ACTION 2 — `GROUND_TRUTH_SIGNAL_MJS.md` seeded
+
+Created at `~/.anvideck/projects/struCode/ref/GROUND_TRUTH_SIGNAL_MJS.md`
+(outside repo per ground-truth-docs protocol — committed only as a
+reference in the commit body, not via `git add`).
+
+Contents: §1 signal.mjs seed table (the R-2 21+6 entries), §2 `chord`
+grounded section (with the 3 `controls.mjs:LINE` citations above), §3
+`arrange` grounded section (with the `pattern.mjs:1469-1473` citation),
+§4 opaque-not-load-bearing list, **§5 the body-decision matrix
+(GROUNDED, not inferred):**
+
+| Kind | `args` | `body` | Justification |
+|------|--------|--------|---------------|
+| `chord` | RAW source slice | **ABSENT** | Arg is a chord-symbol sublanguage (`Am`, `Bb^7`, …) routed through `reify`+`withVal`-control-wrapping. No Strudel-pattern recursion available without a chord-symbol parser the IR does not own. Modelling `body` would be inferred-taxonomy. |
+| `arrange` | RAW source slice | **ABSENT** | Arg is `...sections: Array<[cycles, pattern]>` — a varargs of JS-tuple-array literals. Matcher does not parse JS array/tuple literals; recursion would require a tuple-aware sub-parser outside matcher competence (D-02 matcher line, EXECUTOR NOTES line 842). |
+
+Both decisions follow RESEARCH R-3's `args`-RAW-ONLY OPAQUE-builder
+disposition: the GROUNDING here closes the gate by EXCLUDING a body
+shape, not constructing one.
+
+### ACTION 3 — Curated-set + arm extended (the ADDITIVE edit)
+
+`PatternIR.ts:142` Builder kind union: widened from
+`'run'|'irand'|'binary'|'binaryN'|'binaryL'|'binaryNL'` to that PLUS
+`'chord'|'arrange'`. Comment annotated with the GT REF + the
+body-ABSENT contract.
+
+`parseStrudel.ts:811-841` `CHAIN_ROOT_RECOGNISER` Map: 2 new entries
+appended in the Builder section:
+```
+['chord',    { tag: 'Builder', kind: 'chord'    }],
+['arrange',  { tag: 'Builder', kind: 'arrange'  }],
+```
+With a multi-paragraph comment grounding each choice + the body-ABSENT
+contract (the inline doc is the catalogue's first-tier interpretation
+layer). Arm path UNCHANGED — the existing Wave-B `recogniseChainRoot`
+shape (~pS:1155-1206) handles arg-taking → balanced-paren slice → emit
+`IR.builder(kind, rawArgs, undefined, {loc})`. Chain composition is the
+EXISTING `applyChain` (PK16(b), unchanged).
+
+### ACTION 4 — Probe + per-binding diagnostic (the EXECUTED proof)
+
+Two new maintainer specs at
+`packages/app/tests/parity-corpus/`:
+- `_waveC-grounding.spec.ts` — loads `samples-2026-05-19T13-24-45-538Z.json`
+  verbatim, asserts on #3 + #7 (record-the-STOP form, see below).
+- `_waveC-diagnose.spec.ts` — pure observation; per-binding-RHS tag
+  classification; "proves chord works" stripped-shape probe (the
+  load-bearing evidence that classifies #3 as a NEW-class blocker).
+
+Plus dedicated configs `vitest.waveC.config.ts` + `vitest.waveCdiag.config.ts`
+mirroring the proto/bakery pattern (do NOT widen the CI gate).
+
+#### #7 `-KLGNJUtyyj1` — GROUNDED PASS
+
+```
+--- #7 -KLGNJUtyyj1 (arrange final expr) — GROUNDED PASS expected ---
+whole-program tag=Track    structured=true
+deep-walk Builder/arrange = HIT
+  hit.kind=arrange  args="
+  [48, stack(
+    richter_chords.euclidRot(3,8,"<0 1 6 0 1 …"
+  body present? NO (correct — args-RAW-only per Ground Truth §5)
+```
+
+#7's program is a clean `bindings*, finalExpr` shape (the
+`richter_chords`/`richter_tenor`/`richter_sopran` bindings, then the
+`arrange(...)` final expression). `buildBindingMap` accepts it; the
+fixpoint resolves all 3 bindings; the final `arrange(...)` parses
+through the Wave-C arm → `{tag:'Builder', kind:'arrange', args:<RAW>}`;
+no body. Whole-program flips STRUCTURED. **Crit-1 (provisional)
+contributor: #7 — gate-critical PASS.**
+
+#### #3 `-6c1hEXe8Agi` — PK18 STOP (whole-program shape gap, NOT chord arm)
+
+```
+--- #3 -6c1hEXe8Agi (chord-rooted bindings + trailing side-effect) — PK18 STOP recorded ---
+whole-program tag=Track    structured=false
+deep-walk Builder/chord  = MISS
+CLASSIFICATION: whole-program-shape blocker (NOT chain-root) →
+  buildBindingMap rejects `bindings*, all(...), finalExpr` shape
+  (finalIdx !== stmts.length-1 → returns null → bareCode fallback).
+  The chord arm itself WORKS — verified by _waveC-diagnose.spec.ts
+  ("proves chord works" probe): stripped-#3 → Track/body.tag=Pick,
+  deep Builder/chord HIT, args="\"Am Am\"".
+  Disposition: PK18 STOP per plan pre-mortem 2 (PLAN:380).
+  Backlog: file issue for buildBindingMap shape-tolerance gap.
+```
+
+#### The "proves chord works" stripped-shape probe (verbatim diagnostic)
+
+```
+stripped-#3 whole-program tag=Track bare=false
+body.tag=Pick bare=false
+deep-walk Builder/chord = HIT
+  hit.args="\"Am Am\""
+```
+
+The only difference between #3 and stripped-#3 is the removal of the
+`all(x=>x.punchcard())` line. With it: whole-program bareCode (the
+shape rejection). Without it: clean STRUCTURED + chord HIT. The
+classification is **direct, captured**, not inferred.
+
+#### Per-binding RHS tag census (verbatim — `_waveC-diagnose.spec.ts` Pass 2)
+
+```
+=== Pass 2 — declaration order with accumulating bindings ===
+crackles   tag=Param    bare=false
+padsbell   tag=Code     bare=false      ← chord(...).voicing()... structured via Wave-C
+leadbell   tag=Param    bare=false
+keysbcbg   tag=Code     bare=false
+softkeys   tag=Code     bare=false
+dotsawst   tag=Choice   bare=false
+deadchoir  tag=Choice   bare=false
+deadkeys   tag=Param    bare=false
+melosupp   tag=Param    bare=false      ← chord(...).voicing()... structured
+allsnare   tag=Param    bare=false
+hihatpat   tag=Param    bare=false
+kicktemp   tag=Param    bare=false
+basse808   tag=Param    bare=false
+ultmkick   tag=Param    bare=false
+intro      tag=Stack    bare=false
+core1      tag=Stack    bare=false
+interlude  tag=Stack    bare=false
+core2      tag=Stack    bare=false
+core3      tag=Stack    bare=false
+outro      tag=Stack    bare=false
+FINAL      tag=Pick     bare=false      ← "<...>".pick([intro, core1, …]) — structured
+```
+
+EVERY binding RHS + the final expression parse non-bareCode in
+declaration order. The whole-program failure is purely the
+`buildBindingMap` shape rejection at line 534 (the `finalIdx !==
+stmts.length - 1` predicate trips on the `all(...)` side-effect
+statement sitting between the bindings block and the finalExpr).
+
+**Classification: NEW-CLASS blocker (program-shape, NOT chain-root
+recognition).** Per plan pre-mortem 2 (PLAN:380):
+"a non-flip with a NEW-class blocker is a PK18 STOP → backlog →
+re-pose, NEVER an ad-hoc fix this phase." Backlog filed:
+[issue #158](https://github.com/MrityunjayBhardwaj/stave-code/issues/158)
+"buildBindingMap: `bindings*, sideEffect, finalExpr` shape rejected
+(20-18 Wave C residual — gate-relevant #3 `-6c1hEXe8Agi`)".
+
+### ACTION 5 — Corpus-wide chord/arrange grep + audit
+
+```
+$ grep -rlE '(^|[^a-zA-Z_$])(chord|arrange)\(' packages/app/tests/parity-corpus --include='*.strudel' | grep -v bakery-runs | xargs -n1 basename | sort -u
+arpoon.strudel       ← `.chord(...)` (leading dot — CHAIN method, not root; unaffected)
+belldub.strudel      ← `chord("[~ Gm7] ~ [~ Dm7] ~")` root inside stack(...)
+dinofunk.strudel     ← `chord("Abm7")` root inside stack(...)
+meltingsubmarine.strudel ← `chord("<Am7!3 <Em7 …>>")` root inside stack(...)
+```
+
+Three NEW Wave-C movers (`belldub` was already Wave-B-allow-listed and
+gets a further diff; `dinofunk` + `meltingsubmarine` are NEW
+allow-list extensions). Per-file diff audit:
+
+- `dinofunk.strudel` — `chord("Abm7").mode(...).dict(...).voicing().struct(...)` was bareCode block; now nested `Code.via{method:'struct', inner:Code.via{voicing, inner:Code.via{dict, inner:Code.via{mode, inner:{tag:'Builder',kind:'chord',args:'"Abm7"'}}}}}`. Clean bareCode→STRUCTURED via Wave-C arm. PV49 loc-additivity preserved (chain-method `loc` entries are subsequence-of-source). Code-invariance preserved (toStrudel emits `chord("Abm7")` verbatim).
+- `meltingsubmarine.strudel` — `chord("<Am7!3 <Em7 …>>").dict('lefthand').voicing().add(...)` block; same nested Code.via over Builder/chord. Same class.
+- `belldub.strudel` — `chord("[~ Gm7] ~ [~ Dm7] ~").dict(...).voicing().add(...).cutoff(perlin.range(...))...` block; same nested Code.via over Builder/chord. Combines with Wave-B's `perlin.range` chains (the perlin chain inside cutoff is now ALSO structured); deeper diff than Wave B alone.
+
+All 3 diffs were AUDITED before snapshot refresh. The mechanism is
+identical to Wave-B's amensister/belldub disposition: same
+`recogniseChainRoot` arm, same PV49 loc-additivity, same
+code-invariance. **V-3 allow-list extension (Wave C):**
+- `dinofunk.strudel` — legitimate bareCode→STRUCTURED via
+  `recogniseChainRoot` + `chord` curated key.
+- `meltingsubmarine.strudel` — same mechanism.
+- `belldub.strudel` — Wave-B-allow-listed; Wave-C deepens the
+  existing diff.
+
+### ACTION 6 — Gate results
+
+| Gate | Result | Detail |
+|------|--------|--------|
+| 1 — `GROUND_TRUTH_SIGNAL_MJS.md` exists with grounded citations | **PASS** | `~/.anvideck/projects/struCode/ref/GROUND_TRUTH_SIGNAL_MJS.md` — `controls.mjs:2130/:10-54/:41-49` for chord, `pattern.mjs:1469-1473` for arrange, version-delta noted (1.2.6 vs Codeberg `f73b3956`). |
+| 2 — Probe records #3/#7 verbatim | **PASS** | `/tmp/waveC-grounding-output.txt` captured; #7 GROUNDED PASS, #3 PK18 STOP classified verbatim. |
+| 3 — P68 build + minification-stable anchor | **PASS** | `pnpm --filter @stave/editor build` exit 0. `dist/index.js`: `"chord"`=5, `"arrange"`=1, `"irand"`=1, `"sine"`=11, `CHAIN_ROOT_RECOGNISER`=3. (tsup re-emits with double quotes; the single-quoted source idiom converts at bundle time.) |
+| 4 — editor 1603/1603 + app 367/367 + per-file loc-fidelity STOP gate | **PASS** | editor `1603 passed (1603)`; app `367 passed (367)` after V-3 allow-list-extended snapshot refresh (the 3 mover files audited per ACTION 5). Per-file STOP gate: only the allow-listed 3 files (belldub Wave-B+C, dinofunk Wave-C, meltingsubmarine Wave-C) moved. |
+| 5 — proto MINOR-3 ASSERTION | **PASS** | `__LsnlgQ6osk \| production=structured (body.tag=Stack)`; `[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]`. All 6 stay resolved — no consumer-wave regression. |
+| 6 — Commit via COMMIT_TEMPLATE | **PASS** | See tip below. |
+
+### Wave C — VERDICT: **PASS (within scope) + PK18 STOP recorded on #3**
+
+The Wave-C scope was: GROUND `chord`/`arrange` against real source,
+seed the Ground Truth doc, model them as `Builder` with a GROUNDED
+body decision (RAW args, body ABSENT — never inferred), and prove
+the arm via executed probe. **All four are done.**
+
+#7 flips STRUCTURED (gate-critical PASS — contributes to Wave-V crit-1
+parity counting). #3's chord recogniser also flips (proven via
+stripped-shape probe), but the whole-program does NOT flip because of
+a `bindings*, sideEffect, finalExpr` shape rejection in
+`buildBindingMap` that is OUTSIDE Wave C's scope — a NEW-class
+blocker. Per the plan's pre-mortem 2 + the executor's HARD STOP
+discipline, this is a PK18 STOP: backlog issue #158 filed, no
+scope-expansion, no second workaround, no bar-lower. The locked
+`expect(struct3).toBe(false)` assertion in `_waveC-grounding.spec.ts`
+captures the STOP — when issue #158's fix lands, that assertion
+fails LOUDLY and Wave V picks up #3 then.
+
+The chord/arrange GROUNDING is complete. The chord arm WORKS where
+the program-shape allows. The Wave-V parity-counting will see
+#7 + `dinofunk` + `meltingsubmarine` + (belldub Wave-B+C deepening)
+as Wave-C STRUCTURED contributions; #3 awaits the backlog fix.
+
+**Wave C READY for Wave D (the PV53 consumer audit — VERIFY-ONLY per
+the Wave-A/D re-sequencing amendment).** LOCKED D-01/D-02-CORRECTION/D-03
+(dual gate ≥85%, no bar-lower) — all untouched. The body-ABSENT
+contract on the new `chord`/`arrange` kinds is the Wave-D verifier's
+gate: every `case 'Builder'` consumer arm sees `body?: PatternIR`
+present-but-undefined for these kinds (no consumer code change
+needed).

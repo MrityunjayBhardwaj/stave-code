@@ -3103,15 +3103,97 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
           },
         },
         {
-          "code": "chord("[~ Gm7] ~ [~ Dm7] ~")
-  .dict('lefthand').voicing()
-  .add(note("0,.1"))
-  .s('sawtooth').gain(.8)
-  .cutoff(perlin.range(400,3000).slow(8))
-  .decay(perlin.range(0.05,.2)).sustain(0)
-  .delay(.9).room(1)",
-          "lang": "strudel",
-          "tag": "Code",
+          "body": {
+            "body": {
+              "code": "",
+              "lang": "strudel",
+              "tag": "Code",
+              "via": {
+                "args": "0",
+                "inner": {
+                  "code": "",
+                  "lang": "strudel",
+                  "tag": "Code",
+                  "via": {
+                    "args": "perlin.range(0.05,.2)",
+                    "inner": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "perlin.range(400,3000).slow(8)",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": ".8",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "'sawtooth'",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "note("0,.1")",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "'lefthand'",
+                                            "inner": {
+                                              "args": ""[~ Gm7] ~ [~ Dm7] ~"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "dict",
+                                          },
+                                        },
+                                        "method": "voicing",
+                                      },
+                                    },
+                                    "method": "add",
+                                  },
+                                },
+                                "method": "s",
+                              },
+                            },
+                            "method": "gain",
+                          },
+                        },
+                        "method": "cutoff",
+                      },
+                    },
+                    "method": "decay",
+                  },
+                },
+                "method": "sustain",
+              },
+            },
+            "name": "delay",
+            "params": {
+              "delay": 0.9,
+            },
+            "tag": "FX",
+            "userMethod": "delay",
+          },
+          "name": "room",
+          "params": {
+            "room": 1,
+          },
+          "tag": "FX",
+          "userMethod": "room",
         },
         {
           "body": {
@@ -3716,13 +3798,45 @@ exports[`strudel.cc parity corpus — structural IR shape > dinofunk parses to a
         "tag": "Seq",
       },
       {
-        "code": "chord("Abm7")
-  .mode("below:G4")
-  .dict('lefthand')
-  .voicing()
-  .struct("x(3,8,1)".slow(2))",
+        "code": "",
         "lang": "strudel",
         "tag": "Code",
+        "via": {
+          "args": ""x(3,8,1)".slow(2)",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": "",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "'lefthand'",
+                  "inner": {
+                    "code": "",
+                    "lang": "strudel",
+                    "tag": "Code",
+                    "via": {
+                      "args": ""below:G4"",
+                      "inner": {
+                        "args": ""Abm7"",
+                        "kind": "chord",
+                        "tag": "Builder",
+                      },
+                      "method": "mode",
+                    },
+                  },
+                  "method": "dict",
+                },
+              },
+              "method": "voicing",
+            },
+          },
+          "method": "struct",
+        },
       },
       {
         "body": {
@@ -6319,11 +6433,36 @@ exports[`strudel.cc parity corpus — structural IR shape > meltingsubmarine par
             "tag": "Code",
           },
           {
-            "code": "chord("<Am7!3 <Em7 E7b13 Em7 Ebm7b5>>")
-  .dict('lefthand').voicing() // chords
-  .add(note("0,.04")) // add second",
+            "code": "",
             "lang": "strudel",
             "tag": "Code",
+            "via": {
+              "args": "note("0,.04")",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "",
+                  "inner": {
+                    "code": "",
+                    "lang": "strudel",
+                    "tag": "Code",
+                    "via": {
+                      "args": "'lefthand'",
+                      "inner": {
+                        "args": ""<Am7!3 <Em7 E7b13 Em7 Ebm7b5>>"",
+                        "kind": "chord",
+                        "tag": "Builder",
+                      },
+                      "method": "dict",
+                    },
+                  },
+                  "method": "voicing",
+                },
+              },
+              "method": "add",
+            },
           },
           {
             "code": "slightly detuned voice

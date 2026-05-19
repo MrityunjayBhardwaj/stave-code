@@ -140,8 +140,9 @@ export type PatternIR =
       loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
   | { tag: 'Builder'
       kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL'
+          | 'chord' | 'arrange'                    // 20-18 Wave C — `chord`/`arrange` GROUNDED at @strudel/core@1.2.6 controls.mjs:2130 + pattern.mjs:1469-1473 (ref/GROUND_TRUTH_SIGNAL_MJS.md §2/§3). args-RAW-only; `body` ABSENT (OPAQUE sublanguage / JS-tuple-array; recursion outside matcher competence — never inferred).
       args: string                                 // RAW (untrimmed) arg slice — code-invariance (the Code.via.args convention)
-      body?: PatternIR                             // OPTIONAL — only for builders whose arg is a recursable pattern (Wave C; OPAQUE-pending → absent until grounded)
+      body?: PatternIR                             // OPTIONAL — only for builders whose arg is a recursable pattern (no current kind populates this — `chord`/`arrange` are grounded args-RAW-only per Ground Truth §5)
       loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
 
 /**

@@ -1695,6 +1695,50 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "misc",
   },
   {
+    "tag": "FX",
+    "text": ".room(1)",
+  },
+  {
+    "tag": "FX",
+    "text": ".delay(.9)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(perlin.range(0.05,.2))",
+  },
+  {
+    "tag": "Code",
+    "text": ".cutoff(perlin.range(400,3000).slow(8))",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(note("0,.1"))",
+  },
+  {
+    "tag": "Code",
+    "text": ".voicing()",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict('lefthand')",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
+  },
+  {
     "tag": "When",
     "text": ".mask("<0 1>/8")",
   },
@@ -2013,6 +2057,26 @@ note("<b4 eb4>").s('dino').delay(.8).slow(8).room(.5)
   {
     "tag": "Play",
     "text": "hh",
+  },
+  {
+    "tag": "Code",
+    "text": ".struct("x(3,8,1)".slow(2))",
+  },
+  {
+    "tag": "Code",
+    "text": ".voicing()",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict('lefthand')",
+  },
+  {
+    "tag": "Code",
+    "text": ".mode("below:G4")",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
   },
   {
     "tag": "FX",
@@ -3323,6 +3387,22 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "e2",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(note("0,.04"))",
+  },
+  {
+    "tag": "Code",
+    "text": ".voicing()",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict('lefthand')",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
   },
   {
     "tag": "Code",
