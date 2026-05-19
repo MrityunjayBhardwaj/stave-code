@@ -246,9 +246,11 @@ function countLeavesInIR(node: PatternIR): number {
   }
   // Peel single-body uniform-modifier wrappers (mirrors flattenLeafVoices
   // peel set in app's irProjection.ts).
-  // 20-17 D-1a: narrow the widened `Code.via` union — the literal arm
-  // `{literal:true;raw}` has no `inner`. D-1c will replace this with the
-  // principled `'literal' in via` guard as part of the consumer audit.
+  // 20-17 D-1c — discriminate Code.via union: the wrapAsOpaque arm has
+  // `inner` (recurse); the literal arm (`{literal:true;raw}`) is a LEAF
+  // (do not recurse). A literal node still counts as 1 leaf via the
+  // default branch below. Keep the inner truthiness check too — preserves
+  // pre-20-17 byte-semantics on the opaque arm.
   if (node.tag === 'Code' && node.via && !('literal' in node.via) && node.via.inner) {
     return countLeavesInIR(node.via.inner)
   }
@@ -461,10 +463,9 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       // Wrapper case: walk via.inner; thread our call-site range onto
       // produced events as loc[N+] per D-01-from-20-03 (innermost first).
       // Parse-failure case (no via): return [] as before — DV-08 unchanged.
-      // 20-17 D-1a: narrow the widened `Code.via` union — literal arm
-      // (`{literal:true;raw}`) has no `inner` and no events to walk; treat
-      // as opaque (return []). D-1c will replace with `'literal' in via`
-      // principled guard.
+      // 20-17 D-1c — discriminate Code.via union: the wrapAsOpaque arm
+      // has `inner` events to walk; the literal arm (`{literal:true;raw}`)
+      // is a value-leaf with no events (treat as opaque — return []).
       if (ir.via && !('literal' in ir.via)) {
         const innerEvents = walk(ir.via.inner, ctx)
         return withWrapperLoc(innerEvents, ir.loc)

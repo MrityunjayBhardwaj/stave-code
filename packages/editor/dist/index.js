@@ -4120,20 +4120,27 @@ function validateNode(raw, path) {
       const out2 = { tag: "Code", code: node.code, lang: "strudel" };
       if (node.via !== void 0 && node.via !== null) {
         const via = node.via;
-        requireField(via, "method", ["string"], `${path}.via`);
-        requireField(via, "args", ["string"], `${path}.via`);
-        if (!Array.isArray(via.callSiteRange)) {
-          throw new Error(`${path}.via: field "callSiteRange" must be an array`);
+        if (via.literal === true) {
+          if (typeof via.raw !== "string") {
+            throw new Error(`${path}.via: literal arm requires string "raw"`);
+          }
+          out2.via = { literal: true, raw: via.raw };
+        } else {
+          requireField(via, "method", ["string"], `${path}.via`);
+          requireField(via, "args", ["string"], `${path}.via`);
+          if (!Array.isArray(via.callSiteRange)) {
+            throw new Error(`${path}.via: field "callSiteRange" must be an array`);
+          }
+          if (typeof via.inner !== "object" || via.inner === null) {
+            throw new Error(`${path}.via: field "inner" must be an object`);
+          }
+          out2.via = {
+            method: via.method,
+            args: via.args,
+            callSiteRange: via.callSiteRange,
+            inner: validateNode(via.inner, `${path}.via.inner`)
+          };
         }
-        if (typeof via.inner !== "object" || via.inner === null) {
-          throw new Error(`${path}.via: field "inner" must be an object`);
-        }
-        out2.via = {
-          method: via.method,
-          args: via.args,
-          callSiteRange: via.callSiteRange,
-          inner: validateNode(via.inner, `${path}.via.inner`)
-        };
       }
       if (Array.isArray(node.loc)) {
         out2.loc = node.loc;

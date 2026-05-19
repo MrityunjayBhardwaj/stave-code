@@ -277,19 +277,30 @@ function validateNode(raw: unknown, path: string): PatternIR {
       const out: PatternIR = { tag: 'Code', code: node.code as string, lang: 'strudel' }
       if (node.via !== undefined && node.via !== null) {
         const via = node.via as Record<string, unknown>
-        requireField(via, 'method', ['string'], `${path}.via`)
-        requireField(via, 'args', ['string'], `${path}.via`)
-        if (!Array.isArray(via.callSiteRange)) {
-          throw new Error(`${path}.via: field "callSiteRange" must be an array`)
-        }
-        if (typeof via.inner !== 'object' || via.inner === null) {
-          throw new Error(`${path}.via: field "inner" must be an object`)
-        }
-        out.via = {
-          method: via.method as string,
-          args: via.args as string,
-          callSiteRange: via.callSiteRange as [number, number],
-          inner: validateNode(via.inner, `${path}.via.inner`),
+        // Phase 20-17 D-1c — Code.via union has two arms:
+        //   - wrapAsOpaque: {method, args, callSiteRange, inner}
+        //   - literal (G3 / D-02 CORRECTION): {literal:true; raw:string}
+        // Discriminate by `'literal' in via` (LEAF — no inner to recurse).
+        if (via.literal === true) {
+          if (typeof via.raw !== 'string') {
+            throw new Error(`${path}.via: literal arm requires string "raw"`)
+          }
+          out.via = { literal: true, raw: via.raw as string }
+        } else {
+          requireField(via, 'method', ['string'], `${path}.via`)
+          requireField(via, 'args', ['string'], `${path}.via`)
+          if (!Array.isArray(via.callSiteRange)) {
+            throw new Error(`${path}.via: field "callSiteRange" must be an array`)
+          }
+          if (typeof via.inner !== 'object' || via.inner === null) {
+            throw new Error(`${path}.via: field "inner" must be an object`)
+          }
+          out.via = {
+            method: via.method as string,
+            args: via.args as string,
+            callSiteRange: via.callSiteRange as [number, number],
+            inner: validateNode(via.inner, `${path}.via.inner`),
+          }
         }
       }
       if (Array.isArray(node.loc)) {

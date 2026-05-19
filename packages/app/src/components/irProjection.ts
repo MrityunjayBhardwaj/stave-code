@@ -86,7 +86,14 @@ export function projectedLabel(node: PatternIR): string | undefined {
     // call site via summarize() in IRInspectorPanel.tsx; the audience
     // split is the load-bearing PV35 mechanism.
     case 'Code':
-      if (node.via) return 'unmodelled'
+      // Phase 20-17 D-1c — discriminate Code.via union.
+      //   - wrapAsOpaque arm: unparsed call site → "unmodelled" (existing
+      //     PV35 musician-chrome label, unchanged).
+      //   - literal arm ({literal:true;raw}): a resolved literal binding
+      //     (G3 / D-02 CORRECTION). The user's source IS the value — it
+      //     is NOT unmodelled; it is a value-leaf. Label it as 'Code'
+      //     so the musician tree shows the substituted literal as a leaf.
+      if (node.via && !('literal' in node.via)) return 'unmodelled'
       return 'Code'
     // Play: leaf, no userMethod field per PatternIR.ts:38.
     case 'Play':
@@ -249,7 +256,10 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
     // Wrapper case: expose via.inner so the projected tree drills into
     // the wrapped receiver. Parse-failure case (no via): leaf as before.
     case 'Code':
-      return node.via ? [node.via.inner] : []
+      // Phase 20-17 D-1c — discriminate Code.via union. Only the
+      // wrapAsOpaque arm has `inner` (drill into wrapped receiver). The
+      // literal arm (`{literal:true;raw}`) is a LEAF — return [].
+      return node.via && !('literal' in node.via) ? [node.via.inner] : []
     case 'Track':
       // Phase 20-11 γ-3 — single-body wrapper; surface body so the
       // inspector tree drills through Track. Promotion of Stack-body
@@ -378,7 +388,10 @@ export function flattenLeafVoices(body: PatternIR): readonly PatternIR[] {
  * Code WITHOUT via.inner is also not peeled (parse-failure leaf, no inner).
  */
 function peelSingleBodyWrapper(n: PatternIR): PatternIR | null {
-  if (n.tag === 'Code' && n.via?.inner) return n.via.inner
+  // Phase 20-17 D-1c — only the wrapAsOpaque arm has `inner` (peel into
+  // wrapped receiver); the literal arm (`{literal:true;raw}`) is a LEAF
+  // (do NOT peel — `via.inner` is undefined and peeling would crash).
+  if (n.tag === 'Code' && n.via && !('literal' in n.via) && n.via.inner) return n.via.inner
   switch (n.tag) {
     case 'Param':
     case 'FX':
