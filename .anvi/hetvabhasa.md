@@ -1854,3 +1854,62 @@ reliable; verify dist by grep per commit regardless".
 `feedback_editor_watch_mode.md`; `packages/editor/tsup.config.ts`,
 `packages/editor/src/engine/StrudelEngine.ts:194` (the pre-existing
 @strudel/mondo TS7016). Ground Truth: 20-15-SUMMARY.md (γ-3 + V-2).
+
+## P69 — Grounded-LOOKING inference: a `file:line` citation is not observation unless the path was executed or grepped
+
+**Symptom:** a RESEARCH/CONTEXT/plan claim about *behaviour*, *reach*, or
+*shape* carries precise `file:line` citations and reads as grounded — but
+the conclusion is still wrong, and only a prototype run / live grep
+reveals it. The citation was real; the *inference drawn from reading
+around it* was not verified by running the path.
+
+**The trap:** treating "I cited the source line" as equivalent to "I
+observed the behaviour". Reading code near a citation is still inference
+(Lokāyata: reading = inference, running = observation). The `file:line`
+makes the inference *look* like the grounding the framework demands, so
+it passes review until a gate fires.
+
+**Recurrence (one session, 2026-05-18/19 — this is why it is a
+catalogue entry, not a memory):**
+1. 20-16 RESEARCH cited `buildBindingMap` lines and concluded "the
+   opaque-RHS fence on transitive bindings is the dominant #141
+   blocker" — never ran the 6 repros. The Task-1 prototype falsified
+   it 4× (the real blocker was `splitTopLevelStatements`, then 3 more
+   compounding segmenter gaps, then D-01 reach).
+2. 20-17 CONTEXT D-02 cited P67 + the via field and concluded "store
+   literal RHS as Code-with-via, no consumer ripple" — never read
+   `PatternIR.ts:99-105`; `via` is the specific `{method,args,
+   callSiteRange,inner}` wrapAsOpaque shape, unconstructible for a
+   literal. Plan-checker (which DID read it) caught it as a BLOCKER.
+3. 20-17 D-1c enumerated the `.via` consumer audit list from memory of
+   "the IRInspector files" — never ran the grep; omitted
+   `MusicalTimeline.tsx:298-299` (the live unguarded `via.inner`
+   deref). Re-check grep caught it.
+
+**Detection signal:** the claim is about runtime behaviour / which sites
+a value reaches / the shape of a data structure, and there is NO command
+output (prototype stdout, grep result, test run) backing it — only prose
++ citations. Ask: "was this path *executed* or *enumerated by grep*, or
+read-and-reasoned?"
+
+**The fix:** for any behaviour/reach/shape claim a later wave depends
+on, the cheapest *executed* observation is mandatory BEFORE the
+dependency is taken: a ≤30-line prototype (reach/behaviour), a
+`grep -rn` over the real trees (consumer/shape enumeration — and make
+the grep the source of truth, the prose list only a FLOOR the grep must
+reproduce), or a unit run. The HARD-GATE / plan-checker / re-check
+layering exists precisely to convert these; do not weaken it by
+accepting a citation as the observation. See PK18 (the gate-cascade
+discipline this error necessitates).
+
+**ORIGIN:** Phases 20-16 (Task-1 gate ×4) + 20-17 (D-02 BLOCKER,
+D-1c audit omission), session 2026-05-18/19. Extends the base-layer
+Grounding check ("docs are claims, code is truth") with "and a code
+*citation* is still a claim until the path is *run/grepped*".
+
+**REF:** P67 (the via tri-state the D-02 instance turned on), PK18
+(Lokāyata HARD-GATE cascade discipline), PK17 (friction-first cycle —
+its step-1 "run the PURE parser, never trust a curated proxy" is the
+same principle); `.planning/phases/20-musician-timeline/20-16-OBSERVATIONS.md`
+(the 4-iteration audit trail), `20-17-CONTEXT.md` (D-02 CORRECTION).
+Ground Truth: 20-16-OBSERVATIONS.md.

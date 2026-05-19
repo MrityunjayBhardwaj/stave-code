@@ -1612,3 +1612,65 @@ P67 (the recursion's bare-Code-vs-structured chokepoint); β-1 probe +
 `packages/editor/src/ir/parseStrudel.ts` (`parseRoot` `(?:s|sound)` arms,
 `isSampleKey` param, the `callerIsSample` loose-arm thread). Ground
 Truth: 20-15-SUMMARY.md (β-1 conclusion + V-2).
+
+## PV52 — `tag === 'Code' && via === undefined` is THE single bare-Code fence-bail discriminator; it spans ~8 consumers and any new `via` arm must preserve it byte-identical
+
+**Invariant:** across the IR pipeline, a `Code` node is a *whole-program
+bare fallback* (the only thing the `buildBindingMap` opaque fence bails
+on, and the only thing the parity classifier counts as unstructured)
+**iff `tag === 'Code' && via === undefined`**. Any `via !== undefined`
+is a *structured fragment* (today: the `wrapAsOpaque`
+`{method,args,callSiteRange,inner}` wrapper; 20-17-planned: an additive
+`{literal:true;raw}` arm). This predicate is duplicated, by necessity,
+across every consumer that walks or classifies Code.
+
+**Span (≥3 modules — why it is a vyapti):** the live `\.via` /
+`tag === 'Code'` consumer set is **8 files** (grep over
+`packages/{editor,app}/src`, non-test, 2026-05-19):
+`parseStrudel.ts` (the fences: `rhsIR`/`rootIR`/`inner` bare-Code
+checks at ~479/896/1192/551), `toStrudel.ts:43` (`gen(via.inner)` —
+round-trip), `collect.ts:249/461` (`walk(via.inner)`),
+`serialize.ts:278-292` (THROWS if `via.inner` not an object),
+`irProjection.ts:252/381`, `IRInspectorChrome.ts:128`,
+`MusicalTimeline.tsx:298` (`if (via && typeof via==='object'){…via.inner}`),
+`parseStrudelStages.ts:119/175` (`tag==='Code'` wrapper-shape assumers).
+
+**Breaks when:** a new `via` arm is added whose shape is not
+`{…,inner:PatternIR}` (the 20-17 literal arm) and ANY of the 8 consumers
+reads `via.inner`/`via.method` without first discriminating the arm.
+`collect`/`toStrudel`/`MusicalTimeline` would walk `undefined`
+(silent-wrong → P67); `serialize` would throw. The opaque FENCE itself
+is safe-by-construction (`via === undefined` is false for any arm) — the
+risk is entirely consumer-side.
+
+**Implication for design (the rule):** (1) the bare-Code predicate
+`tag === 'Code' && via === undefined` must stay **byte-identical** when
+any `via` arm is added (assert via `git diff` of the fence sites — it is
+the kept opaque fence + P67 discriminator). (2) Every new `via` arm must
+be ADDITIVE (do not mutate the existing wrapper arm's shape). (3) Adding
+a `via` arm obligates a grep-reproduced consumer audit of all 8 sites
+with an explicit arm-discriminating guard (`'literal' in via` /
+`via.inner === undefined`) at each `via.inner`/`via.method` read; the
+prose suspect-list is a FLOOR the live grep must reproduce, never an
+exhaustive-and-final list (under-enumeration silently drops a consumer
+— P69/the D-1c near-miss).
+
+**Status: PARTIALLY IMPLEMENTED.** The bare-Code discriminator + the
+single `wrapAsOpaque` arm are live and validated (P67). The additive
+`{literal:true;raw}` arm + the 8-consumer guarded audit are
+**20-17-PLANNED, NOT YET IMPLEMENTED** (Phase 20-17 Wave D / D-1a-c).
+
+**ORIGIN:** the 20-17 D-02 BLOCKER (the original "Code-with-via, no
+ripple" premise was unconstructible AND the consumer span was
+under-enumerated — both surfaced by the plan-checker/re-check reading
+`PatternIR.ts:99-105` + the live `.via` grep). Generalises P67
+(tag-only discrimination conflates the two) into the structural span +
+the new-arm obligation.
+
+**REF:** P67 (the tri-state error this invariant's predicate prevents),
+P69 (grounded-looking inference — the under-enumeration instance), PK18
+(the gate discipline that caught it); `packages/editor/src/ir/PatternIR.ts`
+(the `Code.via` union, ~99-105), `parseStrudel.ts` (fence sites),
+`.planning/phases/20-musician-timeline/20-17-PLAN.md` (D-1c — the
+8-consumer guarded audit), `20-17-CONTEXT.md` (D-02 CORRECTION).
+Ground Truth: 20-17-PLAN.md D-1c, 20-16-OBSERVATIONS.md.

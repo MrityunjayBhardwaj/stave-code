@@ -826,3 +826,67 @@ structured, bare-Code-`via===undefined` as fallback);
 20-15-SUMMARY.md, 20-16-SUMMARY.md, 20-16-OBSERVATIONS.md,
 memory/project_phase_20_musician_timeline.md
 (the 20-14 Bakery reality check + 20-15 measured 72% + 20-16 80%).
+
+## PK18 — Lokāyata HARD-GATE cascade discipline (gate falsifies framing → STOP, reframe, re-pose; never push through)
+
+When a phase carries a HARD GATE (a cheap executed observation that must
+pass before the expensive wave), and the gate FALSIFIES the phase's
+framing, the correct lifecycle is NOT "work around it" — it is a
+disciplined reframe loop. Recurred as the spine of the entire
+2026-05-18/19 session (20-16 Task-1 gate ×4 + 20-17 plan-check ×2 +
+re-check ×1); promoted from method to catalogued lifecycle because
+parity/parser work will keep producing it (it is the operational
+consequence of P69).
+
+```
+1. GATE RUNS (prototype / plan-checker / live grep) — executed, not read.
+2. GATE FALSIFIES the framing (an inferred premise is observed false).
+3. STOP. Do NOT add a workaround / second mechanism (base-layer
+   reactivity check). The framing is wrong, not the code.
+4. RECORD verbatim in <phase>-OBSERVATIONS.md (raw output, the
+   classification, what was expected vs observed). Durable, committed
+   (`:mag: gate(...)`), even — especially — when it FAILED.
+5. RE-CLASSIFY: name the real blocker from the observation. File new
+   gap classes as issues (AnviDev issue-before-fix); do NOT fix them
+   this cycle (scope discipline — the cascade multiplies if you do).
+6. RE-POSE the now-invalidated LOCKED decisions to the user (the
+   premise they locked on is gone — D-02's "no ripple" etc.). User
+   re-decides; do not silently re-scope a locked decision.
+7. RESEQUENCE or REFRAME the plan (not redesign if the north star
+   holds). Re-run the gate. It may fire again — each iteration is
+   cheap (minutes, zero wrong code) relative to one wrong-code phase.
+8. VENDOR the gate oracle early (the prototype/repros lived in /tmp and
+   were volatile across 4 iterations — 20-17 Wave 0 exists to fix this).
+```
+
+**Why the order is load-bearing:** pushing through a falsified framing
+(step 3 violated) is the single most expensive mistake — it builds the
+expensive wave on a premise the cheap gate already disproved (20-16
+would have built D-01 on a parser that never reaches the dominant
+class). Re-posing to the user (step 6) is non-optional: a locked
+decision whose premise was falsified is no longer that decision; Claude
+re-scoping it unilaterally is the reception-check failure.
+
+**Common violation:** treating gate failure as "the gate is too
+strict, lower it" (the D-03 escape-hatch the 20-17 checker removed) or
+"add one more workaround" (the second-workaround-for-same-symptom
+base-layer trigger). Both are the framing defending itself.
+
+**The payoff (observed):** 20-16 reframed honestly (parity 72→80%,
+zero wrong code) BECAUSE the gate fired 4× and each time triggered this
+loop instead of a push-through. The cascade is not failure — it is the
+mechanism working.
+
+**ORIGIN:** Phase 20-16 Task-1 HARD GATE (4 iterations) + 20-17
+plan-check/re-check, session 2026-05-18/19. Operationalises P69
+(grounded-looking inference is WHAT the gate catches; PK18 is WHAT to
+do when it does). Sits beside PK17 (friction-first parity cycle — PK17
+step-1 measure IS a Lokāyata gate; PK18 is the general discipline PK17
+is one instance of).
+
+**REF:** P69 (the error class PK18 responds to), PK17 (friction-first
+cycle — sibling instance), the base-layer reactivity + reception
+checks; `.planning/phases/20-musician-timeline/20-16-OBSERVATIONS.md`
+(the canonical 4-iteration trail), `20-17-CONTEXT.md` (D-02 CORRECTION
+= step 6 in practice). Ground Truth: 20-16-OBSERVATIONS.md,
+memory/project_phase_20_musician_timeline.md.
