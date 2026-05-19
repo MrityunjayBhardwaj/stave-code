@@ -908,7 +908,11 @@ export function parseExpression(
     // for transform-arg positions (P39 / PRE-01 precursor — signature-
     // level threading only; loc attribution to non-Play nodes deferred).
     const chainOffset = trimmedOffset + root.length
-    const ir = applyChain(rootIR, chain, chainOffset)
+    // 20-17 G4 — thread the binding map parseExpression already accepts
+    // (pS:861) into applyChain. Byte-unchanged when the caller passed
+    // undefined; behaviour-bearing when the pS:544 D-01 entry passes
+    // `bound.bindings` — this flow is the WIRE that makes Wave C/D/E reach.
+    const ir = applyChain(rootIR, chain, chainOffset, bindings)
 
     return ir
   } catch {
@@ -1210,7 +1214,19 @@ export function parseRoot(
  * full code. Used to thread method-arg positions through parseTransform
  * (PRE-01 precursor — P39 / PV25 signature-level threading).
  */
-export function applyChain(ir: PatternIR, chain: string, baseOffset = 0): PatternIR {
+export function applyChain(
+  ir: PatternIR,
+  chain: string,
+  baseOffset = 0,
+  // 20-17 G4 (#141 / D-01) — the pervasive optional-arg threading of the
+  // binding map. When set, this map flows THROUGH applyChain into every
+  // parseTransform / inner parseExpression recursion so a bound identifier
+  // referenced anywhere in a method chain or transform arg resolves to its
+  // definition-site subtree. `undefined` everywhere existing callers omit
+  // it (the default) → behaviour identical to pre-20-17 by construction.
+  // PV50-safe: the context flows on the stack, never module-level state.
+  bindings?: ReadonlyMap<string, PatternIR>,
+): PatternIR {
   if (!chain.trim()) return ir
 
   const leadingWs = chain.length - chain.trimStart().length
@@ -1269,7 +1285,7 @@ export function applyChain(ir: PatternIR, chain: string, baseOffset = 0): Patter
     // non-leading method) so the precursor test's "non-zero" assertion
     // holds even on chains that mix paren-less and paren-ful methods.
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset
-    current = applyMethod(current, method, args, argsAbsoluteOffset, callSiteRange)
+    current = applyMethod(current, method, args, argsAbsoluteOffset, callSiteRange, bindings)
 
     // Advance remainingOffset by the consumed length (same arithmetic as
     // before — just split across the call to make callSiteRange available).
@@ -1297,6 +1313,13 @@ function applyMethod(
   args: string,
   baseOffset = 0,
   callSiteRange: [number, number] = [0, 0],
+  // 20-17 G4 (#141 / D-01) — pervasive optional-arg threading: applyChain
+  // forwards the binding map here so the transform-arg parseTransform /
+  // array-element parseExpression recursions can resolve a bound
+  // identifier to its definition-site subtree. `undefined` whenever
+  // applyChain's caller omitted it (the default) → behaviour identical to
+  // pre-20-17. PV50-safe: stack-threaded, never module-level state.
+  bindings?: ReadonlyMap<string, PatternIR>,
 ): PatternIR {
   switch (method) {
     case 'fast': {
@@ -1317,14 +1340,14 @@ function applyMethod(
       const n = parseInt(nStr.trim(), 10)
       if (isNaN(n)) return wrapAsOpaque(ir, method, args, callSiteRange)   // D-03 (P33 / PV37)
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
-      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir
       return IR.every(n, transform, ir, tagMeta(method, callSiteRange))
     }
 
     case 'sometimes': {
       // .sometimes(transform) → Choice(0.5, transform(body), body)
       const transform = args.trim()
-        ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length))
+        ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings)
         : ir
       return IR.choice(0.5, transform, ir, tagMeta(method, callSiteRange))
     }
@@ -1335,7 +1358,7 @@ function applyMethod(
       const p = parseFloat(pStr.trim())
       if (isNaN(p)) return wrapAsOpaque(ir, method, args, callSiteRange)   // D-03 (P33 / PV37)
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
-      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir
       return IR.choice(p, transform, ir, tagMeta(method, callSiteRange))
     }
 
@@ -1372,7 +1395,7 @@ function applyMethod(
           continue
         }
         const transformOffset = offsetOfSubArg(args, trimmed, baseOffset)
-        tracks.push(parseTransform(trimmed, ir, transformOffset))
+        tracks.push(parseTransform(trimmed, ir, transformOffset, bindings))
       }
       // 19-05 / #74: outer Stack carries .layer(...)'s call-site range +
       // userMethod: 'layer' (D-09 desugar metadata). Literal construction —
@@ -1417,7 +1440,7 @@ function applyMethod(
       const n = parseInt(nStr.trim(), 10)
       if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args, callSiteRange)   // D-03 (P33 / PV37)
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
-      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir
       return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange))
     }
 
@@ -1482,7 +1505,7 @@ function applyMethod(
       // baseOffset for the transform-arg position; loc-attribution to
       // non-Play nodes still deferred per RESEARCH §2 Subtlety C.
       const transformed = args.trim()
-        ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length))
+        ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings)
         : ir
       // 19-05 / #74: outer Stack carries .jux(...)'s call-site range +
       // userMethod: 'jux' (D-09). Inner FX(pan, ±1) nodes are SYNTHETIC —
@@ -1571,7 +1594,7 @@ function applyMethod(
         // userMethod intentionally undefined — synthetic intermediate (D-09).
       })
       const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset
-      const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset) : lateBody
+      const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset, bindings) : lateBody
       // Outer Stack carries .off(...)'s call-site range + userMethod: 'off'.
       // Literal construction — rest-spread escape hatch (RESEARCH §11 Q1).
       const [offStart, offEnd] = callSiteRange
@@ -1629,7 +1652,7 @@ function applyMethod(
         : baseOffset
       const lookup = elements.map(e => {
         const elemOffset = offsetOfSubArg(arrayBody, e.trim(), arrayBodyOffset)
-        return parseArrayLiteralElement(e, 'note', elemOffset)
+        return parseArrayLiteralElement(e, 'note', elemOffset, bindings)
       })
       return IR.pick(ir, lookup, tagMeta(method, callSiteRange))
     }
@@ -1826,7 +1849,19 @@ export function __getParseTransformCallCount(): number {
  * user's full code (PRE-01 precursor — signature-level threading; loc
  * attribution to non-Play nodes is deferred per RESEARCH §2 Subtlety C).
  */
-function parseTransform(transformStr: string, defaultIr: PatternIR, baseOffset = 0): PatternIR {
+function parseTransform(
+  transformStr: string,
+  defaultIr: PatternIR,
+  baseOffset = 0,
+  // 20-17 G4 (#141 / D-01) — the pervasive optional-arg threading of the
+  // binding map. When set, this map flows through parseTransform's inner
+  // applyChain / parseExpression recursions so a bound identifier inside a
+  // transform arg (e.g. `.every(2, x => x.fast(p))`) resolves to its
+  // definition-site subtree. `undefined` everywhere existing callers omit
+  // it (the default) → behaviour identical to pre-20-17 by construction.
+  // PV50-safe: the context flows on the stack, never module-level state.
+  bindings?: ReadonlyMap<string, PatternIR>,
+): PatternIR {
   __lastParseTransformBaseOffset = baseOffset
   __parseTransformCallCount++
 
@@ -1860,7 +1895,7 @@ function parseTransform(transformStr: string, defaultIr: PatternIR, baseOffset =
     const chainStartInTrimmed = dotIdx >= 0 ? dotIdx : 0
     const leadingWs = transformStr.length - transformStr.trimStart().length
     const chainOffset = baseOffset + leadingWs + chainStartInTrimmed
-    return applyChain(defaultIr, '.' + arrowMatch[1], chainOffset)
+    return applyChain(defaultIr, '.' + arrowMatch[1], chainOffset, bindings)
   }
 
   return defaultIr
@@ -1929,6 +1964,13 @@ function parseArrayLiteralElement(
   elem: string,
   receiverContext: 'note' | 's',
   baseOffset = 0,
+  // 20-17 G4 (#141 / D-01) — pervasive optional-arg threading: applyMethod
+  // forwards the binding map here so a `pick`/array-literal element that is
+  // a bound identifier resolves to its definition-site subtree via the
+  // inner parseExpression recursion. `undefined` whenever the caller
+  // omitted it (the default) → behaviour identical to pre-20-17.
+  // PV50-safe: stack-threaded, never module-level state.
+  bindings?: ReadonlyMap<string, PatternIR>,
 ): PatternIR {
   const trimmed = elem.trim()
   const leadingWs = elem.length - elem.trimStart().length
@@ -1950,18 +1992,18 @@ function parseArrayLiteralElement(
     // To compensate, pass a baseOffset that's behind by `receiverContext.length + 1`
     // chars so the absolute innerOffset lands at the user's actual quote+1.
     const wrapperPrefix = receiverContext.length + 1
-    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix)
+    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, undefined, bindings)
   }
 
   // Bare numeric literal: wrap in note(...) so it parses as a Play.
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     const wrapped = `${receiverContext}("${trimmed}")`
     const wrapperPrefix = receiverContext.length + 1 + 1  // note( + opening quote
-    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix)
+    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, undefined, bindings)
   }
 
   // Full expression — parse as-is.
-  return parseExpression(trimmed, baseOffset + leadingWs)
+  return parseExpression(trimmed, baseOffset + leadingWs, undefined, bindings)
 }
 
 /**

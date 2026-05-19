@@ -145,3 +145,61 @@ ref-opaque 5c [relax]        | code       (buildBindingMap returned null (fence/
   cyclic/dup-key/dead-opaque[noRelax] bail (occurs-check terminal),
   dead-opaque[relax] structured, ref-opaque[relax] bails — the bounded
   fixpoint + occurs-check design is validated where reached.
+
+---
+
+## Wave A — A-1 signature refactor (byte-identical gate)
+
+**Verdict: PASS.** Signature-only optional-arg threading of
+`bindings?: ReadonlyMap<string, PatternIR>`; all 4 gates byte-unchanged
+from the Wave-0 baseline. Correct-by-construction (every existing caller
+omits the new arg → default `undefined`).
+
+### Recursion-site count (no-site-missed gate)
+`grep -nE "parseExpression\(|applyChain\(|parseTransform\("` —
+**BEFORE = 23, AFTER = 23** (count unchanged; no site added/removed).
+Per-site audit complete:
+- UNCHANGED (already-correct / out-of-scope): pS:477 buildBindingMap RHS
+  (Wave E re-iterates), entry-point (already threads `bound.bindings`),
+  3× `parseStrudel` top-level `$:` parses (no `bindings` in scope —
+  non-D-01 fallback), `parseExpression` def (already accepts), the G1
+  inner site (Wave C), stack-arg (already threads).
+- THREADED this wave: `applyChain` def + `parseTransform` def (+`bindings?`
+  4th param + G4 comment block); pS:911 `applyChain` call in
+  parseExpression (the WIRE); 7× `parseTransform(...)` arms in
+  `applyMethod`; the `applyChain(defaultIr,…)` arrow recursion in
+  parseTransform; 3× `parseExpression(…)` in `parseArrayLiteralElement`.
+
+### Intermediate-function discovery (TS compile gate fired correctly)
+First build raised 10 TS2304 (`Cannot find name 'bindings'`) — the
+plan's pre-mortem-3 mechanism. The `parseTransform` transform-arg arms
+live in **`applyMethod`** (pS:1310), and the array-element
+`parseExpression` calls live in **`parseArrayLiteralElement`** (pS:1956)
+— both intermediate functions on the call path that originally lacked
+`bindings`. Resolved by threading `bindings?` through both (call sites:
+applyChain→applyMethod pS:1288; applyMethod→parseArrayLiteralElement
+pS:1648). Not a workaround — the correct completion of the stack-thread;
+TypeScript's positional-type gate isolated the missed hops by design.
+
+### The 4 gates
+1. **Build:** `pnpm --filter @stave/editor build` exits 0, fully clean
+   (the known `@strudel/mondo` TS7016 did not even fire this run; the 2
+   pre-existing `eval` esbuild advisories are unchanged from 20-16, not
+   errors). NO new TS error. `keepNames: true` confirmed in
+   `tsup.config.ts:18`. P68 anchor: `grep -c "bindings" dist/index.js`
+   = **36** (>0); `node -e` regex `/applyChain[\s\S]{0,400}bindings/`
+   = **true**. The param survived → successful-refactor positive.
+2. **Editor:** `pnpm --filter @stave/editor test` — **1564/1564 GREEN,
+   86 files**, BYTE-UNCHANGED (no snapshot moves).
+3. **App parity/loc:** `pnpm --filter @stave/app test` — **361/361
+   GREEN**; `parity.test.ts 32/32` + `loc-fidelity.test.ts 32/32`.
+   Per-file STOP gate: every loc-fidelity file passed → every snapshot
+   diff EMPTY → zero offset drift.
+4. **Proto byte-identical gate:** `pnpm --filter @stave/app test:proto`
+   — PRODUCTION block character-for-character identical to the Wave-0
+   baseline (this file §50-56):
+   `__LsnlgQ6osk: code, _1j62z5xjyCN: code, _72eEl7NwK9e: code,
+   _CyO42BOyp5a: structured, _L13nBhrqGR_: structured,
+   _LHtBlF8peGC: code` — **score 2/6 UNCHANGED**. The signature-only
+   refactor is byte-unchanged; the wire is in place but the chain-arg /
+   root-ident / literal / cyclic positions still need C/D/E.

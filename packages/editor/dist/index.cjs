@@ -38,6 +38,7 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
 }) : x)(function(x) {
@@ -73,7 +74,7 @@ var maxPan, panwidth;
 var init_piano = __esm({
   "src/engine/vendored/piano.ts"() {
     maxPan = core.noteToMidi("C8");
-    panwidth = (pan, width) => pan * width + (1 - width) / 2;
+    panwidth = /* @__PURE__ */ __name((pan, width) => pan * width + (1 - width) / 2, "panwidth");
     core.Pattern.prototype.piano = function() {
       return this.fmap((v) => ({ ...v, clip: v.clip ?? 1 })).s("piano").release(0.1).fmap((value) => {
         const midi = core.valueToMidi(value);
@@ -96,7 +97,7 @@ var require_tree_sitter = __commonJS({
       var document = typeof window == "object" ? {
         currentScript: window.document.currentScript
       } : null;
-      class Parser {
+      const _Parser = class _Parser {
         constructor() {
           this.initialize();
         }
@@ -110,9 +111,9 @@ var require_tree_sitter = __commonJS({
             var moduleOverrides = Object.assign({}, Module);
             var arguments_ = [];
             var thisProgram = "./this.program";
-            var quit_ = (status, toThrow) => {
+            var quit_ = /* @__PURE__ */ __name((status, toThrow) => {
               throw toThrow;
-            };
+            }, "quit_");
             var scriptDirectory = "";
             function locateFile(path) {
               if (Module["locateFile"]) {
@@ -120,17 +121,18 @@ var require_tree_sitter = __commonJS({
               }
               return scriptDirectory + path;
             }
+            __name(locateFile, "locateFile");
             var readAsync, readBinary;
             if (ENVIRONMENT_IS_NODE) {
               var fs = __require("fs");
               var nodePath = __require("path");
               scriptDirectory = __dirname + "/";
-              readBinary = (filename) => {
+              readBinary = /* @__PURE__ */ __name((filename) => {
                 filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
                 var ret = fs.readFileSync(filename);
                 return ret;
-              };
-              readAsync = (filename, binary2 = true) => {
+              }, "readBinary");
+              readAsync = /* @__PURE__ */ __name((filename, binary2 = true) => {
                 filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
                 return new Promise((resolve, reject) => {
                   fs.readFile(filename, binary2 ? void 0 : "utf8", (err2, data) => {
@@ -138,7 +140,7 @@ var require_tree_sitter = __commonJS({
                     else resolve(binary2 ? data.buffer : data);
                   });
                 });
-              };
+              }, "readAsync");
               if (!Module["thisProgram"] && process.argv.length > 1) {
                 thisProgram = process.argv[1].replace(/\\/g, "/");
               }
@@ -146,10 +148,10 @@ var require_tree_sitter = __commonJS({
               if (typeof module != "undefined") {
                 module["exports"] = Module;
               }
-              quit_ = (status, toThrow) => {
+              quit_ = /* @__PURE__ */ __name((status, toThrow) => {
                 process.exitCode = status;
                 throw toThrow;
-              };
+              }, "quit_");
             } else if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
               if (ENVIRONMENT_IS_WORKER) {
                 scriptDirectory = self.location.href;
@@ -163,7 +165,7 @@ var require_tree_sitter = __commonJS({
               }
               {
                 if (ENVIRONMENT_IS_WORKER) {
-                  readBinary = (url) => {
+                  readBinary = /* @__PURE__ */ __name((url) => {
                     var xhr = new XMLHttpRequest();
                     xhr.open("GET", url, false);
                     xhr.responseType = "arraybuffer";
@@ -172,9 +174,9 @@ var require_tree_sitter = __commonJS({
                       /** @type{!ArrayBuffer} */
                       xhr.response
                     );
-                  };
+                  }, "readBinary");
                 }
-                readAsync = (url) => {
+                readAsync = /* @__PURE__ */ __name((url) => {
                   if (isFileURI(url)) {
                     return new Promise((reject, resolve) => {
                       var xhr = new XMLHttpRequest();
@@ -198,7 +200,7 @@ var require_tree_sitter = __commonJS({
                     }
                     return Promise.reject(new Error(response.status + " : " + response.url));
                   });
-                };
+                }, "readAsync");
               }
             } else ;
             var out = Module["print"] || console.log.bind(console);
@@ -228,6 +230,7 @@ var require_tree_sitter = __commonJS({
               Module["HEAPF32"] = new Float32Array(b);
               Module["HEAPF64"] = new Float64Array(b);
             }
+            __name(updateMemoryViews, "updateMemoryViews");
             if (Module["wasmMemory"]) {
               wasmMemory = Module["wasmMemory"];
             } else {
@@ -258,14 +261,17 @@ var require_tree_sitter = __commonJS({
               }
               callRuntimeCallbacks(__ATPRERUN__);
             }
+            __name(preRun, "preRun");
             function initRuntime() {
               runtimeInitialized = true;
               callRuntimeCallbacks(__RELOC_FUNCS__);
               callRuntimeCallbacks(__ATINIT__);
             }
+            __name(initRuntime, "initRuntime");
             function preMain() {
               callRuntimeCallbacks(__ATMAIN__);
             }
+            __name(preMain, "preMain");
             function postRun() {
               if (Module["postRun"]) {
                 if (typeof Module["postRun"] == "function") Module["postRun"] = [Module["postRun"]];
@@ -275,24 +281,30 @@ var require_tree_sitter = __commonJS({
               }
               callRuntimeCallbacks(__ATPOSTRUN__);
             }
+            __name(postRun, "postRun");
             function addOnPreRun(cb) {
               __ATPRERUN__.unshift(cb);
             }
+            __name(addOnPreRun, "addOnPreRun");
             function addOnInit(cb) {
               __ATINIT__.unshift(cb);
             }
+            __name(addOnInit, "addOnInit");
             function addOnPostRun(cb) {
               __ATPOSTRUN__.unshift(cb);
             }
+            __name(addOnPostRun, "addOnPostRun");
             var runDependencies = 0;
             var dependenciesFulfilled = null;
             function getUniqueRunDependency(id) {
               return id;
             }
+            __name(getUniqueRunDependency, "getUniqueRunDependency");
             function addRunDependency(id) {
               runDependencies++;
               Module["monitorRunDependencies"]?.(runDependencies);
             }
+            __name(addRunDependency, "addRunDependency");
             function removeRunDependency(id) {
               runDependencies--;
               Module["monitorRunDependencies"]?.(runDependencies);
@@ -304,6 +316,7 @@ var require_tree_sitter = __commonJS({
                 }
               }
             }
+            __name(removeRunDependency, "removeRunDependency");
             function abort(what) {
               Module["onAbort"]?.(what);
               what = "Aborted(" + what + ")";
@@ -314,9 +327,10 @@ var require_tree_sitter = __commonJS({
               var e = new WebAssembly.RuntimeError(what);
               throw e;
             }
+            __name(abort, "abort");
             var dataURIPrefix = "data:application/octet-stream;base64,";
-            var isDataURI = (filename) => filename.startsWith(dataURIPrefix);
-            var isFileURI = (filename) => filename.startsWith("file://");
+            var isDataURI = /* @__PURE__ */ __name((filename) => filename.startsWith(dataURIPrefix), "isDataURI");
+            var isFileURI = /* @__PURE__ */ __name((filename) => filename.startsWith("file://"), "isFileURI");
             function findWasmBinary() {
               var f = "tree-sitter.wasm";
               if (!isDataURI(f)) {
@@ -324,6 +338,7 @@ var require_tree_sitter = __commonJS({
               }
               return f;
             }
+            __name(findWasmBinary, "findWasmBinary");
             var wasmBinaryFile;
             function getBinarySync(file) {
               if (file == wasmBinaryFile && wasmBinary) {
@@ -334,6 +349,7 @@ var require_tree_sitter = __commonJS({
               }
               throw "both async and sync fetching of the wasm failed";
             }
+            __name(getBinarySync, "getBinarySync");
             function getBinaryPromise(binaryFile) {
               if (!wasmBinary) {
                 return readAsync(binaryFile).then(
@@ -347,12 +363,14 @@ var require_tree_sitter = __commonJS({
               }
               return Promise.resolve().then(() => getBinarySync(binaryFile));
             }
+            __name(getBinaryPromise, "getBinaryPromise");
             function instantiateArrayBuffer(binaryFile, imports, receiver) {
               return getBinaryPromise(binaryFile).then((binary2) => WebAssembly.instantiate(binary2, imports)).then(receiver, (reason) => {
                 err(`failed to asynchronously prepare wasm: ${reason}`);
                 abort(reason);
               });
             }
+            __name(instantiateArrayBuffer, "instantiateArrayBuffer");
             function instantiateAsync(binary2, binaryFile, imports, callback) {
               if (!binary2 && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(binaryFile) && // Don't use streaming for file:// delivered objects in a webview, fetch them synchronously.
               !isFileURI(binaryFile) && // Avoid instantiateStreaming() on Node.js environment for now, as while
@@ -374,6 +392,7 @@ var require_tree_sitter = __commonJS({
               }
               return instantiateArrayBuffer(binaryFile, imports, callback);
             }
+            __name(instantiateAsync, "instantiateAsync");
             function getWasmImports() {
               return {
                 "env": wasmImports,
@@ -382,6 +401,7 @@ var require_tree_sitter = __commonJS({
                 "GOT.func": new Proxy(wasmImports, GOTHandler)
               };
             }
+            __name(getWasmImports, "getWasmImports");
             function createWasm() {
               var info2 = getWasmImports();
               function receiveInstance(instance2, module2) {
@@ -391,7 +411,7 @@ var require_tree_sitter = __commonJS({
                 if (metadata2.neededDynlibs) {
                   dynamicLibraries = metadata2.neededDynlibs.concat(dynamicLibraries);
                 }
-                mergeLibSymbols(wasmExports);
+                mergeLibSymbols(wasmExports, "main");
                 LDSO.init();
                 loadDylibs();
                 addOnInit(wasmExports["__wasm_call_ctors"]);
@@ -399,10 +419,12 @@ var require_tree_sitter = __commonJS({
                 removeRunDependency();
                 return wasmExports;
               }
+              __name(receiveInstance, "receiveInstance");
               addRunDependency();
               function receiveInstantiationResult(result) {
                 receiveInstance(result["instance"], result["module"]);
               }
+              __name(receiveInstantiationResult, "receiveInstantiationResult");
               if (Module["instantiateWasm"]) {
                 try {
                   return Module["instantiateWasm"](info2, receiveInstance);
@@ -415,11 +437,13 @@ var require_tree_sitter = __commonJS({
               instantiateAsync(wasmBinary, wasmBinaryFile, info2, receiveInstantiationResult);
               return {};
             }
+            __name(createWasm, "createWasm");
             function ExitStatus(status) {
               this.name = "ExitStatus";
               this.message = `Program terminated with exit(${status})`;
               this.status = status;
             }
+            __name(ExitStatus, "ExitStatus");
             var GOT = {};
             var currentModuleWeakSymbols = /* @__PURE__ */ new Set([]);
             var GOTHandler = {
@@ -437,23 +461,23 @@ var require_tree_sitter = __commonJS({
                 return rtn;
               }
             };
-            var LE_HEAP_LOAD_F32 = (byteOffset) => HEAP_DATA_VIEW.getFloat32(byteOffset, true);
-            var LE_HEAP_LOAD_F64 = (byteOffset) => HEAP_DATA_VIEW.getFloat64(byteOffset, true);
-            var LE_HEAP_LOAD_I16 = (byteOffset) => HEAP_DATA_VIEW.getInt16(byteOffset, true);
-            var LE_HEAP_LOAD_I32 = (byteOffset) => HEAP_DATA_VIEW.getInt32(byteOffset, true);
-            var LE_HEAP_LOAD_U32 = (byteOffset) => HEAP_DATA_VIEW.getUint32(byteOffset, true);
-            var LE_HEAP_STORE_F32 = (byteOffset, value) => HEAP_DATA_VIEW.setFloat32(byteOffset, value, true);
-            var LE_HEAP_STORE_F64 = (byteOffset, value) => HEAP_DATA_VIEW.setFloat64(byteOffset, value, true);
-            var LE_HEAP_STORE_I16 = (byteOffset, value) => HEAP_DATA_VIEW.setInt16(byteOffset, value, true);
-            var LE_HEAP_STORE_I32 = (byteOffset, value) => HEAP_DATA_VIEW.setInt32(byteOffset, value, true);
-            var LE_HEAP_STORE_U32 = (byteOffset, value) => HEAP_DATA_VIEW.setUint32(byteOffset, value, true);
-            var callRuntimeCallbacks = (callbacks) => {
+            var LE_HEAP_LOAD_F32 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getFloat32(byteOffset, true), "LE_HEAP_LOAD_F32");
+            var LE_HEAP_LOAD_F64 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getFloat64(byteOffset, true), "LE_HEAP_LOAD_F64");
+            var LE_HEAP_LOAD_I16 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getInt16(byteOffset, true), "LE_HEAP_LOAD_I16");
+            var LE_HEAP_LOAD_I32 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getInt32(byteOffset, true), "LE_HEAP_LOAD_I32");
+            var LE_HEAP_LOAD_U32 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getUint32(byteOffset, true), "LE_HEAP_LOAD_U32");
+            var LE_HEAP_STORE_F32 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setFloat32(byteOffset, value, true), "LE_HEAP_STORE_F32");
+            var LE_HEAP_STORE_F64 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setFloat64(byteOffset, value, true), "LE_HEAP_STORE_F64");
+            var LE_HEAP_STORE_I16 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setInt16(byteOffset, value, true), "LE_HEAP_STORE_I16");
+            var LE_HEAP_STORE_I32 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setInt32(byteOffset, value, true), "LE_HEAP_STORE_I32");
+            var LE_HEAP_STORE_U32 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setUint32(byteOffset, value, true), "LE_HEAP_STORE_U32");
+            var callRuntimeCallbacks = /* @__PURE__ */ __name((callbacks) => {
               while (callbacks.length > 0) {
                 callbacks.shift()(Module);
               }
-            };
+            }, "callRuntimeCallbacks");
             var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder() : void 0;
-            var UTF8ArrayToString = (heapOrArray, idx, maxBytesToRead) => {
+            var UTF8ArrayToString = /* @__PURE__ */ __name((heapOrArray, idx, maxBytesToRead) => {
               var endIdx = idx + maxBytesToRead;
               var endPtr = idx;
               while (heapOrArray[endPtr] && !(endPtr >= endIdx)) ++endPtr;
@@ -486,13 +510,14 @@ var require_tree_sitter = __commonJS({
                 }
               }
               return str;
-            };
-            var getDylinkMetadata = (binary2) => {
+            }, "UTF8ArrayToString");
+            var getDylinkMetadata = /* @__PURE__ */ __name((binary2) => {
               var offset = 0;
               var end = 0;
               function getU8() {
                 return binary2[offset++];
               }
+              __name(getU8, "getU8");
               function getLEB() {
                 var ret = 0;
                 var mul = 1;
@@ -504,14 +529,17 @@ var require_tree_sitter = __commonJS({
                 }
                 return ret;
               }
+              __name(getLEB, "getLEB");
               function getString() {
                 var len = getLEB();
                 offset += len;
                 return UTF8ArrayToString(binary2, offset - len, len);
               }
+              __name(getString, "getString");
               function failIf(condition, message) {
                 if (condition) throw new Error(message);
               }
+              __name(failIf, "failIf");
               var name2 = "dylink.0";
               if (binary2 instanceof WebAssembly.Module) {
                 var dylinkSection = WebAssembly.Module.customSections(binary2, name2);
@@ -595,7 +623,7 @@ var require_tree_sitter = __commonJS({
                 }
               }
               return customSection;
-            };
+            }, "getDylinkMetadata");
             function getValue(ptr, type = "i8") {
               if (type.endsWith("*")) type = "*";
               switch (type) {
@@ -619,7 +647,8 @@ var require_tree_sitter = __commonJS({
                   abort(`invalid type for getValue: ${type}`);
               }
             }
-            var newDSO = (name2, handle2, syms) => {
+            __name(getValue, "getValue");
+            var newDSO = /* @__PURE__ */ __name((name2, handle2, syms) => {
               var dso = {
                 refcount: Infinity,
                 name: name2,
@@ -631,7 +660,7 @@ var require_tree_sitter = __commonJS({
                 LDSO.loadedLibsByHandle[handle2] = dso;
               }
               return dso;
-            };
+            }, "newDSO");
             var LDSO = {
               loadedLibsByName: {},
               loadedLibsByHandle: {},
@@ -640,12 +669,12 @@ var require_tree_sitter = __commonJS({
               }
             };
             var ___heap_base = 78112;
-            var zeroMemory = (address, size) => {
+            var zeroMemory = /* @__PURE__ */ __name((address, size) => {
               HEAPU8.fill(0, address, address + size);
               return address;
-            };
-            var alignMemory = (size, alignment) => Math.ceil(size / alignment) * alignment;
-            var getMemory = (size) => {
+            }, "zeroMemory");
+            var alignMemory = /* @__PURE__ */ __name((size, alignment) => Math.ceil(size / alignment) * alignment, "alignMemory");
+            var getMemory = /* @__PURE__ */ __name((size) => {
               if (runtimeInitialized) {
                 return zeroMemory(_malloc(size), size);
               }
@@ -654,16 +683,16 @@ var require_tree_sitter = __commonJS({
               ___heap_base = end;
               GOT["__heap_base"].value = end;
               return ret;
-            };
-            var isInternalSym = (symName) => ["__cpp_exception", "__c_longjmp", "__wasm_apply_data_relocs", "__dso_handle", "__tls_size", "__tls_align", "__set_stack_limits", "_emscripten_tls_init", "__wasm_init_tls", "__wasm_call_ctors", "__start_em_asm", "__stop_em_asm", "__start_em_js", "__stop_em_js"].includes(symName) || symName.startsWith("__em_js__");
-            var uleb128Encode = (n, target) => {
+            }, "getMemory");
+            var isInternalSym = /* @__PURE__ */ __name((symName) => ["__cpp_exception", "__c_longjmp", "__wasm_apply_data_relocs", "__dso_handle", "__tls_size", "__tls_align", "__set_stack_limits", "_emscripten_tls_init", "__wasm_init_tls", "__wasm_call_ctors", "__start_em_asm", "__stop_em_asm", "__start_em_js", "__stop_em_js"].includes(symName) || symName.startsWith("__em_js__"), "isInternalSym");
+            var uleb128Encode = /* @__PURE__ */ __name((n, target) => {
               if (n < 128) {
                 target.push(n);
               } else {
                 target.push(n % 128 | 128, n >> 7);
               }
-            };
-            var sigToWasmTypes = (sig) => {
+            }, "uleb128Encode");
+            var sigToWasmTypes = /* @__PURE__ */ __name((sig) => {
               var typeNames = {
                 "i": "i32",
                 "j": "i64",
@@ -680,8 +709,8 @@ var require_tree_sitter = __commonJS({
                 type.parameters.push(typeNames[sig[i2]]);
               }
               return type;
-            };
-            var generateFuncType = (sig, target) => {
+            }, "sigToWasmTypes");
+            var generateFuncType = /* @__PURE__ */ __name((sig, target) => {
               var sigRet = sig.slice(0, 1);
               var sigParam = sig.slice(1);
               var typeCodes = {
@@ -707,8 +736,8 @@ var require_tree_sitter = __commonJS({
               } else {
                 target.push(1, typeCodes[sigRet]);
               }
-            };
-            var convertJsFunctionToWasm = (func2, sig) => {
+            }, "generateFuncType");
+            var convertJsFunctionToWasm = /* @__PURE__ */ __name((func2, sig) => {
               if (typeof WebAssembly.Function == "function") {
                 return new WebAssembly.Function(sigToWasmTypes(sig), func2);
               }
@@ -759,21 +788,21 @@ var require_tree_sitter = __commonJS({
               });
               var wrappedFunc = instance2.exports["f"];
               return wrappedFunc;
-            };
+            }, "convertJsFunctionToWasm");
             var wasmTableMirror = [];
             var wasmTable = new WebAssembly.Table({
               "initial": 28,
               "element": "anyfunc"
             });
-            var getWasmTableEntry = (funcPtr) => {
+            var getWasmTableEntry = /* @__PURE__ */ __name((funcPtr) => {
               var func2 = wasmTableMirror[funcPtr];
               if (!func2) {
                 if (funcPtr >= wasmTableMirror.length) wasmTableMirror.length = funcPtr + 1;
                 wasmTableMirror[funcPtr] = func2 = wasmTable.get(funcPtr);
               }
               return func2;
-            };
-            var updateTableMap = (offset, count) => {
+            }, "getWasmTableEntry");
+            var updateTableMap = /* @__PURE__ */ __name((offset, count) => {
               if (functionsInTableMap) {
                 for (var i2 = offset; i2 < offset + count; i2++) {
                   var item = getWasmTableEntry(i2);
@@ -782,17 +811,17 @@ var require_tree_sitter = __commonJS({
                   }
                 }
               }
-            };
+            }, "updateTableMap");
             var functionsInTableMap;
-            var getFunctionAddress = (func2) => {
+            var getFunctionAddress = /* @__PURE__ */ __name((func2) => {
               if (!functionsInTableMap) {
                 functionsInTableMap = /* @__PURE__ */ new WeakMap();
                 updateTableMap(0, wasmTable.length);
               }
               return functionsInTableMap.get(func2) || 0;
-            };
+            }, "getFunctionAddress");
             var freeTableIndexes = [];
-            var getEmptyTableSlot = () => {
+            var getEmptyTableSlot = /* @__PURE__ */ __name(() => {
               if (freeTableIndexes.length) {
                 return freeTableIndexes.pop();
               }
@@ -805,12 +834,12 @@ var require_tree_sitter = __commonJS({
                 throw "Unable to grow wasm table. Set ALLOW_TABLE_GROWTH.";
               }
               return wasmTable.length - 1;
-            };
-            var setWasmTableEntry = (idx, func2) => {
+            }, "getEmptyTableSlot");
+            var setWasmTableEntry = /* @__PURE__ */ __name((idx, func2) => {
               wasmTable.set(idx, func2);
               wasmTableMirror[idx] = wasmTable.get(idx);
-            };
-            var addFunction = (func2, sig) => {
+            }, "setWasmTableEntry");
+            var addFunction = /* @__PURE__ */ __name((func2, sig) => {
               var rtn = getFunctionAddress(func2);
               if (rtn) {
                 return rtn;
@@ -827,8 +856,8 @@ var require_tree_sitter = __commonJS({
               }
               functionsInTableMap.set(func2, ret);
               return ret;
-            };
-            var updateGOT = (exports2, replace) => {
+            }, "addFunction");
+            var updateGOT = /* @__PURE__ */ __name((exports2, replace) => {
               for (var symName in exports2) {
                 if (isInternalSym(symName)) {
                   continue;
@@ -852,8 +881,8 @@ var require_tree_sitter = __commonJS({
                   }
                 }
               }
-            };
-            var relocateExports = (exports2, memoryBase2, replace) => {
+            }, "updateGOT");
+            var relocateExports = /* @__PURE__ */ __name((exports2, memoryBase2, replace) => {
               var relocated = {};
               for (var e in exports2) {
                 var value = exports2[e];
@@ -867,29 +896,29 @@ var require_tree_sitter = __commonJS({
               }
               updateGOT(relocated, replace);
               return relocated;
-            };
-            var isSymbolDefined = (symName) => {
+            }, "relocateExports");
+            var isSymbolDefined = /* @__PURE__ */ __name((symName) => {
               var existing = wasmImports[symName];
               if (!existing || existing.stub) {
                 return false;
               }
               return true;
-            };
-            var dynCallLegacy = (sig, ptr, args2) => {
+            }, "isSymbolDefined");
+            var dynCallLegacy = /* @__PURE__ */ __name((sig, ptr, args2) => {
               sig = sig.replace(/p/g, "i");
               var f = Module["dynCall_" + sig];
               return f(ptr, ...args2);
-            };
-            var dynCall = (sig, ptr, args2 = []) => {
+            }, "dynCallLegacy");
+            var dynCall = /* @__PURE__ */ __name((sig, ptr, args2 = []) => {
               if (sig.includes("j")) {
                 return dynCallLegacy(sig, ptr, args2);
               }
               var rtn = getWasmTableEntry(ptr)(...args2);
               return rtn;
-            };
-            var stackSave = () => _emscripten_stack_get_current();
-            var stackRestore = (val) => __emscripten_stack_restore(val);
-            var createInvokeFunction = (sig) => (ptr, ...args2) => {
+            }, "dynCall");
+            var stackSave = /* @__PURE__ */ __name(() => _emscripten_stack_get_current(), "stackSave");
+            var stackRestore = /* @__PURE__ */ __name((val) => __emscripten_stack_restore(val), "stackRestore");
+            var createInvokeFunction = /* @__PURE__ */ __name((sig) => (ptr, ...args2) => {
               var sp = stackSave();
               try {
                 return dynCall(sig, ptr, args2);
@@ -898,8 +927,8 @@ var require_tree_sitter = __commonJS({
                 if (e !== e + 0) throw e;
                 _setThrew(1, 0);
               }
-            };
-            var resolveGlobalSymbol = (symName, direct = false) => {
+            }, "createInvokeFunction");
+            var resolveGlobalSymbol = /* @__PURE__ */ __name((symName, direct = false) => {
               var sym;
               if (direct && "orig$" + symName in wasmImports) {
                 symName = "orig$" + symName;
@@ -913,16 +942,27 @@ var require_tree_sitter = __commonJS({
                 sym,
                 name: symName
               };
-            };
-            var UTF8ToString = (ptr, maxBytesToRead) => ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : "";
-            var loadWebAssemblyModule = (binary, flags, libName, localScope, handle) => {
+            }, "resolveGlobalSymbol");
+            var UTF8ToString = /* @__PURE__ */ __name((ptr, maxBytesToRead) => ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : "", "UTF8ToString");
+            var loadWebAssemblyModule = /* @__PURE__ */ __name((binary, flags, libName, localScope, handle) => {
               var metadata = getDylinkMetadata(binary);
               currentModuleWeakSymbols = metadata.weakImports;
               function loadModule() {
-                {
+                var firstLoad = !handle || !HEAP8[handle + 8];
+                if (firstLoad) {
                   var memAlign = Math.pow(2, metadata.memoryAlign);
                   var memoryBase = metadata.memorySize ? alignMemory(getMemory(metadata.memorySize + memAlign), memAlign) : 0;
                   var tableBase = metadata.tableSize ? wasmTable.length : 0;
+                  if (handle) {
+                    HEAP8[handle + 8] = 1;
+                    LE_HEAP_STORE_U32((handle + 12 >> 2) * 4, memoryBase);
+                    LE_HEAP_STORE_I32((handle + 16 >> 2) * 4, metadata.memorySize);
+                    LE_HEAP_STORE_U32((handle + 20 >> 2) * 4, tableBase);
+                    LE_HEAP_STORE_I32((handle + 24 >> 2) * 4, metadata.tableSize);
+                  }
+                } else {
+                  memoryBase = LE_HEAP_LOAD_U32((handle + 12 >> 2) * 4);
+                  tableBase = LE_HEAP_LOAD_U32((handle + 20 >> 2) * 4);
                 }
                 var tableGrowthNeeded = tableBase + metadata.tableSize - wasmTable.length;
                 if (tableGrowthNeeded > 0) {
@@ -939,6 +979,7 @@ var require_tree_sitter = __commonJS({
                   }
                   return resolved;
                 }
+                __name(resolveSymbol, "resolveSymbol");
                 var proxyHandler = {
                   get(stubs, prop) {
                     switch (prop) {
@@ -987,6 +1028,7 @@ var require_tree_sitter = __commonJS({
                     var func = `(${args}) => { ${body} };`;
                     eval(func);
                   }
+                  __name(addEmAsm, "addEmAsm");
                   if ("__start_em_asm" in moduleExports) {
                     var start = moduleExports["__start_em_asm"];
                     var stop = moduleExports["__stop_em_asm"];
@@ -1009,6 +1051,7 @@ var require_tree_sitter = __commonJS({
                     var func = `(${jsArgs}) => ${body};`;
                     moduleExports[name] = eval(func);
                   }
+                  __name(addEmJs, "addEmJs");
                   for (var name in moduleExports) {
                     if (name.startsWith("__em_js__")) {
                       var start = moduleExports[name];
@@ -1036,6 +1079,7 @@ var require_tree_sitter = __commonJS({
                   }
                   return moduleExports;
                 }
+                __name(postInstantiation, "postInstantiation");
                 if (flags.loadAsync) {
                   if (binary instanceof WebAssembly.Module) {
                     var instance = new WebAssembly.Instance(binary, info);
@@ -1047,19 +1091,20 @@ var require_tree_sitter = __commonJS({
                 var instance = new WebAssembly.Instance(module, info);
                 return postInstantiation(module, instance);
               }
+              __name(loadModule, "loadModule");
               if (flags.loadAsync) {
                 return metadata.neededDynlibs.reduce((chain, dynNeeded) => chain.then(() => loadDynamicLibrary(dynNeeded, flags, localScope)), Promise.resolve()).then(loadModule);
               }
               metadata.neededDynlibs.forEach((needed) => loadDynamicLibrary(needed, flags, localScope));
               return loadModule();
-            };
-            var mergeLibSymbols = (exports2, libName2) => {
+            }, "loadWebAssemblyModule");
+            var mergeLibSymbols = /* @__PURE__ */ __name((exports2, libName2) => {
               for (var [sym, exp] of Object.entries(exports2)) {
-                const setImport = (target) => {
+                const setImport = /* @__PURE__ */ __name((target) => {
                   if (!isSymbolDefined(target)) {
                     wasmImports[target] = exp;
                   }
-                };
+                }, "setImport");
                 setImport(sym);
                 const main_alias = "__main_argc_argv";
                 if (sym == "main") {
@@ -1072,9 +1117,9 @@ var require_tree_sitter = __commonJS({
                   Module[sym] = exp;
                 }
               }
-            };
-            var asyncLoad = (url, onload, onerror, noRunDep) => {
-              var dep = getUniqueRunDependency(`al ${url}`) ;
+            }, "mergeLibSymbols");
+            var asyncLoad = /* @__PURE__ */ __name((url, onload, onerror, noRunDep) => {
+              var dep = !noRunDep ? getUniqueRunDependency(`al ${url}`) : "";
               readAsync(url).then((arrayBuffer) => {
                 onload(new Uint8Array(arrayBuffer));
                 if (dep) removeRunDependency();
@@ -1086,27 +1131,42 @@ var require_tree_sitter = __commonJS({
                 }
               });
               if (dep) addRunDependency();
-            };
+            }, "asyncLoad");
             function loadDynamicLibrary(libName2, flags2 = {
               global: true,
               nodelete: true
             }, localScope2, handle2) {
               var dso = LDSO.loadedLibsByName[libName2];
               if (dso) {
-                if (!flags2.global) ; else if (!dso.global) {
+                if (!flags2.global) {
+                  if (localScope2) {
+                    Object.assign(localScope2, dso.exports);
+                  }
+                } else if (!dso.global) {
                   dso.global = true;
-                  mergeLibSymbols(dso.exports);
+                  mergeLibSymbols(dso.exports, libName2);
                 }
                 if (flags2.nodelete && dso.refcount !== Infinity) {
                   dso.refcount = Infinity;
                 }
                 dso.refcount++;
+                if (handle2) {
+                  LDSO.loadedLibsByHandle[handle2] = dso;
+                }
                 return flags2.loadAsync ? Promise.resolve(true) : true;
               }
               dso = newDSO(libName2, handle2, "loading");
               dso.refcount = flags2.nodelete ? Infinity : 1;
               dso.global = flags2.global;
               function loadLibData() {
+                if (handle2) {
+                  var data = LE_HEAP_LOAD_U32((handle2 + 28 >> 2) * 4);
+                  var dataSize = LE_HEAP_LOAD_U32((handle2 + 32 >> 2) * 4);
+                  if (data && dataSize) {
+                    var libData = HEAP8.slice(data, data + dataSize);
+                    return flags2.loadAsync ? Promise.resolve(libData) : libData;
+                  }
+                }
                 var libFile = locateFile(libName2);
                 if (flags2.loadAsync) {
                   return new Promise(function(resolve, reject) {
@@ -1118,18 +1178,23 @@ var require_tree_sitter = __commonJS({
                 }
                 return readBinary(libFile);
               }
+              __name(loadLibData, "loadLibData");
               function getExports() {
                 if (flags2.loadAsync) {
-                  return loadLibData().then((libData) => loadWebAssemblyModule(libData, flags2, libName2, localScope2));
+                  return loadLibData().then((libData) => loadWebAssemblyModule(libData, flags2, libName2, localScope2, handle2));
                 }
-                return loadWebAssemblyModule(loadLibData(), flags2, libName2, localScope2);
+                return loadWebAssemblyModule(loadLibData(), flags2, libName2, localScope2, handle2);
               }
+              __name(getExports, "getExports");
               function moduleLoaded(exports2) {
                 if (dso.global) {
-                  mergeLibSymbols(exports2);
+                  mergeLibSymbols(exports2, libName2);
+                } else if (localScope2) {
+                  Object.assign(localScope2, exports2);
                 }
                 dso.exports = exports2;
               }
+              __name(moduleLoaded, "moduleLoaded");
               if (flags2.loadAsync) {
                 return getExports().then((exports2) => {
                   moduleLoaded(exports2);
@@ -1139,7 +1204,8 @@ var require_tree_sitter = __commonJS({
               moduleLoaded(getExports());
               return true;
             }
-            var reportUndefinedSymbols = () => {
+            __name(loadDynamicLibrary, "loadDynamicLibrary");
+            var reportUndefinedSymbols = /* @__PURE__ */ __name(() => {
               for (var [symName, entry] of Object.entries(GOT)) {
                 if (entry.value == 0) {
                   var value = resolveGlobalSymbol(symName, true).sym;
@@ -1155,8 +1221,8 @@ var require_tree_sitter = __commonJS({
                   }
                 }
               }
-            };
-            var loadDylibs = () => {
+            }, "reportUndefinedSymbols");
+            var loadDylibs = /* @__PURE__ */ __name(() => {
               if (!dynamicLibraries.length) {
                 reportUndefinedSymbols();
                 return;
@@ -1171,8 +1237,8 @@ var require_tree_sitter = __commonJS({
                 reportUndefinedSymbols();
                 removeRunDependency();
               });
-            };
-            Module["noExitRuntime"] || true;
+            }, "loadDylibs");
+            var noExitRuntime = Module["noExitRuntime"] || true;
             function setValue(ptr, value, type = "i8") {
               if (type.endsWith("*")) type = "*";
               switch (type) {
@@ -1203,6 +1269,7 @@ var require_tree_sitter = __commonJS({
                   abort(`invalid type for setValue: ${type}`);
               }
             }
+            __name(setValue, "setValue");
             var ___memory_base = new WebAssembly.Global({
               "value": "i32",
               "mutable": false
@@ -1215,26 +1282,28 @@ var require_tree_sitter = __commonJS({
               "value": "i32",
               "mutable": false
             }, 1);
-            var __abort_js = () => {
+            var __abort_js = /* @__PURE__ */ __name(() => {
               abort("");
-            };
+            }, "__abort_js");
             __abort_js.sig = "v";
             var nowIsMonotonic = 1;
-            var __emscripten_get_now_is_monotonic = () => nowIsMonotonic;
+            var __emscripten_get_now_is_monotonic = /* @__PURE__ */ __name(() => nowIsMonotonic, "__emscripten_get_now_is_monotonic");
             __emscripten_get_now_is_monotonic.sig = "i";
-            var __emscripten_memcpy_js = (dest, src, num) => HEAPU8.copyWithin(dest, src, src + num);
+            var __emscripten_memcpy_js = /* @__PURE__ */ __name((dest, src, num) => HEAPU8.copyWithin(dest, src, src + num), "__emscripten_memcpy_js");
             __emscripten_memcpy_js.sig = "vppp";
+            var _emscripten_date_now = /* @__PURE__ */ __name(() => Date.now(), "_emscripten_date_now");
+            _emscripten_date_now.sig = "d";
             var _emscripten_get_now;
-            _emscripten_get_now = () => performance.now();
+            _emscripten_get_now = /* @__PURE__ */ __name(() => performance.now(), "_emscripten_get_now");
             _emscripten_get_now.sig = "d";
-            var getHeapMax = () => (
+            var getHeapMax = /* @__PURE__ */ __name(() => (
               // Stay one Wasm page short of 4GB: while e.g. Chrome is able to allocate
               // full 4GB Wasm memories, the size will wrap back to 0 bytes in Wasm side
               // for any code that deals with heap sizes, which would require special
               // casing all heap size related code to treat 0 specially.
               2147483648
-            );
-            var growMemory = (size) => {
+            ), "getHeapMax");
+            var growMemory = /* @__PURE__ */ __name((size) => {
               var b = wasmMemory.buffer;
               var pages = (size - b.byteLength + 65535) / 65536;
               try {
@@ -1243,15 +1312,15 @@ var require_tree_sitter = __commonJS({
                 return 1;
               } catch (e) {
               }
-            };
-            var _emscripten_resize_heap = (requestedSize) => {
+            }, "growMemory");
+            var _emscripten_resize_heap = /* @__PURE__ */ __name((requestedSize) => {
               var oldSize = HEAPU8.length;
               requestedSize >>>= 0;
               var maxHeapSize = getHeapMax();
               if (requestedSize > maxHeapSize) {
                 return false;
               }
-              var alignUp = (x, multiple) => x + (multiple - x % multiple) % multiple;
+              var alignUp = /* @__PURE__ */ __name((x, multiple) => x + (multiple - x % multiple) % multiple, "alignUp");
               for (var cutDown = 1; cutDown <= 4; cutDown *= 2) {
                 var overGrownHeapSize = oldSize * (1 + 0.2 / cutDown);
                 overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296);
@@ -1262,16 +1331,19 @@ var require_tree_sitter = __commonJS({
                 }
               }
               return false;
-            };
+            }, "_emscripten_resize_heap");
             _emscripten_resize_heap.sig = "ip";
-            var _fd_close = (fd) => 52;
+            var _fd_close = /* @__PURE__ */ __name((fd) => 52, "_fd_close");
             _fd_close.sig = "ii";
+            var convertI32PairToI53Checked = /* @__PURE__ */ __name((lo, hi) => hi + 2097152 >>> 0 < 4194305 - !!lo ? (lo >>> 0) + hi * 4294967296 : NaN, "convertI32PairToI53Checked");
             function _fd_seek(fd, offset_low, offset_high, whence, newOffset) {
+              convertI32PairToI53Checked(offset_low, offset_high);
               return 70;
             }
+            __name(_fd_seek, "_fd_seek");
             _fd_seek.sig = "iiiiip";
             var printCharBuffers = [null, [], []];
-            var printChar = (stream, curr) => {
+            var printChar = /* @__PURE__ */ __name((stream, curr) => {
               var buffer = printCharBuffers[stream];
               if (curr === 0 || curr === 10) {
                 (stream === 1 ? out : err)(UTF8ArrayToString(buffer, 0));
@@ -1279,8 +1351,8 @@ var require_tree_sitter = __commonJS({
               } else {
                 buffer.push(curr);
               }
-            };
-            var _fd_write = (fd, iov, iovcnt, pnum) => {
+            }, "printChar");
+            var _fd_write = /* @__PURE__ */ __name((fd, iov, iovcnt, pnum) => {
               var num = 0;
               for (var i2 = 0; i2 < iovcnt; i2++) {
                 var ptr = LE_HEAP_LOAD_U32((iov >> 2) * 4);
@@ -1293,7 +1365,7 @@ var require_tree_sitter = __commonJS({
               }
               LE_HEAP_STORE_U32((pnum >> 2) * 4, num);
               return 0;
-            };
+            }, "_fd_write");
             _fd_write.sig = "iippp";
             function _tree_sitter_log_callback(isLexMessage, messageAddress) {
               if (currentLogCallback) {
@@ -1301,6 +1373,7 @@ var require_tree_sitter = __commonJS({
                 currentLogCallback(message, isLexMessage !== 0);
               }
             }
+            __name(_tree_sitter_log_callback, "_tree_sitter_log_callback");
             function _tree_sitter_parse_callback(inputBufferAddress, index, row, column, lengthAddress) {
               const INPUT_BUFFER_SIZE = 10 * 1024;
               const string = currentParseCallback(index, {
@@ -1314,22 +1387,28 @@ var require_tree_sitter = __commonJS({
                 setValue(lengthAddress, 0, "i32");
               }
             }
-            var _proc_exit = (code) => {
+            __name(_tree_sitter_parse_callback, "_tree_sitter_parse_callback");
+            var keepRuntimeAlive = /* @__PURE__ */ __name(() => noExitRuntime, "keepRuntimeAlive");
+            var _proc_exit = /* @__PURE__ */ __name((code) => {
               EXITSTATUS = code;
+              if (!keepRuntimeAlive()) {
+                Module["onExit"]?.(code);
+                ABORT = true;
+              }
               quit_(code, new ExitStatus(code));
-            };
+            }, "_proc_exit");
             _proc_exit.sig = "vi";
-            var exitJS = (status, implicit) => {
+            var exitJS = /* @__PURE__ */ __name((status, implicit) => {
               EXITSTATUS = status;
               _proc_exit(status);
-            };
-            var handleException = (e) => {
+            }, "exitJS");
+            var handleException = /* @__PURE__ */ __name((e) => {
               if (e instanceof ExitStatus || e == "unwind") {
                 return EXITSTATUS;
               }
               quit_(1, e);
-            };
-            var lengthBytesUTF8 = (str) => {
+            }, "handleException");
+            var lengthBytesUTF8 = /* @__PURE__ */ __name((str) => {
               var len = 0;
               for (var i2 = 0; i2 < str.length; ++i2) {
                 var c = str.charCodeAt(i2);
@@ -1345,8 +1424,8 @@ var require_tree_sitter = __commonJS({
                 }
               }
               return len;
-            };
-            var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
+            }, "lengthBytesUTF8");
+            var stringToUTF8Array = /* @__PURE__ */ __name((str, heap, outIdx, maxBytesToWrite) => {
               if (!(maxBytesToWrite > 0)) return 0;
               var startIdx = outIdx;
               var endIdx = outIdx + maxBytesToWrite - 1;
@@ -1378,16 +1457,16 @@ var require_tree_sitter = __commonJS({
               }
               heap[outIdx] = 0;
               return outIdx - startIdx;
-            };
-            var stringToUTF8 = (str, outPtr, maxBytesToWrite) => stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
-            var stackAlloc = (sz) => __emscripten_stack_alloc(sz);
-            var stringToUTF8OnStack = (str) => {
+            }, "stringToUTF8Array");
+            var stringToUTF8 = /* @__PURE__ */ __name((str, outPtr, maxBytesToWrite) => stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite), "stringToUTF8");
+            var stackAlloc = /* @__PURE__ */ __name((sz) => __emscripten_stack_alloc(sz), "stackAlloc");
+            var stringToUTF8OnStack = /* @__PURE__ */ __name((str) => {
               var size = lengthBytesUTF8(str) + 1;
               var ret = stackAlloc(size);
               stringToUTF8(str, ret, size);
               return ret;
-            };
-            var stringToUTF16 = (str, outPtr, maxBytesToWrite) => {
+            }, "stringToUTF8OnStack");
+            var stringToUTF16 = /* @__PURE__ */ __name((str, outPtr, maxBytesToWrite) => {
               maxBytesToWrite ?? (maxBytesToWrite = 2147483647);
               if (maxBytesToWrite < 2) return 0;
               maxBytesToWrite -= 2;
@@ -1400,15 +1479,15 @@ var require_tree_sitter = __commonJS({
               }
               LE_HEAP_STORE_I16((outPtr >> 1) * 2, 0);
               return outPtr - startPtr;
-            };
-            var AsciiToString = (ptr) => {
+            }, "stringToUTF16");
+            var AsciiToString = /* @__PURE__ */ __name((ptr) => {
               var str = "";
               while (1) {
                 var ch = HEAPU8[ptr++];
                 if (!ch) return str;
                 str += String.fromCharCode(ch);
               }
-            };
+            }, "AsciiToString");
             var wasmImports = {
               /** @export */
               __heap_base: ___heap_base,
@@ -1576,20 +1655,20 @@ var require_tree_sitter = __commonJS({
             Module["_strncpy"] = (a0, a1, a2) => (Module["_strncpy"] = wasmExports["strncpy"])(a0, a1, a2);
             Module["_towlower"] = (a0) => (Module["_towlower"] = wasmExports["towlower"])(a0);
             Module["_towupper"] = (a0) => (Module["_towupper"] = wasmExports["towupper"])(a0);
-            var _setThrew = (a0, a1) => (_setThrew = wasmExports["setThrew"])(a0, a1);
-            var __emscripten_stack_restore = (a0) => (__emscripten_stack_restore = wasmExports["_emscripten_stack_restore"])(a0);
-            var __emscripten_stack_alloc = (a0) => (__emscripten_stack_alloc = wasmExports["_emscripten_stack_alloc"])(a0);
-            var _emscripten_stack_get_current = () => (_emscripten_stack_get_current = wasmExports["emscripten_stack_get_current"])();
+            var _setThrew = /* @__PURE__ */ __name((a0, a1) => (_setThrew = wasmExports["setThrew"])(a0, a1), "_setThrew");
+            var __emscripten_stack_restore = /* @__PURE__ */ __name((a0) => (__emscripten_stack_restore = wasmExports["_emscripten_stack_restore"])(a0), "__emscripten_stack_restore");
+            var __emscripten_stack_alloc = /* @__PURE__ */ __name((a0) => (__emscripten_stack_alloc = wasmExports["_emscripten_stack_alloc"])(a0), "__emscripten_stack_alloc");
+            var _emscripten_stack_get_current = /* @__PURE__ */ __name(() => (_emscripten_stack_get_current = wasmExports["emscripten_stack_get_current"])(), "_emscripten_stack_get_current");
             Module["dynCall_jiji"] = (a0, a1, a2, a3, a4) => (Module["dynCall_jiji"] = wasmExports["dynCall_jiji"])(a0, a1, a2, a3, a4);
             Module["_orig$ts_parser_timeout_micros"] = (a0) => (Module["_orig$ts_parser_timeout_micros"] = wasmExports["orig$ts_parser_timeout_micros"])(a0);
             Module["_orig$ts_parser_set_timeout_micros"] = (a0, a1) => (Module["_orig$ts_parser_set_timeout_micros"] = wasmExports["orig$ts_parser_set_timeout_micros"])(a0, a1);
             Module["AsciiToString"] = AsciiToString;
             Module["stringToUTF16"] = stringToUTF16;
             var calledRun;
-            dependenciesFulfilled = function runCaller() {
+            dependenciesFulfilled = /* @__PURE__ */ __name(function runCaller() {
               if (!calledRun) run();
               if (!calledRun) dependenciesFulfilled = runCaller;
-            };
+            }, "runCaller");
             function callMain(args2 = []) {
               var entryFunction = resolveGlobalSymbol("main").sym;
               if (!entryFunction) return;
@@ -1614,6 +1693,7 @@ var require_tree_sitter = __commonJS({
                 return handleException(e);
               }
             }
+            __name(callMain, "callMain");
             function run(args2 = arguments_) {
               if (runDependencies > 0) {
                 return;
@@ -1633,6 +1713,7 @@ var require_tree_sitter = __commonJS({
                 if (shouldRunNow) callMain(args2);
                 postRun();
               }
+              __name(doRun, "doRun");
               if (Module["setStatus"]) {
                 Module["setStatus"]("Running...");
                 setTimeout(function() {
@@ -1645,6 +1726,7 @@ var require_tree_sitter = __commonJS({
                 doRun();
               }
             }
+            __name(run, "run");
             if (Module["preInit"]) {
               if (typeof Module["preInit"] == "function") Module["preInit"] = [Module["preInit"]];
               while (Module["preInit"].length > 0) {
@@ -1674,7 +1756,7 @@ var require_tree_sitter = __commonJS({
             let TRANSFER_BUFFER;
             let currentParseCallback;
             let currentLogCallback;
-            class ParserImpl {
+            const _ParserImpl = class _ParserImpl {
               static init() {
                 TRANSFER_BUFFER = C._ts_init();
                 VERSION = getValue(TRANSFER_BUFFER, "i32");
@@ -1714,7 +1796,7 @@ var require_tree_sitter = __commonJS({
               }
               parse(callback, oldTree, options) {
                 if (typeof callback === "string") {
-                  currentParseCallback = (index, _) => callback.slice(index);
+                  currentParseCallback = /* @__PURE__ */ __name((index, _) => callback.slice(index), "currentParseCallback");
                 } else if (typeof callback === "function") {
                   currentParseCallback = callback;
                 } else {
@@ -1785,8 +1867,10 @@ var require_tree_sitter = __commonJS({
               getLogger() {
                 return this.logCallback;
               }
-            }
-            class Tree {
+            };
+            __name(_ParserImpl, "ParserImpl");
+            let ParserImpl = _ParserImpl;
+            const _Tree = class _Tree {
               constructor(internal, address, language, textCallback) {
                 assertInternal(internal);
                 this[0] = address;
@@ -1795,7 +1879,7 @@ var require_tree_sitter = __commonJS({
               }
               copy() {
                 const address = C._ts_tree_copy(this[0]);
-                return new Tree(INTERNAL, address, this.language, this.textCallback);
+                return new _Tree(INTERNAL, address, this.language, this.textCallback);
               }
               delete() {
                 C._ts_tree_delete(this[0]);
@@ -1823,7 +1907,7 @@ var require_tree_sitter = __commonJS({
                 return this.rootNode.walk();
               }
               getChangedRanges(other) {
-                if (other.constructor !== Tree) {
+                if (other.constructor !== _Tree) {
                   throw new TypeError("Argument must be a Tree");
                 }
                 C._ts_tree_get_changed_ranges_wasm(this[0], other[0]);
@@ -1855,8 +1939,10 @@ var require_tree_sitter = __commonJS({
                 }
                 return result;
               }
-            }
-            class Node {
+            };
+            __name(_Tree, "Tree");
+            let Tree = _Tree;
+            const _Node = class _Node {
               constructor(internal, tree) {
                 assertInternal(internal);
                 this.tree = tree;
@@ -2158,8 +2244,10 @@ var require_tree_sitter = __commonJS({
                 C._free(address);
                 return result;
               }
-            }
-            class TreeCursor {
+            };
+            __name(_Node, "Node");
+            let Node = _Node;
+            const _TreeCursor = class _TreeCursor {
               constructor(internal, tree) {
                 assertInternal(internal);
                 this.tree = tree;
@@ -2298,8 +2386,10 @@ var require_tree_sitter = __commonJS({
                 unmarshalTreeCursor(this);
                 return result === 1;
               }
-            }
-            class Language {
+            };
+            __name(_TreeCursor, "TreeCursor");
+            let TreeCursor = _TreeCursor;
+            const _Language = class _Language {
               constructor(internal, address) {
                 assertInternal(internal);
                 this[0] = address;
@@ -2477,14 +2567,14 @@ var require_tree_sitter = __commonJS({
                                 if (c.name === captureName1) nodes1.push(c.node);
                                 if (c.name === captureName2) nodes2.push(c.node);
                               }
-                              const compare = (n1, n2, positive) => positive ? n1.text === n2.text : n1.text !== n2.text;
+                              const compare = /* @__PURE__ */ __name((n1, n2, positive) => positive ? n1.text === n2.text : n1.text !== n2.text, "compare");
                               return matchAll ? nodes1.every((n1) => nodes2.some((n2) => compare(n1, n2, isPositive))) : nodes1.some((n1) => nodes2.some((n2) => compare(n1, n2, isPositive)));
                             });
                           } else {
                             captureName = steps[1].name;
                             const stringValue = steps[2].value;
-                            const matches = (n) => n.text === stringValue;
-                            const doesNotMatch = (n) => n.text !== stringValue;
+                            const matches = /* @__PURE__ */ __name((n) => n.text === stringValue, "matches");
+                            const doesNotMatch = /* @__PURE__ */ __name((n) => n.text !== stringValue, "doesNotMatch");
                             textPredicates[i2].push((captures) => {
                               const nodes = [];
                               for (const c of captures) {
@@ -2517,7 +2607,7 @@ var require_tree_sitter = __commonJS({
                             for (const c of captures) {
                               if (c.name === captureName) nodes.push(c.node.text);
                             }
-                            const test = (text, positive) => positive ? regex.test(text) : !regex.test(text);
+                            const test = /* @__PURE__ */ __name((text, positive) => positive ? regex.test(text) : !regex.test(text), "test");
                             if (nodes.length === 0) return !isPositive;
                             return matchAll ? nodes.every((text) => test(text, isPositive)) : nodes.some((text) => test(text, isPositive));
                           });
@@ -2617,11 +2707,13 @@ ${body2}`);
 ${JSON.stringify(symbolNames, null, 2)}`);
                   }
                   const languageAddress = mod[functionName]();
-                  return new Language(INTERNAL, languageAddress);
+                  return new _Language(INTERNAL, languageAddress);
                 });
               }
-            }
-            class LookaheadIterable {
+            };
+            __name(_Language, "Language");
+            let Language = _Language;
+            const _LookaheadIterable = class _LookaheadIterable {
               constructor(internal, address, language) {
                 assertInternal(internal);
                 this[0] = address;
@@ -2664,8 +2756,10 @@ ${JSON.stringify(symbolNames, null, 2)}`);
                   }
                 };
               }
-            }
-            class Query {
+            };
+            __name(_LookaheadIterable, "LookaheadIterable");
+            let LookaheadIterable = _LookaheadIterable;
+            const _Query = class _Query {
               constructor(internal, address, captureNames, textPredicates, predicates, setProperties, assertedProperties, refutedProperties) {
                 assertInternal(internal);
                 this[0] = address;
@@ -2768,7 +2862,9 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               didExceedMatchLimit() {
                 return this.exceededMatchLimit;
               }
-            }
+            };
+            __name(_Query, "Query");
+            let Query = _Query;
             function getText(tree, startIndex, endIndex) {
               const length = endIndex - startIndex;
               let result = tree.textCallback(startIndex, null, endIndex);
@@ -2787,6 +2883,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               }
               return result;
             }
+            __name(getText, "getText");
             function unmarshalCaptures(query, tree, address, result) {
               for (let i2 = 0, n = result.length; i2 < n; i2++) {
                 const captureIndex = getValue(address, "i32");
@@ -2800,12 +2897,15 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               }
               return address;
             }
+            __name(unmarshalCaptures, "unmarshalCaptures");
             function assertInternal(x) {
               if (x !== INTERNAL) throw new Error("Illegal constructor");
             }
+            __name(assertInternal, "assertInternal");
             function isPoint(point) {
               return point && typeof point.row === "number" && typeof point.column === "number";
             }
+            __name(isPoint, "isPoint");
             function marshalNode(node) {
               let address = TRANSFER_BUFFER;
               setValue(address, node.id, "i32");
@@ -2818,6 +2918,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               address += SIZE_OF_INT;
               setValue(address, node[0], "i32");
             }
+            __name(marshalNode, "marshalNode");
             function unmarshalNode(tree, address = TRANSFER_BUFFER) {
               const id = getValue(address, "i32");
               address += SIZE_OF_INT;
@@ -2839,22 +2940,26 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               result[0] = other;
               return result;
             }
+            __name(unmarshalNode, "unmarshalNode");
             function marshalTreeCursor(cursor, address = TRANSFER_BUFFER) {
               setValue(address + 0 * SIZE_OF_INT, cursor[0], "i32");
               setValue(address + 1 * SIZE_OF_INT, cursor[1], "i32");
               setValue(address + 2 * SIZE_OF_INT, cursor[2], "i32");
               setValue(address + 3 * SIZE_OF_INT, cursor[3], "i32");
             }
+            __name(marshalTreeCursor, "marshalTreeCursor");
             function unmarshalTreeCursor(cursor) {
               cursor[0] = getValue(TRANSFER_BUFFER + 0 * SIZE_OF_INT, "i32");
               cursor[1] = getValue(TRANSFER_BUFFER + 1 * SIZE_OF_INT, "i32");
               cursor[2] = getValue(TRANSFER_BUFFER + 2 * SIZE_OF_INT, "i32");
               cursor[3] = getValue(TRANSFER_BUFFER + 3 * SIZE_OF_INT, "i32");
             }
+            __name(unmarshalTreeCursor, "unmarshalTreeCursor");
             function marshalPoint(address, point) {
               setValue(address, point.row, "i32");
               setValue(address + SIZE_OF_INT, point.column, "i32");
             }
+            __name(marshalPoint, "marshalPoint");
             function unmarshalPoint(address) {
               const result = {
                 row: getValue(address, "i32") >>> 0,
@@ -2862,6 +2967,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               };
               return result;
             }
+            __name(unmarshalPoint, "unmarshalPoint");
             function marshalRange(address, range2) {
               marshalPoint(address, range2.startPosition);
               address += SIZE_OF_POINT;
@@ -2872,6 +2978,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               setValue(address, range2.endIndex, "i32");
               address += SIZE_OF_INT;
             }
+            __name(marshalRange, "marshalRange");
             function unmarshalRange(address) {
               const result = {};
               result.startPosition = unmarshalPoint(address);
@@ -2883,6 +2990,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               result.endIndex = getValue(address, "i32") >>> 0;
               return result;
             }
+            __name(unmarshalRange, "unmarshalRange");
             function marshalEdit(edit) {
               let address = TRANSFER_BUFFER;
               marshalPoint(address, edit.startPosition);
@@ -2898,21 +3006,24 @@ ${JSON.stringify(symbolNames, null, 2)}`);
               setValue(address, edit.newEndIndex, "i32");
               address += SIZE_OF_INT;
             }
+            __name(marshalEdit, "marshalEdit");
             for (const name2 of Object.getOwnPropertyNames(ParserImpl.prototype)) {
-              Object.defineProperty(Parser.prototype, name2, {
+              Object.defineProperty(_Parser.prototype, name2, {
                 value: ParserImpl.prototype[name2],
                 enumerable: false,
                 writable: false
               });
             }
-            Parser.Language = Language;
+            _Parser.Language = Language;
             Module.onRuntimeInitialized = () => {
               ParserImpl.init();
               resolveInitPromise();
             };
           });
         }
-      }
+      };
+      __name(_Parser, "Parser");
+      let Parser = _Parser;
       return Parser;
     })();
     if (typeof exports$1 === "object") {
@@ -2924,7 +3035,7 @@ ${JSON.stringify(symbolNames, null, 2)}`);
 // src/ir/transforms.ts
 function merge(patterns) {
   return {
-    now: () => patterns[0]?.now() ?? 0,
+    now: /* @__PURE__ */ __name(() => patterns[0]?.now() ?? 0, "now"),
     query(begin, end) {
       const all = [];
       for (const p of patterns) {
@@ -2934,6 +3045,7 @@ function merge(patterns) {
     }
   };
 }
+__name(merge, "merge");
 function transpose(events, semitones) {
   return events.map((e) => ({
     ...e,
@@ -2941,6 +3053,7 @@ function transpose(events, semitones) {
     freq: e.freq !== null ? e.freq * Math.pow(2, semitones / 12) : null
   }));
 }
+__name(transpose, "transpose");
 function timestretch(events, factor) {
   return events.map((e) => ({
     ...e,
@@ -2949,15 +3062,18 @@ function timestretch(events, factor) {
     endClipped: e.endClipped * factor
   }));
 }
+__name(timestretch, "timestretch");
 function filter(events, pred) {
   return events.filter(pred);
 }
+__name(filter, "filter");
 function scaleGain(events, factor) {
   return events.map((e) => ({
     ...e,
     gain: Math.min(1, Math.max(0, e.gain * factor))
   }));
 }
+__name(scaleGain, "scaleGain");
 
 // src/ir/PatternIR.ts
 function attachMeta(node, meta) {
@@ -2965,9 +3081,10 @@ function attachMeta(node, meta) {
   if (meta?.userMethod) node.userMethod = meta.userMethod;
   return node;
 }
+__name(attachMeta, "attachMeta");
 var IR = {
-  pure: (meta) => attachMeta({ tag: "Pure" }, meta),
-  play: (note2, duration = 0.25, params = {}, loc) => {
+  pure: /* @__PURE__ */ __name((meta) => attachMeta({ tag: "Pure" }, meta), "pure"),
+  play: /* @__PURE__ */ __name((note2, duration = 0.25, params = {}, loc) => {
     const node = {
       tag: "Play",
       note: note2,
@@ -2976,39 +3093,39 @@ var IR = {
     };
     if (loc && loc.length > 0) node.loc = loc;
     return node;
-  },
-  sleep: (duration, meta) => attachMeta({ tag: "Sleep", duration }, meta),
+  }, "play"),
+  sleep: /* @__PURE__ */ __name((duration, meta) => attachMeta({ tag: "Sleep", duration }, meta), "sleep"),
   // Rest-spread: cannot accept trailing meta?. Desugar / root sites that need
   // metadata use literal construction `{ tag: 'Seq', children, loc, userMethod }`.
-  seq: (...children) => ({ tag: "Seq", children }),
+  seq: /* @__PURE__ */ __name((...children) => ({ tag: "Seq", children }), "seq"),
   // Rest-spread: cannot accept trailing meta?. Desugar / root sites that need
   // metadata use literal construction `{ tag: 'Stack', tracks, loc, userMethod }`.
-  stack: (...tracks) => ({ tag: "Stack", tracks }),
-  choice: (p, then, else_ = { tag: "Pure" }, meta) => attachMeta({ tag: "Choice", p, then, else_ }, meta),
-  every: (n, body2, default_, meta) => attachMeta({ tag: "Every", n, body: body2, default_ }, meta),
+  stack: /* @__PURE__ */ __name((...tracks) => ({ tag: "Stack", tracks }), "stack"),
+  choice: /* @__PURE__ */ __name((p, then, else_ = { tag: "Pure" }, meta) => attachMeta({ tag: "Choice", p, then, else_ }, meta), "choice"),
+  every: /* @__PURE__ */ __name((n, body2, default_, meta) => attachMeta({ tag: "Every", n, body: body2, default_ }, meta), "every"),
   // Rest-spread: cannot accept trailing meta?. Sites needing metadata use
   // literal construction `{ tag: 'Cycle', items, loc, userMethod }`.
-  cycle: (...items) => ({ tag: "Cycle", items }),
-  when: (gate, body2, meta) => attachMeta({ tag: "When", gate, body: body2 }, meta),
-  fx: (name2, params, body2, meta) => attachMeta({ tag: "FX", name: name2, params, body: body2 }, meta),
-  param: (key, value, rawArgs, body2, meta) => attachMeta({ tag: "Param", key, value, rawArgs, body: body2 }, meta),
-  track: (trackId, body2, meta) => attachMeta({ tag: "Track", trackId, body: body2 }, meta),
-  ramp: (param, from, to, cycles, body2, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body: body2 }, meta),
-  fast: (factor, body2, meta) => attachMeta({ tag: "Fast", factor, body: body2 }, meta),
-  slow: (factor, body2, meta) => attachMeta({ tag: "Slow", factor, body: body2 }, meta),
-  elongate: (factor, body2, meta) => attachMeta({ tag: "Elongate", factor, body: body2 }, meta),
-  late: (offset, body2, meta) => attachMeta({ tag: "Late", offset, body: body2 }, meta),
-  degrade: (p, body2, meta) => attachMeta({ tag: "Degrade", p, body: body2 }, meta),
-  chunk: (n, transform, body2, meta) => attachMeta({ tag: "Chunk", n, transform, body: body2 }, meta),
-  ply: (n, body2, meta) => attachMeta({ tag: "Ply", n, body: body2 }, meta),
-  pick: (selector, lookup, meta) => attachMeta({ tag: "Pick", selector, lookup }, meta),
-  struct: (mask, body2, meta) => attachMeta({ tag: "Struct", mask, body: body2 }, meta),
-  swing: (n, body2, meta) => attachMeta({ tag: "Swing", n, body: body2 }, meta),
-  shuffle: (n, body2, meta) => attachMeta({ tag: "Shuffle", n, body: body2 }, meta),
-  scramble: (n, body2, meta) => attachMeta({ tag: "Scramble", n, body: body2 }, meta),
-  chop: (n, body2, meta) => attachMeta({ tag: "Chop", n, body: body2 }, meta),
-  loop: (body2, meta) => attachMeta({ tag: "Loop", body: body2 }, meta),
-  code: (code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta)
+  cycle: /* @__PURE__ */ __name((...items) => ({ tag: "Cycle", items }), "cycle"),
+  when: /* @__PURE__ */ __name((gate, body2, meta) => attachMeta({ tag: "When", gate, body: body2 }, meta), "when"),
+  fx: /* @__PURE__ */ __name((name2, params, body2, meta) => attachMeta({ tag: "FX", name: name2, params, body: body2 }, meta), "fx"),
+  param: /* @__PURE__ */ __name((key, value, rawArgs, body2, meta) => attachMeta({ tag: "Param", key, value, rawArgs, body: body2 }, meta), "param"),
+  track: /* @__PURE__ */ __name((trackId, body2, meta) => attachMeta({ tag: "Track", trackId, body: body2 }, meta), "track"),
+  ramp: /* @__PURE__ */ __name((param, from, to, cycles, body2, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body: body2 }, meta), "ramp"),
+  fast: /* @__PURE__ */ __name((factor, body2, meta) => attachMeta({ tag: "Fast", factor, body: body2 }, meta), "fast"),
+  slow: /* @__PURE__ */ __name((factor, body2, meta) => attachMeta({ tag: "Slow", factor, body: body2 }, meta), "slow"),
+  elongate: /* @__PURE__ */ __name((factor, body2, meta) => attachMeta({ tag: "Elongate", factor, body: body2 }, meta), "elongate"),
+  late: /* @__PURE__ */ __name((offset, body2, meta) => attachMeta({ tag: "Late", offset, body: body2 }, meta), "late"),
+  degrade: /* @__PURE__ */ __name((p, body2, meta) => attachMeta({ tag: "Degrade", p, body: body2 }, meta), "degrade"),
+  chunk: /* @__PURE__ */ __name((n, transform, body2, meta) => attachMeta({ tag: "Chunk", n, transform, body: body2 }, meta), "chunk"),
+  ply: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Ply", n, body: body2 }, meta), "ply"),
+  pick: /* @__PURE__ */ __name((selector, lookup, meta) => attachMeta({ tag: "Pick", selector, lookup }, meta), "pick"),
+  struct: /* @__PURE__ */ __name((mask, body2, meta) => attachMeta({ tag: "Struct", mask, body: body2 }, meta), "struct"),
+  swing: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Swing", n, body: body2 }, meta), "swing"),
+  shuffle: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Shuffle", n, body: body2 }, meta), "shuffle"),
+  scramble: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Scramble", n, body: body2 }, meta), "scramble"),
+  chop: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Chop", n, body: body2 }, meta), "chop"),
+  loop: /* @__PURE__ */ __name((body2, meta) => attachMeta({ tag: "Loop", body: body2 }, meta), "loop"),
+  code: /* @__PURE__ */ __name((code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta), "code")
 };
 
 // src/ir/collect.ts
@@ -3018,16 +3135,20 @@ function xorwise(x) {
   const b = a >> 17 ^ a | 0;
   return b << 5 ^ b | 0;
 }
+__name(xorwise, "xorwise");
 function timeToIntSeed(t) {
   const frac = t / 300 - Math.trunc(t / 300);
   return xorwise(Math.trunc(frac * 536870912));
 }
+__name(timeToIntSeed, "timeToIntSeed");
 function intSeedToRand(s) {
   return s % 536870912 / 536870912;
 }
+__name(intSeedToRand, "intSeedToRand");
 function seededRand(t, seed) {
   return Math.abs(intSeedToRand(timeToIntSeed(t + seed)));
 }
+__name(seededRand, "seededRand");
 function seededRandsAtTime(t, n, seed) {
   if (n === 1) {
     return [Math.abs(intSeedToRand(timeToIntSeed(t + seed)))];
@@ -3040,6 +3161,7 @@ function seededRandsAtTime(t, n, seed) {
   }
   return out2;
 }
+__name(seededRandsAtTime, "seededRandsAtTime");
 function withWrapperLoc(events, wrapper) {
   if (!wrapper || wrapper.length === 0) return events;
   const range2 = wrapper[0];
@@ -3048,6 +3170,7 @@ function withWrapperLoc(events, wrapper) {
     loc: e.loc ? [...e.loc, range2] : [range2]
   }));
 }
+__name(withWrapperLoc, "withWrapperLoc");
 function fnv1a(input) {
   let h = 2166136261;
   for (let i2 = 0; i2 < input.length; i2++) {
@@ -3056,11 +3179,13 @@ function fnv1a(input) {
   }
   return (h >>> 0).toString(16).padStart(8, "0");
 }
+__name(fnv1a, "fnv1a");
 function assignNodeId(ir, position) {
   const start2 = ir.loc?.[0]?.start ?? -1;
   const end = ir.loc?.[0]?.end ?? -1;
   return fnv1a(`${start2}:${end}:${ir.tag}:${position}`);
 }
+__name(assignNodeId, "assignNodeId");
 var DEFAULT_CONTEXT = {
   begin: 0,
   end: Infinity,
@@ -3106,6 +3231,7 @@ function countLeavesInIR(node) {
       return 1;
   }
 }
+__name(countLeavesInIR, "countLeavesInIR");
 function noteToFreq(note2) {
   if (typeof note2 === "number") {
     return 440 * Math.pow(2, (note2 - 69) / 12);
@@ -3125,6 +3251,7 @@ function noteToFreq(note2) {
   }
   return null;
 }
+__name(noteToFreq, "noteToFreq");
 function makeEvent(ctx, note2, params) {
   const duration = ctx.duration / ctx.speed;
   const merged = { ...params, ...ctx.params };
@@ -3153,6 +3280,7 @@ function makeEvent(ctx, note2, params) {
     ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {}
   };
 }
+__name(makeEvent, "makeEvent");
 function _collectRearrange(selector, n, body2, ctx, wrapperLoc) {
   const bodyEvents = walk(body2, ctx);
   const out2 = [];
@@ -3182,6 +3310,7 @@ function _collectRearrange(selector, n, body2, ctx, wrapperLoc) {
     loc: e.loc ? [...e.loc, wrapperLoc] : [wrapperLoc]
   }));
 }
+__name(_collectRearrange, "_collectRearrange");
 function collect(ir, partialCtx) {
   const ctx = { ...DEFAULT_CONTEXT, ...partialCtx };
   const events = walk(ir, ctx);
@@ -3195,6 +3324,7 @@ function collect(ir, partialCtx) {
   }
   return events;
 }
+__name(collect, "collect");
 function walk(ir, ctx) {
   switch (ir.tag) {
     case "Pure":
@@ -3415,11 +3545,11 @@ function walk(ir, ctx) {
       const slotEnd = (slot + 1) / ir.n;
       const baseEvents = walk(ir.body, ctx);
       const transformedEvents = walk(ir.transform, ctx);
-      const inSlot = (e) => {
+      const inSlot = /* @__PURE__ */ __name((e) => {
         const cyclePos = e.begin - ctx.cycle;
         return cyclePos >= slotStart - 1e-9 && cyclePos < slotEnd - 1e-9;
-      };
-      const findTransformed = (e) => transformedEvents.find((t) => Math.abs(t.begin - e.begin) < 1e-9);
+      }, "inSlot");
+      const findTransformed = /* @__PURE__ */ __name((e) => transformedEvents.find((t) => Math.abs(t.begin - e.begin) < 1e-9), "findTransformed");
       const composed = baseEvents.map((e) => {
         if (inSlot(e)) {
           const replaced = findTransformed(e);
@@ -3569,6 +3699,7 @@ function walk(ir, ctx) {
     }
   }
 }
+__name(walk, "walk");
 function collectCycles(ir, startCycle, endCycle) {
   const events = [];
   for (let c = startCycle; c < endCycle; c++) {
@@ -3584,11 +3715,13 @@ function collectCycles(ir, startCycle, endCycle) {
   }
   return events;
 }
+__name(collectCycles, "collectCycles");
 
 // src/ir/toStrudel.ts
 function toStrudel(ir) {
   return gen(ir);
 }
+__name(toStrudel, "toStrudel");
 function gen(ir) {
   switch (ir.tag) {
     case "Pure":
@@ -3731,9 +3864,11 @@ function gen(ir) {
     }
   }
 }
+__name(gen, "gen");
 function nodesEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
+__name(nodesEqual, "nodesEqual");
 function extractTransform(body2, base) {
   if (body2.tag === "Fast" && nodesEqual(body2.body, base)) return `fast(${body2.factor})`;
   if (body2.tag === "Slow" && nodesEqual(body2.body, base)) return `slow(${body2.factor})`;
@@ -3743,12 +3878,14 @@ function extractTransform(body2, base) {
   }
   return `() => ${gen(body2)}`;
 }
+__name(extractTransform, "extractTransform");
 function genPlay(note2, params) {
   if (params.s) {
     return `s("${params.s}")`;
   }
   return `note("${note2}")`;
 }
+__name(genPlay, "genPlay");
 function canCollapse(children) {
   return children.every((child) => {
     if (child.tag === "Sleep") return true;
@@ -3759,6 +3896,7 @@ function canCollapse(children) {
     return false;
   });
 }
+__name(canCollapse, "canCollapse");
 function collapseToMini(children) {
   const hasSample = children.some((c) => c.tag === "Play" && c.params.s);
   const tokens = children.map((child) => {
@@ -3773,6 +3911,7 @@ function collapseToMini(children) {
   if (hasSample) return `s("${notation}")`;
   return `note("${notation}")`;
 }
+__name(collapseToMini, "collapseToMini");
 
 // src/ir/serialize.ts
 var PATTERN_IR_SCHEMA_VERSION = "1.0";
@@ -3783,6 +3922,7 @@ function patternToJSON(ir, pretty) {
   };
   return pretty ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope);
 }
+__name(patternToJSON, "patternToJSON");
 function patternFromJSON(json) {
   let parsed;
   try {
@@ -3799,6 +3939,7 @@ function patternFromJSON(json) {
   }
   return validateNode(envelope.tree, "tree");
 }
+__name(patternFromJSON, "patternFromJSON");
 var VALID_TAGS = /* @__PURE__ */ new Set([
   "Pure",
   "Seq",
@@ -4026,6 +4167,7 @@ function validateNode(raw, path) {
       throw new Error(`${path}: unhandled tag "${node.tag}"`);
   }
 }
+__name(validateNode, "validateNode");
 function requireField(node, key, types, path) {
   if (!(key in node)) {
     throw new Error(`${path}: missing field "${key}"`);
@@ -4036,16 +4178,19 @@ function requireField(node, key, types, path) {
     );
   }
 }
+__name(requireField, "requireField");
 function requireArray(node, key, path) {
   if (!(key in node) || !Array.isArray(node[key])) {
     throw new Error(`${path}: field "${key}" must be an array`);
   }
 }
+__name(requireArray, "requireArray");
 function requireObject(node, key, path) {
   if (!(key in node) || typeof node[key] !== "object" || node[key] === null || Array.isArray(node[key])) {
     throw new Error(`${path}: field "${key}" must be an object`);
   }
 }
+__name(requireObject, "requireObject");
 
 // src/ir/parseMini.ts
 function parseMini(input, isSample = false, baseOffset = 0) {
@@ -4065,6 +4210,7 @@ function parseMini(input, isSample = false, baseOffset = 0) {
     return IR.code(input);
   }
 }
+__name(parseMini, "parseMini");
 function tokenize(input) {
   const tokens = [];
   let i2 = 0;
@@ -4190,6 +4336,7 @@ function tokenize(input) {
   }
   return tokens;
 }
+__name(tokenize, "tokenize");
 function bjorklund(hits, steps) {
   if (hits <= 0 || steps <= 0) return new Array(Math.max(steps, 0)).fill(false);
   if (hits >= steps) return new Array(steps).fill(true);
@@ -4223,11 +4370,13 @@ function bjorklund(hits, steps) {
   }
   return groups.flat();
 }
+__name(bjorklund, "bjorklund");
 function rotate(arr, by) {
   if (arr.length === 0) return arr;
   const n = (by % arr.length + arr.length) % arr.length;
   return [...arr.slice(n), ...arr.slice(0, n)];
 }
+__name(rotate, "rotate");
 function parseTokens(tokens, isSample, baseOffset = 0) {
   const nodes = [];
   let i2 = 0;
@@ -4386,6 +4535,7 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
   }
   return nodes;
 }
+__name(parseTokens, "parseTokens");
 
 // src/ir/parseStrudel.ts
 function tagMeta(method, callSiteRange) {
@@ -4395,6 +4545,7 @@ function tagMeta(method, callSiteRange) {
     userMethod: method
   };
 }
+__name(tagMeta, "tagMeta");
 function wrapAsOpaque(inner, method, args2, callSiteRange) {
   return {
     tag: "Code",
@@ -4405,6 +4556,7 @@ function wrapAsOpaque(inner, method, args2, callSiteRange) {
     via: { method, args: args2, callSiteRange, inner }
   };
 }
+__name(wrapAsOpaque, "wrapAsOpaque");
 function stripParserPrelude(code) {
   const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
   const GUARDED_BOOT_RE = /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/;
@@ -4483,6 +4635,7 @@ function stripParserPrelude(code) {
   }
   return { body: code.slice(i2), offset: i2 };
 }
+__name(stripParserPrelude, "stripParserPrelude");
 function splitTopLevelStatements(body2, baseOffset) {
   const out2 = [];
   let depth = 0;
@@ -4491,7 +4644,7 @@ function splitTopLevelStatements(body2, baseOffset) {
   let escaped = false;
   let segStart = 0;
   let i2 = 0;
-  const flush = (end) => {
+  const flush = /* @__PURE__ */ __name((end) => {
     const raw = body2.slice(segStart, end);
     if (raw.trim().length > 0) {
       const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((line2) => line2.replace(/\/\/.*$/, "")).join("\n").trim();
@@ -4501,7 +4654,7 @@ function splitTopLevelStatements(body2, baseOffset) {
       }
     }
     segStart = end + 1;
-  };
+  }, "flush");
   while (i2 < body2.length) {
     const ch = body2[i2];
     if (escaped) {
@@ -4567,6 +4720,7 @@ function splitTopLevelStatements(body2, baseOffset) {
   flush(body2.length);
   return out2;
 }
+__name(splitTopLevelStatements, "splitTopLevelStatements");
 var BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
 function buildBindingMap(body2, baseOffset) {
   const stmts = splitTopLevelStatements(body2, baseOffset);
@@ -4598,6 +4752,7 @@ function buildBindingMap(body2, baseOffset) {
     finalOffset: stmts[finalIdx].offset
   };
 }
+__name(buildBindingMap, "buildBindingMap");
 function parseStrudel(code) {
   if (!code.trim()) return IR.pure();
   try {
@@ -4641,6 +4796,7 @@ function parseStrudel(code) {
     return IR.code(code);
   }
 }
+__name(parseStrudel, "parseStrudel");
 function lexStateAt(code, idx) {
   let depth = 0;
   let inString = false;
@@ -4684,6 +4840,7 @@ function lexStateAt(code, idx) {
   }
   return { depth, inString };
 }
+__name(lexStateAt, "lexStateAt");
 var RESERVED_LABEL_IDENTS = /* @__PURE__ */ new Set(["let", "const", "var", "default", "case"]);
 function extractTracks(code) {
   const tracks = [];
@@ -4717,6 +4874,7 @@ function extractTracks(code) {
   }
   return tracks;
 }
+__name(extractTracks, "extractTracks");
 function skipWhitespaceAndLineComments(src, pos) {
   let i2 = pos;
   for (; ; ) {
@@ -4731,6 +4889,7 @@ function skipWhitespaceAndLineComments(src, pos) {
   }
   return i2;
 }
+__name(skipWhitespaceAndLineComments, "skipWhitespaceAndLineComments");
 function parseExpression(expr, baseOffset = 0, isSampleKey, bindings) {
   if (!expr.trim()) return IR.pure();
   if (bindings) {
@@ -4752,19 +4911,20 @@ function parseExpression(expr, baseOffset = 0, isSampleKey, bindings) {
       return IR.code(expr);
     }
     const chainOffset = trimmedOffset + root.length;
-    const ir = applyChain(rootIR, chain, chainOffset);
+    const ir = applyChain(rootIR, chain, chainOffset, bindings);
     return ir;
   } catch {
     return IR.code(expr);
   }
 }
+__name(parseExpression, "parseExpression");
 function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
   const trimmed = root.trim();
   const leadingWs = root.length - root.trimStart().length;
-  const backtickInnerToIR = (inner, isSample, innerOffset) => {
+  const backtickInnerToIR = /* @__PURE__ */ __name((inner, isSample, innerOffset) => {
     if (inner.includes("${")) return IR.code(trimmed);
     return parseMini(inner, isSample, innerOffset);
-  };
+  }, "backtickInnerToIR");
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/);
   if (noteMatch) {
     const quoteIdx = noteMatch[0].indexOf('"');
@@ -4875,7 +5035,8 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
   }
   return IR.code(trimmed);
 }
-function applyChain(ir, chain, baseOffset = 0) {
+__name(parseRoot, "parseRoot");
+function applyChain(ir, chain, baseOffset = 0, bindings) {
   if (!chain.trim()) return ir;
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
@@ -4896,13 +5057,14 @@ function applyChain(ir, chain, baseOffset = 0) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current2 = applyMethod(current2, method, args2, argsAbsoluteOffset, callSiteRange);
+    current2 = applyMethod(current2, method, args2, argsAbsoluteOffset, callSiteRange, bindings);
     remainingOffset += consumed;
     remaining = rest;
   }
   return current2;
 }
-function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) {
+__name(applyChain, "applyChain");
+function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], bindings) {
   switch (method) {
     case "fast": {
       const n = parseFloat(args2.trim());
@@ -4919,11 +5081,11 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
       const n = parseInt(nStr.trim(), 10);
       if (isNaN(n)) return wrapAsOpaque(ir, method, args2, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
-      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir;
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.every(n, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimes": {
-      const transform = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length)) : ir;
+      const transform = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length), bindings) : ir;
       return IR.choice(0.5, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimesBy": {
@@ -4931,7 +5093,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
       const p = parseFloat(pStr.trim());
       if (isNaN(p)) return wrapAsOpaque(ir, method, args2, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
-      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir;
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.choice(p, transform, ir, tagMeta(method, callSiteRange));
     }
     case "mask": {
@@ -4950,7 +5112,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
           continue;
         }
         const transformOffset = offsetOfSubArg(args2, trimmed, baseOffset);
-        tracks.push(parseTransform(trimmed, ir, transformOffset));
+        tracks.push(parseTransform(trimmed, ir, transformOffset, bindings));
       }
       const [layerStart, layerEnd] = callSiteRange;
       return {
@@ -4966,7 +5128,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
       const n = parseInt(nStr.trim(), 10);
       if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
-      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset) : ir;
+      const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange));
     }
     case "degrade": {
@@ -4983,7 +5145,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
       return IR.late(t, ir, tagMeta(method, callSiteRange));
     }
     case "jux": {
-      const transformed = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length)) : ir;
+      const transformed = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length), bindings) : ir;
       const leftPan = IR.fx("pan", { pan: -1 }, ir);
       const rightPan = IR.fx("pan", { pan: 1 }, transformed);
       const [juxStart, juxEnd] = callSiteRange;
@@ -5013,7 +5175,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
         // userMethod intentionally undefined — synthetic intermediate (D-09).
       });
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
-      const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset) : lateBody;
+      const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset, bindings) : lateBody;
       const [offStart, offEnd] = callSiteRange;
       return {
         tag: "Stack",
@@ -5050,7 +5212,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
       const arrayBodyOffset = arrayBodyOffsetInArgs >= 1 ? baseOffset + arrayBodyOffsetInArgs : baseOffset;
       const lookup = elements.map((e) => {
         const elemOffset = offsetOfSubArg(arrayBody, e.trim(), arrayBodyOffset);
-        return parseArrayLiteralElement(e, "note", elemOffset);
+        return parseArrayLiteralElement(e, "note", elemOffset, bindings);
       });
       return IR.pick(ir, lookup, tagMeta(method, callSiteRange));
     }
@@ -5115,7 +5277,8 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0]) 
       return wrapAsOpaque(ir, method, args2, callSiteRange);
   }
 }
-function parseTransform(transformStr, defaultIr, baseOffset = 0) {
+__name(applyMethod, "applyMethod");
+function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
   const str = transformStr.trim();
   const trimmedStart = baseOffset + (transformStr.length - transformStr.trimStart().length);
   const callSiteRange = [trimmedStart, trimmedStart + str.length];
@@ -5135,10 +5298,11 @@ function parseTransform(transformStr, defaultIr, baseOffset = 0) {
     const chainStartInTrimmed = dotIdx >= 0 ? dotIdx : 0;
     const leadingWs = transformStr.length - transformStr.trimStart().length;
     const chainOffset = baseOffset + leadingWs + chainStartInTrimmed;
-    return applyChain(defaultIr, "." + arrowMatch[1], chainOffset);
+    return applyChain(defaultIr, "." + arrowMatch[1], chainOffset, bindings);
   }
   return defaultIr;
 }
+__name(parseTransform, "parseTransform");
 function parseParamArg(args2, isSampleKey, argsOffsetAbs) {
   const trimmed = args2.trim();
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
@@ -5155,28 +5319,31 @@ function parseParamArg(args2, isSampleKey, argsOffsetAbs) {
   }
   return null;
 }
-function parseArrayLiteralElement(elem, receiverContext, baseOffset = 0) {
+__name(parseParamArg, "parseParamArg");
+function parseArrayLiteralElement(elem, receiverContext, baseOffset = 0, bindings) {
   const trimmed = elem.trim();
   const leadingWs = elem.length - elem.trimStart().length;
   if (!trimmed) return IR.pure();
   if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'")) {
     const wrapped = `${receiverContext}(${trimmed})`;
     const wrapperPrefix = receiverContext.length + 1;
-    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix);
+    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, void 0, bindings);
   }
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     const wrapped = `${receiverContext}("${trimmed}")`;
     const wrapperPrefix = receiverContext.length + 1 + 1;
-    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix);
+    return parseExpression(wrapped, baseOffset + leadingWs - wrapperPrefix, void 0, bindings);
   }
-  return parseExpression(trimmed, baseOffset + leadingWs);
+  return parseExpression(trimmed, baseOffset + leadingWs, void 0, bindings);
 }
+__name(parseArrayLiteralElement, "parseArrayLiteralElement");
 function offsetOfSubArg(args2, subArg, argsBaseOffset) {
   const trimmedSub = subArg.trim();
   if (!trimmedSub) return argsBaseOffset;
   const idx = args2.indexOf(trimmedSub);
   return idx >= 0 ? argsBaseOffset + idx : argsBaseOffset;
 }
+__name(offsetOfSubArg, "offsetOfSubArg");
 function splitRootAndChain(expr) {
   let i2 = 0;
   if (expr[0] === '"') {
@@ -5213,6 +5380,7 @@ function splitRootAndChain(expr) {
     chain: expr.slice(i2)
   };
 }
+__name(splitRootAndChain, "splitRootAndChain");
 function extractNextMethod(chain) {
   if (!chain.startsWith(".")) return { method: "", args: "", rest: chain, argsOffset: -1 };
   let i2 = 1;
@@ -5234,6 +5402,7 @@ function extractNextMethod(chain) {
   }
   return { method, args: args2, rest, argsOffset };
 }
+__name(extractNextMethod, "extractNextMethod");
 function findMatchingParen(str, startIdx) {
   let depth = 0;
   let inString = false;
@@ -5257,6 +5426,7 @@ function findMatchingParen(str, startIdx) {
   }
   return -1;
 }
+__name(findMatchingParen, "findMatchingParen");
 function extractParenContent(expr, prefix) {
   const start2 = expr.indexOf(prefix);
   if (start2 === -1) return null;
@@ -5265,9 +5435,11 @@ function extractParenContent(expr, prefix) {
   if (closeIdx === -1) return null;
   return expr.slice(parenStart + 1, closeIdx);
 }
+__name(extractParenContent, "extractParenContent");
 function splitArgs(argsStr) {
   return splitArgsWithOffsets(argsStr).map((a) => a.value);
 }
+__name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args2 = [];
   let depth = 0;
@@ -5275,14 +5447,14 @@ function splitArgsWithOffsets(argsStr) {
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
-  const pushCurrent = () => {
+  const pushCurrent = /* @__PURE__ */ __name(() => {
     if (current2.trim().length === 0) return;
     const consumed = skipWhitespaceAndLineComments(current2, 0);
     args2.push({
       value: current2.slice(consumed).trimEnd(),
       offset: currentStart + consumed
     });
-  };
+  }, "pushCurrent");
   for (let i2 = 0; i2 < argsStr.length; i2++) {
     const ch = argsStr[i2];
     if (inString) {
@@ -5321,12 +5493,14 @@ function splitArgsWithOffsets(argsStr) {
   pushCurrent();
   return args2;
 }
+__name(splitArgsWithOffsets, "splitArgsWithOffsets");
 function splitFirstArg(argsStr) {
   const parts2 = splitArgs(argsStr);
   if (parts2.length === 0) return ["", ""];
   if (parts2.length === 1) return [parts2[0], ""];
   return [parts2[0], parts2.slice(1).join(", ")];
 }
+__name(splitFirstArg, "splitFirstArg");
 
 // src/ir/parseStrudelStages.ts
 function runRawStage(input) {
@@ -5386,6 +5560,7 @@ function runRawStage(input) {
     // wrapper. Projects to mini polymetric `{}` symbol per 19-06.
   };
 }
+__name(runRawStage, "runRawStage");
 function runMiniExpandedStage(input) {
   if (input.tag === "Code") {
     if (!input.code.trim()) return IR.pure();
@@ -5409,6 +5584,7 @@ function runMiniExpandedStage(input) {
   }
   return input;
 }
+__name(runMiniExpandedStage, "runMiniExpandedStage");
 function parseRootWithChainMeta(expr, baseOffset) {
   if (!expr.trim()) return IR.pure();
   const leadingWs = expr.length - expr.trimStart().length;
@@ -5429,6 +5605,7 @@ function parseRootWithChainMeta(expr, baseOffset) {
   }
   return rootIR;
 }
+__name(parseRootWithChainMeta, "parseRootWithChainMeta");
 function runChainAppliedStage(input) {
   if (input.tag === "Stack" && input.userMethod === void 0) {
     return IR.stack(
@@ -5442,6 +5619,7 @@ function runChainAppliedStage(input) {
   }
   return IR.track("d1", applyOnTrack(input));
 }
+__name(runChainAppliedStage, "runChainAppliedStage");
 function applyOnTrack(node) {
   const m = node;
   if (m.unresolvedChain === void 0) {
@@ -5455,6 +5633,7 @@ function applyOnTrack(node) {
   }
   return clean;
 }
+__name(applyOnTrack, "applyOnTrack");
 function stripStageMeta(node) {
   const n = node;
   if (!("unresolvedChain" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n)) {
@@ -5469,9 +5648,11 @@ function stripStageMeta(node) {
   } = n;
   return clean;
 }
+__name(stripStageMeta, "stripStageMeta");
 function runFinalStage(input) {
   return input;
 }
+__name(runFinalStage, "runFinalStage");
 
 // src/ir/passes.ts
 function runPasses(input, passes) {
@@ -5483,6 +5664,7 @@ function runPasses(input, passes) {
   }
   return out2;
 }
+__name(runPasses, "runPasses");
 
 // src/ir/propagation.ts
 function propagate(bag, systems) {
@@ -5497,6 +5679,7 @@ function propagate(bag, systems) {
   }
   return current2;
 }
+__name(propagate, "propagate");
 var StrudelParseSystem = {
   name: "StrudelParseSystem",
   stratum: 1,
@@ -5528,6 +5711,7 @@ function noteToMidi(note2) {
   const acc = m[2] === "b" ? -1 : m[2] === "#" ? 1 : 0;
   return (parseInt(m[3]) + 1) * 12 + base[m[1]] + acc;
 }
+__name(noteToMidi, "noteToMidi");
 
 // src/engine/NormalizedHap.ts
 var KNOWN_VALUE_FIELDS = /* @__PURE__ */ new Set([
@@ -5550,6 +5734,7 @@ function extractParams(value) {
   }
   return extras;
 }
+__name(extractParams, "extractParams");
 function extractLoc(hap) {
   if (!hap || typeof hap !== "object") return void 0;
   const ctx = hap.context;
@@ -5566,6 +5751,7 @@ function extractLoc(hap) {
   }
   return out2.length > 0 ? out2 : void 0;
 }
+__name(extractLoc, "extractLoc");
 function findMatchedEvent(loc, begin, locLookup) {
   if (!locLookup || !loc || loc.length === 0) return void 0;
   const key = `${loc[0].start}:${loc[0].end}`;
@@ -5582,6 +5768,7 @@ function findMatchedEvent(loc, begin, locLookup) {
   }
   return best;
 }
+__name(findMatchedEvent, "findMatchedEvent");
 function normalizeStrudelHap(hap, trackId, irNodeLocLookup) {
   const begin = Number(hap.whole?.begin ?? 0);
   const end = Number(hap.whole?.end ?? begin + 0.25);
@@ -5608,9 +5795,10 @@ function normalizeStrudelHap(hap, trackId, irNodeLocLookup) {
   if (params) event.params = params;
   return event;
 }
+__name(normalizeStrudelHap, "normalizeStrudelHap");
 
 // src/engine/HapStream.ts
-var HapStream = class {
+var _HapStream = class _HapStream {
   constructor() {
     this.handlers = /* @__PURE__ */ new Set();
   }
@@ -5677,9 +5865,11 @@ var HapStream = class {
     this.handlers.clear();
   }
 };
+__name(_HapStream, "HapStream");
+var HapStream = _HapStream;
 
 // src/engine/BreakpointStore.ts
-var BreakpointStore = class {
+var _BreakpointStore = class _BreakpointStore {
   constructor() {
     this.ids = /* @__PURE__ */ new Map();
     this.listeners = /* @__PURE__ */ new Set();
@@ -5790,9 +5980,11 @@ var BreakpointStore = class {
     }
   }
 };
+__name(_BreakpointStore, "BreakpointStore");
+var BreakpointStore = _BreakpointStore;
 
 // src/engine/WavEncoder.ts
-var WavEncoder = class {
+var _WavEncoder = class _WavEncoder {
   /**
    * Encode an AudioBuffer (e.g. from OfflineAudioContext) into a WAV Blob.
    */
@@ -5843,18 +6035,22 @@ var WavEncoder = class {
     return new Blob([ab], { type: "audio/wav" });
   }
 };
+__name(_WavEncoder, "WavEncoder");
+var WavEncoder = _WavEncoder;
 function writeString(view, offset, str) {
   for (let i2 = 0; i2 < str.length; i2++) {
     view.setUint8(offset + i2, str.charCodeAt(i2));
   }
 }
+__name(writeString, "writeString");
 function floatToInt16(sample) {
   const clamped = Math.max(-1, Math.min(1, sample));
   return clamped < 0 ? clamped * 32768 : clamped * 32767;
 }
+__name(floatToInt16, "floatToInt16");
 
 // src/engine/LiveRecorder.ts
-var LiveRecorder = class {
+var _LiveRecorder = class _LiveRecorder {
   static capture(analyser, ctx, duration) {
     return new Promise((resolve) => {
       const bufferSize = 4096;
@@ -5880,9 +6076,11 @@ var LiveRecorder = class {
     });
   }
 };
+__name(_LiveRecorder, "LiveRecorder");
+var LiveRecorder = _LiveRecorder;
 
 // src/engine/OfflineRenderer.ts
-var OfflineRenderer = class {
+var _OfflineRenderer = class _OfflineRenderer {
   static async render(code, duration, sampleRate) {
     const mini = await import('@strudel/mini');
     mini.miniAllStrings();
@@ -5919,6 +6117,8 @@ var OfflineRenderer = class {
     return WavEncoder.encode(audioBuffer);
   }
 };
+__name(_OfflineRenderer, "OfflineRenderer");
+var OfflineRenderer = _OfflineRenderer;
 function extractCps(code) {
   const m = code.match(/setcps\s*\(\s*([\d.]+)\s*(?:\/\s*([\d.]+))?\s*\)/);
   if (!m) return 1;
@@ -5926,6 +6126,7 @@ function extractCps(code) {
   const den = m[2] ? parseFloat(m[2]) : 1;
   return den > 0 ? num / den : 1;
 }
+__name(extractCps, "extractCps");
 function toOscType(s) {
   const norm = s.toLowerCase().replace(/:\d+$/, "");
   if (norm === "sine") return "sine";
@@ -5934,9 +6135,11 @@ function toOscType(s) {
   if (norm === "triangle" || norm === "tri") return "triangle";
   return null;
 }
+__name(toOscType, "toOscType");
 function midiToFreq(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
+__name(midiToFreq, "midiToFreq");
 function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
   const osc = ctx.createOscillator();
   osc.type = oscType;
@@ -5950,6 +6153,7 @@ function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
   osc.start(startTime);
   osc.stop(endTime + 1e-3);
 }
+__name(renderNote, "renderNote");
 
 // src/engine/tierFlags.ts
 var STORAGE_PREFIX = "stave.strudel.tier.";
@@ -5973,14 +6177,17 @@ function safeLocalStorage() {
     return null;
   }
 }
+__name(safeLocalStorage, "safeLocalStorage");
 function readTierFlag(name2) {
   const ls = safeLocalStorage();
   if (!ls) return false;
   return ls.getItem(`${STORAGE_PREFIX}${name2}`) === "1";
 }
+__name(readTierFlag, "readTierFlag");
 function writeTierFlag(name2, on) {
   safeLocalStorage()?.setItem(`${STORAGE_PREFIX}${name2}`, on ? "1" : "0");
 }
+__name(writeTierFlag, "writeTierFlag");
 function getTierFlags() {
   const out2 = {};
   for (const name2 of ALL_TIERS) {
@@ -5988,12 +6195,15 @@ function getTierFlags() {
   }
   return out2;
 }
+__name(getTierFlags, "getTierFlags");
 function setTierFlag(name2, on) {
   writeTierFlag(name2, on);
 }
+__name(setTierFlag, "setTierFlag");
 function listTiers() {
   return ALL_TIERS;
 }
+__name(listTiers, "listTiers");
 
 // src/engine/aliases.ts
 var SOUND_ALIASES = Object.freeze({
@@ -6043,6 +6253,7 @@ var SOUND_ALIASES = Object.freeze({
 function resolveAlias(rawS) {
   return SOUND_ALIASES[rawS.toLowerCase()];
 }
+__name(resolveAlias, "resolveAlias");
 
 // src/engine/StrudelEngine.ts
 function extractVizName(rawArg) {
@@ -6051,12 +6262,12 @@ function extractVizName(rawArg) {
   if (!pat || !pat._Pattern || typeof pat.queryArc !== "function") {
     return void 0;
   }
-  const renderHapValue = (v) => {
+  const renderHapValue = /* @__PURE__ */ __name((v) => {
     if (typeof v === "string") return v;
     if (Array.isArray(v)) return v.join(":");
     if (v == null) return "";
     return String(v);
-  };
+  }, "renderHapValue");
   let haps;
   try {
     haps = pat.queryArc(0, 1);
@@ -6071,7 +6282,8 @@ function extractVizName(rawArg) {
   const out2 = haps.map((h) => renderHapValue(h.value)).join(" ");
   return out2 === "" ? void 0 : out2;
 }
-var StrudelEngine = class {
+__name(extractVizName, "extractVizName");
+var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.repl = null;
@@ -6198,13 +6410,13 @@ var StrudelEngine = class {
     await webaudioMod.samples("github:tidalcycles/Dirt-Samples/master");
     const samplesFn = webaudioMod.samples;
     const baseCDN = "https://strudel.b-cdn.net";
-    const safeSamples = async (label, fn) => {
+    const safeSamples = /* @__PURE__ */ __name(async (label, fn) => {
       try {
         await fn();
       } catch (e) {
         console.warn(`[StrudelEngine] sample manifest "${label}" failed to load; continuing without it.`, e);
       }
-    };
+    }, "safeSamples");
     await Promise.all([
       // Salamander piano — unlocks `s("piano")`. Closes the symptom of issue #110.
       safeSamples("piano", () => samplesFn(`${baseCDN}/piano.json`, `${baseCDN}/piano/`, { prebake: true })),
@@ -6354,7 +6566,7 @@ var StrudelEngine = class {
     audioController.output.destinationGain.connect(this.analyserNode);
     const hapStream = this.hapStream;
     const audioCtxRef = audioCtx;
-    const wrappedOutput = async (hap, deadline, duration, cps, t) => {
+    const wrappedOutput = /* @__PURE__ */ __name(async (hap, deadline, duration, cps, t) => {
       const rawS = hap?.value?.s;
       if (typeof rawS === "string") {
         const lower = rawS.toLowerCase();
@@ -6379,14 +6591,14 @@ var StrudelEngine = class {
         const error = err2 instanceof Error ? err2 : new Error(String(err2));
         this.runtimeErrorHandler?.(error);
       }
-    };
+    }, "wrappedOutput");
     this.repl = webaudioRepl({
       transpiler,
       defaultOutput: wrappedOutput,
-      onEvalError: (err2) => {
+      onEvalError: /* @__PURE__ */ __name((err2) => {
         this.evalResolve?.({ error: err2 });
         this.evalResolve = null;
-      }
+      }, "onEvalError")
     });
     await Promise.resolve().then(() => (init_piano(), piano_exports));
     this.initialized = true;
@@ -6399,7 +6611,7 @@ var StrudelEngine = class {
     const capturedVizRequests = /* @__PURE__ */ new Map();
     let anonIndex = 0;
     let autoOrbitNext = 100;
-    const probeExplicitOrbit = (pat) => {
+    const probeExplicitOrbit = /* @__PURE__ */ __name((pat) => {
       try {
         const haps = pat.queryArc(0, 1);
         for (const h of haps) {
@@ -6412,7 +6624,7 @@ var StrudelEngine = class {
       } catch {
       }
       return false;
-    };
+    }, "probeExplicitOrbit");
     const { Pattern: Pattern2 } = await import('@strudel/core');
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
@@ -6426,14 +6638,14 @@ var StrudelEngine = class {
         Object.defineProperty(Pattern2.prototype, "viz", {
           configurable: true,
           writable: true,
-          value: function(vizName) {
+          value: /* @__PURE__ */ __name(function(vizName) {
             const resolvedName = extractVizName(vizName);
             const result = strudelViz ? strudelViz.call(this, vizName) : this;
             if (resolvedName) {
               result._pendingViz = resolvedName;
             }
             return result;
-          }
+          }, "value")
         });
         for (const name2 of legacyVizNames) {
           const methodName = `_${name2}`;
@@ -6442,17 +6654,17 @@ var StrudelEngine = class {
           Object.defineProperty(Pattern2.prototype, methodName, {
             configurable: true,
             writable: true,
-            value: function(...args2) {
+            value: /* @__PURE__ */ __name(function(...args2) {
               const result = strudelLegacy ? strudelLegacy.apply(this, args2) : this;
               result._pendingViz = name2;
               return result;
-            }
+            }, "value")
           });
         }
         Object.defineProperty(Pattern2.prototype, "p", {
           configurable: true,
           writable: true,
-          value: function(id) {
+          value: /* @__PURE__ */ __name(function(id) {
             if (typeof id === "string" && !(id.startsWith("_") || id.endsWith("_"))) {
               let captureId = id;
               if (id.includes("$")) {
@@ -6478,7 +6690,7 @@ var StrudelEngine = class {
             }
             if (typeof id !== "string") return this;
             return strudelFn.call(this, id);
-          }
+          }, "value")
         });
       }
     });
@@ -6499,14 +6711,14 @@ var StrudelEngine = class {
           const captured = pattern;
           const trackId = id;
           this.trackSchedulers.set(id, {
-            now: () => sched.now(),
-            query: (begin, end) => {
+            now: /* @__PURE__ */ __name(() => sched.now(), "now"),
+            query: /* @__PURE__ */ __name((begin, end) => {
               try {
                 return captured.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
               } catch {
                 return [];
               }
-            }
+            }, "query")
           });
         }
         this.vizRequests = capturedVizRequests;
@@ -6726,14 +6938,14 @@ var StrudelEngine = class {
     const pattern = sched?.pattern;
     if (!sched || !pattern) return null;
     return {
-      now: () => sched.now(),
-      query: (begin, end) => {
+      now: /* @__PURE__ */ __name(() => sched.now(), "now"),
+      query: /* @__PURE__ */ __name((begin, end) => {
         try {
           return pattern.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, void 0, this.lastIRNodeLocLookup ?? void 0));
         } catch {
           return [];
         }
-      }
+      }, "query")
     };
   }
   /**
@@ -6786,7 +6998,7 @@ var StrudelEngine = class {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolveOrbit(pattern) {
-    const tryArc = (begin, end) => {
+    const tryArc = /* @__PURE__ */ __name((begin, end) => {
       try {
         const haps = pattern.queryArc(begin, end);
         for (const h of haps) {
@@ -6796,7 +7008,7 @@ var StrudelEngine = class {
       } catch {
       }
       return null;
-    };
+    }, "tryArc");
     return tryArc(0, 1) ?? tryArc(0, 4) ?? 1;
   }
   /**
@@ -6861,6 +7073,8 @@ var StrudelEngine = class {
     }
   }
 };
+__name(_StrudelEngine, "StrudelEngine");
+var StrudelEngine = _StrudelEngine;
 
 // src/engine/engineLog.ts
 var MAX_HISTORY = 500;
@@ -6872,10 +7086,12 @@ var idSeq = 0;
 function fixedKey(runtime, source) {
   return `${runtime}:${source ?? "*"}`;
 }
+__name(fixedKey, "fixedKey");
 function makeId() {
   idSeq += 1;
   return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
 }
+__name(makeId, "makeId");
 function emitLog(partial) {
   const last = history.length > 0 ? history[history.length - 1] : void 0;
   if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
@@ -6909,15 +7125,18 @@ function emitLog(partial) {
   });
   return entry;
 }
+__name(emitLog, "emitLog");
 function subscribeLog(fn) {
   listeners.add(fn);
   return () => {
     listeners.delete(fn);
   };
 }
+__name(subscribeLog, "subscribeLog");
 function getLogHistory() {
   return [...history];
 }
+__name(getLogHistory, "getLogHistory");
 function clearLog() {
   history.length = 0;
   fixedMarkers.clear();
@@ -6928,6 +7147,7 @@ function clearLog() {
     }
   }
 }
+__name(clearLog, "clearLog");
 function emitFixed(input) {
   const marker = {
     runtime: input.runtime,
@@ -6945,18 +7165,22 @@ function emitFixed(input) {
   });
   return marker;
 }
+__name(emitFixed, "emitFixed");
 function subscribeFixed(fn) {
   fixedListeners.add(fn);
   return () => {
     fixedListeners.delete(fn);
   };
 }
+__name(subscribeFixed, "subscribeFixed");
 function getFixedMarkers() {
   return new Map(fixedMarkers);
 }
+__name(getFixedMarkers, "getFixedMarkers");
 function makeFixedKey(runtime, source) {
   return fixedKey(runtime, source);
 }
+__name(makeFixedKey, "makeFixedKey");
 
 // src/visualizers/p5FesBridge.ts
 var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
@@ -6991,6 +7215,7 @@ function buildLogger() {
     });
   };
 }
+__name(buildLogger, "buildLogger");
 function installP5FesBridgeWith(p5Ctor) {
   if (installed) return;
   installed = true;
@@ -6998,13 +7223,15 @@ function installP5FesBridgeWith(p5Ctor) {
   ctor.disableFriendlyErrors = false;
   ctor._fesLogger = buildLogger();
 }
+__name(installP5FesBridgeWith, "installP5FesBridgeWith");
 function setCurrentP5Source(source, lineOffset = 0) {
   currentSource = source;
   currentLineOffset = source == null ? 0 : lineOffset;
 }
+__name(setCurrentP5Source, "setCurrentP5Source");
 
 // src/visualizers/renderers/P5VizRenderer.ts
-var P5VizRenderer = class {
+var _P5VizRenderer = class _P5VizRenderer {
   constructor(sketch) {
     this.sketch = sketch;
     this.instance = null;
@@ -7069,6 +7296,8 @@ var P5VizRenderer = class {
     this.instance = null;
   }
 };
+__name(_P5VizRenderer, "P5VizRenderer");
+var P5VizRenderer = _P5VizRenderer;
 
 // src/visualizers/vizConfig.ts
 var DEFAULT_VIZ_CONFIG = {
@@ -7105,16 +7334,19 @@ var DEFAULT_VIZ_CONFIG = {
 function createVizConfig(overrides) {
   return { ...DEFAULT_VIZ_CONFIG, ...overrides };
 }
+__name(createVizConfig, "createVizConfig");
 var _active = { ...DEFAULT_VIZ_CONFIG };
 function getVizConfig() {
   return _active;
 }
+__name(getVizConfig, "getVizConfig");
 function setVizConfig(config) {
   _active = { ...DEFAULT_VIZ_CONFIG, ...config };
 }
+__name(setVizConfig, "setVizConfig");
 
 // src/visualizers/renderers/HydraVizRenderer.ts
-var HapEnergyEnvelope = class {
+var _HapEnergyEnvelope = class _HapEnergyEnvelope {
   constructor(numBins, decay = 0.92) {
     this.numBins = numBins;
     this.bins = new Array(numBins).fill(0);
@@ -7141,7 +7373,9 @@ var HapEnergyEnvelope = class {
     }
   }
 };
-var HydraVizRenderer = class {
+__name(_HapEnergyEnvelope, "HapEnergyEnvelope");
+var HapEnergyEnvelope = _HapEnergyEnvelope;
+var _HydraVizRenderer = class _HydraVizRenderer {
   constructor(pattern) {
     this.pattern = pattern;
     this.hydra = null;
@@ -7155,7 +7389,7 @@ var HydraVizRenderer = class {
     this.envelope = null;
     this.hapHandler = null;
     this.useEnvelope = false;
-    this.pumpAudio = (now) => {
+    this.pumpAudio = /* @__PURE__ */ __name((now) => {
       if (this.paused || this.destroyed) {
         this.rafId = null;
         return;
@@ -7188,11 +7422,11 @@ var HydraVizRenderer = class {
         }
       }
       this.rafId = requestAnimationFrame(this.pumpAudio);
-    };
+    }, "pumpAudio");
     const bag = {
       scheduler: null,
       tracks: /* @__PURE__ */ new Map(),
-      H: (trackId, field = "gain") => {
+      H: /* @__PURE__ */ __name((trackId, field = "gain") => {
         return () => {
           const sched = bag.tracks.get(trackId) ?? bag.scheduler;
           if (!sched) return 0;
@@ -7203,7 +7437,7 @@ var HydraVizRenderer = class {
           const raw = ev[field];
           return typeof raw === "number" ? raw : 0;
         };
-      }
+      }, "H")
     };
     this.staveBag = bag;
   }
@@ -7326,9 +7560,11 @@ var HydraVizRenderer = class {
     this.staveBag.tracks = /* @__PURE__ */ new Map();
   }
 };
+__name(_HydraVizRenderer, "HydraVizRenderer");
+var HydraVizRenderer = _HydraVizRenderer;
 
 // src/visualizers/renderers/hydraPresets.ts
-var hydraPianoroll = (s) => {
+var hydraPianoroll = /* @__PURE__ */ __name((s) => {
   s.osc(() => 10 + s.a.fft[0] * 50, -0.3, 0).thresh(() => 0.3 + s.a.fft[0] * 0.5, 0.1).color(0.46, 0.71, 1).add(
     // Mid band — narrower stripes, scrolling right
     s.osc(() => 20 + s.a.fft[1] * 40, 0.2, 0).rotate(Math.PI / 2).thresh(() => 0.4 + s.a.fft[1] * 0.4, 0.08).color(1, 0.79, 0.16),
@@ -7340,17 +7576,17 @@ var hydraPianoroll = (s) => {
     // purple accent
     () => s.a.fft[2] * 0.5
   ).modulate(s.noise(2, () => s.a.fft[3] * 0.4), () => s.a.fft[0] * 0.015).scrollX(() => s.a.fft[0] * 0.02).out();
-};
-var hydraScope = (s) => {
+}, "hydraPianoroll");
+var hydraScope = /* @__PURE__ */ __name((s) => {
   s.osc(() => 20 + s.a.fft[0] * 80, 0.1, 0).color(0.2, 0.8, 1).rotate(() => s.a.fft[1] * 0.5).modulate(s.osc(3, 0, 0), () => s.a.fft[2] * 0.1).diff(s.osc(2, 0.1, 0).rotate(0.5)).out();
-};
-var hydraKaleidoscope = (s) => {
+}, "hydraScope");
+var hydraKaleidoscope = /* @__PURE__ */ __name((s) => {
   s.osc(6, 0.1, () => s.a.fft[0] * 3).kaleid(() => 3 + Math.floor(s.a.fft[1] * 8)).color(
     () => 0.5 + s.a.fft[0] * 0.5,
     () => 0.3 + s.a.fft[1] * 0.7,
     () => 0.8 + s.a.fft[2] * 0.2
   ).rotate(() => s.a.fft[3] * 3.14).modulate(s.noise(3), () => s.a.fft[0] * 0.05).out();
-};
+}, "hydraKaleidoscope");
 
 // src/visualizers/sketches/PianorollSketch.ts
 var CYCLES = 4;
@@ -7366,6 +7602,7 @@ function getValue2(hap) {
   if (hap.s !== null) return "_" + hap.s;
   return 0;
 }
+__name(getValue2, "getValue");
 function parseHex(hex) {
   const s = hex.replace("#", "");
   if (s.length === 6) {
@@ -7376,6 +7613,7 @@ function parseHex(hex) {
   }
   return null;
 }
+__name(parseHex, "parseHex");
 function PianorollSketch(_hapStreamRef, _analyserRef, schedulerRef) {
   return (p) => {
     p.setup = () => {
@@ -7455,6 +7693,7 @@ function PianorollSketch(_hapStreamRef, _analyserRef, schedulerRef) {
     };
   };
 }
+__name(PianorollSketch, "PianorollSketch");
 
 // src/visualizers/sketches/WordfallSketch.ts
 var BG2 = "#090912";
@@ -7469,12 +7708,14 @@ function getValue3(hap) {
   if (hap.s !== null) return "_" + hap.s;
   return 0;
 }
+__name(getValue3, "getValue");
 function getLabel(hap) {
   if (hap.note !== null && hap.s !== null) return `${hap.s}:${hap.note}`;
   if (hap.note !== null) return String(hap.note);
   if (hap.s !== null) return String(hap.s);
   return "";
 }
+__name(getLabel, "getLabel");
 function WordfallSketch(_hapStreamRef, _analyserRef, schedulerRef) {
   return (p) => {
     p.setup = () => {
@@ -7547,6 +7788,7 @@ function WordfallSketch(_hapStreamRef, _analyserRef, schedulerRef) {
     };
   };
 }
+__name(WordfallSketch, "WordfallSketch");
 
 // src/visualizers/sketches/ScopeSketch.ts
 var BG3 = "#090912";
@@ -7627,6 +7869,7 @@ function ScopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
     };
   };
 }
+__name(ScopeSketch, "ScopeSketch");
 
 // src/visualizers/sketches/FscopeSketch.ts
 var BG4 = "#090912";
@@ -7639,9 +7882,11 @@ var MAX_DB = 0;
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
+__name(clamp, "clamp");
 function midiToFreq2(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
+__name(midiToFreq2, "midiToFreq");
 function resolveFreq(hap) {
   if (hap.freq !== null) return hap.freq;
   if (typeof hap.note === "number") return midiToFreq2(hap.note);
@@ -7651,6 +7896,7 @@ function resolveFreq(hap) {
   }
   return null;
 }
+__name(resolveFreq, "resolveFreq");
 function FscopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
   return (p) => {
     p.setup = () => {
@@ -7724,6 +7970,7 @@ function FscopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
     };
   };
 }
+__name(FscopeSketch, "FscopeSketch");
 
 // src/visualizers/sketches/SpectrumSketch.ts
 var BG5 = "#090912";
@@ -7734,6 +7981,7 @@ var SPEED = 2;
 function midiToFreq3(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
+__name(midiToFreq3, "midiToFreq");
 function resolveFreq2(hap) {
   if (hap.freq !== null) return hap.freq;
   if (typeof hap.note === "number") return midiToFreq3(hap.note);
@@ -7743,6 +7991,7 @@ function resolveFreq2(hap) {
   }
   return null;
 }
+__name(resolveFreq2, "resolveFreq");
 function SpectrumSketch(_hapStreamRef, analyserRef, schedulerRef) {
   return (p) => {
     p.setup = () => {
@@ -7818,6 +8067,7 @@ function SpectrumSketch(_hapStreamRef, analyserRef, schedulerRef) {
     };
   };
 }
+__name(SpectrumSketch, "SpectrumSketch");
 
 // src/visualizers/sketches/SpiralSketch.ts
 var BG6 = "#090912";
@@ -7828,6 +8078,7 @@ function xyOnSpiral(rotations, margin, cx, cy, rotate2) {
   const angle = ((rotations + rotate2) * 360 - 90) * (Math.PI / 180);
   return [cx + Math.cos(angle) * margin * rotations, cy + Math.sin(angle) * margin * rotations];
 }
+__name(xyOnSpiral, "xyOnSpiral");
 function SpiralSketch(_hapStreamRef, _analyserRef, schedulerRef) {
   return (p) => {
     p.setup = () => {
@@ -7896,6 +8147,7 @@ function SpiralSketch(_hapStreamRef, _analyserRef, schedulerRef) {
     };
   };
 }
+__name(SpiralSketch, "SpiralSketch");
 
 // src/visualizers/sketches/PitchwheelSketch.ts
 var BG7 = "#090912";
@@ -7905,18 +8157,22 @@ var EDO = 12;
 function midiToFreq4(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
+__name(midiToFreq4, "midiToFreq");
 function getFreq(hap) {
   if (hap.freq !== null) return hap.freq;
   const midi = typeof hap.note === "number" ? hap.note : noteToMidi(String(hap.note ?? ""));
   return midi !== null ? midiToFreq4(midi) : null;
 }
+__name(getFreq, "getFreq");
 function freq2angle(freq, root) {
   return 0.5 - Math.log2(freq / root) % 1;
 }
+__name(freq2angle, "freq2angle");
 function circlePos(cx, cy, radius, angle) {
   const a = angle * Math.PI * 2;
   return [Math.sin(a) * radius + cx, Math.cos(a) * radius + cy];
 }
+__name(circlePos, "circlePos");
 function PitchwheelSketch(_hapStreamRef, _analyserRef, schedulerRef) {
   return (p) => {
     p.setup = () => {
@@ -7979,22 +8235,23 @@ function PitchwheelSketch(_hapStreamRef, _analyserRef, schedulerRef) {
     };
   };
 }
+__name(PitchwheelSketch, "PitchwheelSketch");
 
 // src/visualizers/defaultDescriptors.ts
 var DEFAULT_VIZ_DESCRIPTORS = [
   // p5 renderers (default for each mode)
-  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], factory: () => new P5VizRenderer(PianorollSketch) },
-  { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: () => new P5VizRenderer(WordfallSketch) },
-  { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: () => new P5VizRenderer(ScopeSketch) },
-  { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: () => new P5VizRenderer(FscopeSketch) },
-  { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: () => new P5VizRenderer(SpectrumSketch) },
-  { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: () => new P5VizRenderer(SpiralSketch) },
-  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: () => new P5VizRenderer(PitchwheelSketch) },
+  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(PianorollSketch), "factory") },
+  { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(WordfallSketch), "factory") },
+  { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(ScopeSketch), "factory") },
+  { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(FscopeSketch), "factory") },
+  { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(SpectrumSketch), "factory") },
+  { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(SpiralSketch), "factory") },
+  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(PitchwheelSketch), "factory") },
   // Hydra renderers (WebGL shader-based)
-  { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: () => new HydraVizRenderer() },
-  { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: () => new HydraVizRenderer(hydraPianoroll) },
-  { id: "scope:hydra", label: "Scope (Hydra)", renderer: "hydra", requires: ["audio"], factory: () => new HydraVizRenderer(hydraScope) },
-  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: () => new HydraVizRenderer(hydraKaleidoscope) }
+  { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(), "factory") },
+  { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraPianoroll), "factory") },
+  { id: "scope:hydra", label: "Scope (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraScope), "factory") },
+  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraKaleidoscope), "factory") }
 ];
 function SplitPane({
   direction,
@@ -8018,7 +8275,7 @@ function SplitPane({
     if (!container) return;
     const containerSize = isHorizontal ? container.offsetWidth : container.offsetHeight;
     const minPct = minSize / containerSize * 100;
-    const onMouseMove = (ev) => {
+    const onMouseMove = /* @__PURE__ */ __name((ev) => {
       if (draggingRef.current === null) return;
       const delta = isHorizontal ? ev.clientX - startPos : ev.clientY - startPos;
       const deltaPct = delta / containerSize * 100;
@@ -8035,14 +8292,14 @@ function SplitPane({
         newSizes[i2] = startSizes[i2] + startSizes[i2 + 1] - minPct;
       }
       setSizes(newSizes);
-    };
-    const onMouseUp = () => {
+    }, "onMouseMove");
+    const onMouseUp = /* @__PURE__ */ __name(() => {
       draggingRef.current = null;
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-    };
+    }, "onMouseUp");
     document.body.style.cursor = isHorizontal ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
     document.addEventListener("mousemove", onMouseMove);
@@ -8103,6 +8360,7 @@ function SplitPane({
     }
   );
 }
+__name(SplitPane, "SplitPane");
 
 // src/theme/tokens.ts
 var DARK_THEME_TOKENS = {
@@ -8149,6 +8407,7 @@ function applyTheme(el, theme) {
     el.style.setProperty(key, value);
   }
 }
+__name(applyTheme, "applyTheme");
 
 // src/theme/monacoTheme.ts
 function defineStrudelMonacoTheme(monaco) {
@@ -8247,6 +8506,7 @@ function defineStrudelMonacoTheme(monaco) {
     }
   });
 }
+__name(defineStrudelMonacoTheme, "defineStrudelMonacoTheme");
 var activeDoc = null;
 var activeProvider = null;
 var activeProjectId = null;
@@ -8267,6 +8527,7 @@ async function initProjectDoc(projectId) {
   activeProjectId = projectId;
   docReady = true;
 }
+__name(initProjectDoc, "initProjectDoc");
 function initProjectDocSync() {
   if (activeProvider) {
     activeProvider.destroy();
@@ -8278,39 +8539,47 @@ function initProjectDocSync() {
   activeDoc = new Y3__namespace.Doc();
   docReady = true;
 }
+__name(initProjectDocSync, "initProjectDocSync");
 function ensureDoc() {
   if (!activeDoc) {
     initProjectDocSync();
   }
   return activeDoc;
 }
+__name(ensureDoc, "ensureDoc");
 function getActiveDoc() {
   return ensureDoc();
 }
+__name(getActiveDoc, "getActiveDoc");
 function getFilesMap() {
   return ensureDoc().getMap("files");
 }
+__name(getFilesMap, "getFilesMap");
 function isDocReady() {
   return docReady;
 }
+__name(isDocReady, "isDocReady");
 function getActiveProjectId() {
   return activeProjectId;
 }
+__name(getActiveProjectId, "getActiveProjectId");
 async function switchProject(projectId) {
   await initProjectDoc(projectId);
 }
+__name(switchProject, "switchProject");
 function subscribeToDocUpdate(cb, options) {
   const doc = ensureDoc();
   const localOnly = options?.localOnly ?? false;
-  const handler = (_update, _origin, _doc, tr) => {
+  const handler = /* @__PURE__ */ __name((_update, _origin, _doc, tr) => {
     if (localOnly && !tr.local) return;
     cb();
-  };
+  }, "handler");
   doc.on("update", handler);
   return () => {
     doc.off("update", handler);
   };
 }
+__name(subscribeToDocUpdate, "subscribeToDocUpdate");
 var STRUCT_ORIGIN = /* @__PURE__ */ Symbol.for("stave:struct");
 function withStructBatch(fn) {
   const doc = getActiveDoc();
@@ -8320,6 +8589,7 @@ function withStructBatch(fn) {
   }, STRUCT_ORIGIN);
   return out2;
 }
+__name(withStructBatch, "withStructBatch");
 var active = null;
 function ensureUndoManager() {
   if (active) return active.um;
@@ -8334,62 +8604,68 @@ function ensureUndoManager() {
   for (const inner of files.values()) {
     if (inner instanceof Y3__namespace.Map) um.addToScope(inner);
   }
-  const filesObserver = (event) => {
+  const filesObserver = /* @__PURE__ */ __name((event) => {
     for (const [key, change] of event.changes.keys) {
       if (change.action === "add" || change.action === "update") {
         const val = files.get(key);
         if (val instanceof Y3__namespace.Map) um.addToScope(val);
       }
     }
-  };
+  }, "filesObserver");
   files.observe(filesObserver);
   const listeners7 = /* @__PURE__ */ new Set();
-  const notify3 = () => {
+  const notify3 = /* @__PURE__ */ __name(() => {
     for (const l of listeners7) l();
-  };
-  const onStackItemAdded = () => notify3();
-  const onStackItemPopped = () => notify3();
-  const onStackCleared = () => notify3();
+  }, "notify");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify3(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify3(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify3(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
     listeners: listeners7,
-    cleanup: () => {
+    cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
       um.off("stack-cleared", onStackCleared);
       files.unobserve(filesObserver);
       um.destroy();
-    }
+    }, "cleanup")
   };
   return um;
 }
+__name(ensureUndoManager, "ensureUndoManager");
 function resetUndoManager() {
   if (active) {
     active.cleanup();
     active = null;
   }
 }
+__name(resetUndoManager, "resetUndoManager");
 function undo() {
   const um = ensureUndoManager();
   const result = um.undo();
   return result !== null;
 }
+__name(undo, "undo");
 function redo() {
   const um = ensureUndoManager();
   const result = um.redo();
   return result !== null;
 }
+__name(redo, "redo");
 function canUndo() {
   const um = ensureUndoManager();
   return um.undoStack.length > 0;
 }
+__name(canUndo, "canUndo");
 function canRedo() {
   const um = ensureUndoManager();
   return um.redoStack.length > 0;
 }
+__name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
   const listeners7 = active.listeners;
@@ -8398,6 +8674,7 @@ function subscribeToUndoState(cb) {
     listeners7.delete(cb);
   };
 }
+__name(subscribeToUndoState, "subscribeToUndoState");
 
 // src/workspace/WorkspaceFile.ts
 var cachedSnapshots = /* @__PURE__ */ new Map();
@@ -8419,15 +8696,17 @@ function rebuildSnapshot(id) {
     meta: fileMap.get("meta")
   });
 }
+__name(rebuildSnapshot, "rebuildSnapshot");
 function wireTextObserver(id, ytext) {
   unwireTextObserver(id);
-  const handler = () => {
+  const handler = /* @__PURE__ */ __name(() => {
     rebuildSnapshot(id);
     notify(id);
-  };
+  }, "handler");
   ytext.observe(handler);
   textObservers.set(id, { ytext, handler });
 }
+__name(wireTextObserver, "wireTextObserver");
 function unwireTextObserver(id) {
   const entry = textObservers.get(id);
   if (entry) {
@@ -8435,21 +8714,26 @@ function unwireTextObserver(id) {
     textObservers.delete(id);
   }
 }
+__name(unwireTextObserver, "unwireTextObserver");
 var folderOrderObserverWired = false;
 var folderOrderSubscribers = /* @__PURE__ */ new Set();
 function notifyFolderOrder() {
   const snapshot = Array.from(folderOrderSubscribers);
   for (const cb of snapshot) cb();
 }
+__name(notifyFolderOrder, "notifyFolderOrder");
 function getFolderOrderMap() {
   return ensureDoc().getMap("fileOrder");
 }
+__name(getFolderOrderMap, "getFolderOrderMap");
 function getSubfolderOrderMap() {
   return ensureDoc().getMap("subfolderOrder");
 }
+__name(getSubfolderOrderMap, "getSubfolderOrderMap");
 function getChildOrderMap() {
   return ensureDoc().getMap("childOrder");
 }
+__name(getChildOrderMap, "getChildOrderMap");
 function ensureFolderOrderObserver() {
   if (folderOrderObserverWired) return;
   const map = getFolderOrderMap();
@@ -8460,6 +8744,7 @@ function ensureFolderOrderObserver() {
   childmap.observeDeep(() => notifyFolderOrder());
   folderOrderObserverWired = true;
 }
+__name(ensureFolderOrderObserver, "ensureFolderOrderObserver");
 var wiredFilesMap = null;
 function ensureFilesMapObserver() {
   const filesMap = getFilesMap();
@@ -8500,6 +8785,7 @@ function ensureFilesMapObserver() {
   });
   wiredFilesMap = filesMap;
 }
+__name(ensureFilesMapObserver, "ensureFilesMapObserver");
 function createWorkspaceFile(id, path, content, language, meta) {
   ensureDoc();
   ensureFilesMapObserver();
@@ -8518,6 +8804,7 @@ function createWorkspaceFile(id, path, content, language, meta) {
   }, STRUCT_ORIGIN);
   return cachedSnapshots.get(id) ?? { id, path, content, language, meta };
 }
+__name(createWorkspaceFile, "createWorkspaceFile");
 function seedWorkspaceFile(id, path, content, language, meta) {
   ensureDoc();
   ensureFilesMapObserver();
@@ -8535,9 +8822,11 @@ function seedWorkspaceFile(id, path, content, language, meta) {
   }
   return createWorkspaceFile(id, path, content, language, meta);
 }
+__name(seedWorkspaceFile, "seedWorkspaceFile");
 function getFile(id) {
   return cachedSnapshots.get(id);
 }
+__name(getFile, "getFile");
 function setContent(id, newContent) {
   const filesMap = getFilesMap();
   const fileMap = filesMap.get(id);
@@ -8551,6 +8840,7 @@ function setContent(id, newContent) {
     ytext.insert(0, newContent);
   });
 }
+__name(setContent, "setContent");
 function subscribe(id, cb) {
   let set = subscribersByFile.get(id);
   if (!set) {
@@ -8567,17 +8857,20 @@ function subscribe(id, cb) {
     }
   };
 }
+__name(subscribe, "subscribe");
 var fileListSubscribers = /* @__PURE__ */ new Set();
 function notifyFileList() {
   const snapshot = Array.from(fileListSubscribers);
   for (const cb of snapshot) cb();
 }
+__name(notifyFileList, "notifyFileList");
 function subscribeToFileList(cb) {
   fileListSubscribers.add(cb);
   return () => {
     fileListSubscribers.delete(cb);
   };
 }
+__name(subscribeToFileList, "subscribeToFileList");
 function listWorkspaceFiles() {
   ensureDoc();
   ensureFilesMapObserver();
@@ -8594,6 +8887,7 @@ function listWorkspaceFiles() {
   }
   return Array.from(cachedSnapshots.values());
 }
+__name(listWorkspaceFiles, "listWorkspaceFiles");
 function deleteWorkspaceFile(id) {
   const filesMap = getFilesMap();
   if (!filesMap.has(id)) return;
@@ -8603,6 +8897,7 @@ function deleteWorkspaceFile(id) {
   }, STRUCT_ORIGIN);
   notifyFileList();
 }
+__name(deleteWorkspaceFile, "deleteWorkspaceFile");
 function renameWorkspaceFile(id, newPath) {
   const filesMap = getFilesMap();
   const fileMap = filesMap.get(id);
@@ -8617,6 +8912,7 @@ function renameWorkspaceFile(id, newPath) {
   notify(id);
   notifyFileList();
 }
+__name(renameWorkspaceFile, "renameWorkspaceFile");
 function getFolderOrder(folderPath) {
   ensureDoc();
   ensureFolderOrderObserver();
@@ -8624,6 +8920,7 @@ function getFolderOrder(folderPath) {
   const arr = map.get(folderPath);
   return arr ? arr.toArray() : [];
 }
+__name(getFolderOrder, "getFolderOrder");
 function setFolderOrder(folderPath, orderedIds) {
   ensureDoc();
   ensureFolderOrderObserver();
@@ -8635,6 +8932,7 @@ function setFolderOrder(folderPath, orderedIds) {
     map.set(folderPath, next);
   }, STRUCT_ORIGIN);
 }
+__name(setFolderOrder, "setFolderOrder");
 function subscribeToFolderOrder(cb) {
   ensureFolderOrderObserver();
   folderOrderSubscribers.add(cb);
@@ -8642,6 +8940,7 @@ function subscribeToFolderOrder(cb) {
     folderOrderSubscribers.delete(cb);
   };
 }
+__name(subscribeToFolderOrder, "subscribeToFolderOrder");
 function getSubfolderOrder(parentPath) {
   ensureDoc();
   ensureFolderOrderObserver();
@@ -8649,6 +8948,7 @@ function getSubfolderOrder(parentPath) {
   const arr = map.get(parentPath);
   return arr ? arr.toArray() : [];
 }
+__name(getSubfolderOrder, "getSubfolderOrder");
 function setSubfolderOrder(parentPath, orderedNames) {
   ensureDoc();
   ensureFolderOrderObserver();
@@ -8660,6 +8960,7 @@ function setSubfolderOrder(parentPath, orderedNames) {
     map.set(parentPath, next);
   }, STRUCT_ORIGIN);
 }
+__name(setSubfolderOrder, "setSubfolderOrder");
 function getChildOrder(parentPath) {
   ensureDoc();
   ensureFolderOrderObserver();
@@ -8667,6 +8968,7 @@ function getChildOrder(parentPath) {
   const arr = map.get(parentPath);
   return arr ? arr.toArray() : [];
 }
+__name(getChildOrder, "getChildOrder");
 function setChildOrder(parentPath, entries2) {
   ensureDoc();
   ensureFolderOrderObserver();
@@ -8678,12 +8980,14 @@ function setChildOrder(parentPath, entries2) {
     map.set(parentPath, next);
   }, STRUCT_ORIGIN);
 }
+__name(setChildOrder, "setChildOrder");
 function notify(id) {
   const set = subscribersByFile.get(id);
   if (!set) return;
   const snapshot = Array.from(set);
   for (const cb of snapshot) cb();
 }
+__name(notify, "notify");
 var zoneOverrideSubscribers = /* @__PURE__ */ new Map();
 var wiredZoneObservers = /* @__PURE__ */ new Set();
 var PRUNE_ZONE_OVERRIDES_ORIGIN = /* @__PURE__ */ Symbol("prune-zone-overrides");
@@ -8708,6 +9012,7 @@ function ensureZoneOverridesMap(fileId) {
   }
   return overrides;
 }
+__name(ensureZoneOverridesMap, "ensureZoneOverridesMap");
 function getZoneCropOverride(fileId, trackKey) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
@@ -8715,6 +9020,7 @@ function getZoneCropOverride(fileId, trackKey) {
   const entry = overrides.get(trackKey);
   return entry?.cropRegion;
 }
+__name(getZoneCropOverride, "getZoneCropOverride");
 function setZoneCropOverride(fileId, trackKey, cropRegion, vizId, contentHash) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
@@ -8729,6 +9035,7 @@ function setZoneCropOverride(fileId, trackKey, cropRegion, vizId, contentHash) {
     }
   }, STRUCT_ORIGIN);
 }
+__name(setZoneCropOverride, "setZoneCropOverride");
 function getZoneHeightOverride(fileId, trackKey) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
@@ -8736,6 +9043,7 @@ function getZoneHeightOverride(fileId, trackKey) {
   const entry = overrides.get(trackKey);
   return entry?.heightPx;
 }
+__name(getZoneHeightOverride, "getZoneHeightOverride");
 function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
@@ -8752,6 +9060,7 @@ function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
     }
   }, HEIGHT_RESIZE_ORIGIN);
 }
+__name(setZoneHeightOverride, "setZoneHeightOverride");
 function pruneZoneOverrides(fileId, currentViz) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
@@ -8774,6 +9083,7 @@ function pruneZoneOverrides(fileId, currentViz) {
     for (const key of stale) overrides.delete(key);
   }, PRUNE_ZONE_OVERRIDES_ORIGIN);
 }
+__name(pruneZoneOverrides, "pruneZoneOverrides");
 function subscribeToZoneOverrides(fileId, cb) {
   ensureDoc();
   ensureZoneOverridesMap(fileId);
@@ -8788,6 +9098,7 @@ function subscribeToZoneOverrides(fileId, cb) {
     if (set.size === 0) zoneOverrideSubscribers.delete(fileId);
   };
 }
+__name(subscribeToZoneOverrides, "subscribeToZoneOverrides");
 var EMPTY_TRACK_META = Object.freeze({});
 var trackMetaSubscribers = /* @__PURE__ */ new Map();
 var wiredTrackMetaObservers = /* @__PURE__ */ new Set();
@@ -8806,6 +9117,7 @@ function getTrackMetaMap(fileId) {
   }
   return meta;
 }
+__name(getTrackMetaMap, "getTrackMetaMap");
 function ensureTrackMetaMap(fileId) {
   const filesMap = getFilesMap();
   const fileMap = filesMap.get(fileId);
@@ -8824,12 +9136,14 @@ function ensureTrackMetaMap(fileId) {
   }
   return meta;
 }
+__name(ensureTrackMetaMap, "ensureTrackMetaMap");
 function getTrackMeta(fileId, trackId) {
   ensureDoc();
   const meta = getTrackMetaMap(fileId);
   if (!meta) return EMPTY_TRACK_META;
   return meta.get(trackId) ?? EMPTY_TRACK_META;
 }
+__name(getTrackMeta, "getTrackMeta");
 function setTrackMeta(fileId, trackId, partial) {
   ensureDoc();
   const meta = ensureTrackMetaMap(fileId);
@@ -8845,6 +9159,7 @@ function setTrackMeta(fileId, trackId, partial) {
     }
   }, STRUCT_ORIGIN);
 }
+__name(setTrackMeta, "setTrackMeta");
 function subscribeToTrackMeta(fileId, cb) {
   ensureDoc();
   getTrackMetaMap(fileId);
@@ -8859,6 +9174,7 @@ function subscribeToTrackMeta(fileId, cb) {
     if (set.size === 0) trackMetaSubscribers.delete(fileId);
   };
 }
+__name(subscribeToTrackMeta, "subscribeToTrackMeta");
 function resetFileStore() {
   for (const [id] of textObservers) {
     unwireTextObserver(id);
@@ -8876,6 +9192,7 @@ function resetFileStore() {
   notifyFileList();
   notifyFolderOrder();
 }
+__name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
@@ -8891,6 +9208,7 @@ function useWorkspaceFile(id) {
   );
   return { file, setContent: setContent2 };
 }
+__name(useWorkspaceFile, "useWorkspaceFile");
 
 // src/monaco/docs/types.ts
 function resolveDoc(index, word) {
@@ -8902,6 +9220,7 @@ function resolveDoc(index, word) {
   }
   return null;
 }
+__name(resolveDoc, "resolveDoc");
 function validateDocsIndex(label, raw) {
   if (!raw || typeof raw !== "object") {
     throw new Error(`${label}: docs index must be an object`);
@@ -8936,6 +9255,7 @@ function validateDocsIndex(label, raw) {
     validateMistakes(`${label}: globalMistakes`, r.globalMistakes);
   }
 }
+__name(validateDocsIndex, "validateDocsIndex");
 function validateMistakes(label, raw) {
   if (!Array.isArray(raw)) {
     throw new Error(`${label} must be an array`);
@@ -8971,6 +9291,7 @@ function validateMistakes(label, raw) {
     }
   });
 }
+__name(validateMistakes, "validateMistakes");
 
 // src/monaco/docs/providers.ts
 function createHoverProvider(monaco, index) {
@@ -8992,6 +9313,7 @@ function createHoverProvider(monaco, index) {
     }
   });
 }
+__name(createHoverProvider, "createHoverProvider");
 function renderHoverContents(doc, fallbackUrl) {
   const out2 = [];
   out2.push({ value: "```typescript\n" + doc.signature + "\n```" });
@@ -9007,6 +9329,7 @@ function renderHoverContents(doc, fallbackUrl) {
   }
   return out2;
 }
+__name(renderHoverContents, "renderHoverContents");
 var KIND_TO_MONACO = {
   function: "Function",
   method: "Method",
@@ -9021,6 +9344,7 @@ function kindOf(monaco, kind) {
   const mapped = kind ? KIND_TO_MONACO[kind] : "Function";
   return monaco.languages.CompletionItemKind[mapped];
 }
+__name(kindOf, "kindOf");
 function createDotCompletionProvider(monaco, index) {
   return monaco.languages.registerCompletionItemProvider(index.runtime, {
     triggerCharacters: ["."],
@@ -9044,6 +9368,7 @@ function createDotCompletionProvider(monaco, index) {
     }
   });
 }
+__name(createDotCompletionProvider, "createDotCompletionProvider");
 function createIdentifierCompletionProvider(monaco, index) {
   return monaco.languages.registerCompletionItemProvider(index.runtime, {
     provideCompletionItems(model, position) {
@@ -9066,6 +9391,7 @@ function createIdentifierCompletionProvider(monaco, index) {
     }
   });
 }
+__name(createIdentifierCompletionProvider, "createIdentifierCompletionProvider");
 function toSuggestion(monaco, name2, doc, range2) {
   const documentation = {
     value: (doc.description ?? "") + (doc.example ? "\n\n**Example:** `" + doc.example + "`" : "") + (doc.sourceUrl ? "\n\n[Reference \u2192](" + doc.sourceUrl + ")" : ""),
@@ -9080,6 +9406,7 @@ function toSuggestion(monaco, name2, doc, range2) {
     range: range2
   };
 }
+__name(toSuggestion, "toSuggestion");
 function registerRuntimeProviders(monaco, index, toggle = {
   hover: true,
   dotCompletion: true,
@@ -9093,6 +9420,7 @@ function registerRuntimeProviders(monaco, index, toggle = {
     disposables.push(createIdentifierCompletionProvider(monaco, index));
   return disposables;
 }
+__name(registerRuntimeProviders, "registerRuntimeProviders");
 
 // src/monaco/docs/data/sonicpi.json
 var sonicpi_default = {
@@ -11597,6 +11925,7 @@ function registerSonicPiProviders(monaco) {
     identifierCompletion: true
   });
 }
+__name(registerSonicPiProviders, "registerSonicPiProviders");
 
 // src/monaco/strudelDocs.ts
 var STRUDEL_DOCS = {
@@ -11812,6 +12141,7 @@ var STRUDEL_DOCS_INDEX = {
 function registerStrudelHover(monaco) {
   return createHoverProvider(monaco, STRUDEL_DOCS_INDEX);
 }
+__name(registerStrudelHover, "registerStrudelHover");
 
 // src/monaco/docs/tokenizer-utils.ts
 function buildIdentifierAlternation(index, opts = {}) {
@@ -11827,17 +12157,21 @@ function buildIdentifierAlternation(index, opts = {}) {
   for (const n of extra) if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) names.add(n);
   return [...names].sort((a, b) => b.length - a.length || a.localeCompare(b)).map(escapeForRegex).join("|");
 }
+__name(buildIdentifierAlternation, "buildIdentifierAlternation");
 function escapeForRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+__name(escapeForRegex, "escapeForRegex");
 function keywordRule(alternation, token) {
   if (!alternation) return [];
   return [[new RegExp(`\\b(${alternation})\\b`), token]];
 }
+__name(keywordRule, "keywordRule");
 function methodRule(alternation, token) {
   if (!alternation) return [];
   return [[new RegExp(`\\.(${alternation})\\b`), token]];
 }
+__name(methodRule, "methodRule");
 
 // src/monaco/language.ts
 function registerSonicPiLanguage(monaco) {
@@ -11868,11 +12202,11 @@ function registerSonicPiLanguage(monaco) {
   ]);
   const musicFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
     excludeKinds: ["synth", "fx", "sample"],
-    filter: (name2, doc) => doc.category === "western_theory" || doc.category === "maths" || MUSIC_HELPER_NAMES.has(name2)
+    filter: /* @__PURE__ */ __name((name2, doc) => doc.category === "western_theory" || doc.category === "maths" || MUSIC_HELPER_NAMES.has(name2), "filter")
   });
   const dslFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
     excludeKinds: ["synth", "fx", "sample"],
-    filter: (name2, doc) => doc.category !== "western_theory" && doc.category !== "maths" && !MUSIC_HELPER_NAMES.has(name2),
+    filter: /* @__PURE__ */ __name((name2, doc) => doc.category !== "western_theory" && doc.category !== "maths" && !MUSIC_HELPER_NAMES.has(name2), "filter"),
     extra: ["puts", "print"]
   });
   monaco.languages.setMonarchTokensProvider("sonicpi", {
@@ -11969,6 +12303,7 @@ function registerSonicPiLanguage(monaco) {
     ]
   });
 }
+__name(registerSonicPiLanguage, "registerSonicPiLanguage");
 function registerStrudelLanguage(monaco) {
   const langs = monaco.languages.getLanguages();
   if (langs.some((l) => l.id === "strudel")) return;
@@ -12093,6 +12428,7 @@ function registerStrudelLanguage(monaco) {
     ]
   });
 }
+__name(registerStrudelLanguage, "registerStrudelLanguage");
 
 // src/monaco/strudelCompletions.ts
 var NOTE_ROOTS = ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"];
@@ -12105,6 +12441,7 @@ function generateNoteNames() {
   }
   return names;
 }
+__name(generateNoteNames, "generateNoteNames");
 var NOTE_NAMES = generateNoteNames();
 function registerStrudelDotCompletions(monaco) {
   return monaco.languages.registerCompletionItemProvider("strudel", {
@@ -12136,6 +12473,7 @@ function registerStrudelDotCompletions(monaco) {
     }
   });
 }
+__name(registerStrudelDotCompletions, "registerStrudelDotCompletions");
 function registerStrudelNoteCompletions(monaco) {
   return monaco.languages.registerCompletionItemProvider("strudel", {
     triggerCharacters: ['"', "'", " "],
@@ -12163,6 +12501,7 @@ function registerStrudelNoteCompletions(monaco) {
     }
   });
 }
+__name(registerStrudelNoteCompletions, "registerStrudelNoteCompletions");
 
 // src/monaco/diagnostics.ts
 var MARKER_OWNER = "stave";
@@ -12174,6 +12513,7 @@ function parseErrorLocation(error) {
   }
   return null;
 }
+__name(parseErrorLocation, "parseErrorLocation");
 function setEvalError(monaco, model, error) {
   try {
     const loc = parseErrorLocation(error);
@@ -12198,6 +12538,7 @@ function setEvalError(monaco, model, error) {
     console.warn("[stave] setEvalError failed, marker skipped:", markerError);
   }
 }
+__name(setEvalError, "setEvalError");
 function clearEvalErrors(monaco, model) {
   try {
     monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
@@ -12205,6 +12546,7 @@ function clearEvalErrors(monaco, model) {
     console.warn("[stave] clearEvalErrors failed:", markerError);
   }
 }
+__name(clearEvalErrors, "clearEvalErrors");
 function setLineMarker(monaco, model, opts) {
   try {
     const lineCount = model.getLineCount();
@@ -12234,6 +12576,7 @@ function setLineMarker(monaco, model, opts) {
     console.warn("[stave] setLineMarker failed, skipped:", markerError);
   }
 }
+__name(setLineMarker, "setLineMarker");
 function clearLineMarkers(monaco, model, owner) {
   try {
     monaco.editor.setModelMarkers(model, owner, []);
@@ -12241,6 +12584,7 @@ function clearLineMarkers(monaco, model, owner) {
     console.warn("[stave] clearLineMarkers failed:", markerError);
   }
 }
+__name(clearLineMarkers, "clearLineMarkers");
 var STRUDEL_LINT_OWNER = "stave-strudel-lint";
 var STRUDEL_DOUBLE_QUOTED_P_RE = /\.p\(\s*"([^"\n\r]*)"\s*\)/g;
 function refreshStrudelLintMarkers(monaco, model) {
@@ -12271,12 +12615,14 @@ function refreshStrudelLintMarkers(monaco, model) {
     console.warn("[stave] refreshStrudelLintMarkers failed:", lintError);
   }
 }
+__name(refreshStrudelLintMarkers, "refreshStrudelLintMarkers");
 function clearStrudelLintMarkers(monaco, model) {
   try {
     monaco.editor.setModelMarkers(model, STRUDEL_LINT_OWNER, []);
   } catch {
   }
 }
+__name(clearStrudelLintMarkers, "clearStrudelLintMarkers");
 var strudelLintProviderDisposable = null;
 function ensureStrudelLintCodeActionProvider(monaco, languageId) {
   if (strudelLintProviderDisposable) return strudelLintProviderDisposable;
@@ -12329,6 +12675,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
   );
   return strudelLintProviderDisposable;
 }
+__name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 
 // src/monaco/docs/data/p5.json
 var p5_default = {
@@ -16209,6 +16556,7 @@ function registerP5Providers(monaco) {
     identifierCompletion: true
   });
 }
+__name(registerP5Providers, "registerP5Providers");
 
 // src/monaco/docs/data/hydra.json
 var hydra_default = {
@@ -16746,6 +17094,7 @@ function registerHydraProviders(monaco) {
     identifierCompletion: true
   });
 }
+__name(registerHydraProviders, "registerHydraProviders");
 
 // src/workspace/languages.ts
 var hydraRegistered = false;
@@ -16852,6 +17201,7 @@ function registerHydraLanguage(monaco) {
     ]
   });
 }
+__name(registerHydraLanguage, "registerHydraLanguage");
 function registerP5JsLanguage(monaco) {
   if (p5jsRegistered) return;
   const langs = monaco.languages.getLanguages();
@@ -16959,6 +17309,7 @@ function registerP5JsLanguage(monaco) {
     ]
   });
 }
+__name(registerP5JsLanguage, "registerP5JsLanguage");
 function ensureWorkspaceLanguages(monaco) {
   registerStrudelLanguage(monaco);
   registerSonicPiLanguage(monaco);
@@ -16976,6 +17327,7 @@ function ensureWorkspaceLanguages(monaco) {
   ensureProviders("hydra", monaco, registerHydraProviders);
   ensureProviders("sonicpi", monaco, registerSonicPiProviders);
 }
+__name(ensureWorkspaceLanguages, "ensureWorkspaceLanguages");
 var providersRegistered = {};
 function ensureProviders(key, monaco, register) {
   if (providersRegistered[key]) return;
@@ -16985,6 +17337,7 @@ function ensureProviders(key, monaco, register) {
   providersRegistered[key] = true;
   register(monaco);
 }
+__name(ensureProviders, "ensureProviders");
 function toMonacoLanguage(lang) {
   switch (lang) {
     case "strudel":
@@ -16999,6 +17352,7 @@ function toMonacoLanguage(lang) {
       return "markdown";
   }
 }
+__name(toMonacoLanguage, "toMonacoLanguage");
 
 // src/workspace/WorkspaceAudioBus.ts
 var payloads = /* @__PURE__ */ new Map();
@@ -17011,6 +17365,7 @@ function defaultPayload() {
   const id = recency[recency.length - 1];
   return payloads.get(id) ?? null;
 }
+__name(defaultPayload, "defaultPayload");
 function payloadForRef(ref) {
   switch (ref.kind) {
     case "none":
@@ -17021,27 +17376,32 @@ function payloadForRef(ref) {
       return payloads.get(ref.fileId) ?? null;
   }
 }
+__name(payloadForRef, "payloadForRef");
 function payloadsEquivalent(prev, next) {
   if (!prev) return false;
   return prev.hapStream === next.hapStream && prev.analyser === next.analyser && prev.scheduler === next.scheduler && prev.inlineViz === next.inlineViz && prev.audio === next.audio && prev.breakpointStore === next.breakpointStore && prev.onResume === next.onResume;
 }
+__name(payloadsEquivalent, "payloadsEquivalent");
 function notifySourcesChanged() {
   if (sourcesChangedListeners.size === 0) return;
   const snapshot = Array.from(sourcesChangedListeners);
   for (const cb of snapshot) cb();
 }
+__name(notifySourcesChanged, "notifySourcesChanged");
 function notifyPinned(sourceId, payload) {
   const set = pinnedSubscribers.get(sourceId);
   if (!set || set.size === 0) return;
   const snapshot = Array.from(set);
   for (const cb of snapshot) cb(payload);
 }
+__name(notifyPinned, "notifyPinned");
 function notifyDefault() {
   if (defaultSubscribers.size === 0) return;
   const payload = defaultPayload();
   const snapshot = Array.from(defaultSubscribers);
   for (const cb of snapshot) cb(payload);
 }
+__name(notifyDefault, "notifyDefault");
 function publish(sourceId, payload) {
   const prev = payloads.get(sourceId);
   if (payloadsEquivalent(prev, payload)) return;
@@ -17058,6 +17418,7 @@ function publish(sourceId, payload) {
     notifySourcesChanged();
   }
 }
+__name(publish, "publish");
 function unpublish(sourceId) {
   const prev = payloads.get(sourceId);
   if (!prev) return;
@@ -17071,6 +17432,7 @@ function unpublish(sourceId) {
   }
   notifySourcesChanged();
 }
+__name(unpublish, "unpublish");
 function subscribe2(ref, cb) {
   cb(payloadForRef(ref));
   if (ref.kind === "none") {
@@ -17105,9 +17467,11 @@ function subscribe2(ref, cb) {
     }
   };
 }
+__name(subscribe2, "subscribe");
 function consume(ref) {
   return payloadForRef(ref);
 }
+__name(consume, "consume");
 function listSources() {
   const result = [];
   for (const sourceId of recency) {
@@ -17123,6 +17487,7 @@ function listSources() {
   }
   return result;
 }
+__name(listSources, "listSources");
 function onSourcesChanged(cb) {
   sourcesChangedListeners.add(cb);
   let unsubscribed = false;
@@ -17132,6 +17497,7 @@ function onSourcesChanged(cb) {
     sourcesChangedListeners.delete(cb);
   };
 }
+__name(onSourcesChanged, "onSourcesChanged");
 var workspaceAudioBus = {
   publish,
   unpublish,
@@ -17155,6 +17521,7 @@ function ensureBaseHighlightStyle() {
   `;
   document.head.appendChild(style);
 }
+__name(ensureBaseHighlightStyle, "ensureBaseHighlightStyle");
 var injectedColorClasses = /* @__PURE__ */ new Map();
 function hashColor(color) {
   let hash = 0;
@@ -17163,6 +17530,7 @@ function hashColor(color) {
   }
   return Math.abs(hash).toString(16);
 }
+__name(hashColor, "hashColor");
 function parseColorToRGB(color) {
   if (typeof document === "undefined") return null;
   try {
@@ -17179,6 +17547,7 @@ function parseColorToRGB(color) {
     return null;
   }
 }
+__name(parseColorToRGB, "parseColorToRGB");
 function getDecorationClassName(color) {
   const base = "strudel-active-hap";
   if (!color) return base;
@@ -17201,6 +17570,7 @@ function getDecorationClassName(color) {
   }
   return `${base} ${colorClass}`;
 }
+__name(getDecorationClassName, "getDecorationClassName");
 function locToRange(model, start2, end) {
   const startPos = model.getPositionAt(start2);
   const endPos = model.getPositionAt(end);
@@ -17211,6 +17581,7 @@ function locToRange(model, start2, end) {
     endColumn: endPos.column
   };
 }
+__name(locToRange, "locToRange");
 function teardown(timeoutIds, collections) {
   for (const id of timeoutIds) {
     clearTimeout(id);
@@ -17221,6 +17592,7 @@ function teardown(timeoutIds, collections) {
   }
   collections.clear();
 }
+__name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
   const timeoutIdsRef = React6.useRef([]);
   const hapCollectionsRef = React6.useRef(/* @__PURE__ */ new Map());
@@ -17231,7 +17603,7 @@ function useHighlighting(editor, hapStream) {
   React6.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
-    const handler = (event) => {
+    const handler = /* @__PURE__ */ __name((event) => {
       if (!event.loc || event.loc.length === 0) return;
       const model = editor.getModel();
       if (!model) return;
@@ -17256,7 +17628,7 @@ function useHighlighting(editor, hapStream) {
         hapCollectionsRef.current.delete(hapKey);
       }, clearDelay);
       timeoutIdsRef.current.push(showId, clearId);
-    };
+    }, "handler");
     hapStream.on(handler);
     return () => {
       hapStream.off(handler);
@@ -17265,6 +17637,7 @@ function useHighlighting(editor, hapStream) {
   }, [editor, hapStream]);
   return { clearAll };
 }
+__name(useHighlighting, "useHighlighting");
 
 // src/engine/timelineCapture.ts
 var DEFAULT_CAPACITY = 30;
@@ -17279,6 +17652,7 @@ function fanOut() {
     }
   }
 }
+__name(fanOut, "fanOut");
 function captureSnapshot(snap, meta = {}) {
   try {
     Object.freeze(snap);
@@ -17296,22 +17670,27 @@ function captureSnapshot(snap, meta = {}) {
   }
   fanOut();
 }
+__name(captureSnapshot, "captureSnapshot");
 function getCaptureBuffer() {
   return entries;
 }
+__name(getCaptureBuffer, "getCaptureBuffer");
 function subscribeCapture(l) {
   listeners2.add(l);
   return () => {
     listeners2.delete(l);
   };
 }
+__name(subscribeCapture, "subscribeCapture");
 function clearCapture() {
   entries = [];
   fanOut();
 }
+__name(clearCapture, "clearCapture");
 function getCaptureCapacity() {
   return capacity;
 }
+__name(getCaptureCapacity, "getCaptureCapacity");
 function setCaptureCapacity(n) {
   if (!Number.isFinite(n) || n < 1) return;
   capacity = Math.floor(n);
@@ -17320,6 +17699,7 @@ function setCaptureCapacity(n) {
   }
   fanOut();
 }
+__name(setCaptureCapacity, "setCaptureCapacity");
 
 // src/engine/irInspector.ts
 var current = null;
@@ -17353,6 +17733,7 @@ function enrichWithLookups(snap) {
     irNodeIdsByLine: lineLookup
   };
 }
+__name(enrichWithLookups, "enrichWithLookups");
 function countLines(code, offset) {
   let line2 = 1;
   for (let i2 = 0; i2 < offset && i2 < code.length; i2++) {
@@ -17360,6 +17741,7 @@ function countLines(code, offset) {
   }
   return line2;
 }
+__name(countLines, "countLines");
 function publishIRSnapshot(snap, meta) {
   const enriched = enrichWithLookups(snap);
   current = enriched;
@@ -17374,6 +17756,7 @@ function publishIRSnapshot(snap, meta) {
     }
   }
 }
+__name(publishIRSnapshot, "publishIRSnapshot");
 function clearIRSnapshot() {
   current = null;
   for (const l of listeners3) {
@@ -17383,13 +17766,16 @@ function clearIRSnapshot() {
     }
   }
 }
+__name(clearIRSnapshot, "clearIRSnapshot");
 function getIRSnapshot() {
   return current;
 }
+__name(getIRSnapshot, "getIRSnapshot");
 function subscribeIRSnapshot(fn) {
   listeners3.add(fn);
   return () => listeners3.delete(fn);
 }
+__name(subscribeIRSnapshot, "subscribeIRSnapshot");
 
 // src/monaco/useBreakpoints.ts
 var MOUSE_TARGET_GUTTER_GLYPH_MARGIN = 2;
@@ -17421,6 +17807,7 @@ function ensureBaseBreakpointStyle() {
   `;
   document.head.appendChild(style);
 }
+__name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
   const collectionRef = React6.useRef(null);
   const clearAll = React6.useCallback(() => {
@@ -17434,9 +17821,9 @@ function useBreakpoints(editor, store, onResume) {
       label: "Debugger: Resume",
       keybindings: [],
       contextMenuGroupId: "navigation",
-      run: () => {
+      run: /* @__PURE__ */ __name(() => {
         onResume();
-      }
+      }, "run")
     });
     return () => {
       action.dispose();
@@ -17446,7 +17833,7 @@ function useBreakpoints(editor, store, onResume) {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
-    const render = () => {
+    const render = /* @__PURE__ */ __name(() => {
       const model = editor.getModel();
       if (!model) return;
       const entries2 = store.entries();
@@ -17498,7 +17885,7 @@ function useBreakpoints(editor, store, onResume) {
       } else {
         collectionRef.current = editor.createDecorationsCollection(decorations);
       }
-    };
+    }, "render");
     render();
     const unsubStore = store.subscribe(render);
     const unsubSnap = subscribeIRSnapshot((snap) => {
@@ -17524,6 +17911,7 @@ function useBreakpoints(editor, store, onResume) {
   }, [editor, store]);
   return { clearAll };
 }
+__name(useBreakpoints, "useBreakpoints");
 
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
@@ -17531,18 +17919,23 @@ var monacoNs = null;
 function registerMonacoNamespace(monaco) {
   if (!monacoNs) monacoNs = monaco;
 }
+__name(registerMonacoNamespace, "registerMonacoNamespace");
 function getMonacoNamespace() {
   return monacoNs;
 }
+__name(getMonacoNamespace, "getMonacoNamespace");
 function registerEditor(fileId, editor) {
   editors.set(fileId, editor);
 }
+__name(registerEditor, "registerEditor");
 function unregisterEditor(fileId, editor) {
   if (editors.get(fileId) === editor) editors.delete(fileId);
 }
+__name(unregisterEditor, "unregisterEditor");
 function getEditorForFile(fileId) {
   return editors.get(fileId);
 }
+__name(getEditorForFile, "getEditorForFile");
 function revealLineInFile(fileId, line2) {
   const editor = editors.get(fileId);
   if (!editor) return false;
@@ -17555,6 +17948,7 @@ function revealLineInFile(fileId, line2) {
     return false;
   }
 }
+__name(revealLineInFile, "revealLineInFile");
 var DEFAULT_FONT_SIZE = 14;
 var FONT_SIZE_STORAGE = "stave:editorFontSize";
 var MINIMAP_STORAGE = "stave:editorMinimap";
@@ -17573,46 +17967,57 @@ function safeLocalStorage2() {
     return null;
   }
 }
+__name(safeLocalStorage2, "safeLocalStorage");
 function readFontSize() {
   const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_FONT_SIZE;
   const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
   return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
 }
+__name(readFontSize, "readFontSize");
 function readMinimap() {
   const ls = safeLocalStorage2();
   return ls?.getItem(MINIMAP_STORAGE) === "1";
 }
+__name(readMinimap, "readMinimap");
 function writeFontSize(size) {
   safeLocalStorage2()?.setItem(FONT_SIZE_STORAGE, String(size));
 }
+__name(writeFontSize, "writeFontSize");
 function writeMinimap(on) {
   safeLocalStorage2()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
 }
+__name(writeMinimap, "writeMinimap");
 function applyOptionsToEditor(editor) {
   const fontSize = readFontSize();
   const minimap = readMinimap();
   editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
 }
+__name(applyOptionsToEditor, "applyOptionsToEditor");
 function getEditorFontSize() {
   return readFontSize();
 }
+__name(getEditorFontSize, "getEditorFontSize");
 function getEditorMinimap() {
   return readMinimap();
 }
+__name(getEditorMinimap, "getEditorMinimap");
 function setEditorFontSize(size) {
   const clamped = Math.max(8, Math.min(40, Math.round(size)));
   writeFontSize(clamped);
   for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
 }
+__name(setEditorFontSize, "setEditorFontSize");
 function bumpEditorFontSize(delta) {
   setEditorFontSize(readFontSize() + delta);
 }
+__name(bumpEditorFontSize, "bumpEditorFontSize");
 function toggleEditorMinimap() {
   const next = !readMinimap();
   writeMinimap(next);
   for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
 }
+__name(toggleEditorMinimap, "toggleEditorMinimap");
 var uiIconSizeListeners = /* @__PURE__ */ new Set();
 function readUiIconSize() {
   const ls = safeLocalStorage2();
@@ -17620,31 +18025,38 @@ function readUiIconSize() {
   const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
   return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
 }
+__name(readUiIconSize, "readUiIconSize");
 function writeUiIconSize(size) {
   safeLocalStorage2()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
 }
+__name(writeUiIconSize, "writeUiIconSize");
 function applyUiIconSizeVar(size) {
   if (typeof document === "undefined") return;
   document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
 }
+__name(applyUiIconSizeVar, "applyUiIconSizeVar");
 function getEditorUiIconSize() {
   return readUiIconSize();
 }
+__name(getEditorUiIconSize, "getEditorUiIconSize");
 function setEditorUiIconSize(size) {
   const clamped = Math.max(10, Math.min(40, Math.round(size)));
   writeUiIconSize(clamped);
   applyUiIconSizeVar(clamped);
   for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
 }
+__name(setEditorUiIconSize, "setEditorUiIconSize");
 function onUiIconSizeChange(cb) {
   uiIconSizeListeners.add(cb);
   return () => {
     uiIconSizeListeners.delete(cb);
   };
 }
+__name(onUiIconSizeChange, "onUiIconSizeChange");
 function applyPersistedUiIconSize() {
   applyUiIconSizeVar(readUiIconSize());
 }
+__name(applyPersistedUiIconSize, "applyPersistedUiIconSize");
 var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
 function readInlineVizActionSize() {
   const ls = safeLocalStorage2();
@@ -17652,9 +18064,11 @@ function readInlineVizActionSize() {
   const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
   return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
 }
+__name(readInlineVizActionSize, "readInlineVizActionSize");
 function writeInlineVizActionSize(size) {
   safeLocalStorage2()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
 }
+__name(writeInlineVizActionSize, "writeInlineVizActionSize");
 function applyInlineVizActionSizeVar(size) {
   if (typeof document === "undefined") return;
   document.documentElement.style.setProperty(
@@ -17662,24 +18076,29 @@ function applyInlineVizActionSizeVar(size) {
     `${size}px`
   );
 }
+__name(applyInlineVizActionSizeVar, "applyInlineVizActionSizeVar");
 function getInlineVizActionSize() {
   return readInlineVizActionSize();
 }
+__name(getInlineVizActionSize, "getInlineVizActionSize");
 function setInlineVizActionSize(size) {
   const clamped = Math.max(8, Math.min(28, Math.round(size)));
   writeInlineVizActionSize(clamped);
   applyInlineVizActionSizeVar(clamped);
   for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
 }
+__name(setInlineVizActionSize, "setInlineVizActionSize");
 function onInlineVizActionSizeChange(cb) {
   inlineVizActionSizeListeners.add(cb);
   return () => {
     inlineVizActionSizeListeners.delete(cb);
   };
 }
+__name(onInlineVizActionSizeChange, "onInlineVizActionSizeChange");
 function applyPersistedInlineVizActionSize() {
   applyInlineVizActionSizeVar(readInlineVizActionSize());
 }
+__name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
@@ -17689,23 +18108,28 @@ function readMusicalTimelineSubRowHeight() {
   const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
   return Number.isFinite(saved) && saved >= 12 && saved <= 48 ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
 }
+__name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
 function writeMusicalTimelineSubRowHeight(h) {
   safeLocalStorage2()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
 }
+__name(writeMusicalTimelineSubRowHeight, "writeMusicalTimelineSubRowHeight");
 function getMusicalTimelineSubRowHeight() {
   return readMusicalTimelineSubRowHeight();
 }
+__name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
 function setMusicalTimelineSubRowHeight(h) {
   const clamped = Math.max(12, Math.min(48, Math.round(h)));
   writeMusicalTimelineSubRowHeight(clamped);
   for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
 }
+__name(setMusicalTimelineSubRowHeight, "setMusicalTimelineSubRowHeight");
 function onMusicalTimelineSubRowHeightChange(cb) {
   musicalTimelineSubRowHeightListeners.add(cb);
   return () => {
     musicalTimelineSubRowHeightListeners.delete(cb);
   };
 }
+__name(onMusicalTimelineSubRowHeightChange, "onMusicalTimelineSubRowHeightChange");
 var DEFAULT_BACKDROP_BLUR = 8;
 var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
 var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
@@ -17715,9 +18139,11 @@ function readBackdropBlur() {
   const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE));
   return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
 }
+__name(readBackdropBlur, "readBackdropBlur");
 function writeBackdropBlur(size) {
   safeLocalStorage2()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
 }
+__name(writeBackdropBlur, "writeBackdropBlur");
 function applyBackdropBlurVar(size) {
   if (typeof document === "undefined") return;
   document.documentElement.style.setProperty(
@@ -17725,17 +18151,21 @@ function applyBackdropBlurVar(size) {
     `${size}px`
   );
 }
+__name(applyBackdropBlurVar, "applyBackdropBlurVar");
 function getEditorBackdropBlur() {
   return readBackdropBlur();
 }
+__name(getEditorBackdropBlur, "getEditorBackdropBlur");
 function setEditorBackdropBlur(size) {
   const clamped = Math.max(0, Math.min(40, Math.round(size)));
   writeBackdropBlur(clamped);
   applyBackdropBlurVar(clamped);
 }
+__name(setEditorBackdropBlur, "setEditorBackdropBlur");
 function applyPersistedBackdropBlur() {
   applyBackdropBlurVar(readBackdropBlur());
 }
+__name(applyPersistedBackdropBlur, "applyPersistedBackdropBlur");
 var DEFAULT_BACKDROP_OPACITY = 1;
 var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
 var backdropOpacityListeners = /* @__PURE__ */ new Set();
@@ -17745,23 +18175,28 @@ function readBackdropOpacity() {
   const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
   return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
 }
+__name(readBackdropOpacity, "readBackdropOpacity");
 function writeBackdropOpacity(o) {
   safeLocalStorage2()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
 }
+__name(writeBackdropOpacity, "writeBackdropOpacity");
 function getBackdropOpacity() {
   return readBackdropOpacity();
 }
+__name(getBackdropOpacity, "getBackdropOpacity");
 function setBackdropOpacity(o) {
   const clamped = Math.max(0, Math.min(1, o));
   writeBackdropOpacity(clamped);
   for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
 }
+__name(setBackdropOpacity, "setBackdropOpacity");
 function onBackdropOpacityChange(cb) {
   backdropOpacityListeners.add(cb);
   return () => {
     backdropOpacityListeners.delete(cb);
   };
 }
+__name(onBackdropOpacityChange, "onBackdropOpacityChange");
 var DEFAULT_BACKDROP_QUALITY = "half";
 var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
 var backdropQualityListeners = /* @__PURE__ */ new Set();
@@ -17770,45 +18205,56 @@ function readBackdropQuality() {
   const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
   return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
 }
+__name(readBackdropQuality, "readBackdropQuality");
 function writeBackdropQuality(q) {
   safeLocalStorage2()?.setItem(BACKDROP_QUALITY_STORAGE, q);
 }
+__name(writeBackdropQuality, "writeBackdropQuality");
 function getBackdropQuality() {
   return readBackdropQuality();
 }
+__name(getBackdropQuality, "getBackdropQuality");
 function setBackdropQuality(q) {
   writeBackdropQuality(q);
   for (const cb of Array.from(backdropQualityListeners)) cb(q);
 }
+__name(setBackdropQuality, "setBackdropQuality");
 function onBackdropQualityChange(cb) {
   backdropQualityListeners.add(cb);
   return () => {
     backdropQualityListeners.delete(cb);
   };
 }
+__name(onBackdropQualityChange, "onBackdropQualityChange");
 function backdropQualityFactor(q) {
   return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
 }
+__name(backdropQualityFactor, "backdropQualityFactor");
 function applyPersistedEditorOptions(editor) {
   applyOptionsToEditor(editor);
 }
+__name(applyPersistedEditorOptions, "applyPersistedEditorOptions");
 var THEME_STORAGE = "stave:editorTheme";
 function readTheme() {
   const ls = safeLocalStorage2();
   const v = ls?.getItem(THEME_STORAGE);
   return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
 }
+__name(readTheme, "readTheme");
 function writeTheme(t) {
   safeLocalStorage2()?.setItem(THEME_STORAGE, t);
 }
+__name(writeTheme, "writeTheme");
 function systemPrefersLight() {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-color-scheme: light)").matches;
 }
+__name(systemPrefersLight, "systemPrefersLight");
 function resolveTheme(t) {
   if (t === "dark" || t === "light") return t;
   return systemPrefersLight() ? "light" : "dark";
 }
+__name(resolveTheme, "resolveTheme");
 var themeListeners = /* @__PURE__ */ new Set();
 var systemMqlWired = false;
 var systemMql = null;
@@ -17820,20 +18266,22 @@ function notifyThemeListeners(resolved) {
     }
   }
 }
+__name(notifyThemeListeners, "notifyThemeListeners");
 function wireSystemMqlOnce() {
   if (systemMqlWired || typeof window === "undefined" || !window.matchMedia) return;
   systemMqlWired = true;
   systemMql = window.matchMedia("(prefers-color-scheme: light)");
-  const onChange = () => {
+  const onChange = /* @__PURE__ */ __name(() => {
     if (readTheme() !== "system") return;
     applyResolvedTheme(resolveTheme("system"));
-  };
+  }, "onChange");
   try {
     systemMql.addEventListener("change", onChange);
   } catch {
     systemMql.addListener?.(onChange);
   }
 }
+__name(wireSystemMqlOnce, "wireSystemMqlOnce");
 function applyResolvedTheme(resolved) {
   if (monacoNs?.editor?.setTheme) {
     monacoNs.editor.setTheme(resolved === "light" ? "stave-light" : "stave-dark");
@@ -17843,32 +18291,39 @@ function applyResolvedTheme(resolved) {
   }
   notifyThemeListeners(resolved);
 }
+__name(applyResolvedTheme, "applyResolvedTheme");
 function getEditorTheme() {
   return readTheme();
 }
+__name(getEditorTheme, "getEditorTheme");
 function getResolvedTheme() {
   return resolveTheme(readTheme());
 }
+__name(getResolvedTheme, "getResolvedTheme");
 function setEditorTheme(theme) {
   writeTheme(theme);
   wireSystemMqlOnce();
   applyResolvedTheme(resolveTheme(theme));
 }
+__name(setEditorTheme, "setEditorTheme");
 function cycleEditorTheme() {
   const next = readTheme() === "dark" ? "light" : readTheme() === "light" ? "system" : "dark";
   setEditorTheme(next);
   return next;
 }
+__name(cycleEditorTheme, "cycleEditorTheme");
 function onThemeChange(fn) {
   themeListeners.add(fn);
   return () => {
     themeListeners.delete(fn);
   };
 }
+__name(onThemeChange, "onThemeChange");
 function applyPersistedTheme() {
   wireSystemMqlOnce();
   setEditorTheme(readTheme());
 }
+__name(applyPersistedTheme, "applyPersistedTheme");
 
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
@@ -17879,20 +18334,25 @@ function registerNamedViz(name2, descriptor) {
   registry.set(name2, descriptor);
   notifyListeners();
 }
+__name(registerNamedViz, "registerNamedViz");
 function unregisterNamedViz(name2) {
   if (!registry.has(name2)) return;
   registry.delete(name2);
   notifyListeners();
 }
+__name(unregisterNamedViz, "unregisterNamedViz");
 function getNamedViz(name2) {
   return registry.get(name2);
 }
+__name(getNamedViz, "getNamedViz");
 function listNamedVizNames() {
   return Array.from(registry.keys());
 }
+__name(listNamedVizNames, "listNamedVizNames");
 function listNamedVizEntries() {
   return Array.from(registry.entries());
 }
+__name(listNamedVizEntries, "listNamedVizEntries");
 function onNamedVizChanged(cb) {
   listeners4.add(cb);
   let unsubscribed = false;
@@ -17902,6 +18362,7 @@ function onNamedVizChanged(cb) {
     listeners4.delete(cb);
   };
 }
+__name(onNamedVizChanged, "onNamedVizChanged");
 function notifyListeners() {
   if (listeners4.size === 0) return;
   const snapshot = Array.from(listeners4);
@@ -17912,6 +18373,7 @@ function notifyListeners() {
     }
   }
 }
+__name(notifyListeners, "notifyListeners");
 
 // src/visualizers/resolveDescriptor.ts
 function resolveDescriptor(vizId, descriptors) {
@@ -17926,9 +18388,10 @@ function resolveDescriptor(vizId, descriptors) {
   const prefix = vizId + ":";
   return descriptors.find((d) => d.id.startsWith(prefix));
 }
+__name(resolveDescriptor, "resolveDescriptor");
 
 // src/engine/BufferedScheduler.ts
-var BufferedScheduler = class {
+var _BufferedScheduler = class _BufferedScheduler {
   constructor(hapStream, audioCtx, maxAge = 10) {
     this.buffer = [];
     this.head = 0;
@@ -17999,6 +18462,8 @@ var BufferedScheduler = class {
     this.lastByInstrument.clear();
   }
 };
+__name(_BufferedScheduler, "BufferedScheduler");
+var BufferedScheduler = _BufferedScheduler;
 
 // src/visualizers/vizPreset.ts
 var DB_NAME = "stave-viz-presets";
@@ -18017,26 +18482,32 @@ function openDb() {
     req.onerror = () => reject(req.error);
   });
 }
+__name(openDb, "openDb");
 function tx(db, mode) {
   return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME);
 }
+__name(tx, "tx");
 function wrap(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
+__name(wrap, "wrap");
 var BUNDLED_PREFIX = "__bundled_";
 function sanitizePresetName(name2) {
   const slug = name2.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   return slug || "untitled";
 }
+__name(sanitizePresetName, "sanitizePresetName");
 function bundledPresetId(name2, renderer) {
   return `${BUNDLED_PREFIX}${sanitizePresetName(name2)}_${renderer}__`;
 }
+__name(bundledPresetId, "bundledPresetId");
 function isBundledPresetId(id) {
   return id.startsWith(BUNDLED_PREFIX);
 }
+__name(isBundledPresetId, "isBundledPresetId");
 function generateUniquePresetId(name2, renderer, existingIds) {
   const slug = sanitizePresetName(name2);
   const used = new Set(existingIds);
@@ -18048,6 +18519,7 @@ function generateUniquePresetId(name2, renderer, existingIds) {
   }
   return id;
 }
+__name(generateUniquePresetId, "generateUniquePresetId");
 var VizPresetStore = {
   async getAll() {
     const db = await openDb();
@@ -18076,6 +18548,7 @@ function nativeSizeFor(preset) {
   if (s && s.w > 0 && s.h > 0) return { w: s.w, h: s.h };
   return DEFAULT_NATIVE;
 }
+__name(nativeSizeFor, "nativeSizeFor");
 function computeLayout(contentW, native, crop) {
   const cropW = Math.max(0.01, crop.w);
   const cropH = Math.max(0.01, crop.h);
@@ -18098,6 +18571,7 @@ function computeLayout(contentW, native, crop) {
     ty: -crop.y * native.h * scale2
   };
 }
+__name(computeLayout, "computeLayout");
 function readCanvasNative(container) {
   const canvas = container.querySelector("canvas");
   if (!canvas) return null;
@@ -18106,6 +18580,7 @@ function readCanvasNative(container) {
   if (w <= 0 || h <= 0) return null;
   return { w, h };
 }
+__name(readCanvasNative, "readCanvasNative");
 function applyLayout(container, canvas, layout) {
   if (typeof layout.zoneH === "number") {
     container.style.height = `${layout.zoneH}px`;
@@ -18122,6 +18597,7 @@ function applyLayout(container, canvas, layout) {
     wrapper.style.transform = `translate(${layout.tx}px, ${layout.ty}px) scale(${layout.scale})`;
   }
 }
+__name(applyLayout, "applyLayout");
 function createFloatingActionBar(editorDom) {
   const bar = document.createElement("div");
   bar.setAttribute("data-viz-actions", "");
@@ -18140,7 +18616,7 @@ function createFloatingActionBar(editorDom) {
     font-family:system-ui,sans-serif;
     pointer-events:auto;
   `;
-  const blockMonaco = (el) => {
+  const blockMonaco = /* @__PURE__ */ __name((el) => {
     el.addEventListener("mousedown", (e) => {
       e.stopPropagation();
       e.stopImmediatePropagation();
@@ -18157,7 +18633,7 @@ function createFloatingActionBar(editorDom) {
       e.stopPropagation();
       e.stopImmediatePropagation();
     }, true);
-  };
+  }, "blockMonaco");
   const editBtn = document.createElement("button");
   editBtn.textContent = "\u270E";
   editBtn.title = "Edit viz file";
@@ -18174,10 +18650,12 @@ function createFloatingActionBar(editorDom) {
   guard.appendChild(bar);
   return bar;
 }
+__name(createFloatingActionBar, "createFloatingActionBar");
 var FULL_CROP = { x: 0, y: 0, w: 1, h: 1 };
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+__name(escapeRegex, "escapeRegex");
 function findVizCallLineForBlock(code, vizId, targetAfterLine) {
   const lines = code.split("\n");
   const vizPattern = new RegExp(
@@ -18198,13 +18676,14 @@ function findVizCallLineForBlock(code, vizId, targetAfterLine) {
   }
   return null;
 }
+__name(findVizCallLineForBlock, "findVizCallLineForBlock");
 function addInlineViewZones(editor, components, vizDescriptors, actions, fileId) {
   const vizRequests = components.inlineViz?.vizRequests;
   if (!vizRequests || vizRequests.size === 0) {
-    return { cleanup: () => {
-    }, pause: () => {
-    }, resume: () => {
-    } };
+    return { cleanup: /* @__PURE__ */ __name(() => {
+    }, "cleanup"), pause: /* @__PURE__ */ __name(() => {
+    }, "pause"), resume: /* @__PURE__ */ __name(() => {
+    }, "resume") };
   }
   const renderers = [];
   const bufferedSchedulers = [];
@@ -18331,7 +18810,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const startY = e.clientY;
         const startH = entry.zoneDesc.heightInPx;
         const contentW2 = editor.getLayoutInfo().contentWidth || 400;
-        const onMove = (ev) => {
+        const onMove = /* @__PURE__ */ __name((ev) => {
           ev.preventDefault();
           const delta = ev.clientY - startY;
           const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
@@ -18347,8 +18826,8 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           const tx3 = -entry.crop.x * nw * scale2;
           const ty = -entry.crop.y * nh * scale2;
           applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
-        };
-        const onUp = (ev) => {
+        }, "onMove");
+        const onUp = /* @__PURE__ */ __name((ev) => {
           resizeHandle.releasePointerCapture(ev.pointerId);
           resizeHandle.removeEventListener("pointermove", onMove);
           resizeHandle.removeEventListener("pointerup", onUp);
@@ -18361,13 +18840,13 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           }
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           delete entry.container.dataset.resizing;
-        };
+        }, "onUp");
         resizeHandle.addEventListener("pointermove", onMove);
         resizeHandle.addEventListener("pointerup", onUp);
       }, true);
       container.appendChild(resizeHandle);
       let refineAttempts = 0;
-      const tryRefine = () => {
+      const tryRefine = /* @__PURE__ */ __name(() => {
         refineAttempts++;
         const actual = readCanvasNative(entry.container);
         if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
@@ -18384,7 +18863,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           return;
         }
         if (refineAttempts < 10) requestAnimationFrame(tryRefine);
-      };
+      }, "tryRefine");
       requestAnimationFrame(tryRefine);
     }
   });
@@ -18395,7 +18874,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }
     pruneZoneOverrides(fileId, currentViz);
   }
-  const normalize = (s) => s.toLowerCase().replace(/[\s\-_]/g, "");
+  const normalize = /* @__PURE__ */ __name((s) => s.toLowerCase().replace(/[\s\-_]/g, ""), "normalize");
   void (async () => {
     try {
       const presets = await VizPresetStore.getAll();
@@ -18456,7 +18935,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     } catch {
     }
   })();
-  const recomputeAllZones = () => {
+  const recomputeAllZones = /* @__PURE__ */ __name(() => {
     editor.changeViewZones((accessor) => {
       for (const entry of zoneEntries) {
         if (entry.container.dataset.resizing) continue;
@@ -18482,10 +18961,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         }
       }
     });
-  };
+  }, "recomputeAllZones");
   const layoutChangeDisposable = editor.onDidLayoutChange?.(recomputeAllZones);
   const scrollDisposable = editor.onDidScrollChange?.(recomputeAllZones);
-  const reAnchorZones = () => {
+  const reAnchorZones = /* @__PURE__ */ __name(() => {
     const model = editor.getModel?.();
     if (!model) return;
     const lines = model.getValue().split("\n");
@@ -18535,7 +19014,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         entry.zoneId = accessor.addZone(entry.zoneDesc);
       }
     });
-  };
+  }, "reAnchorZones");
   const contentChangeDisposable = editor.onDidChangeModelContent?.(reAnchorZones);
   const editorDom = editor.getDomNode?.();
   let floatingBar = null;
@@ -18559,7 +19038,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     };
     let lastMouseX = -1;
     let lastMouseY = -1;
-    const hitTestAndUpdateBar = () => {
+    const hitTestAndUpdateBar = /* @__PURE__ */ __name(() => {
       if (!floatingBar || lastMouseX < 0) return;
       let found = null;
       for (const entry of zoneEntries) {
@@ -18583,7 +19062,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         floatingBar.style.opacity = "0";
         floatingBar.style.pointerEvents = "none";
       }
-    };
+    }, "hitTestAndUpdateBar");
     mouseMoveDisposable = editor.onMouseMove?.((ev) => {
       lastMouseX = ev.event.posx;
       lastMouseY = ev.event.posy;
@@ -18591,12 +19070,12 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }) ?? null;
     scrollHitTestDisposable = editor.onDidScrollChange?.(hitTestAndUpdateBar) ?? null;
   }
-  const mouseLeaveHandler = () => {
+  const mouseLeaveHandler = /* @__PURE__ */ __name(() => {
     if (floatingBar) {
       floatingBar.style.opacity = "0";
       floatingBar.style.pointerEvents = "none";
     }
-  };
+  }, "mouseLeaveHandler");
   editorDom?.addEventListener("mouseleave", mouseLeaveHandler);
   return {
     cleanup() {
@@ -18622,9 +19101,11 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }
   };
 }
+__name(addInlineViewZones, "addInlineViewZones");
 function monacoThemeNameFor(theme) {
   return theme === "light" ? "stave-light" : "stave-dark";
 }
+__name(monacoThemeNameFor, "monacoThemeNameFor");
 var MonacoEditor = MonacoEditorRaw__default.default;
 var MONACO_OPTIONS = {
   fontSize: 13,
@@ -18712,7 +19193,7 @@ function EditorView({
   }, [fileId, editorReady]);
   React6.useEffect(() => {
     if (!fileId) return;
-    const remount = () => {
+    const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
       if (!payload?.inlineViz?.vizRequests?.size || !editorRef.current) return;
       viewZoneHandleRef.current?.cleanup();
@@ -18724,7 +19205,7 @@ function EditorView({
         fileId
       );
       viewZoneHandleRef.current?.resume();
-    };
+    }, "remount");
     const unsubViz = onNamedVizChanged(remount);
     const unsubOverrides = subscribeToZoneOverrides(fileId, remount);
     return () => {
@@ -18755,7 +19236,7 @@ function EditorView({
   onPlayRef.current = onPlay;
   const onStopRef = React6.useRef(onStop);
   onStopRef.current = onStop;
-  const handleMonacoMount = (editor, monaco) => {
+  const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
     setEditorReady(true);
@@ -18772,13 +19253,13 @@ function EditorView({
         id: "stave.play",
         label: "Play / Stop",
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-        run: () => onPlayRef.current?.()
+        run: /* @__PURE__ */ __name(() => onPlayRef.current?.(), "run")
       });
       editor.addAction({
         id: "stave.stop",
         label: "Stop",
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period],
-        run: () => onStopRef.current?.()
+        run: /* @__PURE__ */ __name(() => onStopRef.current?.(), "run")
       });
     }
     const model = editor.getModel?.();
@@ -18796,11 +19277,11 @@ function EditorView({
       });
     }
     onMount?.(editor, monaco);
-  };
-  const handleChange = (value) => {
+  }, "handleMonacoMount");
+  const handleChange = /* @__PURE__ */ __name((value) => {
     if (value === void 0) return;
     setContent2(value);
-  };
+  }, "handleChange");
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -18853,13 +19334,14 @@ function EditorView({
     }
   );
 }
-var ErrorBoundary = class extends React6__namespace.default.Component {
+__name(EditorView, "EditorView");
+var _ErrorBoundary = class _ErrorBoundary extends React6__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
-    this.reset = () => {
+    this.reset = /* @__PURE__ */ __name(() => {
       this.setState({ error: null });
-    };
+    }, "reset");
   }
   static getDerivedStateFromError(error) {
     return { error };
@@ -18916,6 +19398,8 @@ var ErrorBoundary = class extends React6__namespace.default.Component {
     );
   }
 };
+__name(_ErrorBoundary, "ErrorBoundary");
+var ErrorBoundary = _ErrorBoundary;
 
 // src/workspace/preview/vizLiveToggle.ts
 var STORAGE_PREFIX2 = "stave:vizLive:";
@@ -18928,11 +19412,13 @@ function safeLocalStorage3() {
     return null;
   }
 }
+__name(safeLocalStorage3, "safeLocalStorage");
 var values = /* @__PURE__ */ new Map();
 var listeners5 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
   return `${STORAGE_PREFIX2}${fileId}`;
 }
+__name(keyFor, "keyFor");
 function getVizLive(fileId) {
   const cached = values.get(fileId);
   if (cached !== void 0) return cached;
@@ -18942,6 +19428,7 @@ function getVizLive(fileId) {
   values.set(fileId, on);
   return on;
 }
+__name(getVizLive, "getVizLive");
 function setVizLive(fileId, on) {
   const prev = getVizLive(fileId);
   if (prev === on) return;
@@ -18950,9 +19437,11 @@ function setVizLive(fileId, on) {
   const set = listeners5.get(fileId);
   if (set) for (const cb of Array.from(set)) cb(on);
 }
+__name(setVizLive, "setVizLive");
 function toggleVizLive(fileId) {
   setVizLive(fileId, !getVizLive(fileId));
 }
+__name(toggleVizLive, "toggleVizLive");
 function onVizLiveChange(fileId, cb) {
   let set = listeners5.get(fileId);
   if (!set) {
@@ -18965,6 +19454,7 @@ function onVizLiveChange(fileId, cb) {
     if (set.size === 0) listeners5.delete(fileId);
   };
 }
+__name(onVizLiveChange, "onVizLiveChange");
 function payloadKey(ref, payload) {
   if (payload === null) return "none";
   if (ref.kind === "file") return `file:${ref.fileId}`;
@@ -18975,11 +19465,13 @@ function payloadKey(ref, payload) {
   }
   return "none";
 }
+__name(payloadKey, "payloadKey");
 function sourceRefKey(ref) {
   if (ref.kind === "file") return `ref:file:${ref.fileId}`;
   if (ref.kind === "none") return "ref:none";
   return "ref:default";
 }
+__name(sourceRefKey, "sourceRefKey");
 function PreviewView({
   fileId,
   provider,
@@ -19116,17 +19608,20 @@ function PreviewView({
     }
   );
 }
+__name(PreviewView, "PreviewView");
 
 // src/workspace/commands/CommandRegistry.ts
 var commandRegistry = /* @__PURE__ */ new Map();
 function registerCommand(cmd) {
   commandRegistry.set(cmd.id, cmd);
 }
+__name(registerCommand, "registerCommand");
 function executeCommand(id, ctx) {
   const cmd = commandRegistry.get(id);
   if (!cmd) return;
   cmd.execute(ctx);
 }
+__name(executeCommand, "executeCommand");
 var warnedCommands = /* @__PURE__ */ new Set();
 function warnOnceDisabled(commandId, language) {
   if (warnedCommands.has(commandId)) return;
@@ -19135,11 +19630,13 @@ function warnOnceDisabled(commandId, language) {
     `${commandId} not available for .${language} files`
   );
 }
+__name(warnOnceDisabled, "warnOnceDisabled");
 var __nextTabSeq = 0;
 function generateTabId(prefix) {
   __nextTabSeq += 1;
   return `${prefix}-${__nextTabSeq}-${Math.random().toString(36).slice(2, 7)}`;
 }
+__name(generateTabId, "generateTabId");
 function getLanguageFromTab(tab) {
   const file = getFile(tab.fileId);
   if (file) return file.language;
@@ -19161,6 +19658,7 @@ function getLanguageFromTab(tab) {
       return ext;
   }
 }
+__name(getLanguageFromTab, "getLanguageFromTab");
 function registerBuiltinCommands() {
   registerCommand({
     id: "workspace.openPreviewToSide",
@@ -19227,6 +19725,7 @@ function registerBuiltinCommands() {
     }
   });
 }
+__name(registerBuiltinCommands, "registerBuiltinCommands");
 registerBuiltinCommands();
 
 // src/workspace/commands/useKeyboardCommands.ts
@@ -19249,6 +19748,7 @@ function useKeyboardCommands(opts) {
         chordTimer = null;
       }
     }
+    __name(clearChord, "clearChord");
     function handler(e) {
       const isMeta = e.metaKey || e.ctrlKey;
       if (isMeta && e.key.toLowerCase() === "k" && !chordPending) {
@@ -19279,6 +19779,7 @@ function useKeyboardCommands(opts) {
         return;
       }
     }
+    __name(handler, "handler");
     window.addEventListener("keydown", handler);
     return () => {
       window.removeEventListener("keydown", handler);
@@ -19286,6 +19787,7 @@ function useKeyboardCommands(opts) {
     };
   }, []);
 }
+__name(useKeyboardCommands, "useKeyboardCommands");
 
 // src/workspace/preview/registry.ts
 var byExtension = /* @__PURE__ */ new Map();
@@ -19294,6 +19796,7 @@ function normalizeExtension(ext) {
   if (!ext) return void 0;
   return ext.startsWith(".") ? ext : `.${ext}`;
 }
+__name(normalizeExtension, "normalizeExtension");
 function extensionToLanguage(ext) {
   switch (ext) {
     case ".hydra":
@@ -19306,6 +19809,7 @@ function extensionToLanguage(ext) {
       return void 0;
   }
 }
+__name(extensionToLanguage, "extensionToLanguage");
 function registerPreviewProvider(provider) {
   for (const rawExt of provider.extensions) {
     const ext = normalizeExtension(rawExt);
@@ -19315,14 +19819,17 @@ function registerPreviewProvider(provider) {
     if (lang) byLanguage.set(lang, provider);
   }
 }
+__name(registerPreviewProvider, "registerPreviewProvider");
 function getPreviewProviderForExtension(extension) {
   const key = normalizeExtension(extension);
   if (!key) return void 0;
   return byExtension.get(key);
 }
+__name(getPreviewProviderForExtension, "getPreviewProviderForExtension");
 function getPreviewProviderForLanguage(language) {
   return byLanguage.get(language);
 }
+__name(getPreviewProviderForLanguage, "getPreviewProviderForLanguage");
 var previewProviderRegistry = byExtension;
 
 // src/workspace/groupLayout.ts
@@ -19334,6 +19841,7 @@ function findGroupCoords(layout, groupId) {
   }
   return null;
 }
+__name(findGroupCoords, "findGroupCoords");
 function allGroupIds(layout) {
   const out2 = [];
   for (const col of layout) {
@@ -19341,6 +19849,7 @@ function allGroupIds(layout) {
   }
   return out2;
 }
+__name(allGroupIds, "allGroupIds");
 function insertGroup(layout, targetId, direction, newId) {
   if (direction === "center") return layout;
   const coords = findGroupCoords(layout, targetId);
@@ -19364,10 +19873,12 @@ function insertGroup(layout, targetId, direction, newId) {
   ];
   return layout.map((col, i2) => i2 === c ? nextColumn : col);
 }
+__name(insertGroup, "insertGroup");
 function insertEdgeGroup(layout, position, newId) {
   const newCol = [newId];
   return position === "start" ? [newCol, ...layout] : [...layout, newCol];
 }
+__name(insertEdgeGroup, "insertEdgeGroup");
 function removeGroup(layout, groupId) {
   const coords = findGroupCoords(layout, groupId);
   if (!coords) return layout;
@@ -19378,6 +19889,7 @@ function removeGroup(layout, groupId) {
   }
   return layout.map((col, i2) => i2 === c ? nextColumn : col);
 }
+__name(removeGroup, "removeGroup");
 
 // src/workspace/playbackCoordinator.ts
 var registry2 = /* @__PURE__ */ new Map();
@@ -19396,6 +19908,7 @@ function registerPlaybackSource(sourceId, stop2, label) {
     }
   };
 }
+__name(registerPlaybackSource, "registerPlaybackSource");
 function notifyPlaybackStarted(sourceId) {
   if (currentlyPlaying === sourceId) return;
   for (const [id, src] of registry2) {
@@ -19412,11 +19925,13 @@ function notifyPlaybackStarted(sourceId) {
   currentlyPlaying = sourceId;
   fireChange();
 }
+__name(notifyPlaybackStarted, "notifyPlaybackStarted");
 function notifyPlaybackStopped(sourceId) {
   if (currentlyPlaying !== sourceId) return;
   currentlyPlaying = null;
   fireChange();
 }
+__name(notifyPlaybackStopped, "notifyPlaybackStopped");
 function fireChange() {
   if (changeListeners.size === 0) return;
   const snapshot = Array.from(changeListeners);
@@ -19427,6 +19942,7 @@ function fireChange() {
     }
   }
 }
+__name(fireChange, "fireChange");
 
 // src/workspace/sampleSound.ts
 var SAMPLE_SOUND_SOURCE_ID = "__sample__";
@@ -19434,7 +19950,7 @@ var SAMPLE_SOUND_LABEL = "Sample sound (test audio)";
 var SAMPLE_PATTERN_CYCLE_SECONDS = 2;
 var SAMPLE_PATTERN_NOTE_DURATION = 0.5;
 var SAMPLE_PATTERN_NOTES = [57, 60, 64, 67];
-var SampleSoundScheduler = class {
+var _SampleSoundScheduler = class _SampleSoundScheduler {
   constructor(ctx) {
     this.ctx = ctx;
   }
@@ -19474,6 +19990,8 @@ var SampleSoundScheduler = class {
     return events;
   }
 };
+__name(_SampleSoundScheduler, "SampleSoundScheduler");
+var SampleSoundScheduler = _SampleSoundScheduler;
 var state = null;
 function startSampleSound() {
   if (state) return;
@@ -19513,6 +20031,7 @@ function startSampleSound() {
   workspaceAudioBus.publish(SAMPLE_SOUND_SOURCE_ID, payload);
   notifyPlaybackStarted(SAMPLE_SOUND_SOURCE_ID);
 }
+__name(startSampleSound, "startSampleSound");
 function stopSampleSound() {
   if (!state) return;
   try {
@@ -19537,9 +20056,11 @@ function stopSampleSound() {
   state = null;
   notifyPlaybackStopped(SAMPLE_SOUND_SOURCE_ID);
 }
+__name(stopSampleSound, "stopSampleSound");
 function isSampleSoundPlaying() {
   return state !== null;
 }
+__name(isSampleSoundPlaying, "isSampleSoundPlaying");
 registerPlaybackSource(
   SAMPLE_SOUND_SOURCE_ID,
   stopSampleSound,
@@ -19561,7 +20082,7 @@ var DRUM_PATTERN = [
   },
   { s: "oh", midi: 46, beatOffsets: [1.75] }
 ];
-var DrumPatternScheduler = class {
+var _DrumPatternScheduler = class _DrumPatternScheduler {
   constructor(ctx) {
     this.ctx = ctx;
   }
@@ -19599,6 +20120,8 @@ var DrumPatternScheduler = class {
     return events;
   }
 };
+__name(_DrumPatternScheduler, "DrumPatternScheduler");
+var DrumPatternScheduler = _DrumPatternScheduler;
 var state2 = null;
 var starting = false;
 async function renderDrumLoopBuffer() {
@@ -19705,6 +20228,7 @@ async function renderDrumLoopBuffer() {
   }
   return offline.startRendering();
 }
+__name(renderDrumLoopBuffer, "renderDrumLoopBuffer");
 async function startDrumPattern() {
   if (state2 || starting) return;
   starting = true;
@@ -19738,6 +20262,7 @@ async function startDrumPattern() {
     starting = false;
   }
 }
+__name(startDrumPattern, "startDrumPattern");
 function stopDrumPattern() {
   if (!state2) return;
   try {
@@ -19759,9 +20284,11 @@ function stopDrumPattern() {
   state2 = null;
   notifyPlaybackStopped(DRUM_PATTERN_SOURCE_ID);
 }
+__name(stopDrumPattern, "stopDrumPattern");
 function isDrumPatternPlaying() {
   return state2 !== null || starting;
 }
+__name(isDrumPatternPlaying, "isDrumPatternPlaying");
 registerPlaybackSource(
   DRUM_PATTERN_SOURCE_ID,
   stopDrumPattern,
@@ -19779,7 +20306,7 @@ var CHORD_PROGRESSION = [
   { root: "F", notes: [53, 57, 60] },
   { root: "G", notes: [55, 59, 62] }
 ];
-var ChordProgressionScheduler = class {
+var _ChordProgressionScheduler = class _ChordProgressionScheduler {
   constructor(ctx) {
     this.ctx = ctx;
   }
@@ -19818,6 +20345,8 @@ var ChordProgressionScheduler = class {
     return events;
   }
 };
+__name(_ChordProgressionScheduler, "ChordProgressionScheduler");
+var ChordProgressionScheduler = _ChordProgressionScheduler;
 var state3 = null;
 var starting2 = false;
 async function renderChordLoopBuffer() {
@@ -19853,6 +20382,7 @@ async function renderChordLoopBuffer() {
   }
   return offline.startRendering();
 }
+__name(renderChordLoopBuffer, "renderChordLoopBuffer");
 async function startChordProgression() {
   if (state3 || starting2) return;
   starting2 = true;
@@ -19886,6 +20416,7 @@ async function startChordProgression() {
     starting2 = false;
   }
 }
+__name(startChordProgression, "startChordProgression");
 function stopChordProgression() {
   if (!state3) return;
   try {
@@ -19907,9 +20438,11 @@ function stopChordProgression() {
   state3 = null;
   notifyPlaybackStopped(CHORD_PROGRESSION_SOURCE_ID);
 }
+__name(stopChordProgression, "stopChordProgression");
 function isChordProgressionPlaying() {
   return state3 !== null || starting2;
 }
+__name(isChordProgressionPlaying, "isChordProgressionPlaying");
 registerPlaybackSource(
   CHORD_PROGRESSION_SOURCE_ID,
   stopChordProgression,
@@ -19921,32 +20454,32 @@ var BUILTIN_EXAMPLE_SOURCES = [
   {
     sourceId: SAMPLE_SOUND_SOURCE_ID,
     label: SAMPLE_SOUND_LABEL,
-    startIfIdle: () => {
+    startIfIdle: /* @__PURE__ */ __name(() => {
       if (!isSampleSoundPlaying()) startSampleSound();
-    },
-    stopIfRunning: () => {
+    }, "startIfIdle"),
+    stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isSampleSoundPlaying()) stopSampleSound();
-    }
+    }, "stopIfRunning")
   },
   {
     sourceId: DRUM_PATTERN_SOURCE_ID,
     label: DRUM_PATTERN_LABEL,
-    startIfIdle: () => {
+    startIfIdle: /* @__PURE__ */ __name(() => {
       if (!isDrumPatternPlaying()) startDrumPattern();
-    },
-    stopIfRunning: () => {
+    }, "startIfIdle"),
+    stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isDrumPatternPlaying()) stopDrumPattern();
-    }
+    }, "stopIfRunning")
   },
   {
     sourceId: CHORD_PROGRESSION_SOURCE_ID,
     label: CHORD_PROGRESSION_LABEL,
-    startIfIdle: () => {
+    startIfIdle: /* @__PURE__ */ __name(() => {
       if (!isChordProgressionPlaying()) startChordProgression();
-    },
-    stopIfRunning: () => {
+    }, "startIfIdle"),
+    stopIfRunning: /* @__PURE__ */ __name(() => {
       if (isChordProgressionPlaying()) stopChordProgression();
-    }
+    }, "stopIfRunning")
   }
 ];
 var BUILTIN_SOURCE_IDS = new Set(
@@ -19955,6 +20488,7 @@ var BUILTIN_SOURCE_IDS = new Set(
 function findBuiltinExampleSource(sourceId) {
   return BUILTIN_EXAMPLE_SOURCES.find((s) => s.sourceId === sourceId);
 }
+__name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
@@ -19967,6 +20501,7 @@ function notify2() {
     }
   }
 }
+__name(notify2, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
   notify2();
@@ -19977,23 +20512,28 @@ function registerBottomPanelTab(tab) {
     }
   };
 }
+__name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
     notify2();
   }
 }
+__name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
 function listBottomPanelTabs() {
   return Array.from(tabs.values());
 }
+__name(listBottomPanelTabs, "listBottomPanelTabs");
 function getBottomPanelTab(id) {
   return tabs.get(id);
 }
+__name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
   listeners6.add(cb);
   return () => {
     listeners6.delete(cb);
   };
 }
+__name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
 
 // src/workspace/bottomPanel/persistence.ts
 var BOTTOM_PANEL_HEIGHT_KEY = "stave:bottomPanel.height";
@@ -20010,6 +20550,7 @@ function clampHeight(value) {
   if (value > BOTTOM_PANEL_HEIGHT_MAX) return BOTTOM_PANEL_HEIGHT_MAX;
   return value;
 }
+__name(clampHeight, "clampHeight");
 function safeLocalStorage4() {
   try {
     if (typeof window === "undefined") return null;
@@ -20019,6 +20560,7 @@ function safeLocalStorage4() {
     return null;
   }
 }
+__name(safeLocalStorage4, "safeLocalStorage");
 function safeGetItem(key) {
   const ls = safeLocalStorage4();
   if (!ls) return null;
@@ -20028,6 +20570,7 @@ function safeGetItem(key) {
     return null;
   }
 }
+__name(safeGetItem, "safeGetItem");
 function safeSetItem(key, value) {
   const ls = safeLocalStorage4();
   if (!ls) return;
@@ -20036,6 +20579,7 @@ function safeSetItem(key, value) {
   } catch {
   }
 }
+__name(safeSetItem, "safeSetItem");
 function safeRemoveItem(key) {
   const ls = safeLocalStorage4();
   if (!ls) return;
@@ -20044,27 +20588,33 @@ function safeRemoveItem(key) {
   } catch {
   }
 }
+__name(safeRemoveItem, "safeRemoveItem");
 function readPersistedHeight() {
   const raw = safeGetItem(BOTTOM_PANEL_HEIGHT_KEY);
   if (raw == null) return BOTTOM_PANEL_HEIGHT_DEFAULT;
   const parsed = Number.parseFloat(raw);
   return clampHeight(parsed);
 }
+__name(readPersistedHeight, "readPersistedHeight");
 function readPersistedOpen() {
   const raw = safeGetItem(BOTTOM_PANEL_OPEN_KEY);
   return raw === "true";
 }
+__name(readPersistedOpen, "readPersistedOpen");
 function readPersistedActiveTabId() {
   const raw = safeGetItem(BOTTOM_PANEL_ACTIVE_TAB_KEY);
   if (raw == null || raw === "") return null;
   return raw;
 }
+__name(readPersistedActiveTabId, "readPersistedActiveTabId");
 function writePersistedHeight(value) {
   safeSetItem(BOTTOM_PANEL_HEIGHT_KEY, String(clampHeight(value)));
 }
+__name(writePersistedHeight, "writePersistedHeight");
 function writePersistedOpen(value) {
   safeSetItem(BOTTOM_PANEL_OPEN_KEY, value ? "true" : "false");
 }
+__name(writePersistedOpen, "writePersistedOpen");
 function writePersistedActiveTabId(value) {
   if (value == null) {
     safeRemoveItem(BOTTOM_PANEL_ACTIVE_TAB_KEY);
@@ -20072,6 +20622,7 @@ function writePersistedActiveTabId(value) {
   }
   safeSetItem(BOTTOM_PANEL_ACTIVE_TAB_KEY, value);
 }
+__name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
   return React6__namespace.createElement(
     "div",
@@ -20087,6 +20638,7 @@ function EmptyTimelineStub() {
     "(empty \u2014 wired in PR-B)"
   );
 }
+__name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
@@ -20098,6 +20650,7 @@ var CLOSED_HEIGHT = HEADER_HEIGHT + 1;
 function computeNewHeight(startY, currentY, startHeight) {
   return startHeight + (startY - currentY);
 }
+__name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
   const [value, setValueState] = React6__namespace.useState(opts.initial);
   const [dragging, setDragging] = React6__namespace.useState(false);
@@ -20181,17 +20734,20 @@ function useDragResize(opts) {
     dragging
   };
 }
+__name(useDragResize, "useDragResize");
 function renderTabBody(tab) {
   if (typeof tab.content === "function") {
     return tab.content();
   }
   return tab.content;
 }
+__name(renderTabBody, "renderTabBody");
 function pickInitialActiveTabId(tabs2) {
   const stored = readPersistedActiveTabId();
   if (stored && tabs2.some((t) => t.id === stored)) return stored;
   return tabs2[0]?.id ?? null;
 }
+__name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
   const [tabs2, setTabs] = React6__namespace.useState(
     () => listBottomPanelTabs()
@@ -20221,13 +20777,13 @@ function BottomPanel() {
     initial: height,
     min: BOTTOM_PANEL_HEIGHT_MIN,
     max: BOTTOM_PANEL_HEIGHT_MAX,
-    onCommit: (v) => {
+    onCommit: /* @__PURE__ */ __name((v) => {
       setHeight(v);
       writePersistedHeight(v);
-    }
+    }, "onCommit")
   });
   React6__namespace.useEffect(() => {
-    const flush = () => writePersistedHeight(height);
+    const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
@@ -20431,6 +20987,7 @@ function BottomPanel() {
     }
   );
 }
+__name(BottomPanel, "BottomPanel");
 var tabbarScrollStyleInjected = false;
 function ensureTabbarScrollStyle() {
   if (tabbarScrollStyleInjected) return;
@@ -20441,16 +20998,19 @@ function ensureTabbarScrollStyle() {
   document.head.appendChild(el);
   tabbarScrollStyleInjected = true;
 }
+__name(ensureTabbarScrollStyle, "ensureTabbarScrollStyle");
 function assertNever(value) {
   throw new Error(
     `WorkspaceShell: unhandled tab kind in dispatch: ${JSON.stringify(value)}`
   );
 }
+__name(assertNever, "assertNever");
 var __nextGroupSeq = 0;
 function generateGroupId() {
   __nextGroupSeq += 1;
   return `group-${__nextGroupSeq}-${Math.random().toString(36).slice(2, 7)}`;
 }
+__name(generateGroupId, "generateGroupId");
 var DRAG_MIME = "application/workspace-tab";
 function createInitialGroupState(initialTabs) {
   const id = generateGroupId();
@@ -20463,13 +21023,15 @@ function createInitialGroupState(initialTabs) {
   groups.set(id, group);
   return { groups, layout: [[id]], activeGroupId: id };
 }
+__name(createInitialGroupState, "createInitialGroupState");
 function tabFileName(tab) {
   const file = getFile(tab.fileId);
   if (!file) return tab.fileId;
   const parts2 = file.path.split("/");
   return parts2[parts2.length - 1];
 }
-var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
+__name(tabFileName, "tabFileName");
+var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   theme = "dark",
   height = "100%",
@@ -20827,13 +21389,13 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
   const shellActionsRef = React6.useRef(null);
   const shellActions = React6.useMemo(
     () => ({
-      addTab: (groupId, tab) => {
+      addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
           ...g,
           tabs: [...g.tabs, tab],
           activeTabId: tab.id
         }));
-      },
+      }, "addTab"),
       splitGroupWithTab,
       updateGroupBackground,
       closeTab: closeTabById,
@@ -20904,7 +21466,7 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
   const onSaveFileRef = React6.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
   React6.useEffect(() => {
-    const handler = (e) => {
+    const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
       const current2 = onSaveFileRef.current;
@@ -20913,7 +21475,7 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
       current2(tab);
-    };
+    }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
@@ -20927,11 +21489,11 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
     []
   );
   React6.useEffect(() => {
-    const onDragEnd = () => {
+    const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
       setDragOverTarget(null);
-    };
+    }, "onDragEnd");
     window.addEventListener("dragend", onDragEnd);
     window.addEventListener("drop", onDragEnd);
     return () => {
@@ -21121,7 +21683,7 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
                   file,
                   previewOpen: existingPreview !== null,
                   previewPaused: pausedPreviews.has(tab.fileId),
-                  onTogglePausePreview: () => {
+                  onTogglePausePreview: /* @__PURE__ */ __name(() => {
                     const wasPaused = pausedPreviews.has(tab.fileId);
                     setPausedPreviews((prev) => {
                       const next = new Set(prev);
@@ -21148,8 +21710,8 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
                         }
                       }
                     }
-                  },
-                  onChangePreviewSource: (nextRef) => {
+                  }, "onTogglePausePreview"),
+                  onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
                     const current2 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
@@ -21161,8 +21723,8 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
                         (t) => t.id === current2.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
-                  },
-                  onOpenPreview: (selectedSourceRef) => {
+                  }, "onChangePreviewSource"),
+                  onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
                     const current2 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
@@ -21196,23 +21758,23 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
                       "right",
                       newTab
                     );
-                  },
-                  onToggleBackground: () => {
+                  }, "onOpenPreview"),
+                  onToggleBackground: /* @__PURE__ */ __name(() => {
                     executeCommand("workspace.toggleBackgroundPreview", {
                       activeTab: tab,
                       activeGroupId: groupId,
                       activeGroup: groups.get(groupId) ?? null,
                       shell: shellActionsRef.current,
-                      getPreviewProvider: (lang) => {
+                      getPreviewProvider: /* @__PURE__ */ __name((lang) => {
                         const pTab = { kind: "preview", id: "", fileId: "", sourceRef: { kind: "default" } };
                         return previewProviderFor?.({ ...pTab, fileId: tab.fileId }) ?? void 0;
-                      }
+                      }, "getPreviewProvider")
                     });
-                  },
+                  }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
-                  onSave: () => {
+                  onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
-                  }
+                  }, "onSave")
                   // hotReload / onToggleHotReload are optional on the
                   // PreviewEditorChromeContext interface. Phase 10.2 ships
                   // a provider-level reload policy (always-on for viz);
@@ -21668,7 +22230,7 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
   React6.useImperativeHandle(
     forwardedRef,
     () => ({
-      openOrFocusFile: (fileId, options) => {
+      openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
         const preview = options?.preview === true;
         let foundGroupId = null;
         let foundTabId = null;
@@ -21742,8 +22304,8 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
           });
           return next;
         });
-      },
-      promoteTab: (tabId) => {
+      }, "openOrFocusFile"),
+      promoteTab: /* @__PURE__ */ __name((tabId) => {
         setGroups((prev) => {
           let changed = false;
           const next = /* @__PURE__ */ new Map();
@@ -21758,8 +22320,8 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
           }
           return changed ? next : prev;
         });
-      },
-      closeTabsForFile: (fileId) => {
+      }, "promoteTab"),
+      closeTabsForFile: /* @__PURE__ */ __name((fileId) => {
         const targets = [];
         for (const g of groups.values()) {
           for (const t of g.tabs) {
@@ -21769,8 +22331,8 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
           }
         }
         for (const tid of targets) closeTabById(tid);
-      },
-      closeOtherTabs: (tabId) => {
+      }, "closeTabsForFile"),
+      closeOtherTabs: /* @__PURE__ */ __name((tabId) => {
         let ownerGroup = null;
         for (const g of groups.values()) {
           if (g.tabs.some((t) => t.id === tabId)) {
@@ -21781,8 +22343,8 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
         if (!ownerGroup) return;
         const victims = ownerGroup.tabs.filter((t) => t.id !== tabId).map((t) => t.id);
         for (const tid of victims) closeTabById(tid);
-      },
-      closeAllTabsInGroup: (tabId) => {
+      }, "closeOtherTabs"),
+      closeAllTabsInGroup: /* @__PURE__ */ __name((tabId) => {
         let ownerGroup = null;
         for (const g of groups.values()) {
           if (g.tabs.some((t) => t.id === tabId)) {
@@ -21793,21 +22355,21 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
         if (!ownerGroup) return;
         const victims = ownerGroup.tabs.map((t) => t.id);
         for (const tid of victims) closeTabById(tid);
-      },
-      splitActiveGroup: (direction = "east") => {
+      }, "closeAllTabsInGroup"),
+      splitActiveGroup: /* @__PURE__ */ __name((direction = "east") => {
         if (!activeGroupId) return;
         handleSplit(activeGroupId, direction);
-      },
-      setBackgroundFile: (fileId, groupId) => {
+      }, "splitActiveGroup"),
+      setBackgroundFile: /* @__PURE__ */ __name((fileId, groupId) => {
         const gid = groupId ?? activeGroupId;
         if (!gid) return;
         updateGroupBackground(gid, fileId);
-      },
-      getBackgroundFileId: (groupId) => {
+      }, "setBackgroundFile"),
+      getBackgroundFileId: /* @__PURE__ */ __name((groupId) => {
         const gid = groupId ?? activeGroupId;
         if (!gid) return void 0;
         return groups.get(gid)?.backgroundFileId;
-      }
+      }, "getBackgroundFileId")
     }),
     [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground]
   );
@@ -21925,7 +22487,7 @@ var WorkspaceShell = React6.forwardRef(function WorkspaceShell2({
       ]
     }
   );
-});
+}, "WorkspaceShell"));
 function QuadrantGuideOverlay({
   target,
   shellRootRef
@@ -21982,6 +22544,7 @@ function QuadrantGuideOverlay({
     }
   );
 }
+__name(QuadrantGuideOverlay, "QuadrantGuideOverlay");
 var closeBtnStyle = {
   background: "none",
   border: "none",
@@ -22024,7 +22587,8 @@ function extractBpmFromCode(code) {
   }
   return void 0;
 }
-var LiveCodingRuntime = class {
+__name(extractBpmFromCode, "extractBpmFromCode");
+var _LiveCodingRuntime = class _LiveCodingRuntime {
   constructor(fileId, engine, getFileContent, subscribeToFile = null) {
     this.bufferedSchedulerRef = null;
     this.isInitialized = false;
@@ -22041,8 +22605,8 @@ var LiveCodingRuntime = class {
      * down. Set in the constructor so every instance participates in
      * single-source playback coordination from birth.
      */
-    this.unregisterFromPlaybackCoordinator = () => {
-    };
+    this.unregisterFromPlaybackCoordinator = /* @__PURE__ */ __name(() => {
+    }, "unregisterFromPlaybackCoordinator");
     // Live mode (autoRefresh) state.
     //
     // The subscription is lazily installed the first time `setAutoRefresh(true)`
@@ -22438,6 +23002,8 @@ var LiveCodingRuntime = class {
     }
   }
 };
+__name(_LiveCodingRuntime, "LiveCodingRuntime");
+var LiveCodingRuntime = _LiveCodingRuntime;
 
 // src/workspace/runtime/registry.ts
 var byExtension2 = /* @__PURE__ */ new Map();
@@ -22446,6 +23012,7 @@ function normalizeExtension2(ext) {
   if (!ext) return void 0;
   return ext.startsWith(".") ? ext : `.${ext}`;
 }
+__name(normalizeExtension2, "normalizeExtension");
 function registerRuntimeProvider(provider) {
   for (const rawExt of provider.extensions) {
     const ext = normalizeExtension2(rawExt);
@@ -22453,14 +23020,17 @@ function registerRuntimeProvider(provider) {
   }
   byLanguage2.set(provider.language, provider);
 }
+__name(registerRuntimeProvider, "registerRuntimeProvider");
 function getRuntimeProviderForExtension(extension) {
   const key = normalizeExtension2(extension);
   if (!key) return void 0;
   return byExtension2.get(key);
 }
+__name(getRuntimeProviderForExtension, "getRuntimeProviderForExtension");
 function getRuntimeProviderForLanguage(language) {
   return byLanguage2.get(language);
 }
+__name(getRuntimeProviderForLanguage, "getRuntimeProviderForLanguage");
 var liveCodingRuntimeRegistry = byExtension2;
 var DEFAULT_CODE = `// Welcome to Stave`;
 var FILE_ID = "__livecoding_editor__";
@@ -22625,6 +23195,7 @@ function LiveCodingEditor({
     }
   );
 }
+__name(LiveCodingEditor, "LiveCodingEditor");
 var DEFAULT_CODE2 = `// Welcome to Stave
 setcps(120/240)
 $: note("c3 e3 g3 b3").s("sine").gain(0.7)`;
@@ -22660,6 +23231,7 @@ function StrudelEditor({
     }
     return engineRef.current;
   }
+  __name(getEngine, "getEngine");
   React6.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
@@ -22773,9 +23345,10 @@ function StrudelEditor({
     }
   );
 }
+__name(StrudelEditor, "StrudelEditor");
 
 // src/engine/DemoEngine.ts
-var DemoEngine = class {
+var _DemoEngine = class _DemoEngine {
   constructor() {
     this.audioCtx = null;
     this.analyserNode = null;
@@ -22932,9 +23505,11 @@ var DemoEngine = class {
     return NOTES[note2.toLowerCase()] ?? 440;
   }
 };
+__name(_DemoEngine, "DemoEngine");
+var DemoEngine = _DemoEngine;
 
 // ../../../sonicPiWeb/src/engine/MinHeap.ts
-var MinHeap = class {
+var _MinHeap = class _MinHeap {
   constructor(keyFn) {
     this.data = [];
     this.keyFn = keyFn;
@@ -22988,6 +23563,8 @@ var MinHeap = class {
     }
   }
 };
+__name(_MinHeap, "MinHeap");
+var MinHeap = _MinHeap;
 
 // ../../../sonicPiWeb/src/engine/VirtualTimeScheduler.ts
 function cueGlobMatch(pattern, name2) {
@@ -22997,11 +23574,12 @@ function cueGlobMatch(pattern, name2) {
   const re = new RegExp("^" + escaped.replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
   return re.test(name2);
 }
+__name(cueGlobMatch, "cueGlobMatch");
 var DEFAULT_SCHED_AHEAD_TIME = 0.3;
 var DEFAULT_TICK_INTERVAL_MS = 25;
 var DEFAULT_TASK_BPM = 60;
 var HEAP_TIEBREAK_EPSILON = 1e-12;
-var VirtualTimeScheduler = class {
+var _VirtualTimeScheduler = class _VirtualTimeScheduler {
   constructor(options = {}) {
     this.tasks = /* @__PURE__ */ new Map();
     this.tickTimer = null;
@@ -23162,9 +23740,9 @@ var VirtualTimeScheduler = class {
     const entry = { audioTime, cb, cancelled: false };
     this.pendingCallbacks.push(entry);
     return {
-      cancel: () => {
+      cancel: /* @__PURE__ */ __name(() => {
         entry.cancelled = true;
-      }
+      }, "cancel")
     };
   }
   // ---------------------------------------------------------------------------
@@ -23372,6 +23950,8 @@ var VirtualTimeScheduler = class {
     }
   }
 };
+__name(_VirtualTimeScheduler, "VirtualTimeScheduler");
+var VirtualTimeScheduler = _VirtualTimeScheduler;
 
 // ../../../sonicPiWeb/src/engine/SeededRandom.ts
 var N = 624;
@@ -23379,7 +23959,7 @@ var M = 397;
 var MATRIX_A = 2567483615;
 var UPPER_MASK = 2147483648;
 var LOWER_MASK = 2147483647;
-var SeededRandom = class _SeededRandom {
+var _SeededRandom = class _SeededRandom {
   constructor(seed = 0) {
     /** Last seed passed to constructor or reset() — used by rand_reset / current_random_seed (#227). */
     this._lastSeed = 0;
@@ -23506,6 +24086,8 @@ var SeededRandom = class _SeededRandom {
     return clone.next();
   }
 };
+__name(_SeededRandom, "SeededRandom");
+var SeededRandom = _SeededRandom;
 
 // ../../../sonicPiWeb/src/engine/NoteToFreq.ts
 var SEMITONES_PER_OCTAVE = 12;
@@ -23537,17 +24119,21 @@ function noteToMidi3(note2) {
   if (accidental === "b") midi -= 1;
   return midi;
 }
+__name(noteToMidi3, "noteToMidi");
 function midiToFreq5(midi) {
   return A4_FREQ_HZ * Math.pow(2, (midi - A4_MIDI) / SEMITONES_PER_OCTAVE);
 }
+__name(midiToFreq5, "midiToFreq");
 function hzToMidi(freq) {
   return SEMITONES_PER_OCTAVE * Math.log2(freq / A4_FREQ_HZ) + A4_MIDI;
 }
+__name(hzToMidi, "hzToMidi");
 function noteToFreq2(note2) {
   return midiToFreq5(noteToMidi3(note2));
 }
+__name(noteToFreq2, "noteToFreq");
 var PITCH_CLASS_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"];
-var NoteInfo = class {
+var _NoteInfo = class _NoteInfo {
   constructor(midi) {
     this._midi = midi;
   }
@@ -23564,12 +24150,15 @@ var NoteInfo = class {
     return `${this.pitch_class()}${this.octave()}`;
   }
 };
+__name(_NoteInfo, "NoteInfo");
+var NoteInfo = _NoteInfo;
 function noteInfo(n) {
   return new NoteInfo(noteToMidi3(n));
 }
+__name(noteInfo, "noteInfo");
 
 // ../../../sonicPiWeb/src/engine/Ring.ts
-var Ring = class _Ring {
+var _Ring = class _Ring {
   constructor(items) {
     this._tick = 0;
     this.items = [...items];
@@ -23653,10 +24242,19 @@ var Ring = class _Ring {
     const offset = (n % len + len) % len;
     return new _Ring([...this.items.slice(offset), ...this.items.slice(0, offset)]);
   }
-  /** Mirror: [1,2,3] → [1,2,3,2,1] */
-  mirror() {
-    const mid = this.items.slice(1, -1).reverse();
-    return new _Ring([...this.items, ...mid]);
+  /**
+   * Mirror: `[a,b,c]` → `[a,b,c,c,b,a]` — endpoints duplicated, length 2N.
+   * Matches desktop Sonic Pi `core.rb:802`: `(self + self.reverse) * n`
+   * (optional `n` repeats the whole mirrored ring). #354 — previously this
+   * dropped the boundary duplication (desktop's `.reflect` shape) and was
+   * swapped with `reflect()`.
+   */
+  mirror(n = 1) {
+    const base = [...this.items, ...[...this.items].reverse()];
+    const reps = Math.max(0, Math.floor(n));
+    const out2 = [];
+    for (let i2 = 0; i2 < reps; i2++) out2.push(...base);
+    return new _Ring(out2);
   }
   /** First element. */
   first() {
@@ -23675,9 +24273,23 @@ var Ring = class _Ring {
     const otherItems = other instanceof _Ring ? other.toArray() : other;
     return new _Ring([...this.items, ...otherItems]);
   }
-  /** Reflect: like mirror but no middle duplication for even-length. */
-  reflect() {
-    return new _Ring([...this.items, ...[...this.items].reverse()]);
+  /**
+   * Reflect: `[a,b,c]` → `[a,b,c,b,a]` — palindrome, NO boundary duplication,
+   * length 2N-1. Matches desktop Sonic Pi `core.rb:796`:
+   * `res = self + self.reverse.drop(1); res += res.drop(1)*(n-1) if n>1`
+   * (`n<2` returns the single palindrome unchanged). #354 — previously this
+   * produced the boundary-duplicated shape (desktop's `.mirror`).
+   */
+  reflect(n = 1) {
+    let res = [...this.items, ...[...this.items].reverse().slice(1)];
+    const reps = Math.max(0, Math.floor(n));
+    if (reps > 1) {
+      const tail = res.slice(1);
+      const extra = [];
+      for (let i2 = 0; i2 < reps - 1; i2++) extra.push(...tail);
+      res = [...res, ...extra];
+    }
+    return new _Ring(res);
   }
   /** Last n elements. */
   take_last(n) {
@@ -23709,9 +24321,12 @@ var Ring = class _Ring {
     return this.items[Symbol.iterator]();
   }
 };
+__name(_Ring, "Ring");
+var Ring = _Ring;
 function ring(...values2) {
   return new Ring(values2);
 }
+__name(ring, "ring");
 function knit(...args2) {
   const result = [];
   for (let i2 = 0; i2 < args2.length - 1; i2 += 2) {
@@ -23721,6 +24336,7 @@ function knit(...args2) {
   }
   return new Ring(result);
 }
+__name(knit, "knit");
 function range(start2, end, stepOrOpts = 1) {
   const step = typeof stepOrOpts === "number" ? stepOrOpts : stepOrOpts.step ?? 1;
   const result = [];
@@ -23735,7 +24351,8 @@ function range(start2, end, stepOrOpts = 1) {
   }
   return new Ring(result);
 }
-var Ramp = class {
+__name(range, "range");
+var _Ramp = class _Ramp {
   constructor(items) {
     this._tick = 0;
     this.items = [...items];
@@ -23774,6 +24391,8 @@ var Ramp = class {
     return this.items[Symbol.iterator]();
   }
 };
+__name(_Ramp, "Ramp");
+var Ramp = _Ramp;
 function doubles(start2, num_doubles = 1) {
   if (typeof start2 !== "number") {
     throw new Error(`Start value for doubles needs to be a number, got: ${String(start2)}`);
@@ -23787,6 +24406,7 @@ function doubles(start2, num_doubles = 1) {
   }
   return new Ring(out2);
 }
+__name(doubles, "doubles");
 function halves(start2, num_halves = 1) {
   if (typeof start2 !== "number") {
     throw new Error(`Start value for halves needs to be a number, got: ${String(start2)}`);
@@ -23800,6 +24420,7 @@ function halves(start2, num_halves = 1) {
   }
   return new Ring(out2);
 }
+__name(halves, "halves");
 function line(start2, finish, stepsOrOpts = 4) {
   const steps = typeof stepsOrOpts === "number" ? stepsOrOpts : stepsOrOpts.steps ?? 4;
   const result = [];
@@ -23808,6 +24429,7 @@ function line(start2, finish, stepsOrOpts = 4) {
   }
   return new Ring(result);
 }
+__name(line, "line");
 
 // ../../../sonicPiWeb/src/engine/EuclideanRhythm.ts
 function spread(hits, total, rotation = 0) {
@@ -23820,6 +24442,7 @@ function spread(hits, total, rotation = 0) {
   }
   return new Ring(pattern);
 }
+__name(spread, "spread");
 function bjorklund2(hits, total) {
   let groups = [];
   for (let i2 = 0; i2 < total; i2++) {
@@ -23839,6 +24462,7 @@ function bjorklund2(hits, total) {
   }
   return groups.flat();
 }
+__name(bjorklund2, "bjorklund");
 
 // ../../../sonicPiWeb/src/engine/ChordScale.ts
 var CHORD_TYPES = {
@@ -24032,6 +24656,7 @@ function chord(root, type = "major", numOctavesOrOpts = 1) {
   }
   return new Ring(notes);
 }
+__name(chord, "chord");
 function scale(root, type = "major", numOctavesOrOpts = 1) {
   const numOctaves = typeof numOctavesOrOpts === "number" ? numOctavesOrOpts : numOctavesOrOpts.num_octaves ?? 1;
   const rootMidi = noteToMidi3(root);
@@ -24049,6 +24674,7 @@ function scale(root, type = "major", numOctavesOrOpts = 1) {
   notes.push(rootMidi + 12 * numOctaves);
   return new Ring(notes);
 }
+__name(scale, "scale");
 function chord_invert(notes, inversion) {
   const arr = Array.isArray(notes) ? [...notes] : notes.toArray();
   let inv = (inversion % arr.length + arr.length) % arr.length;
@@ -24058,9 +24684,11 @@ function chord_invert(notes, inversion) {
   }
   return new Ring(arr);
 }
+__name(chord_invert, "chord_invert");
 function note(n) {
   return noteToMidi3(n);
 }
+__name(note, "note");
 function note_range(low, high) {
   const lo = noteToMidi3(low);
   const hi = noteToMidi3(high);
@@ -24074,6 +24702,7 @@ function note_range(low, high) {
   }
   return new Ring(notes);
 }
+__name(note_range, "note_range");
 function chord_degree(degreeVal, root, scaleType = "major", chordNumNotes = 3) {
   const idx = parseDegree(degreeVal);
   scale(root, scaleType);
@@ -24092,6 +24721,7 @@ function chord_degree(degreeVal, root, scaleType = "major", chordNumNotes = 3) {
   }
   return new Ring(notes);
 }
+__name(chord_degree, "chord_degree");
 function degree(degreeVal, root, scaleType = "major") {
   const idx = parseDegree(degreeVal);
   const scaleIntervals = SCALE_TYPES[scaleType] ?? SCALE_TYPES["major"];
@@ -24100,6 +24730,7 @@ function degree(degreeVal, root, scaleType = "major") {
   const degIdx = (idx % len + len) % len;
   return noteToMidi3(root) + scaleIntervals[degIdx] + octOffset;
 }
+__name(degree, "degree");
 function parseDegree(d) {
   if (typeof d === "number") return d - 1;
   const roman = {
@@ -24113,22 +24744,27 @@ function parseDegree(d) {
   };
   return roman[d.toLowerCase()] ?? 0;
 }
+__name(parseDegree, "parseDegree");
 function chord_names() {
   return Object.keys(CHORD_TYPES);
 }
+__name(chord_names, "chord_names");
 function scale_names() {
   return Object.keys(SCALE_TYPES);
 }
+__name(scale_names, "scale_names");
 
 // ../../../sonicPiWeb/src/engine/ProgramBuilder.ts
 var DEFAULT_LOOP_BUDGET = 1e5;
-var InfiniteLoopError = class extends Error {
+var _InfiniteLoopError = class _InfiniteLoopError extends Error {
   constructor(message = "Infinite loop detected \u2014 did you forget a sleep?") {
     super(message);
     this.name = "InfiniteLoopError";
   }
 };
-var ProgramBuilder = class _ProgramBuilder {
+__name(_InfiniteLoopError, "InfiniteLoopError");
+var InfiniteLoopError = _InfiniteLoopError;
+var _ProgramBuilder = class _ProgramBuilder {
   constructor(seed = 0, initialTicks) {
     this.steps = [];
     this.currentSynth = "beep";
@@ -25084,6 +25720,8 @@ var ProgramBuilder = class _ProgramBuilder {
     return [...this.steps];
   }
 };
+__name(_ProgramBuilder, "ProgramBuilder");
+var ProgramBuilder = _ProgramBuilder;
 
 // ../../../sonicPiWeb/src/engine/config.ts
 var MIXER = {
@@ -25207,6 +25845,7 @@ var SYNTH_NAME_ALIASES = {
 function resolveSynthName(name2) {
   return SYNTH_NAME_ALIASES[name2] ?? name2;
 }
+__name(resolveSynthName, "resolveSynthName");
 var TIME_PARAMS = /* @__PURE__ */ new Set([
   // ADSR envelope
   "attack",
@@ -25343,6 +25982,7 @@ function normalizePlayParams(synthName, params, bpm, warnFn) {
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
+__name(normalizePlayParams, "normalizePlayParams");
 function normalizeSampleParams(params, bpm, warnFn) {
   const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
   let p = { ...params };
@@ -25354,6 +25994,7 @@ function normalizeSampleParams(params, bpm, warnFn) {
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
+__name(normalizeSampleParams, "normalizeSampleParams");
 function normalizeControlParams(params, bpm, warnFn) {
   const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
   let p = { ...params };
@@ -25362,6 +26003,7 @@ function normalizeControlParams(params, bpm, warnFn) {
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
+__name(normalizeControlParams, "normalizeControlParams");
 function normalizeFxParams(fxName, params, bpm, warnFn) {
   const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
   let p = { ...params };
@@ -25372,6 +26014,7 @@ function normalizeFxParams(fxName, params, bpm, warnFn) {
   if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
   return p;
 }
+__name(normalizeFxParams, "normalizeFxParams");
 function calculateSustain(params) {
   if (!("duration" in params)) return params;
   if ("sustain" in params) return params;
@@ -25384,6 +26027,7 @@ function calculateSustain(params) {
   p.sustain = sustain;
   return p;
 }
+__name(calculateSustain, "calculateSustain");
 function expandSlideParam(params) {
   if (!("slide" in params)) return params;
   const slideValue = params.slide;
@@ -25393,6 +26037,7 @@ function expandSlideParam(params) {
   }
   return p;
 }
+__name(expandSlideParam, "expandSlideParam");
 function stripNonScynthParams(params) {
   for (const key of STRIP_PARAMS) {
     if (key in params) {
@@ -25403,6 +26048,7 @@ function stripNonScynthParams(params) {
   }
   return params;
 }
+__name(stripNonScynthParams, "stripNonScynthParams");
 function resolveSymbolDefaults(params) {
   let p = params;
   for (const [param, targetParam] of SYMBOL_DEFAULTS) {
@@ -25413,9 +26059,11 @@ function resolveSymbolDefaults(params) {
   }
   return p;
 }
+__name(resolveSymbolDefaults, "resolveSymbolDefaults");
 function injectMandatoryDefaults(params) {
   return params;
 }
+__name(injectMandatoryDefaults, "injectMandatoryDefaults");
 function injectSynthTimeDefaults(synthName, params) {
   const name2 = synthName.replace(/^sonic-pi-/, "");
   const defaults = SYNTH_TIME_DEFAULTS_OVERRIDE[name2] ?? SYNTH_TIME_DEFAULTS_BASE;
@@ -25428,6 +26076,7 @@ function injectSynthTimeDefaults(synthName, params) {
   }
   return p;
 }
+__name(injectSynthTimeDefaults, "injectSynthTimeDefaults");
 function injectFxTimeDefaults(fxName, params) {
   const name2 = fxName.replace(/^(sonic-pi-)?fx_/, "");
   const defaults = FX_TIME_DEFAULTS[name2];
@@ -25441,6 +26090,7 @@ function injectFxTimeDefaults(fxName, params) {
   }
   return p;
 }
+__name(injectFxTimeDefaults, "injectFxTimeDefaults");
 function injectSampleDefaults(params) {
   const hasEnvelope = "attack" in params || "decay" in params || "sustain" in params || "release" in params;
   if (hasEnvelope) {
@@ -25450,6 +26100,7 @@ function injectSampleDefaults(params) {
   }
   return params;
 }
+__name(injectSampleDefaults, "injectSampleDefaults");
 function aliasSynthParams(synthName, params) {
   const name2 = synthName.replace(/^sonic-pi-/, "");
   const aliases = SYNTH_ALIASES[name2];
@@ -25464,6 +26115,7 @@ function aliasSynthParams(synthName, params) {
   }
   return p;
 }
+__name(aliasSynthParams, "aliasSynthParams");
 function mungeSynthOpts(synthName, params) {
   const name2 = synthName.replace(/^sonic-pi-/, "");
   if (name2 === "tb303") {
@@ -25477,6 +26129,7 @@ function mungeSynthOpts(synthName, params) {
   }
   return params;
 }
+__name(mungeSynthOpts, "mungeSynthOpts");
 function validateAndClamp(params, warnFn) {
   let p = params;
   for (const key of Object.keys(params)) {
@@ -25497,6 +26150,7 @@ function validateAndClamp(params, warnFn) {
   }
   return p;
 }
+__name(validateAndClamp, "validateAndClamp");
 function scaleTimeParamsToBpm(params, bpm) {
   if (bpm === 60) return params;
   const factor = 60 / bpm;
@@ -25510,6 +26164,7 @@ function scaleTimeParamsToBpm(params, bpm) {
   }
   return p;
 }
+__name(scaleTimeParamsToBpm, "scaleTimeParamsToBpm");
 function translateSampleOpts(opts, bpm, sampleDuration) {
   if (!opts) return {};
   const result = {};
@@ -25554,6 +26209,7 @@ function translateSampleOpts(opts, bpm, sampleDuration) {
   }
   return result;
 }
+__name(translateSampleOpts, "translateSampleOpts");
 var SIMPLE_SAMPLER_ARGS = /* @__PURE__ */ new Set([
   "amp",
   "amp_slide",
@@ -25605,6 +26261,7 @@ function selectSamplePlayer(opts) {
   }
   return "sonic-pi-basic_stereo_player";
 }
+__name(selectSamplePlayer, "selectSamplePlayer");
 
 // ../../../sonicPiWeb/src/engine/interpreters/AudioInterpreter.ts
 var NOTE_EVENT_VISUAL_DURATION = 0.25;
@@ -25943,6 +26600,7 @@ async function runProgram(program, ctx, fxCounter) {
   }
   ctx.bridge?.flushMessages();
 }
+__name(runProgram, "runProgram");
 
 // ../../../sonicPiWeb/src/engine/interpreters/QueryInterpreter.ts
 function queryProgram(program, begin, end, bpm, startTime = 0) {
@@ -25950,7 +26608,7 @@ function queryProgram(program, begin, end, bpm, startTime = 0) {
   let time = startTime;
   let currentSynth = "beep";
   let currentBpm = bpm;
-  const beatDuration = () => 60 / currentBpm;
+  const beatDuration = /* @__PURE__ */ __name(() => 60 / currentBpm, "beatDuration");
   for (const step of program) {
     if (time > end) break;
     switch (step.tag) {
@@ -26003,6 +26661,7 @@ function queryProgram(program, begin, end, bpm, startTime = 0) {
   }
   return events;
 }
+__name(queryProgram, "queryProgram");
 function programDurationAndBpm(program, bpm) {
   let dur = 0;
   let currentBpm = bpm;
@@ -26017,9 +26676,11 @@ function programDurationAndBpm(program, bpm) {
   }
   return { duration: dur, finalBpm: currentBpm };
 }
+__name(programDurationAndBpm, "programDurationAndBpm");
 function programDuration(program, bpm) {
   return programDurationAndBpm(program, bpm).duration;
 }
+__name(programDuration, "programDuration");
 function queryLoopProgram(input, begin, end, bpm) {
   const isFactory = typeof input === "function";
   let ticks;
@@ -26051,6 +26712,7 @@ function queryLoopProgram(input, begin, end, bpm) {
   }
   return events.sort((a, b) => a.time - b.time);
 }
+__name(queryLoopProgram, "queryLoopProgram");
 
 // ../../../sonicPiWeb/src/engine/osc.ts
 var NTP_EPOCH_OFFSET = 2208988800;
@@ -26059,9 +26721,11 @@ function audioTimeToNTP(audioTime, audioCtxCurrentTime) {
   const delta = audioTime - audioCtxCurrentTime;
   return wallNow + delta + NTP_EPOCH_OFFSET;
 }
+__name(audioTimeToNTP, "audioTimeToNTP");
 function pad4(n) {
   return n + 3 & -4;
 }
+__name(pad4, "pad4");
 var SINGLE_BUF = new ArrayBuffer(4096);
 var SINGLE_DV = new DataView(SINGLE_BUF);
 var MSG_BUF = new ArrayBuffer(4096);
@@ -26075,6 +26739,7 @@ function writeString2(dv, off, s) {
   while (off < end) dv.setUint8(off++, 0);
   return off;
 }
+__name(writeString2, "writeString");
 function writeNTP(dv, off, ntpTime) {
   const secs = Math.floor(ntpTime) >>> 0;
   const frac = (ntpTime - Math.floor(ntpTime)) * 4294967296 >>> 0;
@@ -26084,6 +26749,7 @@ function writeNTP(dv, off, ntpTime) {
   off += 4;
   return off;
 }
+__name(writeNTP, "writeNTP");
 function writeBundleTag(dv, off) {
   dv.setUint8(off++, 35);
   dv.setUint8(off++, 98);
@@ -26095,6 +26761,7 @@ function writeBundleTag(dv, off) {
   dv.setUint8(off++, 0);
   return off;
 }
+__name(writeBundleTag, "writeBundleTag");
 function writeArgs(dv, off, args2) {
   let types = ",";
   for (let i2 = 0; i2 < args2.length; i2++) {
@@ -26116,6 +26783,7 @@ function writeArgs(dv, off, args2) {
   }
   return off;
 }
+__name(writeArgs, "writeArgs");
 function encodeSingleBundle(ntpTime, address, args2) {
   let off = 0;
   off = writeBundleTag(SINGLE_DV, off);
@@ -26128,12 +26796,14 @@ function encodeSingleBundle(ntpTime, address, args2) {
   SINGLE_DV.setUint32(sizeOff, off - msgStart, false);
   return new Uint8Array(SINGLE_BUF, 0, off);
 }
+__name(encodeSingleBundle, "encodeSingleBundle");
 function encodeMessage(address, args2) {
   let off = 0;
   off = writeString2(MSG_DV, off, address);
   off = writeArgs(MSG_DV, off, args2);
   return new Uint8Array(MSG_BUF, 0, off);
 }
+__name(encodeMessage, "encodeMessage");
 function encodeBundle(ntpTime, messages) {
   let off = 0;
   off = writeBundleTag(MULTI_DV, off);
@@ -26147,6 +26817,7 @@ function encodeBundle(ntpTime, messages) {
   }
   return new Uint8Array(MULTI_BUF, 0, off);
 }
+__name(encodeBundle, "encodeBundle");
 
 // ../../../sonicPiWeb/src/engine/buildTrackMonitorSynthDef.ts
 var RATE_CONTROL = 1;
@@ -26160,6 +26831,7 @@ function writePstring(view, offset, s) {
   }
   return offset + s.length;
 }
+__name(writePstring, "writePstring");
 function writeUGen(view, offset, name2, rate, inputs, numOutputs, outputRate, special = 0) {
   offset = writePstring(view, offset, name2);
   view.setInt8(offset, rate);
@@ -26182,11 +26854,13 @@ function writeUGen(view, offset, name2, rate, inputs, numOutputs, outputRate, sp
   }
   return offset;
 }
+__name(writeUGen, "writeUGen");
 function writeParamName(view, offset, name2, index) {
   offset = writePstring(view, offset, name2);
   view.setInt16(offset, index, false);
   return offset + 2;
 }
+__name(writeParamName, "writeParamName");
 function buildTrackMonitorSynthDef() {
   const buf = new ArrayBuffer(246);
   const view = new DataView(buf);
@@ -26295,6 +26969,7 @@ function buildTrackMonitorSynthDef() {
   }
   return new Uint8Array(buf);
 }
+__name(buildTrackMonitorSynthDef, "buildTrackMonitorSynthDef");
 
 // ../../../sonicPiWeb/src/engine/SuperSonicBridge.ts
 function formatOscTrace(address, args2, audioTime) {
@@ -26329,6 +27004,7 @@ function formatOscTrace(address, args2, audioTime) {
   }
   return `[t:${audioTime.toFixed(4)}] ${address} ${args2.join(" ")}`;
 }
+__name(formatOscTrace, "formatOscTrace");
 var COMMON_SYNTHDEFS = [
   "sonic-pi-beep",
   "sonic-pi-saw",
@@ -27284,6 +27960,7 @@ var _SuperSonicBridge = class _SuperSonicBridge {
     this.loadedSamples.clear();
   }
 };
+__name(_SuperSonicBridge, "SuperSonicBridge");
 /** FX that require rand_buf injection — matches Desktop SP's on_start hooks.
  *  REF: synthinfo.rb:6960 FXSlicer, :7225 FXWobble, :7470 FXPanSlicer */
 _SuperSonicBridge.RAND_BUF_FX = /* @__PURE__ */ new Set([
@@ -27304,7 +27981,7 @@ var BYTES_PER_SAMPLE = 2;
 var WAV_RIFF_DATA_OFFSET = 36;
 var INT16_NEGATIVE_SCALE = 32768;
 var INT16_POSITIVE_SCALE = 32767;
-var Recorder = class _Recorder {
+var _Recorder = class _Recorder {
   constructor(audioCtx, source, options) {
     /** Per-channel chunk lists. chunks[ch] is an array of Float32Array buffers. */
     this.chunks = [];
@@ -27380,11 +28057,11 @@ var Recorder = class _Recorder {
     await new Promise((resolve) => {
       const prev = processor.onaudioprocess;
       let done = false;
-      const finish = () => {
+      const finish = /* @__PURE__ */ __name(() => {
         if (done) return;
         done = true;
         resolve();
-      };
+      }, "finish");
       processor.onaudioprocess = (e) => {
         prev?.call(processor, e);
         finish();
@@ -27517,6 +28194,8 @@ var Recorder = class _Recorder {
     }
   }
 };
+__name(_Recorder, "Recorder");
+var Recorder = _Recorder;
 
 // ../../../sonicPiWeb/src/engine/FxNames.ts
 var ALL_FX_NAMES = [
@@ -27962,12 +28641,12 @@ ${mergePolyfill}${stringRingPolyfill}${arrayAtPolyfill}${arrayTakePolyfill}${spO
   SANDBOX_WRAPPER_LINES = 2 + polyfillLineCount;
   try {
     const fn = new Function("__scope__", wrappedCode);
-    const execute = (...dslArgs) => {
+    const execute = /* @__PURE__ */ __name((...dslArgs) => {
       for (let i2 = 0; i2 < dslParamNames.length; i2++) {
         scope[dslParamNames[i2]] = dslArgs[i2];
       }
       return fn(scope);
-    };
+    }, "execute");
     return { execute, scopeHandle };
   } catch (e) {
     if (e instanceof SyntaxError) {
@@ -28006,6 +28685,7 @@ ${transpiledCode}
     }
   }
 }
+__name(createIsolatedExecutor, "createIsolatedExecutor");
 function validateCode(code) {
   const warnings = [];
   if (/\bconstructor\b/.test(code)) {
@@ -28016,6 +28696,7 @@ function validateCode(code) {
   }
   return warnings;
 }
+__name(validateCode, "validateCode");
 
 // ../../../sonicPiWeb/src/engine/TreeSitterTranspiler.ts
 var Parser2 = null;
@@ -28026,6 +28707,7 @@ function initTreeSitter(opts) {
   _initPromise = _doInit(opts);
   return _initPromise;
 }
+__name(initTreeSitter, "initTreeSitter");
 async function _doInit(opts) {
   const isBrowser = typeof window !== "undefined";
   let prevOnError = null;
@@ -28038,12 +28720,12 @@ async function _doInit(opts) {
       }
       return prevOnError ? prevOnError(...arguments) : false;
     };
-    rejectHandler = (e) => {
+    rejectHandler = /* @__PURE__ */ __name((e) => {
       const reason = String(e.reason ?? "");
       if (reason.includes("Aborted") || reason.includes("_abort") || reason.includes("LinkError")) {
         e.preventDefault();
       }
-    };
+    }, "rejectHandler");
     window.addEventListener("unhandledrejection", rejectHandler);
   }
   try {
@@ -28053,7 +28735,7 @@ async function _doInit(opts) {
     const rubyWasm = opts?.rubyWasmUrl ?? "/tree-sitter-ruby.wasm";
     const initWithTimeout = Promise.race([
       TSParser.init({
-        locateFile: (_filename, _scriptDir) => tsWasm
+        locateFile: /* @__PURE__ */ __name((_filename, _scriptDir) => tsWasm, "locateFile")
       }),
       new Promise(
         (_, reject) => setTimeout(() => reject(new Error("tree-sitter init timeout")), 5e3)
@@ -28078,9 +28760,11 @@ async function _doInit(opts) {
     }
   }
 }
+__name(_doInit, "_doInit");
 function isTreeSitterReady() {
   return Parser2 !== null && RubyLanguage !== null;
 }
+__name(isTreeSitterReady, "isTreeSitterReady");
 function treeSitterTranspile(ruby) {
   if (!isTreeSitterReady()) {
     return { code: "", ok: false, errors: ["tree-sitter not initialized"] };
@@ -28113,6 +28797,7 @@ function treeSitterTranspile(ruby) {
     return { code: js, ok: false, errors: [`Invalid JS output: ${e.message}`] };
   }
 }
+__name(treeSitterTranspile, "treeSitterTranspile");
 var BUILDER_METHODS = /* @__PURE__ */ new Set([
   // Core
   "play",
@@ -28808,6 +29493,7 @@ ${ctx.indent}}`;
     }
   }
 }
+__name(transpileNode, "transpileNode");
 var BARE_DSL_CALLS = /* @__PURE__ */ new Set([
   "play",
   "sleep",
@@ -28921,6 +29607,7 @@ ${bareJS.join("\n")}
   if (blockJS.length > 0) parts2.push(blockJS.join("\n"));
   return parts2.join("\n");
 }
+__name(transpileProgram, "transpileProgram");
 function transpileMethodCall(node, ctx) {
   const type = node.type;
   if (type === "call" || type === "method_call") {
@@ -29055,6 +29742,7 @@ ${ctx.indent}}`;
   }
   return node.text;
 }
+__name(transpileMethodCall, "transpileMethodCall");
 function transpileReceiverMethodCall(receiver, methodNode, argsNode, blockNode, fullNode, ctx) {
   const method = methodNode.text;
   const recStr = transpileNode(receiver, ctx);
@@ -29127,8 +29815,9 @@ ${ctx.indent}} }`;
   if (method === "shuffle") {
     return `__b.shuffle(${recStr})`;
   }
-  if (method === "mirror") {
-    return `${recStr}.mirror()`;
+  if (method === "mirror" || method === "reflect") {
+    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
+    return `${recStr}.${method}(${args3})`;
   }
   if (method === "ramp") {
     return `${recStr}.ramp()`;
@@ -29229,6 +29918,7 @@ ${ctx.indent}} }`;
   if (fullNode.text.includes("(")) return `${recStr}.${method}()`;
   return `${recStr}.${method}()`;
 }
+__name(transpileReceiverMethodCall, "transpileReceiverMethodCall");
 var SCOPE_RESOLUTION_MAP = {
   "Math::PI": "Math.PI",
   "Math::E": "Math.E",
@@ -29246,6 +29936,7 @@ function transpileScopeResolution(node, ctx) {
   );
   return "undefined";
 }
+__name(transpileScopeResolution, "transpileScopeResolution");
 var REPORT_BUG_URL = "https://github.com/MrityunjayBhardwaj/SonicPi.js/issues/new";
 function pushUnsupported(ctx, node, featureId, humanMessage) {
   const line2 = node.startPosition.row + 1;
@@ -29263,6 +29954,7 @@ function pushUnsupported(ctx, node, featureId, humanMessage) {
     `Line ${line2}: ${humanMessage}. Report: ${reportUrl}`
   );
 }
+__name(pushUnsupported, "pushUnsupported");
 var STRUCTURAL_WRAPPERS = /* @__PURE__ */ new Set([
   "program",
   "expression_statement",
@@ -29316,6 +30008,7 @@ function transpileLiveLoop(node, argsNode, blockNode, ctx) {
 ${bodyStr}
 ${ctx.indent}})`;
 }
+__name(transpileLiveLoop, "transpileLiveLoop");
 function transpileDefine(node, argsNode, blockNode, ctx, methodName = "define") {
   const args2 = argsNode?.namedChildren ?? [];
   let name2 = "unnamed";
@@ -29343,6 +30036,7 @@ ${ctx.indent}define(${JSON.stringify(name2)}, ${name2})`;
   }
   return decl;
 }
+__name(transpileDefine, "transpileDefine");
 function transpileDefonce(node, argsNode, blockNode, ctx) {
   const args2 = argsNode?.namedChildren ?? [];
   let name2 = "unnamed";
@@ -29377,6 +30071,7 @@ function transpileDefonce(node, argsNode, blockNode, ctx) {
 ${stmts.join("\n")}
 ${ctx.indent}})`;
 }
+__name(transpileDefonce, "transpileDefonce");
 function transpileWithBlock(methodName, argsNode, blockNode, ctx) {
   const args2 = argsNode?.namedChildren ?? [];
   const positional = [];
@@ -29417,6 +30112,7 @@ function transpileWithBlock(methodName, argsNode, blockNode, ctx) {
 ` + bodyStr + "\n" + ctx.indent + "}"].filter(Boolean);
   return `${prefix}${methodName}(${argParts.join(", ")})`;
 }
+__name(transpileWithBlock, "transpileWithBlock");
 function transpileInThread(argsNode, blockNode, ctx) {
   if (!blockNode) {
     const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
@@ -29497,6 +30193,7 @@ ${ctx.indent}})`);
   }
   return parts2.join("\n");
 }
+__name(transpileInThread, "transpileInThread");
 function transpileAt(argsNode, blockNode, ctx) {
   if (!blockNode) {
     const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
@@ -29517,6 +30214,7 @@ function transpileAt(argsNode, blockNode, ctx) {
 ${bodyStr}
 ${ctx.indent}})`;
 }
+__name(transpileAt, "transpileAt");
 function transpileTimeWarp(argsNode, blockNode, ctx) {
   if (!blockNode) {
     const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
@@ -29531,6 +30229,7 @@ function transpileTimeWarp(argsNode, blockNode, ctx) {
 ${bodyStr}
 ${ctx.indent}})`;
 }
+__name(transpileTimeWarp, "transpileTimeWarp");
 function transpileTuplets(argsNode, blockNode, ctx) {
   if (!blockNode) {
     const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
@@ -29557,6 +30256,7 @@ function transpileTuplets(argsNode, blockNode, ctx) {
 ${bodyStr}
 ${ctx.indent}})`;
 }
+__name(transpileTuplets, "transpileTuplets");
 function transpileDensity(argsNode, blockNode, ctx) {
   if (!blockNode) {
     const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
@@ -29575,6 +30275,7 @@ function transpileDensity(argsNode, blockNode, ctx) {
   lines.push("}");
   return lines.join("\n" + ctx.indent);
 }
+__name(transpileDensity, "transpileDensity");
 function transpileSynthCommand(argsNode, ctx) {
   if (!argsNode) return `__b.play(52, { synth: "beep" })`;
   const args2 = argsNode.namedChildren;
@@ -29605,6 +30306,7 @@ function transpileSynthCommand(argsNode, ctx) {
   const note2 = noteExpr ?? "52";
   return `__b.play(${note2}, ${optsStr})`;
 }
+__name(transpileSynthCommand, "transpileSynthCommand");
 function transpileIf(node, ctx) {
   const children = node.namedChildren;
   const condition = children[0];
@@ -29632,6 +30334,7 @@ function transpileIf(node, ctx) {
   }
   return result;
 }
+__name(transpileIf, "transpileIf");
 function transpileUnless(node, ctx) {
   const condition = node.namedChildren[0];
   const body2 = node.namedChildren[1];
@@ -29651,6 +30354,7 @@ function transpileUnless(node, ctx) {
   }
   return result;
 }
+__name(transpileUnless, "transpileUnless");
 function transpileCase(node, ctx) {
   const children = node.namedChildren;
   const expr = children[0];
@@ -29704,6 +30408,7 @@ function transpileCase(node, ctx) {
   }
   return result;
 }
+__name(transpileCase, "transpileCase");
 function transpileBeginRescue(node, ctx) {
   const children = node.namedChildren;
   let result = "try {\n";
@@ -29725,6 +30430,7 @@ function transpileBeginRescue(node, ctx) {
   result += ctx.indent + "}";
   return result;
 }
+__name(transpileBeginRescue, "transpileBeginRescue");
 function transpileString(node, ctx) {
   const hasInterpolation = node.namedChildren.some((c) => c.type === "interpolation");
   if (hasInterpolation) {
@@ -29744,12 +30450,14 @@ function transpileString(node, ctx) {
   }
   return node.text;
 }
+__name(transpileString, "transpileString");
 function transpileBlockBody(blockNode, ctx) {
   const bodyChildren = blockNode.namedChildren.filter(
     (c) => c.type !== "block_parameters"
   );
   return bodyChildren.map((c) => ctx.indent + "  " + transpileNode(c, ctx)).join("\n");
 }
+__name(transpileBlockBody, "transpileBlockBody");
 function transpileArgList(node, ctx, injectSrcLine = false) {
   const args2 = node.namedChildren;
   const positional = [];
@@ -29777,6 +30485,7 @@ function transpileArgList(node, ctx, injectSrcLine = false) {
   }
   return positional.join(", ");
 }
+__name(transpileArgList, "transpileArgList");
 function transpileArgListAsOpts(node, ctx) {
   const args2 = node.namedChildren;
   const opts = [];
@@ -29790,9 +30499,11 @@ function transpileArgListAsOpts(node, ctx) {
   }
   return `{ ${opts.join(", ")} }`;
 }
+__name(transpileArgListAsOpts, "transpileArgListAsOpts");
 function transpileChildren(node, ctx) {
   return node.namedChildren.map((c) => transpileNode(c, ctx)).filter((s) => s.trim() !== "").join("\n");
 }
+__name(transpileChildren, "transpileChildren");
 function detectLanguage(code) {
   const trimmed = code.trim();
   if (/\bdo\s*(\|.*\|)?\s*$/.test(trimmed)) return "ruby";
@@ -29808,6 +30519,7 @@ function detectLanguage(code) {
   if (/\bconst\b|\blet\b|\bvar\b/.test(trimmed)) return "js";
   return "ruby";
 }
+__name(detectLanguage, "detectLanguage");
 function autoTranspileDetailed(code) {
   const lang = detectLanguage(code);
   if (lang === "js") return { code, hasError: false };
@@ -29825,6 +30537,7 @@ function autoTranspileDetailed(code) {
   }
   return { code: tsResult.code, hasError: false, method: "tree-sitter" };
 }
+__name(autoTranspileDetailed, "autoTranspileDetailed");
 
 // ../../../sonicPiWeb/src/engine/examples.ts
 var examples = [
@@ -31194,6 +31907,7 @@ end`,
 function getExample(name2) {
   return examples.find((e) => e.name.toLowerCase() === name2.toLowerCase());
 }
+__name(getExample, "getExample");
 
 // ../../../sonicPiWeb/src/engine/SynthParams.ts
 var SYNTH_PARAMS = {
@@ -31297,11 +32011,13 @@ function getSynthParams(synthName) {
   const specific = SYNTH_PARAMS[synthName] ?? [];
   return [...common, ...specific];
 }
+__name(getSynthParams, "getSynthParams");
 function getFxParams(fxName) {
   const common = FX_PARAMS._common ?? [];
   const specific = FX_PARAMS[fxName] ?? [];
   return [...common, ...specific];
 }
+__name(getFxParams, "getFxParams");
 
 // ../../../sonicPiWeb/src/engine/FriendlyErrors.ts
 var KNOWN_SYNTHS = [
@@ -31432,6 +32148,7 @@ function extractLineFromStack(err2, lineOffset) {
   }
   return void 0;
 }
+__name(extractLineFromStack, "extractLineFromStack");
 function closestMatch(input, candidates) {
   let best = null;
   let bestDist = Infinity;
@@ -31444,6 +32161,7 @@ function closestMatch(input, candidates) {
   }
   return bestDist <= 3 ? best : null;
 }
+__name(closestMatch, "closestMatch");
 function editDistance(a, b) {
   const m = a.length, n = b.length;
   const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
@@ -31456,11 +32174,12 @@ function editDistance(a, b) {
   }
   return dp[m][n];
 }
+__name(editDistance, "editDistance");
 var ERROR_PATTERNS = [
   // Unknown synth
   {
-    test: (msg) => /unknown synth|synthdef.*not found|loadSynthDef/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /unknown synth|synthdef.*not found|loadSynthDef/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const nameMatch = msg.match(/sonic-pi-(\w+)/i) ?? msg.match(/synth[:\s]+["']?(\w+)["']?/i);
       const name2 = nameMatch?.[1]?.replace("sonic-pi-", "") ?? "unknown";
       const suggestion = closestMatch(name2, KNOWN_SYNTHS);
@@ -31472,12 +32191,12 @@ Available synths include: ${KNOWN_SYNTHS.slice(0, 8).map((s) => ":" + s).join(",
 
 Try: use_synth("${suggestion ?? "beep"}")`
       };
-    }
+    }, "transform")
   },
   // Unknown sample
   {
-    test: (msg) => /sample.*not found|loadSample.*failed|sample.*flac/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /sample.*not found|loadSample.*failed|sample.*flac/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const nameMatch = msg.match(/sample[:\s]*["']?(\w+)["']?/i) ?? msg.match(/(\w+)\.flac/i);
       const name2 = nameMatch?.[1] ?? "unknown";
       const suggestion = closestMatch(name2, KNOWN_SAMPLES);
@@ -31487,12 +32206,12 @@ Try: use_synth("${suggestion ?? "beep"}")`
 
 Some built-in samples: ${KNOWN_SAMPLES.slice(0, 6).map((s) => ":" + s).join(", ")}...`
       };
-    }
+    }, "transform")
   },
   // Unknown FX
   {
-    test: (msg) => /unknown fx|fx.*not found|loadSynthDef.*fx/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /unknown fx|fx.*not found|loadSynthDef.*fx/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const nameMatch = msg.match(/sonic-pi-fx_(\w+)/i) ?? msg.match(/fx[:\s]+["']?(\w+)["']?/i);
       const name2 = nameMatch?.[1]?.replace("sonic-pi-fx_", "") ?? "unknown";
       const suggestion = closestMatch(name2, KNOWN_FX);
@@ -31502,12 +32221,12 @@ Some built-in samples: ${KNOWN_SAMPLES.slice(0, 6).map((s) => ":" + s).join(", "
 
 Available FX include: ${KNOWN_FX.slice(0, 8).map((f) => ":" + f).join(", ")}...`
       };
-    }
+    }, "transform")
   },
   // Unknown parameter for synth or FX
   {
-    test: (msg) => /unknown param|invalid.*param|unrecognised.*param|unrecognized.*param/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /unknown param|invalid.*param|unrecognised.*param|unrecognized.*param/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const synthMatch = msg.match(/synth[:\s]+["']?(\w+)["']?/i);
       const fxMatch = msg.match(/fx[:\s]+["']?(\w+)["']?/i);
       const paramMatch = msg.match(/param(?:eter)?[:\s]+["']?(\w+)["']?/i);
@@ -31524,12 +32243,12 @@ Available FX include: ${KNOWN_FX.slice(0, 8).map((f) => ":" + f).join(", ")}...`
 Valid parameters for :${name2} include:
   ` + validParams.slice(0, 12).map((p) => ":" + p).join(", ") + (validParams.length > 12 ? "..." : "")
       };
-    }
+    }, "transform")
   },
   // Note out of range or invalid
   {
-    test: (msg) => /invalid note|note.*range|unknown note|cannot convert.*note/i.test(msg),
-    transform: (msg) => ({
+    test: /* @__PURE__ */ __name((msg) => /invalid note|note.*range|unknown note|cannot convert.*note/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => ({
       title: "Invalid note",
       message: `That doesn't look like a valid note.
 
@@ -31537,12 +32256,12 @@ Notes can be:
   - MIDI numbers: play(60)  (middle C)
   - Note names:   play("c4"), play("fs3"), play("eb5")
   - Symbols:      play("c4")  (use strings in JS, not Ruby symbols)`
-    })
+    }), "transform")
   },
   // sleep with bad value
   {
-    test: (msg) => /sleep.*NaN|sleep.*undefined|sleep.*negative/i.test(msg),
-    transform: (msg) => ({
+    test: /* @__PURE__ */ __name((msg) => /sleep.*NaN|sleep.*undefined|sleep.*negative/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => ({
       title: "Invalid sleep value",
       message: `sleep() needs a positive number of beats.
 
@@ -31550,12 +32269,12 @@ Examples:
   sleep(1)     \u2192 wait 1 beat
   sleep(0.5)   \u2192 wait half a beat
   sleep(0.25)  \u2192 wait a quarter beat`
-    })
+    }), "transform")
   },
   // Not initialized
   {
-    test: (msg) => /not initialized|call init/i.test(msg),
-    transform: () => ({
+    test: /* @__PURE__ */ __name((msg) => /not initialized|call init/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name(() => ({
       title: "Engine not ready",
       message: `The sound engine hasn't started yet.
 
@@ -31563,12 +32282,12 @@ Make sure to call init() before evaluating code:
   const engine = new SonicPiEngine()
   await engine.init()
   await engine.evaluate(code)`
-    })
+    }), "transform")
   },
   // Unknown task
   {
-    test: (msg) => /unknown task/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /unknown task/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const nameMatch = msg.match(/task[:\s]*["']?(\w+)["']?/i);
       const name2 = nameMatch?.[1] ?? "unknown";
       return {
@@ -31581,12 +32300,12 @@ Make sure your code defines the loop:
     await sleep(1)
   })`
       };
-    }
+    }, "transform")
   },
   // Transpile failure — code couldn't be converted to JS
   {
-    test: (msg) => /transpile|tree-?sitter|invalid js output/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /transpile|tree-?sitter|invalid js output/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const detail = msg.replace(/.*?:\s*/, "");
       return {
         title: "Code couldn't be understood",
@@ -31601,12 +32320,12 @@ Common causes:
 
 Tip: Try commenting out sections to find which part causes the issue.`
       };
-    }
+    }, "transform")
   },
   // Infinite loop detected
   {
-    test: (msg) => /infinite loop|did you forget.*sleep/i.test(msg),
-    transform: () => ({
+    test: /* @__PURE__ */ __name((msg) => /infinite loop|did you forget.*sleep/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name(() => ({
       title: "Infinite loop detected",
       message: `Your code is running in a tight loop without sleeping.
 
@@ -31618,12 +32337,12 @@ Every live_loop and loop needs a sleep:
   end
 
 Without sleep, the loop runs thousands of times per second and freezes the browser.`
-    })
+    }), "transform")
   },
   // Nil/undefined access (very common with get/set)
   {
-    test: (msg) => /cannot read prop.*of undefined|cannot read prop.*of null|undefined is not an object/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /cannot read prop.*of undefined|cannot read prop.*of null|undefined is not an object/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const propMatch = msg.match(/property '(\w+)'/i) ?? msg.match(/property "(\w+)"/i);
       const prop = propMatch?.[1] ?? "unknown";
       return {
@@ -31638,12 +32357,12 @@ Common causes:
 Tip: Make sure set() runs before get[], or provide a default:
   val = get[:myval] || 0`
       };
-    }
+    }, "transform")
   },
   // Wrong number of arguments
   {
-    test: (msg) => /expected \d+ arguments|takes \d+ arguments|too (many|few) arguments/i.test(msg),
-    transform: (msg) => ({
+    test: /* @__PURE__ */ __name((msg) => /expected \d+ arguments|takes \d+ arguments|too (many|few) arguments/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => ({
       title: "Wrong number of arguments",
       message: `${msg}
 
@@ -31653,12 +32372,12 @@ Check the function signature. In Sonic Pi:
   sample :bd_haus, rate: 2   \u2192 sample + options
 
 Options use key: value syntax (colon after the name).`
-    })
+    }), "transform")
   },
   // Stack overflow (deeply nested calls)
   {
-    test: (msg) => /maximum call stack|stack overflow/i.test(msg),
-    transform: () => ({
+    test: /* @__PURE__ */ __name((msg) => /maximum call stack|stack overflow/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name(() => ({
       title: "Code nested too deeply",
       message: `Your code has too many nested calls \u2014 it ran out of stack space.
 
@@ -31667,12 +32386,12 @@ Common causes:
   - Very deeply nested with_fx blocks (try reducing nesting)
 
 Tip: Make sure recursive functions have a base case that stops the recursion.`
-    })
+    }), "transform")
   },
   // Redeclaration error (const/let)
   {
-    test: (msg) => /redeclaration|has already been declared|identifier.*already/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /redeclaration|has already been declared|identifier.*already/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const varMatch = msg.match(/(?:of\s+|identifier\s+)'?(\w+)'?/i);
       const name2 = varMatch?.[1] ?? "variable";
       return {
@@ -31686,12 +32405,12 @@ In Sonic Pi, you can reassign variables freely:
 If you're seeing this error, it may be a transpiler issue.
 Try renaming the variable or restarting.`
       };
-    }
+    }, "transform")
   },
   // Invalid note / NaN play
   {
-    test: (msg) => /NaN.*play|play.*NaN|invalid.*midi/i.test(msg),
-    transform: () => ({
+    test: /* @__PURE__ */ __name((msg) => /NaN.*play|play.*NaN|invalid.*midi/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name(() => ({
       title: "Note couldn't be played",
       message: `The note value resolved to something that isn't a valid pitch.
 
@@ -31702,12 +32421,12 @@ Valid notes:
   play :fs5         \u2192 F-sharp in octave 5
 
 Note: Sharps use "s" (not #), flats use "b".`
-    })
+    }), "transform")
   },
   // Type errors (common JS mistakes)
   {
-    test: (msg) => /is not a function/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /is not a function/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const fnMatch = msg.match(/(\w+) is not a function/i);
       const fn = fnMatch?.[1] ?? "unknown";
       return {
@@ -31719,12 +32438,12 @@ Common causes:
   - Using a Ruby method that hasn't been implemented yet
   - Calling a DSL function outside a live_loop`
       };
-    }
+    }, "transform")
   },
   // ReferenceError (undefined variable)
   {
-    test: (msg) => /is not defined/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /is not defined/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const varMatch = msg.match(/(\w+) is not defined/i);
       const name2 = varMatch?.[1] ?? "unknown";
       return {
@@ -31734,12 +32453,12 @@ Common causes:
 If this is a Sonic Pi symbol like :${name2}, use a string instead: "${name2}"
 If this is a variable, make sure to define it with let or const first.`
       };
-    }
+    }, "transform")
   },
   // Parse errors from TreeSitter transpiler (contain "Parse error at line N")
   {
-    test: (msg) => /parse error at line/i.test(msg),
-    transform: (msg) => {
+    test: /* @__PURE__ */ __name((msg) => /parse error at line/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
       const errors = msg.split(";").map((s) => s.trim()).filter(Boolean);
       const formatted = errors.map((e) => `  ${e}`).join("\n");
       const lineMatch = msg.match(/parse error at line (\d+)/i);
@@ -31754,12 +32473,12 @@ Check for:
   - Mismatched quotes or parentheses`,
         line: line2
       };
-    }
+    }, "transform")
   },
   // Syntax errors (JS-level, from new Function())
   {
-    test: (msg) => /syntaxerror|unexpected token|unexpected end/i.test(msg),
-    transform: (msg) => ({
+    test: /* @__PURE__ */ __name((msg) => /syntaxerror|unexpected token|unexpected end/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => ({
       title: "Syntax error",
       message: `There's a syntax problem in your code.
 
@@ -31769,7 +32488,7 @@ Common causes:
   - Missing comma between arguments
 
 Tip: If you're writing Sonic Pi syntax, the transpiler handles most Ruby \u2192 JS conversion automatically.`
-    })
+    }), "transform")
   }
 ];
 function friendlyError(err2, lineOffset = 0) {
@@ -31794,12 +32513,14 @@ If this keeps happening, try simplifying your code and adding things back one at
     original: err2
   };
 }
+__name(friendlyError, "friendlyError");
 function formatFriendlyError(fe) {
   const lineInfo = fe.line ? ` (line ${fe.line})` : "";
   return `\u2500\u2500 ${fe.title}${lineInfo} \u2500\u2500
 
 ${fe.message}`;
 }
+__name(formatFriendlyError, "formatFriendlyError");
 
 // ../../../sonicPiWeb/src/engine/ComponentScan.ts
 function stripComments(code) {
@@ -31811,6 +32532,7 @@ function stripComments(code) {
     return line2;
   }).join("\n");
 }
+__name(stripComments, "stripComments");
 var NAME = "([a-zA-Z_][a-zA-Z0-9_]*)";
 var PATTERNS = [
   ["samples", new RegExp(`\\bsample\\s*\\(?\\s*[:"']${NAME}`, "g")],
@@ -31834,15 +32556,17 @@ function scanComponentNames(code) {
   }
   return manifest;
 }
+__name(scanComponentNames, "scanComponentNames");
 
 // ../../../sonicPiWeb/src/engine/ComponentResolver.ts
 function isCustomSampleName(name2) {
   return name2.startsWith("user_");
 }
+__name(isCustomSampleName, "isCustomSampleName");
 async function resolveComponentManifest(manifest, loaders) {
   const hardMisses = [];
   const warnings = [];
-  const settle = async (name2, loader, kind) => {
+  const settle = /* @__PURE__ */ __name(async (name2, loader, kind) => {
     try {
       await loader(name2);
     } catch {
@@ -31852,7 +32576,7 @@ async function resolveComponentManifest(manifest, loaders) {
         hardMisses.push(name2);
       }
     }
-  };
+  }, "settle");
   await Promise.all([
     ...[...manifest.samples].map((n) => settle(n, loaders.sample, "sample")),
     ...[...manifest.fx].map((n) => settle(n, loaders.fx, "fx")),
@@ -31862,6 +32586,7 @@ async function resolveComponentManifest(manifest, loaders) {
   warnings.sort();
   return { hardMisses, warnings };
 }
+__name(resolveComponentManifest, "resolveComponentManifest");
 
 // ../../../sonicPiWeb/src/engine/Stratum.ts
 function detectStratum(code) {
@@ -31894,9 +32619,10 @@ function detectStratum(code) {
   }
   return 1 /* S1 */;
 }
+__name(detectStratum, "detectStratum");
 
 // ../../../sonicPiWeb/src/engine/SoundEventStream.ts
-var SoundEventStream = class {
+var _SoundEventStream = class _SoundEventStream {
   constructor() {
     this.handlers = /* @__PURE__ */ new Set();
   }
@@ -31919,21 +32645,27 @@ var SoundEventStream = class {
     this.handlers.clear();
   }
 };
+__name(_SoundEventStream, "SoundEventStream");
+var SoundEventStream = _SoundEventStream;
 
 // ../../../sonicPiWeb/src/engine/Asserts.ts
-var AssertionFailedError = class extends Error {
+var _AssertionFailedError = class _AssertionFailedError extends Error {
   constructor(message) {
     super(message);
     this.name = "AssertionFailedError";
   }
 };
+__name(_AssertionFailedError, "AssertionFailedError");
+var AssertionFailedError = _AssertionFailedError;
 function fail(msg) {
   throw new AssertionFailedError(msg);
 }
+__name(fail, "fail");
 function assert(condition, msg) {
   if (!condition) fail(msg ?? `assert failed (got ${JSON.stringify(condition)})`);
   return true;
 }
+__name(assert, "assert");
 function assert_equal(a, b, msg) {
   if (a === b) return true;
   if (typeof a === "object" && typeof b === "object" && a !== null && b !== null) {
@@ -31941,6 +32673,7 @@ function assert_equal(a, b, msg) {
   }
   fail(msg ?? `assert_equal failed: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`);
 }
+__name(assert_equal, "assert_equal");
 function assert_similar(a, b, msg, epsilon = 1e-9) {
   if (typeof a === "number" && typeof b === "number") {
     if (Math.abs(a - b) > epsilon) {
@@ -31950,10 +32683,12 @@ function assert_similar(a, b, msg, epsilon = 1e-9) {
   }
   return assert_equal(a, b, msg);
 }
+__name(assert_similar, "assert_similar");
 function assert_not(condition, msg) {
   if (condition) fail(msg ?? `assert_not failed (got ${JSON.stringify(condition)})`);
   return true;
 }
+__name(assert_not, "assert_not");
 function assert_error(blockFn, msg) {
   try {
     blockFn();
@@ -31962,12 +32697,15 @@ function assert_error(blockFn, msg) {
   }
   fail(msg ?? "assert_error failed: block did not raise an exception");
 }
+__name(assert_error, "assert_error");
 function inc(x) {
   return x + 1;
 }
+__name(inc, "inc");
 function dec(x) {
   return x - 1;
 }
+__name(dec, "dec");
 
 // ../../../sonicPiWeb/src/engine/MidiBridge.ts
 var NOTE_ON = 144;
@@ -31984,7 +32722,7 @@ var MIDI_CLOCKS_PER_QUARTER_NOTE = 24;
 var PITCH_BEND_14BIT_MAX = 16383;
 var ALL_NOTES_OFF_CC = 123;
 var SECONDS_PER_MINUTE = 60;
-var MidiBridge = class {
+var _MidiBridge = class _MidiBridge {
   constructor() {
     this.midiAccess = null;
     /** All selected output ports — sends go to every one. */
@@ -32075,7 +32813,7 @@ var MidiBridge = class {
     if (this.inputListeners.has(deviceId)) return true;
     const input = this.midiAccess.inputs.get(deviceId);
     if (!input) return false;
-    const listener = (e) => this.handleMidiMessage(e);
+    const listener = /* @__PURE__ */ __name((e) => this.handleMidiMessage(e), "listener");
     input.addEventListener("midimessage", listener);
     this.inputListeners.set(deviceId, listener);
     this.selectedInputs.push(input);
@@ -32324,6 +33062,8 @@ var MidiBridge = class {
     this.handlers = [];
   }
 };
+__name(_MidiBridge, "MidiBridge");
+var MidiBridge = _MidiBridge;
 
 // ../../../sonicPiWeb/src/engine/SampleCatalog.ts
 var SAMPLES = [
@@ -32563,9 +33303,11 @@ var SAMPLES = [
 function getCategories() {
   return [...new Set(SAMPLES.map((s) => s.category))];
 }
+__name(getCategories, "getCategories");
 function getSampleNames() {
   return SAMPLES.map((s) => s.name);
 }
+__name(getSampleNames, "getSampleNames");
 
 // ../../../sonicPiWeb/src/engine/CustomSampleStore.ts
 var DB_NAME2 = "spw-custom-samples";
@@ -32584,6 +33326,7 @@ function openDB() {
     request.onerror = () => reject(request.error);
   });
 }
+__name(openDB, "openDB");
 async function loadAllCustomSamples() {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -32599,12 +33342,13 @@ async function loadAllCustomSamples() {
     };
   });
 }
+__name(loadAllCustomSamples, "loadAllCustomSamples");
 
 // ../../../sonicPiWeb/src/engine/SonicPiEngine.ts
 var CLAMP_WARN_RE = /clamped to .+ \((min|max)\)$/;
 var PREFLIGHT_TIMEOUT_MS = 5e3;
-var randomSuffix = () => Math.random().toString(36).slice(2, 6);
-var SonicPiEngine = class {
+var randomSuffix = /* @__PURE__ */ __name(() => Math.random().toString(36).slice(2, 6), "randomSuffix");
+var _SonicPiEngine = class _SonicPiEngine {
   constructor(options) {
     this.scheduler = null;
     this.bridge = null;
@@ -32801,9 +33545,9 @@ var SonicPiEngine = class {
           });
           const resolved = await Promise.race([
             resolveComponentManifest(manifest, {
-              sample: (n) => this.bridge.preloadSample(n),
-              synth: (n) => this.bridge.preloadSynth(n),
-              fx: (n) => this.bridge.preloadFx(n)
+              sample: /* @__PURE__ */ __name((n) => this.bridge.preloadSample(n), "sample"),
+              synth: /* @__PURE__ */ __name((n) => this.bridge.preloadSynth(n), "synth"),
+              fx: /* @__PURE__ */ __name((n) => this.bridge.preloadFx(n), "fx")
             }),
             timeout
           ]);
@@ -32834,7 +33578,7 @@ var SonicPiEngine = class {
         }
         const audioCtx = this.bridge?.audioContext;
         this.scheduler = new VirtualTimeScheduler({
-          getAudioTime: () => audioCtx?.currentTime ?? 0,
+          getAudioTime: /* @__PURE__ */ __name(() => audioCtx?.currentTime ?? 0, "getAudioTime"),
           schedAheadTime: this.schedAheadTime
         });
         this.scheduler.onLoopError((loopName, err2) => {
@@ -32876,32 +33620,32 @@ var SonicPiEngine = class {
       let defaultBpm = 60;
       let defaultSynth = "beep";
       const scheduler = this.scheduler;
-      const topLevelUseBpm = (bpm) => {
+      const topLevelUseBpm = /* @__PURE__ */ __name((bpm) => {
         defaultBpm = bpm;
-      };
-      const topLevelUseSynth = (name2) => {
+      }, "topLevelUseBpm");
+      const topLevelUseSynth = /* @__PURE__ */ __name((name2) => {
         defaultSynth = name2;
-      };
-      const topLevelUseArgBpmScaling = (_enabled) => {
-      };
-      const topLevelWithArgBpmScaling = (_enabled, fn) => {
+      }, "topLevelUseSynth");
+      const topLevelUseArgBpmScaling = /* @__PURE__ */ __name((_enabled) => {
+      }, "topLevelUseArgBpmScaling");
+      const topLevelWithArgBpmScaling = /* @__PURE__ */ __name((_enabled, fn) => {
         fn();
-      };
+      }, "topLevelWithArgBpmScaling");
       const pendingLoops = /* @__PURE__ */ new Map();
       const pendingDefaults = /* @__PURE__ */ new Map();
       let currentVolume = 1;
-      const set_volume = (vol) => {
+      const set_volume = /* @__PURE__ */ __name((vol) => {
         currentVolume = Math.max(0, Math.min(5, vol));
         this.bridge?.setMasterVolume(currentVolume / 5);
-      };
-      const setVolumeShared = (vol) => set_volume(vol);
-      const current_synth_fn = () => defaultSynth;
-      const current_volume_fn = () => currentVolume;
-      const warn = (msg) => {
+      }, "set_volume");
+      const setVolumeShared = /* @__PURE__ */ __name((vol) => set_volume(vol), "setVolumeShared");
+      const current_synth_fn = /* @__PURE__ */ __name(() => defaultSynth, "current_synth_fn");
+      const current_volume_fn = /* @__PURE__ */ __name(() => currentVolume, "current_volume_fn");
+      const warn = /* @__PURE__ */ __name((msg) => {
         if (this.printHandler) this.printHandler(`[Warning] ${msg}`);
         else console.warn("[SonicPi]", msg);
-      };
-      const recordingHandler = async (kind, filename) => {
+      }, "warn");
+      const recordingHandler = /* @__PURE__ */ __name(async (kind, filename) => {
         switch (kind) {
           case "start": {
             if (this.recorder && this.recorder.state === "recording") {
@@ -32949,8 +33693,8 @@ var SonicPiEngine = class {
             this.lastRecording = null;
             return;
         }
-      };
-      const synth_names_fn = () => [
+      }, "recordingHandler");
+      const synth_names_fn = /* @__PURE__ */ __name(() => [
         // Bells / oscillators
         "beep",
         "sine",
@@ -33027,27 +33771,27 @@ var SonicPiEngine = class {
         //   to silently fail per SP5. Track in artifacts/designs/full-parity-gaps.md.
         // Note: sound_in, sound_in_stereo, live_audio require Web Audio mic permission
         //   plumbing which is not yet implemented. Track separately.
-      ];
-      const fx_names_fn = () => [...ALL_FX_NAMES];
-      const load_sample_fn = (_name) => {
-      };
-      const sample_info_fn = (name2) => {
+      ], "synth_names_fn");
+      const fx_names_fn = /* @__PURE__ */ __name(() => [...ALL_FX_NAMES], "fx_names_fn");
+      const load_sample_fn = /* @__PURE__ */ __name((_name) => {
+      }, "load_sample_fn");
+      const sample_info_fn = /* @__PURE__ */ __name((name2) => {
         const dur = this.bridge?.getSampleDuration(name2);
         return dur !== void 0 ? { duration: dur } : null;
-      };
-      const all_sample_names_fn = () => sample_names();
-      const topLevelPuts = (...args2) => {
+      }, "sample_info_fn");
+      const all_sample_names_fn = /* @__PURE__ */ __name(() => sample_names(), "all_sample_names_fn");
+      const topLevelPuts = /* @__PURE__ */ __name((...args2) => {
         const msg = args2.map((a) => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
         if (this.printHandler) this.printHandler(msg);
         else console.log("[SonicPi]", msg);
-      };
-      const topLevelStop = () => {
-      };
-      const stop_loop = (name2) => {
+      }, "topLevelPuts");
+      const topLevelStop = /* @__PURE__ */ __name(() => {
+      }, "topLevelStop");
+      const stop_loop = /* @__PURE__ */ __name((name2) => {
         scheduler.stopLoop(name2);
-      };
+      }, "stop_loop");
       let scopeHandle = null;
-      const wrappedLiveLoop = (name2, builderFnOrOpts, maybeFn) => {
+      const wrappedLiveLoop = /* @__PURE__ */ __name((name2, builderFnOrOpts, maybeFn) => {
         let builderFn;
         let syncTarget = null;
         if (typeof builderFnOrOpts === "function") {
@@ -33078,7 +33822,7 @@ var SonicPiEngine = class {
           }
           this.loopSeeds.set(name2, Math.abs(hash));
         }
-        const asyncFn = async () => {
+        const asyncFn = /* @__PURE__ */ __name(async () => {
           if (syncTarget && !this.loopSynced.has(name2)) {
             this.loopSynced.add(name2);
             await scheduler.waitForSync(syncTarget, name2);
@@ -33157,7 +33901,7 @@ var SonicPiEngine = class {
             onRecordingEvent: recordingHandler
           });
           scheduler.fireCue(name2, name2);
-        };
+        }, "asyncFn");
         const parentBuilder = this.currentBuildBuilder;
         const inheritedBpm = this.buildNestingDepth > 0 && parentBuilder ? parentBuilder.currentBpm : defaultBpm;
         const inheritedSynth = this.buildNestingDepth > 0 && parentBuilder ? parentBuilder.currentDefaultSynth : defaultSynth;
@@ -33185,11 +33929,11 @@ var SonicPiEngine = class {
             task.outBus = loopBus;
           }
         }
-      };
+      }, "wrappedLiveLoop");
       const topFxStack = [];
       let currentFxScopeId = null;
       let fxScopeCounter = 0;
-      const topLevelWithFx = (fxName, optsOrFn, maybeFn) => {
+      const topLevelWithFx = /* @__PURE__ */ __name((fxName, optsOrFn, maybeFn) => {
         let opts;
         let fn;
         if (typeof optsOrFn === "function") {
@@ -33212,9 +33956,9 @@ var SonicPiEngine = class {
             currentFxScopeId = null;
           }
         }
-      };
+      }, "topLevelWithFx");
       const originalWrappedLiveLoop = wrappedLiveLoop;
-      const fxAwareWrappedLiveLoop = (name2, builderFnOrOpts, maybeFn) => {
+      const fxAwareWrappedLiveLoop = /* @__PURE__ */ __name((name2, builderFnOrOpts, maybeFn) => {
         let builderFn;
         let opts = null;
         if (typeof builderFnOrOpts === "function") {
@@ -33244,20 +33988,20 @@ var SonicPiEngine = class {
             originalWrappedLiveLoop(name2, builderFn);
           }
         }
-      };
+      }, "fxAwareWrappedLiveLoop");
       let storedRandomSeed = null;
-      const topLevelUseRandomSeed = (seed) => {
+      const topLevelUseRandomSeed = /* @__PURE__ */ __name((seed) => {
         storedRandomSeed = seed;
         topLevelBuilder.use_random_seed(seed);
-      };
-      const topLevelInThread = (fn) => {
+      }, "topLevelUseRandomSeed");
+      const topLevelInThread = /* @__PURE__ */ __name((fn) => {
         const name2 = `__thread_${Date.now()}_${randomSuffix()}`;
         fxAwareWrappedLiveLoop(name2, (b) => {
           fn(b);
           b.stop();
         });
-      };
-      const topLevelAt = (times, values2, fn) => {
+      }, "topLevelInThread");
+      const topLevelAt = /* @__PURE__ */ __name((times, values2, fn) => {
         for (let i2 = 0; i2 < times.length; i2++) {
           const t = times[i2];
           const v = values2 ? values2[i2] : void 0;
@@ -33272,20 +34016,20 @@ var SonicPiEngine = class {
             b.stop();
           });
         }
-      };
-      const topLevelDensity = (_factor, fn) => {
+      }, "topLevelAt");
+      const topLevelDensity = /* @__PURE__ */ __name((_factor, fn) => {
         if (typeof _factor === "function") {
           ;
           _factor(null);
         } else if (typeof fn === "function") {
           fn(null);
         }
-      };
-      const set = (key, value) => {
+      }, "topLevelDensity");
+      const set = /* @__PURE__ */ __name((key, value) => {
         this.globalStore.set(key, value);
-      };
-      const storeGet = (key) => this.globalStore.get(key) ?? null;
-      const getFn = (key) => storeGet(key);
+      }, "set");
+      const storeGet = /* @__PURE__ */ __name((key) => this.globalStore.get(key) ?? null, "storeGet");
+      const getFn = /* @__PURE__ */ __name((key) => storeGet(key), "getFn");
       const get = new Proxy(getFn, {
         get(target, property, receiver) {
           if (typeof property === "symbol" || property in target) {
@@ -33294,76 +34038,76 @@ var SonicPiEngine = class {
           return storeGet(property);
         }
       });
-      const get_cc = (controller, channel = 1) => this.midiBridge.getCCValue(controller, channel);
-      const get_pitch_bend = (channel = 1) => this.midiBridge.getPitchBend(channel);
-      const sample_names = () => getSampleNames();
-      const sample_groups = () => getCategories();
-      const sample_loaded = (name2) => {
+      const get_cc = /* @__PURE__ */ __name((controller, channel = 1) => this.midiBridge.getCCValue(controller, channel), "get_cc");
+      const get_pitch_bend = /* @__PURE__ */ __name((channel = 1) => this.midiBridge.getPitchBend(channel), "get_pitch_bend");
+      const sample_names = /* @__PURE__ */ __name(() => getSampleNames(), "sample_names");
+      const sample_groups = /* @__PURE__ */ __name(() => getCategories(), "sample_groups");
+      const sample_loaded = /* @__PURE__ */ __name((name2) => {
         if (!this.bridge) return false;
         return this.bridge.isSampleLoaded(name2);
-      };
-      const sample_duration = (name2) => {
+      }, "sample_loaded");
+      const sample_duration = /* @__PURE__ */ __name((name2) => {
         if (!this.bridge) return 0;
         return this.bridge.getSampleDuration(name2) ?? 0;
-      };
-      const midi = (note2, opts = {}) => {
+      }, "sample_duration");
+      const midi = /* @__PURE__ */ __name((note2, opts = {}) => {
         const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
         const vel = opts.velocity ?? opts.vel ?? 100;
         const sus = opts.sustain ?? 1;
         const ch = opts.channel ?? 1;
         this.midiBridge.noteOn(n, vel, ch);
         this.midiBridge.scheduleNoteOff(n, ch, sus);
-      };
-      const midi_note_on = (note2, velocity = 100, opts = {}) => {
+      }, "midi");
+      const midi_note_on = /* @__PURE__ */ __name((note2, velocity = 100, opts = {}) => {
         const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
         this.midiBridge.noteOn(n, velocity, opts.channel ?? 1);
-      };
-      const midi_note_off = (note2, opts = {}) => {
+      }, "midi_note_on");
+      const midi_note_off = /* @__PURE__ */ __name((note2, opts = {}) => {
         const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
         this.midiBridge.noteOff(n, opts.channel ?? 1);
-      };
-      const midi_cc = (controller, value, opts = {}) => this.midiBridge.cc(controller, value, opts.channel ?? 1);
-      const midi_pitch_bend = (val, opts = {}) => this.midiBridge.pitchBend(val, opts.channel ?? 1);
-      const midi_channel_pressure = (val, opts = {}) => this.midiBridge.channelPressure(val, opts.channel ?? 1);
-      const midi_poly_pressure = (note2, val, opts = {}) => this.midiBridge.polyPressure(note2, val, opts.channel ?? 1);
-      const midi_prog_change = (program, opts = {}) => this.midiBridge.programChange(program, opts.channel ?? 1);
-      const midi_clock_tick = () => this.midiBridge.clockTick();
-      const midi_start = () => this.midiBridge.midiStart();
-      const midi_stop = () => this.midiBridge.midiStop();
-      const midi_continue = () => this.midiBridge.midiContinue();
-      const midi_all_notes_off = (opts = {}) => this.midiBridge.allNotesOff(opts.channel ?? 1);
-      const midi_notes_off = (opts = {}) => this.midiBridge.allNotesOff(opts.channel ?? 1);
-      const midi_devices = () => this.midiBridge.getDevices();
-      const get_note_on = (channel = 1) => this.midiBridge.getLastNoteOn(channel);
-      const get_note_off = (channel = 1) => this.midiBridge.getLastNoteOff(channel);
+      }, "midi_note_off");
+      const midi_cc = /* @__PURE__ */ __name((controller, value, opts = {}) => this.midiBridge.cc(controller, value, opts.channel ?? 1), "midi_cc");
+      const midi_pitch_bend = /* @__PURE__ */ __name((val, opts = {}) => this.midiBridge.pitchBend(val, opts.channel ?? 1), "midi_pitch_bend");
+      const midi_channel_pressure = /* @__PURE__ */ __name((val, opts = {}) => this.midiBridge.channelPressure(val, opts.channel ?? 1), "midi_channel_pressure");
+      const midi_poly_pressure = /* @__PURE__ */ __name((note2, val, opts = {}) => this.midiBridge.polyPressure(note2, val, opts.channel ?? 1), "midi_poly_pressure");
+      const midi_prog_change = /* @__PURE__ */ __name((program, opts = {}) => this.midiBridge.programChange(program, opts.channel ?? 1), "midi_prog_change");
+      const midi_clock_tick = /* @__PURE__ */ __name(() => this.midiBridge.clockTick(), "midi_clock_tick");
+      const midi_start = /* @__PURE__ */ __name(() => this.midiBridge.midiStart(), "midi_start");
+      const midi_stop = /* @__PURE__ */ __name(() => this.midiBridge.midiStop(), "midi_stop");
+      const midi_continue = /* @__PURE__ */ __name(() => this.midiBridge.midiContinue(), "midi_continue");
+      const midi_all_notes_off = /* @__PURE__ */ __name((opts = {}) => this.midiBridge.allNotesOff(opts.channel ?? 1), "midi_all_notes_off");
+      const midi_notes_off = /* @__PURE__ */ __name((opts = {}) => this.midiBridge.allNotesOff(opts.channel ?? 1), "midi_notes_off");
+      const midi_devices = /* @__PURE__ */ __name(() => this.midiBridge.getDevices(), "midi_devices");
+      const get_note_on = /* @__PURE__ */ __name((channel = 1) => this.midiBridge.getLastNoteOn(channel), "get_note_on");
+      const get_note_off = /* @__PURE__ */ __name((channel = 1) => this.midiBridge.getLastNoteOff(channel), "get_note_off");
       let oscDefaultHost = "localhost";
       let oscDefaultPort = 4560;
-      const topLevelOscSend = (host, port, path, ...args2) => {
+      const topLevelOscSend = /* @__PURE__ */ __name((host, port, path, ...args2) => {
         if (this.oscHandler) {
           this.oscHandler(host, port, path, ...args2);
         } else {
           topLevelPuts(`[Warning] osc_send: no handler set \u2014 message to ${host}:${port}${path} dropped`);
         }
-      };
-      const use_osc = (host, port) => {
+      }, "topLevelOscSend");
+      const use_osc = /* @__PURE__ */ __name((host, port) => {
         oscDefaultHost = host;
         oscDefaultPort = port;
-      };
-      const osc = (path, ...args2) => topLevelOscSend(oscDefaultHost, oscDefaultPort, path, ...args2);
+      }, "use_osc");
+      const osc = /* @__PURE__ */ __name((path, ...args2) => topLevelOscSend(oscDefaultHost, oscDefaultPort, path, ...args2), "osc");
       const topLevelPrint = topLevelPuts;
-      const current_bpm = () => defaultBpm;
-      const quantise = (val, step) => Math.round(val / step) * step;
+      const current_bpm = /* @__PURE__ */ __name(() => defaultBpm, "current_bpm");
+      const quantise = /* @__PURE__ */ __name((val, step) => Math.round(val / step) * step, "quantise");
       const quantize = quantise;
-      const octs = (n, numOctaves = 1) => Array.from({ length: numOctaves }, (_, i2) => n + i2 * 12);
+      const octs = /* @__PURE__ */ __name((n, numOctaves = 1) => Array.from({ length: numOctaves }, (_, i2) => n + i2 * 12), "octs");
       const topLevelBuilder = new ProgramBuilder();
-      const tlRrand = (min, max) => topLevelBuilder.rrand(min, max);
-      const tlRrandI = (min, max) => topLevelBuilder.rrand_i(min, max);
-      const tlRand = (...args2) => topLevelBuilder.rand(...args2);
-      const tlRandI = (...args2) => topLevelBuilder.rand_i(...args2);
-      const tlChoose = (arr) => topLevelBuilder.choose(arr);
-      const tlDice = (n) => topLevelBuilder.dice(n ?? 6);
-      const tlOneIn = (n) => topLevelBuilder.one_in(n);
-      const tlRdist = (max, centre) => topLevelBuilder.rdist(max, centre ?? 0);
+      const tlRrand = /* @__PURE__ */ __name((min, max) => topLevelBuilder.rrand(min, max), "tlRrand");
+      const tlRrandI = /* @__PURE__ */ __name((min, max) => topLevelBuilder.rrand_i(min, max), "tlRrandI");
+      const tlRand = /* @__PURE__ */ __name((...args2) => topLevelBuilder.rand(...args2), "tlRand");
+      const tlRandI = /* @__PURE__ */ __name((...args2) => topLevelBuilder.rand_i(...args2), "tlRandI");
+      const tlChoose = /* @__PURE__ */ __name((arr) => topLevelBuilder.choose(arr), "tlChoose");
+      const tlDice = /* @__PURE__ */ __name((n) => topLevelBuilder.dice(n ?? 6), "tlDice");
+      const tlOneIn = /* @__PURE__ */ __name((n) => topLevelBuilder.one_in(n), "tlOneIn");
+      const tlRdist = /* @__PURE__ */ __name((max, centre) => topLevelBuilder.rdist(max, centre ?? 0), "tlRdist");
       const dslNames = [...DSL_NAMES];
       const dslValues = [
         topLevelBuilder,
@@ -34000,13 +34744,13 @@ var SonicPiEngine = class {
   }
   /** Register a handler for `puts` / `print` output from user code. */
   setPrintHandler(handler) {
-    const wrapped = (msg) => {
+    const wrapped = /* @__PURE__ */ __name((msg) => {
       if (CLAMP_WARN_RE.test(msg)) {
         if (this.warnDedup.has(msg)) return;
         this.warnDedup.add(msg);
       }
       handler(msg);
-    };
+    }, "wrapped");
     this.printHandler = wrapped;
     if (this.bridge) this.bridge.warnHandler = wrapped;
   }
@@ -34110,14 +34854,14 @@ var SonicPiEngine = class {
           for (const [name2, builderFn] of loopBuilders) {
             const task = scheduler?.getTask(name2);
             const bpm = task?.bpm ?? 60;
-            const factory = (ticks, iteration) => {
+            const factory = /* @__PURE__ */ __name((ticks, iteration) => {
               const builder = new ProgramBuilder(iteration ?? 0, ticks);
               if (task?.currentSynth && task.currentSynth !== "beep") {
                 builder.use_synth(task.currentSynth);
               }
               builderFn(builder);
               return { program: builder.build(), ticks: builder.getTicks() };
-            };
+            }, "factory");
             events.push(...queryLoopProgram(factory, begin, end, bpm));
           }
           return events.sort((a, b) => a.time - b.time);
@@ -34127,6 +34871,8 @@ var SonicPiEngine = class {
     return result;
   }
 };
+__name(_SonicPiEngine, "SonicPiEngine");
+var SonicPiEngine = _SonicPiEngine;
 
 // src/engine/sonicpi/adapter.ts
 var SUPERSONIC_CDN = "https://unpkg.com/supersonic-scsynth@latest";
@@ -34134,6 +34880,7 @@ async function importFromCDN(url) {
   const load = new Function("url", "return import(url)");
   return load(url);
 }
+__name(importFromCDN, "importFromCDN");
 function parseVizRequests(code) {
   const requests = /* @__PURE__ */ new Map();
   const lines = code.split("\n");
@@ -34198,10 +34945,12 @@ function parseVizRequests(code) {
   }
   return requests;
 }
+__name(parseVizRequests, "parseVizRequests");
 function stripVizCalls(code) {
   return code.replace(/^[ \t]*viz[ \t]+:\w+[ \t]*$/gm, "").replace(/^[ \t]*viz[ \t]*\([ \t]*["']\w+["'][ \t]*\)[ \t]*$/gm, "").replace(/^[ \t]*(?:\/\/|#)[ \t]*@viz[ \t]+\w+[ \t]*$/gm, "");
 }
-var SonicPiEngine2 = class {
+__name(stripVizCalls, "stripVizCalls");
+var _SonicPiEngine2 = class _SonicPiEngine2 {
   constructor(options) {
     this.raw = null;
     this.hapStream = new HapStream();
@@ -34325,6 +35074,8 @@ var SonicPiEngine2 = class {
     return bag;
   }
 };
+__name(_SonicPiEngine2, "SonicPiEngine");
+var SonicPiEngine2 = _SonicPiEngine2;
 
 // src/visualizers/mountVizRenderer.ts
 function mountVizRenderer(container, source, components, size, onError) {
@@ -34343,9 +35094,10 @@ function mountVizRenderer(container, source, components, size, onError) {
   ro.observe(container);
   return {
     renderer,
-    disconnect: () => ro.disconnect()
+    disconnect: /* @__PURE__ */ __name(() => ro.disconnect(), "disconnect")
   };
 }
+__name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
@@ -34384,6 +35136,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
     };
   }, [source]);
 }
+__name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
   const containerRef = React6.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
@@ -34403,6 +35156,7 @@ function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
     }
   );
 }
+__name(VizPanel, "VizPanel");
 function PianorollIcon() {
   return /* @__PURE__ */ jsxRuntime.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: [
     /* @__PURE__ */ jsxRuntime.jsx("rect", { x: "1", y: "3", width: "5", height: "2", rx: "0.5" }),
@@ -34410,9 +35164,11 @@ function PianorollIcon() {
     /* @__PURE__ */ jsxRuntime.jsx("rect", { x: "2", y: "11", width: "4", height: "2", rx: "0.5" })
   ] });
 }
+__name(PianorollIcon, "PianorollIcon");
 function ScopeIcon() {
   return /* @__PURE__ */ jsxRuntime.jsx("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M1 7 Q3.5 2 7 7 Q10.5 12 13 7" }) });
 }
+__name(ScopeIcon, "ScopeIcon");
 function SpectrumIcon() {
   return /* @__PURE__ */ jsxRuntime.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: [
     /* @__PURE__ */ jsxRuntime.jsx("line", { x1: "2", y1: "12", x2: "2", y2: "6" }),
@@ -34421,15 +35177,18 @@ function SpectrumIcon() {
     /* @__PURE__ */ jsxRuntime.jsx("line", { x1: "11", y1: "12", x2: "11", y2: "8" })
   ] });
 }
+__name(SpectrumIcon, "SpectrumIcon");
 function SpiralIcon() {
   return /* @__PURE__ */ jsxRuntime.jsx("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M7 7 Q7 4 9 4 Q12 4 12 7 Q12 11 7 11 Q2 11 2 7 Q2 2 7 2" }) });
 }
+__name(SpiralIcon, "SpiralIcon");
 function PitchwheelIcon() {
   return /* @__PURE__ */ jsxRuntime.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: [
     /* @__PURE__ */ jsxRuntime.jsx("circle", { cx: "7", cy: "7", r: "5" }),
     /* @__PURE__ */ jsxRuntime.jsx("circle", { cx: "7", cy: "3", r: "1", fill: "currentColor", stroke: "none" })
   ] });
 }
+__name(PitchwheelIcon, "PitchwheelIcon");
 function FscopeIcon() {
   return /* @__PURE__ */ jsxRuntime.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: [
     /* @__PURE__ */ jsxRuntime.jsx("line", { x1: "1", y1: "10", x2: "1", y2: "7" }),
@@ -34441,6 +35200,7 @@ function FscopeIcon() {
     /* @__PURE__ */ jsxRuntime.jsx("line", { x1: "13", y1: "10", x2: "13", y2: "9" })
   ] });
 }
+__name(FscopeIcon, "FscopeIcon");
 function WordfallIcon() {
   return /* @__PURE__ */ jsxRuntime.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: [
     /* @__PURE__ */ jsxRuntime.jsx("rect", { x: "1", y: "2", width: "3", height: "4", rx: "0.5" }),
@@ -34448,6 +35208,7 @@ function WordfallIcon() {
     /* @__PURE__ */ jsxRuntime.jsx("rect", { x: "10", y: "1", width: "3", height: "3", rx: "0.5" })
   ] });
 }
+__name(WordfallIcon, "WordfallIcon");
 function HydraIcon() {
   return /* @__PURE__ */ jsxRuntime.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 14 14", fill: "none", stroke: "currentColor", strokeWidth: "1.5", children: [
     /* @__PURE__ */ jsxRuntime.jsx("circle", { cx: "7", cy: "7", r: "3" }),
@@ -34457,6 +35218,7 @@ function HydraIcon() {
     /* @__PURE__ */ jsxRuntime.jsx("line", { x1: "10", y1: "7", x2: "13", y2: "7" })
   ] });
 }
+__name(HydraIcon, "HydraIcon");
 var ICON_MAP = {
   pianoroll: /* @__PURE__ */ jsxRuntime.jsx(PianorollIcon, {}),
   wordfall: /* @__PURE__ */ jsxRuntime.jsx(WordfallIcon, {}),
@@ -34472,10 +35234,10 @@ var ICON_MAP = {
 };
 function VizPicker({ descriptors, activeId, onIdChange, showVizPicker = true, availableComponents }) {
   if (!showVizPicker) return null;
-  const isEnabled = (d) => {
+  const isEnabled = /* @__PURE__ */ __name((d) => {
     if (!availableComponents || !d.requires?.length) return true;
     return d.requires.every((req) => availableComponents.includes(req));
-  };
+  }, "isEnabled");
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
@@ -34526,6 +35288,7 @@ function VizPicker({ descriptors, activeId, onIdChange, showVizPicker = true, av
     }
   );
 }
+__name(VizPicker, "VizPicker");
 function VizDropdown({
   descriptors,
   activeId,
@@ -34537,11 +35300,11 @@ function VizDropdown({
   const ref = React6.useRef(null);
   React6.useEffect(() => {
     if (!open) return;
-    const handler = (e) => {
+    const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
         setOpen(false);
       }
-    };
+    }, "handler");
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
@@ -34554,10 +35317,10 @@ function VizDropdown({
     arr.push(d);
     groups.set(key, arr);
   }
-  const isEnabled = (d) => {
+  const isEnabled = /* @__PURE__ */ __name((d) => {
     if (!availableComponents || !d.requires?.length) return true;
     return d.requires.every((req) => availableComponents.includes(req));
-  };
+  }, "isEnabled");
   const builtinIds = /* @__PURE__ */ new Set([
     "pianoroll",
     "wordfall",
@@ -34719,14 +35482,17 @@ function VizDropdown({
     }
   );
 }
+__name(VizDropdown, "VizDropdown");
 
 // src/workspace/preview/vizPresetBridge.ts
 function workspaceFileIdForPreset(presetId) {
   return `viz:${presetId}`;
 }
+__name(workspaceFileIdForPreset, "workspaceFileIdForPreset");
 function languageForPresetRenderer(renderer) {
   return renderer === "hydra" ? "hydra" : "p5js";
 }
+__name(languageForPresetRenderer, "languageForPresetRenderer");
 function seedFromPreset(preset) {
   const id = workspaceFileIdForPreset(preset.id);
   const path = `${preset.name}.${preset.renderer}`;
@@ -34736,11 +35502,13 @@ function seedFromPreset(preset) {
   });
   return id;
 }
+__name(seedFromPreset, "seedFromPreset");
 async function seedFromPresetId(presetId) {
   const preset = await VizPresetStore.get(presetId);
   if (!preset) return void 0;
   return seedFromPreset(preset);
 }
+__name(seedFromPresetId, "seedFromPresetId");
 async function flushToPreset(fileId, presetId) {
   const file = getFile(fileId);
   if (!file) return;
@@ -34760,10 +35528,12 @@ async function flushToPreset(fileId, presetId) {
   };
   await VizPresetStore.put(preset);
 }
+__name(flushToPreset, "flushToPreset");
 function getPresetIdForFile(file) {
   const metaId = file.meta?.presetId;
   return typeof metaId === "string" ? metaId : void 0;
 }
+__name(getPresetIdForFile, "getPresetIdForFile");
 function VizEditor({
   components: _components,
   hapStream: _hapStream,
@@ -34847,6 +35617,7 @@ function VizEditor({
     }
   );
 }
+__name(VizEditor, "VizEditor");
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err2) {
@@ -34867,6 +35638,7 @@ function parseStackLocation(err2) {
   if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) };
   return null;
 }
+__name(parseStackLocation, "parseStackLocation");
 function levenshtein(a, b) {
   if (a === b) return 0;
   const la = a.length;
@@ -34894,6 +35666,7 @@ function levenshtein(a, b) {
   }
   return prev[lb];
 }
+__name(levenshtein, "levenshtein");
 function fuzzyMatch(word, corpus, options = {}) {
   if (!word) return [];
   const lower = word.toLowerCase();
@@ -34910,6 +35683,7 @@ function fuzzyMatch(word, corpus, options = {}) {
   );
   return hits.slice(0, limit);
 }
+__name(fuzzyMatch, "fuzzyMatch");
 var REFERENCE_ERROR_PATTERNS = [
   // Chrome / Edge / Node: "foo is not defined"
   /^(\w+) is not defined$/,
@@ -34928,6 +35702,7 @@ function extractReferenceIdentifier(err2) {
   }
   return null;
 }
+__name(extractReferenceIdentifier, "extractReferenceIdentifier");
 var SOUND_NOT_FOUND_PATTERNS = [
   /sound\s+["']?([\w.-]+)["']?\s+not\s+found/i
 ];
@@ -34938,6 +35713,7 @@ function extractMissingSoundName(rawMessage) {
   }
   return null;
 }
+__name(extractMissingSoundName, "extractMissingSoundName");
 function buildAliasSuffix(missingName, ctx) {
   if (!ctx) return "";
   const parts2 = [];
@@ -34962,9 +35738,11 @@ function buildAliasSuffix(missingName, ctx) {
   }
   return parts2.length > 0 ? ` (${parts2.join("; ")})` : "";
 }
+__name(buildAliasSuffix, "buildAliasSuffix");
 function asRegExp(match) {
   return match instanceof RegExp ? match : new RegExp(match, "i");
 }
+__name(asRegExp, "asRegExp");
 function evalMistake(mistake, ctx) {
   const { detect } = mistake;
   if (detect.kind === "message") {
@@ -34976,6 +35754,7 @@ function evalMistake(mistake, ctx) {
   }
   return ctx.identifier !== null && ctx.identifier === detect.alias;
 }
+__name(evalMistake, "evalMistake");
 var SPECIFICITY = {
   message: 3,
   code: 2,
@@ -34992,6 +35771,7 @@ function rankHits(hits) {
   });
   return hits[0];
 }
+__name(rankHits, "rankHits");
 function collectMistakes(index, ctx) {
   const hits = [];
   let order = 0;
@@ -35032,9 +35812,11 @@ function collectMistakes(index, ctx) {
   }
   return rankHits(hits);
 }
+__name(collectMistakes, "collectMistakes");
 function defaultDocsUrl(runtime, name2) {
   return `/docs/reference/${runtime}/#${name2.toLowerCase()}`;
 }
+__name(defaultDocsUrl, "defaultDocsUrl");
 function formatFriendlyError2(err2, runtime, options = {}) {
   const rawMessage = typeof err2 === "object" && err2 !== null && "message" in err2 ? String(err2.message) : String(err2);
   const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 && typeof err2.stack === "string" ? err2.stack : void 0;
@@ -35042,7 +35824,7 @@ function formatFriendlyError2(err2, runtime, options = {}) {
   const identifier = extractReferenceIdentifier(err2);
   const missingName = extractMissingSoundName(rawMessage);
   const aliasSuffix = buildAliasSuffix(missingName, options.aliasContext);
-  const appendAlias = (msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg;
+  const appendAlias = /* @__PURE__ */ __name((msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg, "appendAlias");
   if (options.index) {
     const hit = collectMistakes(options.index, {
       rawMessage,
@@ -35113,15 +35895,18 @@ function formatFriendlyError2(err2, runtime, options = {}) {
     column: loc?.column
   };
 }
+__name(formatFriendlyError2, "formatFriendlyError");
 
 // src/visualizers/p5Compiler.ts
 function isFullLifecycleSketch(code) {
   return /\bfunction\s+(?:draw|setup|preload)\s*\(/.test(code);
 }
+__name(isFullLifecycleSketch, "isFullLifecycleSketch");
 var NEW_FUNCTION_HEADER_LINES = 2;
 function getP5LineOffset(code) {
   return isFullLifecycleSketch(code) ? FULL_LIFECYCLE_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES : LEGACY_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES;
 }
+__name(getP5LineOffset, "getP5LineOffset");
 function compileP5Code(code, source) {
   const body2 = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
   const lineOffset = getP5LineOffset(code);
@@ -35175,6 +35960,7 @@ function compileP5Code(code, source) {
     };
   };
 }
+__name(compileP5Code, "compileP5Code");
 var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  ";
 var FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || []).length;
 function buildFullLifecycleBody(userCode) {
@@ -35187,6 +35973,7 @@ function buildFullLifecycleBody(userCode) {
 }
   `;
 }
+__name(buildFullLifecycleBody, "buildFullLifecycleBody");
 var LEGACY_PREFIX = `
 with (p) {
   return {
@@ -35208,9 +35995,10 @@ function buildLegacyBody(userCode) {
 }
   `;
 }
+__name(buildLegacyBody, "buildLegacyBody");
 function installLifecycle(p, lifecycle, source, lineOffset) {
   const pi = p;
-  const reportLifecycleError = (hook, err2) => {
+  const reportLifecycleError = /* @__PURE__ */ __name((hook, err2) => {
     const error = err2 instanceof Error ? err2 : new Error(String(err2));
     const parts2 = formatFriendlyError2(error, "p5", { index: P5_DOCS_INDEX });
     const loc = parseStackLocation(error);
@@ -35225,8 +36013,8 @@ function installLifecycle(p, lifecycle, source, lineOffset) {
       line: userLine,
       column: loc?.column
     });
-  };
-  const wrap4 = (hook, fn) => {
+  }, "reportLifecycleError");
+  const wrap4 = /* @__PURE__ */ __name((hook, fn) => {
     if (!fn) return void 0;
     return function(...args2) {
       try {
@@ -35235,13 +36023,14 @@ function installLifecycle(p, lifecycle, source, lineOffset) {
         reportLifecycleError(hook, err2);
       }
     };
-  };
+  }, "wrap");
   if (lifecycle.preload) pi.preload = wrap4("preload", lifecycle.preload);
   pi.setup = wrap4("setup", lifecycle.setup) ?? function() {
     pi.createCanvas(pi.windowWidth, pi.windowHeight);
   };
   if (lifecycle.draw) pi.draw = wrap4("draw", lifecycle.draw);
 }
+__name(installLifecycle, "installLifecycle");
 function installErrorSketch(p, message) {
   const pi = p;
   pi.setup = function() {
@@ -35259,6 +36048,7 @@ function installErrorSketch(p, message) {
     pi.text(message, 12, 48, pi.width - 24, pi.height - 60);
   };
 }
+__name(installErrorSketch, "installErrorSketch");
 
 // src/visualizers/hydraCompiler.ts
 function compileHydraCode(code) {
@@ -35268,10 +36058,12 @@ function compileHydraCode(code) {
     fn(s, stave);
   };
 }
+__name(compileHydraCode, "compileHydraCode");
 var HYDRA_LINE_OFFSET = 2;
 function getHydraLineOffset() {
   return HYDRA_LINE_OFFSET;
 }
+__name(getHydraLineOffset, "getHydraLineOffset");
 
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
@@ -35282,7 +36074,7 @@ function compilePreset(preset) {
       label: name2,
       renderer: "hydra",
       requires,
-      factory: () => new HydraVizRenderer(compileHydraCode(code))
+      factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(compileHydraCode(code)), "factory")
     };
   }
   if (renderer === "p5") {
@@ -35296,11 +36088,12 @@ function compilePreset(preset) {
       // the file. Without it, a top-level `new Mp()` typo surfaced on
       // the preview canvas but nowhere else — no Console row, no
       // Monaco squiggle.
-      factory: () => new P5VizRenderer(compileP5Code(code, name2))
+      factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(code, name2)), "factory")
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
 }
+__name(compilePreset, "compilePreset");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
   const subscribe3 = React6.useCallback(
@@ -35325,6 +36118,7 @@ function useTrackMeta(fileId, trackId) {
   );
   return { meta, set };
 }
+__name(useTrackMeta, "useTrackMeta");
 var DB_NAME3 = "stave-snapshots";
 var DB_VERSION3 = 1;
 var STORE_NAME3 = "snapshots";
@@ -35343,12 +36137,14 @@ function openDb2() {
     req.onerror = () => reject(req.error);
   });
 }
+__name(openDb2, "openDb");
 function wrap2(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
+__name(wrap2, "wrap");
 var MAX_AUTO_SNAPSHOTS = 10;
 async function saveSnapshot(projectId, label, kind = "manual") {
   const doc = getActiveDoc();
@@ -35380,6 +36176,7 @@ async function saveSnapshot(projectId, label, kind = "manual") {
   db.close();
   return meta;
 }
+__name(saveSnapshot, "saveSnapshot");
 async function listSnapshots(projectId) {
   const db = await openDb2();
   const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
@@ -35387,6 +36184,7 @@ async function listSnapshots(projectId) {
   db.close();
   return all.map(({ bytes: _bytes, ...meta }) => meta).sort((a, b) => b.createdAt - a.createdAt);
 }
+__name(listSnapshots, "listSnapshots");
 async function deleteSnapshot(id) {
   const db = await openDb2();
   await wrap2(
@@ -35394,6 +36192,7 @@ async function deleteSnapshot(id) {
   );
   db.close();
 }
+__name(deleteSnapshot, "deleteSnapshot");
 async function restoreSnapshot(id) {
   const db = await openDb2();
   const stored = await wrap2(
@@ -35440,6 +36239,7 @@ async function restoreSnapshot(id) {
   });
   snapDoc.destroy();
 }
+__name(restoreSnapshot, "restoreSnapshot");
 
 // src/workspace/projectRegistry.ts
 var DB_NAME4 = "stave-projects";
@@ -35458,31 +36258,37 @@ function openDb3() {
     req.onerror = () => reject(req.error);
   });
 }
+__name(openDb3, "openDb");
 function tx2(db, mode) {
   return db.transaction(STORE_NAME4, mode).objectStore(STORE_NAME4);
 }
+__name(tx2, "tx");
 function wrap3(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
+__name(wrap3, "wrap");
 async function listProjects() {
   const db = await openDb3();
   const all = await wrap3(tx2(db, "readonly").getAll());
   db.close();
   return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 }
+__name(listProjects, "listProjects");
 async function getProject(id) {
   const db = await openDb3();
   const result = await wrap3(tx2(db, "readonly").get(id));
   db.close();
   return result;
 }
+__name(getProject, "getProject");
 async function getLastOpenedProject() {
   const list = await listProjects();
   return list[0];
 }
+__name(getLastOpenedProject, "getLastOpenedProject");
 async function createProject(name2) {
   const meta = {
     id: crypto.randomUUID(),
@@ -35495,6 +36301,7 @@ async function createProject(name2) {
   db.close();
   return meta;
 }
+__name(createProject, "createProject");
 async function touchProject(id) {
   const db = await openDb3();
   const store = tx2(db, "readwrite");
@@ -35504,6 +36311,7 @@ async function touchProject(id) {
   }
   db.close();
 }
+__name(touchProject, "touchProject");
 async function setProjectBackgroundFileId(id, fileId) {
   const db = await openDb3();
   const store = tx2(db, "readwrite");
@@ -35515,6 +36323,7 @@ async function setProjectBackgroundFileId(id, fileId) {
   }
   db.close();
 }
+__name(setProjectBackgroundFileId, "setProjectBackgroundFileId");
 async function setProjectBackgroundCrop(id, crop) {
   const db = await openDb3();
   const store = tx2(db, "readwrite");
@@ -35526,6 +36335,7 @@ async function setProjectBackgroundCrop(id, crop) {
   }
   db.close();
 }
+__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
 async function renameProject(id, name2) {
   const db = await openDb3();
   const store = tx2(db, "readwrite");
@@ -35535,6 +36345,7 @@ async function renameProject(id, name2) {
   }
   db.close();
 }
+__name(renameProject, "renameProject");
 async function deleteProject(id) {
   const db = await openDb3();
   await wrap3(tx2(db, "readwrite").delete(id));
@@ -35546,11 +36357,13 @@ async function deleteProject(id) {
     req.onblocked = () => resolve();
   });
 }
+__name(deleteProject, "deleteProject");
 async function duplicateProject(id) {
   const source = await getProject(id);
   if (!source) return void 0;
   return createProject(`${source.name} (copy)`);
 }
+__name(duplicateProject, "duplicateProject");
 function LiveModeToggle({
   autoRefresh,
   onToggle
@@ -35590,6 +36403,7 @@ function LiveModeToggle({
     }
   );
 }
+__name(LiveModeToggle, "LiveModeToggle");
 function StrudelChrome(ctx) {
   const {
     isPlaying,
@@ -35692,11 +36506,12 @@ function StrudelChrome(ctx) {
     }
   );
 }
+__name(StrudelChrome, "StrudelChrome");
 var STRUDEL_RUNTIME = {
   extensions: [".strudel"],
   language: "strudel",
-  createEngine: () => new StrudelEngine(),
-  renderChrome: (ctx) => /* @__PURE__ */ jsxRuntime.jsx(StrudelChrome, { ...ctx })
+  createEngine: /* @__PURE__ */ __name(() => new StrudelEngine(), "createEngine"),
+  renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsxRuntime.jsx(StrudelChrome, { ...ctx }), "renderChrome")
 };
 function SonicPiChrome(ctx) {
   const { isPlaying, error, bpm, onPlay, onStop, chromeExtras } = ctx;
@@ -35784,17 +36599,19 @@ function SonicPiChrome(ctx) {
     }
   );
 }
+__name(SonicPiChrome, "SonicPiChrome");
 var SONICPI_RUNTIME = {
   extensions: [".sonicpi"],
   language: "sonicpi",
-  createEngine: () => new SonicPiEngine2(),
-  renderChrome: (ctx) => /* @__PURE__ */ jsxRuntime.jsx(SonicPiChrome, { ...ctx })
+  createEngine: /* @__PURE__ */ __name(() => new SonicPiEngine2(), "createEngine"),
+  renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsxRuntime.jsx(SonicPiChrome, { ...ctx }), "renderChrome")
 };
 function refToString(ref) {
   if (ref.kind === "default") return "default";
   if (ref.kind === "none") return "none";
   return `file:${ref.fileId}`;
 }
+__name(refToString, "refToString");
 function stringToRef(value) {
   if (value === "default") return { kind: "default" };
   if (value === "none") return { kind: "none" };
@@ -35803,6 +36620,7 @@ function stringToRef(value) {
   }
   return { kind: "default" };
 }
+__name(stringToRef, "stringToRef");
 var primaryBtnStyle = {
   display: "flex",
   alignItems: "center",
@@ -35992,6 +36810,7 @@ function VizEditorChrome({
     }
   );
 }
+__name(VizEditorChrome, "VizEditorChrome");
 function createCompiledVizProvider(opts) {
   return {
     extensions: opts.extensions,
@@ -36002,7 +36821,7 @@ function createCompiledVizProvider(opts) {
     // D-07
     debounceMs: 300,
     // D-07
-    render: (ctx) => {
+    render: /* @__PURE__ */ __name((ctx) => {
       return /* @__PURE__ */ jsxRuntime.jsx(
         CompiledVizMount,
         {
@@ -36014,12 +36833,13 @@ function createCompiledVizProvider(opts) {
           fileId: ctx.file.id
         }
       );
-    },
-    renderEditorChrome: (ctx) => {
+    }, "render"),
+    renderEditorChrome: /* @__PURE__ */ __name((ctx) => {
       return /* @__PURE__ */ jsxRuntime.jsx(VizEditorChrome, { ...ctx });
-    }
+    }, "renderEditorChrome")
   };
 }
+__name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
   const { descriptor, compileError } = React6.useMemo(() => {
@@ -36096,7 +36916,7 @@ function CompiledVizMount(props) {
       setCurrentP5Source(file.path, getP5LineOffset(file.content));
     }
     let mounted = null;
-    const reportError = (e) => {
+    const reportError = /* @__PURE__ */ __name((e) => {
       const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
       const parts2 = formatFriendlyError2(e, runtime, { index });
       const offset = isP5 ? getP5LineOffset(file.content) : runtime === "hydra" ? getHydraLineOffset() : 0;
@@ -36111,7 +36931,7 @@ function CompiledVizMount(props) {
         line: line2,
         column: parts2.column
       });
-    };
+    }, "reportError");
     try {
       mounted = mountVizRenderer(
         el,
@@ -36212,6 +37032,7 @@ function CompiledVizMount(props) {
     }
   );
 }
+__name(CompiledVizMount, "CompiledVizMount");
 
 // src/workspace/preview/hydraViz.tsx
 var HYDRA_VIZ = createCompiledVizProvider({
@@ -36238,12 +37059,13 @@ function registerPresetAsNamedViz(preset) {
     return false;
   }
 }
+__name(registerPresetAsNamedViz, "registerPresetAsNamedViz");
 
 // src/workspace/engineLogMarkers.ts
 var OWNER = "stave-log";
 var installed2 = false;
 var activeMarkers = /* @__PURE__ */ new Set();
-var markerKey = (runtime, fileId) => `${runtime}:${fileId}`;
+var markerKey = /* @__PURE__ */ __name((runtime, fileId) => `${runtime}:${fileId}`, "markerKey");
 function findFileIdForSource(source) {
   const files = listWorkspaceFiles();
   const byPath = files.find((f) => f.path === source);
@@ -36252,6 +37074,7 @@ function findFileIdForSource(source) {
   if (byId) return byId.id;
   return null;
 }
+__name(findFileIdForSource, "findFileIdForSource");
 function getModelForFile(fileId) {
   const editor = getEditorForFile(fileId);
   const monaco = getMonacoNamespace();
@@ -36260,6 +37083,7 @@ function getModelForFile(fileId) {
   if (!model) return null;
   return { monaco, model };
 }
+__name(getModelForFile, "getModelForFile");
 function applyEntry(entry) {
   if (!entry.source || entry.line == null) return;
   const fileId = findFileIdForSource(entry.source);
@@ -36283,6 +37107,7 @@ function applyEntry(entry) {
   );
   activeMarkers.add(markerKey(entry.runtime, fileId));
 }
+__name(applyEntry, "applyEntry");
 function clearForFix(marker) {
   const prefix = `${marker.runtime}:`;
   if (!marker.source) {
@@ -36312,6 +37137,7 @@ function clearForFix(marker) {
   );
   activeMarkers.delete(markerKey(marker.runtime, fileId));
 }
+__name(clearForFix, "clearForFix");
 function installEngineLogMarkers() {
   if (installed2) return;
   installed2 = true;
@@ -36329,6 +37155,7 @@ function installEngineLogMarkers() {
     }
   });
 }
+__name(installEngineLogMarkers, "installEngineLogMarkers");
 
 // src/engine/globalErrorCatch.ts
 var installed3 = false;
@@ -36352,6 +37179,7 @@ function installGlobalErrorCatch() {
     }
   );
 }
+__name(installGlobalErrorCatch, "installGlobalErrorCatch");
 function emitFromGlobal(err2, _kind) {
   const parts2 = formatFriendlyError2(err2, "stave");
   const loc = parseStackLocation(err2);
@@ -36364,6 +37192,7 @@ function emitFromGlobal(err2, _kind) {
     column: loc?.column
   });
 }
+__name(emitFromGlobal, "emitFromGlobal");
 
 exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
 exports.BACKDROP_BLUR_VAR = BACKDROP_BLUR_VAR;
