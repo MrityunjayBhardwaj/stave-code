@@ -84,6 +84,17 @@ export function summarize(node: PatternIR): string {
       // vs `track: "d1"` for synthetic-from-$:); for now the IR fields are
       // visible via the children() drill-in.
       return `track: ${node.trackId}`
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // DEVELOPER chrome (PV35): show kind + RAW args verbatim so the
+    // developer sees exactly the source the parser tagged (matches the
+    // Code-with-via `[opaque: .method(args)]` shape — full call-site
+    // detail). LEAF — children() returns [] (no `via.inner`-style
+    // recurse, even when `body?` is set in Wave C; the Wave-A roots
+    // never carry body).
+    case 'Signal':
+      return node.args !== undefined ? `${node.kind}(${node.args})` : node.kind
+    case 'Builder':
+      return `${node.kind}(${node.args})`
   }
 }
 
@@ -140,6 +151,16 @@ export function children(node: PatternIR): readonly PatternIR[] {
     // children expose the body so the developer can drill into the
     // wrapped expression.
     case 'Track': return [node.body]
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // LEAF — no `via.inner`-style child to drill into. The amendment
+    // explicitly forbids "spurious recurse into a non-existent child"
+    // (the 20-17 MusicalTimeline:298 silent-wrong class). The `body?`
+    // field on Builder is Wave-C-OPAQUE-pending (chord/arrange) —
+    // absent in Wave A; if a Wave-C ground-first producer later sets
+    // it, this arm widens then. Matches the existing `default: return []`
+    // shape; made explicit per the PK18 FLOOR-grep completeness rule.
+    case 'Signal':
+    case 'Builder': return []
     default:      return []
   }
 }

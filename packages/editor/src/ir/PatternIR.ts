@@ -119,6 +119,30 @@ export type PatternIR =
         // a LEAF — deep walkers must NOT recurse into `via.inner` on it.
         | { literal: true; raw: string }
     }  // Opaque fallback for unparseable fragments OR opaque-fragment wrapper for unrecognised chain methods
+  // Phase 20-18 Wave A (PV53 / 20-17 G3 additive idiom). ADDITIVE union
+  // members for the curated signal/builder chain-ROOT family. Wave-0
+  // Lokāyata verdict (a): root-recognition-suffices — the existing
+  // `applyChain` carries any chain off a recognised root, so these tags
+  // model ONLY the ROOT token (no signal-expression-as-ARG recogniser).
+  // `kind` is the FROZEN Wave-0 curated-set membership (20-18-OBSERVATIONS
+  // ACTION 6) — no later wave widens it without provenance + a re-pose.
+  // The producer (`recogniseChainRoot`) is Wave B; the consumer audit
+  // (PV53) is CREATED here, DISCHARGED in Wave D. The `tag === 'Code' &&
+  // via === undefined` opaque fence above is byte-IDENTICAL (these are
+  // NEW members — zero edit to any existing member or the fence).
+  | { tag: 'Signal'
+      kind: 'sine' | 'cosine' | 'saw' | 'isaw' | 'tri' | 'square' | 'pulse'
+          | 'perlin' | 'berlin' | 'time'
+          | 'rand' | 'rand2' | 'brand'
+          | 'sine2' | 'cosine2' | 'saw2' | 'isaw2' | 'tri2' | 'square2'
+          | 'mousex' | 'mousey'
+      args?: string                                // RAW source slice for arg-taking signals — round-trip byte-fidelity; absent for 0-arity signals
+      loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+  | { tag: 'Builder'
+      kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL'
+      args: string                                 // RAW (untrimmed) arg slice — code-invariance (the Code.via.args convention)
+      body?: PatternIR                             // OPTIONAL — only for builders whose arg is a recursable pattern (Wave C; OPAQUE-pending → absent until grounded)
+      loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
 
 /**
  * Optional metadata accepted by every non-rest-spread smart constructor
@@ -224,4 +248,27 @@ export const IR = {
     attachMeta({ tag: 'Loop', body }, meta),
   code: (code: string, meta?: TagMeta): PatternIR =>
     attachMeta({ tag: 'Code', code, lang: 'strudel' }, meta),
+  // Phase 20-18 Wave A — signal/builder chain-ROOT smart constructors.
+  // Mirror the `attachMeta` convention: only set each field when truthy
+  // (the existing smart-constructor invariant — test fixtures that build
+  // bare `{ tag: 'Signal', kind }` and assert via `toEqual` keep working).
+  signal: (
+    kind: (PatternIR & { tag: 'Signal' })['kind'],
+    args?: string,
+    meta?: TagMeta,
+  ): PatternIR => {
+    const node: PatternIR = { tag: 'Signal', kind }
+    if (args) (node as { args?: string }).args = args
+    return attachMeta(node, meta)
+  },
+  builder: (
+    kind: (PatternIR & { tag: 'Builder' })['kind'],
+    args: string,
+    body?: PatternIR,
+    meta?: TagMeta,
+  ): PatternIR => {
+    const node: PatternIR = { tag: 'Builder', kind, args }
+    if (body) (node as { body?: PatternIR }).body = body
+    return attachMeta(node, meta)
+  },
 } as const

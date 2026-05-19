@@ -47,6 +47,15 @@ function miniSymbol(node: PatternIR): string {
     case 'Fast':     return `*${node.factor}` // mini *N path
     case 'Stack':    return '{}'
     case 'Seq':      return '[]'
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // UNREACHABLE in practice — miniSymbol is only invoked from
+    // projectedLabel's narrowed mini-notation arms (Sleep/Cycle/Choice/
+    // Elongate/Fast/Stack/Seq at lines below). Defensive cases per the
+    // PK18 FLOOR-grep completeness rule — fall through to the same
+    // shape as default (the existing `return node.tag` for narrowing).
+    // Existing default arm stays byte-UNCHANGED.
+    case 'Signal':
+    case 'Builder':  return node.tag
     default:         return node.tag // unreachable; for narrowing
   }
 }
@@ -156,6 +165,19 @@ export function projectedLabel(node: PatternIR): string | undefined {
       // circuit because the synthetic case still has a meaningful name
       // (`d{N}` from the `$:` block index) rather than a leaked tag.
       return node.trackId
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // MUSICIAN chrome (PV35 / PV32 — no IR-tag leak): label = the
+    // user-typed kind token (`sine`, `perlin`, `irand`, `binary`) — the
+    // discriminator IS what the user wrote at the call site (Wave-0
+    // ACTION 5 verdict (a)). The userMethod-first short-circuit at
+    // lines 59-61 does NOT fire here (chain ROOTS have no `.method()`
+    // call → userMethod undefined by construction). PV32 satisfied: no
+    // IR-tag identifier ('Signal'/'Builder') is ever shown to the
+    // musician; only the kind (the source token) is. LEAF — projection
+    // children below returns [] for these tags.
+    case 'Signal':
+    case 'Builder':
+      return node.kind
     default: {
       // Exhaustiveness check — TS error if a tag is missing.
       const _exhaustive: never = node
@@ -266,6 +288,17 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
       // children (flattening the row hierarchy) is deferred to 20-12
       // chrome polish.
       return [node.body]
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // LEAF — explicitly NO spurious recurse into a non-existent child
+    // (the named amendment trap: the 20-17 MusicalTimeline:298 silent-
+    // wrong class). The `body?` field on Builder is Wave-C-OPAQUE-
+    // pending (chord/arrange ground-first); absent in Wave A. If Wave C
+    // later sets `body` for chord/arrange, this arm widens then —
+    // adding a Wave-A recurse now would mis-render every existing
+    // Signal/Builder root (which is every Wave-A producer output).
+    case 'Signal':
+    case 'Builder':
+      return []
     default: {
       const _exhaustive: never = node
       return _exhaustive
@@ -316,6 +349,16 @@ export function stripInnerLate(node: PatternIR): PatternIR {
     case 'Loop':
     case 'Track':         // Phase 20-11 — single-body wrapper; same shape as FX/Param.
       return { ...node, body: stripInnerLate(node.body) }
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // LEAF — stripInnerLate never recurses through these. parseTransform
+    // (the caller's caller, via .off() desugar) never produces a chain-
+    // root signal/builder at the transformed sub-IR — these are root
+    // tokens, not single-body wrappers. Matches default's `return node`
+    // (existing default arm stays byte-UNCHANGED). Made explicit per
+    // PK18 FLOOR-grep completeness rule.
+    case 'Signal':
+    case 'Builder':
+      return node
     default:
       // Multi-child / leaf nodes (Pure, Play, Sleep, Code, Stack, Seq,
       // Cycle, Choice, Pick, Chunk): stop. .off()'s transform never
@@ -411,6 +454,19 @@ function peelSingleBodyWrapper(n: PatternIR): PatternIR | null {
     case 'Loop':
     case 'Ramp':
       return n.body
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // NOT a single-body wrapper. Return null (don't peel) — matches
+    // default. A chain root is a LEAF in flattenLeafVoices' recursion
+    // gate; the existing `default: return null` would catch them, but
+    // explicit cases are required per the PK18 FLOOR-grep rule. The
+    // `body?` field on Builder is Wave-C-OPAQUE-pending (chord/arrange)
+    // — if Wave C later sets `body`, peeling DEPENDS on chord/arrange's
+    // ground-truth semantics (peel into the inner pattern? OR carry the
+    // whole `arrange([...])` shape as one leaf?). That decision is
+    // ground-first in Wave C. For Wave A: never set, never peel.
+    case 'Signal':
+    case 'Builder':
+      return null
     default:
       return null
   }

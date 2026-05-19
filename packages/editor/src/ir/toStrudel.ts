@@ -21,6 +21,21 @@ function gen(ir: PatternIR): string {
     case 'Pure':
       return '""'
 
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // CODE-INVARIANCE (P62): re-emit the SOURCE VERBATIM. The kind IS
+    // the user-typed token; args are RAW byte-for-byte (mirrors the
+    // Code.via.args / Param.rawArgs convention). 0-arity signals
+    // (`sine`, `perlin`) emit the bare kind; arg-taking signals
+    // (`mousex` is 0-ary in Strudel; arg-shapes belong to specific
+    // builders / sample-arg signals) emit `kind(args)`. Builders ALWAYS
+    // carry args. NEVER re-serialise / NEVER coerce. The `body?` field
+    // is Wave-C-OPAQUE-pending (chord/arrange) — absent in Wave A.
+    case 'Signal':
+      return ir.args !== undefined ? `${ir.kind}(${ir.args})` : ir.kind
+
+    case 'Builder':
+      return `${ir.kind}(${ir.args})`
+
     case 'Track': {
       // Phase 20-11 D-02 — userMethod discriminates the two wrapper sources:
       //   - 'p'      → user wrote .p("name") — re-emit `${gen(body)}.p("name")`.

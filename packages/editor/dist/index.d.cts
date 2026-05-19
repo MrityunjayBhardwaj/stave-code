@@ -346,6 +346,23 @@ type PatternIR = {
         literal: true;
         raw: string;
     };
+} | {
+    tag: 'Signal';
+    kind: 'sine' | 'cosine' | 'saw' | 'isaw' | 'tri' | 'square' | 'pulse' | 'perlin' | 'berlin' | 'time' | 'rand' | 'rand2' | 'brand' | 'sine2' | 'cosine2' | 'saw2' | 'isaw2' | 'tri2' | 'square2' | 'mousex' | 'mousey';
+    args?: string;
+    loc?: SourceLocation[];
+    userMethod?: string;
+    unresolvedChain?: string;
+    chainOffset?: number;
+} | {
+    tag: 'Builder';
+    kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL';
+    args: string;
+    body?: PatternIR;
+    loc?: SourceLocation[];
+    userMethod?: string;
+    unresolvedChain?: string;
+    chainOffset?: number;
 };
 /**
  * Optional metadata accepted by every non-rest-spread smart constructor
@@ -394,6 +411,12 @@ declare const IR: {
     readonly chop: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly loop: (body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly code: (code: string, meta?: TagMeta) => PatternIR;
+    readonly signal: (kind: (PatternIR & {
+        tag: "Signal";
+    })["kind"], args?: string, meta?: TagMeta) => PatternIR;
+    readonly builder: (kind: (PatternIR & {
+        tag: "Builder";
+    })["kind"], args: string, body?: PatternIR, meta?: TagMeta) => PatternIR;
 };
 
 /**

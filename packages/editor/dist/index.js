@@ -3099,7 +3099,21 @@ var IR = {
   scramble: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Scramble", n, body: body2 }, meta), "scramble"),
   chop: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Chop", n, body: body2 }, meta), "chop"),
   loop: /* @__PURE__ */ __name((body2, meta) => attachMeta({ tag: "Loop", body: body2 }, meta), "loop"),
-  code: /* @__PURE__ */ __name((code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta), "code")
+  code: /* @__PURE__ */ __name((code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta), "code"),
+  // Phase 20-18 Wave A — signal/builder chain-ROOT smart constructors.
+  // Mirror the `attachMeta` convention: only set each field when truthy
+  // (the existing smart-constructor invariant — test fixtures that build
+  // bare `{ tag: 'Signal', kind }` and assert via `toEqual` keep working).
+  signal: /* @__PURE__ */ __name((kind, args2, meta) => {
+    const node = { tag: "Signal", kind };
+    if (args2) node.args = args2;
+    return attachMeta(node, meta);
+  }, "signal"),
+  builder: /* @__PURE__ */ __name((kind, args2, body2, meta) => {
+    const node = { tag: "Builder", kind, args: args2 };
+    if (body2) node.body = body2;
+    return attachMeta(node, meta);
+  }, "builder")
 };
 
 // src/ir/collect.ts
@@ -3201,6 +3215,14 @@ function countLeavesInIR(node) {
     case "Loop":
     case "Ramp":
       return countLeavesInIR(node.body);
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // LEAF — a recognised chain root contributes one leaf voice (matches
+    // default's `return 1` for Code/Play/Pure/... leaves). Made explicit
+    // per PK18 FLOOR-grep completeness rule; the default arm stays
+    // byte-unchanged (Chesterton — pre-20-18 behaviour preserved).
+    case "Signal":
+    case "Builder":
+      return 1;
     default:
       return 1;
   }
@@ -3302,6 +3324,21 @@ __name(collect, "collect");
 function walk(ir, ctx) {
   switch (ir.tag) {
     case "Pure":
+      return [];
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // EVENT-NEUTRAL LEAF — matches Pure's leaf-leaf shape above. A
+    // chain-root signal (`sine`, `perlin`, ...) or builder (`irand(12)`,
+    // `binary(...)`) without a recursable body contributes no IR-level
+    // events on its own; downstream chain methods (carried opaquely by
+    // `applyChain` once the root is recognised — Wave-0 ACTION 5 verdict
+    // (a)) supply the event semantics. COMPOSE-not-SUBSUME: every
+    // existing RNG/Pure/wrapper case below is byte-UNCHANGED (Chesterton —
+    // collect.ts already models the RNG chain at line 1095/1124+; we do
+    // not touch it). The `body?` field on Builder is OPAQUE-pending →
+    // Wave C (chord/arrange ground-first); absent in Wave A, so leaf-
+    // event-neutral covers every Wave-A producer output.
+    case "Signal":
+    case "Builder":
       return [];
     case "Track": {
       const childCtx = {
@@ -3700,6 +3737,19 @@ function gen(ir) {
   switch (ir.tag) {
     case "Pure":
       return '""';
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // CODE-INVARIANCE (P62): re-emit the SOURCE VERBATIM. The kind IS
+    // the user-typed token; args are RAW byte-for-byte (mirrors the
+    // Code.via.args / Param.rawArgs convention). 0-arity signals
+    // (`sine`, `perlin`) emit the bare kind; arg-taking signals
+    // (`mousex` is 0-ary in Strudel; arg-shapes belong to specific
+    // builders / sample-arg signals) emit `kind(args)`. Builders ALWAYS
+    // carry args. NEVER re-serialise / NEVER coerce. The `body?` field
+    // is Wave-C-OPAQUE-pending (chord/arrange) — absent in Wave A.
+    case "Signal":
+      return ir.args !== void 0 ? `${ir.kind}(${ir.args})` : ir.kind;
+    case "Builder":
+      return `${ir.kind}(${ir.args})`;
     case "Track": {
       if (ir.userMethod === "p") {
         return `${gen(ir.body)}.p("${ir.trackId}")`;
@@ -3934,7 +3984,14 @@ var VALID_TAGS = /* @__PURE__ */ new Set([
   "Loop",
   "Code",
   "Param",
-  "Track"
+  "Track",
+  // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (additive).
+  // Every existing entry above stays byte-UNCHANGED; these are appended
+  // members of the literal Set initializer (the only buildable shape
+  // since `VALID_TAGS.has(node.tag)` is the gate at line 71 — without
+  // these, a deserialise of a Signal/Builder node throws "unknown tag").
+  "Signal",
+  "Builder"
 ]);
 function validateNode(raw, path) {
   if (typeof raw !== "object" || raw === null) {
@@ -4145,6 +4202,41 @@ function validateNode(raw, path) {
       if (Array.isArray(node.loc)) {
         out2.loc = node.loc;
       }
+      return out2;
+    }
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (lossless
+    // round-trip). Mirrors the Param/Track pattern above: requireField
+    // each primitive, recurse into the optional `body` sub-IR, restore
+    // optional metadata. The `kind` literal-union is validated by TS at
+    // construction-site (PatternIR.ts) — the runtime guard accepts any
+    // string and trusts the consumer's narrowing (matches Param.key's
+    // shape). `args` is RAW source verbatim; we DO NOT coerce / trim.
+    case "Signal": {
+      requireField(node, "kind", ["string"], path);
+      const out2 = {
+        tag: "Signal",
+        kind: node.kind
+      };
+      if (typeof node.args === "string") {
+        out2.args = node.args;
+      }
+      if (Array.isArray(node.loc)) out2.loc = node.loc;
+      if (typeof node.userMethod === "string") out2.userMethod = node.userMethod;
+      return out2;
+    }
+    case "Builder": {
+      requireField(node, "kind", ["string"], path);
+      requireField(node, "args", ["string"], path);
+      const out2 = {
+        tag: "Builder",
+        kind: node.kind,
+        args: node.args
+      };
+      if (typeof node.body === "object" && node.body !== null) {
+        out2.body = validateNode(node.body, `${path}.body`);
+      }
+      if (Array.isArray(node.loc)) out2.loc = node.loc;
+      if (typeof node.userMethod === "string") out2.userMethod = node.userMethod;
       return out2;
     }
     default:
@@ -24258,10 +24350,19 @@ var _Ring = class _Ring {
     const offset = (n % len + len) % len;
     return new _Ring([...this.items.slice(offset), ...this.items.slice(0, offset)]);
   }
-  /** Mirror: [1,2,3] → [1,2,3,2,1] */
-  mirror() {
-    const mid = this.items.slice(1, -1).reverse();
-    return new _Ring([...this.items, ...mid]);
+  /**
+   * Mirror: `[a,b,c]` → `[a,b,c,c,b,a]` — endpoints duplicated, length 2N.
+   * Matches desktop Sonic Pi `core.rb:802`: `(self + self.reverse) * n`
+   * (optional `n` repeats the whole mirrored ring). #354 — previously this
+   * dropped the boundary duplication (desktop's `.reflect` shape) and was
+   * swapped with `reflect()`.
+   */
+  mirror(n = 1) {
+    const base = [...this.items, ...[...this.items].reverse()];
+    const reps = Math.max(0, Math.floor(n));
+    const out2 = [];
+    for (let i2 = 0; i2 < reps; i2++) out2.push(...base);
+    return new _Ring(out2);
   }
   /** First element. */
   first() {
@@ -24280,9 +24381,23 @@ var _Ring = class _Ring {
     const otherItems = other instanceof _Ring ? other.toArray() : other;
     return new _Ring([...this.items, ...otherItems]);
   }
-  /** Reflect: like mirror but no middle duplication for even-length. */
-  reflect() {
-    return new _Ring([...this.items, ...[...this.items].reverse()]);
+  /**
+   * Reflect: `[a,b,c]` → `[a,b,c,b,a]` — palindrome, NO boundary duplication,
+   * length 2N-1. Matches desktop Sonic Pi `core.rb:796`:
+   * `res = self + self.reverse.drop(1); res += res.drop(1)*(n-1) if n>1`
+   * (`n<2` returns the single palindrome unchanged). #354 — previously this
+   * produced the boundary-duplicated shape (desktop's `.mirror`).
+   */
+  reflect(n = 1) {
+    let res = [...this.items, ...[...this.items].reverse().slice(1)];
+    const reps = Math.max(0, Math.floor(n));
+    if (reps > 1) {
+      const tail = res.slice(1);
+      const extra = [];
+      for (let i2 = 0; i2 < reps - 1; i2++) extra.push(...tail);
+      res = [...res, ...extra];
+    }
+    return new _Ring(res);
   }
   /** Last n elements. */
   take_last(n) {
@@ -29808,8 +29923,9 @@ ${ctx.indent}} }`;
   if (method === "shuffle") {
     return `__b.shuffle(${recStr})`;
   }
-  if (method === "mirror") {
-    return `${recStr}.mirror()`;
+  if (method === "mirror" || method === "reflect") {
+    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
+    return `${recStr}.${method}(${args3})`;
   }
   if (method === "ramp") {
     return `${recStr}.ramp()`;
@@ -33347,6 +33463,20 @@ var _SonicPiEngine = class _SonicPiEngine {
     this.eventStream = new SoundEventStream();
     this.initialized = false;
     this.playing = false;
+    /**
+     * Origin for top-level `current_time` rebase (#364 item 4). Desktop SP resets
+     * `spider_time` to 0 at every job start (`runtime.rb:120,939`
+     * `__init_spider_time_and_beat!`). Our `scheduler.audioTime` is a live read
+     * of the monotonic `AudioContext.currentTime` clock, which only resets when
+     * the context is closed. `stop()` correctly preserves the bridge for reuse,
+     * so without this rebase a fresh Run after Stop reports prior session time
+     * (verified: V1=1.616, V2 after 5s wait + Run=8.677, Δ=+7.061s).
+     *
+     * Internal scheduling MUST keep using absolute `audioCtx.currentTime` (sleep
+     * queues, cue timestamps, /s_new timetags all interact with audioCtx). Only
+     * the user-visible top-level `current_time` reader subtracts this origin.
+     */
+    this._spiderTimeOrigin = 0;
     this.runtimeErrorHandler = null;
     this.printHandler = null;
     this.cueHandler = null;
@@ -33569,6 +33699,7 @@ var _SonicPiEngine = class _SonicPiEngine {
           this.scheduler.dispose();
         }
         const audioCtx = this.bridge?.audioContext;
+        this._spiderTimeOrigin = audioCtx?.currentTime ?? 0;
         this.scheduler = new VirtualTimeScheduler({
           getAudioTime: /* @__PURE__ */ __name(() => audioCtx?.currentTime ?? 0, "getAudioTime"),
           schedAheadTime: this.schedAheadTime
@@ -33858,7 +33989,7 @@ var _SonicPiEngine = class _SonicPiEngine {
             builder.use_synth(task.currentSynth);
           }
           builder.setIterationContext(
-            task.virtualTime,
+            task.virtualTime - this._spiderTimeOrigin,
             this.loopBeats.get(name2) ?? 0,
             this.schedAheadTime,
             task.bpm
@@ -34255,8 +34386,8 @@ var _SonicPiEngine = class _SonicPiEngine {
         // current_beat: top-level has no beat counter
         () => 60 / defaultBpm,
         // current_beat_duration
-        () => scheduler.audioTime,
-        // current_time: audio-context wall clock at top level
+        () => scheduler.audioTime - this._spiderTimeOrigin,
+        // current_time: rebased per-Run (#364 item 4)
         () => this.schedAheadTime,
         // current_sched_ahead_time
         // Tier B — PRNG inspection (#227). Top-level mutates topLevelBuilder's
@@ -34526,11 +34657,12 @@ var _SonicPiEngine = class _SonicPiEngine {
         // Tier C PR #3 — vt / bt / rt (#255). Pure BPM math + virtual-time
         // alias. At top level use_bpm only updates `defaultBpm` (it does not
         // call topLevelBuilder.use_bpm), and `current_time` reads
-        // scheduler.audioTime (line 1051) — so we mirror those sources here.
-        // Inside live_loops the transpiler routes through __b via
-        // BUILDER_METHODS, where per-task _currentBpm and _audioTime are correct.
-        () => scheduler.audioTime,
-        // vt: thread's local virtual run time
+        // scheduler.audioTime rebased per-Run (#364 item 4) — so we mirror
+        // those sources here. Inside live_loops the transpiler routes through
+        // __b via BUILDER_METHODS, where per-task _currentBpm and _audioTime
+        // are correct.
+        () => scheduler.audioTime - this._spiderTimeOrigin,
+        // vt: thread's local virtual run time (rebased)
         (t) => t * 60 / defaultBpm,
         // bt: beats → seconds at current bpm
         (t) => t * defaultBpm / 60
