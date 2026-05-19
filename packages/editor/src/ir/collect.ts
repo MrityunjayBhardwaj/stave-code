@@ -246,7 +246,10 @@ function countLeavesInIR(node: PatternIR): number {
   }
   // Peel single-body uniform-modifier wrappers (mirrors flattenLeafVoices
   // peel set in app's irProjection.ts).
-  if (node.tag === 'Code' && node.via?.inner) {
+  // 20-17 D-1a: narrow the widened `Code.via` union — the literal arm
+  // `{literal:true;raw}` has no `inner`. D-1c will replace this with the
+  // principled `'literal' in via` guard as part of the consumer audit.
+  if (node.tag === 'Code' && node.via && !('literal' in node.via) && node.via.inner) {
     return countLeavesInIR(node.via.inner)
   }
   switch (node.tag) {
@@ -458,7 +461,11 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       // Wrapper case: walk via.inner; thread our call-site range onto
       // produced events as loc[N+] per D-01-from-20-03 (innermost first).
       // Parse-failure case (no via): return [] as before — DV-08 unchanged.
-      if (ir.via) {
+      // 20-17 D-1a: narrow the widened `Code.via` union — literal arm
+      // (`{literal:true;raw}`) has no `inner` and no events to walk; treat
+      // as opaque (return []). D-1c will replace with `'literal' in via`
+      // principled guard.
+      if (ir.via && !('literal' in ir.via)) {
         const innerEvents = walk(ir.via.inner, ctx)
         return withWrapperLoc(innerEvents, ir.loc)
       }

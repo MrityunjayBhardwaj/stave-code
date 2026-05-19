@@ -97,12 +97,27 @@ export type PatternIR =
       // `.method(args)` source verbatim while keeping the receiver IR
       // walkable via `via.inner`. When unset, the Code node is a
       // parse-failure fallback (DV-08; pre-20-04 semantics unchanged).
-      via?: {
-        method: string                    // raw method name e.g. 'release'
-        args: string                      // RAW (untrimmed) per D-02 — round-trip byte-fidelity
-        callSiteRange: [number, number]   // entire .method(args) source range
-        inner: PatternIR                  // back-pointer to receiver; REQUIRED in wrapper case (D-01 walks it)
-      }
+      via?:
+        | {
+            method: string                    // raw method name e.g. 'release'
+            args: string                      // RAW (untrimmed) per D-02 — round-trip byte-fidelity
+            callSiteRange: [number, number]   // entire .method(args) source range
+            inner: PatternIR                  // back-pointer to receiver; REQUIRED in wrapper case (D-01 walks it)
+          }
+        // Phase 20-17 G3 (D-02 CORRECTION) — literal-RHS marker. The original
+        // D-02 ("store as Code-with-via, no ripple") was unconstructible:
+        // `Code.via` was specifically the `wrapAsOpaque` shape; a literal `4`
+        // has no method/args/inner. Per LOCKED user decision (CONTEXT
+        // "D-02 CORRECTION (2026-05-19)"), `Code.via` is widened with this
+        // ADDITIVE arm. The existing `wrapAsOpaque` arm above stays
+        // byte-unchanged (no `kind` discriminant — discriminate at consumer
+        // sites by `'literal' in via` / `via.inner === undefined`). The
+        // opaque fence (`tag === 'Code' && via === undefined`) is
+        // byte-IDENTICAL because a literal sets `via` to a defined object
+        // → `via !== undefined` → already on the "structured, don't bail"
+        // side. P67 tri-state is preserved exactly. A literal `via` node is
+        // a LEAF — deep walkers must NOT recurse into `via.inner` on it.
+        | { literal: true; raw: string }
     }  // Opaque fallback for unparseable fragments OR opaque-fragment wrapper for unrecognised chain methods
 
 /**

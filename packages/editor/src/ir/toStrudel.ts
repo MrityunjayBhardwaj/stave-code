@@ -35,12 +35,20 @@ function gen(ir: PatternIR): string {
     }
 
     case 'Code':
-      // Phase 20-04 T-10 (D-02 / PV37 clause 4).
+      // Phase 20-04 T-10 (D-02 / PV37 clause 4) + 20-17 D-02 CORRECTION.
       // Wrapper case: re-emit ${gen(via.inner)}.${method}(${args}) using
       // the RAW (untrimmed) args — round-trip is byte-equivalent to the
-      // typed source. Parse-failure case (no via): return ir.code as
-      // before — DV-08 unchanged.
+      // typed source.
+      // Literal-RHS case (20-17 G3): emit `via.raw` VERBATIM (the named
+      // acceptance check — `.slow(numChords)` → `.slow(4)` byte-for-byte
+      // after Wave E wires the helper into buildBindingMap). NEVER
+      // re-serialize, NEVER coerce — code-invariance per P62.
+      // Parse-failure case (no via): return ir.code as before — DV-08
+      // unchanged.
       if (ir.via) {
+        if ('literal' in ir.via) {
+          return ir.via.raw
+        }
         return `${gen(ir.via.inner)}.${ir.via.method}(${ir.via.args})`
       }
       // Identity — opaque fragment, return as-is

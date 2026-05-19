@@ -3205,7 +3205,7 @@ function countLeavesInIR(node) {
     }
     return 1;
   }
-  if (node.tag === "Code" && node.via?.inner) {
+  if (node.tag === "Code" && node.via && !("literal" in node.via) && node.via.inner) {
     return countLeavesInIR(node.via.inner);
   }
   switch (node.tag) {
@@ -3339,7 +3339,7 @@ function walk(ir, ctx) {
       return withWrapperLoc(walk(ir.body, childCtx), ir.loc);
     }
     case "Code": {
-      if (ir.via) {
+      if (ir.via && !("literal" in ir.via)) {
         const innerEvents = walk(ir.via.inner, ctx);
         return withWrapperLoc(innerEvents, ir.loc);
       }
@@ -3734,6 +3734,9 @@ function gen(ir) {
     }
     case "Code":
       if (ir.via) {
+        if ("literal" in ir.via) {
+          return ir.via.raw;
+        }
         return `${gen(ir.via.inner)}.${ir.via.method}(${ir.via.args})`;
       }
       return ir.code;
@@ -4557,6 +4560,15 @@ function wrapAsOpaque(inner, method, args2, callSiteRange) {
   };
 }
 __name(wrapAsOpaque, "wrapAsOpaque");
+function classifyLiteralRhs(rhs) {
+  const t = rhs.trim();
+  const isNum = /^-?\d+(\.\d+)?$/.test(t);
+  const isDq = /^"[^"]*"$/.test(t);
+  const isSq = /^'[^']*'$/.test(t);
+  if (!(isNum || isDq || isSq)) return null;
+  return { tag: "Code", code: t, lang: "strudel", via: { literal: true, raw: t } };
+}
+__name(classifyLiteralRhs, "classifyLiteralRhs");
 function stripParserPrelude(code) {
   const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
   const GUARDED_BOOT_RE = /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/;
@@ -37246,6 +37258,7 @@ exports.bundledPresetId = bundledPresetId;
 exports.canRedo = canRedo;
 exports.canUndo = canUndo;
 exports.captureSnapshot = captureSnapshot;
+exports.classifyLiteralRhs = classifyLiteralRhs;
 exports.clearCapture = clearCapture;
 exports.clearIRSnapshot = clearIRSnapshot;
 exports.clearLog = clearLog;
