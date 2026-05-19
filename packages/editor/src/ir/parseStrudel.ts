@@ -1053,10 +1053,21 @@ export function parseRoot(
           baseOffset + leadingWs + openParenIdx + 1 + innerLeadingWs
         // β-1 resolution: thread the caller's sample context.
         const callerIsSample = fnName === 's' || fnName === 'sound'
+        // 20-17 G1 (D-01) — thread the caller's `bindings` context into
+        // the inner chained expression's parse. Without this thread,
+        // `sound(rp1)` with `rp1` in `bindings` still parsed `rp1` as a
+        // bare ident → bareCode → opaque-RHS fence → the whole program
+        // bails. `bindings` is in scope from parseRoot's 4th param
+        // (pS:931 signature). The `callerIsSample` (PV51) arg is
+        // unchanged and continues to flow alongside the new `bindings`.
+        // PV49 holds: parameter-only addition, no offset arithmetic
+        // touched (`innerAbsOffset` was already computed correctly
+        // pre-20-17 above).
         const innerIR = parseExpression(
           innerTrimmed,
           innerAbsOffset,
           callerIsSample,
+          bindings,
         )
         const innerIsBareCode =
           innerIR.tag === 'Code' &&
