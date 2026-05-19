@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:proto": "vitest run --config vitest.proto.config.ts"
   },
   "dependencies": {
     "@stave/editor": "workspace:*",

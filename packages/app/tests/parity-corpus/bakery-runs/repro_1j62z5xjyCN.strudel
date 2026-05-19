@@ -1,0 +1,108 @@
+//"Riding the 46 Cycles" @by shadesDrawn (drums by superdirtspatz)
+var cpm = 30;
+samples('github:yaxu/clean-breaks')
+
+stack(
+
+note(`
+[<e5 [d5 g5]>]
+[<d5 a5>]
+[<c5 [e5 d5]>]
+[<b4 b5>]
+`)
+  .slow(4)
+  .euclidRot(6,16,10)
+  .sound("sine")
+  .fm(0.0)
+  .delay(sine.range(0,0.5).slow(18))
+  .gain(sine.range(0.9,0).slow(24))
+  .crush(8)
+  .pan(0.3)
+  .mask("<0!8 1!500>")
+  //.hush()
+,
+
+note(`
+[[e3,a3,c4]@2 [e3,a3,c4] [e3,a3,c4]
+[e3,a3,d4]@2 [e3,a3,d4] [e3,a3,d4]
+[e3,a3,b3]@2 [e3,a3,b3] [e3,a3,b3]
+[e3,a3,c4]@2 [e3,a3,c4] [e3,a3,c4]]!3
+
+[[e3,a3,e4]@2 [e3,a3,e4] [e3,a3,e4]
+[e3,a3,f4]@2 [e3,a3,f4] [e3,a3,f4]
+[e3,a3,g4]@2 [e3,a3,g4] [e3,a3,g4]
+[e3,a3,d4]@2 [e3,a3,d4] [e3,a3,d4]]
+`)
+  .slow(4)
+  .sound("sawtooth")
+  .fm(sine.range(0,4).slow(6))
+  .lpf(1000)
+  .decay(0.3)
+  .pan(0.6)
+  .gain(sine.range(1.2,0.2).slow(20))
+  .mask("<0!24 1!500>")
+  //.hush()
+,
+
+note(`
+[d1@2 d1 d2@2 d1 g1 a1]
+[g1@2 g1 g2@2 g1 b1 c2]
+[a1@2 a1 a2@2 a1 c2 d2]!2
+
+[d1@2 d1 d2@2 d1 g1 a1]
+[g1@2 g1 g2@2 g1 b1 c2]
+[a1@2 a1 a2@2 a1 c2 d2]
+[a1@2 a1 a2@2 a1 c3 b2]
+
+`)
+  .slow(8)
+  .sound("gm_acoustic_bass")
+  .gain(2)
+  .room(1)
+  .lpf(200)
+  .clip(0.7)
+  .release(0.3)
+  //.hush()
+,
+
+note(`
+[f4,e5]
+[<[f4,d5] [f4,g5]>]
+[<[e4,c5] [[e4,a5]@2 [f4,e5] [f3,d5]]>]@2
+`)
+  .slow(4)
+  .sound("gm_epiano2")
+  //.lpf(1800)
+  //.fm(2)
+  .release(3)
+  .attack(0.3)
+  .phaser(1)
+  .phasersweep(1000)
+  .pan(0.75)
+  .gain(1.5)
+  //.gain("<1.4!8 0!8>")
+  //.hush()
+,
+
+//Drums from "46 cycles" by superdirtspatz
+s("movement")
+  .loopAt(2)
+  .chop("<16!20 8!2 16!10>")
+  .velocity("<.25 .45>*8")
+  .struct(`<
+  x(8,8)!8 
+  x(8,8)!3 
+  x(11,16)
+  x(8,8)!3 
+  x(13,16)
+    >`)
+.when("<0!24 1!4 0!20>", x=>x.shape(.1).lpf(saw.range(222, 3333).slow(4)).lpq(saw.range(8, 2).slow(4))
+       .delay("[.5:<0.01 0.02 0.03 0.04 0.05 0.06 0.07 [0.08 0.11]>*2:.5]"))
+  
+.when("<0!30 1!4 0!12>", x=>x.lpf(3333).shape(.3).superimpose(x=>x.late(saw.range(.00005, 0.007).slow(4))))
+  .gain(1.0)
+  //.hush()
+,
+  
+).cpm(cpm)
+// @version 1.1
