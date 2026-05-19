@@ -290,3 +290,49 @@ The original D-03 block (top of this file) is RETAINED for provenance
 but is SUPERSEDED by this amendment. D-01/D-02/D-04 unchanged. The
 distilled CI fixtures expand from one (`bakery-141-irand-chain-root`)
 to three (irand/`--LsnlgQ6osk`-faithful + chord + arrange).
+
+## D-03 AMENDMENT-2 (2026-05-20 — user decision; supersedes the #3 anchor in the 2026-05-19 AMENDMENT, on EVIDENCE not bar-lowering)
+
+The 2026-05-19 D-03 AMENDMENT crit-1 added #3 `-6c1hEXe8Agi`
+(`chord(...).voicing()`) as a hard anchor under the framing "the
+chord/voicing family is the genuine chain-root class." Wave C's
+EMPIRICAL grounding-then-modelling proved the chord-recogniser arm IS
+correct (P69/Grounding Check discharged with `controls.mjs:2130`
+citations; #7 arrange peer flipped; belldub/dinofunk/meltingsubmarine
+corpus chord-roots flipped; the stripped-#3 probe — removing only the
+trailing `all(x=>x.punchcard())` line — yields whole-program
+STRUCTURED + `deep-walk Builder/chord = HIT, args="Am Am"`). **#3 has
+a SECOND blocker class — `buildBindingMap`-shape rejection
+(`bindings*, sideEffect, finalExpr` fails the `finalIdx !==
+stmts.length-1` fence) — that is a DIFFERENT mechanism class, not
+chain-root.** Filed as backlog #158 (20-19 seed). The "blocker class"
+classification that placed #3 in crit-1 was partially-falsified —
+structurally identical to the 2026-05-19 AMENDMENT re-anchor of
+`--LsnlgQ6osk` (whose Wave-E observed blocker class was empirically
+different from the 20-16 cascade's classification). P70 occurrence-4
+in this phase series. Re-posed to the user (PK18 + the CONTEXT
+P70-exemplar discipline). **User decision: drop #3 from crit-1, evidence reframe.**
+
+**Re-amended D-03 (LOCKED 2026-05-20):**
+1. **HARD GATE (crit-1):** `--LsnlgQ6osk` STRUCTURED in production
+   (Wave B provisional HIT; V-1 confirms) **AND** #7 `-KLGNJUtyyj1`
+   (`arrange(...)`) STRUCTURED in production (Wave C HIT). **#3
+   `-6c1hEXe8Agi` is NO LONGER part of crit-1** — it is recorded as
+   classified-empirically-different-class (shape-fence, not
+   chain-root), deferred to backlog #158 → 20-19. The chord arm IS
+   validated by FOUR independent observations (the stripped-#3 probe
+   + belldub/dinofunk/meltingsubmarine corpus flips + #7 peer) — no
+   semantic regression from dropping #3 as an anchor.
+2. **INFORMATIONAL crit-2 + must-not-regress-86%** UNCHANGED (the
+   2026-05-19 AMENDMENT's wording carries forward).
+3. **No-bar-lowering** retained on the new crit-1 (`--LsnlgQ6osk`
+   + #7) and the 86.0% floor.
+
+The original D-03 + the 2026-05-19 AMENDMENT are RETAINED for
+provenance but SUPERSEDED by this amendment. D-01/D-02/D-04
+unchanged. **#3 is correctly NOT a hard fixture for V-2** — the V-2
+CI fixtures become `--LsnlgQ6osk`-distillation + #7-arrange-distillation
+(2 fixtures, not 3); #3 may still be vendored as a NEGATIVE-CONTROL
+regression fixture (asserting the chord arm fires + the shape-fence
+trips, until 20-19/#158 closes the shape-fence — at which point the
+positive flip becomes a fixture there).

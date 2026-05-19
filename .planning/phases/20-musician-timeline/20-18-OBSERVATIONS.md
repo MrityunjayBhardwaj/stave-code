@@ -1214,3 +1214,33 @@ contract on the new `chord`/`arrange` kinds is the Wave-D verifier's
 gate: every `case 'Builder'` consumer arm sees `body?: PatternIR`
 present-but-undefined for these kinds (no consumer code change
 needed).
+
+---
+
+## D-03 AMENDMENT-2 (2026-05-20 — user-approved evidence reframe)
+
+Wave C empirical finding: #3's chord-arm-fires-correctly was proved
+(stripped-#3 probe + 3 corpus flips + #7 peer = 4 observations), but
+#3 also has a SECOND blocker class (`buildBindingMap` shape-fence;
+filed #158, 20-19 seed). The 2026-05-19 AMENDMENT placed #3 in crit-1
+under the inferred classification "chord-family = chain-root class" —
+partially falsified: chord IS chain-root for the `padsbell` binding,
+but #3 has an ADDITIONAL trailing-side-effect-statement shape blocker
+that is NOT chain-root. P70 occurrence-4 in this phase series.
+
+User decision (PK18 re-pose): **drop #3 from crit-1**. Re-amended
+D-03 crit-1 = `--LsnlgQ6osk` + #7 STRUCTURED (both already HIT in
+Waves B/C — provisional, V-1 confirms). #3 → backlog #158 → 20-19.
+NOT bar-lowering: same falsified-premise-reframe class as the
+2026-05-19 `--LsnlgQ6osk` re-anchor that established the AMENDMENT
+precedent. The CONTEXT D-03 AMENDMENT-2 section is the authoritative
+re-statement.
+
+**Crit-1 evidence as of HEAD `35aac5f`:**
+- `--LsnlgQ6osk` `production=structured (body.tag=Stack)` (Wave B
+  proto trace verbatim; `post-fixpoint resolved=[rp1,beat,az2,
+  chords2,bass,harm2] pending=[]`).
+- `-KLGNJUtyyj1` `production=structured` + `deep-walk Builder/arrange
+  = HIT` (Wave C probe verbatim).
+
+V-1 confirms in the final dual gate run.
