@@ -1335,14 +1335,86 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-152-block-com
     "tag": "Stack",
     "tracks": [
       {
-        "code": "note(chordProgression)",
-        "lang": "strudel",
-        "tag": "Code",
+        "items": [
+          {
+            "duration": 0.25,
+            "note": "Gsus",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 0.25,
+            "note": "G7",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 0.25,
+            "note": "Em7",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 0.25,
+            "note": "D7",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+        ],
+        "tag": "Cycle",
       },
       {
-        "code": "note(scales)",
-        "lang": "strudel",
-        "tag": "Code",
+        "items": [
+          {
+            "duration": 0.25,
+            "note": "C",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 0.25,
+            "note": "major",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 0.25,
+            "note": "D",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+          {
+            "duration": 0.25,
+            "note": "minor",
+            "params": {
+              "gain": 1,
+              "velocity": 1,
+            },
+            "tag": "Play",
+          },
+        ],
+        "tag": "Cycle",
       },
     ],
     "userMethod": "stack",

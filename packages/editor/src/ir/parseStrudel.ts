@@ -959,6 +959,27 @@ export function parseRoot(
     return parseMini(inner, isSample, innerOffset)
   }
 
+  // 20-17 G2 (D-01) — bound-ident-root substitution. When the root token
+  // is a bare identifier present in `bindings`, splice the bound subtree
+  // as the root; the existing applyChain (called by parseExpression at
+  // pS:911) then runs the chain over the spliced IR. Placed BEFORE the
+  // strict regex arms (note/n/s/sound/mini/loose): a bare ident in
+  // `bindings` can never syntactically match those arms (they require a
+  // `(` call shape; a bare ident has none) so this strictly WIDENS — it
+  // cannot regress any existing parse (a bound ident reached parseRoot
+  // only via the bare-Code fallback pre-20-17). PV49 holds: the spliced
+  // subtree carries its DEFINITION-SITE offset (stored at parse time
+  // inside buildBindingMap); applyChain uses the USE-SITE chain offset
+  // arithmetic independently — additivity is preserved because the
+  // chain arithmetic does not depend on the root's internal offset.
+  // Without this arm, `chords2.rootNotes(2).note()` with `chords2`
+  // resolved still parsed `chords2` as a bare ident → bare Code →
+  // opaque fence. Mirrors the parseExpression whole-expr precedent
+  // (pS:869-873).
+  if (bindings && /^[A-Za-z_$][\w$]*$/.test(trimmed) && bindings.has(trimmed)) {
+    return bindings.get(trimmed) as PatternIR
+  }
+
   // note("...") or n("...") — plus G3 backtick `` `…` `` (multi-line ok).
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/)
   if (noteMatch) {

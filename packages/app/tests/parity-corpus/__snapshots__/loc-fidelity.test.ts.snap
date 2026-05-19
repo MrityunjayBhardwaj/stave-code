@@ -722,6 +722,46 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   note(scales),
 )",
   },
+  {
+    "tag": "Cycle",
+    "text": "<Gsus G7 Em7 D7>",
+  },
+  {
+    "tag": "Play",
+    "text": "Gsus",
+  },
+  {
+    "tag": "Play",
+    "text": "G7",
+  },
+  {
+    "tag": "Play",
+    "text": "Em7",
+  },
+  {
+    "tag": "Play",
+    "text": "D7",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<C:major D:minor>",
+  },
+  {
+    "tag": "Play",
+    "text": "C",
+  },
+  {
+    "tag": "Play",
+    "text": "major",
+  },
+  {
+    "tag": "Play",
+    "text": "D",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
+  },
 ]
 `;
 

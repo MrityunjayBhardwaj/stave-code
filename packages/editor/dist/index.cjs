@@ -4925,6 +4925,9 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
     if (inner.includes("${")) return IR.code(trimmed);
     return parseMini(inner, isSample, innerOffset);
   }, "backtickInnerToIR");
+  if (bindings && /^[A-Za-z_$][\w$]*$/.test(trimmed) && bindings.has(trimmed)) {
+    return bindings.get(trimmed);
+  }
   const noteMatch = trimmed.match(/^(?:note|n)\s*\(\s*"([^"]*)"\s*\)/);
   if (noteMatch) {
     const quoteIdx = noteMatch[0].indexOf('"');
@@ -4978,7 +4981,8 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings) {
         const innerIR = parseExpression(
           innerTrimmed,
           innerAbsOffset,
-          callerIsSample
+          callerIsSample,
+          bindings
         );
         const innerIsBareCode = innerIR.tag === "Code" && innerIR.via === void 0;
         if (!innerIsBareCode) {
@@ -24242,19 +24246,10 @@ var _Ring = class _Ring {
     const offset = (n % len + len) % len;
     return new _Ring([...this.items.slice(offset), ...this.items.slice(0, offset)]);
   }
-  /**
-   * Mirror: `[a,b,c]` → `[a,b,c,c,b,a]` — endpoints duplicated, length 2N.
-   * Matches desktop Sonic Pi `core.rb:802`: `(self + self.reverse) * n`
-   * (optional `n` repeats the whole mirrored ring). #354 — previously this
-   * dropped the boundary duplication (desktop's `.reflect` shape) and was
-   * swapped with `reflect()`.
-   */
-  mirror(n = 1) {
-    const base = [...this.items, ...[...this.items].reverse()];
-    const reps = Math.max(0, Math.floor(n));
-    const out2 = [];
-    for (let i2 = 0; i2 < reps; i2++) out2.push(...base);
-    return new _Ring(out2);
+  /** Mirror: [1,2,3] → [1,2,3,2,1] */
+  mirror() {
+    const mid = this.items.slice(1, -1).reverse();
+    return new _Ring([...this.items, ...mid]);
   }
   /** First element. */
   first() {
@@ -24273,23 +24268,9 @@ var _Ring = class _Ring {
     const otherItems = other instanceof _Ring ? other.toArray() : other;
     return new _Ring([...this.items, ...otherItems]);
   }
-  /**
-   * Reflect: `[a,b,c]` → `[a,b,c,b,a]` — palindrome, NO boundary duplication,
-   * length 2N-1. Matches desktop Sonic Pi `core.rb:796`:
-   * `res = self + self.reverse.drop(1); res += res.drop(1)*(n-1) if n>1`
-   * (`n<2` returns the single palindrome unchanged). #354 — previously this
-   * produced the boundary-duplicated shape (desktop's `.mirror`).
-   */
-  reflect(n = 1) {
-    let res = [...this.items, ...[...this.items].reverse().slice(1)];
-    const reps = Math.max(0, Math.floor(n));
-    if (reps > 1) {
-      const tail = res.slice(1);
-      const extra = [];
-      for (let i2 = 0; i2 < reps - 1; i2++) extra.push(...tail);
-      res = [...res, ...extra];
-    }
-    return new _Ring(res);
+  /** Reflect: like mirror but no middle duplication for even-length. */
+  reflect() {
+    return new _Ring([...this.items, ...[...this.items].reverse()]);
   }
   /** Last n elements. */
   take_last(n) {
@@ -29815,9 +29796,8 @@ ${ctx.indent}} }`;
   if (method === "shuffle") {
     return `__b.shuffle(${recStr})`;
   }
-  if (method === "mirror" || method === "reflect") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.${method}(${args3})`;
+  if (method === "mirror") {
+    return `${recStr}.mirror()`;
   }
   if (method === "ramp") {
     return `${recStr}.ramp()`;
