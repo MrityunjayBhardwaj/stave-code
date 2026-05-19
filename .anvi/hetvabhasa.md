@@ -1854,3 +1854,161 @@ reliable; verify dist by grep per commit regardless".
 `feedback_editor_watch_mode.md`; `packages/editor/tsup.config.ts`,
 `packages/editor/src/engine/StrudelEngine.ts:194` (the pre-existing
 @strudel/mondo TS7016). Ground Truth: 20-15-SUMMARY.md (γ-3 + V-2).
+
+## P69 — Grounded-LOOKING inference: a `file:line` citation is not observation unless the path was executed or grepped
+
+**Symptom:** a RESEARCH/CONTEXT/plan claim about *behaviour*, *reach*, or
+*shape* carries precise `file:line` citations and reads as grounded — but
+the conclusion is still wrong, and only a prototype run / live grep
+reveals it. The citation was real; the *inference drawn from reading
+around it* was not verified by running the path.
+
+**The trap:** treating "I cited the source line" as equivalent to "I
+observed the behaviour". Reading code near a citation is still inference
+(Lokāyata: reading = inference, running = observation). The `file:line`
+makes the inference *look* like the grounding the framework demands, so
+it passes review until a gate fires.
+
+**Recurrence (one session, 2026-05-18/19 — this is why it is a
+catalogue entry, not a memory):**
+1. 20-16 RESEARCH cited `buildBindingMap` lines and concluded "the
+   opaque-RHS fence on transitive bindings is the dominant #141
+   blocker" — never ran the 6 repros. The Task-1 prototype falsified
+   it 4× (the real blocker was `splitTopLevelStatements`, then 3 more
+   compounding segmenter gaps, then D-01 reach).
+2. 20-17 CONTEXT D-02 cited P67 + the via field and concluded "store
+   literal RHS as Code-with-via, no consumer ripple" — never read
+   `PatternIR.ts:99-105`; `via` is the specific `{method,args,
+   callSiteRange,inner}` wrapAsOpaque shape, unconstructible for a
+   literal. Plan-checker (which DID read it) caught it as a BLOCKER.
+3. 20-17 D-1c enumerated the `.via` consumer audit list from memory of
+   "the IRInspector files" — never ran the grep; omitted
+   `MusicalTimeline.tsx:298-299` (the live unguarded `via.inner`
+   deref). Re-check grep caught it.
+
+**Detection signal:** the claim is about runtime behaviour / which sites
+a value reaches / the shape of a data structure, and there is NO command
+output (prototype stdout, grep result, test run) backing it — only prose
++ citations. Ask: "was this path *executed* or *enumerated by grep*, or
+read-and-reasoned?"
+
+**The fix:** for any behaviour/reach/shape claim a later wave depends
+on, the cheapest *executed* observation is mandatory BEFORE the
+dependency is taken: a ≤30-line prototype (reach/behaviour), a
+`grep -rn` over the real trees (consumer/shape enumeration — and make
+the grep the source of truth, the prose list only a FLOOR the grep must
+reproduce), or a unit run. The HARD-GATE / plan-checker / re-check
+layering exists precisely to convert these; do not weaken it by
+accepting a citation as the observation. See PK18 (the gate-cascade
+discipline this error necessitates).
+
+**ORIGIN:** Phases 20-16 (Task-1 gate ×4) + 20-17 (D-02 BLOCKER,
+D-1c audit omission), session 2026-05-18/19. Extends the base-layer
+Grounding check ("docs are claims, code is truth") with "and a code
+*citation* is still a claim until the path is *run/grepped*".
+
+**REF:** P67 (the via tri-state the D-02 instance turned on), PK18
+(Lokāyata HARD-GATE cascade discipline), PK17 (friction-first cycle —
+its step-1 "run the PURE parser, never trust a curated proxy" is the
+same principle); `.planning/phases/20-musician-timeline/20-16-OBSERVATIONS.md`
+(the 4-iteration audit trail), `20-17-CONTEXT.md` (D-02 CORRECTION).
+Ground Truth: 20-16-OBSERVATIONS.md.
+
+## P70 — Cascade classification can be wrong about WHY a case is bareCode
+
+**Pattern:** a multi-attempt failure cascade identifies a hard case as
+blocked by mechanism X (e.g., "G1/G2/G4 binding-substitution gap"); the
+post-fix empirical observation shows the case is bareCode for an
+ENTIRELY DIFFERENT reason (e.g., chain-root recognition gap on
+`irand`/`sometimesBy`/`perlin` — opaque-by-SHAPE, not binding-blocked).
+The mechanism X fix is mechanically correct AND closes the cases that
+WERE mechanism-X-blocked; the hard case stays bare for an unrelated
+class the cascade never named. Recurrence-promoted from memory (two
+independent occurrences in a single phase = promote to catalogue per
+the dharana-spec promotion criterion).
+
+**Symptom:** after a wave that targets mechanism X, the regression
+oracle / hard-gate / live measure shows a case the cascade flagged as
+"X-blocked" is STILL bare. The instinct is to (a) bar-lower the gate
+("84% is close enough"), (b) widen the wave's scope to chase the
+un-anticipated mechanism, or (c) keep adding sub-arms ("just one more
+fix"). All three are wrong — they treat the cascade's classification
+as fact instead of as a heuristic that empirical evidence can falsify.
+
+**Detection:** the cheap executed gate (prototype, per-iter trace,
+parity-bakery re-measure) prints a per-case diagnostic that contradicts
+the cascade's named blocker. Example (Phase 20-17, Wave E):
+
+```
+[R:__LsnlgQ6osk] iter0 az2 rhs="irand(12).struct(...).sometimesBy(...)" -> tag=Code bareCode=true
+[R:__LsnlgQ6osk] iter1 az2 rhs="irand(12).struct(...).sometimesBy(...)" -> tag=Code bareCode=true   (WITH all 5 other bindings resolved)
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,chords2,bass,harm2] pending=[2]
+```
+
+The cascade's classification was "`--LsnlgQ6osk` is blocked by D-01
+G1/G2/G4". The per-iter trace shows 5/6 descriptors resolve cleanly;
+the 6th (`az2`) is bareCode at iter-0 AND at iter-1 even with all other
+bindings in scope. The diagnostic falsifies the classification: `az2`'s
+RHS has no bound-ident root and no recognised chain shape — there is
+nothing for D-01 to substitute. The blocker is chain-root recognition
+on `irand` (unbound function-call root), an entirely different D-2
+sub-arm.
+
+**Wrong fix (the trap):**
+(a) **Bar-lower:** "the gate is too strict, accept 84%". This treats
+the cascade's classification as fact and the empirical gate as
+adversarial. It permanently encodes the wrong understanding.
+(b) **Scope-expand:** "add a new sub-arm to chase the un-anticipated
+mechanism". This violates D-03 scope discipline; the cascade was wrong
+about the framing, not about the boundary, and chasing the new
+mechanism inside the original phase produces an unbounded plan.
+(c) **Workaround layer:** another regex, another classifier ordering,
+a one-off fence. Symptoms multiply.
+
+**Right fix (per PK18):**
+1. **STOP.** Do not commit. Do not bar-lower. Do not scope-expand.
+2. **Record the falsified premise verbatim** in
+   `<phase>-OBSERVATIONS.md` — the cascade's words, the empirical
+   contradiction, the per-case trace.
+3. **Re-pose to the user.** The locked decision was anchored on an
+   inferred premise that is now falsified; surfacing it is non-
+   optional (base-layer reception check).
+4. **Re-anchor the gate on EVIDENCE.** Pick concrete cases the
+   mechanism DEMONSTRABLY can reach (executed observation, not
+   inferred reach). The threshold stays — only the anchor moves.
+5. **Defer the un-anticipated mechanism class to a backlog issue /
+   next phase.** File the issue with the falsifying trace as evidence;
+   record the deferral in the SUMMARY so the deferral is grounded.
+
+**Recurrence (two independent occurrences in Phase 20-17, session
+2026-05-19 — promotion threshold met):**
+
+1. **Wave C — bakery-152 fixture content:** the inferred plan premise
+   was "no `note(boundIdent)` shape in corpus → no Wave-C-driven parity
+   improvement on existing fixtures". The per-file STOP gate observed
+   `bakery-152-block-comment` parity move bare-Code → structured. The
+   actual fixture content (block-comment shape with bound-ident refs
+   the Wave-C arms reach) empirically falsified the premise. Reframe:
+   `bakery-152` flagged to the V-3 allow-list (Wave-C improvement),
+   NOT bar-lowered, NOT scope-expanded.
+
+2. **Wave E — `--LsnlgQ6osk`/`az2` opacity class:** the inferred plan
+   premise (cascaded through 20-16 Task-1 4×, into 20-17 CONTEXT D-03
+   crit-1) was "`--LsnlgQ6osk` is blocked by D-01 G1/G2/G4 — the
+   matcher line will reach it". The per-iter trace falsified it.
+   Reframe: D-03 crit-1 re-anchored on EVIDENCE to the dual
+   `_72eEl7NwK9e` + `_LHtBlF8peGC`; `az2`'s opaque-shape class
+   deferred to 20-18 (`recogniseUnboundChainRoot` D-2 sub-arm). NO
+   bar-lowering; the AMENDED anchor IS the moved target.
+
+**REF:** PK18 (the gate-cascade discipline this error necessitates —
+P70 IS the error class PK18 catches), P69 (grounded-looking inference
+— P70 is one species of it, specifically classification-inference),
+P67 (the tri-state Code error — P70's falsifying trace turns on the
+same `tag === 'Code' && via === undefined` discriminator), PV53 (the
+D-01 mechanism whose reach the cascade was wrong about);
+`.planning/phases/20-musician-timeline/20-17-OBSERVATIONS.md`
+(the canonical 2-occurrence trail: "Wave C — HARD STOP" + "Wave E —
+D-03 CRIT-1 RE-ANCHORED" sections); `20-17-SUMMARY.md` (the V-1
+PRODUCTION verdict block + the AMENDED dual anchor + the deferred
+20-18 backlog seed). Ground Truth: 20-17-OBSERVATIONS.md.

@@ -531,6 +531,55 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 ]
 `;
 
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-140-binding-transitive — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Stack",
+    "text": "stack(rp1, beat)",
+  },
+  {
+    "tag": "Code",
+    "text": ".fast("<2@3 4>")",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sd hh>",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+  {
+    "tag": "Code",
+    "text": ".slow(numChords)",
+  },
+  {
+    "tag": "Param",
+    "text": ".bank("RolandTR707")",
+  },
+  {
+    "tag": "Code",
+    "text": ".fast("<2@3 4>")",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<sd hh>",
+  },
+  {
+    "tag": "Play",
+    "text": "sd",
+  },
+  {
+    "tag": "Play",
+    "text": "hh",
+  },
+]
+`;
+
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-142-samples-objlit — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
@@ -721,6 +770,46 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   note(chordProgression),
   note(scales),
 )",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<Gsus G7 Em7 D7>",
+  },
+  {
+    "tag": "Play",
+    "text": "Gsus",
+  },
+  {
+    "tag": "Play",
+    "text": "G7",
+  },
+  {
+    "tag": "Play",
+    "text": "Em7",
+  },
+  {
+    "tag": "Play",
+    "text": "D7",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<C:major D:minor>",
+  },
+  {
+    "tag": "Play",
+    "text": "C",
+  },
+  {
+    "tag": "Play",
+    "text": "major",
+  },
+  {
+    "tag": "Play",
+    "text": "D",
+  },
+  {
+    "tag": "Play",
+    "text": "minor",
   },
 ]
 `;

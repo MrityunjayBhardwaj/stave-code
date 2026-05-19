@@ -259,6 +259,11 @@ function groupSlotKey(group: { trackId: string; events: readonly IREvent[] }): s
   return pos !== undefined ? `$${pos}` : group.trackId
 }
 
+/**
+ * Phase 20-17 D-1c — see also `__test_collectTrackBodies` at the bottom
+ * of this file (test-only re-export, mirrors the `__test_wrapAsOpaque`
+ * convention in parseStrudel.ts).
+ */
 function collectTrackBodies(node: PatternIR): Map<string, PatternIR> {
   const out = new Map<string, PatternIR>()
   const visit = (n: PatternIR): void => {
@@ -295,7 +300,18 @@ function collectTrackBodies(node: PatternIR): Map<string, PatternIR> {
     if (Array.isArray(anyN.lookup)) {
       for (const c of anyN.lookup as PatternIR[]) visit(c)
     }
-    if (anyN.via && typeof anyN.via === 'object') {
+    // Phase 20-17 D-1c HIGH-SEVERITY — Code.via union discriminant.
+    // PRE-20-17: this branch assumed `via` was always the wrapAsOpaque
+    // shape `{method, args, callSiteRange, inner}`. POST-20-17 (D-02
+    // CORRECTION) the union has a literal arm `{literal:true;raw}` which
+    // is truthy AND typeof === 'object'. WITHOUT the `'literal' in via`
+    // guard the literal arm enters this branch, reads `via.inner` =
+    // undefined, `if (inner)` is false, and the literal subtree is
+    // silently dropped from the timeline projection (P67 silent-wrong —
+    // no throw, no log, wrong-but-plausible render). The literal node
+    // itself is still visited as a leaf by the surrounding walk; only
+    // the spurious `via.inner` recursion is suppressed.
+    if (anyN.via && typeof anyN.via === 'object' && !('literal' in anyN.via)) {
       const inner = (anyN.via as { inner?: PatternIR }).inner
       if (inner) visit(inner)
     }
@@ -483,6 +499,14 @@ function countLines(src: string, offset: number): number {
   }
   return line
 }
+
+/**
+ * Phase 20-17 D-1c — test-only re-export of `collectTrackBodies` for the
+ * HIGH-severity Code.via literal-arm projection guard test. Mirrors
+ * parseStrudel.ts's `__test_wrapAsOpaque` convention; not part of the
+ * public component API.
+ */
+export const __test_collectTrackBodies = collectTrackBodies
 
 export function MusicalTimeline(
   props: MusicalTimelineProps,

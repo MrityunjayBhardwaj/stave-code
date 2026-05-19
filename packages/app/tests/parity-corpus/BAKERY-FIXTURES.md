@@ -61,6 +61,50 @@ edit to the script is needed (the guard IS the enforcement; adding the
 fixtures would trip it). The upstream-drift tool therefore never reports
 these vendored repros as "missing upstream".
 
+### Phase 20-17 fixture (#140 / #141 — D-01 pervasive binding resolution)
+
+Phase 20-17 closes the D-01 matcher line — G1 (chain-arg substitution),
+G2 (bound-ident root in `parseRoot`), G3 (literal-RHS substitution via the
+additive `Code.via {literal:true;raw}` arm + `classifyLiteralRhs`), G4
+(pervasive optional-arg threading via `applyChain`/`parseTransform`/every
+internal `parseExpression` recursion), and a bounded least-fixpoint inside
+`buildBindingMap` (≤ N iterations, monotone progress, occurs-check
+terminal = the kept γ-3 opaque-RHS fence predicate, byte-identical, only
+repositioned post-fixpoint). The original D-02 "store as Code-with-via,
+no ripple" was unconstructible (`Code.via` was the `wrapAsOpaque` shape,
+no place for a literal `4`) — the D-02 CORRECTION resolves this by
+ADDITIVE union widening of `Code.via` (existing arm byte-unchanged; fence
+predicate byte-identical). The Wave-D consumer audit (D-1c) enumerates a
+grep-reproduced FLOOR of 14 `via.`-readers + 4 NOT-A-VIA-READER FLOOR
+confirmations; the HIGH-severity site (`MusicalTimeline.tsx`'s `via.inner`
+deref) is guarded by `!('literal' in via)`.
+
+**Provenance note (cascade-falsification record, 20-17):** the ORIGINAL
+D-03 criterion 1 anchor was `--LsnlgQ6osk` (the local Bakery repro
+vendored at `bakery-runs/repro__LsnlgQ6osk.strudel`). Wave-E empirically
+falsified the inferred plan premise that `--LsnlgQ6osk` is blocked by
+G1/G2/G4 — its `az2` binding is **opaque-by-SHAPE** (`irand(12)` chain
+root is an unbound function-call, NOT a recognised root pattern),
+NOT binding-blocked. Per PK18 + the AMENDED D-03 contract, criterion 1
+re-anchored on EVIDENCE to the DUAL pair `_72eEl7NwK9e` AND
+`_LHtBlF8peGC` (both #141-corpus repros, both 2/6 baseline `code (bare)`,
+both now STRUCTURED in production — proving D-01's matcher-line reach
+on the genuinely-in-scope cases). NO bar-lowering — the `az2` opaque-shape
+class deferred to 20-18 as a NEW D-2 sub-arm (`recogniseUnboundChainRoot`
+predicate + tag-mapping table).
+
+| Fixture | Gap classes closed | Issue | Repro source | Asserts |
+|---|---|---|---|---|
+| `bakery-140-binding-transitive.strudel` | G1 chain-arg / G2 root-ident / G3 literal-union / G4 method-arg / bounded fixpoint | [#140](https://github.com/MrityunjayBhardwaj/stave-code/issues/140) (γ-4 deferred from 20-15) · [#141](https://github.com/MrityunjayBhardwaj/stave-code/issues/141) (20-15 V-1 backlog: binding refs outside stack-bare-arg — the dominant 6/14 class) · Bakery `--LsnlgQ6osk` distillation (the 2/6 anchor in 20-17 Wave-0 baseline) | distilled from `bakery-runs/repro__LsnlgQ6osk.strudel` (20-17 Wave-0 vendored): 2-3 bindings + one final expr exercising G1 (`sound(rp1)`) + G2 (`stack(rp1, ...)`) + G3 (`.slow(numChords)` with `const numChords = 4`) + G4 (transitive `beat = sound(rp1).bank(...).slow(numChords)`) + fixpoint (iter-1 resolves `beat` only AFTER iter-0 resolves `rp1` + `numChords`) | `Track('d1', Stack)` with **two** structured stack tracks: track-1 is `Code.via { method:'fast', inner: Cycle[Play(sd), Play(hh)] }` (the `rp1` G2-root substitution); track-2 is `Code.via { method:'slow', inner: Param('bank', body: Code.via { method:'fast', inner: Cycle[Play(sd), Play(hh)] }) }` (the `beat` G4-transitive substitution; the spliced `rp1` subtree appears inside `beat`'s `bank` chain). The whole-program body is **not** bareCode (`body.tag === 'Stack'` → `body.tag !== 'Code'` predicate TRUE → STRUCTURED). Pre-20-17 this distillation parsed to whole-program bareCode (no G1/G2/G3/G4); post-20-17 it is the canonical regression wall for the D-01 matcher line. |
+
+**parity-refresh exclusion (same mechanism as 20-15 + 20-16):**
+`parity-refresh.mjs:70-75`'s structural guard throws if ANY `bakery-*`
+slug leaks into TARGETS. `bakery-140-binding-transitive` is excluded
+automatically by NOT being added to TARGETS — no edit to the script is
+needed (the guard IS the enforcement; adding the fixture would trip it).
+The upstream-drift tool therefore never reports the new fixture as
+"missing upstream".
+
 ### Per-setter G2 fixtures (V-3 — α-1 → V-3 contract)
 
 The α-1 commit body (`a2b607c`) is the authoritative input contract: the

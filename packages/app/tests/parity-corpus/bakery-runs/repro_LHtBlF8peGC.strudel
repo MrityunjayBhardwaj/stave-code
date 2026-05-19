@@ -1,0 +1,47 @@
+// "Scale and chord test" @by shadesDrawn
+
+var chordProgression = "<[0,2,4] [0,3,5] [6,1,5] [1,6,0]>";
+var scales = "<C:minor [G:minor Eb:major Eb:lydian@2] F:minor>";
+var numChords = 4;
+
+stack(
+
+  //arp keys
+  n(chordProgression).s("gm_epiano1").phaser(3)
+ .room(.5)
+  //.set.reset(anchor("C3"))
+  .scale(
+      scales.slow(numChords)
+  )
+  .arp("0 1 2 0 1 2"),
+
+  //bass chords
+  n(chordProgression).s("gm_acoustic_bass").phaser(1)
+ .room(.5)
+  //.set.reset(anchor("C3"))
+  .scale(
+      scales.slow(numChords)
+  )
+  ,
+
+  //drums
+  s("bd ~ [sd:1, rim] [bd rim] [~ rim] bd [sd:1, rim] ~").bank("RolandTR99"),
+  s("[hh ~]!16").bank("Linn9000_hh"),
+  
+)
+
+
+/*
+  n("4,6").s("gm_epiano1") //.phaser(3) //.add(n(7))
+  .room(.5)
+  .set.reset(anchor("<[C3@3 B2]!4 C2!2 F2!2>/4"))
+  .scale(
+    "<0@8 1@8>"
+    .pick([
+      "<C:lydian!3 <C#:phrygian Db:mixolydian>>",
+      "<F:lydian!2 <F C>:dorian!2>"
+    ])
+  )
+  */
+
+// @version 1.0

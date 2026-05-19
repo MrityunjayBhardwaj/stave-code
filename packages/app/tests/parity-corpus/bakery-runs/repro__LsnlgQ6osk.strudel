@@ -1,0 +1,50 @@
+// CC0
+// "untitled cycle #9238afc8" Version 0.0.2 - all rights reversed. nu
+setcps(1)
+
+const rp1 = "<sd hh>".fast("<2@3 4>")
+
+const beat = sound(rp1).bank("RolandTR707").gain(0.4)
+   .gain(perlin.range(0.3,0.8))
+   .adsr("[.015 0.1]:.1:[0.8 0.4]")
+   .clip(1)
+   .degradeBy(0.5)
+
+const az2 = irand(12).struct("x(8,8)|x(4,8)")
+  .sometimesBy(perlin.range(0.0,1.0),sub(8))
+  .sometimes(slow(2))
+  .scale("<G:dominant@2 G:major D:major>")
+  .note()
+  .s("<piano sine>")
+  .room(0.2)
+  .clip(1)
+  .degradeBy(perlin.range(0,1))
+  .fm(sine.range(1.5,8).fast(perlin.range(2.8,3.2)))
+  .pan(sine.range(0.4,0.6).fast(perlin.range(2.8,3.2)))
+
+const chords2 = "<Gsus G7 Em7 D7>";
+
+const bass = chords2.rootNotes(2).note()
+  .s("sawtooth")
+  .clip(1).cutoff(200)
+  .bpf(400).bpq(0.1)
+  .shape(.5).decay(0.2).sustain(0.6).late(0.05).delay(0.1)
+  
+const harm2 = 
+  chords2.voicings('ireal')
+  .slow(1)
+  .note()
+  .s("piano,sine")
+  .bpf(500).bpq("<0 1 2 3>")
+  .clip(1)
+  .color("<cornflowerblue tomato lightgreen orange>")
+
+stack(
+  bass,
+  beat,
+  harm2,
+  az2,
+)
+
+
+// @version 1.0

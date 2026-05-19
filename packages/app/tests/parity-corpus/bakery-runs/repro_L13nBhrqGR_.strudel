@@ -1,0 +1,18 @@
+// "one weird trick" @by yaxu
+
+const polyrhythm = "bd sd hh, ht ht ht cp".s()
+  .steps(12)
+
+const polymeter = "{bd sd hh, ht mt lt cp}".s()
+  .steps(4)
+
+// poly rhythm + meter in one!
+const both = "{bd hh hh, bd hh hh hh}"
+  .s()
+  .steps(4)
+
+"polyrhythm!4 polymeter!4 both!4".steps(1)
+  .pick({polyrhythm,polymeter,both})
+  .bank("RolandTR909")
+
+// @version 1.1

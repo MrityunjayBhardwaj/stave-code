@@ -44,10 +44,17 @@ export function summarize(node: PatternIR): string {
     case 'Chop':     return `n=${node.n}`
     case 'Loop':   return ''
     case 'Code':
-      // Phase 20-04 T-12 / D-05 / PV35 (developer chrome).
-      // Wrapper case: render full call-site detail — "[opaque: .release(0.3)]".
-      // Parse-failure case (no via): render the source code as before.
-      if (node.via) return `[opaque: .${node.via.method}(${node.via.args})]`
+      // Phase 20-04 T-12 / D-05 / PV35 (developer chrome) + 20-17 D-1c.
+      // Discriminate Code.via union:
+      //   - wrapAsOpaque arm: render full call-site detail —
+      //     "[opaque: .release(0.3)]" (unchanged developer-chrome behaviour).
+      //   - literal arm ({literal:true;raw}): render as `[literal: <raw>]`
+      //     so the developer sees the substituted source verbatim.
+      //   - no via (parse-failure leaf): render the source code as before.
+      if (node.via) {
+        if ('literal' in node.via) return `[literal: ${node.via.raw}]`
+        return `[opaque: .${node.via.method}(${node.via.args})]`
+      }
       return JSON.stringify(node.code).slice(0, 60)
     case 'Param': {
       // Phase 20-10 wave β-2 (developer chrome / PV35 / D-05).
@@ -125,7 +132,10 @@ export function children(node: PatternIR): readonly PatternIR[] {
     // Phase 20-04 T-12 / D-05 (developer tree expansion).
     // Wrapper case: expose via.inner as a child so the inspector tree can
     // drill into the wrapped receiver. Parse-failure case (no via): leaf.
-    case 'Code':  return node.via ? [node.via.inner] : []
+    // Phase 20-17 D-1c — discriminate Code.via union. Only the
+    // wrapAsOpaque arm has `inner` (drill into wrapped receiver). The
+    // literal arm (`{literal:true;raw}`) is a LEAF — return [].
+    case 'Code':  return node.via && !('literal' in node.via) ? [node.via.inner] : []
     // Phase 20-11 γ-3 — Track is a single-body wrapper (like FX/Loop);
     // children expose the body so the developer can drill into the
     // wrapped expression.

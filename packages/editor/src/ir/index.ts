@@ -19,7 +19,7 @@ export { patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ser
 
 // Parsers
 export { parseMini } from './parseMini'
-export { parseStrudel } from './parseStrudel'
+export { parseStrudel, classifyLiteralRhs } from './parseStrudel'
 
 // Phase 19-07 (#79) — staged parser pipeline. Each stage helper runs
 // PatternIR → PatternIR; STRUDEL_PASSES wires them as named passes so
