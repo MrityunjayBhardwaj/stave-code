@@ -1,0 +1,4 @@
+const numChords = 4
+const rp1 = "<sd hh>".fast("<2@3 4>")
+const beat = sound(rp1).bank("RolandTR707").slow(numChords)
+stack(rp1, beat)

@@ -1674,3 +1674,115 @@ P69 (grounded-looking inference — the under-enumeration instance), PK18
 `.planning/phases/20-musician-timeline/20-17-PLAN.md` (D-1c — the
 8-consumer guarded audit), `20-17-CONTEXT.md` (D-02 CORRECTION).
 Ground Truth: 20-17-PLAN.md D-1c, 20-16-OBSERVATIONS.md.
+
+## PV53 — Binding substitution is pervasive optional-arg threading + bounded least-fixpoint, NEVER module-level mutable state
+
+**Claim:** the D-01 binding resolution mechanism is **pervasive
+optional-arg threading** combined with a **bounded least-fixpoint
+inside `buildBindingMap`**. The `bindings` map flows on the call stack
+via `applyChain` + `parseTransform` + every internal `parseExpression`
+recursion as an optional 4th arg (`undefined` everywhere unintended).
+The fixpoint loop is bounded by `iter < descs.length` (monotone progress
+early-exit), with the kept γ-3 opaque-RHS fence predicate repositioned
+post-fixpoint as the occurs-check terminal. Together these make binding
+resolution **total + PTIME + order-independent** WITHOUT making the
+parser an evaluator. The matcher line stays a matcher (D-01 is
+SUBSTITUTION — splice the parsed tree; never run `.fast` / never
+evaluate `${}` / never invoke an arrow body).
+
+**`Code.via` discriminated-union addendum:** `Code.via` is a
+DISCRIMINATED UNION — the `wrapAsOpaque` arm
+`{method, args, callSiteRange, inner}` (opaque-fragment wrapper) and the
+additive `{literal: true; raw}` arm (G3 literal-RHS marker, 20-17
+D-02 CORRECTION). Discriminate at every consumer by `'literal' in via`
+or `via.inner === undefined`. The opaque-fence test
+`tag === 'Code' && via === undefined` is byte-identical across both arms
+(a literal sets `via !== undefined`, so the fence never bails on it).
+The literal arm `raw` field is BYTE-VERBATIM source text — `4` stays
+`"4"`, NEVER the number `4` (substitution never evaluates). **The
+literal arm applies ONLY when `parsed` is itself bareCode** — strict
+improvement, never downgrade. The regex `^"[^"]*"$` cannot
+syntactically distinguish a plain string from a Strudel mini-pattern
+string; the bare-only intent is encoded via PRECEDENCE
+(`const ir = parsedIsBareCode ? (lit ?? parsed) : parsed` at
+`parseStrudel.ts:562-575`). Every `via.`-reader MUST guard the union;
+HIGH-severity site = `MusicalTimeline.tsx:309-316`'s `via.inner` deref
+guarded with `!('literal' in via)` (D-1c consumer audit, 14 production
+sites enumerated as the FLOOR + 4 NOT-A-VIA-READER FLOOR
+confirmations).
+
+**Why a vyapti, not a one-off:** the threading invariant spans every
+recursive arm of the parser's value-substitution surface — miss the
+`bindings` thread in ONE recursion site and that arm silently bails to
+graceful Code on inputs other arms resolve. The fixpoint termination
+guarantees rely on the bound being the descriptor count + monotone
+progress; if a future change makes `bindings` mutate after the loop, or
+adds a recursion site that drops `bindings`, the total/PTIME/order-
+independent properties dissolve. The `Code.via` union addendum spans
+the 14-consumer FLOOR — adding a new arm without auditing every reader
+silently produces P67-class wrong outputs.
+
+**Confirmed by:** Phase 20-17 Waves A (signature refactor, byte-identical
+proto gate; commit `e86281e`) + C-1 G1 (`4e7c162`) + C-2 G2 (`d703ece`)
++ D-1a additive union arm + classifyLiteralRhs helper (`e29225d`) + D-1b
+STRICT contract test (`e2c249d`) + D-1c 14-consumer audit + HIGH-severity
+MusicalTimeline guard (`c85cc2b`) + E-1 bounded fixpoint + occurs-check
++ precedence fix (`1c0a0b6`). 4 proto synthetics PASS (forward-ref
+structured; cyclic/dup-key/dead-opaque code by design). D-1c round-trip
+acceptance test proves `.slow(numChords)` with `const numChords = 4`
+emits `via.raw = "numChords"` byte-verbatim. Fresh real-world parity
+**86.0% on N=50** (stamp `2026-05-19T13-24-45-538Z`, SHA `f73b3956`,
++6.0pp vs 20-16 baseline 80.0%). The kept γ-3 fence predicate
+`tag === 'Code' && (… as { via?: unknown }).via === undefined` is
+byte-identical across all 5 fence sites (`parseStrudel.ts:571, 574, 653,
+998, 1330`) by grep.
+
+**Test gate:** every new caller of `applyChain` / `parseTransform` /
+`parseExpression` that recursively descends into a chain-arg or root
+position MUST thread `bindings` through. Detection: grep for any new
+recursion call NOT receiving `bindings` as its 4th arg; an arm that
+omits the thread silently bails to graceful Code on inputs the rest of
+the surface resolves. Every new `via` arm added to `Code.via` MUST be
+ADDITIVE (do not mutate the existing arm's shape) and MUST be
+accompanied by an updated D-1c-style grep-reproduced consumer audit
+(the prose list is a FLOOR, not exhaustive-final).
+
+**Breaks when:** (a) a future change introduces module-level binding
+context (the PV50 hazard — the threading invariant is the explicit
+mitigation), (b) a new `via` arm is added without auditing all 14+ live
+consumers, (c) a literal-arm reader dereferences `via.inner` without
+guarding the union — `via.inner` is `undefined` on the literal arm and
+a deref would silent-wrong (P67) or throw (`serialize.ts`-class),
+(d) the precedence fix at `parseStrudel.ts:562-575` is reverted to
+`ir = lit ?? parsed` — a Strudel mini-pattern string would be
+classified as a plain literal (the bakery-150 / bakery-152 regression
+class that Wave E's STOP record captured pre-fix).
+
+**REF:** PV49 (the shared-walker definition-site offset invariant — the
+splice carries def-site offset, preserved by the fixpoint), PV50 (the
+module-level-state hazard this invariant explicitly avoids), PV52 (the
+8→14 `Code.via` consumer span — generalised by this entry's discriminated-
+union addendum), P67 (the tri-state Code error guarded by the
+byte-identical fence predicate), P69 (the grounded-looking-inference
+pattern that necessitated the grep-reproduced consumer FLOOR),
+PK16/PK17/PK18 (the gate discipline that landed this);
+`packages/editor/src/ir/parseStrudel.ts` (`buildBindingMap` bounded
+fixpoint, `applyChain`/`parseTransform`/recursion sites with `bindings?`
+optional arg, `classifyLiteralRhs` helper, the precedence guard at
+562-575, the 5 byte-identical fence sites), `PatternIR.ts:99-105` (the
+`Code.via` union), `MusicalTimeline.tsx:309-316` (the HIGH-severity
+guarded `via.inner` deref);
+`.planning/phases/20-musician-timeline/20-17-PLAN.md`, `20-17-CONTEXT.md`
+(D-02 CORRECTION), `20-17-OBSERVATIONS.md` (Wave-E falsification trail),
+`20-17-SUMMARY.md` (the phase-close audit). Ground Truth: same.
+
+### PV49 addendum (20-17) — bound-ident-root arm joins the spliced-subtree span
+
+The Wave C-2 `parseRoot` G2 bound-ident-root arm at `parseStrudel.ts:962-981`
+joins the PV49-routed span. The spliced subtree carries definition-site
+offset (preserved by the spliced subtree itself, applied use-site by
+`applyChain` independently). PV49's "shared walker invariant" holds: the
+splice does not re-base loc offsets; the loc-fidelity.test.ts:82 `src.slice`
+mechanism remains loc-safe by construction across A → C → D → E waves
+(observed via V-3 per-file STOP gate: no parity-unchanged corpus file
+drifted on loc).

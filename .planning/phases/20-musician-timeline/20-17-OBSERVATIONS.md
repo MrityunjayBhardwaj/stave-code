@@ -612,3 +612,345 @@ The matcher-line-derived property (total + PTIME + order-independent by the boun
 
 D-1a provenance: the loop consumes the named `classifyLiteralRhs` helper defined in D-1a (parseStrudel.ts) — the post-parse literal arm at pS:561, gated by the Finding A precedence guard at pS:570-572. PV49 loc-additivity holds: `d.rhsOffset` is computed ONCE at the descriptor first pass (pS:527-528, same arithmetic as the old single-pass) and read by iter-k consumers without re-basing.
 
+
+---
+
+## V-1 — D-03 DUAL gate measurement (AMENDED crit-1 + crit-2 fresh re-measure)
+
+**Run:** 2026-05-19 (post-E-1, HEAD `1c0a0b6`, branch `feat/20-17-d01-pervasive`).
+**Verifier:** V-1 maintainer-side run-once gate (per PLAN lines 783-817 + CONTEXT §"D-03 AMENDMENT (2026-05-19)").
+**Scope:** measurement only — no commits, no SUMMARY edits, no backlog-issue filing (V-2/V-3/V-4 own those).
+
+### Criterion 1 (AMENDED, 2026-05-19) — dual anchor on EVIDENCE
+
+**Contract (CONTEXT §"Amended D-03 criterion 1"):** BOTH `_72eEl7NwK9e` AND `_LHtBlF8peGC` MUST ground STRUCTURED in production via `parseStrudel(<verbatim repro>)` → unwrap Track('d1', body) → `body.tag !== 'Code'` OR `body.via !== undefined`. The original anchor `--LsnlgQ6osk` was empirically falsified by Wave E (`az2` is opaque-by-shape, not binding-blocked) and is deferred to 20-18 backlog.
+
+**Command:** `pnpm --filter @stave/app test:proto`. Exit 0. 18 files, 366 tests, all green.
+
+**Verbatim PRODUCTION block (from `tests/parity-corpus/_proto-d01.spec.ts:253-264`, which runs the same `isCodeFallback` predicate referenced by the amendment):**
+
+```
+=== 6 REPROS (PRODUCTION parseStrudel — current source with Wave 0 bundle) ===
+__LsnlgQ6osk   | production=code (bare)
+_1j62z5xjyCN   | production=code (bare)
+_72eEl7NwK9e   | production=structured (body.tag=Code via)
+_CyO42BOyp5a   | production=structured (body.tag=Code via)
+_L13nBhrqGR_   | production=structured (body.tag=Param)
+_LHtBlF8peGC   | production=structured (body.tag=Stack)
+```
+
+**Track-unwrap inspection (per AMENDED predicate `body.tag !== 'Code' || body.via !== undefined`):**
+
+The proto spec at `_proto-d01.spec.ts:256-263` executes exactly this unwrap for each repro:
+
+```ts
+const ir = parseStrudel(code) as Record<string, unknown>
+const body =
+  ir.tag === 'Track' && ir.body && typeof ir.body === 'object'
+    ? (ir.body as Record<string, unknown>)
+    : ir
+const isBare = body.tag === 'Code' && (body as { via?: unknown }).via === undefined
+```
+
+This is byte-identical to the `isCodeFallback` discriminator at `_bakery-classify.spec.ts:11-67` that the amendment references. The printed verdicts are the predicate's direct output.
+
+Per-anchor verdict:
+
+- **`_72eEl7NwK9e`:** `ir.tag === 'Track'` → unwrap → `body.tag === 'Code'`, but `body.via !== undefined` (printed token `via` confirms). Predicate `body.tag !== 'Code' || body.via !== undefined` → **TRUE** (second disjunct). **STRUCTURED ✓**
+- **`_LHtBlF8peGC`:** `ir.tag === 'Track'` → unwrap → `body.tag === 'Stack'`. Predicate first disjunct `body.tag !== 'Code'` → **TRUE**. **STRUCTURED ✓**
+
+**Crit-1 verdict: PASS** — BOTH AMENDED anchors STRUCTURED in production.
+
+### Criterion 2 — fresh PK17-step-6 real-world re-measure
+
+**Contract (CONTEXT §"What stays unchanged"):** Fresh `pnpm parity:bakery --n 50` re-measure ≥ 85.0% structured; new stamp ≠ `2026-05-18T14-34-02-237Z` (20-16 baseline); UPSTREAM_SHA still `f73b395648645aabe699f91ba0989f35a6fd8a3c`. No bar-lowering escape.
+
+**Command:** `pnpm parity:bakery --n 50`. Exit 0. Supabase returned 100 rows; 50 non-empty samples classified.
+
+**Verbatim parity-bakery output (header + result block):**
+
+```
+# parity:bakery — real-world Bakery parity (20-15 D-03)
+# upstream pin:  f73b395648645aabe699f91ba0989f35a6fd8a3c
+# target N:      50
+
+# resolved body column (R5): "code"
+# Supabase returned 100 rows; 50 non-empty samples
+```
+
+```
+# === REAL-WORLD PARITY ===
+# N (measured):     50
+# structured:       43
+# Code-fallback:    7
+# real-world %:     86.0%   (structured / N)
+# 20-15 baseline:   4/10 = 40.0% (2026-05-15 stress test)
+
+# === NEW fallback classes (BACKLOG — NOT fixed this phase, D-03) ===
+#   [5x] BACKLOG #141 (→#140): binding ref outside stack()-bare-arg
+#   [1x] BACKLOG #143: guarded boot expr typeof X && X(...)
+#   [1x] NEW: uncategorised — needs manual triage (file an issue per AnviDev)
+
+# artifact (gitignored, dated/SHA'd): packages/app/tests/parity-corpus/.bakery-runs/samples-2026-05-19T13-24-45-538Z.json
+# result:                              packages/app/tests/parity-corpus/.bakery-runs/result-2026-05-19T13-24-45-538Z.json
+```
+
+**Evidence summary:**
+
+- **Fresh stamp:** `2026-05-19T13-24-45-538Z` ≠ baseline `2026-05-18T14-34-02-237Z` → fresh pull confirmed (PK17 step 6 satisfied; not circular).
+- **UPSTREAM_SHA:** `f73b395648645aabe699f91ba0989f35a6fd8a3c` (unchanged, per `parity-bakery.mjs:52`).
+- **N:** 50 (target met; `--n 50`).
+- **Structured:** 43/50.
+- **Code-fallback:** 7/50.
+- **Real-world %:** **86.0%** (printed at 1-decimal canonical precision; structured / N = 43 / 50 = 0.86 exact).
+- **Delta vs 20-16 post-merge baseline:** +6.0pp (80.0% → 86.0%).
+
+**Crit-2 verdict: PASS** — 86.0% ≥ 85.0% on fresh N=50 PK17-step-6 re-measure. No bar-lowering invoked; the measurement is over the gate without rounding.
+
+### NEW Code-fallback classification (V-4 backlog enumeration; NOT fixed in 20-17)
+
+Per the parity-bakery script's auto-classifier output, the 7 Code-fallbacks group into three named classes:
+
+| Count | Class | Existing backlog | Minimal repro / signature | Proposed backlog-issue title (filed by V-4) |
+|------|-------|------------------|---------------------------|---------------------------------------------|
+| 5 | binding ref outside `stack()` bare-arg | #141 (→ #140) | The `--LsnlgQ6osk`-family shape: bindings referenced from a `stack(...)` whose RHS is not bare-arg-only (e.g. wrapped in `irand(…).struct(…).sometimesBy(…)` chains where the chain root is an unbound function call — `az2`'s class per CONTEXT D-03 AMENDMENT). | (already filed: #141 → #140; the dominant class boundary for **20-18** is the **chain-root recognition for unbound function-call roots** sub-arm — `recogniseUnboundChainRoot` predicate + tag-mapping table per Wave-E deferral) |
+| 1 | guarded boot expr | #143 | `typeof setDefaultVoicings !== 'undefined' && setDefaultVoicings('legac…` at top-level — short-circuit expression statement. | (already filed: #143) |
+| 1 | uncategorised | — | One sample the auto-classifier could not assign to a known class; manual triage needed (which row id requires reading the `samples-2026-05-19T13-24-45-538Z.json` artifact). | NEW: "20-17 V-1 N=50 measurement surfaced 1 uncategorised Code-fallback — triage and classify" (V-4 will file this against the gitignored artifact) |
+
+**Dominant new class for 20-18 seed:** the `[5x]` chain-root-recognition family (D-01 matcher line genuinely cannot reach this — see CONTEXT D-03 AMENDMENT). 20-18 will scope `recogniseUnboundChainRoot` as a new D-2 sub-arm. V-4 owns the issue-filing pass; V-1 only enumerates.
+
+### COMBINED V-1 verdict: **PASS**
+
+| Gate | Required | Observed | Verdict |
+|------|----------|----------|---------|
+| Crit-1 (AMENDED dual anchor) | `_72eEl7NwK9e` STRUCTURED AND `_LHtBlF8peGC` STRUCTURED in production | BOTH STRUCTURED (proto PRODUCTION block) | **PASS** |
+| Crit-2 (fresh ≥85.0%) | ≥ 85.0% structured on N≥50 fresh pull, new stamp, SHA `f73b3956` | 86.0% on N=50, stamp `2026-05-19T13-24-45-538Z`, SHA `f73b395648645aabe699f91ba0989f35a6fd8a3c` | **PASS** |
+| Combined | Both required (no escape hatch) | Both PASS | **PASS** |
+
+**No bar-lowering invoked.** Both criteria met above the gate, on first measurement, no re-pull or re-measure required.
+
+### Scope discipline (PK17 + PK18)
+
+- OBSERVATIONS edit is STAGED only — V-1 does NOT commit (V-4 owns the closing commit per PLAN §"DO NOT do in V-1").
+- NO backlog issues filed in V-1 (V-4 owns that pass).
+- NO SUMMARY edits (V-4 owns that pass).
+- NO catalogue updates (V-4 owns the catalogue pass).
+- HARD STOP discipline (PK18) NOT triggered — both gates passed cleanly; no contradictory evidence to escalate to the orchestrator.
+
+---
+
+## V-2 — Permanent CI fixture `bakery-140-binding-transitive.strudel`
+
+**Run:** 2026-05-19 (post-V-1, HEAD `1c0a0b6`, branch `feat/20-17-d01-pervasive`).
+**Scope:** vendor the distilled regression-wall fixture + provenance + parity-refresh.mjs exclusion verification + STOP-gate check on snapshot moves.
+
+### Distillation (per PLAN V-2 action 1)
+
+Source: `packages/app/tests/parity-corpus/bakery-runs/repro__LsnlgQ6osk.strudel` (the 20-17 Wave-0 vendored canonical Bakery repro). Distilled to the minimal 4-line shape exercising G1+G2+G3+G4+fixpoint end-to-end:
+
+```
+const numChords = 4
+const rp1 = "<sd hh>".fast("<2@3 4>")
+const beat = sound(rp1).bank("RolandTR707").slow(numChords)
+stack(rp1, beat)
+```
+
+Path: `packages/app/tests/parity-corpus/bakery-140-binding-transitive.strudel`.
+
+Distillation chooses (per 20-15 V-2 "do not paraphrase to a working form" lesson):
+- `sound(rp1)` — G1 chain-arg substitution (verbatim from `repro__LsnlgQ6osk.strudel:7`).
+- `stack(rp1, beat)` — G2 bound-ident root in `parseRoot` (the spliced `rp1` subtree becomes a track in the Stack).
+- `.slow(numChords)` where `const numChords = 4` — G3 literal-RHS via `Code.via {literal:true;raw:"numChords"}` arm.
+- `beat = sound(rp1).bank("RolandTR707").slow(numChords)` — G4 transitive substitution; `beat`'s RHS references `rp1` (forces iter-1 dependency on iter-0's `rp1` resolution).
+- Fixpoint: iter-0 resolves `numChords` + `rp1`; iter-1 resolves `beat` consuming the iter-0 bindings. Total ≤ N descriptors.
+
+**`az2` is NOT in this fixture** — the 20-17 CONTEXT D-03 AMENDMENT records `az2` as opaque-by-SHAPE (chain-root recognition gap for unbound function-call roots), deferred to 20-18. Including it would force the fixture to bare-Code and prove only the opacity-fence behaviour, not the D-01 matcher line.
+
+**Provenance note (cascade-falsification record):** the original V-1 D-03 criterion 1 anchor was `--LsnlgQ6osk`; it remains the *source* of the distillation (the 5/6 resolvable descriptors — `rp1`, `beat`, `chords2`, `bass`, `harm2` — all become STRUCTURED post-Wave-E, per V-1 § "Per-iter trace"). The single non-resolvable descriptor (`az2`) is empirically the chain-root-recognition class, deferred. The bakery-140 fixture captures the D-01-resolvable shape; the 20-18 follow-up will add a separate fixture for the chain-root class once that mechanism lands.
+
+### Parity-refresh exclusion (per PLAN V-2 action 4)
+
+**No edit to `parity-refresh.mjs` needed** — per the existing 20-15 V-2 structural guard at `parity-refresh.mjs:70-75`:
+
+```js
+if (TARGETS.some((t) => t.startsWith('bakery-'))) {
+  throw new Error('parity-refresh TARGETS must be upstream tunes only — ...')
+}
+```
+
+Adding `bakery-140-*` to TARGETS would trip the throw. The exclusion mechanism IS the guard. `BAKERY-FIXTURES.md` documents this for the new fixture in the Phase 20-17 section appended below the existing 20-15/20-16 sections.
+
+### Snapshot regeneration + STOP-gate check
+
+Backup baseline (pre-regen): both snapshots saved to `/tmp/parity.snap.before` and `/tmp/loc.snap.before` before running `vitest -u`.
+
+Command: `pnpm --filter @stave/app exec vitest run tests/parity-corpus/parity.test.ts tests/parity-corpus/loc-fidelity.test.ts -u`.
+
+Result: `2 written` — exactly two snapshots added (one in parity.test.ts.snap, one in loc-fidelity.test.ts.snap), both for `bakery-140-binding-transitive`. Diff vs `/tmp/{parity,loc}.snap.before`:
+
+```
+$ diff /tmp/parity.snap.before packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap | grep "^[0-9]"
+996a997,1089          # pure ADD, no deletions, no context (entire snapshot is one new block)
+
+$ diff /tmp/loc.snap.before packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap | grep "^[0-9]"
+533a534,582           # pure ADD, no deletions
+```
+
+**No existing snapshot moved by V-2's `-u` regen.** The 32 pre-existing corpus snapshots are byte-unchanged after the fixture was vendored.
+
+### Parity verdict for the new fixture
+
+Verbatim snapshot body (from `parity.test.ts.snap` line 996+):
+
+```
+{
+  "body": {
+    "tag": "Stack",
+    "tracks": [
+      { "tag": "Code", "via": { "method": "fast", "args": ""<2@3 4>"", "inner": { "tag": "Cycle", ... Play(sd), Play(hh) ... } } },
+      { "tag": "Code", "via": { "method": "slow", "args": "numChords", "inner": { "tag": "Param", "key": "bank", ..., "body": { "tag": "Code", "via": { "method": "fast", ..., "inner": { "tag": "Cycle", ... Play(sd), Play(hh) ... } } } } } },
+    ],
+    "userMethod": "stack",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+```
+
+Predicate `body.tag !== 'Code' || body.via !== undefined`: `body.tag === 'Stack'` → first disjunct TRUE → **STRUCTURED ✓**.
+
+The two Stack tracks both expose the D-01 mechanism:
+- Track 1 = the G2 root substitution: `rp1` (bound ident) at the stack-arg position is spliced to its definition's parsed subtree (`Cycle[sd, hh]` wrapped by `.fast("<2@3 4>")` via Code.via).
+- Track 2 = the G4 transitive substitution: `beat`'s RHS `sound(rp1).bank("RolandTR707").slow(numChords)` parses with `rp1` resolved (iter-0) and `numChords` resolved as the additive G3 literal arm (`via.args="numChords"`, byte-verbatim raw). The fixpoint resolves `beat` in iter-1.
+
+Pre-20-17 verdict (counterfactual): this distillation would parse to whole-program bareCode (no G1/G2/G3/G4 + no fixpoint to resolve transitives). Post-20-17 STRUCTURED — the fixture IS the canonical regression wall.
+
+### Loc-fidelity verdict
+
+The 11 loc slices in the new fixture's loc-fidelity snapshot map verbatim to their source-text bytes (`stack(rp1, beat)`, `.fast("<2@3 4>")`, `<sd hh>`, `sd`, `hh`, `.slow(numChords)`, `.bank("RolandTR707")`, then the spliced `rp1` subtree's loc bytes — same `.fast("<2@3 4>")`, `<sd hh>`, `sd`, `hh`). PV49 definition-site offset preservation holds: the spliced `rp1` subtree's loc slices point to the ORIGINAL `rp1` definition source bytes (offsets 33-40 for the inner `<sd hh>`), not to its use-site inside `beat`.
+
+### BAKERY-FIXTURES.md provenance
+
+Appended a new "Phase 20-17 fixture (#140 / #141 — D-01 pervasive binding resolution)" section to `BAKERY-FIXTURES.md` with: closed gap classes (G1/G2/G3/G4/fixpoint), the cascade-falsification record (the AMENDED dual D-03 crit-1 anchor + the `az2` opaque-shape deferral to 20-18), the fixture table row (issue refs #140/#141 from `gh issue view`, Bakery hash `--LsnlgQ6osk`, distillation source, structured-IR assertion), and the parity-refresh exclusion mechanism (existing structural guard at parity-refresh.mjs:70-75 — no edit needed).
+
+### V-2 verify-pass checks
+
+| Check | Required | Observed | Verdict |
+|---|---|---|---|
+| Fixture vendored at correct path | `packages/app/tests/parity-corpus/bakery-140-binding-transitive.strudel` | exists, 200 bytes | ✓ |
+| Parity-corpus count | 33 (was 32, +1) | 33/33 GREEN | ✓ |
+| Loc-fidelity count | 33 (auto-discovered by `readdirSync` like parity) | 33/33 GREEN | ✓ |
+| Fixture parses STRUCTURED | `body.tag !== 'Code' OR body.via !== undefined` | `body.tag === 'Stack'` → first disjunct TRUE | ✓ |
+| Pre-existing 32 corpus snapshots byte-unchanged after `-u` | No moves outside the new fixture's snapshot block | diff shows pure ADD only (`996a997,1089` parity / `533a534,582` loc) | ✓ |
+| BAKERY-FIXTURES.md provenance | issue refs #140/#141 + Bakery hash `--LsnlgQ6osk` + closed gap classes | `grep -c "#140\|#141\|--LsnlgQ6osk" BAKERY-FIXTURES.md` = 9 | ✓ |
+| parity-refresh exclusion | bakery-140-* excluded from upstream-drift TARGETS | existing structural guard rejects any `bakery-*` in TARGETS — no edit needed | ✓ |
+
+### V-2 verdict: **PASS**
+
+bakery-140-binding-transitive.strudel vendored as permanent regression wall; STRUCTURED IR confirmed; BAKERY-FIXTURES.md provenance appended; parity-refresh exclusion mechanism unchanged (existing guard). NO snapshot drift on the pre-existing 32 corpus entries. V-3 will verify cross-wave per-file STOP gate; V-4 will commit + write SUMMARY + file backlog + open PR.
+
+---
+
+## V-3 — Cross-wave per-file loc-fidelity STOP gate
+
+**Run:** 2026-05-19 (post-V-2, HEAD `1c0a0b6` + V-2 staged artifacts, branch `feat/20-17-d01-pervasive`).
+**Scope:** verify-only — no source change. The realized phase pre-mortem: confirm no wave silently drifted offsets on a parity-unchanged file, and confirm every parity-changed file is on the enumerated allow-list.
+
+### Baseline reference
+
+`aaae98c` (the merge commit of PR #154; main-branch 20-16 post-merge state). Snapshots extracted via `git show aaae98c:packages/app/tests/parity-corpus/__snapshots__/{parity,loc-fidelity}.test.ts.snap > /tmp/{parity,loc}-baseline.snap`.
+
+### Parity-CHANGED set (current branch vs `aaae98c`)
+
+```
+$ diff /tmp/parity-baseline.snap packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap | grep -E "^[0-9]"
+996a997,1089          # NEW: bakery-140-binding-transitive (entire snapshot added)
+1338,1340c1431,1469   # CHANGED: bakery-152-block-comment (Wave-C improvement)
+1343,1345c1472,1510   # CHANGED: bakery-152-block-comment (same block, second region)
+```
+
+The two changed regions (1338-1340 / 1343-1345 in baseline) both fall inside the `bakery-152-block-comment` snapshot block (`awk` lookup: preceding `exports[` line is 1332 in baseline). The new region (996+) is the new bakery-140 fixture.
+
+**Parity-CHANGED set = {bakery-140-binding-transitive, bakery-152-block-comment}** — exactly the allow-list `{V-2 fixture, Wave-C-flagged}`. ✓
+
+### Loc-CHANGED set (current branch vs `aaae98c`)
+
+```
+$ diff /tmp/loc-baseline.snap packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap | grep -E "^[0-9]"
+533a534,582           # NEW: bakery-140-binding-transitive loc snapshot
+723a773,792           # CHANGED: bakery-152-block-comment loc snapshot
+724a794,813           # CHANGED: bakery-152-block-comment loc snapshot (same block)
+```
+
+Same two files, same allow-list. Per `awk` lookup, the 723a/724a regions both fall inside `bakery-152-block-comment`'s loc snapshot block (preceding `exports[` line is 716 in baseline). ✓
+
+### Per-file STOP gate verdict
+
+**Every parity-UNCHANGED file → loc-fidelity diff EMPTY.** Vacuously satisfied: the loc-changed set IS the parity-changed set (every loc change is on a file whose parity also changed). The "silent offset drift" pre-mortem (a parity-green file with a loc-red snapshot) is DEFINITIVELY NOT OCCURRING — there is no file whose parity stayed but whose loc moved.
+
+**Every parity-CHANGED file → on allow-list.** Allow-list = `{Wave-0 baseline} ∪ {bakery-140-binding-transitive (V-2)} ∪ {bakery-152-block-comment (Wave-C-flagged)}`. Observed parity-changed set = `{bakery-140-binding-transitive, bakery-152-block-comment}` ⊆ allow-list. ✓ No unenumerated changes.
+
+Per E-1 "Fix-4" finding (loc-fidelity.test.ts:82 mechanism — `src.slice` from the single parsed string at the definition-site offset): the fixpoint's N splices are loc-safe by construction. The allow-list is correctly NOT extended to "spliced-subtree files" — observed against the test source, not assumed. The cross-wave composition gate confirms the splice is loc-safe in practice across A → C → D → E.
+
+### Built-dist freshness (P68 anchors)
+
+```
+$ ls -la packages/editor/dist/index.js
+-rw-r--r--@ 1 mrityunjaybhardwaj  staff  1358357 19 May 18:50 packages/editor/dist/index.js   # post-E-1 build
+
+$ grep -c "bindings" packages/editor/dist/index.js                                    # Wave A anchor (keepNames param)
+39
+$ grep -c "bindings.has(trimmed)" packages/editor/dist/index.js                       # Wave C anchor (G2 string literal)
+1
+$ grep -c "classifyLiteralRhs\|codeLiteral" packages/editor/dist/index.js             # Wave D anchor (named export)
+4
+$ grep -c "iter < descs.length\|pending" packages/editor/dist/index.js                # Wave E anchor (fixpoint loop)
+72
+```
+
+All 4 wave anchors > 0. The post-E-1 dist contains every wave's source contribution; no wave was silently dropped by the build.
+
+### Test-count gates
+
+```
+$ pnpm --filter @stave/editor test
+Test Files  89 passed (89)
+Tests       1603 passed (1603)
+```
+
+Editor: 1603/1603 GREEN (≥ 1603 required per PLAN — was 1598 baseline + 4 fixpoint synthetics + 1 G3+G4 round-trip = 1603).
+
+```
+$ pnpm --filter @stave/app test
+Test Files  17 passed (17)
+Tests       367 passed (367)
+```
+
+App: 367/367 GREEN (was 365 baseline + 2 = parity adds 1 test for the new fixture + loc-fidelity adds 1 test for the same fixture; the PLAN's "365 + 1 = 366" estimate was off by 1 because BOTH parity and loc-fidelity each gain a test on a new corpus file). Parity-corpus 33/33; loc-fidelity 33/33; both GREEN.
+
+### V-3 verify checks
+
+| Check | Required | Observed | Verdict |
+|---|---|---|---|
+| Per-file parity↔loc correlation | Every parity-unchanged file's loc diff = EMPTY | All parity-unchanged files have empty loc diff (loc-changed ⊆ parity-changed) | ✓ |
+| Parity-changed set ⊆ allow-list | `{Wave-0} ∪ {V-2 fixture} ∪ {Wave-C flagged}` | `{bakery-140-binding-transitive, bakery-152-block-comment}` = allow-list | ✓ |
+| Wave A anchor grep > 0 | `bindings` param | 39 | ✓ |
+| Wave C anchor grep > 0 | `bindings.has(trimmed)` | 1 | ✓ |
+| Wave D anchor grep > 0 | `classifyLiteralRhs` / `codeLiteral` | 4 | ✓ |
+| Wave E anchor grep > 0 | `iter < descs.length` / `pending` | 72 | ✓ |
+| Editor test ≥ 1603 | 1603 | 1603 | ✓ |
+| App test count | Parity-corpus 33/33 + loc-fidelity 33/33 | 367/367 total, including 33+33 corpus | ✓ |
+
+### V-3 verdict: **PASS**
+
+The phase pre-mortem provably did NOT occur: no parity-unchanged file silently drifted on offsets; every parity-changed file is on the enumerated allow-list; the splice IS loc-safe by the observed definition-site mechanism (Fix-4 finding confirmed across all waves). All wave anchors present in built dist; full test suites GREEN. Cross-wave composition holds.
+
+### Scope discipline
+
+- OBSERVATIONS edit is STAGED only — V-3 does NOT commit (V-4 owns the closing commit).
+- NO catalogue updates (V-4 owns the catalogue pass).
+- NO PR opened (V-4 owns that).
+- HARD STOP discipline (PK18) NOT triggered — gate passed cleanly; no contradictory evidence.
+
+
+V-2 / V-3 / V-4 may proceed.
