@@ -289,3 +289,69 @@ describe('D-01 fixpoint HARD GATE prototype', () => {
     fs.writeFileSync('/tmp/proto-d01-output.txt', text)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 20-18 Wave-0 THE LOKĀYATA PROTOTYPE — the az2 chain-ARG-signal
+// question, settled by OBSERVATION (NOT inference). The phase's PRIMARY
+// parity risk: does a signal-VALUED chain-method ARG bareCode the whole
+// chain, or does the existing applyChain tolerate it opaquely once the
+// ROOT is recognised? Verdict drives the Wave A/B taxonomy scope. The probe
+// makes ZERO production change — it parses isolated shapes via the
+// production parseExpression/parseStrudel and records the EXACT outcome tag.
+// _-prefixed convention; runs under test:proto, NOT in CI.
+// ─────────────────────────────────────────────────────────────────────────
+describe('WAVE-0 az2 CHAIN-ARG-SIGNAL PROTOTYPE — settled by observation', () => {
+  it('parses the isolated chain-arg-signal shapes via production parseExpression', () => {
+    const tag = (ir: PatternIR): string => ir.tag
+    const bare = (ir: PatternIR): boolean => isBareCode(ir)
+    const probe = (label: string, src: string): string => {
+      let ir: PatternIR
+      try {
+        ir = parseExpression(src, 0, undefined, new Map())
+      } catch (e) {
+        return `${label.padEnd(34)} THREW ${(e as Error).message}`
+      }
+      return `${label.padEnd(34)} tag=${tag(ir).padEnd(8)} bare=${String(bare(ir)).padEnd(5)}  src=${JSON.stringify(src.slice(0, 70))}`
+    }
+
+    // The FULL verbatim az2 RHS, byte-for-byte from repro__LsnlgQ6osk.strudel
+    // lines 13-23 (NOT paraphrased — the 20-15 V-2 "do not paraphrase" lesson).
+    const az2Rhs =
+      'irand(12).struct("x(8,8)|x(4,8)")\n' +
+      '  .sometimesBy(perlin.range(0.0,1.0),sub(8))\n' +
+      '  .sometimes(slow(2))\n' +
+      '  .scale("<G:dominant@2 G:major D:major>")\n' +
+      '  .note()\n' +
+      '  .s("<piano sine>")\n' +
+      '  .room(0.2)\n' +
+      '  .clip(1)\n' +
+      '  .degradeBy(perlin.range(0,1))\n' +
+      '  .fm(sine.range(1.5,8).fast(perlin.range(2.8,3.2)))\n' +
+      '  .pan(sine.range(0.4,0.6).fast(perlin.range(2.8,3.2)))'
+
+    const out: string[] = []
+    out.push('=== WAVE-0 az2 CHAIN-ARG-SIGNAL PROTOTYPE (production parseExpression, isolation) ===')
+    // (a) baseline: root + struct, NO signal-valued arg.
+    out.push(probe('(a) irand+struct (no sig arg)', 'irand(12).struct("x(8,8)|x(4,8)")'))
+    // (b) signal-VALUED chain arg — does applyChain tolerate it opaquely?
+    out.push(probe('(b) irand+sometimesBy(sigarg)', 'irand(12).sometimesBy(perlin.range(0,1), sub(8))'))
+    // (c) the FULL verbatim az2 RHS (current = bare Code, the D-02 target).
+    out.push(probe('(c) FULL verbatim az2 RHS', az2Rhs))
+    // STOP-BOUNDARY probe: the recursive signal-arg-of-signal-arg shape that
+    // lives in az2 line 22 — `.fm(sine.range(1.5,8).fast(perlin.range(2.8,3.2)))`.
+    // If (b)/(c) require RECURSIVE signal-expr parsing to arbitrary depth →
+    // NEW-CLASS PK18 STOP (NOT Wave-0-sizable). This probe records the depth.
+    out.push(probe('(d) STOP-BOUNDARY recursive sigarg', 'sine.range(1.5,8).fast(perlin.range(2.8,3.2))'))
+    // control: a plain signal root in isolation (already bare today — the
+    // D-02 target surface for Wave A/B, confirms nothing regressed).
+    out.push(probe('ctrl perlin.range(0,1)', 'perlin.range(0,1)'))
+    // control: a STRUCTURED chain whose arg is a NON-signal value, to show
+    // applyChain's default arg tolerance baseline (sound() root recognised).
+    out.push(probe('ctrl sound("a").sometimesBy(.5,x)', 'sound("a b").sometimesBy(0.5, fast(2))'))
+
+    const text = out.join('\n')
+    // eslint-disable-next-line no-console
+    console.log('\n' + text + '\n')
+    fs.writeFileSync('/tmp/proto-d01-chainarg.txt', text)
+  })
+})
