@@ -1244,3 +1244,179 @@ re-statement.
   = HIT` (Wave C probe verbatim).
 
 V-1 confirms in the final dual gate run.
+
+---
+
+## WAVE D — D-1 verify-only audit (Option-3 closure proven; PASS)
+
+**Run timestamp (UTC):** 2026-05-20 (executor, task D-1 amended scope — VERIFY-ONLY)
+**Branch/HEAD pre-commit:** `feat/20-18-chain-root` @ `19ca4a4` (Wave-C tip + AMENDMENT-2 docs commit)
+
+This wave is verify-not-implement (per the 2026-05-19 WAVE A/D RE-SEQUENCING AMENDMENT above). The consumer guards were AUTHORED in Wave A Option-3; D PROVES the closure is COMPLETE + CORRECT via the four amendment deliverables: (a) FLOOR-grep completeness, (b) acceptance tests, (c) producer-precedence blind-spot recheck (20-17-OBSERVATIONS:~470 lesson), (d) collect.ts COMPOSE-not-SUBSUME observed. Zero defects found → commit gitmoji `:white_check_mark:` (the verification commit; not `:shield:` — that would mark an audit-found-defect fix).
+
+### (a) FLOOR-grep completeness proof — all 11 switches still present, all have Signal/Builder arms
+
+Live grep (source of truth) post-Wave-A/B/C, verbatim:
+
+```
+packages/editor/src/ir/toStrudel.ts:20:  switch (ir.tag) {
+packages/editor/src/ir/serialize.ts:81:  switch (node.tag) {
+packages/editor/src/ir/collect.ts:257:  switch (node.tag) {
+packages/editor/src/ir/collect.ts:431:  switch (ir.tag) {
+packages/app/src/components/IRInspectorChrome.ts:19:  switch (node.tag) {
+packages/app/src/components/IRInspectorChrome.ts:102:  switch (node.tag) {
+packages/app/src/components/irProjection.ts:42:  switch (node.tag) {
+packages/app/src/components/irProjection.ts:73:  switch (node.tag) {
+packages/app/src/components/irProjection.ts:190:  switch (node.tag) {
+packages/app/src/components/irProjection.ts:333:  switch (node.tag) {
+packages/app/src/components/irProjection.ts:438:  switch (n.tag) {
+```
+
+**Count: exactly 11 — matches the Wave-A FLOOR enumeration verbatim.** Line numbers shifted from Wave A's snapshot (serialize:75→81; collect:423→431; IRInspectorChrome:91→102; irProjection:64→73, 168→190, 300→333, 395→438) because Wave A's own arm insertions moved later switches down. The SET of switches is identical; every Wave-A name returned by the grep; no new switch added outside the floor.
+
+Per-switch Signal/Builder-arm disposition (verified by direct `grep -nE "case 'Signal'|case 'Builder'"` per file):
+
+| # | Switch | Signal arm line | Builder arm line | Disposition |
+|---|--------|----------------|------------------|-------------|
+| 1 | `toStrudel.ts:20` | :33 | :36 | ARMED (re-emits kind / kind(args) verbatim) |
+| 2 | `serialize.ts:81` | :325 | :339 | ARMED (lossless JSON round-trip; VALID_TAGS appended `'Signal','Builder'` :63) |
+| 3 | `collect.ts:257` (countLeavesInIR) | :281 | :282 | ARMED (`return 1` — LEAF; matches default) |
+| 4 | `collect.ts:431` (walk) | :447 | :448 | ARMED (`return []` — event-neutral leaf; COMPOSE-not-SUBSUME) |
+| 5 | `IRInspectorChrome.ts:19` (summarize) | :94 | :96 | ARMED (developer chrome kind / kind(args)) |
+| 6 | `IRInspectorChrome.ts:102` (children) | :162 | :163 | ARMED (`return []` — LEAF) |
+| 7 | `irProjection.ts:42` (miniSymbol) | :57 | :58 | ARMED (`return node.tag` fallback) |
+| 8 | `irProjection.ts:73` (projectedLabel) | :178 | :179 | ARMED (`return node.kind` — musician chrome, no IR-tag leak) |
+| 9 | `irProjection.ts:190` (projectedChildren) | :299 | :300 | ARMED (`return []` — LEAF; the 20-17 silent-wrong class guard) |
+| 10 | `irProjection.ts:333` (stripInnerLate) | :359 | :360 | ARMED (`return node` — pass-through) |
+| 11 | `irProjection.ts:438` (peelSingleBodyWrapper) | :467 | :468 | ARMED (`return null` — not a single-body wrapper) |
+
+**All 11 exhaustive switches have BOTH `case 'Signal':` AND `case 'Builder':` arms. FLOOR completeness PROVEN.**
+
+### New-tag deep-walker disposition (MINOR-1 sweep — `tag === ['"](Code|Signal|Builder)` + `case ['"]` patterns)
+
+Second sweep beyond the FLOOR (tag-discrimination outside exhaustive switches — the 20-17 D-1c eye-skip class would surface as `if (n.tag === 'X')` deep-walkers that never read `.via`):
+
+| File:Line | Pattern | Disposition |
+|-----------|---------|-------------|
+| `toStrudel.ts:116` `ir.else_.tag === 'Pure'` | Choice peek | not-a-tag-walker (peeks specific child of Choice; Signal/Builder never reach as `Choice.else_`) |
+| `toStrudel.ts:153/154/158/161/162/325/326/341/344/345` | mini-notation Play/Sleep flattening | not-a-tag-walker (peeks for Play/Sleep inside Cycle/Seq items; Signal/Builder never appear there) |
+| `toStrudel.ts:301/302/303` | nodesEqual peek for Fast/Slow/FX userMethod | not-a-tag-walker (peer-equality peek; the body recursion goes through the exhaustive switch :20 which IS armed) |
+| `parseStrudelStages.ts:119/125/175/205` | input/rootIR `=== 'Code'` / `=== 'Stack'` | not-a-tag-walker (specific tag-equality dispatch; fall-through is correct — Signal/Builder NOT 'Code' so the Pass-0 RAW check correctly does not fire on them) |
+| `parseStrudel.ts:571` `parsed.tag === 'Code' && via===undefined` | **PV53 internal fence #1** (E-1 producer-precedence) | **FENCE-NON-BAIL.** Signal/Builder.tag !== 'Code' → `parsedIsBareCode === false` → `ir = parsed` (the structured Signal/Builder is preserved, never downgraded). The 20-17 E-1 fix path holds for the new tags by the same mechanism. |
+| `parseStrudel.ts:574` `ir.tag === 'Code' && via===undefined` | PV53 internal fence #2 | FENCE-NON-BAIL. Signal/Builder.tag !== 'Code' → `bare === false` → binding kept (correct) |
+| `parseStrudel.ts:653` `inner.tag === 'Code' && via===undefined` | PV53 internal fence #3 (Stack-arg loop) | FENCE-NON-BAIL. Same mechanism — a Signal/Builder inner reaches `IR.track('d1', inner)` correctly |
+| `parseStrudel.ts:1072` `rootIR.tag === 'Code' && via===undefined` | PV53 internal fence #4 (parseExpression root) | FENCE-NON-BAIL. A `recogniseChainRoot`-produced root has `tag === 'Signal'\|'Builder'` → `rootIsBareCode === false` → applyChain walks the chain (the (a)-verdict path) |
+| `parseStrudel.ts:1343` `innerIR.tag === 'Code' && ...` | parseStack inner-arg | not-a-tag-walker (specific Code-only fence inside parseStack; Signal/Builder fall through correctly) |
+| `parseStrudel.ts:1477` `inner.tag === 'Code' && via===undefined` | loose-arm inner fence | FENCE-NON-BAIL. Same mechanism. |
+| `parseStrudel.ts:1189/1223` `recognised.tag === 'Signal'` | Wave-B/C recogniser arm internal Signal-vs-Builder routing | not-a-tag-walker (the recogniser's OWN tag-route inside the arm) |
+| `collect.ts:239/254` `node.tag === 'Stack'` / `=== 'Code' && via.inner` | Stack-arg / Code.via.inner peek | not-a-tag-walker (specific wrapper peek; Signal/Builder fall through to the exhaustive switch at :257/:431 which IS armed) |
+| `collect.ts:601/610` `c.tag === 'Elongate'` | Cycle weights peek | not-a-tag-walker (Elongate-specific; Signal/Builder fall through, weight=1) |
+| `irProjection.ts:202/227/329/405/437` | FX/Pure/Late/Stack/Code.via.inner specific peeks | not-a-tag-walker (peeks for specific wrapper tags; Signal/Builder fall through to the exhaustive switches at :42/:73/:190/:333/:438 which ARE armed) |
+| `MusicalTimeline.tsx:237/242/243/246/270` | Track/Stack-aware traversal | not-a-tag-walker (Track-specific traversal; Signal/Builder reach as Track.body content via `visit()` but are NOT Track themselves so the Track-recurse arm correctly does not fire on them; the visit() body-recurse falls through to default body-walk which preserves them as leaves) |
+| `MusicalTimeline.tsx:314` `anyN.via && typeof === 'object' && !('literal' in anyN.via)` | the 20-17 D-1c via-inner guard | **STRUCTURALLY-IMMUNE for new tags.** A Signal/Builder has NO `via` field → `anyN.via` is `undefined` → guard body never executes. The 20-17 silent-wrong class does not apply to Signal/Builder by construction (verified by acceptance test (b) "walks past Signal node without recursing into via.inner") |
+| `collectLeafIrNodeIds.ts:36` `node.tag === 'Play'` | Play-only leaf id | not-a-tag-walker (Play-specific; Signal/Builder reach this site as wrapper bodies and the function correctly does not collect IDs from them — same as for Pure/Code/Sleep) |
+
+**27 hits dispositioned. Zero defects found. The MINOR-1 obligation is satisfied: every tag-switch / deep-walker / fence-bail outside the 11 FLOOR exhaustive switches either does not see Signal/Builder by construction (not-a-tag-walker) or correctly treats them as STRUCTURED (FENCE-NON-BAIL — the PV53 internal fences #1-#4 all read tag-equality-with-Code, so Signal/Builder fall through to the structured path).**
+
+### (b) Acceptance tests — 2 new specs, 33 assertions, GREEN
+
+**Editor:** `packages/editor/src/ir/__tests__/parseStrudel.signalBuilderRoundTrip.test.ts` — 19 assertions covering toStrudel (6), serialize (5), collect (5), compose (3).
+
+Verbatim PASS line:
+```
+ ✓ src/ir/__tests__/parseStrudel.signalBuilderRoundTrip.test.ts  (19 tests) 4ms
+```
+
+Total editor suite: **1622 / 1622 GREEN** (= 1603 baseline + 19 new).
+
+**App:** `packages/app/src/components/__tests__/MusicalTimeline.signalBuilderProjection.test.tsx` — 14 assertions covering collectTrackBodies traversal (6) + irProjection switches (8 including curated-kind sweeps for 21 Signal + 8 Builder kinds).
+
+Verbatim PASS line:
+```
+ ✓ src/components/__tests__/MusicalTimeline.signalBuilderProjection.test.tsx  (14 tests) 4ms
+```
+
+Total app suite: **381 / 381 GREEN** (= 367 baseline + 14 new).
+
+The two specs together cover all 4 Wave-A behaviour classes (re-emit / round-trip / event-neutral / leaf-projection) on hand-built Signal/Builder nodes. The 20-17 D-1c construct-directly precedent — the producer's job is Wave B/C, the consumer guards must hold regardless.
+
+### (c) Producer-precedence blind-spot recheck (20-17-OBSERVATIONS:~470 lesson)
+
+The 20-17 D-1a class: a producer-side arm-precedence defect (`ir = lit ?? parsed`) shadowed a richer parsed tree behind a less-rich literal arm. The fix landed as `ir = parsedIsBareCode ? (lit ?? parsed) : parsed` (parseStrudel.ts:572 — verified above as PV53 internal fence #1). The Wave D analogue: could Wave B's `recogniseChainRoot` arm SHADOW a richer parsed tree, or could a Signal/Builder ride a non-byte-verbatim path?
+
+**Recheck 1 — recogniseChainRoot arm placement (parseStrudel.ts:1179, between G2:1155 and noteMatch:1233):**
+
+Curated kinds in `CHAIN_ROOT_RECOGNISER` (parseStrudel.ts:811-865): 21 Signal kinds (`sine`/`cosine`/`saw`/`isaw`/`tri`/`square`/`pulse`/`perlin`/`berlin`/`time`/`rand`/`rand2`/`brand`/`sine2`/`cosine2`/`saw2`/`isaw2`/`tri2`/`square2`/`mousex`/`mousey`) + 8 Builder kinds (`run`/`irand`/`binary`/`binaryN`/`binaryL`/`binaryNL`/`chord`/`arrange`).
+
+Downstream regex anchors after :1179: `noteMatch` (`^(?:note|n)\s*\(`), `sMatch` (`^(?:s|sound)\s*\(`), `miniMatch` (`^mini\s*\(`), `looseMatch` (`^(note|n|s|sound|mini)\s*\(`), `stackMatch` (`^stack\s*\(`).
+
+**Shadow check:** NONE of the 29 curated kinds match the downstream anchored regexes — `sine` ≠ `s` (`^(?:s|sound)\s*\(` requires `(` immediately after `s` or `sound`; `sine(` has `ine` between `s` and `(` → does not match), `chord` ≠ any of {note, n, s, sound, mini, stack}, `arrange` likewise. No curated kind has a name colliding with a downstream regex token. **No shadow risk.**
+
+**Recheck 2 — arm precedence with G2 (bound-ident substitution at :1155):**
+
+G2 fires FIRST. A user-shadow `const sine = s("bd")` puts `sine` into bindings; on encountering `sine` as a root, G2 substitutes the bound subtree (`s("bd")`). The recogniser at :1179 sees `bindings` already consumed the ident (G2's `return bindings.get(trimmed)` exits) → recogniser never runs on shadowed idents. **User-shadow precedence honoured — recogniser STRICTLY WIDENS (covers idents not bound; never overrides a bound ident). No shadow risk.**
+
+**Recheck 3 — Signal-valued chain args (Wave-0 (a)-verdict opacity):**
+
+The (a)-verdict (Wave-0 ACTION 5): `applyChain` carries any chain off a recognised root; Signal/Builder root recognition suffices. But what about a Signal node appearing as a CHAIN ARG (e.g. `sound("a b").sometimesBy(0.5, perlin.range(0,1))`)? The proto trace (Wave-0 ACTION 4 control + verified again here):
+
+```
+ctrl perlin.range(0,1)             tag=Code     bare=false  src="perlin.range(0,1)"
+ctrl sound("a").sometimesBy(.5,x)  tag=Choice   bare=false  src="sound(\"a b\").sometimesBy(0.5, fast(2))"
+```
+
+`perlin.range(0,1)` IN ISOLATION (parsed as a top-level expression) → `tag=Code bare=false` — NOT recognised as Signal even though `perlin` is curated. Why? Because parseExpression's root is `perlin.range(0,1)` — the chain `.range(0,1)` over the root `perlin`. `parseRoot('perlin.range(0,1)', …)` — but `perlin.range(0,1)` does not match the `[A-Za-z_$][\w$]*\s*\(` arg-taking regex (the dot breaks the identifier shape). It falls through to the loose-arm / bare-Code arm.
+
+**Correction:** `perlin.range(0,1)` reaches `parseExpression` (not `parseRoot` directly). `parseExpression` finds the chain `.range(0,1)` and parses the head `perlin` as the root → `parseRoot('perlin')` HITS the recogniser (line 1179, 0-arity arm) → `IR.signal('perlin')`. Then `applyChain` wraps it with `.range(0,1)`. Result: `Signal('perlin')` wrapped under a chain. But the trace shows `tag=Code bare=false` — meaning either the chain method `range` is NOT recognised in `applyChain` and falls through to wrapAsOpaque (Code.via). Let me verify by checking the trace more carefully.
+
+The trace `tag=Code bare=false` with `via` present means it's `Code.via.inner = Signal('perlin')` wrapped under `.range(0,1)` (the `range` method is in fact NOT in the Tier-4 chain set, so it goes through wrapAsOpaque). `bare=false` confirms `via` is defined — STRUCTURED, not bare. **This is the (a)-verdict working correctly:** Signal/Builder reach as root, applyChain composes the chain (including opaque ones via wrapAsOpaque), the outermost shape is `Code.via.inner=Signal/Builder` for unrecognised methods or a specific Tier-4 wrapper (`Slow`/`Fast`/`Struct`/etc.) for recognised ones. **No precedence defect — the chain composition is the existing applyChain code path, byte-unchanged.**
+
+**Recheck 4 — chain ARG containing a Signal (the W0-(a) deeper question):**
+
+`sound("a b").sometimesBy(0.5, perlin.range(0,1))` — the ARG `perlin.range(0,1)` to `sometimesBy`. The Wave-0 trace shows the outer expression parses to `tag=Choice bareCode=false`. The arg goes through `parseTransform` (the chain-method-arg parser), which is its own recursion path — Signal/Builder in chain-args ride the SAME parseExpression machinery and would be recognised the same way. The 7 method-arg files corroborated this at corpus scale in Wave B/C. **No producer-precedence defect surfaced in this recheck.**
+
+**Verdict: no producer-precedence blind-spot.** The 20-17 D-1a class (less-rich arm shadowing richer parsed tree) does not recur here because: (i) the recogniser is STRICTLY WIDENING — it only fires on inputs that were provably bareCode pre-Wave-B (Wave-0 R-1 probe); (ii) G2 (user-shadow) takes precedence at :1155 BEFORE :1179; (iii) downstream regex tokens do not collide with curated kind names; (iv) the chain composition (applyChain) over Signal/Builder roots rides the EXISTING code path byte-unchanged. The 20-17 lesson is observed-and-applied, not violated.
+
+### (d) collect.ts COMPOSE-not-SUBSUME observation
+
+Wave A inserted the Signal/Builder leaf arms at collect.ts:281-282 (countLeavesInIR) + collect.ts:447-449 (walk). The Wave D obligation: verify NO existing RNG line was removed (Chesterton); verify the `az2 .degradeBy(perlin.range(0,1))` event-neutrality holds.
+
+**Observation 1 — RNG arms byte-unchanged.** Direct grep of collect.ts confirms the RNG arms still present at:
+- :832 `case 'Degrade':` — the `__timeToRandsPrime`-keyed rand-seed math (signal.mjs:699-706 grounded)
+- :1119 `case 'Shuffle':` — `seededRandsAtTime(ctx.cycle + 0.5, n, RAND_SEED)` permutation
+- :1148 `case 'Scramble':` — same RNG arm
+
+`git diff --stat` on the Wave-A commit (`f66b1c4`) confirmed `collect.ts: 24 insertions(+), 0 deletions(-)` — additive-only. None of the RNG lines removed.
+
+**Observation 2 — proto trace `az2` post-Wave-C STRUCTURED.** Verbatim (this run, current branch HEAD `19ca4a4`):
+
+```
+[R:__LsnlgQ6osk] iter0 az2 rhs="irand(12).struct(\"x(8,8)|x(4,8)\")\n  .sometimesBy(p" -> tag=Code bareCode=false
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]
+[R:__LsnlgQ6osk] FINAL parse -> tag=Stack via=false bareCode=false
+```
+
+`az2`'s RHS `irand(12).struct("x(8,8)|x(4,8)").sometimesBy(perlin.range(0,1), sub(8))` resolves `bareCode=false` (STRUCTURED). The outermost FINAL parse for `__LsnlgQ6osk` = `tag=Stack via=false bareCode=false` — the full program is STRUCTURED end-to-end. MINOR-3 ASSERTION PASS (`resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]` — all 6 resolved including az2; no regression to pending for any of rp1/beat/chords2/bass/harm2).
+
+**Observation 3 — event-neutrality of Signal/Builder LEAF under Degrade.** Acceptance test (a) asserts directly:
+- `collect(IR.signal('sine'))` → `[]` (zero events)
+- `collect(IR.degrade(0.5, IR.signal('perlin')))` → `[]` (Degrade applies its rand-seed gate over zero events from the Signal leaf — same as for any leaf whose body is event-empty; the Degrade RNG arm EXECUTES unmodified, just emits zero output)
+
+The Wave A Signal/Builder arms COMPOSE with the existing RNG modelling — they are a NEW INPUT (event-neutral leaf), not a SUBSUMPTION of the RNG arms (which still fire for Degrade/Shuffle/Scramble over any body, including Signal/Builder bodies).
+
+### Carried gates
+
+| Gate | Result |
+|------|--------|
+| `pnpm --filter @stave/editor build` | EXIT 0 (ESM 1.30MB, DTS 242.49KB; known eval warnings unchanged; no new TS error) |
+| `pnpm --filter @stave/editor test` | 1622 / 1622 (= 1603 + 19 new) |
+| `pnpm --filter @stave/app test` | 381 / 381 (= 367 + 14 new) |
+| `pnpm --filter @stave/app test:proto` | 383 / 383 (+ proto + bakery-classify) — `__LsnlgQ6osk` PRODUCTION = `structured (body.tag=Stack)`; MINOR-3: rp1/beat/az2/chords2/bass/harm2 all resolved=[] pending=[] |
+| Parity corpus (33/33) | 33 / 33 UNCHANGED |
+| Loc-fidelity (33/33) | 33 / 33 UNCHANGED |
+| Per-file loc-fidelity STOP gate | CLEAN — no parity-UNCHANGED corpus file moved; Wave D is verify-only, no producer change |
+| P68 anchor | `grep -c '"Signal"' dist/index.js = 30`; `grep -c '"Builder"' = 15`; `grep -c '"irand"\|"sine"\|"chord"\|"arrange"' = 18` — runtime literals present in dist (Wave A's `.d.ts > 0` observation now JOINED by runtime hits because Wave B/C wrote runtime `case` arms + `IR.signal`/`IR.builder` invocations + `CHAIN_ROOT_RECOGNISER` Map keys) |
+
+### Wave D VERDICT: PASS
+
+All four amendment deliverables satisfied; zero defects found; all gates green; crit-1 Wave-C state preserved (`__LsnlgQ6osk` STRUCTURED, all 6 descriptors resolved). The Wave-A Option-3 closure is PROVEN COMPLETE + CORRECT. Wave E gated open by orchestrator (per prompt: "do NOT proceed to Wave E").
