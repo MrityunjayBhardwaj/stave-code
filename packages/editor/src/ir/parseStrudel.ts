@@ -481,6 +481,67 @@ function splitTopLevelStatements(
   return out
 }
 
+// 20-19 (#158) — buildBindingMap shape-fence relaxation
+//
+// RECOGNISED side-effect-only statement heads. When a top-level
+// statement begins with one of these tokens and a `(`, it is a
+// pure side-effect call (return value DISCARDED at statement
+// level; no Pattern flows to a downstream binding). Such
+// statements are filtered out of `splitTopLevelStatements`'s
+// output BEFORE `buildBindingMap` consumes the array, so a
+// program shape `bindings*, sideEffect, finalExpr` becomes the
+// `bindings*, finalExpr` shape the existing shape guard at
+// `pS:534` already accepts.
+//
+// Upstream source audited at Codeberg SHA
+// f73b395648645aabe699f91ba0989f35a6fd8a3c (the same SHA pinned
+// in packages/app/tests/parity-corpus/CORPUS-SOURCE.md and in
+// the `PRELUDE_CALL_RE` provenance block at pS:167-194). Local
+// installed runtime: @strudel/core@1.2.6, @strudel/tonal@1.2.6,
+// @strudel/webaudio@1.3.0, superdough@1.3.0 — same posture as
+// 20-18 Wave C (controls.mjs line numbers corroborated 1.2.6).
+//
+// Per-token grounding (return value DISCARDED at statement level):
+//   - all              @strudel/core    repl.mjs:153-156  (mutates allTransforms[]; returns silence)
+//   - samples          superdough       sampler.mjs:249-263 (Promise<void>; registers samples)
+//   - setcps / setCps  @strudel/core    repl.mjs:117-120 + 215 alias (returns silence; mutates scheduler)
+//   - setcpm / setCpm  @strudel/core    repl.mjs:132-135 + 217 alias (returns silence; mutates scheduler)
+//   - useRNG           @strudel/core    signal.mjs:279 (returns mode string; mutates RNG_MODE)
+//   - setVoicingRange  @strudel/tonal   voicings.mjs:87 (returns helper result; mutates registry)
+//   - initAudio        superdough       superdough.mjs:259-289 (Promise<void>; boots audio context)
+//   - aliasBank        superdough       superdough.mjs:132 (Promise<void>; registers aliases)
+//
+// R2 ANTI-DRIFT: this set is HAND-MAINTAINED (the upstream
+// export list is not vendored). The mechanism is (a) this
+// comment + SHA pin and (b) one CI fixture per token (Wave C —
+// `bakery-158-<token>-shape-fence.strudel`).
+//
+// The regex anchors to STMT-HEAD (the stmt text is already
+// trimmed by `splitTopLevelStatements`'s `raw.trim()` at
+// `pS:396`). The `^[ \t]*` prefix is defensive — zero
+// behavioural delta on trimmed input, mirrors `PRELUDE_CALL_RE`.
+//
+// Module-scope placement (vs `PRELUDE_CALL_RE`/`GUARDED_BOOT_RE`
+// which are scoped inside `stripParserPrelude`): the new regex
+// is consumed by `stripSideEffectStatements` below, which is
+// itself module-scoped (called from `buildBindingMap`). The
+// scope placement is structural — the helper must see the regex.
+const SIDE_EFFECT_CALL_RE =
+  /^[ \t]*(?:all|samples|setcps|setCps|setcpm|setCpm|useRNG|setVoicingRange|initAudio|aliasBank)\s*\(/
+
+/**
+ * 20-19 (#158) — filter recognised side-effect-only statements out of
+ * the stmts array BEFORE `buildBindingMap` consumes it. PV49
+ * loc-additive by construction (filter() removes items; the remaining
+ * items' `offset` fields are untouched; the source string is never
+ * mutated).
+ */
+function stripSideEffectStatements(
+  stmts: { text: string; offset: number }[],
+): { text: string; offset: number }[] {
+  return stmts.filter((s) => !SIDE_EFFECT_CALL_RE.test(s.text))
+}
+
 const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
 
 function buildBindingMap(
@@ -489,7 +550,9 @@ function buildBindingMap(
 ):
   | { bindings: ReadonlyMap<string, PatternIR>; finalExpr: string; finalOffset: number }
   | null {
-  const stmts = splitTopLevelStatements(body, baseOffset)
+  const stmts = stripSideEffectStatements(
+    splitTopLevelStatements(body, baseOffset),
+  )
   if (stmts.length < 2) return null // need ≥1 binding + 1 final expr
 
   // 20-17 E-1 — descriptor list + bounded least-fixpoint.

@@ -4806,9 +4806,16 @@ function splitTopLevelStatements(body2, baseOffset) {
   return out2;
 }
 __name(splitTopLevelStatements, "splitTopLevelStatements");
+var SIDE_EFFECT_CALL_RE = /^[ \t]*(?:all|samples|setcps|setCps|setcpm|setCpm|useRNG|setVoicingRange|initAudio|aliasBank)\s*\(/;
+function stripSideEffectStatements(stmts) {
+  return stmts.filter((s) => !SIDE_EFFECT_CALL_RE.test(s.text));
+}
+__name(stripSideEffectStatements, "stripSideEffectStatements");
 var BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
 function buildBindingMap(body2, baseOffset) {
-  const stmts = splitTopLevelStatements(body2, baseOffset);
+  const stmts = stripSideEffectStatements(
+    splitTopLevelStatements(body2, baseOffset)
+  );
   if (stmts.length < 2) return null;
   const descs = [];
   const seen = /* @__PURE__ */ new Set();
@@ -24907,12 +24914,20 @@ function scale(root, type = "major", numOctavesOrOpts = 1) {
 }
 __name(scale, "scale");
 function chord_invert(notes, inversion) {
-  const arr = Array.isArray(notes) ? [...notes] : notes.toArray();
-  let inv = (inversion % arr.length + arr.length) % arr.length;
-  for (let i2 = 0; i2 < inv; i2++) {
+  let arr = Array.isArray(notes) ? [...notes] : notes.toArray();
+  let shift = Math.round(inversion);
+  while (shift > 0) {
     const lowest = arr.shift();
     arr.push(lowest + 12);
+    shift -= 1;
   }
+  while (shift < 0) {
+    const highest = arr.pop();
+    arr.push(highest - 12);
+    arr.sort((a, b) => a - b);
+    shift += 1;
+  }
+  arr.sort((a, b) => a - b);
   return new Ring(arr);
 }
 __name(chord_invert, "chord_invert");
@@ -24934,7 +24949,7 @@ function note_range(low, high) {
   return new Ring(notes);
 }
 __name(note_range, "note_range");
-function chord_degree(degreeVal, root, scaleType = "major", chordNumNotes = 3) {
+function chord_degree(degreeVal, root, scaleType = "major", chordNumNotes = 4, opts = {}) {
   const idx = parseDegree(degreeVal);
   scale(root, scaleType);
   const scaleIntervals = SCALE_TYPES[scaleType] ?? SCALE_TYPES["major"];
@@ -24949,6 +24964,9 @@ function chord_degree(degreeVal, root, scaleType = "major", chordNumNotes = 3) {
     const degIdx = (idx + i2 * 2) % len;
     const octOffset = Math.floor((idx + i2 * 2) / len) * 12;
     notes.push(noteToMidi3(root) + scaleIntervals[degIdx] + octOffset);
+  }
+  if (opts.invert !== void 0 && opts.invert !== null) {
+    return chord_invert(notes, opts.invert);
   }
   return new Ring(notes);
 }

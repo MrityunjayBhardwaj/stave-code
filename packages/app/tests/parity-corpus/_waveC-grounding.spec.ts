@@ -142,16 +142,22 @@ describe('20-18 Wave C-1 grounded chord/arrange modelling (maintainer-only)', ()
     // Grounded body-ABSENT contract (Ground Truth §3 + §5):
     expect((hit7 as AnyNode).body, '#7 arrange body MUST be absent — args-RAW-only per grounded disposition (JS-tuple-array surface outside matcher competence)').toBeUndefined()
 
-    // #3 RECORD-NOT-BLOCK — the chord arm WORKS but the whole-program shape
-    // gap blocks. We assert ONLY the NEGATIVE classification to lock in the
-    // PK18 STOP: the chord recogniser is reachable when the shape allows.
-    // The full #3 flip awaits the buildBindingMap shape-tolerance backlog
-    // issue. Asserting `struct3 === false` here documents that this Wave C
-    // commit does NOT claim to flip #3 — it claims to GROUND `chord`/`arrange`
-    // and prove the arm via stripped-shape. If a future fix to
-    // buildBindingMap flips #3 STRUCTURED, this assertion fails LOUDLY and
-    // the harness gets revisited (the documented expectation matches the
-    // documented STOP).
-    expect(struct3, '#3 PK18 STOP locked — whole-program still bare due to buildBindingMap shape gap; remove this assertion when the backlog fix lands').toBe(false)
+    // #3 — 20-19 (#158) FLIP RECORDED. 20-18 Wave C grounded the chord arm
+    // via the stripped-#3 probe (`Track/body.tag=Pick`, deep Builder/chord
+    // HIT, args="\"Am Am\""). 20-18 locked the negative `struct3 === false`
+    // as a PK18 STOP because the whole-program shape `bindings*, sideEffect,
+    // finalExpr` was rejected by `buildBindingMap` (the side-effect
+    // intermediate `all(x=>x.punchcard())` tripped the shape guard at
+    // `parseStrudel.ts:534`). 20-19 (#158) ships `stripSideEffectStatements`
+    // — a curated-list filter applied to `splitTopLevelStatements`'s output
+    // BEFORE `buildBindingMap` consumes it — so the program shape becomes
+    // `bindings*, finalExpr` (the shape the existing pS:534 guard already
+    // accepts). #3 now flips whole-program STRUCTURED via the same chord/
+    // arrange recogniser arm that 20-18 grounded. The Wave-C historical
+    // narrative ABOVE this block (`#3 RECORD-NOT-BLOCK` … `stripped-shape`)
+    // is preserved as load-bearing context for future debuggers: the chord
+    // arm itself was correct in 20-18; the 20-19 shape-fence relaxation
+    // unblocks the whole-program flip.
+    expect(struct3, '#3 20-19 FLIP RECORDED — whole-program STRUCTURED via chord recogniser arm (closes #158); if this fails, either `stripSideEffectStatements` dropped a stmt it should not have OR the chord arm regressed').toBe(true)
   })
 })

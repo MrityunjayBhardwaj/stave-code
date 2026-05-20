@@ -169,6 +169,57 @@ following pattern parses structurally (R2 anti-drift):
 (`setcps` was already present pre-α-1 — covered by the 20-14 corpus — so
 it gets no new fixture; the contract is "one per ADDED setter".)
 
+### Phase 20-19 fixtures (#158 — `buildBindingMap` shape-fence relaxation)
+
+Phase 20-19 closed the `buildBindingMap` shape-fence on
+`bindings*, sideEffect, finalExpr`. The fix ships a curated-list
+`SIDE_EFFECT_CALL_RE` regex + `stripSideEffectStatements` helper applied
+to `splitTopLevelStatements`'s output BEFORE `buildBindingMap`
+consumes the array, so the program shape becomes `bindings*, finalExpr`
+— the shape the existing pS:534 shape guard already accepts. The chord
+recogniser arm grounded in 20-18 Wave C handles the rest.
+
+The recognised closed set (FROZEN, 10 tokens, source-grounded at
+Codeberg pin SHA `f73b395648645aabe699f91ba0989f35a6fd8a3c` — see the
+provenance block at `parseStrudel.ts:484-530`):
+
+```
+all, samples, setcps, setCps, setcpm, setCpm, useRNG,
+setVoicingRange, initAudio, aliasBank
+```
+
+10 permanent CI fixtures (one per token; faithful-distillation
+minimum: a chord-rooted binding + the side-effect line as a depth-0
+intermediate + `stack(binding)` as the final expr) + 1 negative-control
+proving the filter (not the bindings substrate) is the gate:
+
+| Fixture | Token | Side-effect form | Asserts |
+|---|---|---|---|
+| `bakery-158-all-shape-fence.strudel` | `all` | `all(x=>x.fast(2))` | filter strips; `stack(padsbell)` parses STRUCTURED via chord arm |
+| `bakery-158-samples-shape-fence.strudel` | `samples` | `samples({a: 'github:foo/bar'})` | filter strips; STRUCTURED |
+| `bakery-158-setcps-shape-fence.strudel` | `setcps` | `setcps(1.5)` | filter strips; STRUCTURED |
+| `bakery-158-setCps-camel-shape-fence.strudel` | `setCps` | `setCps(1.5)` | camelCase alias (case-insensitive FS → `-camel` slug); STRUCTURED |
+| `bakery-158-setcpm-shape-fence.strudel` | `setcpm` | `setcpm(120)` | filter strips; STRUCTURED |
+| `bakery-158-setCpm-camel-shape-fence.strudel` | `setCpm` | `setCpm(120)` | camelCase alias; STRUCTURED |
+| `bakery-158-useRNG-shape-fence.strudel` | `useRNG` | `useRNG('latest')` | filter strips; STRUCTURED |
+| `bakery-158-setVoicingRange-shape-fence.strudel` | `setVoicingRange` | `setVoicingRange('lefthand', ['F2','C5'])` | filter strips; STRUCTURED |
+| `bakery-158-initAudio-shape-fence.strudel` | `initAudio` | `initAudio({})` | filter strips; STRUCTURED |
+| `bakery-158-aliasBank-shape-fence.strudel` | `aliasBank` | `aliasBank({a: 'github:foo/bar'})` | filter strips; STRUCTURED |
+| `bakery-158-NEGATIVE-no-sideeffect.strudel` | — | (no side-effect) | proves bindings substrate works without the filter; STRUCTURED with byte-identical body to the 10 positive fixtures |
+
+**The negative-control's role:** if `bakery-158-<token>-shape-fence`
+were bareCode while `bakery-158-NEGATIVE-no-sideeffect` was structured,
+the filter is broken (the side-effect intermediate is not being
+stripped). If both bareCode, the bindings substrate (20-15+17)
+regressed. If both structured (the design state), the system works as
+the 20-19 mechanism describes.
+
+**parity-refresh exclusion:** the `bakery-158-*` slugs are covered by
+the existing structural guard at `parity-refresh.mjs:68-75` (any
+`bakery-*` prefix triggers the throw if added to TARGETS); no script
+edit is needed (`node packages/app/scripts/parity-refresh.mjs --dry-run`
+reports 0 missing for the 11 new fixtures).
+
 ## License
 
 Each repro is a 1–3 line minimal distillation authored for regression

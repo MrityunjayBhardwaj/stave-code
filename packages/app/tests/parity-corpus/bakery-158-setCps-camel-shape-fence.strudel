@@ -1,0 +1,8 @@
+const padsbell = chord("Am Am").voicing().sound('gm_celesta:3').color('blue')
+    .attack(0.03).sustain(0.6).release(0.8)
+    .room(1).size(4)
+    .lpf("500 200").lpenv(4).lpattack(0.2)
+
+setCps(1.5)
+
+stack(padsbell)

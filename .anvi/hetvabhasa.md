@@ -2126,3 +2126,83 @@ records + the V-1 PASS verdict), `20-18-SUMMARY.md` (the phase-close
 audit citing all 4 occurrences). Cross-ref: P69 (the underlying
 inference-not-observation error), PK18 (the gate cascade discipline
 that converted these into STOPs not push-throughs).
+
+### P70 occurrence 8 (Phase 20-19, session 2026-05-20) — BONUS direction
+
+Phase 20-19 (#158) brought a single new P70 occurrence — and it
+arrived in the FAVORABLE direction, which D-03 explicitly accepts as a
+bonus close (NOT a re-pose).
+
+**The cascade-classification:** Wave 0 of phase 20-19 ran a backlog
+classification probe for `{#156, #159, #149, #147, #153}`. The
+`-1j62z5xjyCN` row (#147 / #141 / #140 exemplar) was classified as
+**F + SHAPE-FENCE-coupled** — the reasoning: the row has shape
+`var cpm = 30; samples('github:yaxu/clean-breaks'); stack(...).cpm(cpm)`,
+where:
+
+- the `samples(...)` intermediate is the SHAPE-FENCE class (20-19 in
+  scope; the filter would strip it);
+- BUT the `.cpm(cpm)` chain-arg at the tail is a SEPARATE class —
+  binding-ref via chain-method-arg outside `stack(...)` (#149's
+  backlog class, NOT in 20-19 scope).
+
+The Wave-0 cascade-classification predicted: **even with 20-19's
+filter stripping `samples(...)`, the `.cpm(cpm)` chain-arg would
+still block the whole-program flip; therefore `-1j62z5xjyCN` stays
+backlog until #149 ALSO ships.** Recorded VERBATIM in
+`20-19-OBSERVATIONS.md` Wave 0 disposition table.
+
+**The direct observation at V-1:** Fresh PK17 step-6 measurement
+stamp `2026-05-20T13-22-13-320Z` showed `-1j62z5xjyCN` flipped from
+`code` → `structured` — i.e. the filter ALONE was sufficient to flip
+this row. The Wave-0 prediction was FALSIFIED in the FAVORABLE
+direction. The chain-arg `.cpm(cpm)` was handled by existing
+20-17/20-18 binding-substitution machinery (the `cpm` binding's
+literal-RHS substitution via the `Code.via {literal:true,raw:'30'}`
+arm reaches the `.cpm(cpm)` arg and resolves it before the parser
+sees the binding as a bare ident).
+
+**Disposition:** the row's flip was BY DIRECT OBSERVATION, not a
+scope decision. D-03 explicitly accepts a non-A → A reclassification
+as a BONUS close (PLAN line 218). No PK18 re-pose required —
+the cascade-classification was wrong but in the favorable direction.
+The Wave-V-1 measurement and V-3 STOP gate both confirmed the row's
+flip composed cleanly with the 46 baseline-structured rows (zero
+regressions; per-file loc-fidelity STOP gate clean).
+
+**The lesson — multiplied condition cascades are themselves
+classifications, subject to P70.** When Wave 0 predicted "this row
+needs FIX-A AND FIX-B," the implicit reasoning was "two non-trivial
+fixes have a multiplicative chance of being necessary together." But
+that reasoning is itself a cascade: it assumes the row's shape only
+reaches FIX-A and FIX-B via DISJOINT sub-paths, not by FIX-A enabling
+already-shipped machinery to subsume FIX-B. In `-1j62z5xjyCN`'s case,
+the existing 20-17 literal-RHS substitution arm already handles
+`.cpm(cpm)` when the `cpm` binding's RHS is a literal — the prediction
+that #149's chain-arg fix would also be needed assumed the `.cpm(cpm)`
+arg was a still-unresolved binding ref AT chain-method-substitution
+time, which it isn't (it's a literal at fixpoint resolution time).
+Lesson: run the measurement, do not infer the necessary-condition
+conjunction from per-fix-class reasoning.
+
+**Disposition for #147:** PARTIAL close — the row exemplar
+`-1j62z5xjyCN` flipped structured (bonus from 20-19). The broader
+#147 sample-capture side-channel concern (the issue body's actual
+scope — capturing sample names into a side-channel for autocomplete /
+alias) was NOT addressed by 20-19 (D-02 RATIONALE explicitly rejected
+the side-channel capture variant). Issue stays open for the
+side-channel half; the exemplar's flip is documented as bonus-close
+evidence.
+
+**REF (20-19 additions):** `.planning/phases/20-musician-timeline/
+20-19-PLAN.md` (the Wave-0 backlog-classification action 5 + the D-03
+non-A → A bonus-close acceptance at line 218),
+`.planning/phases/20-musician-timeline/20-19-OBSERVATIONS.md` (Wave-0
+classification table + V-1 fresh measurement + the per-row
+disposition), `.planning/phases/20-musician-timeline/20-19-SUMMARY.md`
+(the FAVORABLE-direction P70-occurrence-8 cognitive discovery).
+Cross-ref: P70 occurrences 1-7 (every prior cascade-classification
+falsification); D-03 strict-scope discipline (the bonus-close
+acceptance rule).
+
+**P70 is now an 8-occurrence pattern (20-15 / 20-16 / 20-17 / 20-18 / 20-19).** The 7-occurrence summary in P70's earlier addenda stands as the spine of the framework; the 8th occurrence is the FAVORABLE-direction first. The lesson generalises: every occurrence — favorable or unfavorable — is a measurement falsifying a cascade-classification, and the discipline is the same (RUN, don't infer).
