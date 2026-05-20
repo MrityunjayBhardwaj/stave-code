@@ -652,6 +652,84 @@ the D-04 dual gate cleanly:
 
 **No PK18 re-pose required.** The phase ran clean.
 
+---
+
+## Wave V-3 — Cross-wave per-file loc-fidelity STOP gate
+
+### Cross-wave parity-corpus diff (HEAD~5..HEAD)
+
+```
+$ git diff --name-only HEAD~5..HEAD packages/app/tests/parity-corpus/ packages/app/tests/parity-corpus/__snapshots__/
+packages/app/tests/parity-corpus/BAKERY-FIXTURES.md
+packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap
+packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap
+packages/app/tests/parity-corpus/_waveC-grounding.spec.ts
+packages/app/tests/parity-corpus/bakery-158-NEGATIVE-no-sideeffect.strudel
+packages/app/tests/parity-corpus/bakery-158-aliasBank-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-all-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-initAudio-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-samples-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-setCpm-camel-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-setCps-camel-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-setVoicingRange-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-setcpm-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-setcps-shape-fence.strudel
+packages/app/tests/parity-corpus/bakery-158-useRNG-shape-fence.strudel
+```
+
+### Allow-list reconciliation
+
+| Changed file | In V-3 allow-list? |
+|---|---|
+| 11 × `bakery-158-*.strudel` | ✓ allow-list (Wave-0 pre-allocated; 11 Wave-C fixtures) |
+| `BAKERY-FIXTURES.md` | ✓ documentation update for the new section (not a corpus fixture; not a snapshot file) |
+| `_waveC-grounding.spec.ts` | ✓ Wave-B locked-STOP assertion-sense flip (not a corpus fixture; not a loc-fidelity snapshot) |
+| `__snapshots__/parity.test.ts.snap` | ✓ PURELY ADDITIVE — 11 new entries (one per fixture); ZERO pre-existing entries removed/modified |
+| `__snapshots__/loc-fidelity.test.ts.snap` | ✓ PURELY ADDITIVE — 11 new entries (one per fixture); ZERO pre-existing entries removed/modified |
+
+### PV49 substrate verification (the silent-drift guard)
+
+```
+$ git diff HEAD~5..HEAD packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap | grep -E '^[+-]exports\[' | wc -l
+11
+$ git diff HEAD~5..HEAD packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap | grep -E '^-exports\[' | wc -l
+0
+$ git diff HEAD~5..HEAD packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap | grep -E '^[+-]exports\[' | wc -l
+11
+$ git diff HEAD~5..HEAD packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap | grep -E '^-exports\[' | wc -l
+0
+```
+
+11 new exports added to each snap file; 0 removed. **The PV49 substrate
+mechanically guarantees no pre-existing fixture's loc-fidelity diff
+moved** (the filter operates on the stmts array, not the source string;
+remaining items' `offset` fields are byte-unchanged; every offset that
+flows out of `buildBindingMap` is byte-identical to what would flow if
+the user had hand-deleted the side-effect line).
+
+### Full-suite gate on V-3 head
+
+```
+$ pnpm --filter @stave/app test
+ Test Files  18 passed (18)
+      Tests  409 passed (409)
+
+$ pnpm --filter @stave/editor test
+ Test Files  91 passed (91)
+      Tests  1627 passed (1627)
+```
+
+**Counts: 409/409 app + 1627/1627 editor — all GREEN on V-3 head.**
+parity-corpus 47 + loc-fidelity 47 + other 315 = 409 ✓.
+
+### V-3 verdict
+
+**Cross-wave full-corpus per-file loc-fidelity STOP gate CLEAN.** The
+parity-CHANGED set across all 5 phase commits exactly matches the
+pre-allocated V-3 allow-list (11 Wave-C fixtures + 0 backlog Class-A
+bonus closes + 0 #3-corresponding corpus file). NO non-allow-list
+movement = NO silent drift.
+
 11 permanent CI fixtures vendored (10 token + 1 negative-control) in
 canonical chord-rooted shape; BAKERY-FIXTURES.md updated with the
 20-19 section + the per-fixture table + the negative-control's role;
