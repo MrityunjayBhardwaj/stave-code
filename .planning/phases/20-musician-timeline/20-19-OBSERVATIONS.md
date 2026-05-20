@@ -468,7 +468,120 @@ Inside `pnpm --filter @stave/app test` the loc-fidelity suite ran 36/36; no
 snapshot moved. The Wave-B edit is in a spec file (no production source
 change), so PV49 is structurally untouchable this wave.
 
-### Wave B — done
+### Wave B — done (REPEATED HEADER — see end of section)
+
+---
+
+## Wave C — Permanent CI fixtures (11 total)
+
+### Fixture vendoring
+
+11 fixtures vendored under `packages/app/tests/parity-corpus/`:
+
+- 10 token fixtures (one per `SIDE_EFFECT_CALL_RE` member): `bakery-158-{all,samples,setcps,setCps-camel,setcpm,setCpm-camel,useRNG,setVoicingRange,initAudio,aliasBank}-shape-fence.strudel`.
+- 1 negative-control: `bakery-158-NEGATIVE-no-sideeffect.strudel`.
+
+**Filename convention note:** macOS APFS/HFS+ is case-insensitive by
+default; `bakery-158-setcps-shape-fence.strudel` and
+`bakery-158-setCps-shape-fence.strudel` would collide. Per the existing
+20-15 V-3 precedent (`bakery-G2-setCpm-camel.strudel`,
+`bakery-G2-setCps-camel.strudel`), camelCase variants get a `-camel`
+slug suffix instead of relying on case-only filenames.
+
+**Faithful-distillation shape** (template):
+
+```strudel
+const padsbell = chord("Am Am").voicing().sound('gm_celesta:3').color('blue')
+    .attack(0.03).sustain(0.6).release(0.8)
+    .room(1).size(4)
+    .lpf("500 200").lpenv(4).lpattack(0.2)
+
+<TOKEN>(<MINIMAL VALID ARG>)
+
+stack(padsbell)
+```
+
+The chord-rooted RHS hits the 20-18 `CHAIN_ROOT_RECOGNISER` chord arm;
+the `stack(binding-ref)` finalExpr matches the existing structured
+final-expr arm; the side-effect intermediate is removed by 20-19's
+filter; the program shape becomes `[binding, finalExpr]` which the
+existing pS:534 shape guard accepts. Per-token arg shapes grounded
+against R-1's upstream-signature table (use single quotes per P62 /
+`feedback_strudel_quote_style.md`).
+
+**Initial fixture design (deviation recorded — pre-mortem 2 of R-8 fired):**
+
+The first attempt used `let intro=s('bd hh sd hh'); let core=s('bd*2 hh*4'); <SIDE_EFFECT>; '<0 1>'.pick([intro,core])` — a simpler shape. Both the side-effect-bearing fixtures AND the negative-control parsed as `tag=Track body.tag=Code` (bareCode). **Direct observation revealed the cause:** the `'<0 1>'.pick([id,id])` final expression is not in the structured chain-root recogniser (the production parser falls through to bareCode for this finalExpr regardless of whether the filter ran). The first fixture design therefore had ZERO test signal — the snapshot was identical pre-and-post-filter.
+
+**Resolution:** rewrote all 11 fixtures using the proven `chord("Am Am").voicing().sound(...)` chord-rooted RHS + `stack(binding)` finalExpr shape — the EXACT 20-18 `bakery-chord-voicing-root.strudel` template, which is documented working. The 10 positive fixtures + 1 negative-control all now parse STRUCTURED `Code.via` cascade. The negative-control's snapshot body is BYTE-IDENTICAL to each positive fixture's (modulo trivial loc differences) — proving the filter produces a `[binding, finalExpr]` stmts array equivalent to the user hand-deleting the side-effect line. **Disposition:** this fixture-design observation is captured in the FIXTURE-COMMIT and the BAKERY-FIXTURES.md update; the chord-rooted shape is the canonical 20-19 fixture template (mirror this for any future 20-19 token additions).
+
+### parity-refresh exclusion
+
+```
+$ node packages/app/scripts/parity-refresh.mjs --dry-run
+# unchanged: 16   changed: 0   missing: 0
+# no drift — corpus is in sync with the targeted upstream SHA.
+```
+
+0 missing for `bakery-158-*` — the structural exclusion guard at
+`parity-refresh.mjs:68-75` (any `bakery-*` prefix triggers throw if added
+to TARGETS) covers the new slugs by construction.
+
+### Snapshot capture + gates
+
+```
+$ pnpm --filter @stave/app test
+  Snapshots  22 updated   (after one-shot -u capture; subsequent runs no -u)
+
+ Test Files  18 passed (18)
+      Tests  409 passed (409)
+```
+
+App **409/409 GREEN** (parity-corpus 47 + loc-fidelity 47 + other 315
+= 36+11 + 36+11 + 315 = 409 ✓).
+
+Snapshot bodies (parity-test.ts.snap inspection):
+
+```
+bakery-158-all-shape-fence:        body.tag=Code body.via=PRESENT (chord cascade)
+bakery-158-NEGATIVE-no-sideeffect: body.tag=Code body.via=PRESENT (chord cascade)
+bakery-158-samples-shape-fence:    body.tag=Code body.via=PRESENT (chord cascade)
+bakery-158-aliasBank-shape-fence:  body.tag=Code body.via=PRESENT (chord cascade)
+…
+```
+
+All 11 fixtures structure to the same `Code.via` cascade. The
+negative-control's snapshot is byte-equivalent in body shape to the 10
+positive fixtures (109 lines each in the snap file) — the filter
+mechanism is the gate, the bindings substrate works.
+
+### Per-file loc-fidelity STOP gate (Wave C)
+
+The 36 pre-existing loc-fidelity snapshots were NOT touched by Wave C
+(verified by the `Snapshots 22 updated` count — exactly 11 new
+parity-test snapshots + 11 new loc-fidelity snapshots, NO pre-existing
+snapshots updated). The 22 updated are exclusively the new fixtures.
+
+### Editor unchanged
+
+```
+$ pnpm --filter @stave/editor test
+ Test Files  91 passed (91)   Tests  1627 passed (1627)
+```
+
+### Wave C — done
+
+11 permanent CI fixtures vendored (10 token + 1 negative-control) in
+canonical chord-rooted shape; BAKERY-FIXTURES.md updated with the
+20-19 section + the per-fixture table + the negative-control's role;
+auto-discovery picked up the new files (parity 36→47, loc-fidelity
+36→47); total app test count 387→409 GREEN; per-file loc-fidelity STOP
+gate clean (no pre-existing snapshot moved; 22 new snapshots = 11 × 2
+suites); structural exclusion from `parity-refresh.mjs` confirmed.
+Initial fixture design was reworked after direct observation showed the
+naive `'<0 1>'.pick([id,id])` finalExpr did not structure on the
+negative-control either; the resolved chord-rooted shape is now the
+canonical 20-19 fixture template.
 
 `_waveC-grounding.spec.ts:155` flipped `.toBe(false)` → `.toBe(true)` with
 updated diagnostic message + narrative comment block recording the FLIP state;

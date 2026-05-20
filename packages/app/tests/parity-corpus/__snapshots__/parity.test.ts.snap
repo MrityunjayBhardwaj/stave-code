@@ -1864,6 +1864,1216 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-152-block-com
 }
 `;
 
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-NEGATIVE-no-sideeffect parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-aliasBank-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-all-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-initAudio-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-samples-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setCpm-camel-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setCps-camel-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setVoicingRange-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setcpm-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-setcps-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-158-useRNG-shape-fence parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
 exports[`strudel.cc parity corpus — structural IR shape > bakery-G1-let-binding parses to a stable IR shape 1`] = `
 {
   "body": {
