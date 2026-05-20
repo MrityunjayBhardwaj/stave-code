@@ -398,7 +398,83 @@ Proto post-fixpoint trace UNCHANGED from Wave 0 baseline (the `--LsnlgQ6osk`
 sample has no curated side-effect statement — `samples({...})` would have
 been stripped, but `--LsnlgQ6osk` doesn't have one; the trace is identical).
 
-### Wave A — done
+### Wave A — done (REPEATED HEADER — see end of section)
+
+---
+
+## Wave B — locked-STOP assertion-sense FLIP (the `.toBe(false)` → `.toBe(true)` one-character change)
+
+### The edit (`_waveC-grounding.spec.ts:155`)
+
+The assertion was:
+
+```ts
+expect(struct3, '#3 PK18 STOP locked — whole-program still bare due to buildBindingMap shape gap; remove this assertion when the backlog fix lands').toBe(false)
+```
+
+becomes:
+
+```ts
+expect(struct3, '#3 20-19 FLIP RECORDED — whole-program STRUCTURED via chord recogniser arm (closes #158); if this fails, either `stripSideEffectStatements` dropped a stmt it should not have OR the chord arm regressed').toBe(true)
+```
+
+The narrative comment block at lines 145-154 was rewritten to record the FLIP
+state ("20-19 (#158) FLIP RECORDED. 20-18 Wave C grounded the chord arm via
+the stripped-#3 probe …; 20-19 ships `stripSideEffectStatements` … #3 now
+flips whole-program STRUCTURED via the same chord/arrange recogniser arm that
+20-18 grounded"). The historical Wave-C narrative ABOVE is preserved as
+load-bearing context for future debuggers — the chord arm was correct in
+20-18; the 20-19 shape-fence relaxation unblocks the whole-program flip.
+
+### Gates
+
+```
+$ git diff --name-only
+packages/app/tests/parity-corpus/_waveC-grounding.spec.ts
+```
+
+Exactly one file changed.
+
+```
+$ cd packages/app && pnpm exec vitest run --config vitest.waveC.config.ts
+ Test Files  19 passed (19)
+      Tests  388 passed (388)
+```
+
+Wave-C config: **388/388 GREEN** (was 1 failed + 387 passed on Wave-A HEAD →
+the EXPECTED Wave-A failure is now PASS; companion lines 140-143 stay GREEN).
+
+```
+$ pnpm --filter @stave/app test
+ Test Files  18 passed (18)
+      Tests  387 passed (387)
+```
+
+App default 387/387 unchanged (the wave-C grounding spec is underscore-
+prefixed, excluded from default include — its flip does not change the
+default count).
+
+```
+$ pnpm --filter @stave/editor test
+ Test Files  91 passed (91)
+      Tests  1627 passed (1627)
+```
+
+Editor 1627/1627 unchanged.
+
+### Per-file loc-fidelity STOP gate (Wave B)
+
+Inside `pnpm --filter @stave/app test` the loc-fidelity suite ran 36/36; no
+snapshot moved. The Wave-B edit is in a spec file (no production source
+change), so PV49 is structurally untouchable this wave.
+
+### Wave B — done
+
+`_waveC-grounding.spec.ts:155` flipped `.toBe(false)` → `.toBe(true)` with
+updated diagnostic message + narrative comment block recording the FLIP state;
+wave-C config 388/388 GREEN (was 387 passed + 1 failed on Wave-A HEAD);
+companion lines 140-143 GREEN unchanged; app default 387/387 unchanged;
+editor 1627/1627 unchanged; per-file loc-fidelity STOP gate clean.
 
 `SIDE_EFFECT_CALL_RE` + `stripSideEffectStatements` helper landed at module
 scope (between `splitTopLevelStatements` close and `BINDING_RE`) with the full
