@@ -1576,3 +1576,105 @@ structured-OPAQUE `Code.via` ONLY when explicitly enabled. The one-arg
 oracle-call-site guard is grep-asserted + recorded (the flag is
 STRUCTURALLY never-gate-counted). editor 1627 / app 381 / parity 33 /
 loc 33 / proto MINOR-3 — every gate green.
+
+---
+
+## WAVE V — V-1 AMENDED-D-03 dual-gate measurement (2026-05-20)
+
+> Per CONTEXT §"D-03 AMENDMENT-2 (2026-05-20)" — the LOCKED crit-1 is
+> `--LsnlgQ6osk` STRUCTURED + #7 `-KLGNJUtyyj1` STRUCTURED, BOTH. #3
+> `-6c1hEXe8Agi` is dropped from crit-1 (deferred to backlog #158 → 20-19;
+> the chord arm is validated by FOUR independent observations recorded in
+> Wave C). Crit-2 is INFORMATIONAL with a HARD must-not-regress 86.0% floor.
+
+**V-1 run timestamp (UTC):** 2026-05-20T01:47Z
+
+### V-1 crit-1 production verdict (HARD GATE — `--LsnlgQ6osk` + #7 STRUCTURED)
+
+`pnpm --filter @stave/app test:proto` — VERBATIM PRODUCTION block:
+
+```
+=== 6 REPROS (PRODUCTION parseStrudel — current source with Wave 0 bundle) ===
+__LsnlgQ6osk   | production=structured (body.tag=Stack)
+_1j62z5xjyCN   | production=code (bare)
+_72eEl7NwK9e   | production=structured (body.tag=Code via)
+_CyO42BOyp5a   | production=structured (body.tag=Code via)
+_L13nBhrqGR_   | production=structured (body.tag=Param)
+_LHtBlF8peGC   | production=structured (body.tag=Stack)
+```
+
+`--LsnlgQ6osk` post-fixpoint trace (VERBATIM diagnostics):
+
+```
+[R:__LsnlgQ6osk] stmts=7
+[R:__LsnlgQ6osk] descs=rp1,beat,az2,chords2,bass,harm2 finalIdx=6 finalText="stack(\n  bass,\n  beat,\n  harm2,\n  az2,\n)"
+[R:__LsnlgQ6osk] iter0 az2 rhs="irand(12).struct(\"x(8,8)|x(4,8)\")\n  .sometimesBy(p" -> tag=Code bareCode=false
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]
+[R:__LsnlgQ6osk] FINAL parse -> tag=Stack via=false bareCode=false
+```
+
+**Crit-1 assertion 1 — `--LsnlgQ6osk`:**
+- `production=structured (body.tag=Stack)` — `body.tag !== 'Code'` → STRUCTURED. **PASS.**
+- `resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]` — `az2` resolved (pending empty; the clean single-blocker reclaim the 20-18 phase was built to deliver). **PASS.**
+
+**Crit-1 assertion 2 — #7 `-KLGNJUtyyj1`:**
+- #7 is NOT in the proto's 6-repro PRODUCTION block (the proto re-baseline pool); the grounding evidence is Wave C's dedicated production probe (OBSERVATIONS:1056-1074 — `whole-program tag=Track structured=true`, `deep-walk Builder/arrange = HIT`, `hit.kind=arrange args="[48, stack(richter_chords.euclidRot(3,8,..."`). The bakery N=50 sample for `-KLGNJUtyyj1` (firstLine `const richter_chords = \``) is verdict=**structured** — a second-source confirmation. **PASS.**
+
+**Crit-1 #3 informational (NOT a gate, per AMENDMENT-2):**
+- `-6c1hEXe8Agi` current bakery verdict = `code` (firstLine `//@title 409`). EXPECTED non-flip per AMENDMENT-2 — the `chord(...).voicing()` recogniser arm IS validated (Wave C: stripped-#3 probe `body.tag=Pick`, `deep-walk Builder/chord = HIT, args="\"Am Am\""`; corpus flips of belldub/dinofunk/meltingsubmarine; #7 arrange peer). #3's blocker is a DIFFERENT class — `buildBindingMap` shape-fence (`bindings*, sideEffect, finalExpr` fails `finalIdx !== stmts.length-1`). Filed backlog issue **#158** → deferred to 20-19. **NOT a PK18 STOP** — per AMENDMENT-2, #3 is no longer a crit-1 anchor; the chord arm's correctness is established by the four independent Wave-C observations, not by #3's whole-program flip.
+
+**Crit-1 verdict: PASS** (`--LsnlgQ6osk` STRUCTURED + #7 STRUCTURED; both gate-critical anchors hit per the LOCKED AMENDMENT-2 contract).
+
+### V-1 crit-2 INFORMATIONAL (must-not-regress 86.0% — NO ≥N pass threshold)
+
+`pnpm parity:bakery --n 50` (PK17 step 6) — VERBATIM tail:
+
+```
+# === REAL-WORLD PARITY ===
+# N (measured):     50
+# structured:       46
+# Code-fallback:    4
+# real-world %:     92.0%   (structured / N)
+# 20-15 baseline:   4/10 = 40.0% (2026-05-15 stress test)
+```
+
+| Field | Value |
+|-------|-------|
+| Fresh run-time ISO stamp | `2026-05-19T20-17-24-486Z` |
+| 20-17 V-1 stamp (must DIFFER) | `2026-05-19T13-24-45-538Z` |
+| Stamps differ? | **YES** (`20-17-24-486Z` ≠ `13-24-45-538Z`) — **FRESH-STAMP PASS** |
+| New samples JSON | `packages/app/tests/parity-corpus/.bakery-runs/samples-2026-05-19T20-17-24-486Z.json` (87 KB, mtime 2026-05-20 01:47) |
+| New result JSON | `packages/app/tests/parity-corpus/.bakery-runs/result-2026-05-19T20-17-24-486Z.json` (6.9 KB, mtime 2026-05-20 01:47) |
+| UPSTREAM_SHA | `f73b395648645aabe699f91ba0989f35a6fd8a3c` (unchanged pin — `parity-bakery.mjs:52`) |
+| Structured % | **92.0%** (46/50) |
+| 20-17 baseline | 86.0% (43/50) |
+| Delta vs 86.0% floor | **+6.0pp** |
+| Must-not-regress (≥86.0%) | **PASS** (92.0% ≥ 86.0%) |
+
+**Crit-2 verdict: PASS — informational, must-not-regress floor held.** The 86.0%
+floor is the only parity gate per AMENDMENT (no ≥90/≥88 threshold); 92.0% is recorded
+as the honesty-check that the signal/builder IR substrate is real and not over-fit.
+
+### V-1 residual fallback classification (4 Code-fallbacks at N=50 — preparatory enumeration for V-4 backlog)
+
+| # | Hash | First-line | Class | Backlog |
+|---|------|-----------|-------|---------|
+| 1 | `-1j62z5xjyCN` | `//"Riding the 46 Cycles" @by shadesDrawn` | binding ref outside stack()-bare-arg | **#141 → #140** (carried) |
+| 2 | `-6c1hEXe8Agi` | `//@title 409` | `buildBindingMap`-shape rejection (`bindings*, sideEffect, finalExpr` fails the `finalIdx !== stmts.length-1` fence) — chord arm itself works, validated by Wave C | **#158 → 20-19** (the AMENDMENT-2-deferred class; chord arm validated by 4 observations, NOT a chain-root failure) |
+| 3 | `-7LU6zgzViSM` | `typeof setDefaultVoicings !== 'undefined' && setDefaultVoicings(...)` | guarded boot expr `typeof X && X(...)` | **#143** (carried) |
+| 4 | `-G2drHRNFueu` | `sound ("hh hh hh hh")` (note: space between `sound` and `(`) | uncategorised — needs manual triage (likely tokenizer/whitespace fence around free-function `sound` calls) | **NEW → V-4 to file** |
+
+Bakery classifier tally (`classes` field of `result-2026-05-19T20-17-24-486Z.json`):
+`BACKLOG #141 (→#140): 2`, `BACKLOG #143: 1`, `NEW uncategorised: 1`. (The 2-count for #141 includes #3 — the bakery classifier's text-regex bins it as "binding ref" because it has the same surface shape; #3's actual class is the AMENDMENT-2 shape-fence, separately filed #158.)
+
+### V-1 AMENDED-gate verdict
+
+| Gate | Result |
+|------|--------|
+| **Crit-1 HARD** — `--LsnlgQ6osk` STRUCTURED (body.tag=Stack) + `post-fixpoint pending=[]` (az2 resolved) | **PASS** |
+| **Crit-1 HARD** — #7 `-KLGNJUtyyj1` STRUCTURED (Wave-C deep-walk Builder/arrange HIT + bakery `verdict=structured` corroboration) | **PASS** |
+| **Crit-1 INFORMATIONAL** — #3 `-6c1hEXe8Agi` `verdict=code` (EXPECTED non-flip per AMENDMENT-2; chord arm validated by 4 independent Wave-C observations; whole-program blocker is `buildBindingMap` shape-fence → #158 → 20-19) | RECORDED (not gated) |
+| **Crit-2 INFORMATIONAL** — fresh stamp `2026-05-19T20-17-24-486Z` ≠ 20-17 stamp; UPSTREAM_SHA `f73b3956` unchanged; structured **92.0%** (46/50); must-not-regress ≥86.0% | **PASS** (no regression; +6pp above floor) |
+| **Bar-lowering check** — no premise was bar-lowered; no scope-expansion; no second-workaround | **CLEAN** |
+
+**V-1 OVERALL VERDICT: PASS.** Both crit-1 anchors (`--LsnlgQ6osk` + #7) ground STRUCTURED in production; the must-not-regress 86.0% floor holds with substantial headroom (92.0% = +6pp). The 20-17 falsification trace is cleanly closed: the `az2` `irand` chain-root that 20-17 had to RE-ANCHOR away from is now resolved in the whole-program fixpoint. V-2/V-3/V-4 dispatch is now gated open by the orchestrator.
