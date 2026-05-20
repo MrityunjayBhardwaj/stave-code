@@ -1220,6 +1220,220 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-140-binding-t
 }
 `;
 
+exports[`strudel.cc parity corpus — structural IR shape > bakery-141-irand-chain-root parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "sine.range(0.4,0.6).fast(perlin.range(2.8,3.2))",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "sine.range(1.5,8).fast(perlin.range(2.8,3.2))",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": "perlin.range(0,1)",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "1",
+                  "inner": {
+                    "body": {
+                      "body": {
+                        "code": "",
+                        "lang": "strudel",
+                        "tag": "Code",
+                        "via": {
+                          "args": "",
+                          "inner": {
+                            "body": {
+                              "else_": {
+                                "code": "",
+                                "lang": "strudel",
+                                "tag": "Code",
+                                "via": {
+                                  "args": "perlin.range(0.0,1.0),sub(8)",
+                                  "inner": {
+                                    "body": {
+                                      "args": "12",
+                                      "kind": "irand",
+                                      "tag": "Builder",
+                                    },
+                                    "mask": "x(8,8)|x(4,8)",
+                                    "tag": "Struct",
+                                    "userMethod": "struct",
+                                  },
+                                  "method": "sometimesBy",
+                                },
+                              },
+                              "p": 0.5,
+                              "tag": "Choice",
+                              "then": {
+                                "body": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "perlin.range(0.0,1.0),sub(8)",
+                                    "inner": {
+                                      "body": {
+                                        "args": "12",
+                                        "kind": "irand",
+                                        "tag": "Builder",
+                                      },
+                                      "mask": "x(8,8)|x(4,8)",
+                                      "tag": "Struct",
+                                      "userMethod": "struct",
+                                    },
+                                    "method": "sometimesBy",
+                                  },
+                                },
+                                "factor": 2,
+                                "tag": "Slow",
+                                "userMethod": "slow",
+                              },
+                              "userMethod": "sometimes",
+                            },
+                            "key": "scale",
+                            "rawArgs": ""<G:dominant@2 G:major D:major>"",
+                            "tag": "Param",
+                            "userMethod": "scale",
+                            "value": {
+                              "items": [
+                                {
+                                  "duration": 1,
+                                  "note": "G",
+                                  "params": {
+                                    "gain": 1,
+                                    "s": "G",
+                                    "velocity": 1,
+                                  },
+                                  "tag": "Play",
+                                },
+                                {
+                                  "body": {
+                                    "duration": 1,
+                                    "note": "dominant",
+                                    "params": {
+                                      "gain": 1,
+                                      "s": "dominant",
+                                      "velocity": 1,
+                                    },
+                                    "tag": "Play",
+                                  },
+                                  "factor": 2,
+                                  "tag": "Elongate",
+                                },
+                                {
+                                  "duration": 1,
+                                  "note": "G",
+                                  "params": {
+                                    "gain": 1,
+                                    "s": "G",
+                                    "velocity": 1,
+                                  },
+                                  "tag": "Play",
+                                },
+                                {
+                                  "duration": 1,
+                                  "note": "major",
+                                  "params": {
+                                    "gain": 1,
+                                    "s": "major",
+                                    "velocity": 1,
+                                  },
+                                  "tag": "Play",
+                                },
+                                {
+                                  "duration": 1,
+                                  "note": "D",
+                                  "params": {
+                                    "gain": 1,
+                                    "s": "D",
+                                    "velocity": 1,
+                                  },
+                                  "tag": "Play",
+                                },
+                                {
+                                  "duration": 1,
+                                  "note": "major",
+                                  "params": {
+                                    "gain": 1,
+                                    "s": "major",
+                                    "velocity": 1,
+                                  },
+                                  "tag": "Play",
+                                },
+                              ],
+                              "tag": "Cycle",
+                            },
+                          },
+                          "method": "note",
+                        },
+                      },
+                      "key": "s",
+                      "rawArgs": ""<piano sine>"",
+                      "tag": "Param",
+                      "userMethod": "s",
+                      "value": {
+                        "items": [
+                          {
+                            "duration": 1,
+                            "note": "piano",
+                            "params": {
+                              "gain": 1,
+                              "s": "piano",
+                              "velocity": 1,
+                            },
+                            "tag": "Play",
+                          },
+                          {
+                            "duration": 1,
+                            "note": "sine",
+                            "params": {
+                              "gain": 1,
+                              "s": "sine",
+                              "velocity": 1,
+                            },
+                            "tag": "Play",
+                          },
+                        ],
+                        "tag": "Cycle",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 0.2,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "clip",
+                },
+              },
+              "method": "degradeBy",
+            },
+          },
+          "method": "fm",
+        },
+      },
+      "method": "pan",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
 exports[`strudel.cc parity corpus — structural IR shape > bakery-142-samples-objlit parses to a stable IR shape 1`] = `
 {
   "body": {
@@ -2174,6 +2388,128 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-G5-named-labe
   },
   "tag": "Track",
   "trackId": "p1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-arrange-root parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "args": "",
+    "kind": "arrange",
+    "tag": "Builder",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-chord-voicing-root parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "0.2",
+      "inner": {
+        "code": "",
+        "lang": "strudel",
+        "tag": "Code",
+        "via": {
+          "args": "4",
+          "inner": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""500 200"",
+              "inner": {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": "4",
+                  "inner": {
+                    "body": {
+                      "code": "",
+                      "lang": "strudel",
+                      "tag": "Code",
+                      "via": {
+                        "args": "0.8",
+                        "inner": {
+                          "code": "",
+                          "lang": "strudel",
+                          "tag": "Code",
+                          "via": {
+                            "args": "0.6",
+                            "inner": {
+                              "code": "",
+                              "lang": "strudel",
+                              "tag": "Code",
+                              "via": {
+                                "args": "0.03",
+                                "inner": {
+                                  "code": "",
+                                  "lang": "strudel",
+                                  "tag": "Code",
+                                  "via": {
+                                    "args": "'blue'",
+                                    "inner": {
+                                      "code": "",
+                                      "lang": "strudel",
+                                      "tag": "Code",
+                                      "via": {
+                                        "args": "'gm_celesta:3'",
+                                        "inner": {
+                                          "code": "",
+                                          "lang": "strudel",
+                                          "tag": "Code",
+                                          "via": {
+                                            "args": "",
+                                            "inner": {
+                                              "args": ""Am Am"",
+                                              "kind": "chord",
+                                              "tag": "Builder",
+                                            },
+                                            "method": "voicing",
+                                          },
+                                        },
+                                        "method": "sound",
+                                      },
+                                    },
+                                    "method": "color",
+                                  },
+                                },
+                                "method": "attack",
+                              },
+                            },
+                            "method": "sustain",
+                          },
+                        },
+                        "method": "release",
+                      },
+                    },
+                    "name": "room",
+                    "params": {
+                      "room": 1,
+                    },
+                    "tag": "FX",
+                    "userMethod": "room",
+                  },
+                  "method": "size",
+                },
+              },
+              "method": "lpf",
+            },
+          },
+          "method": "lpenv",
+        },
+      },
+      "method": "lpattack",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
 }
 `;
 

@@ -648,6 +648,119 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 ]
 `;
 
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-141-irand-chain-root — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".pan(sine.range(0.4,0.6).fast(perlin.range(2.8,3.2)))",
+  },
+  {
+    "tag": "Code",
+    "text": ".fm(sine.range(1.5,8).fast(perlin.range(2.8,3.2)))",
+  },
+  {
+    "tag": "Code",
+    "text": ".degradeBy(perlin.range(0,1))",
+  },
+  {
+    "tag": "Code",
+    "text": ".clip(1)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(0.2)",
+  },
+  {
+    "tag": "Param",
+    "text": ".s("<piano sine>")",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<piano sine>",
+  },
+  {
+    "tag": "Play",
+    "text": "piano",
+  },
+  {
+    "tag": "Play",
+    "text": "sine",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
+  },
+  {
+    "tag": "Param",
+    "text": ".scale("<G:dominant@2 G:major D:major>")",
+  },
+  {
+    "tag": "Cycle",
+    "text": "<G:dominant@2 G:major D:major>",
+  },
+  {
+    "tag": "Play",
+    "text": "G",
+  },
+  {
+    "tag": "Elongate",
+    "text": "@2",
+  },
+  {
+    "tag": "Play",
+    "text": "dominant",
+  },
+  {
+    "tag": "Play",
+    "text": "G",
+  },
+  {
+    "tag": "Play",
+    "text": "major",
+  },
+  {
+    "tag": "Play",
+    "text": "D",
+  },
+  {
+    "tag": "Play",
+    "text": "major",
+  },
+  {
+    "tag": "Choice",
+    "text": ".sometimes(slow(2))",
+  },
+  {
+    "tag": "Slow",
+    "text": "slow(2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sometimesBy(perlin.range(0.0,1.0),sub(8))",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("x(8,8)|x(4,8)")",
+  },
+  {
+    "tag": "Builder",
+    "text": "irand",
+  },
+  {
+    "tag": "Code",
+    "text": ".sometimesBy(perlin.range(0.0,1.0),sub(8))",
+  },
+  {
+    "tag": "Struct",
+    "text": ".struct("x(8,8)|x(4,8)")",
+  },
+  {
+    "tag": "Builder",
+    "text": "irand",
+  },
+]
+`;
+
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-142-samples-objlit — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
@@ -1176,6 +1289,68 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "hh",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-arrange-root — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Builder",
+    "text": "arrange",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-chord-voicing-root — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".lpattack(0.2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpenv(4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpf("500 200")",
+  },
+  {
+    "tag": "Code",
+    "text": ".size(4)",
+  },
+  {
+    "tag": "FX",
+    "text": ".room(1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".release(0.8)",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0.6)",
+  },
+  {
+    "tag": "Code",
+    "text": ".attack(0.03)",
+  },
+  {
+    "tag": "Code",
+    "text": ".color('blue')",
+  },
+  {
+    "tag": "Code",
+    "text": ".sound('gm_celesta:3')",
+  },
+  {
+    "tag": "Code",
+    "text": ".voicing()",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
   },
 ]
 `;
