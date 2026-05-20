@@ -927,3 +927,78 @@ checks; `.planning/phases/20-musician-timeline/20-16-OBSERVATIONS.md`
 (the canonical 4-iteration trail), `20-17-CONTEXT.md` (D-02 CORRECTION
 = step 6 in practice). Ground Truth: 20-16-OBSERVATIONS.md,
 memory/project_phase_20_musician_timeline.md.
+
+## PK16 addendum (20-18) — `recogniseChainRoot` arm placement (AFTER-G2 / BEFORE-noteMatch)
+
+The Phase 20-18 Wave-B `recogniseChainRoot` arm is positioned in
+`parseRoot` AFTER the G2 bound-ident-root arm and BEFORE the noteMatch
+fallback:
+
+```
+parseRoot:
+  ...
+  G1: bound-ident SUB (chain-arg substitution)    ← 20-17
+  G2: bound-ident ROOT (the parseRoot match)      ← 20-17
+  ─── NEW (20-18) ─────────────────────────────
+  recogniseChainRoot:
+    if (curated Signal/Builder root with arg shape) → {tag, kind, args}
+  ─── END NEW ────────────────────────────────
+  noteMatch: bareCode fallback                    ← existing
+```
+
+**Why AFTER-G2 (user-shadow precedence):** a user-bound identifier can
+shadow the curated set (e.g., `const irand = customFn(...); irand(12)`
+should bind-substitute the user's def, NOT the curated `irand` Builder).
+G2's binding lookup wins; the curated arm is reached only when no
+binding exists for the identifier.
+
+**Why BEFORE-noteMatch (strict widen):** a structured Signal/Builder
+root is preferred over the note-fallback for any token the curated
+set recognises. The widen is STRICT — only the curated set, no
+free identifiers (the 20-16 cascade-scope discipline).
+
+**Corpus-scale corroboration:** the Wave-0 (a)-ROOT-RECOGNITION-SUFFICES
+verdict (the discriminator is the ROOT, not the arg) is confirmed
+corpus-wide by the 7 method-arg files UNCHANGED at Wave B/C/D (signal-
+valued chain ARGS carried opaquely by existing `applyChain`, no
+recursive signal-expr-as-arg parser triggered).
+
+**Update (Phase 20-18):** PK16 (the no-`$:` parse pipeline) now
+includes the Signal/Builder arm in its `parseRoot` step. Common
+violations: (1) inserting the arm BEFORE G2 → user shadows broken
+(curated set hijacks bound name); (2) inserting AFTER noteMatch →
+arm never reached (note swallows the call); (3) widening to free
+identifiers without Ground Truth + re-pose → the 20-16 cascade class.
+
+## PK17 addendum (20-18) — measured fresh 92.0% (+6pp); must-not-regress 86% floor; #155 closure path; #158 deferred to 20-19; 4 PK18 re-poses resolved on evidence
+
+Phase 20-18 PK17 step-6 measurement (fresh-pull discipline):
+
+- **Fresh ISO stamp:** `2026-05-19T20-17-24-486Z` (≠ 20-17 V-1 stamp
+  `2026-05-19T13-24-45-538Z`) — FRESH-STAMP confirmed.
+- **UPSTREAM_SHA:** `f73b3956` (unchanged pin — `parity-bakery.mjs:52`).
+- **Structured % (must-not-regress floor 86.0%):** **92.0%** (46/50,
+  +6.0pp above floor). Informational gate PASS — no regression.
+- **Phase issue closure path:** `closes #155` (single auto-close); #156
+  manually verified open per R-1 (NOT folded — non-Strudel Hydra
+  mashup, correctly out of scope); #158 manually verified open
+  (chord shape-fence → 20-19); #149/#147/#153 carried backlog. New:
+  `-G2drHRNFueu` uncategorised → V-4 filed.
+- **PK18 re-poses this phase (all resolved within-plan on EVIDENCE,
+  not bar-lowering):** (1) Wave A "type-only premise" falsified — a
+  new top-level union tag is NOT build-inert (Option-3 closure
+  re-sequenced); (2) Wave B "allow-list-empty premise" falsified —
+  7-sample bakery slice not corpus-wide claim (V-3 allow-list extension);
+  (3) Wave C #3 "chord-family = chain-root class" partially falsified —
+  chord arm correct, #3 has SECOND blocker (shape-fence → #158 STOP);
+  (4) D-03 AMENDMENT-2 dropping #3 from crit-1 on evidence (the 20-17
+  `--LsnlgQ6osk` re-anchor precedent applied; P70 occurrence-6).
+
+**Common violation (20-18 specific):** the bakery classifier's
+text-regex bins `-6c1hEXe8Agi` as "binding ref outside stack-bare-arg"
+(it has the same surface shape as a #141-class miss). The genuine
+class is the AMENDMENT-2 shape-fence (`buildBindingMap` rejects
+`bindings*, sideEffect, finalExpr`), separately filed #158. Lesson
+reinforced: a step-2 class label is a HEURISTIC triage signal — the
+genuine blocker is what `parseStrudel` actually does at the failing
+shape, not what the text-regex bins it as.

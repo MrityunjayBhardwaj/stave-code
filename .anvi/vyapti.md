@@ -1786,3 +1786,101 @@ splice does not re-base loc offsets; the loc-fidelity.test.ts:82 `src.slice`
 mechanism remains loc-safe by construction across A → C → D → E waves
 (observed via V-3 per-file STOP gate: no parity-unchanged corpus file
 drifted on loc).
+
+## PV54 — Signal/Builder additive PatternIR tags are root-recognition-only; chain ARGS carried by existing applyChain; flagged-general path is off-by-default stack-param
+
+**Claim:** Strudel signal/builder family roots (`irand`/`run`/`binary*`
+discrete Builders; `sine`/`cosine`/`saw`/`tri`/`perlin`/`time`/`rand`
+continuous Signals; `chord`/`arrange` grounded-then-modelled Builders)
+are modelled as ADDITIVE PatternIR union members `{tag:'Signal'|'Builder',
+kind, args?}` where `args` is the SOURCE TEXT byte-verbatim (the parser
+NEVER evaluates a signal / runs `.range` / invokes a builder). The
+recogniser arm `recogniseChainRoot` is positioned AFTER-G2 (user-shadow
+precedence: bindings can shadow the curated set; the binding wins) and
+BEFORE-noteMatch (strict widen: a structured root is preferred over the
+note-fallback). Signal-valued chain ARGS (`perlin.range(...)`,
+`sine.range(...)`, etc.) are carried OPAQUELY by the EXISTING `applyChain`
+once the root is recognised — no separate signal-expression-as-arg
+recogniser is needed (the Wave-0 Lokāyata az2 prototype VERDICT (a) —
+ROOT-RECOGNITION-SUFFICES; the discriminator is the ROOT, not the arg).
+The collect.ts RNG family modelling (`__timeToRandsPrime`/`randrun`/
+`shuffle`/`degradeBy` byte-unchanged) COMPOSES with the new tags: a
+Signal root is event-neutral/leaf; an `irand` Builder is consumed by the
+existing struct machinery — no existing RNG line is removed
+(verified Wave D `.degradeBy(perlin.range(0,1))` event-neutrality
+observation). The flagged-general fallback (`recogniseGeneralChainRoots`)
+is threaded as an OFF-BY-DEFAULT optional stack param
+(`parseStrudel→parseExpression→parseRoot`, the 20-17 G4 idiom; PV50: NO
+module state), STRUCTURALLY never-gate-counted (the parity oracle
+`isCodeFallback(parseStrudel(s.code))` is one-arg; the flag is
+unreachable from the gate path).
+
+**Why:** without the additive-tag idiom + curated-set scope + opts
+threading, three failure classes appear: (1) a closed-set fix becomes
+unbounded scope (the 20-16 4×-cascade lesson — any unrecognised root
+ad-hoc fix triggers another); (2) a recursive signal-arg parser
+explodes (the Wave-0 STOP-BOUNDARY check the prototype proved NOT
+needed); (3) the flagged-general path counts in the gate, biasing the
+parity number against the genuine-modelling deliverable. With the
+idiom: scope is FROZEN by the curated set; recursive args are carried
+opaquely by `applyChain` (existing machinery, no new mechanism); the
+flagged path's structural one-arg guard at the oracle ensures
+parity == curated-set parity, never inflated by speculative recognition.
+
+**Additive-tag obligation (consumer-closure required):** ANY new
+top-level PatternIR `tag` member breaks every exhaustive
+non-undefined-return `switch(.tag)` consumer at DTS-compile (TS2366);
+the additive idiom must include guarded arms in EVERY FLOOR exhaustive
+switch. Live grep is source of truth — at 20-18 Wave A: 11 sites,
+`toStrudel.ts:20, serialize.ts:81, collect.ts:257+431,
+IRInspectorChrome.ts:19+102, irProjection.ts:42+73+190+333+438`. This
+distinguishes a NEW TAG (consumer-closure-required) from a widened
+EXISTING via?-sub-field (no consumer obligation, the 20-17 G3 idiom).
+
+**Confirmed by:** Phase 20-18 Waves 0 (the Lokāyata az2 chain-arg
+prototype — verdict (a) settled empirically) + A (FLOOR-grep 11
+switches, all guarded; Option-3 closure complete) + B
+(`recogniseChainRoot` arm landing + curated-set FROZEN) + C (chord/
+arrange grounded-then-modelled; P69 discharge with `controls.mjs:2130`
++ `pattern.mjs:1469-1473` citations) + D (consumer-audit FLOOR result;
+collect.ts COMPOSE-not-SUBSUME event-neutrality observation; 33
+acceptance tests GREEN) + E (flagged-general stack-threaded; one-arg
+oracle guard grep-asserted) + V-1 PASS (`--LsnlgQ6osk` + #7 STRUCTURED;
+fresh 92.0% +6pp).
+
+**Test gate:** (1) the `recogniseChainRoot` arm placement (AFTER-G2 /
+BEFORE-noteMatch) — covered by Wave B's strict-widen probe
+(`_waveB-strict-widen.spec.ts`) + the V-2 `bakery-141-irand-chain-root`
+fixture's deep-walk Builder/irand HIT; (2) FLOOR-grep audit at every
+new tag introduction (a CI script or pre-commit hook should re-run the
+11-site grep when `PatternIR.ts` is edited); (3) the V-2 negative-
+control `bakery-chord-voicing-root` fixture (chord ARM correctness)
++ the V-2 `bakery-arrange-root` fixture (arrange ROOT correctness); (4)
+oracle one-arg `parseStrudel(s.code)` grep at `_bakery-classify.spec.ts:77`
+asserts the flagged path is unreachable from the gate.
+
+**Breaks when:** (a) a future tag-add omits the FLOOR closure (an
+exhaustive switch without the new arm → TS2366 at DTS-compile; if
+caught LATE it costs the wave); (b) module-level state replaces the
+opts threading (PV50 violation, the recogniseGeneralChainRoots flag
+leaks into other parse calls); (c) the curated set grows by `args`-
+inference instead of by explicit Ground Truth grounding + a re-pose
+(scope-discipline failure, the 20-16 4×-cascade class); (d) the
+RNG-family modelling in collect.ts is SUBSUMED rather than COMPOSED
+(an existing event-producing arm overwritten → silent-semantics
+regression on `.degradeBy`/`.shuffle`/`.scramble`).
+
+**REF:** `packages/editor/src/ir/parseStrudel.ts` (`recogniseChainRoot`
++ `CHAIN_ROOT_RECOGNISER` table + opts threading, the AFTER-G2 /
+BEFORE-noteMatch placement); `packages/editor/src/ir/PatternIR.ts`
+(Signal/Builder additive union); `packages/editor/src/ir/collect.ts`
+(the COMPOSE-not-SUBSUME RNG line preservation:257+431);
+`packages/app/tests/parity-corpus/bakery-141-irand-chain-root.strudel`
++ `bakery-arrange-root.strudel` + `bakery-chord-voicing-root.strudel`
+(the V-2 fixtures); `~/.anvideck/projects/struCode/ref/GROUND_TRUTH_
+SIGNAL_MJS.md` (the chord `controls.mjs:2130` + arrange
+`pattern.mjs:1469-1473` grounding); `.planning/phases/20-musician-
+timeline/20-18-PLAN.md`, `20-18-CONTEXT.md` (D-03 AMENDMENT-2),
+`20-18-OBSERVATIONS.md` (Wave-0 prototype verdict, Wave-A FLOOR-grep,
+Wave-D acceptance tests, V-1 AMENDED PASS, V-3 cross-wave STOP gate),
+`20-18-SUMMARY.md`. Ground Truth: 20-18-OBSERVATIONS.md.
