@@ -569,7 +569,88 @@ $ pnpm --filter @stave/editor test
  Test Files  91 passed (91)   Tests  1627 passed (1627)
 ```
 
-### Wave C — done
+### Wave C — done (REPEATED HEADER — see end of section)
+
+---
+
+## Wave V-1 — AMENDED-D-04 dual-gate measurement
+
+### One-arg oracle invariant
+
+```
+$ grep -n 'parseStrudel(s\.' packages/app/tests/parity-corpus/_bakery-classify.spec.ts
+77:        fallback = isCodeFallback(parseStrudel(s.code))
+```
+
+EXACTLY one arg ✓ (the 20-18 Wave-E hardened invariant). 20-19's helper
+landed via `buildBindingMap`'s preamble (not via opts threading) — this
+invariant is structurally unchanged.
+
+### Fresh PK17 step-6 measurement
+
+```
+$ pnpm parity:bakery --n 50
+…
+# === REAL-WORLD PARITY ===
+# N (measured):     50
+# structured:       48
+# Code-fallback:    2
+# real-world %:     96.0%   (structured / N)
+
+# === NEW fallback classes (BACKLOG — NOT fixed this phase, D-03) ===
+#   [1x] BACKLOG #143: guarded boot expr typeof X && X(...)
+#   [1x] NEW: uncategorised — needs manual triage (file an issue per AnviDev)
+
+# artifact (gitignored, dated/SHA'd): packages/app/tests/parity-corpus/.bakery-runs/samples-2026-05-20T13-22-13-320Z.json
+# result:                              packages/app/tests/parity-corpus/.bakery-runs/result-2026-05-20T13-22-13-320Z.json
+```
+
+**Fresh stamp:** `2026-05-20T13-22-13-320Z`
+**UPSTREAM_SHA:** `f73b395648645aabe699f91ba0989f35a6fd8a3c` (unchanged
+from baseline pin — same as `CORPUS-SOURCE.md`).
+**Structured:** **48/50 = 96.0%** (was 46/50 = 92.0% baseline → +4pp)
+**Fallback count:** 2 (was 4; -2)
+
+### Per-row diff vs `result-2026-05-19T20-17-24-486Z.json`
+
+| Hash | Issue | Baseline | Fresh | Disposition |
+|---|---|---|---|---|
+| `-6c1hEXe8Agi` | #158 | code | **structured** | ✓ expected flip (the target — `all(x=>x.punchcard())` stripped; chord arm fires) |
+| `-1j62z5xjyCN` | #147 / #141 / #140 | code | **structured** | **BONUS** — Wave-0 pre-classified as F+SHAPE-FENCE-coupled (predicted to need #149 ALSO); fresh observation shows the filter alone is sufficient to flip this row. P70 occurrence-8 candidate (cascade classification was wrong, in the bonus direction). D-03 explicitly accepts non-A → A reclassification as bonus close. |
+| `-7LU6zgzViSM` | #143 | code | code | unchanged (guarded-boot was shipped in 20-15 but this baseline row remains a fallback — pre-existing baseline state; not a 20-19 regression) |
+| `-G2drHRNFueu` | #159 / #153 | code | code | unchanged (multi-top-level / tokenizer-whitespace; stays backlog per D-03 strict) |
+
+**46 baseline-structured rows:** ALL still structured in the fresh measurement. ZERO regressions. Verified by the parity-bakery output showing 48 OK + 2 COD = 50 total, with the two COD being known-backlog rows (#143 baseline + #159 backlog).
+
+### Dual-gate check on the same HEAD SHA (Wave-C HEAD `80952c1`)
+
+| Crit | Status |
+|---|---|
+| **crit-1 HARD** (`_waveC-grounding.spec.ts:155` PASSES with `.toBe(true)`) | ✓ PASSING (wave-C config 410/410 GREEN; companion lines 140-143 GREEN) |
+| **crit-2 HARD** (fresh ≥ 47/50 = 94.0% AND ≥ 46/50 = 92.0% floor) | ✓ **48/50 = 96.0%** — beats both thresholds |
+| **No bar-lowering / no second-workaround / no scope-expansion** | ✓ The phase shipped only the curated-list filter; no premise was bar-lowered; no Wave-0 backlog row was scope-expanded into the in-scope set (the `-1j62z5xjyCN` flip was a BONUS by direct observation, NOT a scope decision). |
+
+### Re-run crit-1 on merge-candidate HEAD
+
+```
+$ cd packages/app && pnpm exec vitest run --config vitest.waveC.config.ts
+ Test Files  19 passed (19)
+      Tests  410 passed (410)
+```
+
+Wave-C config 410/410 (parity-corpus 47 + loc-fidelity 47 + grounding spec
+1 + other 315). `_waveC-grounding.spec.ts:155` PASSES with `.toBe(true)`.
+
+### V-1 verdict
+
+**BOTH crit hold on the SAME HEAD SHA `80952c1`.** Phase 20-19 passes
+the D-04 dual gate cleanly:
+
+- crit-1: #3 `-6c1hEXe8Agi` whole-program STRUCTURED via chord arm; locked-STOP flipped + PASSING.
+- crit-2: 48/50 = 96.0% (≥ 94.0% AND ≥ 92.0% floor); +4pp over baseline; no regressions on the 46 baseline-structured rows.
+- bonus: `-1j62z5xjyCN` flipped to STRUCTURED — the FROZEN curated-set `samples` token stripped its `samples('github:yaxu/clean-breaks')` line, and the rest of its shape (`var cpm = 30; stack(...).cpm(cpm)`) was structured by existing 20-17 / 20-18 machinery. The Wave-0 prediction that the `.cpm(cpm)` chain-arg would block was falsified — direct observation wins (P70 occurrence 8 in the BONUS direction; documents in catalogue addenda).
+
+**No PK18 re-pose required.** The phase ran clean.
 
 11 permanent CI fixtures vendored (10 token + 1 negative-control) in
 canonical chord-rooted shape; BAKERY-FIXTURES.md updated with the
