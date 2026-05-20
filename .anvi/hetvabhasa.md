@@ -2012,3 +2012,117 @@ D-01 mechanism whose reach the cascade was wrong about);
 D-03 CRIT-1 RE-ANCHORED" sections); `20-17-SUMMARY.md` (the V-1
 PRODUCTION verdict block + the AMENDED dual anchor + the deferred
 20-18 backlog seed). Ground Truth: 20-17-OBSERVATIONS.md.
+
+### P70 occurrences 3-6 (Phase 20-18, sessions 2026-05-19 → 2026-05-20)
+
+Phase 20-18 surfaced FOUR independent P70 occurrences — all resolved
+within-plan on EVIDENCE, none bar-lowered, none second-workarounded.
+Promotes P70 to a SEVEN-occurrence pattern across 20-16/20-17/20-18,
+one of the catalogue's most-recurring entries.
+
+**Occurrence 3 — Wave A "type-only, low blast radius" premise falsified
+(2026-05-19):**
+
+The PLAN.md framing was "Wave A is a TYPE-ONLY edit — additive
+Signal/Builder tags + PatternIR.ts constructors, low blast radius,
+quick PASS, then Wave B builds the recogniser on top." The Wave-A
+build observed `TS2366` errors at 11 exhaustive non-undefined-return
+`switch(.tag)` sites — adding a new top-level union tag is NOT
+build-inert; every FLOOR exhaustive switch needs a guarded arm. The
+inferred "type-only" classification was empirically falsified at the
+build gate.
+
+```
+TS2366: Function lacks ending return statement and return type does not include 'undefined'.
+  at toStrudel.ts:20
+  at serialize.ts:81
+  ... 9 more sites
+```
+
+**Disposition (per PK18, no bar-lowering):** STOP Wave A's "fast
+type-only" framing. Re-pose: the Option-3 closure (FULL guarded
+Signal/Builder arms across all 11 FLOOR switches) becomes the actual
+Wave A — re-sequenced from "type-only" to "tag-add-with-consumer-
+closure". The 11 sites are FLOOR-greppable; the closure is bounded
++ verifiable. Recorded VERBATIM in `20-18-OBSERVATIONS.md` §"Wave A —
+PK18 HARD STOP" + §"WAVE A/D RE-SEQUENCING AMENDMENT".
+
+**Occurrence 4 — Wave B "allow-list-empty premise" falsified
+(2026-05-19):**
+
+The PLAN.md framing was "Waves 0/A/B/C/D/E produce ZERO parity change
+on the original 33 — every input reaching `recogniseChainRoot` was
+bareCode, Wave-0 observed → not in any original snapshot. The
+allow-list = exactly {the 3 V-2 fixtures}". The Wave-B per-file STOP
+gate observed `amensister` (Wave B) + later `belldub/dinofunk/
+meltingsubmarine` (Wave C) — 4 corpus files moved bare-Code →
+structured under the new arm. The premise was a 7-sample bakery slice;
+the corpus-wide claim was inferred, not measured.
+
+**Disposition:** STOP. Re-pose: the V-3 allow-list is EXTENDED to
+include the 4 corpus files (genuine new structure, not loc-drift on
+unchanged parse trees) — but only after per-file audit at each wave's
+commit (the per-wave-commit-body flagging discipline). NOT bar-
+lowered. NOT scope-expanded mid-wave. Recorded VERBATIM in
+`20-18-OBSERVATIONS.md` §"Wave B — PK18 HARD STOP" + §"Wave B —
+RECLASSIFIED".
+
+**Occurrence 5 — Wave C "#3 chord-family = chain-root class" partially
+falsified (2026-05-19):**
+
+The PLAN.md crit-1 framing was "#3 `-6c1hEXe8Agi` is a chord-family
+chain-root blocker; Wave C's grounded chord/arrange modelling flips it
+STRUCTURED." Wave C's empirical grounding-then-modelling proved the
+chord ARM is correct (P69/Grounding Check discharged with
+`controls.mjs:2130` citations; the stripped-#3 probe yields
+`body.tag=Pick, deep-walk Builder/chord = HIT, args="\"Am Am\""`). But
+the FULL #3 program does NOT flip — its blocker is a DIFFERENT
+mechanism class: `buildBindingMap` shape-fence (`bindings*,
+sideEffect, finalExpr` fails the `finalIdx !== stmts.length-1` fence).
+The chord arm fires correctly; the whole-program shape rejection
+swallows it.
+
+**Disposition:** STOP on #3 as a crit-1 anchor. Re-pose to user:
+chord arm validated by FOUR independent observations (stripped-#3
+probe + belldub/dinofunk/meltingsubmarine corpus flips + #7 arrange
+peer); no semantic regression from dropping #3 as a hard anchor.
+Backlog #158 filed (the AMENDMENT-2-deferred shape-fence class → 20-19
+seed). Recorded in `20-18-OBSERVATIONS.md` §"Wave C — #3 PK18 STOP".
+
+**Occurrence 6 — D-03 AMENDMENT-2 (2026-05-20, user-approved evidence
+reframe):**
+
+User decision after Wave C's #3 partial-falsification: drop #3 from
+crit-1. The 2026-05-19 D-03 AMENDMENT crit-1 added #3 under the
+classification "chord/voicing family is the genuine chain-root class";
+that classification was partially-falsified by Wave C's evidence —
+structurally identical to the 2026-05-19 AMENDMENT re-anchor of
+`--LsnlgQ6osk` (whose Wave-E observed blocker class was empirically
+different from the 20-16 cascade's classification). The AMENDED-D-03
+crit-1 becomes `--LsnlgQ6osk` + #7 (both anchors STRUCTURED), with #3
+deferred to backlog #158 → 20-19.
+
+**Disposition:** the crit-1 verdict at V-1 PASSED on both AMENDMENT-2
+anchors (`--LsnlgQ6osk` body.tag=Stack, post-fixpoint pending=[];
+#7 -KLGNJUtyyj1 deep-walk Builder/arrange HIT + bakery
+verdict=structured). #3 informational verdict RECORDED (not gated).
+NO bar-lowering — the no-bar-lowering contract retained on the new
+crit-1 + the 86% must-not-regress floor (held: 92.0% = +6pp). Recorded
+in `20-18-OBSERVATIONS.md` §"D-03 AMENDMENT-2" + V-1 verdict block.
+
+**The pattern across all 4 occurrences:** empirical observation
+falsifies an inferred plan/cascade premise; the right fix per PK18 is
+STOP, record verbatim, re-pose, re-anchor on evidence — NEVER push
+through, NEVER bar-lower, NEVER second-workaround. P70 is now a
+SEVEN-occurrence pattern across 20-16/20-17/20-18. The occurrence
+count is the strongest signal in the catalogue that this is THE
+structural error class the framework was built to catch.
+
+**REF (20-18 additions):** `.planning/phases/20-musician-timeline/
+20-18-PLAN.md` (the inferred premises that were falsified),
+`20-18-CONTEXT.md` (D-03 AMENDMENT + AMENDMENT-2 — the user-approved
+evidence reframes), `20-18-OBSERVATIONS.md` (the Wave A/B/C STOP
+records + the V-1 PASS verdict), `20-18-SUMMARY.md` (the phase-close
+audit citing all 4 occurrences). Cross-ref: P69 (the underlying
+inference-not-observation error), PK18 (the gate cascade discipline
+that converted these into STOPs not push-throughs).

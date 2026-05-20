@@ -596,8 +596,24 @@ function buildBindingMap(
 }
 
 /** Parse a Strudel code string. Always returns a tree (Code node for unsupported). */
-export function parseStrudel(code: string): PatternIR {
+export function parseStrudel(
+  code: string,
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). When `true`, the general arm
+  // in `parseRoot` emits a structured-OPAQUE `Code.via{method,args,inner}`
+  // wrapper for unbound `identifier(...)` chain heads NOT in the curated
+  // `CHAIN_ROOT_RECOGNISER` set. Default `undefined` → general arm
+  // dormant → every existing path byte-identical (the 20-17 G4
+  // optional-arg-threading idiom; PV50: STACK param, NOT module state).
+  // Threaded `parseStrudel → parseExpression → parseRoot` only. The
+  // parity oracle (`_bakery-classify.spec.ts:77`) calls
+  // `parseStrudel(s.code)` with EXACTLY one arg → opts is never
+  // constructed by the gate → the flag is STRUCTURALLY never-gate-counted
+  // (Wave-0 ACTION 7 invariant, hardened in this wave's spec).
+  _opts?: { recogniseGeneralChainRoots?: boolean },
+): PatternIR {
   if (!code.trim()) return IR.pure()
+  const opts = _opts
 
   try {
     // Split into track blocks ($: lines). Each carries the absolute
@@ -643,7 +659,7 @@ export function parseStrudel(code: string): PatternIR {
       // handled at the substitution site, never a throw).
       const bound = buildBindingMap(stripped.body, stripped.offset)
       if (bound) {
-        const inner = parseExpression(bound.finalExpr, bound.finalOffset, undefined, bound.bindings)
+        const inner = parseExpression(bound.finalExpr, bound.finalOffset, undefined, bound.bindings, opts)
         // P67: if the final expression resolved to bare Code (the binding
         // map did not help — e.g. a non-stack final expr), keep the
         // existing whole-program fallback shape rather than wrapping a
@@ -656,7 +672,7 @@ export function parseStrudel(code: string): PatternIR {
         }
         // else: fall through to the plain parse (whole-program Code).
       }
-      const inner = parseExpression(stripped.body.trim(), innerOffset)
+      const inner = parseExpression(stripped.body.trim(), innerOffset, undefined, undefined, opts)
       return IR.track('d1', inner)
     }
     if (tracks.length === 1) {
@@ -669,7 +685,7 @@ export function parseStrudel(code: string): PatternIR {
       // empty-body Track wrapper so d{N} numbering stays stable when
       // the user toggles a line's comment prefix.
       const t = tracks[0]
-      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset)
+      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, undefined, opts)
       // 20-15 G5 (#138 / D-01) — a named label becomes the trackId so the
       // label IS the timeline row name (no `.p()` needed). `$` (the legacy
       // `$:` marker) keeps the synthetic `d1` numbering — byte-identical to
@@ -689,7 +705,7 @@ export function parseStrudel(code: string): PatternIR {
     // they keep their slot in the numbering.
     return IR.stack(
       ...tracks.map((t, i) => {
-        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset)
+        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, undefined, opts)
         // 20-15 G5 (#138 / D-01) — labelled tracks carry trackId = label;
         // legacy `$:` (label === '$') keeps `d{i+1}` so existing multi-$:
         // tunes are byte-identical. dollarStart (label-line start) is the
@@ -789,6 +805,80 @@ function lexStateAt(code: string, idx: number): { depth: number; inString: boole
 // binding (G1, γ-3 / D-02); `default/case` are statement-label keywords.
 // Strudel has no `switch`, so these only appear as false-positives.
 const RESERVED_LABEL_IDENTS = new Set(['let', 'const', 'var', 'default', 'case'])
+
+// 20-18 Wave B-1 (D-01) — the FROZEN Wave-0 curated chain-root recogniser
+// scope contract. Module-const immutable map: root token → discriminant +
+// kind. The producer side of the additive Signal/Builder union introduced
+// in Wave A. Membership = `20-18-OBSERVATIONS.md` ACTION 6, R-2 GT-seeded:
+//   Signal (21) — sine/cosine/saw/isaw/tri/square/pulse/perlin/berlin/
+//                  time/rand/rand2/brand/sine2/cosine2/saw2/isaw2/tri2/
+//                  square2/mousex/mousey
+//   Builder (6) — run/irand/binary/binaryN/binaryL/binaryNL
+// `chord`/`arrange` are DELIBERATELY EXCLUDED (OPAQUE-pending → Wave C
+// ground-first per the Grounding Check on `@strudel/tonal` /
+// `pattern.mjs`). Mirrors the `RESERVED_LABEL_IDENTS` curated-Set idiom
+// directly above — immutable config, NOT mutable module state (PV50).
+// The set is FROZEN: any later wave widening this scope without a
+// re-pose + provenance is a PK18 STOP (the 20-16 4×-cascade discipline,
+// P70 spine).
+type ChainRootDescriptor =
+  | { tag: 'Signal'; kind: (PatternIR & { tag: 'Signal' })['kind'] }
+  | { tag: 'Builder'; kind: (PatternIR & { tag: 'Builder' })['kind'] }
+const CHAIN_ROOT_RECOGNISER: ReadonlyMap<string, ChainRootDescriptor> = new Map([
+  // Continuous + random Signal roots (21)
+  ['sine',    { tag: 'Signal', kind: 'sine'    }],
+  ['cosine',  { tag: 'Signal', kind: 'cosine'  }],
+  ['saw',     { tag: 'Signal', kind: 'saw'     }],
+  ['isaw',    { tag: 'Signal', kind: 'isaw'    }],
+  ['tri',     { tag: 'Signal', kind: 'tri'     }],
+  ['square',  { tag: 'Signal', kind: 'square'  }],
+  ['pulse',   { tag: 'Signal', kind: 'pulse'   }],
+  ['perlin',  { tag: 'Signal', kind: 'perlin'  }],
+  ['berlin',  { tag: 'Signal', kind: 'berlin'  }],
+  ['time',    { tag: 'Signal', kind: 'time'    }],
+  ['rand',    { tag: 'Signal', kind: 'rand'    }],
+  ['rand2',   { tag: 'Signal', kind: 'rand2'   }],
+  ['brand',   { tag: 'Signal', kind: 'brand'   }],
+  ['sine2',   { tag: 'Signal', kind: 'sine2'   }],
+  ['cosine2', { tag: 'Signal', kind: 'cosine2' }],
+  ['saw2',    { tag: 'Signal', kind: 'saw2'    }],
+  ['isaw2',   { tag: 'Signal', kind: 'isaw2'   }],
+  ['tri2',    { tag: 'Signal', kind: 'tri2'    }],
+  ['square2', { tag: 'Signal', kind: 'square2' }],
+  ['mousex',  { tag: 'Signal', kind: 'mousex'  }],
+  ['mousey',  { tag: 'Signal', kind: 'mousey'  }],
+  // Discrete Builder roots (6 Wave-B closed-set + 2 Wave-C GROUNDED additions)
+  ['run',      { tag: 'Builder', kind: 'run'      }],
+  ['irand',    { tag: 'Builder', kind: 'irand'    }],
+  ['binary',   { tag: 'Builder', kind: 'binary'   }],
+  ['binaryN',  { tag: 'Builder', kind: 'binaryN'  }],
+  ['binaryL',  { tag: 'Builder', kind: 'binaryL'  }],
+  ['binaryNL', { tag: 'Builder', kind: 'binaryNL' }],
+  // 20-18 Wave C — `chord`/`arrange` GROUNDED against real source
+  // (~/.anvideck/projects/struCode/ref/GROUND_TRUTH_SIGNAL_MJS.md §2/§3):
+  //   `chord` → @strudel/core@1.2.6 controls.mjs:2130 (registerControl) →
+  //     :10-54 createParam → :41-49 root path (reify(value).withValue(withVal))
+  //     — arg is a chord-symbol sublanguage, NOT a Strudel-pattern → `args`
+  //     RAW, **no `body`** (modelling body would be inferred-taxonomy — the
+  //     domain-specific sublanguage is non-recursable in the matcher's
+  //     competence; D-02 matcher line, EXECUTOR NOTES line 842).
+  //   `arrange` → @strudel/core@1.2.6 pattern.mjs:1469-1473 — varargs of
+  //     `[cycles, pattern]` two-element JS arrays. The arg surface is a
+  //     JS-array-literal-of-tuples shape, NOT a single pattern expression.
+  //     Parsing it would require JS-array-literal + tuple recursion, which
+  //     is structurally outside the matcher's competence → `args` RAW,
+  //     **no `body`** (the disposition RESEARCH R-3 specifies for OPAQUE
+  //     gate-critical builders: args-raw-only until grounded; grounded
+  //     evidence here closes the gate by EXCLUDING a body shape, not by
+  //     constructing one).
+  // Both builders ride the EXISTING Wave-B arm path unchanged (arg-taking →
+  // balanced-paren-slice the raw args → emit `IR.builder(kind, rawArgs,
+  // undefined, {loc})`). The chain (.voicing/.dict/.mode/.struct/...) rides
+  // the EXISTING `applyChain` over the new Builder root — same composition
+  // contract as the 6 Wave-B kinds.
+  ['chord',    { tag: 'Builder', kind: 'chord'    }],
+  ['arrange',  { tag: 'Builder', kind: 'arrange'  }],
+])
 
 export function extractTracks(
   code: string,
@@ -961,6 +1051,11 @@ export function parseExpression(
   // `undefined` = no binding map (every call site except the no-`$:`
   // G1 entry). Threaded ONLY parseExpression → parseRoot → stack-arg.
   bindings?: ReadonlyMap<string, PatternIR>,
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). See `parseStrudel` for the
+  // full contract. Threaded EXACTLY as `bindings` (optional trailing
+  // STACK param; PV50). `undefined` → general arm dormant → byte-identical.
+  opts?: { recogniseGeneralChainRoots?: boolean },
 ): PatternIR {
   if (!expr.trim()) return IR.pure()
 
@@ -993,7 +1088,7 @@ export function parseExpression(
     // those wrappers as opaque and discarded the entire structure — surfaces
     // for `stack(single-arg-with-unmapped-pattern-chain)` shapes such as
     // `stack(s("bd").delay("<0 .5>")...).sometimes(...)` in delay.strudel.
-    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings)
+    const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings, opts)
     const rootIsBareCode =
       rootIR.tag === 'Code' && (rootIR as { via?: unknown }).via === undefined
     if (rootIsBareCode && !chain.trim()) {
@@ -1043,6 +1138,15 @@ export function parseRoot(
   // (the cleanest hook per research R4). `undefined` everywhere except the
   // no-`$:` G1 entry.
   bindings?: ReadonlyMap<string, PatternIR>,
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). See `parseStrudel` for the
+  // full contract. Threaded EXACTLY as `bindings` (optional trailing
+  // STACK param; PV50). When `opts?.recogniseGeneralChainRoots === true`
+  // AND the root token is an unbound `identifier(...)` chain head NOT in
+  // `CHAIN_ROOT_RECOGNISER`, the general arm emits a structured-OPAQUE
+  // `Code.via{method, args, inner}` wrapper. `undefined`/`false` →
+  // dormant → byte-identical.
+  opts?: { recogniseGeneralChainRoots?: boolean },
 ): PatternIR {
   const trimmed = root.trim()
   const leadingWs = root.length - root.trimStart().length
@@ -1080,6 +1184,79 @@ export function parseRoot(
   // (pS:869-873).
   if (bindings && /^[A-Za-z_$][\w$]*$/.test(trimmed) && bindings.has(trimmed)) {
     return bindings.get(trimmed) as PatternIR
+  }
+
+  // 20-18 Wave B-1 (D-01 curated chain-root recogniser) — emit
+  // `{tag:'Signal'|'Builder', kind, args?}` for the FROZEN Wave-0 curated
+  // set (`20-18-OBSERVATIONS.md` ACTION 6). Placement: AFTER the G2
+  // bound-ident arm (a user-shadow `const sine = s("bd")` wins via G2),
+  // BEFORE `noteMatch` (every reaching input was provably bareCode by
+  // Wave-0 R-1 probe — strict widen). The chain is NOT touched here:
+  // per the Wave-0 ACTION 5 verdict (a) ROOT-recognition-suffices, the
+  // EXISTING `applyChain` (~pS:1351) composes `.range`/`.struct`/`.slow`/
+  // `.sometimesBy(...)` over the new root exactly as it composes them
+  // over any root — `sound("a b").sometimesBy(0.5, fast(2))`→`Choice`
+  // proved the chain arm wraps unparsed/opaque args by default. `chord`/
+  // `arrange` are EXCLUDED (Wave C ground-first OPAQUE-pending). `args`
+  // is the RAW (untrimmed) source slice — `Code.via.args` byte-verbatim
+  // convention; the parser NEVER evaluates a signal / runs `.range` /
+  // invokes a builder (D-02 matcher line). PV49 holds — definition-site
+  // offsets via the EXISTING `baseOffset + leadingWs + …` convention
+  // (mirrors pS:1090 `noteMatch` and pS:1156 loose-arm arithmetic).
+  // PV50 holds — `CHAIN_ROOT_RECOGNISER` is a module-const immutable
+  // literal (same idiom as `RESERVED_LABEL_IDENTS` pS:791), NOT mutable
+  // state.
+  const recognised = CHAIN_ROOT_RECOGNISER.get(trimmed)
+  if (recognised) {
+    // Bare 0-arity ident (e.g. `sine`/`perlin`/`rand`/`time`) — `trimmed`
+    // is exactly the curated kind token; no `(` present. `loc` = root
+    // token absolute offset via the existing convention.
+    const rootStart = baseOffset + leadingWs
+    const rootLoc: SourceLocation = {
+      start: rootStart,
+      end: rootStart + trimmed.length,
+    }
+    if (recognised.tag === 'Signal') {
+      return IR.signal(recognised.kind, undefined, { loc: [rootLoc] })
+    }
+    // Unreachable for the FROZEN Wave-0 set (every `Builder` kind is
+    // arg-taking per R-2 — `run`/`irand`/`binary`/`binaryN`/`binaryL`/
+    // `binaryNL` all require an `(n)` arg). Defensive: emit a 0-arg
+    // builder rather than fall through to bareCode if a future kind
+    // widens to 0-arity (the FROZEN set + re-pose discipline owns
+    // membership changes).
+    return IR.builder(recognised.kind as (PatternIR & { tag: 'Builder' })['kind'], '', undefined, { loc: [rootLoc] })
+  }
+  // Arg-taking root: `<curatedToken>(<rawArgs>)` — token must match the
+  // curated set AND be followed by `(`. The token is anchored at the
+  // start of `trimmed`; balanced-paren-slice the RAW args between `(`
+  // and the matching `)`. `args` is byte-verbatim source (NOT trimmed)
+  // per the `Code.via.args` convention.
+  const argMatch = trimmed.match(/^([A-Za-z_$][\w$]*)\s*\(/)
+  if (argMatch) {
+    const token = argMatch[1]
+    const argRecognised = CHAIN_ROOT_RECOGNISER.get(token)
+    if (argRecognised) {
+      const openParenIdx = trimmed.indexOf('(', argMatch[0].length - 1)
+      const closeIdx =
+        openParenIdx >= 0 ? findMatchingParen(trimmed, openParenIdx) : -1
+      if (closeIdx > openParenIdx) {
+        const rawArgs = trimmed.slice(openParenIdx + 1, closeIdx)
+        // Root-token loc spans the token itself (not the args). args
+        // offset = baseOffset + leadingWs + openParenIdx + 1 (the
+        // loose-arm convention at pS:1170-1176).
+        const rootStart = baseOffset + leadingWs
+        const rootLoc: SourceLocation = {
+          start: rootStart,
+          end: rootStart + token.length,
+        }
+        if (argRecognised.tag === 'Signal') {
+          return IR.signal(argRecognised.kind, rawArgs, { loc: [rootLoc] })
+        }
+        return IR.builder(argRecognised.kind as (PatternIR & { tag: 'Builder' })['kind'], rawArgs, undefined, { loc: [rootLoc] })
+      }
+      // Malformed paren shape — fall through to existing arms / bareCode.
+    }
   }
 
   // note("...") or n("...") — plus G3 backtick `` `…` `` (multi-line ok).
@@ -1191,6 +1368,7 @@ export function parseRoot(
           innerAbsOffset,
           callerIsSample,
           bindings,
+          opts,
         )
         const innerIsBareCode =
           innerIR.tag === 'Code' &&
@@ -1234,7 +1412,7 @@ export function parseRoot(
       // whole-expression Code fallback (D-02 topology-preserving, no
       // throw). Substituted subtrees keep definition-site loc (R6).
       const tracks = argsWithOffsets.map((a) =>
-        parseExpression(a.value, innerAbsOffset + a.offset, undefined, bindings),
+        parseExpression(a.value, innerAbsOffset + a.offset, undefined, bindings, opts),
       )
       if (tracks.length === 0) return IR.pure()
       if (tracks.length === 1) return tracks[0]
@@ -1330,6 +1508,84 @@ export function parseRoot(
       inner.tag === 'Code' && (inner as { via?: unknown }).via === undefined
     if (!innerIsBareCode) return inner
     // else: fall through to the opaque fallback below.
+  }
+
+  // 20-18 E-1 (D-01) — flagged-general fallback (off-by-default,
+  // measurement-only, NEVER gate-counted). When `opts.recogniseGeneralChainRoots
+  // === true` AND `trimmed` is an unbound `identifier(...)` chain head NOT
+  // already handled by the strict arms above AND NOT in the curated
+  // `CHAIN_ROOT_RECOGNISER` set, emit a structured-OPAQUE
+  // `Code.via{method, args, callSiteRange, inner}` wrapper (D-01: unknowns
+  // CANNOT be modelled — opaque is correct for the general path; this is
+  // NOT a `Signal`/`Builder` tag — those are reserved for curated-set
+  // kinds). `inner` is the canonical bare `IR.code(trimmed)` (the same
+  // shape this function returns at the bottom for an unrecognised root),
+  // so the produced node is byte-identical to bare-Code MODULO the `via`
+  // structural marker — every existing consumer that walks `via.inner`
+  // still sees the same code-string content.
+  //
+  // PV50: `opts` flows on the STACK from `parseStrudel` (the 20-17 G4
+  // optional-arg-threading idiom; NOT module state). Default-undefined →
+  // this branch is unreachable → byte-identical to pre-E-1 output. The
+  // parity oracle (`_bakery-classify.spec.ts:77`) calls `parseStrudel`
+  // with EXACTLY one arg → opts is never constructed by the gate → this
+  // arm is STRUCTURALLY never-gate-counted (the never-gate-counted
+  // invariant, asserted in parseStrudel.generalChainRootFlag.test.ts).
+  //
+  // Placement: LAST arm before the bare-Code fallback. Any strict arm
+  // (curated set / note / s / sound / mini / loose recursive / stack /
+  // bareString / bareBacktick / parenStr) that already matched returned;
+  // any bound identifier root was substituted by the G2 arm
+  // (pS:~1155-1157). Reaching here = strictly the unhandled
+  // `identifier(...)` (or bare `identifier`) shape — the long tail.
+  //
+  // The chain (.bar()/.baz(...)) rides the EXISTING `applyChain` over
+  // this wrapped root unchanged — same composition contract as Wave A's
+  // Signal/Builder roots.
+  if (opts?.recogniseGeneralChainRoots === true) {
+    const genArgMatch = trimmed.match(/^([A-Za-z_$][\w$]*)\s*\(/)
+    if (genArgMatch) {
+      const token = genArgMatch[1]
+      // Exclude curated tokens — they are owned by the curated arm above
+      // (this is a strict NON-curated complement; the curated arm fires
+      // when present, this arm fires when not).
+      if (!CHAIN_ROOT_RECOGNISER.has(token)) {
+        const openParenIdx = trimmed.indexOf('(', genArgMatch[0].length - 1)
+        const closeIdx =
+          openParenIdx >= 0 ? findMatchingParen(trimmed, openParenIdx) : -1
+        if (closeIdx > openParenIdx) {
+          const rawArgs = trimmed.slice(openParenIdx + 1, closeIdx)
+          const rootStart = baseOffset + leadingWs
+          const callSiteRange: [number, number] = [rootStart, rootStart + closeIdx + 1]
+          // Structured-OPAQUE wrapper — `Code.via{method, args, inner}`
+          // shape. Mirrors `wrapAsOpaque` (pS:73-86): tag 'Code' with a
+          // structural `via` marker; toStrudel branches on via. The inner
+          // is the canonical bare-Code form of `trimmed` (the same shape
+          // the bare fallback below produces) — every consumer of `via.inner`
+          // walks it the same way it walks the wrapper's inner today.
+          return {
+            tag: 'Code',
+            code: '',
+            lang: 'strudel',
+            loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+            via: { method: token, args: rawArgs, callSiteRange, inner: IR.code(trimmed) },
+          }
+        }
+      }
+    }
+    // Bare identifier (no `(`) — also long-tail unbound. Wrap as
+    // structured-OPAQUE with empty args.
+    if (/^[A-Za-z_$][\w$]*$/.test(trimmed) && !CHAIN_ROOT_RECOGNISER.has(trimmed)) {
+      const rootStart = baseOffset + leadingWs
+      const callSiteRange: [number, number] = [rootStart, rootStart + trimmed.length]
+      return {
+        tag: 'Code',
+        code: '',
+        lang: 'strudel',
+        loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+        via: { method: trimmed, args: '', callSiteRange, inner: IR.code(trimmed) },
+      }
+    }
   }
 
   // Fallback: treat as opaque

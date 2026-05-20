@@ -105,6 +105,51 @@ needed (the guard IS the enforcement; adding the fixture would trip it).
 The upstream-drift tool therefore never reports the new fixture as
 "missing upstream".
 
+### Phase 20-18 fixtures (#155 + #158 — chain-root recognition + AMENDMENT-2 negative-control)
+
+Phase 20-18 closes the chain-root recognition gap (#155): Strudel
+signal/builder family roots (`irand`/`run`/`binary*`/`perlin`/`sine`/...,
+plus the grounded-then-modelled `chord`/`arrange`) are recognised as
+Layer 1/2 PatternIR `{tag:'Signal'|'Builder', kind, args?}` additive
+union members. The AMENDED-D-03 V-1 (`fa229bc`) PASSED both crit-1
+anchors STRUCTURED + crit-2 92.0% (+6pp over the 86% must-not-regress
+floor). The CI fixtures below are VERBATIM-distilled from the source
+repros (the 20-15 V-2 "do not paraphrase" lesson) — a paraphrased-to-
+working fixture tests nothing.
+
+**Provenance note (D-03 AMENDMENT-2, 2026-05-20):** #3 `-6c1hEXe8Agi`
+was dropped from crit-1 on evidence — its blocker is a SECOND class
+(`buildBindingMap`-shape rejection: `bindings*, sideEffect, finalExpr`
+fails `finalIdx !== stmts.length-1`), NOT chain-root. The chord arm
+itself is validated by FOUR independent Wave-C observations: the
+stripped-#3 probe (Track/Pick + deep-walk Builder/chord HIT), the
+belldub/dinofunk/meltingsubmarine corpus chord-root flips, and the #7
+arrange peer. `bakery-chord-voicing-root` ships as a POSITIVE-CONTROL
+regression fixture asserting the chord-recogniser arm fires correctly;
+the full #3 shape-fence blocker (`buildBindingMap`-shape rejection) is
+tracked in **#158** and deferred to 20-19. When 20-19/#158 closes the
+shape-fence, the full #3 program flip becomes a fixture there.
+
+**Grounding:** the chord/arrange arms are grounded against the pinned
+upstream SHA `f73b3956` (`packages/tonal/controls.mjs:2130` reify+
+withVal for chord; `pattern.mjs:1469-1473` for arrange's continuum into
+the existing struct machinery). See `~/.anvideck/projects/struCode/ref/
+GROUND_TRUTH_SIGNAL_MJS.md`.
+
+| Fixture | Gap classes closed | Issue | Repro source | Asserts |
+|---|---|---|---|---|
+| `bakery-141-irand-chain-root.strudel` | #155 — `irand(N).struct(...)...` chain-root + signal-valued chain ARGS (`perlin.range`, `sine.range`) carried opaquely by `applyChain` | [#155](https://github.com/MrityunjayBhardwaj/stave-code/issues/155) · Bakery `--LsnlgQ6osk` (the 20-17 Wave-E-falsified anchor, RECLAIMED in 20-18) | distilled VERBATIM from `bakery-runs/repro__LsnlgQ6osk.strudel:13-23` (the `az2` declaration byte-faithful) + a `stack(az2)` final to make it self-contained | whole-program `body.tag='Code', via!==undefined` → STRUCTURED; deep-walk reaches `{tag:'Builder', kind:'irand', args:'12'}`; the `.sometimesBy(perlin.range(...),sub(8))` and `.fm(sine.range(...).fast(...))` arms carried as nested `Code.via` per the Wave-0 verdict (a)-ROOT-RECOGNITION-SUFFICES |
+| `bakery-arrange-root.strudel` | #155 — `arrange([num, expr], ...)` as a `Builder` root flipping STRUCTURED | [#155](https://github.com/MrityunjayBhardwaj/stave-code/issues/155) · Bakery `-KLGNJUtyyj1` (Wave-C grounded-PASS anchor; AMENDMENT-2 crit-1 anchor #2) | distilled VERBATIM from `samples-2026-05-19T13-24-45-538Z.json` `-KLGNJUtyyj1`: the `richter_chords` template-literal binding + the `arrange([48, stack(...)], [1, ...])` final-expression shape byte-faithful at the root | whole-program `tag='Track'`, `body = {tag:'Builder', kind:'arrange', args:''}` — STRUCTURED; the `arrange`-arm flip is the AMENDED-D-03 crit-1 anchor #2 (Wave C deep-walk Builder/arrange HIT + bakery `verdict=structured` corroboration) |
+| `bakery-chord-voicing-root.strudel` | #155 chord ARM correctness (POSITIVE-CONTROL per D-03 AMENDMENT-2; the full #3 shape-fence blocker is tracked in [#158](https://github.com/MrityunjayBhardwaj/stave-code/issues/158) → 20-19) | [#155](https://github.com/MrityunjayBhardwaj/stave-code/issues/155) (chord recogniser arm) · Bakery `-6c1hEXe8Agi` (the AMENDMENT-2-dropped crit-1 anchor; deferred class → #158 → 20-19) | distilled VERBATIM from the Wave-C stripped-#3 probe (`_waveC-diagnose.spec.ts:25-62` template): the `padsbell = chord("Am Am").voicing().sound(...)...` binding byte-faithful + a `stack(padsbell)` final (the SHAPE that DOES flip STRUCTURED, proving chord arm fires) — single-quoted string-id args per P62/PV44 | whole-program `body.tag='Code', via!==undefined` → STRUCTURED; deep-walk reaches `{tag:'Builder', kind:'chord', args:'"Am Am"'}` — POSITIVE control for chord ARM correctness (Wave C Ground Truth: `controls.mjs:2130` reify+withVal); the full #3 program shape-fence blocker (`buildBindingMap`-shape rejection) is tracked in **#158** → 20-19 per AMENDMENT-2 |
+
+**parity-refresh exclusion (same mechanism as 20-15/16/17):**
+`parity-refresh.mjs:68-77`'s structural guard throws if ANY `bakery-*`
+slug leaks into TARGETS. The 3 new fixtures are excluded automatically
+by NOT being added to TARGETS — no edit to the script is needed (the
+guard IS the enforcement; adding the fixtures would trip it). The
+upstream-drift tool therefore never reports these vendored repros as
+"missing upstream".
+
 ### Per-setter G2 fixtures (V-3 — α-1 → V-3 contract)
 
 The α-1 commit body (`a2b607c`) is the authoritative input contract: the

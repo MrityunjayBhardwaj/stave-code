@@ -1,0 +1,13 @@
+const az2 = irand(12).struct("x(8,8)|x(4,8)")
+  .sometimesBy(perlin.range(0.0,1.0),sub(8))
+  .sometimes(slow(2))
+  .scale("<G:dominant@2 G:major D:major>")
+  .note()
+  .s("<piano sine>")
+  .room(0.2)
+  .clip(1)
+  .degradeBy(perlin.range(0,1))
+  .fm(sine.range(1.5,8).fast(perlin.range(2.8,3.2)))
+  .pan(sine.range(0.4,0.6).fast(perlin.range(2.8,3.2)))
+
+stack(az2)

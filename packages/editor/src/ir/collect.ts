@@ -273,6 +273,14 @@ function countLeavesInIR(node: PatternIR): number {
     case 'Loop':
     case 'Ramp':
       return countLeavesInIR(node.body)
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // LEAF — a recognised chain root contributes one leaf voice (matches
+    // default's `return 1` for Code/Play/Pure/... leaves). Made explicit
+    // per PK18 FLOOR-grep completeness rule; the default arm stays
+    // byte-unchanged (Chesterton — pre-20-18 behaviour preserved).
+    case 'Signal':
+    case 'Builder':
+      return 1
     default:
       return 1
   }
@@ -422,6 +430,22 @@ export function collect(ir: PatternIR, partialCtx?: Partial<CollectContext>): IR
 function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
   switch (ir.tag) {
     case 'Pure':
+      return []
+
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family.
+    // EVENT-NEUTRAL LEAF — matches Pure's leaf-leaf shape above. A
+    // chain-root signal (`sine`, `perlin`, ...) or builder (`irand(12)`,
+    // `binary(...)`) without a recursable body contributes no IR-level
+    // events on its own; downstream chain methods (carried opaquely by
+    // `applyChain` once the root is recognised — Wave-0 ACTION 5 verdict
+    // (a)) supply the event semantics. COMPOSE-not-SUBSUME: every
+    // existing RNG/Pure/wrapper case below is byte-UNCHANGED (Chesterton —
+    // collect.ts already models the RNG chain at line 1095/1124+; we do
+    // not touch it). The `body?` field on Builder is OPAQUE-pending →
+    // Wave C (chord/arrange ground-first); absent in Wave A, so leaf-
+    // event-neutral covers every Wave-A producer output.
+    case 'Signal':
+    case 'Builder':
       return []
 
     case 'Track': {

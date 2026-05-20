@@ -55,6 +55,12 @@ const VALID_TAGS = new Set([
   'Pure', 'Seq', 'Stack', 'Play', 'Sleep', 'Choice', 'Every',
   'Cycle', 'When', 'FX', 'Ramp', 'Fast', 'Slow', 'Loop', 'Code',
   'Param', 'Track',
+  // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (additive).
+  // Every existing entry above stays byte-UNCHANGED; these are appended
+  // members of the literal Set initializer (the only buildable shape
+  // since `VALID_TAGS.has(node.tag)` is the gate at line 71 — without
+  // these, a deserialise of a Signal/Builder node throws "unknown tag").
+  'Signal', 'Builder',
 ])
 
 function validateNode(raw: unknown, path: string): PatternIR {
@@ -306,6 +312,44 @@ function validateNode(raw: unknown, path: string): PatternIR {
       if (Array.isArray(node.loc)) {
         out.loc = node.loc as SourceLocation[]
       }
+      return out
+    }
+
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (lossless
+    // round-trip). Mirrors the Param/Track pattern above: requireField
+    // each primitive, recurse into the optional `body` sub-IR, restore
+    // optional metadata. The `kind` literal-union is validated by TS at
+    // construction-site (PatternIR.ts) — the runtime guard accepts any
+    // string and trusts the consumer's narrowing (matches Param.key's
+    // shape). `args` is RAW source verbatim; we DO NOT coerce / trim.
+    case 'Signal': {
+      requireField(node, 'kind', ['string'], path)
+      const out: PatternIR = {
+        tag: 'Signal',
+        kind: node.kind as Extract<PatternIR, { tag: 'Signal' }>['kind'],
+      }
+      if (typeof node.args === 'string') {
+        (out as Extract<PatternIR, { tag: 'Signal' }>).args = node.args
+      }
+      if (Array.isArray(node.loc)) out.loc = node.loc as SourceLocation[]
+      if (typeof node.userMethod === 'string') out.userMethod = node.userMethod
+      return out
+    }
+
+    case 'Builder': {
+      requireField(node, 'kind', ['string'], path)
+      requireField(node, 'args', ['string'], path)
+      const out: PatternIR = {
+        tag: 'Builder',
+        kind: node.kind as Extract<PatternIR, { tag: 'Builder' }>['kind'],
+        args: node.args as string,
+      }
+      if (typeof node.body === 'object' && node.body !== null) {
+        (out as Extract<PatternIR, { tag: 'Builder' }>).body =
+          validateNode(node.body, `${path}.body`)
+      }
+      if (Array.isArray(node.loc)) out.loc = node.loc as SourceLocation[]
+      if (typeof node.userMethod === 'string') out.userMethod = node.userMethod
       return out
     }
 
