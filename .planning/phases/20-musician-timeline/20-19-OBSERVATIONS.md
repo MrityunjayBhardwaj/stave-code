@@ -225,3 +225,191 @@ A+F-coupled row #147 stays backlog per D-03 strict); FROZEN curated-set
 membership locked (matches R-1's 10 tokens; no extension required); V-3
 allow-list pre-allocated (11 new Wave-C fixtures + 0 backlog + 0 #3-corpus).
 NO production src changed.
+
+---
+
+## Wave A — `stripSideEffectStatements` helper landed; locked-STOP BREAKS LOUDLY
+
+### Anchor re-grep (live; pre-edit)
+
+```
+$ grep -n "splitTopLevelStatements(\|^const BINDING_RE\|^function buildBindingMap\|finalIdx !== stmts.length - 1\|buildBindingMap(stripped" packages/editor/src/ir/parseStrudel.ts
+364:function splitTopLevelStatements(
+484:const BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/
+486:function buildBindingMap(
+492:  const stmts = splitTopLevelStatements(body, baseOffset)
+534:  if (finalIdx !== stmts.length - 1) return null
+660:      const bound = buildBindingMap(stripped.body, stripped.offset)
+```
+
+No drift from Wave 0. Surgery sites valid.
+
+### Surgery shape (D-02 — additive-only)
+
+**Deviation from PLAN action 3 placement (recorded for transparency):**
+PLAN action 3 says place the regex+provenance block "immediately AFTER the
+`GUARDED_BOOT_RE` block (current `pS:228-229`)" — but that location is INSIDE
+`stripParserPrelude`'s function body (`PRELUDE_CALL_RE` and `GUARDED_BOOT_RE`
+are local consts inside that function). The new `stripSideEffectStatements`
+helper (PLAN action 4) is MODULE-scoped (called from `buildBindingMap`), and
+must see `SIDE_EFFECT_CALL_RE` at module scope. **Resolution:** I placed BOTH
+the regex+provenance block AND the helper at module scope, between the close
+of `splitTopLevelStatements` (line 481-482) and `BINDING_RE` (line 484). The
+provenance block notes this scope-placement structural choice explicitly. The
+WIRE at the preamble is unchanged: PLAN action 5's one-line edit at `pS:492`
+remains.
+
+Diff stats:
+
+```
+$ git diff --stat packages/editor/src/ir/parseStrudel.ts
+ packages/editor/src/ir/parseStrudel.ts | 65 ++++++++++++++++++++++++++-
+ 1 file changed, 64 insertions(+), 1 deletion(-)
+```
+
+**One deletion** = the original `const stmts = splitTopLevelStatements(body, baseOffset)` line. **Replacement** = three lines: `const stmts = stripSideEffectStatements(\n    splitTopLevelStatements(body, baseOffset),\n  )`. **64 insertions** = regex + provenance block + helper function + the wire-replacement lines. Zero edits to `splitTopLevelStatements`, `buildBindingMap`'s loop / fixpoint / occurs-check / shape guard at line 534, callsite at line 660, `PRELUDE_CALL_RE`, `GUARDED_BOOT_RE`, or any 20-18 chain-root code.
+
+### P68 build hygiene — one-shot build + 4 literal-token greps
+
+```
+$ pnpm --filter @stave/editor build
+…
+ESM ⚡️ Build success in 947ms
+CJS ⚡️ Build success in 947ms
+DTS ⚡️ Build success in 1433ms
+```
+
+Build clean. Known `@strudel/mondo` TS7016 did NOT fire this run (already
+fixed in 20-15 #145). The `eval` warnings at `dist/index.js:1007:40` and
+`:1030:42` are pre-existing (not from 20-19).
+
+```
+$ grep -c stripSideEffectStatements packages/editor/dist/index.js  -> 3
+$ grep -c useRNG               packages/editor/dist/index.js       -> 2
+$ grep -c setVoicingRange      packages/editor/dist/index.js       -> 2
+$ grep -c aliasBank            packages/editor/dist/index.js       -> 5
+```
+
+All 4 minification-stable anchors `> 0`. ✓
+
+### Wave-A throwaway probe (strict-widen + false-positive + #3 round-trip)
+
+Probe spec at `packages/app/tests/parity-corpus/_waveA-strip-probe.spec.ts`
+(throwaway; deleted after this record), executed via
+`vitest.waveAprobe.config.ts`. VERBATIM stdout:
+
+```
+(i) strict-widen: 8/8 curated stmts matched by SIDE_EFFECT_CALL_RE
+
+(ii) false-positive guards: 3/3 binding-shape stmts PRESERVED
+
+(iii) #3 round-trip — parseStrudel(verbatim #3) flips STRUCTURED via chord arm
+#3 wpTag=Track  body.tag=Pick  body.bareCode=n/a  body.code?.len=n/a
+#3 deep-walk Builder/chord hits = 4
+#3 hit[0].args = "\"Am Am\""
+
+ ✓ tests/parity-corpus/_waveA-strip-probe.spec.ts  (3 tests)
+```
+
+All 3 probe assertions PASS:
+- (i) 8/8 curated side-effect stmts dropped by `SIDE_EFFECT_CALL_RE`.
+- (ii) 3/3 binding-shape false-positives (`let allChords=…`, `let samplesMap={}`, `const setcpsLater=(x)=>x`) PRESERVED.
+- (iii) #3 round-trip: `body.tag='Pick'`, `body.bareCode` not true, NO long bareCode body, **4 Builder/chord hits** (vs. 0 pre-fix), `hit[0].args = "\"Am Am\""` — exact match to the 20-18 stripped-#3 evidence.
+
+### Test gates
+
+**Editor (default test runner):**
+
+```
+$ pnpm --filter @stave/editor test
+ Test Files  91 passed (91)
+      Tests  1627 passed (1627)
+```
+
+Editor 1627/1627 UNCHANGED ✓.
+
+**App (default test runner — excludes `_waveC-grounding.spec.ts`):**
+
+```
+$ pnpm --filter @stave/app test
+ Test Files  18 passed (18)
+      Tests  387 passed (387)
+```
+
+App default 387/387 UNCHANGED ✓ — parity-corpus 36 + loc-fidelity 36 + other
+315. Per-file loc-fidelity STOP gate clean (every snapshot byte-unchanged;
+PV49 carries by construction since the filter operates on the array, not the
+source string).
+
+**App wave-C config (INCLUDES `_waveC-grounding.spec.ts` — the locked-STOP marker):**
+
+```
+$ cd packages/app && pnpm exec vitest run --config vitest.waveC.config.ts
+…
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/parity-corpus/_waveC-grounding.spec.ts > 20-18 Wave C-1 grounded chord/arrange modelling (maintainer-only) > records #7 grounded flip + #3 PK18-STOP classification (whole-program shape gap, not chord-arm)
+AssertionError: #3 PK18 STOP locked — whole-program still bare due to buildBindingMap shape gap; remove this assertion when the backlog fix lands: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/parity-corpus/_waveC-grounding.spec.ts:155:154
+
+ Test Files  1 failed | 18 passed (19)
+      Tests  1 failed | 387 passed (388)
+```
+
+**This is the EXPECTED LOUD BREAK at exactly `_waveC-grounding.spec.ts:155`.**
+The locked-STOP marker asserted `struct3 === false` (the pre-fix state); the
+helper has now flipped #3 STRUCTURED, so `struct3 === true`, and the assertion
+fires `expected true to be false`. **This is the crit-1 FLIP signal** — Wave A's
+job. Companion lines 140-143 (#7 positive controls) stay GREEN unchanged.
+
+**Note on the PLAN's "386/387 with 1 failure" math:** the default app suite
+runner excludes underscore-prefixed maintainer specs, so the locked-STOP
+marker is NOT part of the default 387 count. Under the wave-C config (which
+INCLUDES the spec), the count goes from baseline 388 GREEN → 387 GREEN + 1
+FAIL = the same outcome the PLAN named, expressed in the wave-C-config
+context. Wave B's assertion-sense flip restores wave-C config to 388/388 GREEN
+and leaves the default 387/387 unchanged.
+
+### Per-file loc-fidelity STOP gate (Wave A)
+
+The 36 loc-fidelity tests in the default suite all PASSED unchanged. No
+snapshot moved. PV49 carries: the filter is a `filter()` on the stmts array,
+which removes items; the remaining items' `offset` fields are byte-unchanged;
+the source string is never mutated; every offset that flows out of
+`buildBindingMap` is byte-identical to what would flow if the user had
+hand-deleted the side-effect line.
+
+### Proto trace
+
+```
+$ pnpm --filter @stave/app test:proto | grep LsnlgQ6osk
+[R:__LsnlgQ6osk] post-fixpoint resolved=[rp1,beat,az2,chords2,bass,harm2] pending=[]
+[R:__LsnlgQ6osk] FINAL parse -> tag=Stack via=false bareCode=false
+```
+
+Proto post-fixpoint trace UNCHANGED from Wave 0 baseline (the `--LsnlgQ6osk`
+sample has no curated side-effect statement — `samples({...})` would have
+been stripped, but `--LsnlgQ6osk` doesn't have one; the trace is identical).
+
+### Wave A — done
+
+`SIDE_EFFECT_CALL_RE` + `stripSideEffectStatements` helper landed at module
+scope (between `splitTopLevelStatements` close and `BINDING_RE`) with the full
+provenance block (Codeberg SHA pin `f73b3956` + 10 per-token file:line
+citations); wired into `buildBindingMap`'s preamble at line 492 (additive
+ONE-line semantically; three physical lines after prettier); `git diff`
+additive-only (64+/1- — the deletion is the original wire line, replaced by
+the new wire's three lines); P68 build hygiene clean with 4 minification-
+stable greps > 0; Wave-A throwaway probe recorded VERBATIM with all 3
+assertions GREEN (strict-widen 8/8, false-positive 3/3, #3 round-trip flipped
+STRUCTURED with 4 chord HITs at args=`"Am Am"`); editor 1627/1627; app
+default 387/387 unchanged; wave-C config 1 failed + 387 passed (the EXPECTED
+loud break at line 155 — the crit-1 FLIP signal); proto unchanged; per-file
+loc-fidelity STOP gate clean.
