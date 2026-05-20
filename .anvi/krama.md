@@ -1002,3 +1002,141 @@ class is the AMENDMENT-2 shape-fence (`buildBindingMap` rejects
 reinforced: a step-2 class label is a HEURISTIC triage signal — the
 genuine blocker is what `parseStrudel` actually does at the failing
 shape, not what the text-regex bins it as.
+
+## PK16 addendum (20-19) — `stripSideEffectStatements` filter step in `buildBindingMap`'s preamble
+
+Phase 20-19 (#158, MERGED 2026-05-20 — branch `feat/20-19-shape-fence`)
+extends `PK16` (the parser pipeline) with a new filter step inserted
+INSIDE `buildBindingMap`'s preamble between `splitTopLevelStatements`
+and the binding loop. **PK16 stage numbering is UNCHANGED** — the
+filter is atomic from the loop's perspective:
+
+- stage 1 = `stripParserPrelude` (with `PRELUDE_CALL_RE` /
+  `GUARDED_BOOT_RE` recognisers; 20-14/20-15/20-15-followup grounded).
+- stage 1.5 = `splitTopLevelStatements` (depth-0 walker; ASI-aware).
+- **NEW (20-19):** between stage 1.5 and stage 0.5 (`buildBindingMap`'s
+  loop), apply `stripSideEffectStatements` to filter recognised
+  side-effect-only call statements out of the stmts array. Curated
+  set: `{all, samples, setcps, setCps, setcpm, setCpm, useRNG,
+  setVoicingRange, initAudio, aliasBank}` (FROZEN by Wave-0 reconcile
+  against the canonical exemplar + R-1 audit).
+- stage 0.5 = `buildBindingMap`'s binding loop + bounded least-
+  fixpoint + occurs-check + shape guard at `pS:534` — BYTE-STABLE
+  (no edits to the loop / fixpoint / occurs-check / shape guard
+  predicate this phase; the filter operates upstream of all of them).
+
+The mechanism: when a program has shape `bindings*, sideEffect,
+finalExpr`, the side-effect intermediate previously made
+`finalIdx !== stmts.length-1` trip, returning null. With the filter
+applied, the stmts array becomes `[bindings*, finalExpr]`, which the
+existing shape guard accepts. PV49 (loc-additivity) carries by
+construction — the filter operates on the array, not the source
+string; remaining items' `offset` fields are byte-unchanged; every
+offset that flows out of `buildBindingMap` is byte-identical to what
+would flow if the user had hand-deleted the side-effect line.
+
+The curated-list mechanism EXTENDS the existing 20-15 `PRELUDE_CALL_RE`
+precedent at a DIFFERENT pipeline stage (stage 1 vs stage 1.5):
+
+- `PRELUDE_CALL_RE` (`parseStrudel.ts:195-196`, scoped inside
+  `stripParserPrelude`) recognises whole-line boot calls at the TOP
+  of the program (before any user code).
+- `SIDE_EFFECT_CALL_RE` (`parseStrudel.ts:484-530`, module-scoped to
+  be visible to `stripSideEffectStatements` at module scope which is
+  called from `buildBindingMap`) recognises STMT-HEAD side-effect
+  calls INTERLEAVED between bindings and the finalExpr.
+
+Same idiom (hand-curated regex + Codeberg-SHA-pinned provenance block
++ one CI fixture per token); different pipeline stage; structurally
+distinct concern. The 20-19 provenance block at
+`parseStrudel.ts:484-530` carries the per-token file:line citations
+in-source (the 10 tokens were source-read in R-1 at
+`@strudel/core repl.mjs / signal.mjs`, `@strudel/tonal voicings.mjs`,
+`superdough sampler.mjs / superdough.mjs` against pin
+`f73b395648645aabe699f91ba0989f35a6fd8a3c`).
+
+## PK17 addendum (20-19) — measured fresh 96.0% (+4pp); 0 PK18 re-poses (a 20-1x cadence first)
+
+Phase 20-19 PK17 step-6 measurement (fresh-pull discipline):
+
+- **Fresh ISO stamp:** `2026-05-20T13-22-13-320Z` (≠ 20-18 V-1 stamp
+  `2026-05-19T20-17-24-486Z`) — FRESH-STAMP confirmed.
+- **UPSTREAM_SHA:** `f73b3956` (unchanged pin).
+- **Structured % (must-not-regress floor 92.0% from 20-18):** **96.0%**
+  (48/50, +4.0pp above the floor; +2.0pp above the 94.0% target).
+- **Phase issue closure path:** `closes #158` (single auto-close).
+  Bonus close observed (NOT scope-expanded, OBSERVED in V-1): the
+  `-1j62z5xjyCN` row (#147 / #141 / #140 exemplar) flipped STRUCTURED
+  via the FROZEN curated-set `samples` token — the row's
+  `samples('github:yaxu/clean-breaks')` line was stripped by the
+  filter; the rest of the shape (`var cpm = 30; stack(...).cpm(cpm)`)
+  structured via existing 20-17/20-18 machinery. Wave-0 had predicted
+  this row would need #149's chain-arg fix ALSO; the prediction was
+  falsified in the FAVORABLE direction (P70 occurrence 8 — see
+  hetvabhasa.md). The broader #147 sample-capture side-channel concern
+  remains open (D-02 RATIONALE explicitly rejected the side-channel
+  variant for 20-19).
+- **PK18 re-poses this phase:** **ZERO.** First clean-run phase in the
+  20-1x cadence. Every Wave's exit criterion fired exactly as planned;
+  the single observation that didn't match prediction (the
+  `-1j62z5xjyCN` bonus close) was in the FAVORABLE direction.
+- **Pattern:** when the prior-phase planning trail is rich (R-1
+  source-read the 10 curated tokens at exact file:line; 20-18 Wave-C
+  pre-grounded the chord recogniser arm; the locked-STOP marker at
+  `_waveC-grounding.spec.ts:155` was already in place as the FLIP
+  signal oracle) AND the new mechanism is a single localized filter
+  (no consumer audit, no FLOOR closure, no producer-precedence
+  blind-spot), the phase can run clean. The mechanism + the discipline
+  + the prior art make the run clean — NOT the absence of risk.
+
+## PK18 addendum (20-19) — first 0-occurrence phase in the 20-1x cadence
+
+Phase 20-19's PK18 cascade discipline was tested by:
+
+- the Wave-0 anchor re-grep (all stable — no production-src commits on
+  main since `2f27485`);
+- the Wave-A `pS:` line-number drift risk (none — re-grep before edit);
+- the Wave-A locked-STOP LOUD-BREAK observation (broke exactly at line
+  155 with `AssertionError: expected true to be false`, exactly as
+  planned — the crit-1 FLIP signal);
+- the Wave-C fixture-design iteration (naive `'<0 1>'.pick([id,id])`
+  finalExpr gave zero test signal because BOTH side-effect-bearing AND
+  negative-control parsed as bareCode; reworked to the chord-rooted
+  template within Wave C on direct observation — NOT a PK18 re-pose,
+  just an in-wave fixture-design iteration);
+- the V-1 dual gate (BOTH crit held cleanly on the same HEAD SHA;
+  zero regressions on the 46 baseline-structured rows; +1 bonus close
+  in the favorable direction);
+- the V-3 cross-wave full-corpus STOP gate (zero non-allow-list
+  movement; PV49 substrate verified by construction AND by direct
+  observation `grep -c '^-exports\[' = 0` on both snap files).
+
+**Zero PK18 STOPs were triggered.** The framework's HARD-GATE cascade
+discipline mechanism was running throughout — every wave's exit
+criterion was an EXECUTED OBSERVATION (not inference), every
+deviation-risk had a single-observation oracle (the locked-STOP
+marker, the dual-gate measurement, the per-file loc-fidelity STOP),
+and every gate fired as planned. The clean run is itself a milestone
+worth cataloguing: it documents that when the prior-phase planning
+trail is rich and the new mechanism is a single localized
+filter-step, the framework's machinery operates as designed without
+needing to fire its STOP gates.
+
+This is the FIRST 0-occurrence-PK18 phase across 20-15 / 20-16 / 20-17
+/ 20-18. The pattern is informative:
+
+- 20-15 had multiple PK18 re-poses (the G2 setter-family discovery
+  cascade).
+- 20-16 had a 4× cascade (the segmenter ASI cases).
+- 20-17 had the `--LsnlgQ6osk` re-anchor mid-phase.
+- 20-18 had 4 PK18 re-poses (Wave A type-only / Wave B allow-list /
+  Wave C #3 / D-03 AMENDMENT-2).
+- 20-19 had 0 PK18 re-poses.
+
+The downward trend (4 → 4 → 1 → 4 → 0) is not monotonic and is not a
+target — but it does suggest that the planning machinery (CONTEXT /
+RESEARCH / PLAN / PLAN-CHECK rounds) is increasingly effective at
+SURFACING falsifiable premises BEFORE execution, not just during it.
+**The lesson: a phase that runs clean is not LOW-RISK — it's a phase
+where the prior planning trail caught the risks BEFORE the execute
+phase had to.**

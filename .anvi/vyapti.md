@@ -1884,3 +1884,115 @@ timeline/20-18-PLAN.md`, `20-18-CONTEXT.md` (D-03 AMENDMENT-2),
 `20-18-OBSERVATIONS.md` (Wave-0 prototype verdict, Wave-A FLOOR-grep,
 Wave-D acceptance tests, V-1 AMENDED PASS, V-3 cross-wave STOP gate),
 `20-18-SUMMARY.md`. Ground Truth: 20-18-OBSERVATIONS.md.
+
+## PV49 addendum (20-19) — array-filter on `splitTopLevelStatements` output carries loc-additivity by construction
+
+Phase 20-19 (#158, MERGED 2026-05-20 — branch `feat/20-19-shape-fence`)
+extends the PV49 substrate's reach with a new array-filter operation
+on `splitTopLevelStatements`'s output, applied inside
+`buildBindingMap`'s preamble. The substrate carries by construction.
+
+**The operation** — `stripSideEffectStatements(stmts)` at
+`parseStrudel.ts:532-538` runs as:
+
+```ts
+function stripSideEffectStatements(
+  stmts: { text: string; offset: number }[],
+): { text: string; offset: number }[] {
+  return stmts.filter((s) => !SIDE_EFFECT_CALL_RE.test(s.text))
+}
+```
+
+**Why PV49 carries by construction (R-5 grounded):**
+
+1. The filter REMOVES items from the array; the REMAINING items'
+   `offset` fields are UNCHANGED.
+2. The original source string is NEVER mutated by the filter (only
+   the stmts array shape changes).
+3. Downstream consumers of stmt offsets inside `buildBindingMap`:
+   - `pS:528` `rhsOffset = offset + rhsStartInText` — computed from
+     each retained stmt's own `offset`. Filter has no effect.
+   - `pS:555` `parseExpression(d.rhs, d.rhsOffset, …)` — uses the
+     per-stmt computed offset. Filter has no effect.
+   - `pS:593-594` `finalOffset: stmts[finalIdx].offset` —
+     `finalOffset` is whatever the (filtered) array's last stmt
+     carries, which is the byte-exact offset into the ORIGINAL
+     source.
+4. **Net:** every offset that flows out of `buildBindingMap` after
+   the filter is BYTE-IDENTICAL to what would have flowed if the user
+   had hand-deleted the side-effect line. The filter is loc-additive
+   by construction.
+
+**Verified by:** V-3 cross-wave full-corpus per-file loc-fidelity STOP
+gate CLEAN — `git diff HEAD~5..HEAD packages/app/tests/parity-corpus/
+__snapshots__/` showed 11 PURELY ADDITIVE entries in each of
+`parity.test.ts.snap` and `loc-fidelity.test.ts.snap` (one per new
+fixture); ZERO pre-existing entries removed or modified
+(`grep -c '^-exports\[' = 0` on both files). The 36 pre-existing
+loc-fidelity snapshots were byte-stable; the 36 pre-existing
+parity-corpus snapshots were byte-stable. The allow-list of moved
+files = exactly the 11 new `bakery-158-*.strudel` fixtures + their 22
+new snapshot entries (parity + loc-fidelity).
+
+**The substrate is now confirmed across two distinct array-mutation
+operations in PK16:**
+
+- **20-17 spliced-subtree-span addendum** (PV49 addendum at line 1779
+  in this file) — bound-ident-root arm splices the resolved subtree
+  while keeping the call-site loc.
+- **20-19 array-filter** (this addendum) — side-effect-only stmts
+  removed from the stmts array; retained stmts' offsets unchanged.
+
+The pattern: any operation that MUTATES the stmts/AST array (whether
+by splice, filter, or insert) carries PV49 loc-additivity by
+construction IFF the operation preserves the offsets of retained
+nodes AND does not mutate the source string. Future PK16 extensions
+(e.g. a hypothetical #147 sample-capture side-channel that ALSO
+filters but ALSO emits to a separate channel) must satisfy the same
+contract — verifiable per-wave + cross-wave by the per-file
+loc-fidelity STOP gate.
+
+**REF (20-19 additions):** `packages/editor/src/ir/parseStrudel.ts:
+484-538` (the `SIDE_EFFECT_CALL_RE` regex + `stripSideEffectStatements`
+helper + the one-line wire at `pS:550-552`),
+`packages/app/tests/parity-corpus/loc-fidelity.test.ts` (the per-fixture
+snapshot harness — auto-discovers `bakery-158-*.strudel`),
+`packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap`
+(11 new additive entries, verified `grep -c '^-exports\[' = 0`),
+`.planning/phases/20-musician-timeline/20-19-RESEARCH.md` §R-5
+(the loc-fidelity-safety grounding), `.planning/phases/20-musician-
+timeline/20-19-OBSERVATIONS.md` (Wave A + Wave C + V-3 STOP gate
+clean records), `.planning/phases/20-musician-timeline/20-19-SUMMARY.md`
+(the cognitive-discoveries section + the V-3 allow-list freeze).
+Cross-ref: PV49 (the original invariant + 20-17 addendum); PK16
+(the parser pipeline; PK16 stage numbering unchanged this phase).
+
+## PV54 (20-19 explicit NOT-triggered note)
+
+Phase 20-19 ships a NEW HELPER (`stripSideEffectStatements`) + a NEW
+REGEX (`SIDE_EFFECT_CALL_RE`) but does NOT introduce a NEW TOP-LEVEL
+PatternIR TAG. The 20-18 `Signal` / `Builder` additive tags are
+unchanged; no new tag enters the discriminated union; no new
+`switch(tag)` arm is required at any consumer site.
+
+**PV54 obligation NOT TRIGGERED this phase.** The 11-site FLOOR-grep
+audit (`toStrudel.ts:20, serialize.ts:81, collect.ts:257+431,
+IRInspectorChrome.ts:19+102, irProjection.ts:42+73+190+333+438`)
+that would fire on a tag-additive change is DORMANT for 20-19. The
+filter is purely parser-pipeline (PK16 stage 1.5 → 0.5 boundary);
+it has no IR-shape consequence except by ENABLING the existing
+shape-guard at `pS:534` to admit `bindings*, sideEffect, finalExpr`
+programs as `bindings*, finalExpr`.
+
+The PV53/PV54 consumer-audit obligation will fire again the next
+time a tag-additive phase ships (e.g. a hypothetical phase that
+introduces a NEW top-level PatternIR variant for side-channel
+sample-capture per #147's side-channel half).
+
+**REF (20-19 NOT-triggered confirmation):** `packages/editor/src/ir/
+PatternIR.ts` (the discriminated union — UNCHANGED this phase, `git
+diff HEAD~5..HEAD packages/editor/src/ir/PatternIR.ts` = empty);
+`.planning/phases/20-musician-timeline/20-19-PLAN.md` (PV54 NOT-
+triggered notes at lines 65-71 + 665-667 + 795); `.planning/phases/
+20-musician-timeline/20-19-SUMMARY.md` (the PV54 NOT-triggered
+confirmation under "Catalogue updates" frontmatter).
