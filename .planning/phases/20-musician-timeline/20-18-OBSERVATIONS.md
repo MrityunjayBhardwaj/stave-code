@@ -1678,3 +1678,86 @@ Bakery classifier tally (`classes` field of `result-2026-05-19T20-17-24-486Z.jso
 | **Bar-lowering check** — no premise was bar-lowered; no scope-expansion; no second-workaround | **CLEAN** |
 
 **V-1 OVERALL VERDICT: PASS.** Both crit-1 anchors (`--LsnlgQ6osk` + #7) ground STRUCTURED in production; the must-not-regress 86.0% floor holds with substantial headroom (92.0% = +6pp). The 20-17 falsification trace is cleanly closed: the `az2` `irand` chain-root that 20-17 had to RE-ANCHOR away from is now resolved in the whole-program fixpoint. V-2/V-3/V-4 dispatch is now gated open by the orchestrator.
+
+---
+
+## V-2 fixture vendor (2026-05-20)
+
+Three permanent CI fixtures vendored VERBATIM-distilled (the 20-15 V-2
+"do not paraphrase" lesson). Per the D-03 AMENDMENT-2 (CONTEXT
+2026-05-20), the chord fixture is a POSITIVE-CONTROL asserting the
+chord ARM fires; the full #3 program shape-fence blocker is tracked in
+#158 → 20-19.
+
+| Fixture | Source | Asserts (snapshot-verified) |
+|---|---|---|
+| `bakery-141-irand-chain-root.strudel` | distilled VERBATIM from `bakery-runs/repro__LsnlgQ6osk.strudel:13-23` (the `az2` decl byte-faithful) + `stack(az2)` final | `body.tag='Code', via!==undefined` → STRUCTURED; deep-walk `{tag:'Builder', kind:'irand', args:'12'}` HIT (snapshot key proven) |
+| `bakery-arrange-root.strudel` | distilled VERBATIM from samples `-KLGNJUtyyj1`: `richter_chords` binding + `arrange([48, stack(...)], [1, ...])` shape | whole-program `tag='Track'`, `body={tag:'Builder', kind:'arrange', args:''}` — STRUCTURED |
+| `bakery-chord-voicing-root.strudel` | distilled VERBATIM from the Wave-C stripped-#3 probe (`_waveC-diagnose.spec.ts:25-62` template): `chord("Am Am").voicing().sound(...)` + `stack(padsbell)` | `body.tag='Code', via!==undefined` → STRUCTURED; deep-walk `{tag:'Builder', kind:'chord', args:'"Am Am"'}` HIT — POSITIVE control for chord ARM |
+
+`git diff --stat packages/app/tests/parity-corpus/__snapshots__/` post-`vitest -u`:
+
+```
+ .../__snapshots__/loc-fidelity.test.ts.snap        | 175 +++++++++++
+ .../__snapshots__/parity.test.ts.snap              | 336 +++++++++++++++++++++
+ 2 files changed, 511 insertions(+)
+```
+
+ONLY `+` additions — zero pre-existing snapshot key moved. `grep` of
+the diff for `-exports[...` returns empty. Per-file STOP gate: CLEAN.
+
+`parity-refresh.mjs` auto-exclusion confirmed (no edit) at
+`parity-refresh.mjs:68-77` (`TARGETS.some((t) => t.startsWith('bakery-'))
+throws`).
+
+corpus 33 → 36 (each spec); 72/72 GREEN.
+
+---
+
+## V-3 cross-wave full-corpus per-file STOP gate (2026-05-20)
+
+Verify-only — no source change. `pnpm exec vitest run
+tests/parity-corpus/parity.test.ts tests/parity-corpus/loc-fidelity.test.ts`
+(no `-u`) over all 36 files:
+
+```
+ ✓ tests/parity-corpus/loc-fidelity.test.ts  (36 tests) 12ms
+ ✓ tests/parity-corpus/parity.test.ts  (36 tests) 14ms
+
+ Test Files  2 passed (2)
+      Tests  72 passed (72)
+```
+
+**Cross-wave per-file correlation across all 36 files: PASS.** Every
+parity-UNCHANGED corpus file's loc-fidelity diff EMPTY (zero `-u`
+needed to make any file green — the snapshots committed across Waves
+B/C/E + V-2 are byte-stable against the current source). The
+parity-CHANGED set across the entire 20-18 phase = EXACTLY:
+
+**V-3 allow-list (7 files, frozen):**
+1. `amensister` — Wave B (the `recogniseChainRoot` arm landing; per-wave-commit-body-flagged)
+2. `belldub` — Wave C (chord-root flip + perlin chain inside cutoff; per-wave-commit-body-flagged)
+3. `dinofunk` — Wave C (chord-root flip; per-wave-commit-body-flagged)
+4. `meltingsubmarine` — Wave C (chord-root flip; per-wave-commit-body-flagged)
+5. `bakery-141-irand-chain-root` — V-2 (new fixture)
+6. `bakery-arrange-root` — V-2 (new fixture)
+7. `bakery-chord-voicing-root` — V-2 (new fixture)
+
+ANY OTHER file move = silent offset drift = STOP. None observed.
+
+**The allow-list is NOT defensively extended to "files containing
+recognised signal/builder roots":** the loc-fidelity test slices from
+the single parsed string at the definition-site offset (the 20-17
+Fix-4 finding, observed against the test source); the new arm's
+offsets are PV49 definition-site-additive, so a recognised root is
+loc-safe by the SAME mechanism the 20-17 splice was. A "file contains
+`irand`" pre-emptive extension would mask real drift. The 4 corpus
+files moved (Waves B/C) were audited by-file per the wave commit
+bodies — they were genuine new structure, not loc-drift on unchanged
+parse trees.
+
+**Realized phase pre-mortem result:** cross-wave silent-drift class
+NOT triggered. The aggregate parity sum + per-file per-wave gates +
+this final cross-wave per-file gate compose to a zero-drift floor.
+
+**V-3 VERDICT: PASS.**
