@@ -3074,6 +3074,110 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-158-useRNG-sh
 }
 `;
 
+exports[`strudel.cc parity corpus — structural IR shape > bakery-159-NEGATIVE-no-whitespace parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "children": [
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+    ],
+    "tag": "Seq",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-159-tokenizer-whitespace parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "children": [
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+      {
+        "duration": 1,
+        "note": "hh",
+        "params": {
+          "gain": 1,
+          "s": "hh",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+    ],
+    "tag": "Seq",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
 exports[`strudel.cc parity corpus — structural IR shape > bakery-G1-let-binding parses to a stable IR shape 1`] = `
 {
   "body": {

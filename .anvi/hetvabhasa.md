@@ -2206,3 +2206,64 @@ falsification); D-03 strict-scope discipline (the bonus-close
 acceptance rule).
 
 **P70 is now an 8-occurrence pattern (20-15 / 20-16 / 20-17 / 20-18 / 20-19).** The 7-occurrence summary in P70's earlier addenda stands as the spine of the framework; the 8th occurrence is the FAVORABLE-direction first. The lesson generalises: every occurrence — favorable or unfavorable — is a measurement falsifying a cascade-classification, and the discipline is the same (RUN, don't infer).
+
+---
+
+### P70 cadence row (20-20, session 2026-05-21) — NO new occurrence; clean cascade run
+
+**Phase 20-20** ran the Wave-0 5-cell factoring probe on the fresh
+branch (`feat/20-20-tokenizer-whitespace` from `a150889`) and the
+stdout matched RESEARCH §2.2 byte-for-byte:
+
+```
+[A control (no space, single line)]
+  outer.tag=Track bare=false inner.tag=Seq  inner.bare=false   ← STRUCTURED
+[B whitespace fence (with space, single line)]
+  outer.tag=Track bare=false inner.tag=Code inner.bare=true    ← bareCode (the bug)
+[C multi-top-level (no space)]
+  outer.tag=Track bare=false inner.tag=Play inner.bare=false   ← STRUCTURED (FIRST-WINS)
+[D EXEMPLAR (with space + two siblings)]
+  outer.tag=Track bare=false inner.tag=Code inner.bare=true    ← bareCode
+[E REAL bakery -G2drHRNFueu (verbatim)]
+  outer.tag=Track bare=false inner.tag=Code inner.bare=true    ← bareCode
+```
+
+No P70 occurrence 9 surfaced. The Wave-0 RE-CONFIRMATION pattern held
+(P70 directive — RUN, do not infer): the §2.2 probe at the researcher's
+2026-05-21 morning RUN matched the executor's afternoon RE-RUN exactly,
+which means no out-of-band parser change shifted the cascade
+classification between RESEARCH commit `afc918e` and execute commit
+`8df9454`. **P70 stays at 8 occurrences.**
+
+**The Wave-A delta worth noting (but NOT a P70 occurrence):** the
+Wave-A probe (i.2) `parseStrudel('sound ("hh hh hh hh")')` was
+predicted by RESEARCH §5.2 to land `inner.tag=Play` via the inherited
+`sMatch` regex `/^(?:s|sound)\s*\(\s*"…/`. The observed inner.tag was
+**Seq** (the multi-token `"hh hh hh hh"` mini-pattern body routes
+through the inherited `miniMatch`/`looseMatch` regex arms rather than
+the single-token `sMatch`). Both arms produce structured IR; both
+PASS the parity oracle fence `body.tag !== 'Code'`. Within-wave
+classification: "stronger structural signal, not a regression" —
+matcher line check holds. **NOT a P70 occurrence** because:
+
+1. The RESEARCH prediction was about WHICH arm fires (Play vs Seq),
+   not about WHETHER structured (both flip vs bareCode);
+2. The OBSERVATION (inner.tag=Seq) was acted upon (within-wave
+   classification: stronger signal); no second-workaround attempted;
+3. The CASCADE classification (whitespace fence IS the dominant
+   blocker; the fix IS PV49-extension of `skipWhitespaceAndLineComments`
+   at `splitRootAndChain`) held end-to-end.
+
+P70 occurrences specifically address cases where the cascade
+classification was WRONG about WHY a case is bareCode (i.e. the
+fix-shape decision is structurally invalidated by observation). The
+Play→Seq delta is a finer-grained PREDICTION miss within a correct
+cascade classification, not a P70 falsification.
+
+**REF (20-20):** `.planning/phases/20-musician-timeline/20-20-RESEARCH.md`
+§§2 (5-cell probe + decision rule); `.planning/phases/20-musician-timeline/
+20-20-OBSERVATIONS.md` (Wave-0 stdout verbatim + Wave-A probe + the
+Play→Seq delta classification); `.planning/phases/20-musician-timeline/
+20-20-SUMMARY.md` (the Cognitive Discoveries section).
+
+**P70 remains an 8-occurrence pattern (20-15 / 20-16 / 20-17 / 20-18 / 20-19) with a 2026-05-21 cadence row noting 20-20 ran clean (Wave-0 RE-RUN matched RESEARCH; no occurrence-9 surfaced).**

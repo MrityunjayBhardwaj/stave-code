@@ -1140,3 +1140,108 @@ SURFACING falsifiable premises BEFORE execution, not just during it.
 **The lesson: a phase that runs clean is not LOW-RISK — it's a phase
 where the prior planning trail caught the risks BEFORE the execute
 phase had to.**
+
+---
+
+## PK16 / PK17 / PK18 addenda (20-20) — SECOND consecutive clean-run phase; PV49-extension at stage 2
+
+### PK16 (20-20 addendum — PV49-extension at stage 2; stage numbering unchanged)
+
+20-20 ships a 5th caller of `skipWhitespaceAndLineComments` at
+`splitRootAndChain`'s identifier-then-paren branch
+(`parseStrudel.ts:2521-2531`). The new caller lives in PK16 STAGE 2
+(`splitRootAndChain` / chain-root recognition; downstream of stage
+1.5 `stripSideEffectStatements` + binding resolution, upstream of
+stage 3 `parseRoot` recogniser arms).
+
+**PK16 stage numbering UNCHANGED.** The PV49 extension does not
+introduce a new stage; it widens the recogniser surface of an
+existing stage-2 function. The handoffs between stages 1 / 1.5 / 2 /
+3 are byte-stable. The fix is composable with both 20-18's
+`CHAIN_ROOT_RECOGNISER` curated Map (stage 3, downstream) and
+20-19's `stripSideEffectStatements` filter (stage 1.5, upstream) —
+zero edits to either.
+
+**The 5-callsite picture for the PV49 substrate** (post-20-20):
+
+| pS line | Caller | Stage | Boundary class |
+|---|---|---|---|
+| 463 | `splitTopLevelStatements` | stage 1 | leading-dot chain-continuation peek |
+| 1560 | `extractTracks` label scan | stage 1.5 | post-`$:` whitespace peek |
+| 1714 | `applyChain` inter-method consume | stage 2 | between `.method()` chain calls |
+| 2521-2531 (NEW) | `splitRootAndChain` identifier-to-paren | stage 2 | `ident WS (` call-site boundary |
+| 2676 | `splitArgsWithOffsets` | stage 2 | between function args |
+
+### PK17 (20-20 addendum — fresh step-6 measurement at 98.0% AND must-not-regress 96.0%)
+
+20-20 fresh PK17 step-6 measurement: `pnpm parity:bakery --n 50`;
+stamp `2026-05-21T12-51-24-407Z`; UPSTREAM_SHA `f73b3956`
+unchanged from baseline; structured = **49/50 = 98.0%** (+2pp from
+the 96.0% baseline floor). Per-row diff: `-G2drHRNFueu` flipped
+code → structured (SOLE flip; 0 BONUS exemplars vs 20-19's
+`-1j62z5xjyCN`); 0 regressions on the 48 baseline-structured rows;
+`-7LU6zgzViSM` (#143) unchanged out-of-scope.
+
+**Cadence row:** the dual-gate measurement was the verbatim 20-19
+template — one ISO stamp, the upstream pin SHA confirmation, the
+per-row diff against the prior baseline result.json, the crit-1
+isolated re-run, the no-bar-lowering check. **0 PK18 re-poses.**
+
+### PK18 (20-20 addendum — SECOND CONSECUTIVE clean-run phase)
+
+20-20 had **0 PK18 re-poses.** This is the SECOND consecutive
+clean-run phase in the 20-1x cadence (20-19 was the first; 20-18
+had 4; 20-17 had 1; 20-16 had a 4× cascade; 20-15 had several).
+
+**The substrate-works hypothesis strengthens.** The post-20-17
+cognitive substrate that has been refined across 20-18 / 20-19:
+
+- LOCKED D-01..D-04 BEFORE planning (CONTEXT pre-commits)
+- RESEARCH pre-discharges P69 Grounding Check + P70 directive
+  (Wave-0 probe RUN'd, not inferred)
+- PK18 cascade discipline in every wave's pre-mortem
+- per-file loc-fidelity STOP gate per-wave + cross-wave
+- canonical positive + negative-control fixture pair per class
+- COMMIT_TEMPLATE single-quoted heredoc + P68 INCREASE-by-1
+  anchor gate + Ground Truth REF wires
+
+… genuinely closes the cascade hazard, as observed by the lack of
+re-poses across two consecutive phases with substantively different
+mechanisms (20-19 filter + curated regex; 20-20 PV49 walker
+extension at a new boundary class).
+
+**The cadence row update:**
+
+```
+20-15: multiple re-poses (G2 setter-family cascade)
+20-16: 4× cascade (segmenter ASI cases)
+20-17: 1 re-pose (--LsnlgQ6osk re-anchor)
+20-18: 4 re-poses (Wave A type-only / Wave B allow-list / Wave C #3 / D-03 AMENDMENT-2)
+20-19: 0 re-poses (first clean-run)
+20-20: 0 re-poses (second consecutive clean-run)
+```
+
+The "not-monotonic-but-improving" trend continues. 20-20 was a
+TIGHTER phase than 20-19 (single-arm surgery; 2 fixtures vs 11;
+~10 LOC additive vs the 20-19 helper + curated regex + 11 fixtures)
+— and the discipline held tighter still: the Wave-A probe predicted
+inner.tag=Play but observed inner.tag=Seq, and that delta was
+classified as a "stronger structural signal, not a regression" by
+the matcher line check (both Play and Seq pass `body.tag !== 'Code'`)
+WITHIN the wave, without a STOP — exactly the kind of nuanced
+observation-trumps-inference discipline that the framework targets.
+
+### REF (20-20)
+
+- `.planning/phases/20-musician-timeline/20-20-PLAN.md` (the
+  goal-backward chain V-4 ← V-3 ← V-1 ← B-1 ← A-1 ← 0-1)
+- `.planning/phases/20-musician-timeline/20-20-RESEARCH.md` (the
+  upstream-grounded TOLERATES verdict + the §2.2 RUN probe + the
+  §4 LAST-WINS evidence for #153 inheritance)
+- `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md` (the
+  per-wave verbatim record + the V-1 per-row diff + the V-3 STOP
+  gate enumeration)
+- `.planning/phases/20-musician-timeline/20-20-SUMMARY.md` (the
+  phase close-out + the catalogue update frontmatter)
+- `packages/editor/src/ir/parseStrudel.ts:2521-2531` (the surgical
+  edit; the 5th PV49 caller)
