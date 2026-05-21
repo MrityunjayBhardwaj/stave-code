@@ -416,3 +416,99 @@ gate CLEAN.
 - `packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap`
 - `packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap`
 - `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md` (Wave-B append)
+
+---
+
+## V-1 — D-04 dual-gate measurement (fresh PK17 step-6 cadence)
+
+### One-arg oracle invariant (action 1)
+
+```
+$ grep -n 'parseStrudel(s.code)' packages/app/tests/parity-corpus/_bakery-classify.spec.ts
+77:        fallback = isCodeFallback(parseStrudel(s.code))
+```
+
+Exactly one arg. 20-20 ships no opts threading change.
+
+### Canonical parity:bakery script (action 2)
+
+```
+$ grep parity:bakery package.json
+"parity:bakery": "node packages/app/scripts/parity-bakery.mjs"
+```
+
+Root-level pnpm script. Canonical form: `pnpm parity:bakery --n 50`.
+
+### Fresh PK17 step-6 measurement (action 3) — VERBATIM stdout tail
+
+```
+$ pnpm parity:bakery --n 50
+…
+# === REAL-WORLD PARITY ===
+# N (measured):     50
+# structured:       49
+# Code-fallback:    1
+# real-world %:     98.0%   (structured / N)
+# 20-15 baseline:   4/10 = 40.0% (2026-05-15 stress test)
+
+# === NEW fallback classes (BACKLOG — NOT fixed this phase, D-03) ===
+#   [1x] BACKLOG #143: guarded boot expr typeof X && X(...)
+
+# artifact (gitignored, dated/SHA'd): packages/app/tests/parity-corpus/.bakery-runs/samples-2026-05-21T12-51-24-407Z.json
+# result:                              packages/app/tests/parity-corpus/.bakery-runs/result-2026-05-21T12-51-24-407Z.json
+```
+
+- **New ISO stamp:** `2026-05-21T12-51-24-407Z`
+- **Upstream pin SHA:** `f73b395648645aabe699f91ba0989f35a6fd8a3c` (unchanged from baseline)
+- **structured:** **49/50 = 98.0%**
+- **fallback classes:** 1× `#143 guarded boot` (`-7LU6zgzViSM`)
+
+### Per-row diff vs baseline (action 4)
+
+```
+$ node -e "<diff script — see commit body>"
+FLIPPED code->structured: [ '-G2drHRNFueu' ]
+REGRESSED structured->code: []
+baseline -G2drHRNFueu: code -> fresh: structured
+baseline -7LU6zgzViSM: code -> fresh: code
+```
+
+- **FLIPPED:** exactly **`-G2drHRNFueu`** (the +1 from the fix; the
+  gate-bearing observation). No BONUS exemplar flipped (vs 20-19's
+  `-1j62z5xjyCN`; SCOPE strict to #159 holds).
+- **REGRESSED:** **EMPTY**. Zero regressions across the 48
+  baseline-structured rows. The PV49 byte-additive substrate proof
+  (the consumed whitespace is included in the root slice; no source
+  mutation; remaining offsets unchanged) is observationally confirmed.
+- **`-7LU6zgzViSM`:** unchanged (out-of-scope per D-04 + the
+  `BACKLOG #143` classifier still fires).
+
+### Crit-1 isolated re-run (action 5 crit-1)
+
+The Wave-B canonical-positive fixture's parity snapshot was captured
+in Wave B and confirmed body.tag="Seq" (whole-program STRUCTURED at the
+parity oracle fence `body.tag !== 'Code'`). The negative-control
+fixture also asserts STRUCTURED. Both PASS. Inner shape `Seq` (NOT
+`Play` — the multi-token mini-pattern body routes through
+`miniMatch`/`looseMatch` arm rather than the single-token `sMatch`).
+The auto-discovered parity oracle already locks this; the optional
+`_wave159-grounding.spec.ts` is SKIPPED per PLAN action 8's
+sane-default disposition (no ambiguity in the inner shape; the
+parity snapshot is sufficient evidence).
+
+### D-04 dual-gate verdict (action 5)
+
+| Gate | Threshold | Observed | Verdict |
+|---|---|---|---|
+| **Crit-1 HARD** | Wave-B canonical-positive fixture asserts whole-program STRUCTURED (`body.tag !== 'Code'`) | body.tag="Seq" with Play children; negative-control also STRUCTURED | **PASS** |
+| **Crit-2 HARD (≥98.0%)** | structured ≥ 49 / 50 | **49 / 50 = 98.0%** | **PASS** |
+| **Crit-2 HARD (must-not-regress)** | structured ≥ 48 / 50 (96.0% floor) | **49 / 50 ≥ 48 / 50** | **PASS** |
+| **No bar-lowering** | floor unchanged at 96.0% | floor preserved; no scope-expansion; no second-workaround | **PASS** |
+
+**D-04 dual gate: PASS on the SAME merge-candidate head SHA (Wave A +
+Wave B + V-1 on `feat/20-20-tokenizer-whitespace`).**
+
+### Files staged for commit (V-1)
+
+- `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md`
+  (V-1 record append; the `.bakery-runs/*.json` are gitignored)
