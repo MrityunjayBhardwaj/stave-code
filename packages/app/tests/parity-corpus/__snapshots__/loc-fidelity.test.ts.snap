@@ -778,6 +778,114 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 ]
 `;
 
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-143-NEGATIVE-no-apostrophe-comment — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".cpm(28)",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+  stack(sound("bd")).bank("R"),
+  stack(chord("<G#m>").dict("ireal").layer(
+    x=>n("a").set(x),
+    x=>n("b").set(x)
+        // maam
+        .mode("c4"),
+  ))
+)",
+  },
+  {
+    "tag": "Param",
+    "text": ".bank("R")",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Stack",
+    "text": ".layer(
+    x=>n("a").set(x),
+    x=>n("b").set(x)
+        // maam
+        .mode("c4"),
+  )",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict("ireal")",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict("ireal")",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-143-apostrophe-in-chain-arg-comment — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".cpm(28)",
+  },
+  {
+    "tag": "Stack",
+    "text": "stack(
+  stack(sound("bd")).bank("R"),
+  stack(chord("<G#m>").dict("ireal").layer(
+    x=>n("a").set(x),
+    x=>n("b").set(x)
+        // ma'am
+        .mode("c4"),
+  ))
+)",
+  },
+  {
+    "tag": "Param",
+    "text": ".bank("R")",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+  {
+    "tag": "Stack",
+    "text": ".layer(
+    x=>n("a").set(x),
+    x=>n("b").set(x)
+        // ma'am
+        .mode("c4"),
+  )",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict("ireal")",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
+  },
+  {
+    "tag": "Code",
+    "text": ".dict("ireal")",
+  },
+  {
+    "tag": "Builder",
+    "text": "chord",
+  },
+]
+`;
+
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-143-guarded-boot — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
@@ -3999,8 +4107,8 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > meltingsubmarine — loc→source-slice map is stable & in-bounds 1`] = `
 [
   {
-    "tag": "Code",
-    "text": ".echoWith(4,.125,(x,n)=>x.gain(.15*1/(n+1)))",
+    "tag": "Slow",
+    "text": ".slow(3/2)",
   },
   {
     "tag": "Stack",
@@ -4034,7 +4142,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   .note() // wrap in "note"
   .decay(.1).sustain(0) // make notes short
   .s('triangle') // waveform
-  .degradeBy(perlin.range(0,.5)) // randomly controlled random removal :)",
+  .degradeBy(perlin.range(0,.5)) // randomly controlled random removal :)
+  .echoWith(4,.125,(x,n)=>x.gain(.15*1/(n+1))) // echo notes
+  //.hush()
+)",
   },
   {
     "tag": "Code",
@@ -4099,6 +4210,38 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "hh27",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpenv(-2)",
+  },
+  {
+    "tag": "Code",
+    "text": ".lpa(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".cutoff(sine.slow(7).range(300,5000))",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.4)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.15)",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
   },
   {
     "tag": "Code",
@@ -4198,6 +4341,26 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   },
   {
     "tag": "Code",
+    "text": ".attack(1)",
+  },
+  {
+    "tag": "FX",
+    "text": ".cutoff(500)",
+  },
+  {
+    "tag": "Code",
+    "text": ".gain(.16)",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('sawtooth')",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(note(perlin.range(0,.5)))",
+  },
+  {
+    "tag": "Code",
     "text": ".add(note("0,.04"))",
   },
   {
@@ -4211,6 +4374,34 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Builder",
     "text": "chord",
+  },
+  {
+    "tag": "Code",
+    "text": ".echoWith(4,.125,(x,n)=>x.gain(.15*1/(n+1)))",
+  },
+  {
+    "tag": "Code",
+    "text": ".degradeBy(perlin.range(0,.5))",
+  },
+  {
+    "tag": "Code",
+    "text": ".s('triangle')",
+  },
+  {
+    "tag": "Code",
+    "text": ".sustain(0)",
+  },
+  {
+    "tag": "Code",
+    "text": ".decay(.1)",
+  },
+  {
+    "tag": "Code",
+    "text": ".note()",
+  },
+  {
+    "tag": "Code",
+    "text": ".add(perlin.range(0,.5))",
   },
   {
     "tag": "Code",

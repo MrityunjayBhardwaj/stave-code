@@ -1,0 +1,9 @@
+stack(
+  stack(sound("bd")).bank("R"),
+  stack(chord("<G#m>").dict("ireal").layer(
+    x=>n("a").set(x),
+    x=>n("b").set(x)
+        // maam
+        .mode("c4"),
+  ))
+).cpm(28)

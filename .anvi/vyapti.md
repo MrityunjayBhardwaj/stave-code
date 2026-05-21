@@ -2111,3 +2111,155 @@ triggered notes at lines 67-72 + 528-529 (R-5 §6.2 cross-ref) +
 767); `.planning/phases/20-musician-timeline/20-20-SUMMARY.md` (the
 PV54 NOT-triggered confirmation under "Catalogue updates"
 frontmatter).
+
+
+---
+
+## PV49 addendum (20-21) — chain-arg walker `//`-skip at 2 NEW call sites — substrate spans 7 callers + segmenter
+
+**ORIGIN:** 20-21 RESEARCH §R-1 9-wave bisect identified an
+apostrophe-in-`//`-comment inside chain-method args as the gate-bearing
+blocker for `-7LU6zgzViSM`. The mechanism: char-by-char walkers
+`findMatchingParen` (pS:2598-2628) + `splitArgsWithOffsets`
+(pS:2664-2747) test string-quote delimiters but do NOT skip
+`// line comments` before the string-quote test; an odd-count
+apostrophe in a comment puts the walker into unterminated-string state,
+corrupting paren-depth / comma tracking. The fix mirrors the existing
+`splitTopLevelStatements:414-417` `//`-skip inline (NOT via the
+`skipWhitespaceAndLineComments` primitive — see HOW below).
+
+**WHY:** without this extension, ANY chain method with `//` line
+comments containing odd-count apostrophes (`// ma'am`, `// it's
+working`, `// don't break here`) inside its args bareCodes the whole
+program. The class is open-ended (any user can write a `//` comment
+with English contractions inside any chain method's args). Our parser
+was STRICTER than upstream (Strudel transpiles via `acorn.parse` which
+handles `//` comments natively); the extension mirrors upstream's
+permissiveness at the chain-arg walker boundary.
+
+**HOW:** TWO walker sites in `parseStrudel.ts`. Both get the SAME
+inline `//`-skip pattern (NOT the `skipWhitespaceAndLineComments`
+primitive — the primitive is for INTER-TOKEN tolerance with
+position-return semantics; the walker context here needs the skip
+INTEGRATED with the per-iteration `for` loop state machine).
+
+**Site 1 — `findMatchingParen` (pS:2598-2628):** the `//`-skip branch
+inserted AFTER `if (inString)` and BEFORE the string-quote test. The
+inner while advances `i` past the line; the outer `for`'s `i++` then
+lands on `\n` (which advances normally). No state needs to be
+preserved — paren-depth tracking is unaffected by comments because
+comments contain no semantic parens.
+
+**Site 2 — `splitArgsWithOffsets` (pS:2664-2747):** the `//`-skip
+branch inserted at the same logical position. CRITICAL DIFFERENCE from
+Site 1: the OFFSET CONTRACT at pS:2685-2693 requires that `currentStart`
+and `current` stay in lockstep with the source slice. The Site-2 skip
+APPENDS the comment chars to `current` (`current += argsStr[i]`) so
+the byte-additive consumption invariant holds: pre-fix `current` was a
+byte-slice of `argsStr`; post-fix `current` is STILL a byte-slice of
+`argsStr` (including the comment chars). The trim() in `pushCurrent`
+(pS:2696) + the `consumed = skipWhitespaceAndLineComments(current, 0)`
+(pS:2694) handle the leading comment skip correctly when the arg
+starts with a comment — `consumed` advances past the comment, and
+`offset` is `currentStart + consumed` which lands on the real arg's
+first char.
+
+**The substrate post-20-21 spans 7 callers + the segmenter** (i.e.
+EIGHT line-comment-aware sites in `parseStrudel.ts`):
+
+| Site | Mechanism | Boundary class |
+|---|---|---|
+| `splitTopLevelStatements:414-417` (segmenter) | inline `if (ch === '/' && body[i+1] === '/') { while ... } continue` | top-level statement boundaries |
+| `splitTopLevelStatements:463` | `skipWhitespaceAndLineComments` primitive | leading-dot chain-continuation peek |
+| `extractTracks:1560` | `skipWhitespaceAndLineComments` primitive | post-`$:` label scan |
+| `applyChain:1714` | `skipWhitespaceAndLineComments` primitive | inter-method chain consume |
+| `splitRootAndChain:2521-2531` (20-20) | `skipWhitespaceAndLineComments` primitive | identifier-to-paren call-site boundary |
+| `splitArgsWithOffsets:2676` | `skipWhitespaceAndLineComments` primitive (in `pushCurrent`) | leading-comment in arg |
+| **`findMatchingParen:2598-2628` (20-21 NEW)** | inline `//`-skip | **chain-arg walker — root-boundary path** |
+| **`splitArgsWithOffsets:2664-2747` (20-21 NEW)** | inline `//`-skip with `current += ...` to preserve OFFSET CONTRACT | **chain-arg walker — arg-comma path** |
+
+**NEW BOUNDARY CLASS — chain-arg walker `//` tolerance.** The prior 6
+PV49 sites all used the primitive (position-return semantics; not
+walker-state-integrated). The 2 new 20-21 sites use INLINE `//`-skip
+because they're inside char-by-char walker `for` loops where the
+per-iteration state machine (inString flag, depth counter) needs the
+skip integrated, not abstracted via a primitive call. The substrate's
+"line-comment tolerance" is a single CONCEPT that admits TWO
+implementation styles depending on caller context — inter-token
+tolerance (primitive) vs walker-state-integrated tolerance (inline).
+Both styles are equally valid; the choice is dictated by whether the
+caller is a position-returning peek or a stateful walker loop.
+
+**The substrate's load-bearing-ness grows with each phase.** 20-19
+added a 4th caller; 20-20 added a 5th caller (new boundary class —
+identifier-to-paren); 20-21 adds the 7th + 8th sites with a new
+implementation style (inline vs primitive). The substrate is now
+genuinely load-bearing — removing it would re-introduce 6+ distinct
+parity-class bugs simultaneously.
+
+**Loc-additivity (R-5 grounded):** Site 1's inline `//`-skip is
+trivially loc-additive (it doesn't allocate; it just advances `i`).
+Site 2's inline `//`-skip is loc-additive by the `current += argsStr[i]`
+construction — `current` after the skip IS a byte-slice of `argsStr`
+containing the comment chars; the `pushCurrent` trim+offset arithmetic
+handles the leading-comment case correctly. The V-3 cross-wave per-file
+loc-fidelity STOP gate observationally CONFIRMED: 47/47 pre-existing
+parity-corpus fixtures byte-unchanged on both `parity.test.ts.snap`
+and `loc-fidelity.test.ts.snap` (only the 2 new Wave-B-A fixtures +
+the 1 same-mechanism-class meltingsubmarine bonus-improvement entry
+moved — all 3 in the extended V-3 allow-list).
+
+**REF (20-21):**
+- `packages/editor/src/ir/parseStrudel.ts:2598-2628` (Site 1 surgical
+  edit — `findMatchingParen` inline `//`-skip)
+- `packages/editor/src/ir/parseStrudel.ts:2664-2747` (Site 2 surgical
+  edit — `splitArgsWithOffsets` inline `//`-skip with `current += ...`
+  OFFSET CONTRACT preservation)
+- `parseStrudel.ts:414-417` (reference pattern; the segmenter's
+  known-good `//`-skip; the 2 new sites mirror this exactly)
+- `parseStrudel.ts:2685-2693` (the OFFSET CONTRACT at `pushCurrent`
+  the Site-2 skip preserves)
+- `parseStrudel.ts:1075-1094` (`skipWhitespaceAndLineComments`
+  primitive — used by 6 prior PV49 callers; NOT used by the 2 new
+  walker-context sites)
+- `packages/app/tests/parity-corpus/bakery-143-apostrophe-in-chain-arg-comment.strudel`
+  + `bakery-143-NEGATIVE-no-apostrophe-comment.strudel` (per-class
+  permanent regression coverage with byte-additivity-locked snapshots)
+- `.planning/phases/20-musician-timeline/20-21-RESEARCH.md` §§R-1, R-2,
+  R-3 (the bisect + the mechanism diagnosis + the recommended fix
+  shape with code samples)
+- `.planning/phases/20-musician-timeline/20-21-OBSERVATIONS.md` (Wave A
+  surgical-edit record + Wave A tail PK18 STOP resolution + V-1
+  measurement + V-3 STOP gate per-fixture diff)
+- `.planning/phases/20-musician-timeline/20-21-SUMMARY.md` (the 8-site
+  substrate table + the 2-implementation-style observation)
+
+---
+
+## PV54 (20-21 explicit NOT-triggered note)
+
+Phase 20-21 ships a PV49 occurrence-NEW (chain-arg walker `//`-skip
+at 2 new sites with inline implementation style) but does NOT introduce
+a NEW TOP-LEVEL PatternIR TAG. The 20-18 `Signal` / `Builder` additive
+tags are unchanged; no new tag enters the discriminated union; no new
+`switch(tag)` arm is required at any consumer site.
+
+**PV54 obligation NOT TRIGGERED this phase.** The 11-site FLOOR-grep
+audit that would fire on a tag-additive change is DORMANT for 20-21.
+The fix is purely walker-tolerance inside two existing parser
+functions; it has no IR-shape consequence except by flipping which
+expressions reach the existing structured recogniser arms.
+
+The PV53/PV54 consumer-audit obligation will fire again the next time
+a tag-additive phase ships. For the deferred backlog (#147 capture
+side-channel; if a future phase pursues it) the obligation may fire if
+the capture creates a new IR projection layer.
+
+**REF (20-21 NOT-triggered confirmation):**
+- `packages/editor/src/ir/PatternIR.ts` (the discriminated union —
+  UNCHANGED this phase)
+- `.planning/phases/20-musician-timeline/20-21-PLAN.md` (PV54
+  NOT-triggered note in RESEARCH §R-3 + PLAN cognitive-discipline
+  section)
+- `.planning/phases/20-musician-timeline/20-21-SUMMARY.md` (the PV54
+  NOT-triggered confirmation under "Catalogue updates")

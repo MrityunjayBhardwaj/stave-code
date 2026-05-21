@@ -1245,3 +1245,186 @@ observation-trumps-inference discipline that the framework targets.
   phase close-out + the catalogue update frontmatter)
 - `packages/editor/src/ir/parseStrudel.ts:2521-2531` (the surgical
   edit; the 5th PV49 caller)
+
+
+---
+
+## PK16 / PK17 / PK18 addenda (20-21) — 1 PK18 re-pose resolved within-plan on EVIDENCE; two-site walker `//`-skip at stage 2
+
+### PK16 (20-21 addendum — two-site walker `//`-skip at stage 2; stage numbering unchanged)
+
+20-21 ships a NEW implementation-style of the PV49 substrate at stage
+2 — INLINE `//`-skip at two char-by-char walker call sites in
+`parseStrudel.ts`:
+
+- **Site 1 — `findMatchingParen` (pS:2598-2628):** root-boundary path.
+  The walker tracks paren-depth + string-quote state to find the
+  matching `)` of a root call. The inline `//`-skip prevents an
+  odd-count apostrophe in a `// comment` from corrupting string-quote
+  tracking.
+- **Site 2 — `splitArgsWithOffsets` (pS:2664-2747):** arg-comma path.
+  The walker splits sibling args at depth-0 `,` while tracking
+  string-quote state. The inline `//`-skip prevents the same
+  corruption AND preserves the OFFSET CONTRACT at pS:2685-2693 by
+  appending comment chars to `current`.
+
+Both sites live in PK16 STAGE 2 (`splitRootAndChain` / chain-root
+recognition + chain-arg parsing; downstream of stage 1.5
+`stripSideEffectStatements` + binding resolution, upstream of stage 3
+`parseRoot` recogniser arms).
+
+**PK16 stage numbering UNCHANGED.** The fix doesn't introduce a new
+stage; it widens the recogniser surface of two existing stage-2
+walker functions. The handoffs between stages 1 / 1.5 / 2 / 3 are
+byte-stable. The fix is composable with 20-18's `CHAIN_ROOT_RECOGNISER`
+curated Map (stage 3, downstream) and 20-19's `stripSideEffectStatements`
+filter (stage 1.5, upstream) and 20-20's `splitRootAndChain` PV49
+extension (stage 2, parallel-site) — zero edits to any of them.
+
+**The 8-site picture for line-comment tolerance** (post-20-21,
+including the segmenter):
+
+| pS line | Caller | Stage | Mechanism | Boundary class |
+|---|---|---|---|---|
+| 414-417 | `splitTopLevelStatements` (segmenter) | stage 1 | inline `//`-skip | top-level statement boundaries |
+| 463 | `splitTopLevelStatements` peek | stage 1 | primitive | leading-dot chain-continuation peek |
+| 1560 | `extractTracks` label scan | stage 1.5 | primitive | post-`$:` whitespace peek |
+| 1714 | `applyChain` inter-method consume | stage 2 | primitive | between `.method()` chain calls |
+| 2521-2531 (20-20) | `splitRootAndChain` ident-to-paren | stage 2 | primitive | `ident WS (` call-site boundary |
+| 2676 | `splitArgsWithOffsets` `pushCurrent` | stage 2 | primitive | leading-comment in arg |
+| **2598-2628 (20-21 NEW)** | `findMatchingParen` walker | stage 2 | inline | **chain-arg walker — root-boundary path** |
+| **2664-2747 (20-21 NEW)** | `splitArgsWithOffsets` walker | stage 2 | inline | **chain-arg walker — arg-comma path** |
+
+The TWO implementation-styles (primitive vs inline) are dictated by
+caller context: primitive for position-return peeks, inline for
+stateful walker `for` loops where the per-iteration state machine
+(inString flag, depth counter) needs the skip integrated.
+
+### PK17 (20-21 addendum — fresh step-6 measurement at 100.0% AND must-not-regress 98.0%)
+
+20-21 fresh PK17 step-6 measurement: `pnpm parity:bakery --n 50`;
+stamp `2026-05-21T18-47-02-200Z`; UPSTREAM_SHA `f73b3956` unchanged
+from baseline; structured = **50/50 = 100.0%** (+2pp from the 98.0%
+baseline floor). Per-row diff: `-7LU6zgzViSM` flipped code → structured
+(SOLE flip — the gate-bearing exemplar; no BONUS exemplars in the
+fresh measurement); 0 regressions on the 49 baseline-structured rows.
+
+**The 100.0% measurement is the dual-gate ceiling for N=50.** This is
+the first phase in the 20-1x cadence to reach 100.0%. The arithmetic
+floor is preserved (must-not-regress 49/50 = 98.0%); the 100.0%
+measurement sits at +2pp headroom from the floor.
+
+**Cadence row update:**
+
+```
+phase | %     | + pp | PK18 re-poses | classification
+20-15 | 40.0% | base | multiple      | (G2 setter-family cascade)
+20-16 | n/a   | n/a  | 4× cascade    | (segmenter ASI cases)
+20-17 | 86.0% | base | 1             | (--LsnlgQ6osk re-anchor)
+20-18 | 92.0% | +6   | 4             | (Wave A / Wave B / Wave C / D-03 AMENDMENT-2)
+20-19 | 96.0% | +4   | 0             | (first clean-run)
+20-20 | 98.0% | +2   | 0             | (second consecutive clean-run)
+20-21 | 100.0% | +2  | 1 (resolved within-plan on EVIDENCE) | (chain-arg walker //-skip; meltingsubmarine bonus-improvement on EVIDENCE)
+```
+
+**The "n PK18 re-poses" cadence metric refines** (see PK18 addendum
+below). What matters is the RESOLUTION PATTERN, not the raw count.
+
+### PK18 (20-21 addendum — 1 re-pose RESOLVED WITHIN-PLAN ON EVIDENCE)
+
+20-21 had **1 PK18 re-pose**, triggered + resolved within-plan on
+EVIDENCE. This is qualitatively the SAME health signal as the
+20-19/20-20 0-occurrence phases.
+
+**The re-pose:** Wave A's post-fix `pnpm --filter @stave/app test`
+showed 2 failed snapshots — exactly 1 pre-existing parity-corpus
+fixture (`meltingsubmarine`) moved outside the pre-allocated V-3
+allow-list. The PLAN's V-3 STOP gate language conflicted: (a) "Do NOT
+extend the allow-list defensively" + (b) "if traceable to a
+`splitArgsWithOffsets` false-positive, the fix is broken — re-pose
+D-02"; this case was NEITHER — the post-fix IR was STRUCTURALLY
+RICHER, not regressed.
+
+**The substrate's resolution:** the executor STOPPED at Wave A action
+8, recorded the verbatim observation in OBSERVATIONS Wave A
+"PK18 STOP" subsection (pre/post body.tag classification, snapshot
+diff classification, classification as "legitimate IR-correctness
+IMPROVEMENT — same class as gate-bearing fix"), and re-posed scope to
+the user with 3 options (A: extend V-3 allow-list on evidence; B:
+re-pose D-03 scope; C: revert + re-pose D-02 — rejected by evidence).
+The user resolved with Option A on EVIDENCE-grounded rationale (same
+mechanism class as gate-bearing fix; 20-19 `-1j62z5xjyCN` bonus-close
+precedent applies; SCOPE stays strict to gate-bearing class).
+
+**The cadence-metric refinement:** the 20-19 + 20-20 0-occurrence
+phases were strong substrate-works signals. The 20-21 1-occurrence-
+resolved-within-plan-on-EVIDENCE phase is the SAME signal — the
+substrate did exactly what it was designed to do (catch every fixture
+move at the V-3 boundary; force a user re-pose; resolve via
+EVIDENCE-grounded decision; never silently extend the allow-list).
+What matters is the RESOLUTION PATTERN:
+
+- **Evidence-grounded:** the meltingsubmarine pre/post body.tag
+  classification + the same-mechanism-class identification were
+  recorded VERBATIM in OBSERVATIONS before the re-pose. The user's
+  Option A was based on this evidence, not on "the fix is good
+  enough."
+- **Within-plan:** no scope expansion. The V-3 allow-list grew by 1
+  (meltingsubmarine), the SUMMARY explicitly classifies the move as
+  same-mechanism-class bonus-improvement, and SCOPE stays strict to
+  gate-bearing class. No new issues filed; no fixes added outside the
+  gate-bearing class.
+- **No bar-lowering:** the dual gate's must-not-regress 98.0% floor
+  was NOT relaxed. The 100.0% measurement EXCEEDS the floor with
+  headroom; the re-pose didn't trade gate-strength for fix-shape.
+
+A 0-count phase + a 1-count-resolved-on-EVIDENCE phase are the SAME
+health signal. The failure mode is an n-count-resolved-by-bar-lowering
+phase (e.g. "the fixture moves are too many to allow-list each
+individually — let's relax V-3 to just '≤ 5 fixtures moved'") or an
+n-count-resolved-by-silent-extension phase (e.g. "the fix is good;
+add the fixture to V-3 without a re-pose").
+
+**Cadence-row update (qualitative classification):**
+
+```
+phase | re-poses | resolution                                              | health signal
+20-19 | 0        | n/a                                                     | CLEAN
+20-20 | 0        | n/a                                                     | CLEAN
+20-21 | 1        | resolved within-plan on EVIDENCE (Option A V-3 extend)  | CLEAN (substrate works as designed)
+```
+
+**The substrate-works hypothesis strengthens further.** Two
+consecutive 0-occurrence phases (20-19 + 20-20) suggested the
+substrate works when nothing surfaces. The 20-21 1-occurrence-resolved
+phase demonstrates the substrate works when something DOES surface —
+it CAUGHT the meltingsubmarine move at the V-3 boundary (it would
+have been a silent allow-list extension under a less-disciplined
+process), forced an EVIDENCE-grounded re-pose, and got a same-class
+bonus-improvement record in the SUMMARY. This is the FULL flow
+working end-to-end, not just the empty-input case.
+
+### REF (20-21)
+
+- `.planning/phases/20-musician-timeline/20-21-PLAN.md` (the
+  goal-backward chain V-4 ← V-3 ← V-1 ← B-1 ← A-1 ← 0-1 with the
+  V-3 allow-list pre-allocation that triggered the PK18 STOP)
+- `.planning/phases/20-musician-timeline/20-21-RESEARCH.md` (the
+  9-wave bisect at §R-1 + the mechanism diagnosis at §R-2 + the
+  recommended fix shape at §R-3 with code samples)
+- `.planning/phases/20-musician-timeline/20-21-OBSERVATIONS.md` (Wave
+  A "PK18 STOP" subsection + Wave A tail "Option A applied" + V-1
+  measurement + V-3 STOP gate per-fixture diff)
+- `.planning/phases/20-musician-timeline/20-21-SUMMARY.md` (the phase
+  close-out + the cognitive discoveries section refining the
+  "n PK18 re-poses" cadence metric)
+- `packages/editor/src/ir/parseStrudel.ts:2598-2628` + `:2664-2747`
+  (the two surgery sites)
+- `packages/app/tests/parity-corpus/bakery-143-apostrophe-in-chain-arg-comment.strudel`
+  + `bakery-143-NEGATIVE-no-apostrophe-comment.strudel` (the per-class
+  permanent regression coverage)
+- `packages/app/tests/parity-corpus/meltingsubmarine.strudel` (the
+  bonus-improvement fixture with refreshed snapshots; same-mechanism
+  -class enrichment recorded in V-4 SUMMARY)
+- https://github.com/MrityunjayBhardwaj/stave-code/issues/163 (NEW
+  gate-bearing issue with the correct class)
