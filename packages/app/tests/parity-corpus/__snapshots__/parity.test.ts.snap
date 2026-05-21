@@ -1466,6 +1466,152 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-142-samples-o
 }
 `;
 
+exports[`strudel.cc parity corpus — structural IR shape > bakery-143-NEGATIVE-no-apostrophe-comment parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "28",
+      "inner": {
+        "tag": "Stack",
+        "tracks": [
+          {
+            "body": {
+              "duration": 1,
+              "note": "bd",
+              "params": {
+                "gain": 1,
+                "s": "bd",
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            "key": "bank",
+            "rawArgs": ""R"",
+            "tag": "Param",
+            "userMethod": "bank",
+            "value": "R",
+          },
+          {
+            "tag": "Stack",
+            "tracks": [
+              {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": ""ireal"",
+                  "inner": {
+                    "args": ""<G#m>"",
+                    "kind": "chord",
+                    "tag": "Builder",
+                  },
+                  "method": "dict",
+                },
+              },
+              {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": ""ireal"",
+                  "inner": {
+                    "args": ""<G#m>"",
+                    "kind": "chord",
+                    "tag": "Builder",
+                  },
+                  "method": "dict",
+                },
+              },
+            ],
+            "userMethod": "layer",
+          },
+        ],
+        "userMethod": "stack",
+      },
+      "method": "cpm",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-143-apostrophe-in-chain-arg-comment parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "28",
+      "inner": {
+        "tag": "Stack",
+        "tracks": [
+          {
+            "body": {
+              "duration": 1,
+              "note": "bd",
+              "params": {
+                "gain": 1,
+                "s": "bd",
+                "velocity": 1,
+              },
+              "tag": "Play",
+            },
+            "key": "bank",
+            "rawArgs": ""R"",
+            "tag": "Param",
+            "userMethod": "bank",
+            "value": "R",
+          },
+          {
+            "tag": "Stack",
+            "tracks": [
+              {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": ""ireal"",
+                  "inner": {
+                    "args": ""<G#m>"",
+                    "kind": "chord",
+                    "tag": "Builder",
+                  },
+                  "method": "dict",
+                },
+              },
+              {
+                "code": "",
+                "lang": "strudel",
+                "tag": "Code",
+                "via": {
+                  "args": ""ireal"",
+                  "inner": {
+                    "args": ""<G#m>"",
+                    "kind": "chord",
+                    "tag": "Builder",
+                  },
+                  "method": "dict",
+                },
+              },
+            ],
+            "userMethod": "layer",
+          },
+        ],
+        "userMethod": "stack",
+      },
+      "method": "cpm",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
 exports[`strudel.cc parity corpus — structural IR shape > bakery-143-guarded-boot parses to a stable IR shape 1`] = `
 {
   "body": {

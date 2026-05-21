@@ -287,6 +287,30 @@ LAST-WINS produce structured), but a future #153 phase that adopts
 LAST-WINS will need to update this fixture's snapshot — that's
 intentional cross-issue signalling.
 
+## bakery-143 — chain-arg walker `//`-comment apostrophe tolerance (#163; supersedes premature close of #143)
+
+P70 occurrence-9. The 20-16 cascade closed [#143](https://github.com/MrityunjayBhardwaj/stave-code/issues/143) framing the residual `-7LU6zgzViSM` as a guarded-boot recognition gap and shipped `GUARDED_BOOT_RE` (`parseStrudel.ts:228-229`). That ship is correct for the prelude-recognition surface but does NOT close `-7LU6zgzViSM` — the actual blocker is 3 calls down the parser pipeline, inside the chain-arg walkers.
+
+20-21 RESEARCH §R-1 ran a 9-wave progressive strip on the verbatim exemplar source and isolated the root cause: an **odd-count apostrophe inside a `// line comment` in a chain-method argument**. Two char-by-char walkers in `parseStrudel.ts` test string-quote delimiters (`'` `"` `` ` ``) for paren-depth / arg-split tracking but do NOT skip `// line comments` before the string-quote test:
+
+- **Site 1 — `findMatchingParen` (`parseStrudel.ts:2598-2628`):** root-boundary path. When the walker returns -1 (because an odd `'` inside a `// ma'am` put it into unterminated-string state), the caller cannot determine where the root call ends and bareCodes the whole program.
+- **Site 2 — `splitArgsWithOffsets` (`parseStrudel.ts:2664-2747`):** arg-comma path. Inside `.layer(arrow, arrow)` the apostrophe-in-comment puts the walker into string mode, so commas inside the same conceptual line are NOT detected as arg separators; args mis-split → caller bails to opaque/bareCode.
+
+The fix copies the existing `//` skip branch from `splitTopLevelStatements:414-417` (the segmenter's known-good shape) into both walker sites, placed BEFORE the string-quote test and AFTER the `if (inString)` branch. In `splitArgsWithOffsets`, the comment chars are appended to `current` to preserve the OFFSET CONTRACT at `pS:2685-2693` (PV49-spirit byte-additive consumption; existing `skipWhitespaceAndLineComments` primitive at `pushCurrent` consumes leading `// comment\n` when an arg starts with one).
+
+2 permanent CI fixtures (1 canonical positive + 1 negative-control):
+
+| Fixture | Bakery hash | Asserts |
+|---|---|---|
+| `bakery-143-apostrophe-in-chain-arg-comment.strudel` | `-7LU6zgzViSM` (Bakery, not local) | minimal R-5 distillation of the verbatim exemplar — `.layer(arrow1, arrow2)` with a `// ma'am` line comment inside arrow2's body; whole-program STRUCTURED (`body.tag !== 'Code'`) via the two-site walker `//`-skip surgery |
+| `bakery-143-NEGATIVE-no-apostrophe-comment.strudel` | — | same shape with `// maam` (no apostrophe); proves the `//`-tolerance is the gate (both fixtures STRUCTURED post-fix; if the positive bareCodes while the negative stays structured, the `//`-skip didn't land; if the negative bareCodes post-fix, the skip is over-consuming) |
+
+**The negative-control's role:** if `bakery-143-apostrophe-in-chain-arg-comment` were bareCode while `bakery-143-NEGATIVE-no-apostrophe-comment` was structured, the two-site walker `//`-skip is broken (the apostrophe-in-comment is still corrupting walker state). If both bareCode, the chain-arg-walker substrate regressed (pre-existing 20-15/20-18 substrate broke). If both structured (the design state), the system works as the 20-21 mechanism describes.
+
+**Bonus-improvement (Wave A tail, V-3 allow-list extended on EVIDENCE):** the fix incidentally enriches one pre-existing parity-corpus fixture (`meltingsubmarine`) by the same mechanism (apostrophes in `'sawtooth'`/`'lefthand'`/`'triangle'` chain args adjacent to `//` comments). Pre-fix `body.tag=Code-via{echoWith}` (trailing `.slow(3/2)` unreachable); post-fix `body.tag=Slow` (entire chain captured). STRUCTURED→STRUCTURED enrichment, not a regression. SCOPE stays strict to gate-bearing class; 20-19 `-1j62z5xjyCN` bonus-close precedent applies.
+
+**parity-refresh exclusion:** `bakery-143-*` slugs are covered by the existing structural guard at `parity-refresh.mjs:68-75` (any `bakery-*` prefix triggers the throw if added to TARGETS); no script edit is needed (`node packages/app/scripts/parity-refresh.mjs --dry-run` reports 0 missing for the 2 new fixtures).
+
 ## License
 
 Each repro is a 1–3 line minimal distillation authored for regression
