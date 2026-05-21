@@ -427,3 +427,43 @@ Wave-A tail's V-3 allow-list extension (meltingsubmarine, EVIDENCE-grounded on O
 ### D-04 verdict
 
 D-04 DUAL GATE PASS — 100.0% measurement + 98.0% must-not-regress floor; SCOPE stays strict to gate-bearing class.
+
+---
+
+## Wave V-3 — Cross-wave per-file loc-fidelity STOP gate
+
+Per-fixture body-level diff classifier (script at `/tmp/per-fixture-diff{,-loc}.mjs`) run against base = `main`, head = `35c6ecf` (V-1).
+
+### parity.test.ts.snap
+
+```
+ADDED:   [ bakery-143-apostrophe-in-chain-arg-comment, bakery-143-NEGATIVE-no-apostrophe-comment ]
+REMOVED: []
+CHANGED: [ meltingsubmarine ]
+```
+
+### loc-fidelity.test.ts.snap
+
+```
+ADDED:   [ bakery-143-apostrophe-in-chain-arg-comment, bakery-143-NEGATIVE-no-apostrophe-comment ]
+REMOVED: []
+CHANGED: [ meltingsubmarine ]
+```
+
+### STOP gate verdict
+
+Changed-set (union of ADDED + CHANGED across both snapshots) = exactly:
+
+```
+{
+  bakery-143-apostrophe-in-chain-arg-comment.strudel,    // Wave B-A (positive)
+  bakery-143-NEGATIVE-no-apostrophe-comment.strudel,     // Wave B-A (negative-control)
+  meltingsubmarine.strudel                               // Wave A tail (bonus-improvement)
+}
+```
+
+= 3 fixtures + 6 snapshot entries (3 per snapshot). This MATCHES the extended V-3 allow-list EXACTLY (no over- and no under-coverage).
+
+**All 47 other pre-existing parity-corpus fixtures: byte-unchanged on both snapshots across all wave commits (f8bffe7 + 9acfc1e + f86ad34 + bcc05f5 + 35c6ecf).**
+
+V-3 STOP gate: GREEN.
