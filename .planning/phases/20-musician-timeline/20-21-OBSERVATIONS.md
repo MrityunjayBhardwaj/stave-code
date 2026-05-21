@@ -356,3 +356,22 @@ git diff --stat (Wave-A + tail vs main):
 
 NOTHING ELSE moved. The byte-additivity invariant holds across all 48 unchanged fixtures.
 
+
+---
+
+## Wave B-B — backlog dispositions applied (2026-05-22)
+
+Per Wave-0 locked dispositions (OBSERVATIONS line 153-160):
+
+| Issue | Action | URL |
+|---|---|---|
+| #153 | CLOSE-as-superseded (LAST-WINS Ground Truth §7.2 cite + 20-20 substrate) | comment: https://github.com/MrityunjayBhardwaj/stave-code/issues/153#issuecomment-4511701406 · CLOSED |
+| #156 | CLOSE-as-superseded (sole 20-17 residual = `-7LU6zgzViSM` = THIS phase's gate-bearing exemplar) | comment: https://github.com/MrityunjayBhardwaj/stave-code/issues/156#issuecomment-4511707809 · CLOSED |
+| #149 | CLOSE-as-superseded (both targets STRUCTURED via intervening 20-18/20-19/20-20 substrate) | comment: https://github.com/MrityunjayBhardwaj/stave-code/issues/149#issuecomment-4511715157 · CLOSED |
+| #147 | REFINE-with-product-note (feature placeholder; no parser change; stays open as feature-deferred) | comment: https://github.com/MrityunjayBhardwaj/stave-code/issues/147#issuecomment-4511720561 · STAYS OPEN |
+
+3 closed + 1 refined. SCOPE stayed strict to gate-bearing class; backlog audit was CLASSIFY-only (RUN-classify probes in Wave 0; no fixes outside the gate-bearing class).
+
+### Additionally — #143 supersession annotation
+
+\`gh issue comment 143\` → https://github.com/MrityunjayBhardwaj/stave-code/issues/143#issuecomment-4511678164. #143 stays closed; #163 (NEW gate-bearing issue, filed in Wave V-4 prep) tracks the correct class.
