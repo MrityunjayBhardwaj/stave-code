@@ -291,3 +291,68 @@ A LOCKED-decision premise IS falsified: the V-3 allow-list was pre-allocated as 
 
 EXECUTOR STOPS HERE per PK18 discipline. Awaiting user-locked decision before proceeding to commit Wave A, vendor Wave B-A fixtures, apply Wave B-B dispositions, or measure V-1.
 
+
+---
+
+## Wave A tail — V-3 allow-list extension on EVIDENCE (Option A applied 2026-05-22)
+
+### User-locked decision (verbatim)
+
+> **Option A — extend V-3 allow-list to include `meltingsubmarine` + refresh the 2 snapshots; document the bonus-improvement in V-4 SUMMARY as a same-class incidental enrichment; SCOPE stays strict to the gate-bearing class.**
+
+### Extended V-3 allow-list (final)
+
+```
+{
+  bakery-143-apostrophe-in-chain-arg-comment.strudel,   // Wave B-A (canonical positive)
+  bakery-143-NEGATIVE-no-apostrophe-comment.strudel,    // Wave B-A (negative control)
+  meltingsubmarine.strudel                              // Wave A tail (bonus-improvement)
+}
+```
+
+= 3 parity-corpus fixtures + matching 3 loc-fidelity snapshot entries.
+
+### Same-class evidence (meltingsubmarine)
+
+Pre-fix (commit pre-f8bffe7):
+```
+body.tag = "Code"   via.args = "4,.125,(x,n)=>x.gain(.15*1/(n+1))"  (echoWith — deepest reached)
+trailing .slow(3/2) was UNREACHABLE  (findMatchingParen failed inside `'sawtooth'` chain args
+                                       adjacent to `//` lines → walker truncated chain)
+isCodeFallback = false  (Code with via=defined, not Code-with-undefined)
+```
+
+Post-fix (commit f8bffe7):
+```
+body.tag = "Slow"   via = undefined   (the trailing .slow(3/2) IS now captured at top-level)
+inner chain methods now ALL named: .echoWith / .degradeBy / .s('triangle') / .attack(1) /
+                                    .cutoff(500) / .s('sawtooth') / etc.
+isCodeFallback = false  (still STRUCTURED → STRUCTURED transition, just richer)
+```
+
+This is a STRUCTURED→STRUCTURED enrichment, NOT a regression. Both pre-fix and post-fix
+pass the whole-program parity classifier. The mechanism class is identical to the
+gate-bearing `-7LU6zgzViSM` flip: chain-arg walker `//`-skip tolerance with apostrophes
+inside string args.
+
+### 20-19 precedent cite
+
+Phase 20-19 (`-1j62z5xjyCN` bonus-close): same flow — gate-bearing fix surfaced a SAME-CLASS
+incidental improvement on a pre-existing fixture; recorded in V-4 SUMMARY as bonus-improvement;
+SCOPE stayed strict to gate-bearing class. The 20-21 meltingsubmarine extension applies the
+identical precedent.
+
+### Snapshot refresh
+
+```
+pnpm --filter @stave/app test -u  → ALL GREEN, 2 snapshots updated for meltingsubmarine
+                                    (parity.test.ts.snap + loc-fidelity.test.ts.snap)
+git diff --stat (Wave-A + tail vs main):
+  - packages/editor/src/lib/parseStrudel.ts         (the 2 //-skip branches from f8bffe7)
+  - packages/app/.../__snapshots__/parity.test.ts.snap          (meltingsubmarine entry only)
+  - packages/app/.../__snapshots__/loc-fidelity.test.ts.snap    (meltingsubmarine entry only)
+  - .planning/phases/20-musician-timeline/20-21-OBSERVATIONS.md (this tail)
+```
+
+NOTHING ELSE moved. The byte-additivity invariant holds across all 48 unchanged fixtures.
+

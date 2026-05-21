@@ -5655,6 +5655,10 @@ function findMatchingParen(str, startIdx) {
       if (ch === stringChar && str[i2 - 1] !== "\\") inString = false;
       continue;
     }
+    if (ch === "/" && str[i2 + 1] === "/") {
+      while (i2 < str.length && str[i2] !== "\n") i2++;
+      continue;
+    }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
@@ -5702,6 +5706,17 @@ function splitArgsWithOffsets(argsStr) {
     if (inString) {
       current2 += ch;
       if (ch === stringChar && argsStr[i2 - 1] !== "\\") inString = false;
+      continue;
+    }
+    if (ch === "/" && argsStr[i2 + 1] === "/") {
+      if (current2.length === 0) currentStart = i2;
+      while (i2 < argsStr.length && argsStr[i2] !== "\n") {
+        current2 += argsStr[i2];
+        i2++;
+      }
+      if (i2 < argsStr.length) {
+        current2 += argsStr[i2];
+      }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
