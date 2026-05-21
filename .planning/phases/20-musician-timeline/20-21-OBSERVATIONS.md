@@ -176,3 +176,118 @@ Expected V-3 allow-list size = EXACTLY 2 fixtures (+ 2 snapshot entries). ANY ot
 - D-04: dual gate 100% + must-not-regress 98% floor.
 
 PK18 STOP: NONE TRIGGERED.
+
+---
+
+## Wave A — Two-site walker `//`-skip surgical edit (PK18 STOP TRIGGERED at action 8)
+
+### Live anchor RE-GREP (mandatory)
+
+All anchors confirmed unchanged from Wave 0 table (parseStrudel.ts:2598 / 2611 / 2664 / 2685-2693 / 2704-2708 / 2710 / 414-417).
+
+### tsup watch start
+
+`pnpm --filter @stave/editor dev` running in background. Build success on initial pass (only known `@strudel/mondo` TS7016 warning; benign).
+
+### Surgical edits
+
+**Site 1 — `findMatchingParen` (pS:2598-2628):** inserted the `//`-skip branch immediately AFTER the `if (inString)` block and BEFORE the string-quote test. Branch:
+```ts
+if (ch === '/' && str[i + 1] === '/') {
+  while (i < str.length && str[i] !== '\n') i++
+  continue
+}
+```
+Mirrors `splitTopLevelStatements:414-417` exactly.
+
+**Site 2 — `splitArgsWithOffsets` (pS:2664-2747):** inserted the `//`-skip branch immediately AFTER the `if (inString)` block at pS:2704-2708 and BEFORE the string-quote test at pS:2710. Branch appends comment chars to `current` (OFFSET CONTRACT preservation).
+
+`git diff --stat` confirms PURELY ADDITIVE — 41 insertions, 0 deletions, only the two new branches.
+
+### Post-fix P68 dist anchor counts
+
+```
+grep -c "findMatchingParen"               packages/editor/dist/index.js → 9  (= pre-fix; symbol intact)
+grep -c "splitArgsWithOffsets"            packages/editor/dist/index.js → 4  (= pre-fix; symbol intact)
+grep -c "splitTopLevelStatements"         packages/editor/dist/index.js → 3  (= pre-fix; UNCHANGED — defensive ✓)
+grep -c "skipWhitespaceAndLineComments"   packages/editor/dist/index.js → 7  (= pre-fix; UNCHANGED — defensive ✓)
+```
+
+All 4 defensive anchors hold.
+
+### Wave-A probe (i)..(v) verbatim stdout
+
+```
+(i)   W1 minimal post-fix:                          {"v":"STRUCTURED","tag":"Code","via":"cpm"}   ← FLIPPED (was CODE pre-fix)
+(ii)  W3 -7LU6zgzViSM verbatim post-fix:            {"v":"STRUCTURED","tag":"Code","via":"cpm"}   ← THE GATE-BEARING FLIP
+(iii-a) apostrophe in double-quoted string:         {"v":"STRUCTURED","tag":"Seq","via":"undefined"}  ← unchanged (gated by inString first)
+(iii-b) top-level // outside chain args:            {"v":"STRUCTURED","tag":"Play","via":"undefined"} ← unchanged
+(iii-c) block comment between args:                 {"v":"STRUCTURED","tag":"Stack","via":"undefined"} ← unchanged
+(iv)   two-arg stack with // ma'am between args:    {"v":"STRUCTURED","tag":"Stack","via":"undefined"} ← loc-fidelity holds
+(v)    NEGATIVE-control (// maam):                  {"v":"STRUCTURED","tag":"Code","via":"cpm"}   ← unchanged
+```
+
+ALL POST-FIX PROBES PASS — gate-bearing observation (ii) shows `-7LU6zgzViSM` flips STRUCTURED. Wave-A SUCCEEDS on its own action 7 expectations.
+
+### Test gate observations
+
+```
+pnpm --filter @stave/editor test  → 1627/1627 GREEN (unchanged ✓)
+pnpm --filter @stave/app test     → 411 passed | 2 FAILED  ← PK18 TRIGGER
+```
+
+### PK18 STOP — `meltingsubmarine` fixture moved outside V-3 allow-list
+
+**Observation:** `meltingsubmarine` (pre-existing parity-corpus fixture, NOT in the pre-allocated V-3 allow-list) failed BOTH its parity snapshot AND its loc-fidelity snapshot. This is the SOLE fixture moved — every other pre-existing parity-corpus fixture (48 of 49) remains snapshot-byte-unchanged.
+
+**Verbatim snapshot diff classification (parity.test.ts.snap):**
+
+Pre-fix top-level body:
+```
+"tag": "Code",
+"via": {
+  "args": "4,.125,(x,n)=>x.gain(.15*1/(n+1))",
+  "inner": { "tag": "Stack", "tracks": [...] }
+}
+```
+(i.e. Code-via{echoWith} — the outer `.echoWith(...)` was the deepest recognised chain method)
+
+Post-fix top-level body:
+```
+"body": { "tag": "Stack", ... }
+```
+(wrapped under what loc-fidelity diff shows as the new outer `.slow(3/2)` Slow tag — the trailing `.slow(3/2)` AFTER the outer `stack(...))` was previously unreachable because `findMatchingParen` was failing on the apostrophes inside `'sawtooth'`/`'lefthand'`/`'triangle'` interacting with adjacent `//` comments in chain args)
+
+**Loc-fidelity diff (pre→post):** previously the top entry was `Code: ".echoWith(4,.125,(x,n)=>x.gain(.15*1/(n+1)))"`; post-fix the top entry is `Slow: ".slow(3/2)"` (i.e. the previously-missed outer modifier IS now captured), and many additional inner chain-method entries are now correctly named (`.echoWith`, `.degradeBy`, `.s('triangle')`, `.attack(1)`, `.cutoff(500)`, `.s('sawtooth')`, etc.) — the IR is structurally RICHER + more complete.
+
+**Direct classify probe (one-off spec, stdout):**
+```
+meltingsubmarine top-level body.tag= Slow via= undefined
+full top-level: {"irTag":"Track","bTag":"Slow"}
+```
+Post-fix the top-level body is `Slow` (STRUCTURED, NOT Code-fallback). The whole-program parity classifier (`isCodeFallback = body.tag === 'Code' && body.via === undefined`) PASSES on the post-fix IR.
+
+**Classification:** this is NOT a `splitArgsWithOffsets` false-positive (offsets preserved per Wave-A action 7 (iv)). This is a **legitimate IR-correctness IMPROVEMENT** — pre-fix the walker was silently mis-depth'ing inside chain args containing single-quoted `'sawtooth'`-style synth names ADJACENT to `//` comments, truncating the recognised chain. Post-fix the entire chain is captured correctly.
+
+The same class of fix that makes `-7LU6zgzViSM` flip ALSO improves `meltingsubmarine`. The IR change is welcome on its merits; the question is purely scope-boundary.
+
+### PK18 trigger — the falsified premise
+
+PLAN's "byte-additive by construction → no pre-existing fixture moves" assumption (V-3 STOP gate rationale, plan line 872) was about per-arg OFFSET CONTRACT preservation. That HOLDS (Wave-A action 7 (iv) confirms). What the plan did NOT anticipate: **other pre-existing fixtures' IRs were ALSO incomplete pre-fix** for the same root cause (apostrophe-in-`//`-comment walker confusion). The fix correctly enriches them.
+
+The plan's V-3 STOP gate language conflicts:
+- (a) "Do NOT extend the allow-list defensively" (line 872) — RULE
+- (b) "if traceable to a `splitArgsWithOffsets` false-positive, the fix is broken — re-pose D-02 to user" — CLASSIFICATION RULE; THIS CASE is NOT a false-positive.
+
+### RE-POSE TO USER (per PK18 cascade discipline; recorded VERBATIM for D-03 evidence)
+
+A LOCKED-decision premise IS falsified: the V-3 allow-list was pre-allocated as {2 Wave-B-A fixtures} on the assumption no pre-existing fixture would move. Observation: exactly 1 pre-existing fixture (`meltingsubmarine`) does move, with verdict that the post-fix IR is STRUCTURALLY RICHER (top-level `Slow` capturing `.slow(3/2)`) and more complete (more chain-method tokens recognised inside the bassline + chord tracks). This is the SAME class as the gate-bearing fix (apostrophe-in-`//`-comment chain-arg walker tolerance — `'sawtooth'`/`'lefthand'`/`'triangle'` adjacent to `// comment` lines).
+
+**The path forward requires a user-locked decision** (the executor's cognitive discipline forbids silent extension):
+
+- **Option A (preferred):** Extend the V-3 allow-list to {2 new Wave-B-A fixtures + meltingsubmarine.snap × 2} — recorded as IR-correctness IMPROVEMENT class (same root cause as the gate-bearing fix; legitimate enrichment, NOT regression). Update both `meltingsubmarine` snapshots via `vitest -u`. Document this verbatim in V-4 SUMMARY as a bonus-improvement record.
+- **Option B:** Re-pose D-03 scope to "1 exemplar + the bonus improvement at meltingsubmarine" — file a new issue documenting the meltingsubmarine improvement explicitly; PR description cites both flips.
+- **Option C (rejected by evidence):** revert the fix and re-pose D-02 fix-shape — would require fabricating a narrower `//`-skip that ONLY triggers for `-7LU6zgzViSM`-shaped patterns, which is not achievable without violating the matcher-line invariant (Strudel transpiler / acorn natively skip `//`; our walker must mirror).
+
+EXECUTOR STOPS HERE per PK18 discipline. Awaiting user-locked decision before proceeding to commit Wave A, vendor Wave B-A fixtures, apply Wave B-B dispositions, or measure V-1.
+

@@ -2608,6 +2608,19 @@ function findMatchingParen(str: string, startIdx: number): number {
       continue
     }
 
+    // 20-21 (P70 occurrence-9; supersedes #143 framing) — skip `//`
+    // line comments BEFORE the string-quote test so an odd-count
+    // apostrophe inside a `// comment` (e.g. `// ma'am`) does NOT put
+    // the walker into unterminated-string state and mis-depth the
+    // parens. Mirrors the reference branch at
+    // splitTopLevelStatements:414-417 exactly. PV49-spirit: line-
+    // comment tolerance at a NEW walker call site (chain-arg
+    // depth-matcher) — not a new mechanism class.
+    if (ch === '/' && str[i + 1] === '/') {
+      while (i < str.length && str[i] !== '\n') i++
+      continue
+    }
+
     if (ch === '"' || ch === "'" || ch === '`') {
       // 20-15 G3 (#136): backtick is a string delimiter too — without
       // this a `` ` `` inside args (e.g. `stack(s(`bd hh`))`) would not
@@ -2704,6 +2717,34 @@ function splitArgsWithOffsets(
     if (inString) {
       current += ch
       if (ch === stringChar && argsStr[i - 1] !== '\\') inString = false
+      continue
+    }
+
+    // 20-21 (P70 occurrence-9; supersedes #143 framing) — skip `//`
+    // line comments BEFORE the string-quote test so an odd-count
+    // apostrophe inside a `// comment` (e.g. `// ma'am`) does NOT put
+    // the walker into unterminated-string state and mis-attribute commas
+    // as arg separators. Mirrors splitTopLevelStatements:414-417.
+    //
+    // OFFSET CONTRACT (PV49-spirit; mitigates RESEARCH §R-7 PM-4): the
+    // comment chars are APPENDED to `current` (the per-arg byte buffer)
+    // so the per-arg byte slice stays byte-identical to the source.
+    // `pushCurrent` already consumes leading `// comment\n` via
+    // `skipWhitespaceAndLineComments(current, 0)` (pS:2685-2693), so
+    // the trimmed `value` + `offset` lockstep is preserved — the
+    // comment is treated as leading-prefix the same way the existing
+    // primitive handles leading whitespace.
+    if (ch === '/' && argsStr[i + 1] === '/') {
+      if (current.length === 0) currentStart = i
+      while (i < argsStr.length && argsStr[i] !== '\n') {
+        current += argsStr[i]
+        i++
+      }
+      // Append the `\n` itself if we hit one (preserves byte-additive
+      // semantics; the outer for-loop's i++ would otherwise skip it).
+      if (i < argsStr.length) {
+        current += argsStr[i]
+      }
       continue
     }
 
