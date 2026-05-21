@@ -5606,11 +5606,15 @@ function splitRootAndChain(expr) {
     if (i2 < expr.length) i2++;
   } else {
     while (i2 < expr.length && /[a-zA-Z0-9_$]/.test(expr[i2])) i2++;
+    const afterIdent = i2;
+    i2 = skipWhitespaceAndLineComments(expr, i2);
     if (i2 < expr.length && expr[i2] === "(") {
       const closeIdx = findMatchingParen(expr, i2);
       if (closeIdx !== -1) {
         i2 = closeIdx + 1;
       }
+    } else {
+      i2 = afterIdent;
     }
   }
   return {
@@ -25303,8 +25307,9 @@ var _ProgramBuilder = class _ProgramBuilder {
     return this;
   }
   at(times, values2, buildFn) {
-    for (let i2 = 0; i2 < times.length; i2++) {
-      const offset = times[i2];
+    const timesArr = Array.isArray(times) ? times : [times];
+    for (let i2 = 0; i2 < timesArr.length; i2++) {
+      const offset = timesArr[i2];
       const val = values2 ? values2[i2 % values2.length] : i2;
       const inner = this.forkBuilder("forked");
       if (offset > 0) inner.sleep(offset);
@@ -29658,6 +29663,7 @@ ${ctx.indent}}`;
       const nameNode = node.namedChildren[0];
       const params = node.namedChildren.find((c) => c.type === "method_parameters");
       const body2 = node.namedChildren.find((c) => c.type === "body_statement");
+      ctx.definedFunctions.add(nameNode.text);
       const paramStr = params ? params.namedChildren.map((c) => transpileNode(c, ctx)).join(", ") : "";
       const bodyStr = body2 ? transpileNode(body2, ctx) : "";
       return `function ${nameNode.text}(${paramStr}) {
@@ -30787,6 +30793,122 @@ function autoTranspileDetailed(code) {
   return { code: tsResult.code, hasError: false, method: "tree-sitter" };
 }
 __name(autoTranspileDetailed, "autoTranspileDetailed");
+
+// ../../../sonicPiWeb/src/engine/Sp95Lint.ts
+function findLiveLoops(src) {
+  const out2 = [];
+  const re = /\blive_loop\s+:([a-zA-Z_][a-zA-Z0-9_]*)\b[^\n]*?\bdo\b/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const name2 = m[1];
+    const bodyStart = m.index + m[0].length;
+    let depth = 1;
+    let i2 = bodyStart;
+    let bodyEnd = bodyStart;
+    while (i2 < src.length && depth > 0) {
+      const nl = src.indexOf("\n", i2);
+      const lineEnd = nl === -1 ? src.length : nl;
+      const line2 = src.slice(i2, lineEnd);
+      const sanitized = line2.replace(/#.*$/, "").replace(/'[^']*'|"[^"]*"/g, '""');
+      const doCount = (sanitized.match(/\bdo\b/g) || []).length;
+      const endCount = (sanitized.match(/\bend\b/g) || []).length;
+      bodyEnd = lineEnd;
+      if (depth + doCount - endCount <= 0) break;
+      depth += doCount - endCount;
+      if (nl === -1) break;
+      i2 = nl + 1;
+    }
+    out2.push({ name: name2, body: src.slice(bodyStart, bodyEnd) });
+  }
+  return out2;
+}
+__name(findLiveLoops, "findLiveLoops");
+function detectCrossLoopSetGet(loops) {
+  const SET_RE = /\bset\s+:([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+  const GET_RE = /\bget\s*\(?\s*:([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+  const setsByKey = /* @__PURE__ */ new Map();
+  const getsByKey = /* @__PURE__ */ new Map();
+  for (const lp of loops) {
+    let m;
+    SET_RE.lastIndex = 0;
+    while ((m = SET_RE.exec(lp.body)) !== null) {
+      if (!setsByKey.has(m[1])) setsByKey.set(m[1], /* @__PURE__ */ new Set());
+      setsByKey.get(m[1]).add(lp.name);
+    }
+    GET_RE.lastIndex = 0;
+    while ((m = GET_RE.exec(lp.body)) !== null) {
+      if (!getsByKey.has(m[1])) getsByKey.set(m[1], /* @__PURE__ */ new Set());
+      getsByKey.get(m[1]).add(lp.name);
+    }
+  }
+  const offenders = /* @__PURE__ */ new Set();
+  for (const [key, setters] of setsByKey) {
+    const getters = getsByKey.get(key);
+    if (!getters) continue;
+    for (const g of getters) if (!setters.has(g)) offenders.add(key);
+  }
+  if (offenders.size === 0) return [];
+  const keys = [...offenders].map((k) => `:${k}`).join(", ");
+  return [{
+    pattern: "cross-loop-set-get",
+    title: "Cross-loop set/get is a v1 limitation (#350)",
+    message: `Detected set in one live_loop and get(${keys}) in another \u2014 the reader will see a stale or null value because set is a deferred runtime step but get is read at build time. Same-loop set/get (or sync-as-gate within one loop) works fine. Workaround: do the set and get inside the SAME live_loop, or use cue+sync (without payload) to gate the read. See SP95 / #350.`
+  }];
+}
+__name(detectCrossLoopSetGet, "detectCrossLoopSetGet");
+function detectCuePayloadViaSync(src) {
+  const CUE_KW_RE = /\bcue\b\s*\(?\s*:([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:,|\)\s*,)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*:/g;
+  const cueNames = /* @__PURE__ */ new Set();
+  let m;
+  while ((m = CUE_KW_RE.exec(src)) !== null) cueNames.add(m[1]);
+  if (cueNames.size === 0) return [];
+  const offenders = [];
+  for (const name2 of cueNames) {
+    const SYNC_RE = new RegExp(`\\bsync\\b\\s*\\(?\\s*:${name2}\\b`);
+    if (SYNC_RE.test(src)) offenders.push(name2);
+  }
+  if (offenders.length === 0) return [];
+  const list = offenders.map((n) => `:${n}`).join(", ");
+  return [{
+    pattern: "cue-payload-via-sync-return",
+    title: "cue payload via sync return-value is a v1 limitation (#351)",
+    message: `Detected cue ${list} with keyword payload + a matching sync ${list}. The payload (val:, key:, etc.) is sent on the cue but NOT delivered through sync's return value in v1 \u2014 your receiver will read nil/undefined and play silently. Workaround: store the value via globalStore (set/get within the same loop, gated by sync) instead of attaching it to the cue. See SP95 / #351.`
+  }];
+}
+__name(detectCuePayloadViaSync, "detectCuePayloadViaSync");
+function detectSyncReturnIndexed(src) {
+  const ASSIGN_RE = /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*sync\b\s*\(?\s*:([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+  const bindings = [];
+  let m;
+  while ((m = ASSIGN_RE.exec(src)) !== null) {
+    bindings.push({ varName: m[1], cueName: m[2], afterIndex: m.index + m[0].length });
+  }
+  if (bindings.length === 0) return [];
+  const offenderCues = /* @__PURE__ */ new Set();
+  for (const b of bindings) {
+    const tail = src.slice(b.afterIndex, b.afterIndex + 2048);
+    const INDEX_RE = new RegExp(`\\b${b.varName}\\s*\\[`);
+    const DOT_RE = new RegExp(`\\b${b.varName}\\s*\\.\\s*[a-zA-Z_]`);
+    if (INDEX_RE.test(tail) || DOT_RE.test(tail)) offenderCues.add(b.cueName);
+  }
+  if (offenderCues.size === 0) return [];
+  const list = [...offenderCues].map((n) => `:${n}`).join(", ");
+  return [{
+    pattern: "sync-return-indexed",
+    title: "Indexing the sync return-value yields undefined (#351)",
+    message: `Detected the pattern: e = sync ${list} ... e[\u2026] (or e.field). In v1, sync returns the builder itself, NOT the cue's payload \u2014 indexing it gives undefined and any play(undefined) is silently skipped. Workaround: don't rely on sync's return value; instead store the data via set in the cuer's loop and get it in the receiver after sync (same-loop set/get works inside a single loop; cross-loop is also a v1 limitation per #350). See SP95 / #351.`
+  }];
+}
+__name(detectSyncReturnIndexed, "detectSyncReturnIndexed");
+function detectSp95Limitations(src) {
+  const loops = findLiveLoops(src);
+  return [
+    ...detectCrossLoopSetGet(loops),
+    ...detectCuePayloadViaSync(src),
+    ...detectSyncReturnIndexed(src)
+  ];
+}
+__name(detectSp95Limitations, "detectSp95Limitations");
 
 // ../../../sonicPiWeb/src/engine/examples.ts
 var examples = [
@@ -33623,6 +33745,16 @@ var _SonicPiEngine = class _SonicPiEngine {
     this.cueHandler = null;
     this.loadExampleHandler = null;
     /**
+     * Non-fatal warnings surfaced to the user (audio still runs). Wired by
+     * App.ts to `Console.logWarning` so a v1 limitation is **visible** in
+     * the editor console rather than producing the SP95 "silent failure"
+     * churn bomb (the director/section pattern playing nothing without any
+     * indication). Title is short ("Cross-loop set/get"), message is the
+     * actionable explanation ("use same-loop sync-gate instead — #350").
+     * Per-evaluate dedup happens in the detector that emits (Sp95Lint.ts).
+     */
+    this.warningHandler = null;
+    /**
      * Per-evaluation dedup set for clamp/range warnings (issue #202, G4).
      * SoundLayer's validateAndClamp emits one warning per out-of-range param,
      * which fires every loop iteration → log floods. We dedup by exact message
@@ -33799,6 +33931,15 @@ var _SonicPiEngine = class _SonicPiEngine {
       this.currentCode = code;
       this.currentStratum = detectStratum(code);
       this.warnDedup.clear();
+      if (this.warningHandler) {
+        const seen = /* @__PURE__ */ new Set();
+        for (const w of detectSp95Limitations(code)) {
+          const key = w.pattern + "|" + w.title;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          this.warningHandler(w.title, w.message);
+        }
+      }
       if (!isReEvaluate) {
         if (this.bridge) {
           const manifest = scanComponentNames(code);
@@ -35006,6 +35147,23 @@ var _SonicPiEngine = class _SonicPiEngine {
   /** Register a handler for runtime errors inside `live_loop` bodies. */
   setRuntimeErrorHandler(handler) {
     this.runtimeErrorHandler = handler;
+  }
+  /**
+   * Register a handler for non-fatal warnings — v1 limitations and latent
+   * issues detected at build time. Audio still runs after a warning; the
+   * warning is the SP95-loud co-gate's user-facing surface (#350/#351
+   * cross-loop set/get + cue-payload-via-sync are silent without this).
+   */
+  setWarningHandler(handler) {
+    this.warningHandler = handler;
+  }
+  /**
+   * Emit a build-time warning to the user. Safe no-op when no handler
+   * is wired (e.g. capture.ts headless runs) — the warning is signaled
+   * via the App's editor console only.
+   */
+  emitWarning(title, msg) {
+    if (this.warningHandler) this.warningHandler(title, msg);
   }
   /** Register a handler for `puts` / `print` output from user code. */
   setPrintHandler(handler) {

@@ -161,3 +161,136 @@ Allow-list size: **EXACTLY 2** fixtures (+ their snapshot entries).
 Every other parity-corpus file's loc-fidelity diff MUST be EMPTY
 across the entire phase (PV49 byte-additive substrate proof; V-3
 observational gate confirms).
+
+---
+
+## Wave A — PV49-extend `splitRootAndChain` with whitespace-then-paren tolerance
+
+### Surgical edit applied
+
+`packages/editor/src/ir/parseStrudel.ts:2521-2531` — inserted (additive
+only):
+
+- 14-line provenance comment block citing `@strudel/transpiler@1.2.6
+  transpiler.mjs:25-30` (`acorn.parse(input, {ecmaVersion: 2022, …})`)
+  + `@strudel/core@1.2.6 evaluate.mjs:29-39` (`Function(body)()`),
+  Codeberg pin `f73b3956`.
+- `const afterIdent = i` — capture identifier boundary for restore.
+- `i = skipWhitespaceAndLineComments(expr, i)` — the new 5th caller of
+  the PV49 substrate at the identifier-to-paren boundary class.
+- New `} else { i = afterIdent }` restore arm — preserves today's
+  disposition for bare-identifier roots (no `(` follows the
+  whitespace).
+
+`git diff packages/editor/src/ir/parseStrudel.ts` confirms strictly-
+additive surgery: zero edits to the bare-string arm (pS:2492-2503),
+backtick arm (pS:2504-2520), identifier-scan `while` (pS:2523), the
+`(` check condition itself (pS:2526), the `findMatchingParen` call
+(pS:2527), the final `return` (pS:2534-2537), or any other function
+in `parseStrudel.ts`.
+
+### P68 build hygiene — INCREASE-by-1 gate VERIFIED
+
+One-shot `pnpm --filter @stave/editor build` clean. Post-fix dist grep:
+
+| Anchor | Pre-fix | Post-fix | Rule | Verdict |
+|---|---|---|---|---|
+| `splitRootAndChain` | 4 | 4 | `> 0` | PASS |
+| `skipWhitespaceAndLineComments` | 6 | **7** | INCREASE-by-1 | **PASS — the new 5th caller is in the shipped dist** |
+| `findMatchingParen` | 9 | 9 | unchanged | PASS |
+| `afterIdent` | 0 | 2 | informational (local; may be minified) | observed — survived as a local |
+
+### Wave-A throwaway probe — strict-widen + false-positive + exemplar round-trip (RUN; verbatim stdout)
+
+Probe spec `packages/editor/src/_waveA-whitespace-probe.spec.ts` written
++ run. Deleted post-capture (one-off; OBSERVATIONS is the regression
+record; permanent coverage lands in Wave B).
+
+```
+$ pnpm --filter @stave/editor exec vitest run src/_waveA-whitespace-probe.spec.ts
+
+[i.1 sound (" ") single hh]
+  source: "sound (\"hh\")"
+  outer.tag=Track bare=false inner.tag=Play inner.bare=false (expect=STRUCTURED)
+[i.2 sound (" ") multi hh]
+  source: "sound (\"hh hh hh hh\")"
+  outer.tag=Track bare=false inner.tag=Seq inner.bare=false (expect=STRUCTURED)
+[i.3 s (" ") alias]
+  source: "s (\"bd sd\")"
+  outer.tag=Track bare=false inner.tag=Seq inner.bare=false (expect=STRUCTURED)
+[i.4 note (" ")]
+  source: "note (\"c d\")"
+  outer.tag=Track bare=false inner.tag=Seq inner.bare=false (expect=STRUCTURED)
+[ii.1 let allBindings binding]
+  source: "let allBindings = \"x\"; sound(\"y\")"
+  outer.tag=Track bare=false inner.tag=Play inner.bare=false (expect=UNCHANGED)
+[ii.2 let x = sine bare ident]
+  source: "let x = sine"
+  outer.tag=Track bare=false inner.tag=Code inner.bare=true (expect=UNCHANGED)
+[ii.3 sine .range chain (leading ws)]
+  source: "sine .range(0,1)"
+  outer.tag=Track bare=false inner.tag=Code inner.bare=false (expect=UNCHANGED)
+[ii.4 let x = sine // c\n.range]
+  source: "let x = sine // comment\n.range(0,1)"
+  outer.tag=Track bare=false inner.tag=Code inner.bare=true (expect=UNCHANGED)
+[iii.exemplar -G2drHRNFueu verbatim]
+  source: "sound (\"hh hh hh hh\")\nsound (\"[bd bd][sd bd] bd sd\")\n\n\n// @version 1.0"
+  outer.tag=Track bare=false inner.tag=Seq inner.bare=false (expect=STRUCTURED)
+[ctrl sound("hh") no-whitespace]
+  source: "sound(\"hh\")"
+  outer.tag=Track bare=false inner.tag=Play inner.bare=false (expect=STRUCTURED)
+```
+
+**Verdict — all gates PASS:**
+
+- (i) strict-widen — all 4 cases FLIPPED to STRUCTURED (`inner.bare`:
+  true → false). The pre-fix Wave-0 case-B-equivalent was `inner.tag=Code
+  inner.bare=true`; post-fix `inner.tag=Play|Seq inner.bare=false`. The
+  PV49 walker tolerance + the inherited `sMatch` (`Play`) /
+  `looseMatch` /`miniMatch` (`Seq`) regex arms FIRE downstream as
+  predicted by RESEARCH §5.2.
+- (ii) false-positive guards — all 4 cases preserved disposition. The
+  `i = afterIdent` restore arm fires when no `(` follows the
+  whitespace (cases ii.2/ii.3/ii.4); case ii.1's `let allBindings = "x";`
+  binding is handled by the binding-map layer UPSTREAM of
+  `splitRootAndChain`, so the new walker tolerance does not perturb
+  it. **NO over-widening.**
+- (iii) exemplar `-G2drHRNFueu` verbatim → `inner.tag=Seq
+  inner.bare=false`. **The gate-bearing observation: the exemplar
+  FLIPS STRUCTURED via the PV49 extension.** Inner.tag=Seq (not Play)
+  because the `sMatch` regex's body `"hh hh hh hh"` is multi-token
+  mini-notation; the inherited `Seq` projection fires (RESEARCH §5.2
+  predicted Play; observed Seq is a stronger structural signal — both
+  are non-bareCode and both PASS the parity-oracle fence
+  `body.tag !== 'Code'`).
+- control `sound("hh")` → unchanged (Play/false). No regression on the
+  no-whitespace case.
+
+### Editor + app test gates (action 7)
+
+```
+$ pnpm --filter @stave/editor test
+ Test Files  91 passed (91)
+      Tests  1627 passed (1627)         # unchanged — no regression
+
+$ pnpm --filter @stave/app test
+ Test Files  18 passed (18)
+      Tests  409 passed (409)           # unchanged — no fixture vendored yet
+```
+
+### Per-file loc-fidelity STOP gate (Wave A)
+
+The app test suite includes `loc-fidelity.test.ts` (the byte-exact
+slicing invariant). It passed 409/409 with zero pre-existing fixture
+moved. The parity-CHANGED set this wave: **EMPTY** (Wave A vendors no
+fixtures; B-1 owns that). PV49 byte-additive substrate carries by
+construction (R-5 grounded: consumed whitespace included in root
+slice; no source mutation). STOP gate CLEAN.
+
+### Files staged for commit
+
+- `packages/editor/src/ir/parseStrudel.ts` (the additive surgical edit)
+- `packages/editor/dist/index.{js,cjs,js.map,cjs.map}` (the rebuilt
+  shipped bundle reflecting the source change)
+- `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md` (this
+  Wave-A record append)

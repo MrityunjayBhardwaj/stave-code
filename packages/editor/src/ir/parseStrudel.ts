@@ -2522,12 +2522,30 @@ export function splitRootAndChain(expr: string): { root: string; chain: string }
     // Skip identifier
     while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) i++
 
+    // 20-20 (#159) — PV49 extension: tolerate inter-element whitespace
+    // + `// line-comments` between the identifier and the call-site
+    // `(`. Mirrors upstream Strudel's pure-JS-eval whitespace
+    // tolerance (acorn.parse at @strudel/transpiler/transpiler.mjs:25-30
+    // + Function(body)() at @strudel/core/evaluate.mjs:29-39, Codeberg
+    // pin f73b3956). The consumed whitespace MUST be included in the
+    // returned `root` slice so parseRoot's existing `\s*\(` regex arms
+    // (sMatch, noteMatch, miniMatch, looseMatch) match downstream.
+    // When no `(` follows the whitespace, restore `i` to the identifier
+    // boundary so bare-identifier roots (e.g. `let x = sine`) behave
+    // exactly as before (today's no-call disposition).
+    const afterIdent = i
+    i = skipWhitespaceAndLineComments(expr, i)
+
     // If there's an opening paren, find the matching close
     if (i < expr.length && expr[i] === '(') {
       const closeIdx = findMatchingParen(expr, i)
       if (closeIdx !== -1) {
         i = closeIdx + 1
       }
+    } else {
+      // No `(` after whitespace — restore i to the identifier boundary.
+      // Preserves today's behaviour for bare-identifier roots.
+      i = afterIdent
     }
   }
 
