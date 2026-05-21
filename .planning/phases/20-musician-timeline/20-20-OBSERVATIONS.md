@@ -512,3 +512,64 @@ Wave B + V-1 on `feat/20-20-tokenizer-whitespace`).**
 
 - `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md`
   (V-1 record append; the `.bakery-runs/*.json` are gitignored)
+
+---
+
+## V-3 — Cross-wave per-file loc-fidelity STOP gate (full-corpus pass on merge-candidate)
+
+### Full suite re-run on merge-candidate head (action 1)
+
+```
+$ pnpm --filter @stave/app test
+ Test Files  18 passed (18)
+      Tests  413 passed (413)
+```
+
+Counts: parity-corpus (47+2)=49 + loc-fidelity (47+2)=49 + other 315 =
+**413/413** GREEN. NO `-u` flag.
+
+### V-3 allow-list — phase-wide parity-corpus diff (action 2)
+
+```
+$ git diff --name-only HEAD~4..HEAD packages/app/tests/parity-corpus/__snapshots__/ packages/app/tests/parity-corpus/*.strudel
+packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap
+packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap
+packages/app/tests/parity-corpus/bakery-159-NEGATIVE-no-whitespace.strudel
+packages/app/tests/parity-corpus/bakery-159-tokenizer-whitespace.strudel
+```
+
+| Moved file | Justification |
+|---|---|
+| `bakery-159-tokenizer-whitespace.strudel` | Wave-B canonical positive fixture (NEW); allow-list entry |
+| `bakery-159-NEGATIVE-no-whitespace.strudel` | Wave-B negative control fixture (NEW); allow-list entry |
+| `__snapshots__/parity.test.ts.snap` | auto-captured entries for the 2 new fixtures only |
+| `__snapshots__/loc-fidelity.test.ts.snap` | auto-captured entries for the 2 new fixtures only |
+
+Phase-wide parity-CHANGED set = **{2 Wave-B fixtures}** ⊆ the V-3
+allow-list pre-allocated in Wave 0. **Zero other moved files.**
+
+### Pure-addition snapshot diff (action 3 — STOP gate)
+
+```
+$ git diff HEAD~4..HEAD --stat packages/app/tests/parity-corpus/__snapshots__/
+ ... loc-fidelity.test.ts.snap   |  50 ++++++++++
+ ... parity.test.ts.snap          | 104 +++++++++++++++++++++
+ 2 files changed, 154 insertions(+)
+```
+
+**154 insertions, 0 removals.** Zero pre-existing fixture's snapshot
+moved. The PV49 byte-additive whitespace-consumption substrate's
+silent-drift guard is observationally CLEAN.
+
+### V-3 verdict
+
+**Cross-wave per-file loc-fidelity STOP gate: CLEAN.** The
+parity-CHANGED set matches the pre-allocated allow-list byte-for-byte;
+zero silent drift; PV49 substrate carries by construction (the
+consumed whitespace is included in the returned root slice; no source
+mutation; remaining offsets unchanged) AND by observation (this gate).
+
+### Files staged for commit (V-3)
+
+- `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md`
+  (V-3 record append)
