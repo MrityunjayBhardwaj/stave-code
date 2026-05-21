@@ -2267,3 +2267,125 @@ Play→Seq delta classification); `.planning/phases/20-musician-timeline/
 20-20-SUMMARY.md` (the Cognitive Discoveries section).
 
 **P70 remains an 8-occurrence pattern (20-15 / 20-16 / 20-17 / 20-18 / 20-19) with a 2026-05-21 cadence row noting 20-20 ran clean (Wave-0 RE-RUN matched RESEARCH; no occurrence-9 surfaced).**
+
+
+### P70 occurrence 9 (Phase 20-21, session 2026-05-22) — cascade-misclassification of #143
+
+Phase 20-21 (#163) brought a NEW P70 occurrence — and it surfaced as a
+**cascade-misclassification** of a previously-closed issue (#143). This
+is the unfavorable direction (a 20-16 ship was thought to close the
+class; it didn't; the actual blocker lived 3 calls down the parser
+pipeline). The 9-wave RESEARCH bisect surfaced the truth.
+
+**The cascade-classification (20-16):** Phase 20-16's V-1 backlog
+classified `-7LU6zgzViSM`'s residual bareCode as belonging to the
+"guarded-boot recognition gap" class — the exemplar's first line is
+`typeof setDefaultVoicings !== 'undefined' && setDefaultVoicings('legacy')` —
+and 20-16 V-2 shipped `GUARDED_BOOT_RE` (parseStrudel.ts:228-229) to
+match that idiom. The ship is CORRECT for the prelude-recognition
+surface (it closes the `typeof X !== 'undefined' && X(...)` idiom
+class — that class is now permanently captured). But `-7LU6zgzViSM`
+STAYED bareCode in the 20-17 + 20-18 + 20-19 + 20-20 fresh
+measurements — i.e. the original close of #143 didn't actually flip
+the exemplar. Five phases passed before this was recognised as a
+P70-class cascade-misclassification rather than an "unrelated
+follow-up residual."
+
+**The 20-21 RESEARCH bisect (verbatim 9-wave summary):**
+
+| Wave | Variant | Verdict | What it ruled out |
+|---|---|---|---|
+| W1 | drop trailing URL comment | bareCode | URL comment is NOT the blocker |
+| W2 | drop trailing `// @version 1.0` | bareCode | `@version` is NOT the blocker |
+| W3 | drop both V1+V2 | bareCode | combined trailing comments are NOT the blocker |
+| W4 | drop entire first line (the guarded-boot) | bareCode | **GUARDED-BOOT IS NOT THE BLOCKER** (falsifies 20-16's #143 close-classification) |
+| V6 | min-body + ALL prelude | STRUCTURED (`Play`) | prelude alone is fine |
+| V8 | keep trailing URL comment + min body + no `@version` | STRUCTURED (`Fast`) | trailing URL alone is fine |
+| V14 | V0's full body alone (no prelude, no `@version`) | bareCode | **body is the blocker** |
+| arrow2-simple | replace 2nd `.layer()` arrow with `x=>n("b").set(x)` | STRUCTURED | blocker is inside the 2nd arrow |
+| `// ma'am` | single apostrophe in `//` comment inside arrow2 | bareCode | **THE ROOT CAUSE — apostrophe-in-`//`-comment in chain-arg walker** |
+
+**The mechanism:** the chain-arg walkers `findMatchingParen` (pS:2598-2628)
+and `splitArgsWithOffsets` (pS:2664-2747) walk char-by-char and test
+string-quote delimiters (`'` `"` `` ` ``) for paren-depth / arg-split
+tracking, but do NOT skip `// line comments` before the string-quote
+test. An odd-count apostrophe inside a `// line comment` (e.g.
+`// ma'am`) puts the walker into an unterminated-string state,
+corrupting subsequent paren-depth or comma tracking, and the upstream
+chain-arg parser falls back to bareCode. The fix copies the existing
+`//` skip branch from `splitTopLevelStatements:414-417` (the segmenter's
+known-good shape) into both walker sites.
+
+**Disposition:**
+- #163 filed as the gate-bearing issue with the correct class
+  (chain-arg walker `//`-comment apostrophe tolerance). #163 tracks
+  the actual fix; PR closes #163.
+- #143 stays CLOSED (annotated as superseded by #163; the 20-16
+  ship is correct for the prelude-recognition surface — that class
+  IS closed by `GUARDED_BOOT_RE` for any guarded-boot idiom that has
+  no chain-arg walker issue downstream).
+- The bisect-then-pre/post-snippet observation pattern is recorded as
+  the structural insurance against cascade-misclassification recurring.
+
+**The lesson — "exemplar STILL bareCodes after a recognition extension
+ships" is itself a re-pose signal.** Five phases passed before the
+20-21 RESEARCH treated `-7LU6zgzViSM`'s persistent residual as a
+re-pose trigger. The 20-16 close was accepted on shape-match (the
+exemplar's first line MATCHES the guarded-boot idiom). The actual
+verification (RUN the bisect on the exemplar; observe what happens
+when you remove the matching shape) wasn't performed at 20-16's
+close-time. The lesson: when an exemplar STILL bareCodes after a
+recognition extension ships against its named class, RUN the bisect
+on the exemplar BEFORE accepting the close — don't trust shape-match
+alone. The bisect-then-pre/post-snippet pattern is the structural
+discipline that catches this.
+
+**The bonus-improvement on EVIDENCE (PK18 cascade discipline working
+as designed):** the gate-bearing fix incidentally enriched one
+pre-existing fixture (`meltingsubmarine`) — apostrophes in
+`'sawtooth'`/`'lefthand'`/`'triangle'` chain args adjacent to `//`
+comments were ALSO confusing the walker; post-fix the trailing
+`.slow(3/2)` IS captured (`body.tag=Slow` vs the pre-fix
+`body.tag=Code-via{echoWith}`). The substrate caught this at the V-3
+allow-list check, forced a PK18 STOP + user re-pose, and was resolved
+via Option A (extend V-3 allow-list on EVIDENCE; document as
+same-mechanism-class bonus-improvement; SCOPE stays strict). The
+20-19 `-1j62z5xjyCN` bonus-close precedent applies exactly.
+
+**REF (20-21 additions):**
+- `.planning/phases/20-musician-timeline/20-21-RESEARCH.md` §R-1
+  (9-wave bisect; root cause cited at parseStrudel.ts:2598-2628 +
+  :2664-2747; mechanism reproduced + falsified in matched
+  negative-control)
+- `.planning/phases/20-musician-timeline/20-21-OBSERVATIONS.md` (Wave
+  0 RE-CONFIRMATION + Wave A two-site walker `//`-skip surgical edit +
+  Wave A tail V-3 allow-list extension on EVIDENCE + Wave B-A
+  fixtures + Wave B-B backlog dispositions + V-1 dual gate + V-3 STOP
+  gate)
+- `.planning/phases/20-musician-timeline/20-21-SUMMARY.md` (the phase
+  close-out + the cognitive discoveries section)
+- `packages/editor/src/ir/parseStrudel.ts:2598-2628` (Site 1 surgery —
+  `findMatchingParen` `//`-skip branch)
+- `packages/editor/src/ir/parseStrudel.ts:2664-2747` (Site 2 surgery —
+  `splitArgsWithOffsets` `//`-skip branch with `current += ...` to
+  preserve OFFSET CONTRACT)
+- `packages/app/tests/parity-corpus/bakery-143-apostrophe-in-chain-arg-comment.strudel`
+  + `bakery-143-NEGATIVE-no-apostrophe-comment.strudel` (the per-class
+  permanent regression coverage)
+- https://github.com/MrityunjayBhardwaj/stave-code/issues/163 (NEW
+  gate-bearing issue with the correct class)
+- https://github.com/MrityunjayBhardwaj/stave-code/issues/143#issuecomment-4511678164
+  (annotation of #143 as superseded)
+
+**P70 is now a 9-occurrence pattern (20-15 / 20-16 / 20-17 / 20-18 /
+20-19 / 20-21).** The 9th occurrence is a CASCADE-MISCLASSIFICATION
+across a 5-phase delay — the 20-16 ship classified the class wrong,
+and the next 4 phases (20-17 / 20-18 / 20-19 / 20-20) treated
+`-7LU6zgzViSM`'s persistent residual as "unrelated follow-up backlog"
+rather than as a re-pose signal. 20-21 was the first phase to RUN the
+bisect on the exemplar; the bisect surfaced the truth in 9 waves. The
+lesson reinforces the framework's deductive-over-empirical thesis:
+the bisect-then-pre/post-snippet observation pattern IS the lokayata
+gate. Future phases should treat a multi-phase-old residual as a
+re-pose signal automatically — RUN the bisect before assuming the
+prior classification is still load-bearing.
