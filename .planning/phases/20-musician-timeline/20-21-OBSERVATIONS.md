@@ -375,3 +375,55 @@ Per Wave-0 locked dispositions (OBSERVATIONS line 153-160):
 ### Additionally — #143 supersession annotation
 
 \`gh issue comment 143\` → https://github.com/MrityunjayBhardwaj/stave-code/issues/143#issuecomment-4511678164. #143 stays closed; #163 (NEW gate-bearing issue, filed in Wave V-4 prep) tracks the correct class.
+
+---
+
+## Wave V-1 — Dual gate fresh measurement
+
+```
+pnpm parity:bakery --n 50
+upstream pin SHA: f73b395648645aabe699f91ba0989f35a6fd8a3c (unchanged)
+artifact stamp:   2026-05-21T18-47-02-200Z
+N (measured):     50
+structured:       50
+Code-fallback:    0
+real-world %:     100.0%
+artifact:         packages/app/tests/parity-corpus/.bakery-runs/samples-2026-05-21T18-47-02-200Z.json
+result:           packages/app/tests/parity-corpus/.bakery-runs/result-2026-05-21T18-47-02-200Z.json
+```
+
+### Gate-bearing exemplar verdict (full-pipeline)
+
+```
+hash:    -7LU6zgzViSM
+verdict: structured            ← THE FLIP at full-pipeline level
+```
+
+### crit-1 — W3 production-exemplar probe + Wave-B-A canonical-positive fixture
+
+- W3 / `-7LU6zgzViSM` STRUCTURED at full-pipeline (this measurement)
+- `bakery-143-apostrophe-in-chain-arg-comment.strudel` parity snapshot STRUCTURED + loc-fidelity snapshot landed (Wave B-A commit f86ad34)
+- `bakery-143-NEGATIVE-no-apostrophe-comment.strudel` STRUCTURED (no regression on the over-consumption canary)
+
+crit-1: GREEN.
+
+### crit-2 — arithmetic gate
+
+- 50/50 = 100.0% ≥ 49/50 (98.0% floor); no regression on any of the 49 pre-existing samples.
+- Must-not-regress floor: PASS.
+
+crit-2: GREEN.
+
+### PK18 STOP — NONE TRIGGERED
+
+Wave-A tail's V-3 allow-list extension (meltingsubmarine, EVIDENCE-grounded on Option A) resolved the only PK18 trigger of this phase. No further re-pose surfaced through V-1.
+
+### Bonus closes recorded
+
+- meltingsubmarine (Wave A tail; same-mechanism-class IR-correctness enrichment; 20-19 `-1j62z5xjyCN` bonus-close precedent applied)
+- `-1j62z5xjyCN` STRUCTURED in current sample (re-confirms 20-19's bonus close holds)
+- `-72eEl7NwK9e` STRUCTURED in current sample (#149 audit closure)
+
+### D-04 verdict
+
+D-04 DUAL GATE PASS — 100.0% measurement + 98.0% must-not-regress floor; SCOPE stays strict to gate-bearing class.
