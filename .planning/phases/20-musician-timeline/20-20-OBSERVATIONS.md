@@ -294,3 +294,125 @@ slice; no source mutation). STOP gate CLEAN.
   shipped bundle reflecting the source change)
 - `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md` (this
   Wave-A record append)
+
+---
+
+## Wave B — Permanent CI fixture vendoring (V-2 cadence)
+
+### `-G2drHRNFueu` verbatim source (action 2)
+
+```
+$ node -e "const j=JSON.parse(require('fs').readFileSync('packages/app/tests/parity-corpus/.bakery-runs/samples-2026-05-20T13-22-13-320Z.json','utf8'));console.log(j.samples.find(s=>s.hash==='-G2drHRNFueu').code)"
+sound ("hh hh hh hh")
+sound ("[bd bd][sd bd] bd sd")
+
+
+// @version 1.0
+```
+
+### Canonical positive fixture (action 3)
+
+`packages/app/tests/parity-corpus/bakery-159-tokenizer-whitespace.strudel`
+— minimal distillation per RESEARCH §7.1 (trailing 3 blank lines +
+`// @version 1.0` dropped; the inert prelude content is covered by the
+20-14 `stripParserPrelude` arm and adds no discriminative load to the
+whitespace-fence fixture):
+
+```
+sound ("hh hh hh hh")
+sound ("[bd bd][sd bd] bd sd")
+```
+
+(Two lines exactly; LF newlines; final newline; no trailing whitespace.)
+Keeps BOTH `sound (…)` siblings to lock today's FIRST-WINS multi-line
+disposition (per cross-issue inheritance note in BAKERY-FIXTURES.md).
+
+### Negative-control fixture (action 4)
+
+`packages/app/tests/parity-corpus/bakery-159-NEGATIVE-no-whitespace.strudel`
+— same shape MINUS the whitespace:
+
+```
+sound("hh hh hh hh")
+sound("[bd bd][sd bd] bd sd")
+```
+
+Pre-fix AND post-fix structures (the inherited `sound("…")` recogniser
+arm carries it); locks the proposition "the whitespace-tolerance is the
+gate, not the bindings".
+
+### BAKERY-FIXTURES.md update (action 5)
+
+New "Phase 20-20 fixtures (#159 — tokenizer-whitespace fence relaxation)"
+section documenting both fixtures + upstream-grounded provenance note:
+`@strudel/transpiler@1.2.6 transpiler.mjs:25-30` (acorn.parse) +
+`@strudel/transpiler@1.2.6 transpiler.mjs:21-213` (AST walk) +
+`@strudel/core@1.2.6 evaluate.mjs:29-39` (`Function(body)()`); Codeberg
+pin SHA `f73b395648645aabe699f91ba0989f35a6fd8a3c`. Cross-issue note
+for #153 LAST-WINS inheritance also included.
+
+### parity-refresh.mjs exclusion guard verification (action 6)
+
+```
+$ node packages/app/scripts/parity-refresh.mjs --dry-run
+# parity:refresh
+# vendored pin: f73b395648645aabe699f91ba0989f35a6fd8a3c
+# fetching:     main (latest)
+# summary
+# unchanged: 16
+# changed:   0
+# missing:   0
+# no drift — corpus is in sync with the targeted upstream SHA.
+```
+
+16 upstream tunes unchanged; 0 missing. The new `bakery-159-*` slugs are
+NOT in TARGETS (they're not upstream tunes), so they're excluded by the
+structural guard at `parity-refresh.mjs:68-75` by construction. No
+script edit needed.
+
+### Snapshot capture (action 7)
+
+```
+$ pnpm --filter @stave/app test
+ ✓ tests/parity-corpus/parity.test.ts  (49 tests) 18ms
+ ✓ src/components/__tests__/MusicalTimeline.test.tsx  (51 tests) 917ms
+  Snapshots  4 written
+ Test Files  18 passed (18)
+      Tests  413 passed (413)
+```
+
+- parity-corpus: 47 → **49** tests (+2 fixtures auto-discovered);
+- loc-fidelity: 47 → **49** tests (+2 fixtures auto-discovered);
+- 4 snapshots written (2 fixtures × {parity, loc-fidelity});
+- Total app: 409 → **413** tests.
+
+The canonical positive fixture's parity snapshot asserts `body.tag:
+"Seq"` (the mini-notation expanded into `Play`-children); the
+negative-control's snapshot has the SAME body structure (the whole
+expression structures via inherited `sound("…")` recogniser arm
+regardless of the whitespace fence). The fence inversion would have
+been a STOP gate; instead BOTH structure post-fix → the whitespace-
+tolerance is the gate AS DESIGNED.
+
+### Per-file loc-fidelity STOP gate (Wave B)
+
+```
+$ git diff --stat packages/app/tests/parity-corpus/__snapshots__/
+ ... __snapshots__/loc-fidelity.test.ts.snap   |  50 ++++++++++
+ ... __snapshots__/parity.test.ts.snap          | 104 +++++++++++++++++++++
+ 2 files changed, 154 insertions(+)
+```
+
+Diff is **PURE ADDITION** (154 insertions, 0 removals). Zero
+pre-existing snapshot moved. The parity-CHANGED set this wave: **{2 new
+Wave-B fixtures}** ⊆ the V-3 allow-list pre-allocated in Wave 0. STOP
+gate CLEAN.
+
+### Files staged for commit
+
+- `packages/app/tests/parity-corpus/bakery-159-tokenizer-whitespace.strudel`
+- `packages/app/tests/parity-corpus/bakery-159-NEGATIVE-no-whitespace.strudel`
+- `packages/app/tests/parity-corpus/BAKERY-FIXTURES.md`
+- `packages/app/tests/parity-corpus/__snapshots__/parity.test.ts.snap`
+- `packages/app/tests/parity-corpus/__snapshots__/loc-fidelity.test.ts.snap`
+- `.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md` (Wave-B append)

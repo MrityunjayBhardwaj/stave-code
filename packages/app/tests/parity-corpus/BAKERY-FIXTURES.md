@@ -220,6 +220,73 @@ the existing structural guard at `parity-refresh.mjs:68-75` (any
 edit is needed (`node packages/app/scripts/parity-refresh.mjs --dry-run`
 reports 0 missing for the 11 new fixtures).
 
+### Phase 20-20 fixtures (#159 — tokenizer-whitespace fence relaxation)
+
+Phase 20-20 closes #159: `splitRootAndChain`'s identifier-then-paren
+branch at `parseStrudel.ts:2521-2531` rejected whitespace between an
+identifier and the call-site `(`, so bakery row `-G2drHRNFueu`
+(`sound ("hh hh hh hh")`) fell to the bareCode fallback even though
+upstream Strudel evaluates the source unchanged. The fix is a 5th
+caller of the PV49 substrate `skipWhitespaceAndLineComments` at the
+identifier-to-paren boundary class, with an `i = afterIdent` restore
+arm preserving today's disposition for bare-identifier roots (e.g.
+`let x = sine`).
+
+**Upstream-grounded provenance — UNAMBIGUOUSLY TOLERATES:**
+
+Upstream Strudel UNAMBIGUOUSLY TOLERATES whitespace between identifier
+and call-site `(` via pure JS-eval pass-through:
+
+- `@strudel/transpiler@1.2.6 transpiler.mjs:25-30` — `parse(input,
+  {ecmaVersion: 2022, …})` (acorn).
+- `@strudel/transpiler@1.2.6 transpiler.mjs:21-213` — AST walk (no
+  whitespace normalisation; selective node rewrites only).
+- `@strudel/core@1.2.6 evaluate.mjs:29-39` — `safeEval` wraps as
+  `Function(body)()` (native JS evaluation).
+
+Acorn parses `sound ("hh")` and `sound("hh")` as IDENTICAL
+`CallExpression` ASTs per ECMA-262 (`CallExpression :: MemberExpression
+Arguments` allows arbitrary whitespace). Our parser MIRRORS that
+permissiveness via the PV49 extension at `splitRootAndChain`
+(`parseStrudel.ts:2521-2531`; Codeberg pin SHA
+`f73b395648645aabe699f91ba0989f35a6fd8a3c`).
+
+2 permanent CI fixtures (1 canonical positive + 1 negative-control):
+
+| Fixture | Bakery hash | Asserts |
+|---|---|---|
+| `bakery-159-tokenizer-whitespace.strudel` | `-G2drHRNFueu` (Bakery, not local) | minimal distillation of the verbatim row (`sound ("hh hh hh hh")` + `sound ("[bd bd][sd bd] bd sd")`; trailing blank-lines + `// @version 1.0` dropped per V-2 minimal-distillation discipline); whole-program STRUCTURED (`body.tag !== 'Code'`); inner `Seq` via the PV49-extended `splitRootAndChain` + inherited `miniMatch`/`looseMatch` regex arms |
+| `bakery-159-NEGATIVE-no-whitespace.strudel` | — | same shape MINUS the whitespace between identifier and `(`; proves the whitespace-tolerance is the gate (both fixtures STRUCTURED post-fix; if the positive bareCodes while the negative stays structured, the fix is broken; if both bareCode, the inherited `sound("…")` recogniser arm regressed) |
+
+**The negative-control's role:** if `bakery-159-tokenizer-whitespace`
+were bareCode while `bakery-159-NEGATIVE-no-whitespace` was structured,
+the PV49 extension at the identifier-to-paren boundary is broken (the
+whitespace is not being consumed before the `(` check). If both
+bareCode, the inherited `sound("…")` recogniser arm regressed
+(pre-existing 20-15/20-18 substrate broke). If both structured (the
+design state), the system works as the 20-20 mechanism describes.
+
+**parity-refresh exclusion:** `bakery-159-*` slugs are covered by the
+existing structural guard at `parity-refresh.mjs:68-75` (any `bakery-*`
+prefix triggers the throw if added to TARGETS); no script edit is
+needed (`node packages/app/scripts/parity-refresh.mjs --dry-run`
+reports 0 missing for the 2 new fixtures).
+
+**Cross-issue interaction note (#153 backlog inheritance):** the
+canonical-positive fixture intentionally keeps BOTH `sound (…)`
+siblings (two top-level expressions) — this locks today's FIRST-WINS
+multi-line disposition (our parser today emits `Play`/`Seq` of the
+FIRST `sound(…)`; the second is discarded by `applyChain` since its
+prefix is `\n` not `.`). Upstream Strudel by contrast evaluates these
+as LAST-WINS via `@strudel/transpiler@1.2.6 transpiler.mjs:198-204`'s
+`addReturn` (rewrites only `body[body.length-1]`); `@strudel/core@1.2.6
+evaluate.mjs:37-38`'s `Function(body)()` returns the last
+ReturnStatement. The semantic mismatch is NOT a parity blocker (the
+parity oracle's fence is `body.tag !== 'Code'`; both FIRST-WINS and
+LAST-WINS produce structured), but a future #153 phase that adopts
+LAST-WINS will need to update this fixture's snapshot — that's
+intentional cross-issue signalling.
+
 ## License
 
 Each repro is a 1–3 line minimal distillation authored for regression
