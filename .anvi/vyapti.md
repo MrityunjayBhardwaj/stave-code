@@ -1996,3 +1996,118 @@ diff HEAD~5..HEAD packages/editor/src/ir/PatternIR.ts` = empty);
 triggered notes at lines 65-71 + 665-667 + 795); `.planning/phases/
 20-musician-timeline/20-19-SUMMARY.md` (the PV54 NOT-triggered
 confirmation under "Catalogue updates" frontmatter).
+
+---
+
+## PV49 addendum (20-20) — `splitRootAndChain` identifier-to-paren whitespace tolerance is a NEW BOUNDARY CLASS of the substrate
+
+**ORIGIN:** 20-20 V-1 N=50 observation of bakery `-G2drHRNFueu`
+bareCode'ing on `sound ("hh hh hh hh")` (the SPACE between identifier
+and call-site `(`); Wave-0 5-cell factoring probe RUN'd on the fresh
+branch with stdout matching RESEARCH §2.2 byte-for-byte (B/D/E
+bareCode inner.tag=Code inner.bare=true; A/C STRUCTURED — `sound("…")`
+no-space variant carries via the inherited recogniser); upstream-
+grounded TOLERATES verdict at `@strudel/transpiler@1.2.6 transpiler.mjs:25-30`
+(`acorn.parse(input, {ecmaVersion: 2022, …})`) + `@strudel/core@1.2.6
+evaluate.mjs:29-39` (`Function(body)()`).
+
+**WHY:** without this extension, every call site with discretionary
+whitespace between identifier and `(` bareCodes — a parity gap whose
+source is recogniser-narrowness, NOT upstream rejection. The class is
+open-ended (any user could space-pad any call site; the JS spec via
+acorn parses `ident WS (args)` and `ident(args)` as IDENTICAL
+`CallExpression` ASTs). Our parser was STRICTER than upstream; the
+extension MIRRORS upstream's permissiveness.
+
+**HOW:** `splitRootAndChain`'s identifier-then-paren branch
+(`packages/editor/src/ir/parseStrudel.ts:2521-2531`) calls
+`skipWhitespaceAndLineComments(expr, i)` between the identifier scan
+(pS:2523) and the `(` check (pS:2526); the consumed whitespace is
+included inside the returned `root` slice so `parseRoot`'s already-
+tolerant `\s*\(` regex arms (sMatch / noteMatch / miniMatch /
+looseMatch) match downstream. When no `(` follows the whitespace, `i`
+is restored to the identifier boundary (`afterIdent`) so bare-
+identifier roots (`let x = sine`) behave exactly as before. Single
+function change; no new IR shape; no new state.
+
+**NEW BOUNDARY CLASS for the PV49 substrate:** The 4 prior PV49
+callers operated at INTER-TOKEN-WITHIN-CHAIN-OR-ARGS boundaries:
+
+| pS line | Caller | Boundary class |
+|---|---|---|
+| 463 | `splitTopLevelStatements` | leading-dot chain continuation peek |
+| 1560 | `extractTracks` label scan | post-`$:` whitespace peek |
+| 1714 | `applyChain` inter-method consume | between `.method()` chain calls |
+| 2676 | `splitArgsWithOffsets` | between function args |
+
+The new 5th caller at `splitRootAndChain` (pS:2521-2531) operates at
+the CALL-SITE BOUNDARY ITSELF — the canonical idiomatic shape
+`ident WS (`. This is a structural extension of PV49's domain; the
+substrate now serves 5 distinct boundary classes within the parser.
+The growing surface area of callers is itself a substrate-strength
+indicator.
+
+**Loc-additivity carries by construction (R-5 grounded):** the
+consumed whitespace is included in the returned root slice
+(`parseStrudel.ts:2535`); the original source string is never
+mutated; remaining offsets are unchanged. The byte-additive nature of
+`skipWhitespaceAndLineComments` (it returns a NEW position, doesn't
+modify `src`) means PV49 invariant holds without proof — the V-3
+cross-wave per-file loc-fidelity STOP gate observationally confirms
+(154 insertions / 0 removals across 4 commits; zero pre-existing
+fixture's snapshot moved).
+
+**REF (20-20):** `packages/editor/src/ir/parseStrudel.ts:2521-2531`
+(the surgical edit); `parseStrudel.ts:1075-1094`
+(`skipWhitespaceAndLineComments` definition + signature
+`(src: string, pos: number): number`); `parseStrudel.ts:1347`
+(`parseRoot.sMatch` regex — the receiving end of the consumed-
+whitespace-inside-root slice); `~/.anvideck/projects/struCode/ref/
+GROUND_TRUTH_SIGNAL_MJS.md` "Parser/Evaluator Pipeline" section
+(the upstream `acorn.parse` + `Function(body)()` grounding);
+`packages/app/tests/parity-corpus/bakery-159-tokenizer-whitespace.strudel`
++ `bakery-159-NEGATIVE-no-whitespace.strudel` (the per-class
+permanent regression coverage with byte-additivity-locked snapshots);
+`.planning/phases/20-musician-timeline/20-20-OBSERVATIONS.md` (the
+Wave-0 5-cell probe + Wave-A strict-widen/false-positive/exemplar
+round-trip + V-1 per-row diff + V-3 STOP gate verbatim records);
+`.planning/phases/20-musician-timeline/20-20-SUMMARY.md` (the phase
+close-out).
+
+---
+
+## PV54 (20-20 explicit NOT-triggered note)
+
+Phase 20-20 ships a PV49-EXTENSION (a new 5th caller of the
+`skipWhitespaceAndLineComments` substrate at a new boundary class)
+but does NOT introduce a NEW TOP-LEVEL PatternIR TAG. The 20-18
+`Signal` / `Builder` additive tags are unchanged; no new tag enters
+the discriminated union; no new `switch(tag)` arm is required at any
+consumer site.
+
+**PV54 obligation NOT TRIGGERED this phase.** The 11-site FLOOR-grep
+audit (`toStrudel.ts:20, serialize.ts:81, collect.ts:257+431,
+IRInspectorChrome.ts:19+102, irProjection.ts:42+73+190+333+438`)
+that would fire on a tag-additive change is DORMANT for 20-20. The
+fix is purely walker-tolerance inside an existing parser function
+(`splitRootAndChain`); it has no IR-shape consequence except by
+flipping which expressions reach the existing structured recogniser
+arms via the inherited `sMatch` / `noteMatch` / `miniMatch` /
+`looseMatch` regexes at `pS:1347+`.
+
+The PV53/PV54 consumer-audit obligation will fire again the next
+time a tag-additive phase ships. For #153 (deferred to a future
+phase per Outcome 1) the GROUNDED upstream LAST-WINS verdict at
+`@strudel/transpiler@1.2.6 transpiler.mjs:198-204` shows that the
+IR-shape change is at MOST a `finalExpr` selection change (the LAST
+non-binding stmt instead of the first) — NOT a new top-level tag.
+The expected disposition: PV54 stays dormant for #153 too.
+
+**REF (20-20 NOT-triggered confirmation):** `packages/editor/src/ir/
+PatternIR.ts` (the discriminated union — UNCHANGED this phase, `git
+diff HEAD~6..HEAD packages/editor/src/ir/PatternIR.ts` = empty);
+`.planning/phases/20-musician-timeline/20-20-PLAN.md` (PV54 NOT-
+triggered notes at lines 67-72 + 528-529 (R-5 §6.2 cross-ref) +
+767); `.planning/phases/20-musician-timeline/20-20-SUMMARY.md` (the
+PV54 NOT-triggered confirmation under "Catalogue updates"
+frontmatter).
