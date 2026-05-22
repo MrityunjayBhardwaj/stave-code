@@ -55,9 +55,20 @@ const SUPABASE_BASE = 'https://pidxdsxphlhzjnzmifth.supabase.co'
 
 const args = process.argv.slice(2)
 let N = 50
+// OFFSET (2026-05-22): the pull was historically pinned at offset 0, so every
+// measurement across the 20-1x parity cadence sampled the SAME hash-ascending
+// first ~N rows — a fixed WINDOW, not the distribution. A 2026-05-22 N=500
+// sweep measured the TRUE real-world parity at 90.4% (vs 100% on the offset=0
+// window). `--offset M` lets a maintainer measure any window; stepping
+// `--offset 0,N,2N,…` (or a single large `--n`) sweeps the distribution. The
+// artifact stamp records the offset so runs at different windows don't collide.
+let OFFSET = 0
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--n' && args[i + 1]) {
     N = Number(args[i + 1])
+    i++
+  } else if (args[i] === '--offset' && args[i + 1]) {
+    OFFSET = Number(args[i + 1])
     i++
   }
 }
@@ -78,13 +89,14 @@ async function resolveUpstream() {
   return { column: colM[1], anonKey: keyM[1] }
 }
 
-async function fetchSamples(anonKey, column, n) {
+async function fetchSamples(anonKey, column, n, offset) {
   // PostgREST: public rows only, paged. We over-fetch slightly then trim,
   // because some rows are empty / whitespace-only and don't count as a
-  // measurable sample.
+  // measurable sample. `offset` selects the distribution window (default 0;
+  // historically the ONLY window measured — see the OFFSET note above).
   const url =
     `${SUPABASE_BASE}/rest/v1/code_v1?public=eq.true&select=hash,${column}` +
-    `&order=hash.asc&limit=${n * 2}&offset=0`
+    `&order=hash.asc&limit=${n * 2}&offset=${offset}`
   const res = await fetch(url, {
     headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
   })
@@ -106,11 +118,12 @@ async function main() {
   console.log('# parity:bakery — real-world Bakery parity (20-15 D-03)')
   console.log(`# upstream pin:  ${UPSTREAM_SHA}`)
   console.log(`# target N:      ${N}`)
+  console.log(`# offset window: ${OFFSET}${OFFSET === 0 ? ' (default — the historically-pinned window; NOT the full distribution)' : ''}`)
   console.log('')
 
   const { column, anonKey } = await resolveUpstream()
   console.log(`# resolved body column (R5): "${column}"`)
-  const { samples, rawCount } = await fetchSamples(anonKey, column, N)
+  const { samples, rawCount } = await fetchSamples(anonKey, column, N, OFFSET)
   console.log(`# Supabase returned ${rawCount} rows; ${samples.length} non-empty samples`)
   if (samples.length === 0) throw new Error('No non-empty samples — refusing to report a %')
 
@@ -126,9 +139,9 @@ async function main() {
   // Persist the FRESH pull as the dated/SHA'd reproducible artifact
   // BEFORE classifying (so a classifier crash still leaves the raw data).
   await fs.mkdir(runsDir, { recursive: true })
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const stamp = `${OFFSET === 0 ? '' : `offset${OFFSET}-`}${new Date().toISOString().replace(/[:.]/g, '-')}`
   const samplesPath = path.join(runsDir, `samples-${stamp}.json`)
-  await fs.writeFile(samplesPath, JSON.stringify({ stamp, UPSTREAM_SHA, column, samples }, null, 2))
+  await fs.writeFile(samplesPath, JSON.stringify({ stamp, UPSTREAM_SHA, column, offset: OFFSET, samples }, null, 2))
 
   // Classify through the PURE parseStrudel. The parser source path import
   // only works under vite-node (the @stave/editor barrel crashes
