@@ -2263,3 +2263,64 @@ the capture creates a new IR projection layer.
   section)
 - `.planning/phases/20-musician-timeline/20-21-SUMMARY.md` (the PV54
   NOT-triggered confirmation under "Catalogue updates")
+
+## PV55 — A real-world coverage % must be measured against a distribution sample, never a fixed-offset window
+
+**Claim:** any metric that claims to describe behaviour "across the
+wild" (real-world parity %, crash-free rate, the fraction of community
+code that parses) MUST be computed from a sample that varies across the
+distribution — multiple windows, a randomized draw, or a large single
+page — NEVER from a deterministic fixed slice (`ORDER BY x LIMIT n
+OFFSET 0`, the first n files alphabetically, a fixed seed). A fixed
+slice is a WINDOW; its % describes the window, not the population. The
+harness that computes the metric MUST expose the sampling parameter
+(offset / seed / N) so the distribution is measurable — a metric you
+can only compute one way is a metric you cannot trust.
+
+**Why:** a deterministic pull re-reads the same rows every run, so the
+metric is stable but unrepresentative. Gap classes outside the window
+are invisible — including classes previously marked "closed" against a
+fixed-window exemplar (the #141/#140 binding-ref class was closed, then
+found at 50% of fallbacks once the window moved). Optimizing the visible
+window to a milestone (100%) produces a false "done" signal; the real
+distribution coverage can be 10+ points lower (Stave: 100% window vs
+90.4% N=500).
+
+**Span:** the parity-bakery harness (`packages/app/scripts/parity-
+bakery.mjs`) + every downstream claim of "real-world parity is X%" in
+SUMMARY docs, memory, and roadmap decisions. Any future coverage metric
+(test-corpus pass rate, fuzz crash-free %, etc.) inherits this
+invariant.
+
+**Maintained by:** (1) the `--offset` parameter on parity-bakery.mjs
+(merged PR #166) — the run header flags offset=0 as "the historically-
+pinned window; NOT the full distribution"; (2) the discipline that any
+"parity is X%" claim cites N + the sampling method (window vs sweep vs
+random) — a bare "100%" with no sampling provenance is suspect; (3) the
+sweep practice: step `--offset 0,N,2N,…` or pull a large single page,
+report aggregate + per-window spread.
+
+**Breaks when:** (a) a coverage % is reported from a single fixed window
+without sampling provenance (the 2026-05-22 finding — six phases of
+"parity %" were all offset=0); (b) a "resample" that returns identical
+rows is mistaken for distribution validation (it only proves
+determinism); (c) a single random draw is treated as the distribution
+(one draw has variance — a low draw reads as regression, a high draw
+re-inflates false confidence).
+
+**Sister invariant:** the 20-14 Bakery reality check ("curated-corpus
+parity over-states real-world parity ~2:1") is the SAME claim at the
+curated-vs-wild sample layer. PV55 generalizes it: ANY fixed sample
+over-states distribution coverage. Pairs with hetvabhasa **P71**
+(fixed-window measurement over-states distribution coverage — the error
+pattern PV55 is the invariant-defense against).
+
+**REF:**
+- `packages/app/scripts/parity-bakery.mjs` (the `--offset` sweep
+  parameter; PR #166, commit `6131e5f`, on main `7ebcef7`)
+- https://github.com/MrityunjayBhardwaj/stave-code/issues/165 (the
+  N=500 distribution finding: 90.4% true vs 100% window; ranked
+  gap-class backlog)
+- `memory/project_phase_20_musician_timeline.md` (the corrected 90.4%
+  distribution number + the harness-blind-spot lesson)
+- hetvabhasa P71 (the paired error pattern)
