@@ -579,32 +579,6 @@ declare function parseMini(input: string, isSample?: boolean, baseOffset?: numbe
  * Unsupported fragments fall back to Code nodes (never throws).
  */
 
-/**
- * Phase 20-17 G3 (D-02 CORRECTION) — classify a STRICT bare-literal RHS
- * and return a structured `Code.via = {literal:true; raw}` node, or `null`.
- *
- * STRICT scope (the matcher line — LOCKED per CONTEXT D-02 CORRECTION
- * 2026-05-19): ONLY bare literals match:
- *   - number:               `^-?\d+(\.\d+)?$`
- *   - plain double-quoted:  `^"[^"]*"$`
- *   - plain single-quoted:  `^'[^']*'$`
- *
- * `4 + 1`, `${}`-template, any expression, any call, any array/object,
- * any concat → `null`. The caller keeps bare Code → the opaque fence
- * (`tag === 'Code' && via === undefined`) fires correctly.
- *
- * SEMANTICS: substitution of a literal is **term-splicing, NEVER
- * evaluation**. `via.raw` is the source text byte-verbatim — `4` stays
- * the string `"4"`, never the number `4`. The byte-exact round-trip is
- * the named acceptance check (`.slow(numChords)` → `.slow(4)` byte-for-byte
- * after Wave E wires the helper into buildBindingMap; code-invariance per
- * P62).
- *
- * This helper is the **provenance source consumed by E-1** — Wave E's
- * bounded fixpoint loop calls it post-parse at each iteration; D-1a ships
- * only the type widen + this named helper, NOT the call site (avoids a
- * throwaway single-pass literal call before the fixpoint restructure).
- */
 declare function classifyLiteralRhs(rhs: string): {
     tag: 'Code';
     code: string;

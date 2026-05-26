@@ -99,10 +99,32 @@ export const __test_wrapAsOpaque = wrapAsOpaque
  *   - number:               `^-?\d+(\.\d+)?$`
  *   - plain double-quoted:  `^"[^"]*"$`
  *   - plain single-quoted:  `^'[^']*'$`
+ *   - enumerated arithmetic: `^NUM(WS op WS NUM)+$` where op ∈ {/ * + -}
+ *     and NUM is the number token above (Phase 20-22 D-02; F3 verbatim).
  *
- * `4 + 1`, `${}`-template, any expression, any call, any array/object,
- * any concat → `null`. The caller keeps bare Code → the opaque fence
- * (`tag === 'Code' && via === undefined`) fires correctly.
+ * ENUMERATED ARITHMETIC GRAMMAR (Phase 20-22 D-02 — the verdict lever):
+ * a STRICT closed token set — number literals joined by exactly the four
+ * operators `/ * + -` with optional inter-token spaces only. This is the
+ * matcher-not-interpreter line: `via.raw` is the source text byte-verbatim
+ * (`172/4` stays the string `"172/4"`, we NEVER compute `43`). Strudel
+ * evaluates the arithmetic natively at runtime. WHY this matters: before
+ * this arm, `classifyLiteralRhs('172/4')` returned `null` → the binding
+ * never left `pending` → `buildBindingMap`'s occurs-check terminal
+ * (`if (pending.size > 0) return null`) bailed the WHOLE binding map → the
+ * entire program bareCoded EVEN IF the binding was unreferenced. Admitting
+ * arithmetic clears `pending`, the map builds, the program structures.
+ *
+ * EXPLICITLY OUT (stays `null` → graceful bare Code, never widened —
+ * the P70 / #140 γ-4 scope-creep-into-interpreter trap): parens `(1+2)/3`,
+ * calls `foo(2)`, operand identifiers `bpm/2`, `${}`-templates, operators
+ * not in the set (`**` `%` `<<`), leading/trailing op, empty. Each falls
+ * through to `null`. The grammar is CLOSED (no recursion, no idents, no
+ * calls) — admitting any of those would be the interpreter trap.
+ *
+ * `4 + 1` now matches (arithmetic arm); `${}`-template, any call, any
+ * array/object, any concat, any operand-ident → `null`. The caller keeps
+ * bare Code → the opaque fence (`tag === 'Code' && via === undefined`)
+ * fires correctly.
  *
  * SEMANTICS: substitution of a literal is **term-splicing, NEVER
  * evaluation**. `via.raw` is the source text byte-verbatim — `4` stays
@@ -116,6 +138,18 @@ export const __test_wrapAsOpaque = wrapAsOpaque
  * only the type widen + this named helper, NOT the call site (avoids a
  * throwaway single-pass literal call before the fixpoint restructure).
  */
+/**
+ * Phase 20-22 D-02 — the enumerated-arithmetic grammar (F3 verbatim).
+ * Module-level consts so they compile once AND give the P68 dist/ grep a
+ * stable literal anchor (`ARITH_RHS`). NUM is the existing number token;
+ * ARITH_RHS requires AT LEAST ONE operator (a lone number already matches
+ * the existing `^-?\d+(\.\d+)?$` arm). Operators are EXACTLY `/ * + -`;
+ * parens / calls / idents are structurally impossible to match (no `(`,
+ * no letters) → graceful `null`.
+ */
+const NUM = String.raw`-?\d+(?:\.\d+)?`
+const ARITH_RHS = new RegExp(`^${NUM}(?:[ \\t]*[/*+\\-][ \\t]*${NUM})+$`)
+
 export function classifyLiteralRhs(
   rhs: string,
 ): { tag: 'Code'; code: string; lang: 'strudel'; via: { literal: true; raw: string } } | null {
@@ -123,7 +157,12 @@ export function classifyLiteralRhs(
   const isNum = /^-?\d+(\.\d+)?$/.test(t)
   const isDq = /^"[^"]*"$/.test(t)
   const isSq = /^'[^']*'$/.test(t)
-  if (!(isNum || isDq || isSq)) return null
+  // Phase 20-22 D-02: the enumerated-arithmetic arm. Same `{literal:true;
+  // raw}` node shape (no new union arm → PV52 obligation not newly
+  // triggered). `raw` = the trimmed source VERBATIM (matcher, not
+  // interpreter — we never evaluate `172/4` to `43`).
+  const isArith = ARITH_RHS.test(t)
+  if (!(isNum || isDq || isSq || isArith)) return null
   return { tag: 'Code', code: t, lang: 'strudel', via: { literal: true, raw: t } }
 }
 
