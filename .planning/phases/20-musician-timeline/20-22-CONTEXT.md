@@ -1,12 +1,57 @@
 ---
 phase: 20-22
 created: 2026-05-25T14:17:59Z
+amended: 2026-05-26 (research falsified the dominant-lever premise — see AMENDMENT)
 decisions: 3
 target_issues: [141, 140]
 parity_baseline: "90.4% true distribution (N=500, offset 0, pin f73b3956)"
 ---
 
-# Phase 20-22 Context — #141/#140 binding-ref outside `stack()`-bare-arg
+# Phase 20-22 Context — #141/#140 binding-ref (REFRAMED post-research)
+
+## AMENDMENT (2026-05-26) — the "24-fallback dominant lever" premise is STALE (P70/PK18)
+
+The researcher RAN the repros through `parseStrudel` on current main
+`7ebcef7` (Lokāyata gate, not the #165 label). Observed:
+
+- **All 4 CONTEXT-named repros already STRUCTURE** — the 20-17/20-18
+  machinery (fixpoint binding map, Signal/Builder root recogniser,
+  `cpm`/`arrange`/`chord` arms) already lifted them past the bareCode
+  fence. The #165 "24 (50%) → ~95.2%" figure was measured at an EARLIER
+  SHA.
+- **Current main: binding-class = 8 fallbacks, not 24.** The other 40 of
+  48 are non-binding (#142 samples-obj-lit, #143 guarded-boot, `function`
+  decls, `await initHydra`, deliberate arrow-fn). The 8 are
+  HETEROGENEOUS — several need MULTIPLE fixes (arithmetic + samples-obj-lit,
+  or trailing-comment + builder-root RHS) to flip.
+- **D-01 (textual substitution) is NOT verdict-flipping** — those programs
+  already structure; `.slow(n)`→`args="n"` is a round-trip / code-invariance
+  FIDELITY loss, not a Code-fallback. (Leaner than planned: the raw text
+  already lives in the resolved node's `via.raw` — no new map shape, no PV52
+  ripple. F1 option iii.)
+- **D-02 (arithmetic widen) IS the verdict lever — different mechanism.**
+  `let bpm=172/4` → `classifyLiteralRhs`→null → binding never resolves →
+  `buildBindingMap` occurs-check terminal returns null → **whole program
+  bareCodes, even if `bpm` is unreferenced** (`parseStrudel.ts:653`). One
+  unresolvable arithmetic binding sinks everything. Directly targets ~3 of
+  the 8 rows.
+
+**USER RE-DECISION (2026-05-26): Reframe & plan the smaller phase (Path A
+retained).** Realistic parity gain is <1pp, NOT ~5pp. The phase value is
+two genuine correctness/fidelity wins:
+1. **D-02 occurs-check fix** — a whole-program-sinking bug, valuable
+   regardless of parity %.
+2. **D-01 round-trip fidelity** — the code-invariance the debugger /
+   bidirectional-editing thesis (PV38) needs.
+
+Decisions D-01/D-02 mechanism stay as locked below; **D-03's TARGET is
+amended** (see D-03) — the gate anchors on the arithmetic exemplar
+flipping + zero per-slice regression, NOT a ~95% aggregate target (the
+expected <1pp movement is within multi-slice measurement noise; aggregate
+% is must-not-regress only). OUT-of-scope residuals (mixed-mechanism
+builder-root rows `19iySfKDfQK5`/`-fCGl4WEIQJD`, standalone-setter
+shape-fence `1fsSfbWlzbJo`) stay backlog — do NOT chase (P70 scope
+discipline).
 
 ## Strategic frame
 
@@ -85,12 +130,23 @@ target gate.
 **Rationale:** The offset=0 N=50 window is a dead measurement (P71/PV55).
 A multi-offset sweep is the faithful application of P71's "sweep, don't
 fix-window" lesson — genuine distribution coverage across three
-non-overlapping slices (offset 0 = 100%/92%-ish historically, 100 =
-92%, 250 = 84% per the #165 spot checks, so the blended baseline is
-well below 100% and movement is real). Per-slice + blended numbers both
-recorded in the artifact. Dual gate, no bar-lowering: production
-exemplar(s) STRUCTURED **AND** the blended sweep improves over the
-recorded baseline with zero per-slice regression.
+non-overlapping slices (offset 0 / 100 / 250 on `hash.asc`, ~150 blended
+rows, pin `f73b3956`). Per-slice + blended numbers both recorded in the
+artifact.
+
+**TARGET AMENDED (2026-05-26):** the dual gate is —
+1. **crit-1 (HARD, the verdict anchor):** the arithmetic-RHS exemplar
+   `1APcTv7DyEkW` (`let bpm=172/4`) flips bareCode → structured (RUN
+   assertion); plus the isolated unreferenced case `let bpm=172/4;
+   stack(s("bd"))` flips (proves the occurs-check-terminal fix, not a
+   ref-site fix); plus a D-01 round-trip fixture asserts `.slow(n)` with
+   `var n=4` emits `args="4"` not `"n"`.
+2. **crit-2 (must-not-regress ONLY):** blended-150 sweep shows **ZERO
+   per-slice regression**. Aggregate improvement is NOT gated — the
+   expected <1pp movement (~3 arithmetic rows of 500) is within
+   multi-slice noise; a slice going DOWN is a STOP-and-diagnose signal,
+   a slice staying flat is acceptable. **Do NOT bar-lower; do NOT chase
+   aggregate % by pulling in OUT-of-scope rows.**
 
 ## Scope Boundary
 
