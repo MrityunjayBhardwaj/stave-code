@@ -2324,3 +2324,49 @@ pattern PV55 is the invariant-defense against).
 - `memory/project_phase_20_musician_timeline.md` (the corrected 90.4%
   distribution number + the harness-blind-spot lesson)
 - hetvabhasa P71 (the paired error pattern)
+
+---
+
+## PV49/PV53 addendum (20-22, CANDIDATE) — textual raw-RHS substitution may target ONLY value-operands + round-trip via.args, NEVER a loc-bearing re-parse at the use site
+
+**STATUS:** CANDIDATE (single occurrence — promote to a full PV on
+recurrence per dharana-spec; for now this addendum + memory carry it).
+
+**ORIGIN:** Phase 20-22 Wave B (#141 D-01). The `substituteBoundIdentInArg`
+primitive replaces a bound-literal ident in a method arg with the binding's
+raw RHS text (`via.raw`). The F2 pre-mortem (RESEARCH §F2) named the precise
+loc-fidelity hazard: a naive `args.replace(ident, raw)` re-parsed with
+use-site offsets computes every derived `loc` against a string that no
+longer matches the user's source ("right tokens, wrong absolute index").
+
+**WHY:** without this fence, textual substitution silently breaks PV49
+loc-additivity — the IR-shape snapshot stays green (it strips loc) while
+runtime click-to-source / highlight-on-event drifts. The loc-fidelity
+snapshot is the only gate that catches it. Removing the fence reopens the
+exact 20-15/20-16 silent-loc-drift class.
+
+**HOW:** the primitive's output is consumed in EXACTLY TWO loc-safe
+positions:
+  (1) numeric value operands of recognised arms (`parseFloat`/`parseInt`)
+      — the parsed scalar carries NO loc; the tag's loc is the unchanged
+      `callSiteRange`; the substituted text NEVER becomes a loc anchor; and
+  (2) the `wrapAsOpaque` round-trip `via.args` string — a code-invariance
+      string, NOT a loc anchor (`callSiteRange` is computed independently
+      of `args` at the pre-applyMethod call-site).
+It is FORBIDDEN at position (3): routing a substituted string into a
+loc-bearing mini-notation re-parse at the use site. String→mini-leaf cases
+(`n(stringBinding)`) ALREADY structure via the existing subtree splice
+(parseStrudel.ts:1131/1248/1430) — that path carries the DEFINITION-SITE
+loc and is left untouched.
+
+**OBSERVED (the proof the fence held):** after wiring, the loc-fidelity
+snapshot over all 50 pre-existing fixtures showed ZERO `"text"` field
+changes — only tag-name changes (`Code`→`Slow`). Every
+`src.slice(loc.start, loc.end)` still byte-matched the original source.
+The empty-`"text"`-diff is the authoritative STOP gate for this class.
+
+**REF:** PV49 (loc-additivity substrate), PV53 (binding substitution =
+optional-arg threading + bounded fixpoint), PV52 (the `'literal' in via`
+discriminated-union guard the primitive's single new `bindings.get()`
+reader honors), hetvabhasa P70/PK18 (cascade discipline — the F2 fence
+was anticipated, not rediscovered through failure).
