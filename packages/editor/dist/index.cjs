@@ -4671,6 +4671,18 @@ function classifyLiteralRhs(rhs) {
   return { tag: "Code", code: t, lang: "strudel", via: { literal: true, raw: t } };
 }
 __name(classifyLiteralRhs, "classifyLiteralRhs");
+function substituteBoundIdentInArg(args2, bindings) {
+  if (!bindings) return args2;
+  const t = args2.trim();
+  if (!/^[A-Za-z_$][\w$]*$/.test(t)) return args2;
+  const node = bindings.get(t);
+  if (!node) return args2;
+  if (node.tag === "Code" && node.via !== void 0 && "literal" in node.via) {
+    return node.via.raw;
+  }
+  return args2;
+}
+__name(substituteBoundIdentInArg, "substituteBoundIdentInArg");
 function stripParserPrelude(code) {
   const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
   const GUARDED_BOOT_RE = /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/;
@@ -5332,21 +5344,22 @@ function applyChain(ir, chain, baseOffset = 0, bindings) {
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], bindings) {
+  const subbedArgs = substituteBoundIdentInArg(args2, bindings);
   switch (method) {
     case "fast": {
-      const n = parseFloat(args2.trim());
+      const n = parseFloat(subbedArgs.trim());
       if (!isNaN(n)) return IR.fast(n, ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "slow": {
-      const n = parseFloat(args2.trim());
+      const n = parseFloat(subbedArgs.trim());
       if (!isNaN(n)) return IR.slow(n, ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "every": {
       const [nStr, transformStr] = splitFirstArg(args2);
       const n = parseInt(nStr.trim(), 10);
-      if (isNaN(n)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(n)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.every(n, transform, ir, tagMeta(method, callSiteRange));
@@ -5358,7 +5371,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "sometimesBy": {
       const [pStr, transformStr] = splitFirstArg(args2);
       const p = parseFloat(pStr.trim());
-      if (isNaN(p)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(p)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.choice(p, transform, ir, tagMeta(method, callSiteRange));
@@ -5366,11 +5379,11 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "mask": {
       const gateMatch = args2.trim().match(/^"([^"]*)"$/);
       if (gateMatch) return IR.when(gateMatch[1], ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "layer": {
       const argList = splitArgs(args2);
-      if (argList.length === 0) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (argList.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const tracks = [];
       for (const funcStr of argList) {
         const trimmed = funcStr.trim();
@@ -5393,7 +5406,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "chunk": {
       const [nStr, transformStr] = splitFirstArg(args2);
       const n = parseInt(nStr.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange));
@@ -5402,13 +5415,13 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       return IR.degrade(0.5, ir, tagMeta(method, callSiteRange));
     }
     case "degradeBy": {
-      const amount = parseFloat(args2.trim());
-      if (isNaN(amount)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const amount = parseFloat(subbedArgs.trim());
+      if (isNaN(amount)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.degrade(1 - amount, ir, tagMeta(method, callSiteRange));
     }
     case "late": {
-      const t = parseFloat(args2.trim());
-      if (isNaN(t)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const t = parseFloat(subbedArgs.trim());
+      if (isNaN(t)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.late(t, ir, tagMeta(method, callSiteRange));
     }
     case "jux": {
@@ -5427,14 +5440,14 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "ply": {
       const trimmed = args2.trim();
       const n = Number(trimmed);
-      if (!Number.isInteger(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (!Number.isInteger(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       if (n === 1) return ir;
       return IR.ply(n, ir, tagMeta(method, callSiteRange));
     }
     case "off": {
       const [tStr, transformStr] = splitFirstArg(args2);
       const t = parseFloat(tStr.trim());
-      if (isNaN(t)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(t)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const tStartAbs = offsetOfSubArg(args2, tStr.trim(), baseOffset);
       const tEndAbs = tStartAbs + tStr.trim().length;
       const lateBody = IR.late(t, ir, {
@@ -5465,16 +5478,16 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "resonance":
     case "lpf":
     case "hpf": {
-      const val = parseFloat(args2.trim());
+      const val = parseFloat(subbedArgs.trim());
       if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "pick": {
       const inner = args2.trim();
-      if (!(inner.startsWith("[") && inner.endsWith("]"))) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (!(inner.startsWith("[") && inner.endsWith("]"))) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const arrayBody = inner.slice(1, -1);
       const elements = splitArgs(arrayBody);
-      if (elements.length === 0) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (elements.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const arrayBodyOffsetInArgs = args2.indexOf("[") + 1;
       const arrayBodyOffset = arrayBodyOffsetInArgs >= 1 ? baseOffset + arrayBodyOffsetInArgs : baseOffset;
       const lookup = elements.map((e) => {
@@ -5486,26 +5499,26 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "struct": {
       const gateMatch = args2.trim().match(/^"([^"]*)"$/);
       if (gateMatch) return IR.struct(gateMatch[1], ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "swing": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.swing(n, ir, tagMeta(method, callSiteRange));
     }
     case "shuffle": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.shuffle(n, ir, tagMeta(method, callSiteRange));
     }
     case "scramble": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.scramble(n, ir, tagMeta(method, callSiteRange));
     }
     case "chop": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.chop(n, ir, tagMeta(method, callSiteRange));
     }
     case "p": {
@@ -5515,7 +5528,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       );
       const name2 = strMatch?.[1] ?? strMatch?.[2];
       if (!name2) {
-        return wrapAsOpaque(ir, method, args2, callSiteRange);
+        return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
       return IR.track(name2, ir, tagMeta(method, callSiteRange));
     }
@@ -5533,15 +5546,15 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       const isSampleKey = method === "s" || method === "bank" || method === "scale";
       const parsed = parseParamArg(args2, isSampleKey, baseOffset);
       if (!parsed) {
-        return wrapAsOpaque(ir, method, args2, callSiteRange);
+        return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
       if (method === "freq" && typeof parsed.value !== "number") {
-        return wrapAsOpaque(ir, method, args2, callSiteRange);
+        return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
       return IR.param(method, parsed.value, args2, ir, tagMeta(method, callSiteRange));
     }
     default:
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
   }
 }
 __name(applyMethod, "applyMethod");
