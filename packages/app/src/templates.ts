@@ -418,12 +418,9 @@ function makeStarterFiles(): TemplateFile[] {
       content: STRUDEL_CODE,
       language: "strudel",
     },
-    {
-      id: "pattern.sonicpi",
-      path: "preset/music/pattern.sonicpi",
-      content: SONIC_PI_CODE,
-      language: "sonicpi",
-    },
+    // NOTE: the Sonic Pi preset file is intentionally omitted from this build —
+    // its engine (sibling sonicPiWeb repo) is not vendored yet (#171). Re-add
+    // when sonicPiWeb ships as a package.
     // Viz presets — p5
     {
       id: workspaceFileIdForPreset(p5Id),
@@ -491,7 +488,7 @@ export const TEMPLATES: ProjectTemplate[] = [
     id: "starter",
     name: "Starter",
     description:
-      "The full workspace — Strudel, Sonic Pi, p5.js, and Hydra files. Best for exploring.",
+      "The full workspace — Strudel, p5.js, and Hydra files. Best for exploring.",
     icon: "✨",
     files: [], // filled lazily via getTemplateFiles
   },
@@ -502,13 +499,7 @@ export const TEMPLATES: ProjectTemplate[] = [
     icon: "🎵",
     files: [],
   },
-  {
-    id: "sonicpi",
-    name: "Sonic Pi Sketch",
-    description: "Just a Sonic Pi live-loop file. Imperative play/sleep.",
-    icon: "🥁",
-    files: [],
-  },
+  // Sonic Pi template hidden in this build — engine not vendored yet (#171).
   {
     id: "hydra",
     name: "Hydra Visual",

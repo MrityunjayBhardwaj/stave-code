@@ -32,41 +32,12 @@ var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
 
-var __create = Object.create;
 var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
-var __commonJS = (cb, mod) => function __require2() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  __defProp(target, "default", { value: mod, enumerable: true }) ,
-  mod
-));
 
 // src/engine/vendored/piano.ts
 var piano_exports = {};
@@ -82,2953 +53,6 @@ var init_piano = __esm({
         return { ...value, pan: (value.pan || 1) * pan };
       });
     };
-  }
-});
-
-// ../../../sonicPiWeb/node_modules/web-tree-sitter/tree-sitter.js
-var require_tree_sitter = __commonJS({
-  "../../../sonicPiWeb/node_modules/web-tree-sitter/tree-sitter.js"(exports$1, module) {
-    var Module = typeof Module != "undefined" ? Module : {};
-    var ENVIRONMENT_IS_WEB = typeof window == "object";
-    var ENVIRONMENT_IS_WORKER = typeof importScripts == "function";
-    var ENVIRONMENT_IS_NODE = typeof process == "object" && typeof process.versions == "object" && typeof process.versions.node == "string";
-    var TreeSitter = (function() {
-      var initPromise;
-      var document = typeof window == "object" ? {
-        currentScript: window.document.currentScript
-      } : null;
-      const _Parser = class _Parser {
-        constructor() {
-          this.initialize();
-        }
-        initialize() {
-          throw new Error("cannot construct a Parser before calling `init()`");
-        }
-        static init(moduleOptions) {
-          if (initPromise) return initPromise;
-          Module = Object.assign({}, Module, moduleOptions);
-          return initPromise = new Promise((resolveInitPromise) => {
-            var moduleOverrides = Object.assign({}, Module);
-            var arguments_ = [];
-            var thisProgram = "./this.program";
-            var quit_ = /* @__PURE__ */ __name((status, toThrow) => {
-              throw toThrow;
-            }, "quit_");
-            var scriptDirectory = "";
-            function locateFile(path) {
-              if (Module["locateFile"]) {
-                return Module["locateFile"](path, scriptDirectory);
-              }
-              return scriptDirectory + path;
-            }
-            __name(locateFile, "locateFile");
-            var readAsync, readBinary;
-            if (ENVIRONMENT_IS_NODE) {
-              var fs = __require("fs");
-              var nodePath = __require("path");
-              scriptDirectory = __dirname + "/";
-              readBinary = /* @__PURE__ */ __name((filename) => {
-                filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
-                var ret = fs.readFileSync(filename);
-                return ret;
-              }, "readBinary");
-              readAsync = /* @__PURE__ */ __name((filename, binary2 = true) => {
-                filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
-                return new Promise((resolve, reject) => {
-                  fs.readFile(filename, binary2 ? void 0 : "utf8", (err2, data) => {
-                    if (err2) reject(err2);
-                    else resolve(binary2 ? data.buffer : data);
-                  });
-                });
-              }, "readAsync");
-              if (!Module["thisProgram"] && process.argv.length > 1) {
-                thisProgram = process.argv[1].replace(/\\/g, "/");
-              }
-              arguments_ = process.argv.slice(2);
-              if (typeof module != "undefined") {
-                module["exports"] = Module;
-              }
-              quit_ = /* @__PURE__ */ __name((status, toThrow) => {
-                process.exitCode = status;
-                throw toThrow;
-              }, "quit_");
-            } else if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
-              if (ENVIRONMENT_IS_WORKER) {
-                scriptDirectory = self.location.href;
-              } else if (typeof document != "undefined" && document.currentScript) {
-                scriptDirectory = document.currentScript.src;
-              }
-              if (scriptDirectory.startsWith("blob:")) {
-                scriptDirectory = "";
-              } else {
-                scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1);
-              }
-              {
-                if (ENVIRONMENT_IS_WORKER) {
-                  readBinary = /* @__PURE__ */ __name((url) => {
-                    var xhr = new XMLHttpRequest();
-                    xhr.open("GET", url, false);
-                    xhr.responseType = "arraybuffer";
-                    xhr.send(null);
-                    return new Uint8Array(
-                      /** @type{!ArrayBuffer} */
-                      xhr.response
-                    );
-                  }, "readBinary");
-                }
-                readAsync = /* @__PURE__ */ __name((url) => {
-                  if (isFileURI(url)) {
-                    return new Promise((reject, resolve) => {
-                      var xhr = new XMLHttpRequest();
-                      xhr.open("GET", url, true);
-                      xhr.responseType = "arraybuffer";
-                      xhr.onload = () => {
-                        if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
-                          resolve(xhr.response);
-                        }
-                        reject(xhr.status);
-                      };
-                      xhr.onerror = reject;
-                      xhr.send(null);
-                    });
-                  }
-                  return fetch(url, {
-                    credentials: "same-origin"
-                  }).then((response) => {
-                    if (response.ok) {
-                      return response.arrayBuffer();
-                    }
-                    return Promise.reject(new Error(response.status + " : " + response.url));
-                  });
-                }, "readAsync");
-              }
-            } else ;
-            var out = Module["print"] || console.log.bind(console);
-            var err = Module["printErr"] || console.error.bind(console);
-            Object.assign(Module, moduleOverrides);
-            moduleOverrides = null;
-            if (Module["arguments"]) arguments_ = Module["arguments"];
-            if (Module["thisProgram"]) thisProgram = Module["thisProgram"];
-            if (Module["quit"]) quit_ = Module["quit"];
-            var dynamicLibraries = Module["dynamicLibraries"] || [];
-            var wasmBinary;
-            if (Module["wasmBinary"]) wasmBinary = Module["wasmBinary"];
-            var wasmMemory;
-            var ABORT = false;
-            var EXITSTATUS;
-            var HEAP8, HEAPU8;
-            var HEAP_DATA_VIEW;
-            function updateMemoryViews() {
-              var b = wasmMemory.buffer;
-              Module["HEAP_DATA_VIEW"] = HEAP_DATA_VIEW = new DataView(b);
-              Module["HEAP8"] = HEAP8 = new Int8Array(b);
-              Module["HEAP16"] = new Int16Array(b);
-              Module["HEAPU8"] = HEAPU8 = new Uint8Array(b);
-              Module["HEAPU16"] = new Uint16Array(b);
-              Module["HEAP32"] = new Int32Array(b);
-              Module["HEAPU32"] = new Uint32Array(b);
-              Module["HEAPF32"] = new Float32Array(b);
-              Module["HEAPF64"] = new Float64Array(b);
-            }
-            __name(updateMemoryViews, "updateMemoryViews");
-            if (Module["wasmMemory"]) {
-              wasmMemory = Module["wasmMemory"];
-            } else {
-              var INITIAL_MEMORY = Module["INITIAL_MEMORY"] || 33554432;
-              wasmMemory = new WebAssembly.Memory({
-                "initial": INITIAL_MEMORY / 65536,
-                // In theory we should not need to emit the maximum if we want "unlimited"
-                // or 4GB of memory, but VMs error on that atm, see
-                // https://github.com/emscripten-core/emscripten/issues/14130
-                // And in the pthreads case we definitely need to emit a maximum. So
-                // always emit one.
-                "maximum": 2147483648 / 65536
-              });
-            }
-            updateMemoryViews();
-            var __ATPRERUN__ = [];
-            var __ATINIT__ = [];
-            var __ATMAIN__ = [];
-            var __ATPOSTRUN__ = [];
-            var __RELOC_FUNCS__ = [];
-            var runtimeInitialized = false;
-            function preRun() {
-              if (Module["preRun"]) {
-                if (typeof Module["preRun"] == "function") Module["preRun"] = [Module["preRun"]];
-                while (Module["preRun"].length) {
-                  addOnPreRun(Module["preRun"].shift());
-                }
-              }
-              callRuntimeCallbacks(__ATPRERUN__);
-            }
-            __name(preRun, "preRun");
-            function initRuntime() {
-              runtimeInitialized = true;
-              callRuntimeCallbacks(__RELOC_FUNCS__);
-              callRuntimeCallbacks(__ATINIT__);
-            }
-            __name(initRuntime, "initRuntime");
-            function preMain() {
-              callRuntimeCallbacks(__ATMAIN__);
-            }
-            __name(preMain, "preMain");
-            function postRun() {
-              if (Module["postRun"]) {
-                if (typeof Module["postRun"] == "function") Module["postRun"] = [Module["postRun"]];
-                while (Module["postRun"].length) {
-                  addOnPostRun(Module["postRun"].shift());
-                }
-              }
-              callRuntimeCallbacks(__ATPOSTRUN__);
-            }
-            __name(postRun, "postRun");
-            function addOnPreRun(cb) {
-              __ATPRERUN__.unshift(cb);
-            }
-            __name(addOnPreRun, "addOnPreRun");
-            function addOnInit(cb) {
-              __ATINIT__.unshift(cb);
-            }
-            __name(addOnInit, "addOnInit");
-            function addOnPostRun(cb) {
-              __ATPOSTRUN__.unshift(cb);
-            }
-            __name(addOnPostRun, "addOnPostRun");
-            var runDependencies = 0;
-            var dependenciesFulfilled = null;
-            function getUniqueRunDependency(id) {
-              return id;
-            }
-            __name(getUniqueRunDependency, "getUniqueRunDependency");
-            function addRunDependency(id) {
-              runDependencies++;
-              Module["monitorRunDependencies"]?.(runDependencies);
-            }
-            __name(addRunDependency, "addRunDependency");
-            function removeRunDependency(id) {
-              runDependencies--;
-              Module["monitorRunDependencies"]?.(runDependencies);
-              if (runDependencies == 0) {
-                if (dependenciesFulfilled) {
-                  var callback = dependenciesFulfilled;
-                  dependenciesFulfilled = null;
-                  callback();
-                }
-              }
-            }
-            __name(removeRunDependency, "removeRunDependency");
-            function abort(what) {
-              Module["onAbort"]?.(what);
-              what = "Aborted(" + what + ")";
-              err(what);
-              ABORT = true;
-              EXITSTATUS = 1;
-              what += ". Build with -sASSERTIONS for more info.";
-              var e = new WebAssembly.RuntimeError(what);
-              throw e;
-            }
-            __name(abort, "abort");
-            var dataURIPrefix = "data:application/octet-stream;base64,";
-            var isDataURI = /* @__PURE__ */ __name((filename) => filename.startsWith(dataURIPrefix), "isDataURI");
-            var isFileURI = /* @__PURE__ */ __name((filename) => filename.startsWith("file://"), "isFileURI");
-            function findWasmBinary() {
-              var f = "tree-sitter.wasm";
-              if (!isDataURI(f)) {
-                return locateFile(f);
-              }
-              return f;
-            }
-            __name(findWasmBinary, "findWasmBinary");
-            var wasmBinaryFile;
-            function getBinarySync(file) {
-              if (file == wasmBinaryFile && wasmBinary) {
-                return new Uint8Array(wasmBinary);
-              }
-              if (readBinary) {
-                return readBinary(file);
-              }
-              throw "both async and sync fetching of the wasm failed";
-            }
-            __name(getBinarySync, "getBinarySync");
-            function getBinaryPromise(binaryFile) {
-              if (!wasmBinary) {
-                return readAsync(binaryFile).then(
-                  (response) => new Uint8Array(
-                    /** @type{!ArrayBuffer} */
-                    response
-                  ),
-                  // Fall back to getBinarySync if readAsync fails
-                  () => getBinarySync(binaryFile)
-                );
-              }
-              return Promise.resolve().then(() => getBinarySync(binaryFile));
-            }
-            __name(getBinaryPromise, "getBinaryPromise");
-            function instantiateArrayBuffer(binaryFile, imports, receiver) {
-              return getBinaryPromise(binaryFile).then((binary2) => WebAssembly.instantiate(binary2, imports)).then(receiver, (reason) => {
-                err(`failed to asynchronously prepare wasm: ${reason}`);
-                abort(reason);
-              });
-            }
-            __name(instantiateArrayBuffer, "instantiateArrayBuffer");
-            function instantiateAsync(binary2, binaryFile, imports, callback) {
-              if (!binary2 && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(binaryFile) && // Don't use streaming for file:// delivered objects in a webview, fetch them synchronously.
-              !isFileURI(binaryFile) && // Avoid instantiateStreaming() on Node.js environment for now, as while
-              // Node.js v18.1.0 implements it, it does not have a full fetch()
-              // implementation yet.
-              // Reference:
-              //   https://github.com/emscripten-core/emscripten/pull/16917
-              !ENVIRONMENT_IS_NODE && typeof fetch == "function") {
-                return fetch(binaryFile, {
-                  credentials: "same-origin"
-                }).then((response) => {
-                  var result = WebAssembly.instantiateStreaming(response, imports);
-                  return result.then(callback, function(reason) {
-                    err(`wasm streaming compile failed: ${reason}`);
-                    err("falling back to ArrayBuffer instantiation");
-                    return instantiateArrayBuffer(binaryFile, imports, callback);
-                  });
-                });
-              }
-              return instantiateArrayBuffer(binaryFile, imports, callback);
-            }
-            __name(instantiateAsync, "instantiateAsync");
-            function getWasmImports() {
-              return {
-                "env": wasmImports,
-                "wasi_snapshot_preview1": wasmImports,
-                "GOT.mem": new Proxy(wasmImports, GOTHandler),
-                "GOT.func": new Proxy(wasmImports, GOTHandler)
-              };
-            }
-            __name(getWasmImports, "getWasmImports");
-            function createWasm() {
-              var info2 = getWasmImports();
-              function receiveInstance(instance2, module2) {
-                wasmExports = instance2.exports;
-                wasmExports = relocateExports(wasmExports, 1024);
-                var metadata2 = getDylinkMetadata(module2);
-                if (metadata2.neededDynlibs) {
-                  dynamicLibraries = metadata2.neededDynlibs.concat(dynamicLibraries);
-                }
-                mergeLibSymbols(wasmExports, "main");
-                LDSO.init();
-                loadDylibs();
-                addOnInit(wasmExports["__wasm_call_ctors"]);
-                __RELOC_FUNCS__.push(wasmExports["__wasm_apply_data_relocs"]);
-                removeRunDependency();
-                return wasmExports;
-              }
-              __name(receiveInstance, "receiveInstance");
-              addRunDependency();
-              function receiveInstantiationResult(result) {
-                receiveInstance(result["instance"], result["module"]);
-              }
-              __name(receiveInstantiationResult, "receiveInstantiationResult");
-              if (Module["instantiateWasm"]) {
-                try {
-                  return Module["instantiateWasm"](info2, receiveInstance);
-                } catch (e) {
-                  err(`Module.instantiateWasm callback failed with error: ${e}`);
-                  return false;
-                }
-              }
-              if (!wasmBinaryFile) wasmBinaryFile = findWasmBinary();
-              instantiateAsync(wasmBinary, wasmBinaryFile, info2, receiveInstantiationResult);
-              return {};
-            }
-            __name(createWasm, "createWasm");
-            function ExitStatus(status) {
-              this.name = "ExitStatus";
-              this.message = `Program terminated with exit(${status})`;
-              this.status = status;
-            }
-            __name(ExitStatus, "ExitStatus");
-            var GOT = {};
-            var currentModuleWeakSymbols = /* @__PURE__ */ new Set([]);
-            var GOTHandler = {
-              get(obj, symName) {
-                var rtn = GOT[symName];
-                if (!rtn) {
-                  rtn = GOT[symName] = new WebAssembly.Global({
-                    "value": "i32",
-                    "mutable": true
-                  });
-                }
-                if (!currentModuleWeakSymbols.has(symName)) {
-                  rtn.required = true;
-                }
-                return rtn;
-              }
-            };
-            var LE_HEAP_LOAD_F32 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getFloat32(byteOffset, true), "LE_HEAP_LOAD_F32");
-            var LE_HEAP_LOAD_F64 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getFloat64(byteOffset, true), "LE_HEAP_LOAD_F64");
-            var LE_HEAP_LOAD_I16 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getInt16(byteOffset, true), "LE_HEAP_LOAD_I16");
-            var LE_HEAP_LOAD_I32 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getInt32(byteOffset, true), "LE_HEAP_LOAD_I32");
-            var LE_HEAP_LOAD_U32 = /* @__PURE__ */ __name((byteOffset) => HEAP_DATA_VIEW.getUint32(byteOffset, true), "LE_HEAP_LOAD_U32");
-            var LE_HEAP_STORE_F32 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setFloat32(byteOffset, value, true), "LE_HEAP_STORE_F32");
-            var LE_HEAP_STORE_F64 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setFloat64(byteOffset, value, true), "LE_HEAP_STORE_F64");
-            var LE_HEAP_STORE_I16 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setInt16(byteOffset, value, true), "LE_HEAP_STORE_I16");
-            var LE_HEAP_STORE_I32 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setInt32(byteOffset, value, true), "LE_HEAP_STORE_I32");
-            var LE_HEAP_STORE_U32 = /* @__PURE__ */ __name((byteOffset, value) => HEAP_DATA_VIEW.setUint32(byteOffset, value, true), "LE_HEAP_STORE_U32");
-            var callRuntimeCallbacks = /* @__PURE__ */ __name((callbacks) => {
-              while (callbacks.length > 0) {
-                callbacks.shift()(Module);
-              }
-            }, "callRuntimeCallbacks");
-            var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder() : void 0;
-            var UTF8ArrayToString = /* @__PURE__ */ __name((heapOrArray, idx, maxBytesToRead) => {
-              var endIdx = idx + maxBytesToRead;
-              var endPtr = idx;
-              while (heapOrArray[endPtr] && !(endPtr >= endIdx)) ++endPtr;
-              if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
-                return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
-              }
-              var str = "";
-              while (idx < endPtr) {
-                var u0 = heapOrArray[idx++];
-                if (!(u0 & 128)) {
-                  str += String.fromCharCode(u0);
-                  continue;
-                }
-                var u1 = heapOrArray[idx++] & 63;
-                if ((u0 & 224) == 192) {
-                  str += String.fromCharCode((u0 & 31) << 6 | u1);
-                  continue;
-                }
-                var u2 = heapOrArray[idx++] & 63;
-                if ((u0 & 240) == 224) {
-                  u0 = (u0 & 15) << 12 | u1 << 6 | u2;
-                } else {
-                  u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | heapOrArray[idx++] & 63;
-                }
-                if (u0 < 65536) {
-                  str += String.fromCharCode(u0);
-                } else {
-                  var ch = u0 - 65536;
-                  str += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
-                }
-              }
-              return str;
-            }, "UTF8ArrayToString");
-            var getDylinkMetadata = /* @__PURE__ */ __name((binary2) => {
-              var offset = 0;
-              var end = 0;
-              function getU8() {
-                return binary2[offset++];
-              }
-              __name(getU8, "getU8");
-              function getLEB() {
-                var ret = 0;
-                var mul = 1;
-                while (1) {
-                  var byte = binary2[offset++];
-                  ret += (byte & 127) * mul;
-                  mul *= 128;
-                  if (!(byte & 128)) break;
-                }
-                return ret;
-              }
-              __name(getLEB, "getLEB");
-              function getString() {
-                var len = getLEB();
-                offset += len;
-                return UTF8ArrayToString(binary2, offset - len, len);
-              }
-              __name(getString, "getString");
-              function failIf(condition, message) {
-                if (condition) throw new Error(message);
-              }
-              __name(failIf, "failIf");
-              var name2 = "dylink.0";
-              if (binary2 instanceof WebAssembly.Module) {
-                var dylinkSection = WebAssembly.Module.customSections(binary2, name2);
-                if (dylinkSection.length === 0) {
-                  name2 = "dylink";
-                  dylinkSection = WebAssembly.Module.customSections(binary2, name2);
-                }
-                failIf(dylinkSection.length === 0, "need dylink section");
-                binary2 = new Uint8Array(dylinkSection[0]);
-                end = binary2.length;
-              } else {
-                var int32View = new Uint32Array(new Uint8Array(binary2.subarray(0, 24)).buffer);
-                var magicNumberFound = int32View[0] == 1836278016 || int32View[0] == 6386541;
-                failIf(!magicNumberFound, "need to see wasm magic number");
-                failIf(binary2[8] !== 0, "need the dylink section to be first");
-                offset = 9;
-                var section_size = getLEB();
-                end = offset + section_size;
-                name2 = getString();
-              }
-              var customSection = {
-                neededDynlibs: [],
-                tlsExports: /* @__PURE__ */ new Set(),
-                weakImports: /* @__PURE__ */ new Set()
-              };
-              if (name2 == "dylink") {
-                customSection.memorySize = getLEB();
-                customSection.memoryAlign = getLEB();
-                customSection.tableSize = getLEB();
-                customSection.tableAlign = getLEB();
-                var neededDynlibsCount = getLEB();
-                for (var i2 = 0; i2 < neededDynlibsCount; ++i2) {
-                  var libname = getString();
-                  customSection.neededDynlibs.push(libname);
-                }
-              } else {
-                failIf(name2 !== "dylink.0");
-                var WASM_DYLINK_MEM_INFO = 1;
-                var WASM_DYLINK_NEEDED = 2;
-                var WASM_DYLINK_EXPORT_INFO = 3;
-                var WASM_DYLINK_IMPORT_INFO = 4;
-                var WASM_SYMBOL_TLS = 256;
-                var WASM_SYMBOL_BINDING_MASK = 3;
-                var WASM_SYMBOL_BINDING_WEAK = 1;
-                while (offset < end) {
-                  var subsectionType = getU8();
-                  var subsectionSize = getLEB();
-                  if (subsectionType === WASM_DYLINK_MEM_INFO) {
-                    customSection.memorySize = getLEB();
-                    customSection.memoryAlign = getLEB();
-                    customSection.tableSize = getLEB();
-                    customSection.tableAlign = getLEB();
-                  } else if (subsectionType === WASM_DYLINK_NEEDED) {
-                    var neededDynlibsCount = getLEB();
-                    for (var i2 = 0; i2 < neededDynlibsCount; ++i2) {
-                      libname = getString();
-                      customSection.neededDynlibs.push(libname);
-                    }
-                  } else if (subsectionType === WASM_DYLINK_EXPORT_INFO) {
-                    var count = getLEB();
-                    while (count--) {
-                      var symname = getString();
-                      var flags2 = getLEB();
-                      if (flags2 & WASM_SYMBOL_TLS) {
-                        customSection.tlsExports.add(symname);
-                      }
-                    }
-                  } else if (subsectionType === WASM_DYLINK_IMPORT_INFO) {
-                    var count = getLEB();
-                    while (count--) {
-                      getString();
-                      var symname = getString();
-                      var flags2 = getLEB();
-                      if ((flags2 & WASM_SYMBOL_BINDING_MASK) == WASM_SYMBOL_BINDING_WEAK) {
-                        customSection.weakImports.add(symname);
-                      }
-                    }
-                  } else {
-                    offset += subsectionSize;
-                  }
-                }
-              }
-              return customSection;
-            }, "getDylinkMetadata");
-            function getValue(ptr, type = "i8") {
-              if (type.endsWith("*")) type = "*";
-              switch (type) {
-                case "i1":
-                  return HEAP8[ptr];
-                case "i8":
-                  return HEAP8[ptr];
-                case "i16":
-                  return LE_HEAP_LOAD_I16((ptr >> 1) * 2);
-                case "i32":
-                  return LE_HEAP_LOAD_I32((ptr >> 2) * 4);
-                case "i64":
-                  abort("to do getValue(i64) use WASM_BIGINT");
-                case "float":
-                  return LE_HEAP_LOAD_F32((ptr >> 2) * 4);
-                case "double":
-                  return LE_HEAP_LOAD_F64((ptr >> 3) * 8);
-                case "*":
-                  return LE_HEAP_LOAD_U32((ptr >> 2) * 4);
-                default:
-                  abort(`invalid type for getValue: ${type}`);
-              }
-            }
-            __name(getValue, "getValue");
-            var newDSO = /* @__PURE__ */ __name((name2, handle2, syms) => {
-              var dso = {
-                refcount: Infinity,
-                name: name2,
-                exports: syms,
-                global: true
-              };
-              LDSO.loadedLibsByName[name2] = dso;
-              if (handle2 != void 0) {
-                LDSO.loadedLibsByHandle[handle2] = dso;
-              }
-              return dso;
-            }, "newDSO");
-            var LDSO = {
-              loadedLibsByName: {},
-              loadedLibsByHandle: {},
-              init() {
-                newDSO("__main__", 0, wasmImports);
-              }
-            };
-            var ___heap_base = 78112;
-            var zeroMemory = /* @__PURE__ */ __name((address, size) => {
-              HEAPU8.fill(0, address, address + size);
-              return address;
-            }, "zeroMemory");
-            var alignMemory = /* @__PURE__ */ __name((size, alignment) => Math.ceil(size / alignment) * alignment, "alignMemory");
-            var getMemory = /* @__PURE__ */ __name((size) => {
-              if (runtimeInitialized) {
-                return zeroMemory(_malloc(size), size);
-              }
-              var ret = ___heap_base;
-              var end = ret + alignMemory(size, 16);
-              ___heap_base = end;
-              GOT["__heap_base"].value = end;
-              return ret;
-            }, "getMemory");
-            var isInternalSym = /* @__PURE__ */ __name((symName) => ["__cpp_exception", "__c_longjmp", "__wasm_apply_data_relocs", "__dso_handle", "__tls_size", "__tls_align", "__set_stack_limits", "_emscripten_tls_init", "__wasm_init_tls", "__wasm_call_ctors", "__start_em_asm", "__stop_em_asm", "__start_em_js", "__stop_em_js"].includes(symName) || symName.startsWith("__em_js__"), "isInternalSym");
-            var uleb128Encode = /* @__PURE__ */ __name((n, target) => {
-              if (n < 128) {
-                target.push(n);
-              } else {
-                target.push(n % 128 | 128, n >> 7);
-              }
-            }, "uleb128Encode");
-            var sigToWasmTypes = /* @__PURE__ */ __name((sig) => {
-              var typeNames = {
-                "i": "i32",
-                "j": "i64",
-                "f": "f32",
-                "d": "f64",
-                "e": "externref",
-                "p": "i32"
-              };
-              var type = {
-                parameters: [],
-                results: sig[0] == "v" ? [] : [typeNames[sig[0]]]
-              };
-              for (var i2 = 1; i2 < sig.length; ++i2) {
-                type.parameters.push(typeNames[sig[i2]]);
-              }
-              return type;
-            }, "sigToWasmTypes");
-            var generateFuncType = /* @__PURE__ */ __name((sig, target) => {
-              var sigRet = sig.slice(0, 1);
-              var sigParam = sig.slice(1);
-              var typeCodes = {
-                "i": 127,
-                // i32
-                "p": 127,
-                // i32
-                "j": 126,
-                // i64
-                "f": 125,
-                // f32
-                "d": 124,
-                // f64
-                "e": 111
-              };
-              target.push(96);
-              uleb128Encode(sigParam.length, target);
-              for (var i2 = 0; i2 < sigParam.length; ++i2) {
-                target.push(typeCodes[sigParam[i2]]);
-              }
-              if (sigRet == "v") {
-                target.push(0);
-              } else {
-                target.push(1, typeCodes[sigRet]);
-              }
-            }, "generateFuncType");
-            var convertJsFunctionToWasm = /* @__PURE__ */ __name((func2, sig) => {
-              if (typeof WebAssembly.Function == "function") {
-                return new WebAssembly.Function(sigToWasmTypes(sig), func2);
-              }
-              var typeSectionBody = [1];
-              generateFuncType(sig, typeSectionBody);
-              var bytes = [
-                0,
-                97,
-                115,
-                109,
-                // magic ("\0asm")
-                1,
-                0,
-                0,
-                0,
-                // version: 1
-                1
-              ];
-              uleb128Encode(typeSectionBody.length, bytes);
-              bytes.push(...typeSectionBody);
-              bytes.push(
-                2,
-                7,
-                // import section
-                // (import "e" "f" (func 0 (type 0)))
-                1,
-                1,
-                101,
-                1,
-                102,
-                0,
-                0,
-                7,
-                5,
-                // export section
-                // (export "f" (func 0 (type 0)))
-                1,
-                1,
-                102,
-                0,
-                0
-              );
-              var module2 = new WebAssembly.Module(new Uint8Array(bytes));
-              var instance2 = new WebAssembly.Instance(module2, {
-                "e": {
-                  "f": func2
-                }
-              });
-              var wrappedFunc = instance2.exports["f"];
-              return wrappedFunc;
-            }, "convertJsFunctionToWasm");
-            var wasmTableMirror = [];
-            var wasmTable = new WebAssembly.Table({
-              "initial": 28,
-              "element": "anyfunc"
-            });
-            var getWasmTableEntry = /* @__PURE__ */ __name((funcPtr) => {
-              var func2 = wasmTableMirror[funcPtr];
-              if (!func2) {
-                if (funcPtr >= wasmTableMirror.length) wasmTableMirror.length = funcPtr + 1;
-                wasmTableMirror[funcPtr] = func2 = wasmTable.get(funcPtr);
-              }
-              return func2;
-            }, "getWasmTableEntry");
-            var updateTableMap = /* @__PURE__ */ __name((offset, count) => {
-              if (functionsInTableMap) {
-                for (var i2 = offset; i2 < offset + count; i2++) {
-                  var item = getWasmTableEntry(i2);
-                  if (item) {
-                    functionsInTableMap.set(item, i2);
-                  }
-                }
-              }
-            }, "updateTableMap");
-            var functionsInTableMap;
-            var getFunctionAddress = /* @__PURE__ */ __name((func2) => {
-              if (!functionsInTableMap) {
-                functionsInTableMap = /* @__PURE__ */ new WeakMap();
-                updateTableMap(0, wasmTable.length);
-              }
-              return functionsInTableMap.get(func2) || 0;
-            }, "getFunctionAddress");
-            var freeTableIndexes = [];
-            var getEmptyTableSlot = /* @__PURE__ */ __name(() => {
-              if (freeTableIndexes.length) {
-                return freeTableIndexes.pop();
-              }
-              try {
-                wasmTable.grow(1);
-              } catch (err2) {
-                if (!(err2 instanceof RangeError)) {
-                  throw err2;
-                }
-                throw "Unable to grow wasm table. Set ALLOW_TABLE_GROWTH.";
-              }
-              return wasmTable.length - 1;
-            }, "getEmptyTableSlot");
-            var setWasmTableEntry = /* @__PURE__ */ __name((idx, func2) => {
-              wasmTable.set(idx, func2);
-              wasmTableMirror[idx] = wasmTable.get(idx);
-            }, "setWasmTableEntry");
-            var addFunction = /* @__PURE__ */ __name((func2, sig) => {
-              var rtn = getFunctionAddress(func2);
-              if (rtn) {
-                return rtn;
-              }
-              var ret = getEmptyTableSlot();
-              try {
-                setWasmTableEntry(ret, func2);
-              } catch (err2) {
-                if (!(err2 instanceof TypeError)) {
-                  throw err2;
-                }
-                var wrapped = convertJsFunctionToWasm(func2, sig);
-                setWasmTableEntry(ret, wrapped);
-              }
-              functionsInTableMap.set(func2, ret);
-              return ret;
-            }, "addFunction");
-            var updateGOT = /* @__PURE__ */ __name((exports2, replace) => {
-              for (var symName in exports2) {
-                if (isInternalSym(symName)) {
-                  continue;
-                }
-                var value = exports2[symName];
-                if (symName.startsWith("orig$")) {
-                  symName = symName.split("$")[1];
-                  replace = true;
-                }
-                GOT[symName] || (GOT[symName] = new WebAssembly.Global({
-                  "value": "i32",
-                  "mutable": true
-                }));
-                if (replace || GOT[symName].value == 0) {
-                  if (typeof value == "function") {
-                    GOT[symName].value = addFunction(value);
-                  } else if (typeof value == "number") {
-                    GOT[symName].value = value;
-                  } else {
-                    err(`unhandled export type for '${symName}': ${typeof value}`);
-                  }
-                }
-              }
-            }, "updateGOT");
-            var relocateExports = /* @__PURE__ */ __name((exports2, memoryBase2, replace) => {
-              var relocated = {};
-              for (var e in exports2) {
-                var value = exports2[e];
-                if (typeof value == "object") {
-                  value = value.value;
-                }
-                if (typeof value == "number") {
-                  value += memoryBase2;
-                }
-                relocated[e] = value;
-              }
-              updateGOT(relocated, replace);
-              return relocated;
-            }, "relocateExports");
-            var isSymbolDefined = /* @__PURE__ */ __name((symName) => {
-              var existing = wasmImports[symName];
-              if (!existing || existing.stub) {
-                return false;
-              }
-              return true;
-            }, "isSymbolDefined");
-            var dynCallLegacy = /* @__PURE__ */ __name((sig, ptr, args2) => {
-              sig = sig.replace(/p/g, "i");
-              var f = Module["dynCall_" + sig];
-              return f(ptr, ...args2);
-            }, "dynCallLegacy");
-            var dynCall = /* @__PURE__ */ __name((sig, ptr, args2 = []) => {
-              if (sig.includes("j")) {
-                return dynCallLegacy(sig, ptr, args2);
-              }
-              var rtn = getWasmTableEntry(ptr)(...args2);
-              return rtn;
-            }, "dynCall");
-            var stackSave = /* @__PURE__ */ __name(() => _emscripten_stack_get_current(), "stackSave");
-            var stackRestore = /* @__PURE__ */ __name((val) => __emscripten_stack_restore(val), "stackRestore");
-            var createInvokeFunction = /* @__PURE__ */ __name((sig) => (ptr, ...args2) => {
-              var sp = stackSave();
-              try {
-                return dynCall(sig, ptr, args2);
-              } catch (e) {
-                stackRestore(sp);
-                if (e !== e + 0) throw e;
-                _setThrew(1, 0);
-              }
-            }, "createInvokeFunction");
-            var resolveGlobalSymbol = /* @__PURE__ */ __name((symName, direct = false) => {
-              var sym;
-              if (direct && "orig$" + symName in wasmImports) {
-                symName = "orig$" + symName;
-              }
-              if (isSymbolDefined(symName)) {
-                sym = wasmImports[symName];
-              } else if (symName.startsWith("invoke_")) {
-                sym = wasmImports[symName] = createInvokeFunction(symName.split("_")[1]);
-              }
-              return {
-                sym,
-                name: symName
-              };
-            }, "resolveGlobalSymbol");
-            var UTF8ToString = /* @__PURE__ */ __name((ptr, maxBytesToRead) => ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : "", "UTF8ToString");
-            var loadWebAssemblyModule = /* @__PURE__ */ __name((binary, flags, libName, localScope, handle) => {
-              var metadata = getDylinkMetadata(binary);
-              currentModuleWeakSymbols = metadata.weakImports;
-              function loadModule() {
-                var firstLoad = !handle || !HEAP8[handle + 8];
-                if (firstLoad) {
-                  var memAlign = Math.pow(2, metadata.memoryAlign);
-                  var memoryBase = metadata.memorySize ? alignMemory(getMemory(metadata.memorySize + memAlign), memAlign) : 0;
-                  var tableBase = metadata.tableSize ? wasmTable.length : 0;
-                  if (handle) {
-                    HEAP8[handle + 8] = 1;
-                    LE_HEAP_STORE_U32((handle + 12 >> 2) * 4, memoryBase);
-                    LE_HEAP_STORE_I32((handle + 16 >> 2) * 4, metadata.memorySize);
-                    LE_HEAP_STORE_U32((handle + 20 >> 2) * 4, tableBase);
-                    LE_HEAP_STORE_I32((handle + 24 >> 2) * 4, metadata.tableSize);
-                  }
-                } else {
-                  memoryBase = LE_HEAP_LOAD_U32((handle + 12 >> 2) * 4);
-                  tableBase = LE_HEAP_LOAD_U32((handle + 20 >> 2) * 4);
-                }
-                var tableGrowthNeeded = tableBase + metadata.tableSize - wasmTable.length;
-                if (tableGrowthNeeded > 0) {
-                  wasmTable.grow(tableGrowthNeeded);
-                }
-                var moduleExports;
-                function resolveSymbol(sym) {
-                  var resolved = resolveGlobalSymbol(sym).sym;
-                  if (!resolved && localScope) {
-                    resolved = localScope[sym];
-                  }
-                  if (!resolved) {
-                    resolved = moduleExports[sym];
-                  }
-                  return resolved;
-                }
-                __name(resolveSymbol, "resolveSymbol");
-                var proxyHandler = {
-                  get(stubs, prop) {
-                    switch (prop) {
-                      case "__memory_base":
-                        return memoryBase;
-                      case "__table_base":
-                        return tableBase;
-                    }
-                    if (prop in wasmImports && !wasmImports[prop].stub) {
-                      return wasmImports[prop];
-                    }
-                    if (!(prop in stubs)) {
-                      var resolved;
-                      stubs[prop] = (...args2) => {
-                        resolved || (resolved = resolveSymbol(prop));
-                        return resolved(...args2);
-                      };
-                    }
-                    return stubs[prop];
-                  }
-                };
-                var proxy = new Proxy({}, proxyHandler);
-                var info = {
-                  "GOT.mem": new Proxy({}, GOTHandler),
-                  "GOT.func": new Proxy({}, GOTHandler),
-                  "env": proxy,
-                  "wasi_snapshot_preview1": proxy
-                };
-                function postInstantiation(module, instance) {
-                  updateTableMap(tableBase, metadata.tableSize);
-                  moduleExports = relocateExports(instance.exports, memoryBase);
-                  if (!flags.allowUndefined) {
-                    reportUndefinedSymbols();
-                  }
-                  function addEmAsm(addr, body) {
-                    var args = [];
-                    var arity = 0;
-                    for (; arity < 16; arity++) {
-                      if (body.indexOf("$" + arity) != -1) {
-                        args.push("$" + arity);
-                      } else {
-                        break;
-                      }
-                    }
-                    args = args.join(",");
-                    var func = `(${args}) => { ${body} };`;
-                    eval(func);
-                  }
-                  __name(addEmAsm, "addEmAsm");
-                  if ("__start_em_asm" in moduleExports) {
-                    var start = moduleExports["__start_em_asm"];
-                    var stop = moduleExports["__stop_em_asm"];
-                    while (start < stop) {
-                      var jsString = UTF8ToString(start);
-                      addEmAsm(start, jsString);
-                      start = HEAPU8.indexOf(0, start) + 1;
-                    }
-                  }
-                  function addEmJs(name, cSig, body) {
-                    var jsArgs = [];
-                    cSig = cSig.slice(1, -1);
-                    if (cSig != "void") {
-                      cSig = cSig.split(",");
-                      for (var i in cSig) {
-                        var jsArg = cSig[i].split(" ").pop();
-                        jsArgs.push(jsArg.replace("*", ""));
-                      }
-                    }
-                    var func = `(${jsArgs}) => ${body};`;
-                    moduleExports[name] = eval(func);
-                  }
-                  __name(addEmJs, "addEmJs");
-                  for (var name in moduleExports) {
-                    if (name.startsWith("__em_js__")) {
-                      var start = moduleExports[name];
-                      var jsString = UTF8ToString(start);
-                      var parts = jsString.split("<::>");
-                      addEmJs(name.replace("__em_js__", ""), parts[0], parts[1]);
-                      delete moduleExports[name];
-                    }
-                  }
-                  var applyRelocs = moduleExports["__wasm_apply_data_relocs"];
-                  if (applyRelocs) {
-                    if (runtimeInitialized) {
-                      applyRelocs();
-                    } else {
-                      __RELOC_FUNCS__.push(applyRelocs);
-                    }
-                  }
-                  var init = moduleExports["__wasm_call_ctors"];
-                  if (init) {
-                    if (runtimeInitialized) {
-                      init();
-                    } else {
-                      __ATINIT__.push(init);
-                    }
-                  }
-                  return moduleExports;
-                }
-                __name(postInstantiation, "postInstantiation");
-                if (flags.loadAsync) {
-                  if (binary instanceof WebAssembly.Module) {
-                    var instance = new WebAssembly.Instance(binary, info);
-                    return Promise.resolve(postInstantiation(binary, instance));
-                  }
-                  return WebAssembly.instantiate(binary, info).then((result) => postInstantiation(result.module, result.instance));
-                }
-                var module = binary instanceof WebAssembly.Module ? binary : new WebAssembly.Module(binary);
-                var instance = new WebAssembly.Instance(module, info);
-                return postInstantiation(module, instance);
-              }
-              __name(loadModule, "loadModule");
-              if (flags.loadAsync) {
-                return metadata.neededDynlibs.reduce((chain, dynNeeded) => chain.then(() => loadDynamicLibrary(dynNeeded, flags, localScope)), Promise.resolve()).then(loadModule);
-              }
-              metadata.neededDynlibs.forEach((needed) => loadDynamicLibrary(needed, flags, localScope));
-              return loadModule();
-            }, "loadWebAssemblyModule");
-            var mergeLibSymbols = /* @__PURE__ */ __name((exports2, libName2) => {
-              for (var [sym, exp] of Object.entries(exports2)) {
-                const setImport = /* @__PURE__ */ __name((target) => {
-                  if (!isSymbolDefined(target)) {
-                    wasmImports[target] = exp;
-                  }
-                }, "setImport");
-                setImport(sym);
-                const main_alias = "__main_argc_argv";
-                if (sym == "main") {
-                  setImport(main_alias);
-                }
-                if (sym == main_alias) {
-                  setImport("main");
-                }
-                if (sym.startsWith("dynCall_") && !Module.hasOwnProperty(sym)) {
-                  Module[sym] = exp;
-                }
-              }
-            }, "mergeLibSymbols");
-            var asyncLoad = /* @__PURE__ */ __name((url, onload, onerror, noRunDep) => {
-              var dep = !noRunDep ? getUniqueRunDependency(`al ${url}`) : "";
-              readAsync(url).then((arrayBuffer) => {
-                onload(new Uint8Array(arrayBuffer));
-                if (dep) removeRunDependency();
-              }, (err2) => {
-                if (onerror) {
-                  onerror();
-                } else {
-                  throw `Loading data file "${url}" failed.`;
-                }
-              });
-              if (dep) addRunDependency();
-            }, "asyncLoad");
-            function loadDynamicLibrary(libName2, flags2 = {
-              global: true,
-              nodelete: true
-            }, localScope2, handle2) {
-              var dso = LDSO.loadedLibsByName[libName2];
-              if (dso) {
-                if (!flags2.global) {
-                  if (localScope2) {
-                    Object.assign(localScope2, dso.exports);
-                  }
-                } else if (!dso.global) {
-                  dso.global = true;
-                  mergeLibSymbols(dso.exports, libName2);
-                }
-                if (flags2.nodelete && dso.refcount !== Infinity) {
-                  dso.refcount = Infinity;
-                }
-                dso.refcount++;
-                if (handle2) {
-                  LDSO.loadedLibsByHandle[handle2] = dso;
-                }
-                return flags2.loadAsync ? Promise.resolve(true) : true;
-              }
-              dso = newDSO(libName2, handle2, "loading");
-              dso.refcount = flags2.nodelete ? Infinity : 1;
-              dso.global = flags2.global;
-              function loadLibData() {
-                if (handle2) {
-                  var data = LE_HEAP_LOAD_U32((handle2 + 28 >> 2) * 4);
-                  var dataSize = LE_HEAP_LOAD_U32((handle2 + 32 >> 2) * 4);
-                  if (data && dataSize) {
-                    var libData = HEAP8.slice(data, data + dataSize);
-                    return flags2.loadAsync ? Promise.resolve(libData) : libData;
-                  }
-                }
-                var libFile = locateFile(libName2);
-                if (flags2.loadAsync) {
-                  return new Promise(function(resolve, reject) {
-                    asyncLoad(libFile, resolve, reject);
-                  });
-                }
-                if (!readBinary) {
-                  throw new Error(`${libFile}: file not found, and synchronous loading of external files is not available`);
-                }
-                return readBinary(libFile);
-              }
-              __name(loadLibData, "loadLibData");
-              function getExports() {
-                if (flags2.loadAsync) {
-                  return loadLibData().then((libData) => loadWebAssemblyModule(libData, flags2, libName2, localScope2, handle2));
-                }
-                return loadWebAssemblyModule(loadLibData(), flags2, libName2, localScope2, handle2);
-              }
-              __name(getExports, "getExports");
-              function moduleLoaded(exports2) {
-                if (dso.global) {
-                  mergeLibSymbols(exports2, libName2);
-                } else if (localScope2) {
-                  Object.assign(localScope2, exports2);
-                }
-                dso.exports = exports2;
-              }
-              __name(moduleLoaded, "moduleLoaded");
-              if (flags2.loadAsync) {
-                return getExports().then((exports2) => {
-                  moduleLoaded(exports2);
-                  return true;
-                });
-              }
-              moduleLoaded(getExports());
-              return true;
-            }
-            __name(loadDynamicLibrary, "loadDynamicLibrary");
-            var reportUndefinedSymbols = /* @__PURE__ */ __name(() => {
-              for (var [symName, entry] of Object.entries(GOT)) {
-                if (entry.value == 0) {
-                  var value = resolveGlobalSymbol(symName, true).sym;
-                  if (!value && !entry.required) {
-                    continue;
-                  }
-                  if (typeof value == "function") {
-                    entry.value = addFunction(value, value.sig);
-                  } else if (typeof value == "number") {
-                    entry.value = value;
-                  } else {
-                    throw new Error(`bad export type for '${symName}': ${typeof value}`);
-                  }
-                }
-              }
-            }, "reportUndefinedSymbols");
-            var loadDylibs = /* @__PURE__ */ __name(() => {
-              if (!dynamicLibraries.length) {
-                reportUndefinedSymbols();
-                return;
-              }
-              addRunDependency();
-              dynamicLibraries.reduce((chain, lib) => chain.then(() => loadDynamicLibrary(lib, {
-                loadAsync: true,
-                global: true,
-                nodelete: true,
-                allowUndefined: true
-              })), Promise.resolve()).then(() => {
-                reportUndefinedSymbols();
-                removeRunDependency();
-              });
-            }, "loadDylibs");
-            var noExitRuntime = Module["noExitRuntime"] || true;
-            function setValue(ptr, value, type = "i8") {
-              if (type.endsWith("*")) type = "*";
-              switch (type) {
-                case "i1":
-                  HEAP8[ptr] = value;
-                  break;
-                case "i8":
-                  HEAP8[ptr] = value;
-                  break;
-                case "i16":
-                  LE_HEAP_STORE_I16((ptr >> 1) * 2, value);
-                  break;
-                case "i32":
-                  LE_HEAP_STORE_I32((ptr >> 2) * 4, value);
-                  break;
-                case "i64":
-                  abort("to do setValue(i64) use WASM_BIGINT");
-                case "float":
-                  LE_HEAP_STORE_F32((ptr >> 2) * 4, value);
-                  break;
-                case "double":
-                  LE_HEAP_STORE_F64((ptr >> 3) * 8, value);
-                  break;
-                case "*":
-                  LE_HEAP_STORE_U32((ptr >> 2) * 4, value);
-                  break;
-                default:
-                  abort(`invalid type for setValue: ${type}`);
-              }
-            }
-            __name(setValue, "setValue");
-            var ___memory_base = new WebAssembly.Global({
-              "value": "i32",
-              "mutable": false
-            }, 1024);
-            var ___stack_pointer = new WebAssembly.Global({
-              "value": "i32",
-              "mutable": true
-            }, 78112);
-            var ___table_base = new WebAssembly.Global({
-              "value": "i32",
-              "mutable": false
-            }, 1);
-            var __abort_js = /* @__PURE__ */ __name(() => {
-              abort("");
-            }, "__abort_js");
-            __abort_js.sig = "v";
-            var nowIsMonotonic = 1;
-            var __emscripten_get_now_is_monotonic = /* @__PURE__ */ __name(() => nowIsMonotonic, "__emscripten_get_now_is_monotonic");
-            __emscripten_get_now_is_monotonic.sig = "i";
-            var __emscripten_memcpy_js = /* @__PURE__ */ __name((dest, src, num) => HEAPU8.copyWithin(dest, src, src + num), "__emscripten_memcpy_js");
-            __emscripten_memcpy_js.sig = "vppp";
-            var _emscripten_date_now = /* @__PURE__ */ __name(() => Date.now(), "_emscripten_date_now");
-            _emscripten_date_now.sig = "d";
-            var _emscripten_get_now;
-            _emscripten_get_now = /* @__PURE__ */ __name(() => performance.now(), "_emscripten_get_now");
-            _emscripten_get_now.sig = "d";
-            var getHeapMax = /* @__PURE__ */ __name(() => (
-              // Stay one Wasm page short of 4GB: while e.g. Chrome is able to allocate
-              // full 4GB Wasm memories, the size will wrap back to 0 bytes in Wasm side
-              // for any code that deals with heap sizes, which would require special
-              // casing all heap size related code to treat 0 specially.
-              2147483648
-            ), "getHeapMax");
-            var growMemory = /* @__PURE__ */ __name((size) => {
-              var b = wasmMemory.buffer;
-              var pages = (size - b.byteLength + 65535) / 65536;
-              try {
-                wasmMemory.grow(pages);
-                updateMemoryViews();
-                return 1;
-              } catch (e) {
-              }
-            }, "growMemory");
-            var _emscripten_resize_heap = /* @__PURE__ */ __name((requestedSize) => {
-              var oldSize = HEAPU8.length;
-              requestedSize >>>= 0;
-              var maxHeapSize = getHeapMax();
-              if (requestedSize > maxHeapSize) {
-                return false;
-              }
-              var alignUp = /* @__PURE__ */ __name((x, multiple) => x + (multiple - x % multiple) % multiple, "alignUp");
-              for (var cutDown = 1; cutDown <= 4; cutDown *= 2) {
-                var overGrownHeapSize = oldSize * (1 + 0.2 / cutDown);
-                overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296);
-                var newSize = Math.min(maxHeapSize, alignUp(Math.max(requestedSize, overGrownHeapSize), 65536));
-                var replacement = growMemory(newSize);
-                if (replacement) {
-                  return true;
-                }
-              }
-              return false;
-            }, "_emscripten_resize_heap");
-            _emscripten_resize_heap.sig = "ip";
-            var _fd_close = /* @__PURE__ */ __name((fd) => 52, "_fd_close");
-            _fd_close.sig = "ii";
-            var convertI32PairToI53Checked = /* @__PURE__ */ __name((lo, hi) => hi + 2097152 >>> 0 < 4194305 - !!lo ? (lo >>> 0) + hi * 4294967296 : NaN, "convertI32PairToI53Checked");
-            function _fd_seek(fd, offset_low, offset_high, whence, newOffset) {
-              convertI32PairToI53Checked(offset_low, offset_high);
-              return 70;
-            }
-            __name(_fd_seek, "_fd_seek");
-            _fd_seek.sig = "iiiiip";
-            var printCharBuffers = [null, [], []];
-            var printChar = /* @__PURE__ */ __name((stream, curr) => {
-              var buffer = printCharBuffers[stream];
-              if (curr === 0 || curr === 10) {
-                (stream === 1 ? out : err)(UTF8ArrayToString(buffer, 0));
-                buffer.length = 0;
-              } else {
-                buffer.push(curr);
-              }
-            }, "printChar");
-            var _fd_write = /* @__PURE__ */ __name((fd, iov, iovcnt, pnum) => {
-              var num = 0;
-              for (var i2 = 0; i2 < iovcnt; i2++) {
-                var ptr = LE_HEAP_LOAD_U32((iov >> 2) * 4);
-                var len = LE_HEAP_LOAD_U32((iov + 4 >> 2) * 4);
-                iov += 8;
-                for (var j = 0; j < len; j++) {
-                  printChar(fd, HEAPU8[ptr + j]);
-                }
-                num += len;
-              }
-              LE_HEAP_STORE_U32((pnum >> 2) * 4, num);
-              return 0;
-            }, "_fd_write");
-            _fd_write.sig = "iippp";
-            function _tree_sitter_log_callback(isLexMessage, messageAddress) {
-              if (currentLogCallback) {
-                const message = UTF8ToString(messageAddress);
-                currentLogCallback(message, isLexMessage !== 0);
-              }
-            }
-            __name(_tree_sitter_log_callback, "_tree_sitter_log_callback");
-            function _tree_sitter_parse_callback(inputBufferAddress, index, row, column, lengthAddress) {
-              const INPUT_BUFFER_SIZE = 10 * 1024;
-              const string = currentParseCallback(index, {
-                row,
-                column
-              });
-              if (typeof string === "string") {
-                setValue(lengthAddress, string.length, "i32");
-                stringToUTF16(string, inputBufferAddress, INPUT_BUFFER_SIZE);
-              } else {
-                setValue(lengthAddress, 0, "i32");
-              }
-            }
-            __name(_tree_sitter_parse_callback, "_tree_sitter_parse_callback");
-            var keepRuntimeAlive = /* @__PURE__ */ __name(() => noExitRuntime, "keepRuntimeAlive");
-            var _proc_exit = /* @__PURE__ */ __name((code) => {
-              EXITSTATUS = code;
-              if (!keepRuntimeAlive()) {
-                Module["onExit"]?.(code);
-                ABORT = true;
-              }
-              quit_(code, new ExitStatus(code));
-            }, "_proc_exit");
-            _proc_exit.sig = "vi";
-            var exitJS = /* @__PURE__ */ __name((status, implicit) => {
-              EXITSTATUS = status;
-              _proc_exit(status);
-            }, "exitJS");
-            var handleException = /* @__PURE__ */ __name((e) => {
-              if (e instanceof ExitStatus || e == "unwind") {
-                return EXITSTATUS;
-              }
-              quit_(1, e);
-            }, "handleException");
-            var lengthBytesUTF8 = /* @__PURE__ */ __name((str) => {
-              var len = 0;
-              for (var i2 = 0; i2 < str.length; ++i2) {
-                var c = str.charCodeAt(i2);
-                if (c <= 127) {
-                  len++;
-                } else if (c <= 2047) {
-                  len += 2;
-                } else if (c >= 55296 && c <= 57343) {
-                  len += 4;
-                  ++i2;
-                } else {
-                  len += 3;
-                }
-              }
-              return len;
-            }, "lengthBytesUTF8");
-            var stringToUTF8Array = /* @__PURE__ */ __name((str, heap, outIdx, maxBytesToWrite) => {
-              if (!(maxBytesToWrite > 0)) return 0;
-              var startIdx = outIdx;
-              var endIdx = outIdx + maxBytesToWrite - 1;
-              for (var i2 = 0; i2 < str.length; ++i2) {
-                var u = str.charCodeAt(i2);
-                if (u >= 55296 && u <= 57343) {
-                  var u1 = str.charCodeAt(++i2);
-                  u = 65536 + ((u & 1023) << 10) | u1 & 1023;
-                }
-                if (u <= 127) {
-                  if (outIdx >= endIdx) break;
-                  heap[outIdx++] = u;
-                } else if (u <= 2047) {
-                  if (outIdx + 1 >= endIdx) break;
-                  heap[outIdx++] = 192 | u >> 6;
-                  heap[outIdx++] = 128 | u & 63;
-                } else if (u <= 65535) {
-                  if (outIdx + 2 >= endIdx) break;
-                  heap[outIdx++] = 224 | u >> 12;
-                  heap[outIdx++] = 128 | u >> 6 & 63;
-                  heap[outIdx++] = 128 | u & 63;
-                } else {
-                  if (outIdx + 3 >= endIdx) break;
-                  heap[outIdx++] = 240 | u >> 18;
-                  heap[outIdx++] = 128 | u >> 12 & 63;
-                  heap[outIdx++] = 128 | u >> 6 & 63;
-                  heap[outIdx++] = 128 | u & 63;
-                }
-              }
-              heap[outIdx] = 0;
-              return outIdx - startIdx;
-            }, "stringToUTF8Array");
-            var stringToUTF8 = /* @__PURE__ */ __name((str, outPtr, maxBytesToWrite) => stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite), "stringToUTF8");
-            var stackAlloc = /* @__PURE__ */ __name((sz) => __emscripten_stack_alloc(sz), "stackAlloc");
-            var stringToUTF8OnStack = /* @__PURE__ */ __name((str) => {
-              var size = lengthBytesUTF8(str) + 1;
-              var ret = stackAlloc(size);
-              stringToUTF8(str, ret, size);
-              return ret;
-            }, "stringToUTF8OnStack");
-            var stringToUTF16 = /* @__PURE__ */ __name((str, outPtr, maxBytesToWrite) => {
-              maxBytesToWrite ?? (maxBytesToWrite = 2147483647);
-              if (maxBytesToWrite < 2) return 0;
-              maxBytesToWrite -= 2;
-              var startPtr = outPtr;
-              var numCharsToWrite = maxBytesToWrite < str.length * 2 ? maxBytesToWrite / 2 : str.length;
-              for (var i2 = 0; i2 < numCharsToWrite; ++i2) {
-                var codeUnit = str.charCodeAt(i2);
-                LE_HEAP_STORE_I16((outPtr >> 1) * 2, codeUnit);
-                outPtr += 2;
-              }
-              LE_HEAP_STORE_I16((outPtr >> 1) * 2, 0);
-              return outPtr - startPtr;
-            }, "stringToUTF16");
-            var AsciiToString = /* @__PURE__ */ __name((ptr) => {
-              var str = "";
-              while (1) {
-                var ch = HEAPU8[ptr++];
-                if (!ch) return str;
-                str += String.fromCharCode(ch);
-              }
-            }, "AsciiToString");
-            var wasmImports = {
-              /** @export */
-              __heap_base: ___heap_base,
-              /** @export */
-              __indirect_function_table: wasmTable,
-              /** @export */
-              __memory_base: ___memory_base,
-              /** @export */
-              __stack_pointer: ___stack_pointer,
-              /** @export */
-              __table_base: ___table_base,
-              /** @export */
-              _abort_js: __abort_js,
-              /** @export */
-              _emscripten_get_now_is_monotonic: __emscripten_get_now_is_monotonic,
-              /** @export */
-              _emscripten_memcpy_js: __emscripten_memcpy_js,
-              /** @export */
-              emscripten_get_now: _emscripten_get_now,
-              /** @export */
-              emscripten_resize_heap: _emscripten_resize_heap,
-              /** @export */
-              fd_close: _fd_close,
-              /** @export */
-              fd_seek: _fd_seek,
-              /** @export */
-              fd_write: _fd_write,
-              /** @export */
-              memory: wasmMemory,
-              /** @export */
-              tree_sitter_log_callback: _tree_sitter_log_callback,
-              /** @export */
-              tree_sitter_parse_callback: _tree_sitter_parse_callback
-            };
-            var wasmExports = createWasm();
-            var _malloc = Module["_malloc"] = (a0) => (_malloc = Module["_malloc"] = wasmExports["malloc"])(a0);
-            Module["_calloc"] = (a0, a1) => (Module["_calloc"] = wasmExports["calloc"])(a0, a1);
-            Module["_realloc"] = (a0, a1) => (Module["_realloc"] = wasmExports["realloc"])(a0, a1);
-            Module["_free"] = (a0) => (Module["_free"] = wasmExports["free"])(a0);
-            Module["_ts_language_symbol_count"] = (a0) => (Module["_ts_language_symbol_count"] = wasmExports["ts_language_symbol_count"])(a0);
-            Module["_ts_language_state_count"] = (a0) => (Module["_ts_language_state_count"] = wasmExports["ts_language_state_count"])(a0);
-            Module["_ts_language_version"] = (a0) => (Module["_ts_language_version"] = wasmExports["ts_language_version"])(a0);
-            Module["_ts_language_field_count"] = (a0) => (Module["_ts_language_field_count"] = wasmExports["ts_language_field_count"])(a0);
-            Module["_ts_language_next_state"] = (a0, a1, a2) => (Module["_ts_language_next_state"] = wasmExports["ts_language_next_state"])(a0, a1, a2);
-            Module["_ts_language_symbol_name"] = (a0, a1) => (Module["_ts_language_symbol_name"] = wasmExports["ts_language_symbol_name"])(a0, a1);
-            Module["_ts_language_symbol_for_name"] = (a0, a1, a2, a3) => (Module["_ts_language_symbol_for_name"] = wasmExports["ts_language_symbol_for_name"])(a0, a1, a2, a3);
-            Module["_strncmp"] = (a0, a1, a2) => (Module["_strncmp"] = wasmExports["strncmp"])(a0, a1, a2);
-            Module["_ts_language_symbol_type"] = (a0, a1) => (Module["_ts_language_symbol_type"] = wasmExports["ts_language_symbol_type"])(a0, a1);
-            Module["_ts_language_field_name_for_id"] = (a0, a1) => (Module["_ts_language_field_name_for_id"] = wasmExports["ts_language_field_name_for_id"])(a0, a1);
-            Module["_ts_lookahead_iterator_new"] = (a0, a1) => (Module["_ts_lookahead_iterator_new"] = wasmExports["ts_lookahead_iterator_new"])(a0, a1);
-            Module["_ts_lookahead_iterator_delete"] = (a0) => (Module["_ts_lookahead_iterator_delete"] = wasmExports["ts_lookahead_iterator_delete"])(a0);
-            Module["_ts_lookahead_iterator_reset_state"] = (a0, a1) => (Module["_ts_lookahead_iterator_reset_state"] = wasmExports["ts_lookahead_iterator_reset_state"])(a0, a1);
-            Module["_ts_lookahead_iterator_reset"] = (a0, a1, a2) => (Module["_ts_lookahead_iterator_reset"] = wasmExports["ts_lookahead_iterator_reset"])(a0, a1, a2);
-            Module["_ts_lookahead_iterator_next"] = (a0) => (Module["_ts_lookahead_iterator_next"] = wasmExports["ts_lookahead_iterator_next"])(a0);
-            Module["_ts_lookahead_iterator_current_symbol"] = (a0) => (Module["_ts_lookahead_iterator_current_symbol"] = wasmExports["ts_lookahead_iterator_current_symbol"])(a0);
-            Module["_memset"] = (a0, a1, a2) => (Module["_memset"] = wasmExports["memset"])(a0, a1, a2);
-            Module["_memcpy"] = (a0, a1, a2) => (Module["_memcpy"] = wasmExports["memcpy"])(a0, a1, a2);
-            Module["_ts_parser_delete"] = (a0) => (Module["_ts_parser_delete"] = wasmExports["ts_parser_delete"])(a0);
-            Module["_ts_parser_reset"] = (a0) => (Module["_ts_parser_reset"] = wasmExports["ts_parser_reset"])(a0);
-            Module["_ts_parser_set_language"] = (a0, a1) => (Module["_ts_parser_set_language"] = wasmExports["ts_parser_set_language"])(a0, a1);
-            Module["_ts_parser_timeout_micros"] = (a0) => (Module["_ts_parser_timeout_micros"] = wasmExports["ts_parser_timeout_micros"])(a0);
-            Module["_ts_parser_set_timeout_micros"] = (a0, a1, a2) => (Module["_ts_parser_set_timeout_micros"] = wasmExports["ts_parser_set_timeout_micros"])(a0, a1, a2);
-            Module["_ts_parser_set_included_ranges"] = (a0, a1, a2) => (Module["_ts_parser_set_included_ranges"] = wasmExports["ts_parser_set_included_ranges"])(a0, a1, a2);
-            Module["_memmove"] = (a0, a1, a2) => (Module["_memmove"] = wasmExports["memmove"])(a0, a1, a2);
-            Module["_memcmp"] = (a0, a1, a2) => (Module["_memcmp"] = wasmExports["memcmp"])(a0, a1, a2);
-            Module["_ts_query_new"] = (a0, a1, a2, a3, a4) => (Module["_ts_query_new"] = wasmExports["ts_query_new"])(a0, a1, a2, a3, a4);
-            Module["_ts_query_delete"] = (a0) => (Module["_ts_query_delete"] = wasmExports["ts_query_delete"])(a0);
-            Module["_iswspace"] = (a0) => (Module["_iswspace"] = wasmExports["iswspace"])(a0);
-            Module["_iswalnum"] = (a0) => (Module["_iswalnum"] = wasmExports["iswalnum"])(a0);
-            Module["_ts_query_pattern_count"] = (a0) => (Module["_ts_query_pattern_count"] = wasmExports["ts_query_pattern_count"])(a0);
-            Module["_ts_query_capture_count"] = (a0) => (Module["_ts_query_capture_count"] = wasmExports["ts_query_capture_count"])(a0);
-            Module["_ts_query_string_count"] = (a0) => (Module["_ts_query_string_count"] = wasmExports["ts_query_string_count"])(a0);
-            Module["_ts_query_capture_name_for_id"] = (a0, a1, a2) => (Module["_ts_query_capture_name_for_id"] = wasmExports["ts_query_capture_name_for_id"])(a0, a1, a2);
-            Module["_ts_query_string_value_for_id"] = (a0, a1, a2) => (Module["_ts_query_string_value_for_id"] = wasmExports["ts_query_string_value_for_id"])(a0, a1, a2);
-            Module["_ts_query_predicates_for_pattern"] = (a0, a1, a2) => (Module["_ts_query_predicates_for_pattern"] = wasmExports["ts_query_predicates_for_pattern"])(a0, a1, a2);
-            Module["_ts_query_disable_capture"] = (a0, a1, a2) => (Module["_ts_query_disable_capture"] = wasmExports["ts_query_disable_capture"])(a0, a1, a2);
-            Module["_ts_tree_copy"] = (a0) => (Module["_ts_tree_copy"] = wasmExports["ts_tree_copy"])(a0);
-            Module["_ts_tree_delete"] = (a0) => (Module["_ts_tree_delete"] = wasmExports["ts_tree_delete"])(a0);
-            Module["_ts_init"] = () => (Module["_ts_init"] = wasmExports["ts_init"])();
-            Module["_ts_parser_new_wasm"] = () => (Module["_ts_parser_new_wasm"] = wasmExports["ts_parser_new_wasm"])();
-            Module["_ts_parser_enable_logger_wasm"] = (a0, a1) => (Module["_ts_parser_enable_logger_wasm"] = wasmExports["ts_parser_enable_logger_wasm"])(a0, a1);
-            Module["_ts_parser_parse_wasm"] = (a0, a1, a2, a3, a4) => (Module["_ts_parser_parse_wasm"] = wasmExports["ts_parser_parse_wasm"])(a0, a1, a2, a3, a4);
-            Module["_ts_parser_included_ranges_wasm"] = (a0) => (Module["_ts_parser_included_ranges_wasm"] = wasmExports["ts_parser_included_ranges_wasm"])(a0);
-            Module["_ts_language_type_is_named_wasm"] = (a0, a1) => (Module["_ts_language_type_is_named_wasm"] = wasmExports["ts_language_type_is_named_wasm"])(a0, a1);
-            Module["_ts_language_type_is_visible_wasm"] = (a0, a1) => (Module["_ts_language_type_is_visible_wasm"] = wasmExports["ts_language_type_is_visible_wasm"])(a0, a1);
-            Module["_ts_tree_root_node_wasm"] = (a0) => (Module["_ts_tree_root_node_wasm"] = wasmExports["ts_tree_root_node_wasm"])(a0);
-            Module["_ts_tree_root_node_with_offset_wasm"] = (a0) => (Module["_ts_tree_root_node_with_offset_wasm"] = wasmExports["ts_tree_root_node_with_offset_wasm"])(a0);
-            Module["_ts_tree_edit_wasm"] = (a0) => (Module["_ts_tree_edit_wasm"] = wasmExports["ts_tree_edit_wasm"])(a0);
-            Module["_ts_tree_included_ranges_wasm"] = (a0) => (Module["_ts_tree_included_ranges_wasm"] = wasmExports["ts_tree_included_ranges_wasm"])(a0);
-            Module["_ts_tree_get_changed_ranges_wasm"] = (a0, a1) => (Module["_ts_tree_get_changed_ranges_wasm"] = wasmExports["ts_tree_get_changed_ranges_wasm"])(a0, a1);
-            Module["_ts_tree_cursor_new_wasm"] = (a0) => (Module["_ts_tree_cursor_new_wasm"] = wasmExports["ts_tree_cursor_new_wasm"])(a0);
-            Module["_ts_tree_cursor_delete_wasm"] = (a0) => (Module["_ts_tree_cursor_delete_wasm"] = wasmExports["ts_tree_cursor_delete_wasm"])(a0);
-            Module["_ts_tree_cursor_reset_wasm"] = (a0) => (Module["_ts_tree_cursor_reset_wasm"] = wasmExports["ts_tree_cursor_reset_wasm"])(a0);
-            Module["_ts_tree_cursor_reset_to_wasm"] = (a0, a1) => (Module["_ts_tree_cursor_reset_to_wasm"] = wasmExports["ts_tree_cursor_reset_to_wasm"])(a0, a1);
-            Module["_ts_tree_cursor_goto_first_child_wasm"] = (a0) => (Module["_ts_tree_cursor_goto_first_child_wasm"] = wasmExports["ts_tree_cursor_goto_first_child_wasm"])(a0);
-            Module["_ts_tree_cursor_goto_last_child_wasm"] = (a0) => (Module["_ts_tree_cursor_goto_last_child_wasm"] = wasmExports["ts_tree_cursor_goto_last_child_wasm"])(a0);
-            Module["_ts_tree_cursor_goto_first_child_for_index_wasm"] = (a0) => (Module["_ts_tree_cursor_goto_first_child_for_index_wasm"] = wasmExports["ts_tree_cursor_goto_first_child_for_index_wasm"])(a0);
-            Module["_ts_tree_cursor_goto_first_child_for_position_wasm"] = (a0) => (Module["_ts_tree_cursor_goto_first_child_for_position_wasm"] = wasmExports["ts_tree_cursor_goto_first_child_for_position_wasm"])(a0);
-            Module["_ts_tree_cursor_goto_next_sibling_wasm"] = (a0) => (Module["_ts_tree_cursor_goto_next_sibling_wasm"] = wasmExports["ts_tree_cursor_goto_next_sibling_wasm"])(a0);
-            Module["_ts_tree_cursor_goto_previous_sibling_wasm"] = (a0) => (Module["_ts_tree_cursor_goto_previous_sibling_wasm"] = wasmExports["ts_tree_cursor_goto_previous_sibling_wasm"])(a0);
-            Module["_ts_tree_cursor_goto_descendant_wasm"] = (a0, a1) => (Module["_ts_tree_cursor_goto_descendant_wasm"] = wasmExports["ts_tree_cursor_goto_descendant_wasm"])(a0, a1);
-            Module["_ts_tree_cursor_goto_parent_wasm"] = (a0) => (Module["_ts_tree_cursor_goto_parent_wasm"] = wasmExports["ts_tree_cursor_goto_parent_wasm"])(a0);
-            Module["_ts_tree_cursor_current_node_type_id_wasm"] = (a0) => (Module["_ts_tree_cursor_current_node_type_id_wasm"] = wasmExports["ts_tree_cursor_current_node_type_id_wasm"])(a0);
-            Module["_ts_tree_cursor_current_node_state_id_wasm"] = (a0) => (Module["_ts_tree_cursor_current_node_state_id_wasm"] = wasmExports["ts_tree_cursor_current_node_state_id_wasm"])(a0);
-            Module["_ts_tree_cursor_current_node_is_named_wasm"] = (a0) => (Module["_ts_tree_cursor_current_node_is_named_wasm"] = wasmExports["ts_tree_cursor_current_node_is_named_wasm"])(a0);
-            Module["_ts_tree_cursor_current_node_is_missing_wasm"] = (a0) => (Module["_ts_tree_cursor_current_node_is_missing_wasm"] = wasmExports["ts_tree_cursor_current_node_is_missing_wasm"])(a0);
-            Module["_ts_tree_cursor_current_node_id_wasm"] = (a0) => (Module["_ts_tree_cursor_current_node_id_wasm"] = wasmExports["ts_tree_cursor_current_node_id_wasm"])(a0);
-            Module["_ts_tree_cursor_start_position_wasm"] = (a0) => (Module["_ts_tree_cursor_start_position_wasm"] = wasmExports["ts_tree_cursor_start_position_wasm"])(a0);
-            Module["_ts_tree_cursor_end_position_wasm"] = (a0) => (Module["_ts_tree_cursor_end_position_wasm"] = wasmExports["ts_tree_cursor_end_position_wasm"])(a0);
-            Module["_ts_tree_cursor_start_index_wasm"] = (a0) => (Module["_ts_tree_cursor_start_index_wasm"] = wasmExports["ts_tree_cursor_start_index_wasm"])(a0);
-            Module["_ts_tree_cursor_end_index_wasm"] = (a0) => (Module["_ts_tree_cursor_end_index_wasm"] = wasmExports["ts_tree_cursor_end_index_wasm"])(a0);
-            Module["_ts_tree_cursor_current_field_id_wasm"] = (a0) => (Module["_ts_tree_cursor_current_field_id_wasm"] = wasmExports["ts_tree_cursor_current_field_id_wasm"])(a0);
-            Module["_ts_tree_cursor_current_depth_wasm"] = (a0) => (Module["_ts_tree_cursor_current_depth_wasm"] = wasmExports["ts_tree_cursor_current_depth_wasm"])(a0);
-            Module["_ts_tree_cursor_current_descendant_index_wasm"] = (a0) => (Module["_ts_tree_cursor_current_descendant_index_wasm"] = wasmExports["ts_tree_cursor_current_descendant_index_wasm"])(a0);
-            Module["_ts_tree_cursor_current_node_wasm"] = (a0) => (Module["_ts_tree_cursor_current_node_wasm"] = wasmExports["ts_tree_cursor_current_node_wasm"])(a0);
-            Module["_ts_node_symbol_wasm"] = (a0) => (Module["_ts_node_symbol_wasm"] = wasmExports["ts_node_symbol_wasm"])(a0);
-            Module["_ts_node_field_name_for_child_wasm"] = (a0, a1) => (Module["_ts_node_field_name_for_child_wasm"] = wasmExports["ts_node_field_name_for_child_wasm"])(a0, a1);
-            Module["_ts_node_children_by_field_id_wasm"] = (a0, a1) => (Module["_ts_node_children_by_field_id_wasm"] = wasmExports["ts_node_children_by_field_id_wasm"])(a0, a1);
-            Module["_ts_node_first_child_for_byte_wasm"] = (a0) => (Module["_ts_node_first_child_for_byte_wasm"] = wasmExports["ts_node_first_child_for_byte_wasm"])(a0);
-            Module["_ts_node_first_named_child_for_byte_wasm"] = (a0) => (Module["_ts_node_first_named_child_for_byte_wasm"] = wasmExports["ts_node_first_named_child_for_byte_wasm"])(a0);
-            Module["_ts_node_grammar_symbol_wasm"] = (a0) => (Module["_ts_node_grammar_symbol_wasm"] = wasmExports["ts_node_grammar_symbol_wasm"])(a0);
-            Module["_ts_node_child_count_wasm"] = (a0) => (Module["_ts_node_child_count_wasm"] = wasmExports["ts_node_child_count_wasm"])(a0);
-            Module["_ts_node_named_child_count_wasm"] = (a0) => (Module["_ts_node_named_child_count_wasm"] = wasmExports["ts_node_named_child_count_wasm"])(a0);
-            Module["_ts_node_child_wasm"] = (a0, a1) => (Module["_ts_node_child_wasm"] = wasmExports["ts_node_child_wasm"])(a0, a1);
-            Module["_ts_node_named_child_wasm"] = (a0, a1) => (Module["_ts_node_named_child_wasm"] = wasmExports["ts_node_named_child_wasm"])(a0, a1);
-            Module["_ts_node_child_by_field_id_wasm"] = (a0, a1) => (Module["_ts_node_child_by_field_id_wasm"] = wasmExports["ts_node_child_by_field_id_wasm"])(a0, a1);
-            Module["_ts_node_next_sibling_wasm"] = (a0) => (Module["_ts_node_next_sibling_wasm"] = wasmExports["ts_node_next_sibling_wasm"])(a0);
-            Module["_ts_node_prev_sibling_wasm"] = (a0) => (Module["_ts_node_prev_sibling_wasm"] = wasmExports["ts_node_prev_sibling_wasm"])(a0);
-            Module["_ts_node_next_named_sibling_wasm"] = (a0) => (Module["_ts_node_next_named_sibling_wasm"] = wasmExports["ts_node_next_named_sibling_wasm"])(a0);
-            Module["_ts_node_prev_named_sibling_wasm"] = (a0) => (Module["_ts_node_prev_named_sibling_wasm"] = wasmExports["ts_node_prev_named_sibling_wasm"])(a0);
-            Module["_ts_node_descendant_count_wasm"] = (a0) => (Module["_ts_node_descendant_count_wasm"] = wasmExports["ts_node_descendant_count_wasm"])(a0);
-            Module["_ts_node_parent_wasm"] = (a0) => (Module["_ts_node_parent_wasm"] = wasmExports["ts_node_parent_wasm"])(a0);
-            Module["_ts_node_descendant_for_index_wasm"] = (a0) => (Module["_ts_node_descendant_for_index_wasm"] = wasmExports["ts_node_descendant_for_index_wasm"])(a0);
-            Module["_ts_node_named_descendant_for_index_wasm"] = (a0) => (Module["_ts_node_named_descendant_for_index_wasm"] = wasmExports["ts_node_named_descendant_for_index_wasm"])(a0);
-            Module["_ts_node_descendant_for_position_wasm"] = (a0) => (Module["_ts_node_descendant_for_position_wasm"] = wasmExports["ts_node_descendant_for_position_wasm"])(a0);
-            Module["_ts_node_named_descendant_for_position_wasm"] = (a0) => (Module["_ts_node_named_descendant_for_position_wasm"] = wasmExports["ts_node_named_descendant_for_position_wasm"])(a0);
-            Module["_ts_node_start_point_wasm"] = (a0) => (Module["_ts_node_start_point_wasm"] = wasmExports["ts_node_start_point_wasm"])(a0);
-            Module["_ts_node_end_point_wasm"] = (a0) => (Module["_ts_node_end_point_wasm"] = wasmExports["ts_node_end_point_wasm"])(a0);
-            Module["_ts_node_start_index_wasm"] = (a0) => (Module["_ts_node_start_index_wasm"] = wasmExports["ts_node_start_index_wasm"])(a0);
-            Module["_ts_node_end_index_wasm"] = (a0) => (Module["_ts_node_end_index_wasm"] = wasmExports["ts_node_end_index_wasm"])(a0);
-            Module["_ts_node_to_string_wasm"] = (a0) => (Module["_ts_node_to_string_wasm"] = wasmExports["ts_node_to_string_wasm"])(a0);
-            Module["_ts_node_children_wasm"] = (a0) => (Module["_ts_node_children_wasm"] = wasmExports["ts_node_children_wasm"])(a0);
-            Module["_ts_node_named_children_wasm"] = (a0) => (Module["_ts_node_named_children_wasm"] = wasmExports["ts_node_named_children_wasm"])(a0);
-            Module["_ts_node_descendants_of_type_wasm"] = (a0, a1, a2, a3, a4, a5, a6) => (Module["_ts_node_descendants_of_type_wasm"] = wasmExports["ts_node_descendants_of_type_wasm"])(a0, a1, a2, a3, a4, a5, a6);
-            Module["_ts_node_is_named_wasm"] = (a0) => (Module["_ts_node_is_named_wasm"] = wasmExports["ts_node_is_named_wasm"])(a0);
-            Module["_ts_node_has_changes_wasm"] = (a0) => (Module["_ts_node_has_changes_wasm"] = wasmExports["ts_node_has_changes_wasm"])(a0);
-            Module["_ts_node_has_error_wasm"] = (a0) => (Module["_ts_node_has_error_wasm"] = wasmExports["ts_node_has_error_wasm"])(a0);
-            Module["_ts_node_is_error_wasm"] = (a0) => (Module["_ts_node_is_error_wasm"] = wasmExports["ts_node_is_error_wasm"])(a0);
-            Module["_ts_node_is_missing_wasm"] = (a0) => (Module["_ts_node_is_missing_wasm"] = wasmExports["ts_node_is_missing_wasm"])(a0);
-            Module["_ts_node_is_extra_wasm"] = (a0) => (Module["_ts_node_is_extra_wasm"] = wasmExports["ts_node_is_extra_wasm"])(a0);
-            Module["_ts_node_parse_state_wasm"] = (a0) => (Module["_ts_node_parse_state_wasm"] = wasmExports["ts_node_parse_state_wasm"])(a0);
-            Module["_ts_node_next_parse_state_wasm"] = (a0) => (Module["_ts_node_next_parse_state_wasm"] = wasmExports["ts_node_next_parse_state_wasm"])(a0);
-            Module["_ts_query_matches_wasm"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) => (Module["_ts_query_matches_wasm"] = wasmExports["ts_query_matches_wasm"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
-            Module["_ts_query_captures_wasm"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) => (Module["_ts_query_captures_wasm"] = wasmExports["ts_query_captures_wasm"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
-            Module["_iswalpha"] = (a0) => (Module["_iswalpha"] = wasmExports["iswalpha"])(a0);
-            Module["_iswblank"] = (a0) => (Module["_iswblank"] = wasmExports["iswblank"])(a0);
-            Module["_iswdigit"] = (a0) => (Module["_iswdigit"] = wasmExports["iswdigit"])(a0);
-            Module["_iswlower"] = (a0) => (Module["_iswlower"] = wasmExports["iswlower"])(a0);
-            Module["_iswupper"] = (a0) => (Module["_iswupper"] = wasmExports["iswupper"])(a0);
-            Module["_iswxdigit"] = (a0) => (Module["_iswxdigit"] = wasmExports["iswxdigit"])(a0);
-            Module["_memchr"] = (a0, a1, a2) => (Module["_memchr"] = wasmExports["memchr"])(a0, a1, a2);
-            Module["_strlen"] = (a0) => (Module["_strlen"] = wasmExports["strlen"])(a0);
-            Module["_strcmp"] = (a0, a1) => (Module["_strcmp"] = wasmExports["strcmp"])(a0, a1);
-            Module["_strncat"] = (a0, a1, a2) => (Module["_strncat"] = wasmExports["strncat"])(a0, a1, a2);
-            Module["_strncpy"] = (a0, a1, a2) => (Module["_strncpy"] = wasmExports["strncpy"])(a0, a1, a2);
-            Module["_towlower"] = (a0) => (Module["_towlower"] = wasmExports["towlower"])(a0);
-            Module["_towupper"] = (a0) => (Module["_towupper"] = wasmExports["towupper"])(a0);
-            var _setThrew = /* @__PURE__ */ __name((a0, a1) => (_setThrew = wasmExports["setThrew"])(a0, a1), "_setThrew");
-            var __emscripten_stack_restore = /* @__PURE__ */ __name((a0) => (__emscripten_stack_restore = wasmExports["_emscripten_stack_restore"])(a0), "__emscripten_stack_restore");
-            var __emscripten_stack_alloc = /* @__PURE__ */ __name((a0) => (__emscripten_stack_alloc = wasmExports["_emscripten_stack_alloc"])(a0), "__emscripten_stack_alloc");
-            var _emscripten_stack_get_current = /* @__PURE__ */ __name(() => (_emscripten_stack_get_current = wasmExports["emscripten_stack_get_current"])(), "_emscripten_stack_get_current");
-            Module["dynCall_jiji"] = (a0, a1, a2, a3, a4) => (Module["dynCall_jiji"] = wasmExports["dynCall_jiji"])(a0, a1, a2, a3, a4);
-            Module["_orig$ts_parser_timeout_micros"] = (a0) => (Module["_orig$ts_parser_timeout_micros"] = wasmExports["orig$ts_parser_timeout_micros"])(a0);
-            Module["_orig$ts_parser_set_timeout_micros"] = (a0, a1) => (Module["_orig$ts_parser_set_timeout_micros"] = wasmExports["orig$ts_parser_set_timeout_micros"])(a0, a1);
-            Module["AsciiToString"] = AsciiToString;
-            Module["stringToUTF16"] = stringToUTF16;
-            var calledRun;
-            dependenciesFulfilled = /* @__PURE__ */ __name(function runCaller() {
-              if (!calledRun) run();
-              if (!calledRun) dependenciesFulfilled = runCaller;
-            }, "runCaller");
-            function callMain(args2 = []) {
-              var entryFunction = resolveGlobalSymbol("main").sym;
-              if (!entryFunction) return;
-              args2.unshift(thisProgram);
-              var argc = args2.length;
-              var argv = stackAlloc((argc + 1) * 4);
-              var argv_ptr = argv;
-              args2.forEach((arg) => {
-                LE_HEAP_STORE_U32((argv_ptr >> 2) * 4, stringToUTF8OnStack(arg));
-                argv_ptr += 4;
-              });
-              LE_HEAP_STORE_U32((argv_ptr >> 2) * 4, 0);
-              try {
-                var ret = entryFunction(argc, argv);
-                exitJS(
-                  ret,
-                  /* implicit = */
-                  true
-                );
-                return ret;
-              } catch (e) {
-                return handleException(e);
-              }
-            }
-            __name(callMain, "callMain");
-            function run(args2 = arguments_) {
-              if (runDependencies > 0) {
-                return;
-              }
-              preRun();
-              if (runDependencies > 0) {
-                return;
-              }
-              function doRun() {
-                if (calledRun) return;
-                calledRun = true;
-                Module["calledRun"] = true;
-                if (ABORT) return;
-                initRuntime();
-                preMain();
-                Module["onRuntimeInitialized"]?.();
-                if (shouldRunNow) callMain(args2);
-                postRun();
-              }
-              __name(doRun, "doRun");
-              if (Module["setStatus"]) {
-                Module["setStatus"]("Running...");
-                setTimeout(function() {
-                  setTimeout(function() {
-                    Module["setStatus"]("");
-                  }, 1);
-                  doRun();
-                }, 1);
-              } else {
-                doRun();
-              }
-            }
-            __name(run, "run");
-            if (Module["preInit"]) {
-              if (typeof Module["preInit"] == "function") Module["preInit"] = [Module["preInit"]];
-              while (Module["preInit"].length > 0) {
-                Module["preInit"].pop()();
-              }
-            }
-            var shouldRunNow = true;
-            if (Module["noInitialRun"]) shouldRunNow = false;
-            run();
-            const C = Module;
-            const INTERNAL = {};
-            const SIZE_OF_INT = 4;
-            const SIZE_OF_CURSOR = 4 * SIZE_OF_INT;
-            const SIZE_OF_NODE = 5 * SIZE_OF_INT;
-            const SIZE_OF_POINT = 2 * SIZE_OF_INT;
-            const SIZE_OF_RANGE = 2 * SIZE_OF_INT + 2 * SIZE_OF_POINT;
-            const ZERO_POINT = {
-              row: 0,
-              column: 0
-            };
-            const QUERY_WORD_REGEX = /[\w-.]*/g;
-            const PREDICATE_STEP_TYPE_CAPTURE = 1;
-            const PREDICATE_STEP_TYPE_STRING = 2;
-            const LANGUAGE_FUNCTION_REGEX = /^_?tree_sitter_\w+/;
-            let VERSION;
-            let MIN_COMPATIBLE_VERSION;
-            let TRANSFER_BUFFER;
-            let currentParseCallback;
-            let currentLogCallback;
-            const _ParserImpl = class _ParserImpl {
-              static init() {
-                TRANSFER_BUFFER = C._ts_init();
-                VERSION = getValue(TRANSFER_BUFFER, "i32");
-                MIN_COMPATIBLE_VERSION = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-              }
-              initialize() {
-                C._ts_parser_new_wasm();
-                this[0] = getValue(TRANSFER_BUFFER, "i32");
-                this[1] = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-              }
-              delete() {
-                C._ts_parser_delete(this[0]);
-                C._free(this[1]);
-                this[0] = 0;
-                this[1] = 0;
-              }
-              setLanguage(language) {
-                let address;
-                if (!language) {
-                  address = 0;
-                  language = null;
-                } else if (language.constructor === Language) {
-                  address = language[0];
-                  const version = C._ts_language_version(address);
-                  if (version < MIN_COMPATIBLE_VERSION || VERSION < version) {
-                    throw new Error(`Incompatible language version ${version}. Compatibility range ${MIN_COMPATIBLE_VERSION} through ${VERSION}.`);
-                  }
-                } else {
-                  throw new Error("Argument must be a Language");
-                }
-                this.language = language;
-                C._ts_parser_set_language(this[0], address);
-                return this;
-              }
-              getLanguage() {
-                return this.language;
-              }
-              parse(callback, oldTree, options) {
-                if (typeof callback === "string") {
-                  currentParseCallback = /* @__PURE__ */ __name((index, _) => callback.slice(index), "currentParseCallback");
-                } else if (typeof callback === "function") {
-                  currentParseCallback = callback;
-                } else {
-                  throw new Error("Argument must be a string or a function");
-                }
-                if (this.logCallback) {
-                  currentLogCallback = this.logCallback;
-                  C._ts_parser_enable_logger_wasm(this[0], 1);
-                } else {
-                  currentLogCallback = null;
-                  C._ts_parser_enable_logger_wasm(this[0], 0);
-                }
-                let rangeCount = 0;
-                let rangeAddress = 0;
-                if (options?.includedRanges) {
-                  rangeCount = options.includedRanges.length;
-                  rangeAddress = C._calloc(rangeCount, SIZE_OF_RANGE);
-                  let address = rangeAddress;
-                  for (let i2 = 0; i2 < rangeCount; i2++) {
-                    marshalRange(address, options.includedRanges[i2]);
-                    address += SIZE_OF_RANGE;
-                  }
-                }
-                const treeAddress = C._ts_parser_parse_wasm(this[0], this[1], oldTree ? oldTree[0] : 0, rangeAddress, rangeCount);
-                if (!treeAddress) {
-                  currentParseCallback = null;
-                  currentLogCallback = null;
-                  throw new Error("Parsing failed");
-                }
-                const result = new Tree(INTERNAL, treeAddress, this.language, currentParseCallback);
-                currentParseCallback = null;
-                currentLogCallback = null;
-                return result;
-              }
-              reset() {
-                C._ts_parser_reset(this[0]);
-              }
-              getIncludedRanges() {
-                C._ts_parser_included_ranges_wasm(this[0]);
-                const count = getValue(TRANSFER_BUFFER, "i32");
-                const buffer = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                const result = new Array(count);
-                if (count > 0) {
-                  let address = buffer;
-                  for (let i2 = 0; i2 < count; i2++) {
-                    result[i2] = unmarshalRange(address);
-                    address += SIZE_OF_RANGE;
-                  }
-                  C._free(buffer);
-                }
-                return result;
-              }
-              getTimeoutMicros() {
-                return C._ts_parser_timeout_micros(this[0]);
-              }
-              setTimeoutMicros(timeout) {
-                C._ts_parser_set_timeout_micros(this[0], timeout);
-              }
-              setLogger(callback) {
-                if (!callback) {
-                  callback = null;
-                } else if (typeof callback !== "function") {
-                  throw new Error("Logger callback must be a function");
-                }
-                this.logCallback = callback;
-                return this;
-              }
-              getLogger() {
-                return this.logCallback;
-              }
-            };
-            __name(_ParserImpl, "ParserImpl");
-            let ParserImpl = _ParserImpl;
-            const _Tree = class _Tree {
-              constructor(internal, address, language, textCallback) {
-                assertInternal(internal);
-                this[0] = address;
-                this.language = language;
-                this.textCallback = textCallback;
-              }
-              copy() {
-                const address = C._ts_tree_copy(this[0]);
-                return new _Tree(INTERNAL, address, this.language, this.textCallback);
-              }
-              delete() {
-                C._ts_tree_delete(this[0]);
-                this[0] = 0;
-              }
-              edit(edit) {
-                marshalEdit(edit);
-                C._ts_tree_edit_wasm(this[0]);
-              }
-              get rootNode() {
-                C._ts_tree_root_node_wasm(this[0]);
-                return unmarshalNode(this);
-              }
-              rootNodeWithOffset(offsetBytes, offsetExtent) {
-                const address = TRANSFER_BUFFER + SIZE_OF_NODE;
-                setValue(address, offsetBytes, "i32");
-                marshalPoint(address + SIZE_OF_INT, offsetExtent);
-                C._ts_tree_root_node_with_offset_wasm(this[0]);
-                return unmarshalNode(this);
-              }
-              getLanguage() {
-                return this.language;
-              }
-              walk() {
-                return this.rootNode.walk();
-              }
-              getChangedRanges(other) {
-                if (other.constructor !== _Tree) {
-                  throw new TypeError("Argument must be a Tree");
-                }
-                C._ts_tree_get_changed_ranges_wasm(this[0], other[0]);
-                const count = getValue(TRANSFER_BUFFER, "i32");
-                const buffer = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                const result = new Array(count);
-                if (count > 0) {
-                  let address = buffer;
-                  for (let i2 = 0; i2 < count; i2++) {
-                    result[i2] = unmarshalRange(address);
-                    address += SIZE_OF_RANGE;
-                  }
-                  C._free(buffer);
-                }
-                return result;
-              }
-              getIncludedRanges() {
-                C._ts_tree_included_ranges_wasm(this[0]);
-                const count = getValue(TRANSFER_BUFFER, "i32");
-                const buffer = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                const result = new Array(count);
-                if (count > 0) {
-                  let address = buffer;
-                  for (let i2 = 0; i2 < count; i2++) {
-                    result[i2] = unmarshalRange(address);
-                    address += SIZE_OF_RANGE;
-                  }
-                  C._free(buffer);
-                }
-                return result;
-              }
-            };
-            __name(_Tree, "Tree");
-            let Tree = _Tree;
-            const _Node = class _Node {
-              constructor(internal, tree) {
-                assertInternal(internal);
-                this.tree = tree;
-              }
-              get typeId() {
-                marshalNode(this);
-                return C._ts_node_symbol_wasm(this.tree[0]);
-              }
-              get grammarId() {
-                marshalNode(this);
-                return C._ts_node_grammar_symbol_wasm(this.tree[0]);
-              }
-              get type() {
-                return this.tree.language.types[this.typeId] || "ERROR";
-              }
-              get grammarType() {
-                return this.tree.language.types[this.grammarId] || "ERROR";
-              }
-              get endPosition() {
-                marshalNode(this);
-                C._ts_node_end_point_wasm(this.tree[0]);
-                return unmarshalPoint(TRANSFER_BUFFER);
-              }
-              get endIndex() {
-                marshalNode(this);
-                return C._ts_node_end_index_wasm(this.tree[0]);
-              }
-              get text() {
-                return getText(this.tree, this.startIndex, this.endIndex);
-              }
-              get parseState() {
-                marshalNode(this);
-                return C._ts_node_parse_state_wasm(this.tree[0]);
-              }
-              get nextParseState() {
-                marshalNode(this);
-                return C._ts_node_next_parse_state_wasm(this.tree[0]);
-              }
-              get isNamed() {
-                marshalNode(this);
-                return C._ts_node_is_named_wasm(this.tree[0]) === 1;
-              }
-              get hasError() {
-                marshalNode(this);
-                return C._ts_node_has_error_wasm(this.tree[0]) === 1;
-              }
-              get hasChanges() {
-                marshalNode(this);
-                return C._ts_node_has_changes_wasm(this.tree[0]) === 1;
-              }
-              get isError() {
-                marshalNode(this);
-                return C._ts_node_is_error_wasm(this.tree[0]) === 1;
-              }
-              get isMissing() {
-                marshalNode(this);
-                return C._ts_node_is_missing_wasm(this.tree[0]) === 1;
-              }
-              get isExtra() {
-                marshalNode(this);
-                return C._ts_node_is_extra_wasm(this.tree[0]) === 1;
-              }
-              equals(other) {
-                return this.id === other.id;
-              }
-              child(index) {
-                marshalNode(this);
-                C._ts_node_child_wasm(this.tree[0], index);
-                return unmarshalNode(this.tree);
-              }
-              namedChild(index) {
-                marshalNode(this);
-                C._ts_node_named_child_wasm(this.tree[0], index);
-                return unmarshalNode(this.tree);
-              }
-              childForFieldId(fieldId) {
-                marshalNode(this);
-                C._ts_node_child_by_field_id_wasm(this.tree[0], fieldId);
-                return unmarshalNode(this.tree);
-              }
-              childForFieldName(fieldName) {
-                const fieldId = this.tree.language.fields.indexOf(fieldName);
-                if (fieldId !== -1) return this.childForFieldId(fieldId);
-                return null;
-              }
-              fieldNameForChild(index) {
-                marshalNode(this);
-                const address = C._ts_node_field_name_for_child_wasm(this.tree[0], index);
-                if (!address) {
-                  return null;
-                }
-                const result = AsciiToString(address);
-                return result;
-              }
-              childrenForFieldName(fieldName) {
-                const fieldId = this.tree.language.fields.indexOf(fieldName);
-                if (fieldId !== -1 && fieldId !== 0) return this.childrenForFieldId(fieldId);
-                return [];
-              }
-              childrenForFieldId(fieldId) {
-                marshalNode(this);
-                C._ts_node_children_by_field_id_wasm(this.tree[0], fieldId);
-                const count = getValue(TRANSFER_BUFFER, "i32");
-                const buffer = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                const result = new Array(count);
-                if (count > 0) {
-                  let address = buffer;
-                  for (let i2 = 0; i2 < count; i2++) {
-                    result[i2] = unmarshalNode(this.tree, address);
-                    address += SIZE_OF_NODE;
-                  }
-                  C._free(buffer);
-                }
-                return result;
-              }
-              firstChildForIndex(index) {
-                marshalNode(this);
-                const address = TRANSFER_BUFFER + SIZE_OF_NODE;
-                setValue(address, index, "i32");
-                C._ts_node_first_child_for_byte_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              firstNamedChildForIndex(index) {
-                marshalNode(this);
-                const address = TRANSFER_BUFFER + SIZE_OF_NODE;
-                setValue(address, index, "i32");
-                C._ts_node_first_named_child_for_byte_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              get childCount() {
-                marshalNode(this);
-                return C._ts_node_child_count_wasm(this.tree[0]);
-              }
-              get namedChildCount() {
-                marshalNode(this);
-                return C._ts_node_named_child_count_wasm(this.tree[0]);
-              }
-              get firstChild() {
-                return this.child(0);
-              }
-              get firstNamedChild() {
-                return this.namedChild(0);
-              }
-              get lastChild() {
-                return this.child(this.childCount - 1);
-              }
-              get lastNamedChild() {
-                return this.namedChild(this.namedChildCount - 1);
-              }
-              get children() {
-                if (!this._children) {
-                  marshalNode(this);
-                  C._ts_node_children_wasm(this.tree[0]);
-                  const count = getValue(TRANSFER_BUFFER, "i32");
-                  const buffer = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                  this._children = new Array(count);
-                  if (count > 0) {
-                    let address = buffer;
-                    for (let i2 = 0; i2 < count; i2++) {
-                      this._children[i2] = unmarshalNode(this.tree, address);
-                      address += SIZE_OF_NODE;
-                    }
-                    C._free(buffer);
-                  }
-                }
-                return this._children;
-              }
-              get namedChildren() {
-                if (!this._namedChildren) {
-                  marshalNode(this);
-                  C._ts_node_named_children_wasm(this.tree[0]);
-                  const count = getValue(TRANSFER_BUFFER, "i32");
-                  const buffer = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                  this._namedChildren = new Array(count);
-                  if (count > 0) {
-                    let address = buffer;
-                    for (let i2 = 0; i2 < count; i2++) {
-                      this._namedChildren[i2] = unmarshalNode(this.tree, address);
-                      address += SIZE_OF_NODE;
-                    }
-                    C._free(buffer);
-                  }
-                }
-                return this._namedChildren;
-              }
-              descendantsOfType(types, startPosition, endPosition) {
-                if (!Array.isArray(types)) types = [types];
-                if (!startPosition) startPosition = ZERO_POINT;
-                if (!endPosition) endPosition = ZERO_POINT;
-                const symbols = [];
-                const typesBySymbol = this.tree.language.types;
-                for (let i2 = 0, n = typesBySymbol.length; i2 < n; i2++) {
-                  if (types.includes(typesBySymbol[i2])) {
-                    symbols.push(i2);
-                  }
-                }
-                const symbolsAddress = C._malloc(SIZE_OF_INT * symbols.length);
-                for (let i2 = 0, n = symbols.length; i2 < n; i2++) {
-                  setValue(symbolsAddress + i2 * SIZE_OF_INT, symbols[i2], "i32");
-                }
-                marshalNode(this);
-                C._ts_node_descendants_of_type_wasm(this.tree[0], symbolsAddress, symbols.length, startPosition.row, startPosition.column, endPosition.row, endPosition.column);
-                const descendantCount = getValue(TRANSFER_BUFFER, "i32");
-                const descendantAddress = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                const result = new Array(descendantCount);
-                if (descendantCount > 0) {
-                  let address = descendantAddress;
-                  for (let i2 = 0; i2 < descendantCount; i2++) {
-                    result[i2] = unmarshalNode(this.tree, address);
-                    address += SIZE_OF_NODE;
-                  }
-                }
-                C._free(descendantAddress);
-                C._free(symbolsAddress);
-                return result;
-              }
-              get nextSibling() {
-                marshalNode(this);
-                C._ts_node_next_sibling_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              get previousSibling() {
-                marshalNode(this);
-                C._ts_node_prev_sibling_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              get nextNamedSibling() {
-                marshalNode(this);
-                C._ts_node_next_named_sibling_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              get previousNamedSibling() {
-                marshalNode(this);
-                C._ts_node_prev_named_sibling_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              get descendantCount() {
-                marshalNode(this);
-                return C._ts_node_descendant_count_wasm(this.tree[0]);
-              }
-              get parent() {
-                marshalNode(this);
-                C._ts_node_parent_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              descendantForIndex(start2, end = start2) {
-                if (typeof start2 !== "number" || typeof end !== "number") {
-                  throw new Error("Arguments must be numbers");
-                }
-                marshalNode(this);
-                const address = TRANSFER_BUFFER + SIZE_OF_NODE;
-                setValue(address, start2, "i32");
-                setValue(address + SIZE_OF_INT, end, "i32");
-                C._ts_node_descendant_for_index_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              namedDescendantForIndex(start2, end = start2) {
-                if (typeof start2 !== "number" || typeof end !== "number") {
-                  throw new Error("Arguments must be numbers");
-                }
-                marshalNode(this);
-                const address = TRANSFER_BUFFER + SIZE_OF_NODE;
-                setValue(address, start2, "i32");
-                setValue(address + SIZE_OF_INT, end, "i32");
-                C._ts_node_named_descendant_for_index_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              descendantForPosition(start2, end = start2) {
-                if (!isPoint(start2) || !isPoint(end)) {
-                  throw new Error("Arguments must be {row, column} objects");
-                }
-                marshalNode(this);
-                const address = TRANSFER_BUFFER + SIZE_OF_NODE;
-                marshalPoint(address, start2);
-                marshalPoint(address + SIZE_OF_POINT, end);
-                C._ts_node_descendant_for_position_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              namedDescendantForPosition(start2, end = start2) {
-                if (!isPoint(start2) || !isPoint(end)) {
-                  throw new Error("Arguments must be {row, column} objects");
-                }
-                marshalNode(this);
-                const address = TRANSFER_BUFFER + SIZE_OF_NODE;
-                marshalPoint(address, start2);
-                marshalPoint(address + SIZE_OF_POINT, end);
-                C._ts_node_named_descendant_for_position_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              walk() {
-                marshalNode(this);
-                C._ts_tree_cursor_new_wasm(this.tree[0]);
-                return new TreeCursor(INTERNAL, this.tree);
-              }
-              toString() {
-                marshalNode(this);
-                const address = C._ts_node_to_string_wasm(this.tree[0]);
-                const result = AsciiToString(address);
-                C._free(address);
-                return result;
-              }
-            };
-            __name(_Node, "Node");
-            let Node = _Node;
-            const _TreeCursor = class _TreeCursor {
-              constructor(internal, tree) {
-                assertInternal(internal);
-                this.tree = tree;
-                unmarshalTreeCursor(this);
-              }
-              delete() {
-                marshalTreeCursor(this);
-                C._ts_tree_cursor_delete_wasm(this.tree[0]);
-                this[0] = this[1] = this[2] = 0;
-              }
-              reset(node) {
-                marshalNode(node);
-                marshalTreeCursor(this, TRANSFER_BUFFER + SIZE_OF_NODE);
-                C._ts_tree_cursor_reset_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-              }
-              resetTo(cursor) {
-                marshalTreeCursor(this, TRANSFER_BUFFER);
-                marshalTreeCursor(cursor, TRANSFER_BUFFER + SIZE_OF_CURSOR);
-                C._ts_tree_cursor_reset_to_wasm(this.tree[0], cursor.tree[0]);
-                unmarshalTreeCursor(this);
-              }
-              get nodeType() {
-                return this.tree.language.types[this.nodeTypeId] || "ERROR";
-              }
-              get nodeTypeId() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_node_type_id_wasm(this.tree[0]);
-              }
-              get nodeStateId() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_node_state_id_wasm(this.tree[0]);
-              }
-              get nodeId() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_node_id_wasm(this.tree[0]);
-              }
-              get nodeIsNamed() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_node_is_named_wasm(this.tree[0]) === 1;
-              }
-              get nodeIsMissing() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_node_is_missing_wasm(this.tree[0]) === 1;
-              }
-              get nodeText() {
-                marshalTreeCursor(this);
-                const startIndex = C._ts_tree_cursor_start_index_wasm(this.tree[0]);
-                const endIndex = C._ts_tree_cursor_end_index_wasm(this.tree[0]);
-                return getText(this.tree, startIndex, endIndex);
-              }
-              get startPosition() {
-                marshalTreeCursor(this);
-                C._ts_tree_cursor_start_position_wasm(this.tree[0]);
-                return unmarshalPoint(TRANSFER_BUFFER);
-              }
-              get endPosition() {
-                marshalTreeCursor(this);
-                C._ts_tree_cursor_end_position_wasm(this.tree[0]);
-                return unmarshalPoint(TRANSFER_BUFFER);
-              }
-              get startIndex() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_start_index_wasm(this.tree[0]);
-              }
-              get endIndex() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_end_index_wasm(this.tree[0]);
-              }
-              get currentNode() {
-                marshalTreeCursor(this);
-                C._ts_tree_cursor_current_node_wasm(this.tree[0]);
-                return unmarshalNode(this.tree);
-              }
-              get currentFieldId() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_field_id_wasm(this.tree[0]);
-              }
-              get currentFieldName() {
-                return this.tree.language.fields[this.currentFieldId];
-              }
-              get currentDepth() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_depth_wasm(this.tree[0]);
-              }
-              get currentDescendantIndex() {
-                marshalTreeCursor(this);
-                return C._ts_tree_cursor_current_descendant_index_wasm(this.tree[0]);
-              }
-              gotoFirstChild() {
-                marshalTreeCursor(this);
-                const result = C._ts_tree_cursor_goto_first_child_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-                return result === 1;
-              }
-              gotoLastChild() {
-                marshalTreeCursor(this);
-                const result = C._ts_tree_cursor_goto_last_child_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-                return result === 1;
-              }
-              gotoFirstChildForIndex(goalIndex) {
-                marshalTreeCursor(this);
-                setValue(TRANSFER_BUFFER + SIZE_OF_CURSOR, goalIndex, "i32");
-                const result = C._ts_tree_cursor_goto_first_child_for_index_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-                return result === 1;
-              }
-              gotoFirstChildForPosition(goalPosition) {
-                marshalTreeCursor(this);
-                marshalPoint(TRANSFER_BUFFER + SIZE_OF_CURSOR, goalPosition);
-                const result = C._ts_tree_cursor_goto_first_child_for_position_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-                return result === 1;
-              }
-              gotoNextSibling() {
-                marshalTreeCursor(this);
-                const result = C._ts_tree_cursor_goto_next_sibling_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-                return result === 1;
-              }
-              gotoPreviousSibling() {
-                marshalTreeCursor(this);
-                const result = C._ts_tree_cursor_goto_previous_sibling_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-                return result === 1;
-              }
-              gotoDescendant(goalDescendantindex) {
-                marshalTreeCursor(this);
-                C._ts_tree_cursor_goto_descendant_wasm(this.tree[0], goalDescendantindex);
-                unmarshalTreeCursor(this);
-              }
-              gotoParent() {
-                marshalTreeCursor(this);
-                const result = C._ts_tree_cursor_goto_parent_wasm(this.tree[0]);
-                unmarshalTreeCursor(this);
-                return result === 1;
-              }
-            };
-            __name(_TreeCursor, "TreeCursor");
-            let TreeCursor = _TreeCursor;
-            const _Language = class _Language {
-              constructor(internal, address) {
-                assertInternal(internal);
-                this[0] = address;
-                this.types = new Array(C._ts_language_symbol_count(this[0]));
-                for (let i2 = 0, n = this.types.length; i2 < n; i2++) {
-                  if (C._ts_language_symbol_type(this[0], i2) < 2) {
-                    this.types[i2] = UTF8ToString(C._ts_language_symbol_name(this[0], i2));
-                  }
-                }
-                this.fields = new Array(C._ts_language_field_count(this[0]) + 1);
-                for (let i2 = 0, n = this.fields.length; i2 < n; i2++) {
-                  const fieldName = C._ts_language_field_name_for_id(this[0], i2);
-                  if (fieldName !== 0) {
-                    this.fields[i2] = UTF8ToString(fieldName);
-                  } else {
-                    this.fields[i2] = null;
-                  }
-                }
-              }
-              get version() {
-                return C._ts_language_version(this[0]);
-              }
-              get fieldCount() {
-                return this.fields.length - 1;
-              }
-              get stateCount() {
-                return C._ts_language_state_count(this[0]);
-              }
-              fieldIdForName(fieldName) {
-                const result = this.fields.indexOf(fieldName);
-                if (result !== -1) {
-                  return result;
-                } else {
-                  return null;
-                }
-              }
-              fieldNameForId(fieldId) {
-                return this.fields[fieldId] || null;
-              }
-              idForNodeType(type, named) {
-                const typeLength = lengthBytesUTF8(type);
-                const typeAddress = C._malloc(typeLength + 1);
-                stringToUTF8(type, typeAddress, typeLength + 1);
-                const result = C._ts_language_symbol_for_name(this[0], typeAddress, typeLength, named);
-                C._free(typeAddress);
-                return result || null;
-              }
-              get nodeTypeCount() {
-                return C._ts_language_symbol_count(this[0]);
-              }
-              nodeTypeForId(typeId) {
-                const name2 = C._ts_language_symbol_name(this[0], typeId);
-                return name2 ? UTF8ToString(name2) : null;
-              }
-              nodeTypeIsNamed(typeId) {
-                return C._ts_language_type_is_named_wasm(this[0], typeId) ? true : false;
-              }
-              nodeTypeIsVisible(typeId) {
-                return C._ts_language_type_is_visible_wasm(this[0], typeId) ? true : false;
-              }
-              nextState(stateId, typeId) {
-                return C._ts_language_next_state(this[0], stateId, typeId);
-              }
-              lookaheadIterator(stateId) {
-                const address = C._ts_lookahead_iterator_new(this[0], stateId);
-                if (address) return new LookaheadIterable(INTERNAL, address, this);
-                return null;
-              }
-              query(source) {
-                const sourceLength = lengthBytesUTF8(source);
-                const sourceAddress = C._malloc(sourceLength + 1);
-                stringToUTF8(source, sourceAddress, sourceLength + 1);
-                const address = C._ts_query_new(this[0], sourceAddress, sourceLength, TRANSFER_BUFFER, TRANSFER_BUFFER + SIZE_OF_INT);
-                if (!address) {
-                  const errorId = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                  const errorByte = getValue(TRANSFER_BUFFER, "i32");
-                  const errorIndex = UTF8ToString(sourceAddress, errorByte).length;
-                  const suffix = source.substr(errorIndex, 100).split("\n")[0];
-                  let word = suffix.match(QUERY_WORD_REGEX)[0];
-                  let error;
-                  switch (errorId) {
-                    case 2:
-                      error = new RangeError(`Bad node name '${word}'`);
-                      break;
-                    case 3:
-                      error = new RangeError(`Bad field name '${word}'`);
-                      break;
-                    case 4:
-                      error = new RangeError(`Bad capture name @${word}`);
-                      break;
-                    case 5:
-                      error = new TypeError(`Bad pattern structure at offset ${errorIndex}: '${suffix}'...`);
-                      word = "";
-                      break;
-                    default:
-                      error = new SyntaxError(`Bad syntax at offset ${errorIndex}: '${suffix}'...`);
-                      word = "";
-                      break;
-                  }
-                  error.index = errorIndex;
-                  error.length = word.length;
-                  C._free(sourceAddress);
-                  throw error;
-                }
-                const stringCount = C._ts_query_string_count(address);
-                const captureCount = C._ts_query_capture_count(address);
-                const patternCount = C._ts_query_pattern_count(address);
-                const captureNames = new Array(captureCount);
-                const stringValues = new Array(stringCount);
-                for (let i2 = 0; i2 < captureCount; i2++) {
-                  const nameAddress = C._ts_query_capture_name_for_id(address, i2, TRANSFER_BUFFER);
-                  const nameLength = getValue(TRANSFER_BUFFER, "i32");
-                  captureNames[i2] = UTF8ToString(nameAddress, nameLength);
-                }
-                for (let i2 = 0; i2 < stringCount; i2++) {
-                  const valueAddress = C._ts_query_string_value_for_id(address, i2, TRANSFER_BUFFER);
-                  const nameLength = getValue(TRANSFER_BUFFER, "i32");
-                  stringValues[i2] = UTF8ToString(valueAddress, nameLength);
-                }
-                const setProperties = new Array(patternCount);
-                const assertedProperties = new Array(patternCount);
-                const refutedProperties = new Array(patternCount);
-                const predicates = new Array(patternCount);
-                const textPredicates = new Array(patternCount);
-                for (let i2 = 0; i2 < patternCount; i2++) {
-                  const predicatesAddress = C._ts_query_predicates_for_pattern(address, i2, TRANSFER_BUFFER);
-                  const stepCount = getValue(TRANSFER_BUFFER, "i32");
-                  predicates[i2] = [];
-                  textPredicates[i2] = [];
-                  const steps = [];
-                  let stepAddress = predicatesAddress;
-                  for (let j = 0; j < stepCount; j++) {
-                    const stepType = getValue(stepAddress, "i32");
-                    stepAddress += SIZE_OF_INT;
-                    const stepValueId = getValue(stepAddress, "i32");
-                    stepAddress += SIZE_OF_INT;
-                    if (stepType === PREDICATE_STEP_TYPE_CAPTURE) {
-                      steps.push({
-                        type: "capture",
-                        name: captureNames[stepValueId]
-                      });
-                    } else if (stepType === PREDICATE_STEP_TYPE_STRING) {
-                      steps.push({
-                        type: "string",
-                        value: stringValues[stepValueId]
-                      });
-                    } else if (steps.length > 0) {
-                      if (steps[0].type !== "string") {
-                        throw new Error("Predicates must begin with a literal value");
-                      }
-                      const operator = steps[0].value;
-                      let isPositive = true;
-                      let matchAll = true;
-                      let captureName;
-                      switch (operator) {
-                        case "any-not-eq?":
-                        case "not-eq?":
-                          isPositive = false;
-                        case "any-eq?":
-                        case "eq?":
-                          if (steps.length !== 3) {
-                            throw new Error(`Wrong number of arguments to \`#${operator}\` predicate. Expected 2, got ${steps.length - 1}`);
-                          }
-                          if (steps[1].type !== "capture") {
-                            throw new Error(`First argument of \`#${operator}\` predicate must be a capture. Got "${steps[1].value}"`);
-                          }
-                          matchAll = !operator.startsWith("any-");
-                          if (steps[2].type === "capture") {
-                            const captureName1 = steps[1].name;
-                            const captureName2 = steps[2].name;
-                            textPredicates[i2].push((captures) => {
-                              const nodes1 = [];
-                              const nodes2 = [];
-                              for (const c of captures) {
-                                if (c.name === captureName1) nodes1.push(c.node);
-                                if (c.name === captureName2) nodes2.push(c.node);
-                              }
-                              const compare = /* @__PURE__ */ __name((n1, n2, positive) => positive ? n1.text === n2.text : n1.text !== n2.text, "compare");
-                              return matchAll ? nodes1.every((n1) => nodes2.some((n2) => compare(n1, n2, isPositive))) : nodes1.some((n1) => nodes2.some((n2) => compare(n1, n2, isPositive)));
-                            });
-                          } else {
-                            captureName = steps[1].name;
-                            const stringValue = steps[2].value;
-                            const matches = /* @__PURE__ */ __name((n) => n.text === stringValue, "matches");
-                            const doesNotMatch = /* @__PURE__ */ __name((n) => n.text !== stringValue, "doesNotMatch");
-                            textPredicates[i2].push((captures) => {
-                              const nodes = [];
-                              for (const c of captures) {
-                                if (c.name === captureName) nodes.push(c.node);
-                              }
-                              const test = isPositive ? matches : doesNotMatch;
-                              return matchAll ? nodes.every(test) : nodes.some(test);
-                            });
-                          }
-                          break;
-                        case "any-not-match?":
-                        case "not-match?":
-                          isPositive = false;
-                        case "any-match?":
-                        case "match?":
-                          if (steps.length !== 3) {
-                            throw new Error(`Wrong number of arguments to \`#${operator}\` predicate. Expected 2, got ${steps.length - 1}.`);
-                          }
-                          if (steps[1].type !== "capture") {
-                            throw new Error(`First argument of \`#${operator}\` predicate must be a capture. Got "${steps[1].value}".`);
-                          }
-                          if (steps[2].type !== "string") {
-                            throw new Error(`Second argument of \`#${operator}\` predicate must be a string. Got @${steps[2].value}.`);
-                          }
-                          captureName = steps[1].name;
-                          const regex = new RegExp(steps[2].value);
-                          matchAll = !operator.startsWith("any-");
-                          textPredicates[i2].push((captures) => {
-                            const nodes = [];
-                            for (const c of captures) {
-                              if (c.name === captureName) nodes.push(c.node.text);
-                            }
-                            const test = /* @__PURE__ */ __name((text, positive) => positive ? regex.test(text) : !regex.test(text), "test");
-                            if (nodes.length === 0) return !isPositive;
-                            return matchAll ? nodes.every((text) => test(text, isPositive)) : nodes.some((text) => test(text, isPositive));
-                          });
-                          break;
-                        case "set!":
-                          if (steps.length < 2 || steps.length > 3) {
-                            throw new Error(`Wrong number of arguments to \`#set!\` predicate. Expected 1 or 2. Got ${steps.length - 1}.`);
-                          }
-                          if (steps.some((s) => s.type !== "string")) {
-                            throw new Error(`Arguments to \`#set!\` predicate must be a strings.".`);
-                          }
-                          if (!setProperties[i2]) setProperties[i2] = {};
-                          setProperties[i2][steps[1].value] = steps[2] ? steps[2].value : null;
-                          break;
-                        case "is?":
-                        case "is-not?":
-                          if (steps.length < 2 || steps.length > 3) {
-                            throw new Error(`Wrong number of arguments to \`#${operator}\` predicate. Expected 1 or 2. Got ${steps.length - 1}.`);
-                          }
-                          if (steps.some((s) => s.type !== "string")) {
-                            throw new Error(`Arguments to \`#${operator}\` predicate must be a strings.".`);
-                          }
-                          const properties = operator === "is?" ? assertedProperties : refutedProperties;
-                          if (!properties[i2]) properties[i2] = {};
-                          properties[i2][steps[1].value] = steps[2] ? steps[2].value : null;
-                          break;
-                        case "not-any-of?":
-                          isPositive = false;
-                        case "any-of?":
-                          if (steps.length < 2) {
-                            throw new Error(`Wrong number of arguments to \`#${operator}\` predicate. Expected at least 1. Got ${steps.length - 1}.`);
-                          }
-                          if (steps[1].type !== "capture") {
-                            throw new Error(`First argument of \`#${operator}\` predicate must be a capture. Got "${steps[1].value}".`);
-                          }
-                          for (let i3 = 2; i3 < steps.length; i3++) {
-                            if (steps[i3].type !== "string") {
-                              throw new Error(`Arguments to \`#${operator}\` predicate must be a strings.".`);
-                            }
-                          }
-                          captureName = steps[1].name;
-                          const values2 = steps.slice(2).map((s) => s.value);
-                          textPredicates[i2].push((captures) => {
-                            const nodes = [];
-                            for (const c of captures) {
-                              if (c.name === captureName) nodes.push(c.node.text);
-                            }
-                            if (nodes.length === 0) return !isPositive;
-                            return nodes.every((text) => values2.includes(text)) === isPositive;
-                          });
-                          break;
-                        default:
-                          predicates[i2].push({
-                            operator,
-                            operands: steps.slice(1)
-                          });
-                      }
-                      steps.length = 0;
-                    }
-                  }
-                  Object.freeze(setProperties[i2]);
-                  Object.freeze(assertedProperties[i2]);
-                  Object.freeze(refutedProperties[i2]);
-                }
-                C._free(sourceAddress);
-                return new Query(INTERNAL, address, captureNames, textPredicates, predicates, Object.freeze(setProperties), Object.freeze(assertedProperties), Object.freeze(refutedProperties));
-              }
-              static load(input) {
-                let bytes;
-                if (input instanceof Uint8Array) {
-                  bytes = Promise.resolve(input);
-                } else {
-                  const url = input;
-                  if (typeof process !== "undefined" && process.versions && process.versions.node) {
-                    const fs2 = __require("fs");
-                    bytes = Promise.resolve(fs2.readFileSync(url));
-                  } else {
-                    bytes = fetch(url).then((response) => response.arrayBuffer().then((buffer) => {
-                      if (response.ok) {
-                        return new Uint8Array(buffer);
-                      } else {
-                        const body2 = new TextDecoder("utf-8").decode(buffer);
-                        throw new Error(`Language.load failed with status ${response.status}.
-
-${body2}`);
-                      }
-                    }));
-                  }
-                }
-                return bytes.then((bytes2) => loadWebAssemblyModule(bytes2, {
-                  loadAsync: true
-                })).then((mod) => {
-                  const symbolNames = Object.keys(mod);
-                  const functionName = symbolNames.find((key) => LANGUAGE_FUNCTION_REGEX.test(key) && !key.includes("external_scanner_"));
-                  if (!functionName) {
-                    console.log(`Couldn't find language function in WASM file. Symbols:
-${JSON.stringify(symbolNames, null, 2)}`);
-                  }
-                  const languageAddress = mod[functionName]();
-                  return new _Language(INTERNAL, languageAddress);
-                });
-              }
-            };
-            __name(_Language, "Language");
-            let Language = _Language;
-            const _LookaheadIterable = class _LookaheadIterable {
-              constructor(internal, address, language) {
-                assertInternal(internal);
-                this[0] = address;
-                this.language = language;
-              }
-              get currentTypeId() {
-                return C._ts_lookahead_iterator_current_symbol(this[0]);
-              }
-              get currentType() {
-                return this.language.types[this.currentTypeId] || "ERROR";
-              }
-              delete() {
-                C._ts_lookahead_iterator_delete(this[0]);
-                this[0] = 0;
-              }
-              resetState(stateId) {
-                return C._ts_lookahead_iterator_reset_state(this[0], stateId);
-              }
-              reset(language, stateId) {
-                if (C._ts_lookahead_iterator_reset(this[0], language[0], stateId)) {
-                  this.language = language;
-                  return true;
-                }
-                return false;
-              }
-              [Symbol.iterator]() {
-                const self2 = this;
-                return {
-                  next() {
-                    if (C._ts_lookahead_iterator_next(self2[0])) {
-                      return {
-                        done: false,
-                        value: self2.currentType
-                      };
-                    }
-                    return {
-                      done: true,
-                      value: ""
-                    };
-                  }
-                };
-              }
-            };
-            __name(_LookaheadIterable, "LookaheadIterable");
-            let LookaheadIterable = _LookaheadIterable;
-            const _Query = class _Query {
-              constructor(internal, address, captureNames, textPredicates, predicates, setProperties, assertedProperties, refutedProperties) {
-                assertInternal(internal);
-                this[0] = address;
-                this.captureNames = captureNames;
-                this.textPredicates = textPredicates;
-                this.predicates = predicates;
-                this.setProperties = setProperties;
-                this.assertedProperties = assertedProperties;
-                this.refutedProperties = refutedProperties;
-                this.exceededMatchLimit = false;
-              }
-              delete() {
-                C._ts_query_delete(this[0]);
-                this[0] = 0;
-              }
-              matches(node, { startPosition = ZERO_POINT, endPosition = ZERO_POINT, startIndex = 0, endIndex = 0, matchLimit = 4294967295, maxStartDepth = 4294967295, timeoutMicros = 0 } = {}) {
-                if (typeof matchLimit !== "number") {
-                  throw new Error("Arguments must be numbers");
-                }
-                marshalNode(node);
-                C._ts_query_matches_wasm(this[0], node.tree[0], startPosition.row, startPosition.column, endPosition.row, endPosition.column, startIndex, endIndex, matchLimit, maxStartDepth, timeoutMicros);
-                const rawCount = getValue(TRANSFER_BUFFER, "i32");
-                const startAddress = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                const didExceedMatchLimit = getValue(TRANSFER_BUFFER + 2 * SIZE_OF_INT, "i32");
-                const result = new Array(rawCount);
-                this.exceededMatchLimit = Boolean(didExceedMatchLimit);
-                let filteredCount = 0;
-                let address = startAddress;
-                for (let i2 = 0; i2 < rawCount; i2++) {
-                  const pattern = getValue(address, "i32");
-                  address += SIZE_OF_INT;
-                  const captureCount = getValue(address, "i32");
-                  address += SIZE_OF_INT;
-                  const captures = new Array(captureCount);
-                  address = unmarshalCaptures(this, node.tree, address, captures);
-                  if (this.textPredicates[pattern].every((p) => p(captures))) {
-                    result[filteredCount] = {
-                      pattern,
-                      captures
-                    };
-                    const setProperties = this.setProperties[pattern];
-                    if (setProperties) result[filteredCount].setProperties = setProperties;
-                    const assertedProperties = this.assertedProperties[pattern];
-                    if (assertedProperties) result[filteredCount].assertedProperties = assertedProperties;
-                    const refutedProperties = this.refutedProperties[pattern];
-                    if (refutedProperties) result[filteredCount].refutedProperties = refutedProperties;
-                    filteredCount++;
-                  }
-                }
-                result.length = filteredCount;
-                C._free(startAddress);
-                return result;
-              }
-              captures(node, { startPosition = ZERO_POINT, endPosition = ZERO_POINT, startIndex = 0, endIndex = 0, matchLimit = 4294967295, maxStartDepth = 4294967295, timeoutMicros = 0 } = {}) {
-                if (typeof matchLimit !== "number") {
-                  throw new Error("Arguments must be numbers");
-                }
-                marshalNode(node);
-                C._ts_query_captures_wasm(this[0], node.tree[0], startPosition.row, startPosition.column, endPosition.row, endPosition.column, startIndex, endIndex, matchLimit, maxStartDepth, timeoutMicros);
-                const count = getValue(TRANSFER_BUFFER, "i32");
-                const startAddress = getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
-                const didExceedMatchLimit = getValue(TRANSFER_BUFFER + 2 * SIZE_OF_INT, "i32");
-                const result = [];
-                this.exceededMatchLimit = Boolean(didExceedMatchLimit);
-                const captures = [];
-                let address = startAddress;
-                for (let i2 = 0; i2 < count; i2++) {
-                  const pattern = getValue(address, "i32");
-                  address += SIZE_OF_INT;
-                  const captureCount = getValue(address, "i32");
-                  address += SIZE_OF_INT;
-                  const captureIndex = getValue(address, "i32");
-                  address += SIZE_OF_INT;
-                  captures.length = captureCount;
-                  address = unmarshalCaptures(this, node.tree, address, captures);
-                  if (this.textPredicates[pattern].every((p) => p(captures))) {
-                    const capture = captures[captureIndex];
-                    const setProperties = this.setProperties[pattern];
-                    if (setProperties) capture.setProperties = setProperties;
-                    const assertedProperties = this.assertedProperties[pattern];
-                    if (assertedProperties) capture.assertedProperties = assertedProperties;
-                    const refutedProperties = this.refutedProperties[pattern];
-                    if (refutedProperties) capture.refutedProperties = refutedProperties;
-                    result.push(capture);
-                  }
-                }
-                C._free(startAddress);
-                return result;
-              }
-              predicatesForPattern(patternIndex) {
-                return this.predicates[patternIndex];
-              }
-              disableCapture(captureName) {
-                const captureNameLength = lengthBytesUTF8(captureName);
-                const captureNameAddress = C._malloc(captureNameLength + 1);
-                stringToUTF8(captureName, captureNameAddress, captureNameLength + 1);
-                C._ts_query_disable_capture(this[0], captureNameAddress, captureNameLength);
-                C._free(captureNameAddress);
-              }
-              didExceedMatchLimit() {
-                return this.exceededMatchLimit;
-              }
-            };
-            __name(_Query, "Query");
-            let Query = _Query;
-            function getText(tree, startIndex, endIndex) {
-              const length = endIndex - startIndex;
-              let result = tree.textCallback(startIndex, null, endIndex);
-              startIndex += result.length;
-              while (startIndex < endIndex) {
-                const string = tree.textCallback(startIndex, null, endIndex);
-                if (string && string.length > 0) {
-                  startIndex += string.length;
-                  result += string;
-                } else {
-                  break;
-                }
-              }
-              if (startIndex > endIndex) {
-                result = result.slice(0, length);
-              }
-              return result;
-            }
-            __name(getText, "getText");
-            function unmarshalCaptures(query, tree, address, result) {
-              for (let i2 = 0, n = result.length; i2 < n; i2++) {
-                const captureIndex = getValue(address, "i32");
-                address += SIZE_OF_INT;
-                const node = unmarshalNode(tree, address);
-                address += SIZE_OF_NODE;
-                result[i2] = {
-                  name: query.captureNames[captureIndex],
-                  node
-                };
-              }
-              return address;
-            }
-            __name(unmarshalCaptures, "unmarshalCaptures");
-            function assertInternal(x) {
-              if (x !== INTERNAL) throw new Error("Illegal constructor");
-            }
-            __name(assertInternal, "assertInternal");
-            function isPoint(point) {
-              return point && typeof point.row === "number" && typeof point.column === "number";
-            }
-            __name(isPoint, "isPoint");
-            function marshalNode(node) {
-              let address = TRANSFER_BUFFER;
-              setValue(address, node.id, "i32");
-              address += SIZE_OF_INT;
-              setValue(address, node.startIndex, "i32");
-              address += SIZE_OF_INT;
-              setValue(address, node.startPosition.row, "i32");
-              address += SIZE_OF_INT;
-              setValue(address, node.startPosition.column, "i32");
-              address += SIZE_OF_INT;
-              setValue(address, node[0], "i32");
-            }
-            __name(marshalNode, "marshalNode");
-            function unmarshalNode(tree, address = TRANSFER_BUFFER) {
-              const id = getValue(address, "i32");
-              address += SIZE_OF_INT;
-              if (id === 0) return null;
-              const index = getValue(address, "i32");
-              address += SIZE_OF_INT;
-              const row = getValue(address, "i32");
-              address += SIZE_OF_INT;
-              const column = getValue(address, "i32");
-              address += SIZE_OF_INT;
-              const other = getValue(address, "i32");
-              const result = new Node(INTERNAL, tree);
-              result.id = id;
-              result.startIndex = index;
-              result.startPosition = {
-                row,
-                column
-              };
-              result[0] = other;
-              return result;
-            }
-            __name(unmarshalNode, "unmarshalNode");
-            function marshalTreeCursor(cursor, address = TRANSFER_BUFFER) {
-              setValue(address + 0 * SIZE_OF_INT, cursor[0], "i32");
-              setValue(address + 1 * SIZE_OF_INT, cursor[1], "i32");
-              setValue(address + 2 * SIZE_OF_INT, cursor[2], "i32");
-              setValue(address + 3 * SIZE_OF_INT, cursor[3], "i32");
-            }
-            __name(marshalTreeCursor, "marshalTreeCursor");
-            function unmarshalTreeCursor(cursor) {
-              cursor[0] = getValue(TRANSFER_BUFFER + 0 * SIZE_OF_INT, "i32");
-              cursor[1] = getValue(TRANSFER_BUFFER + 1 * SIZE_OF_INT, "i32");
-              cursor[2] = getValue(TRANSFER_BUFFER + 2 * SIZE_OF_INT, "i32");
-              cursor[3] = getValue(TRANSFER_BUFFER + 3 * SIZE_OF_INT, "i32");
-            }
-            __name(unmarshalTreeCursor, "unmarshalTreeCursor");
-            function marshalPoint(address, point) {
-              setValue(address, point.row, "i32");
-              setValue(address + SIZE_OF_INT, point.column, "i32");
-            }
-            __name(marshalPoint, "marshalPoint");
-            function unmarshalPoint(address) {
-              const result = {
-                row: getValue(address, "i32") >>> 0,
-                column: getValue(address + SIZE_OF_INT, "i32") >>> 0
-              };
-              return result;
-            }
-            __name(unmarshalPoint, "unmarshalPoint");
-            function marshalRange(address, range2) {
-              marshalPoint(address, range2.startPosition);
-              address += SIZE_OF_POINT;
-              marshalPoint(address, range2.endPosition);
-              address += SIZE_OF_POINT;
-              setValue(address, range2.startIndex, "i32");
-              address += SIZE_OF_INT;
-              setValue(address, range2.endIndex, "i32");
-              address += SIZE_OF_INT;
-            }
-            __name(marshalRange, "marshalRange");
-            function unmarshalRange(address) {
-              const result = {};
-              result.startPosition = unmarshalPoint(address);
-              address += SIZE_OF_POINT;
-              result.endPosition = unmarshalPoint(address);
-              address += SIZE_OF_POINT;
-              result.startIndex = getValue(address, "i32") >>> 0;
-              address += SIZE_OF_INT;
-              result.endIndex = getValue(address, "i32") >>> 0;
-              return result;
-            }
-            __name(unmarshalRange, "unmarshalRange");
-            function marshalEdit(edit) {
-              let address = TRANSFER_BUFFER;
-              marshalPoint(address, edit.startPosition);
-              address += SIZE_OF_POINT;
-              marshalPoint(address, edit.oldEndPosition);
-              address += SIZE_OF_POINT;
-              marshalPoint(address, edit.newEndPosition);
-              address += SIZE_OF_POINT;
-              setValue(address, edit.startIndex, "i32");
-              address += SIZE_OF_INT;
-              setValue(address, edit.oldEndIndex, "i32");
-              address += SIZE_OF_INT;
-              setValue(address, edit.newEndIndex, "i32");
-              address += SIZE_OF_INT;
-            }
-            __name(marshalEdit, "marshalEdit");
-            for (const name2 of Object.getOwnPropertyNames(ParserImpl.prototype)) {
-              Object.defineProperty(_Parser.prototype, name2, {
-                value: ParserImpl.prototype[name2],
-                enumerable: false,
-                writable: false
-              });
-            }
-            _Parser.Language = Language;
-            Module.onRuntimeInitialized = () => {
-              ParserImpl.init();
-              resolveInitPromise();
-            };
-          });
-        }
-      };
-      __name(_Parser, "Parser");
-      let Parser = _Parser;
-      return Parser;
-    })();
-    if (typeof exports$1 === "object") {
-      module.exports = TreeSitter;
-    }
   }
 });
 
@@ -3084,10 +108,10 @@ function attachMeta(node, meta) {
 __name(attachMeta, "attachMeta");
 var IR = {
   pure: /* @__PURE__ */ __name((meta) => attachMeta({ tag: "Pure" }, meta), "pure"),
-  play: /* @__PURE__ */ __name((note2, duration = 0.25, params = {}, loc) => {
+  play: /* @__PURE__ */ __name((note, duration = 0.25, params = {}, loc) => {
     const node = {
       tag: "Play",
-      note: note2,
+      note,
       duration,
       params: { gain: 1, velocity: 1, ...params }
     };
@@ -3102,42 +126,42 @@ var IR = {
   // metadata use literal construction `{ tag: 'Stack', tracks, loc, userMethod }`.
   stack: /* @__PURE__ */ __name((...tracks) => ({ tag: "Stack", tracks }), "stack"),
   choice: /* @__PURE__ */ __name((p, then, else_ = { tag: "Pure" }, meta) => attachMeta({ tag: "Choice", p, then, else_ }, meta), "choice"),
-  every: /* @__PURE__ */ __name((n, body2, default_, meta) => attachMeta({ tag: "Every", n, body: body2, default_ }, meta), "every"),
+  every: /* @__PURE__ */ __name((n, body, default_, meta) => attachMeta({ tag: "Every", n, body, default_ }, meta), "every"),
   // Rest-spread: cannot accept trailing meta?. Sites needing metadata use
   // literal construction `{ tag: 'Cycle', items, loc, userMethod }`.
   cycle: /* @__PURE__ */ __name((...items) => ({ tag: "Cycle", items }), "cycle"),
-  when: /* @__PURE__ */ __name((gate, body2, meta) => attachMeta({ tag: "When", gate, body: body2 }, meta), "when"),
-  fx: /* @__PURE__ */ __name((name2, params, body2, meta) => attachMeta({ tag: "FX", name: name2, params, body: body2 }, meta), "fx"),
-  param: /* @__PURE__ */ __name((key, value, rawArgs, body2, meta) => attachMeta({ tag: "Param", key, value, rawArgs, body: body2 }, meta), "param"),
-  track: /* @__PURE__ */ __name((trackId, body2, meta) => attachMeta({ tag: "Track", trackId, body: body2 }, meta), "track"),
-  ramp: /* @__PURE__ */ __name((param, from, to, cycles, body2, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body: body2 }, meta), "ramp"),
-  fast: /* @__PURE__ */ __name((factor, body2, meta) => attachMeta({ tag: "Fast", factor, body: body2 }, meta), "fast"),
-  slow: /* @__PURE__ */ __name((factor, body2, meta) => attachMeta({ tag: "Slow", factor, body: body2 }, meta), "slow"),
-  elongate: /* @__PURE__ */ __name((factor, body2, meta) => attachMeta({ tag: "Elongate", factor, body: body2 }, meta), "elongate"),
-  late: /* @__PURE__ */ __name((offset, body2, meta) => attachMeta({ tag: "Late", offset, body: body2 }, meta), "late"),
-  degrade: /* @__PURE__ */ __name((p, body2, meta) => attachMeta({ tag: "Degrade", p, body: body2 }, meta), "degrade"),
-  chunk: /* @__PURE__ */ __name((n, transform, body2, meta) => attachMeta({ tag: "Chunk", n, transform, body: body2 }, meta), "chunk"),
-  ply: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Ply", n, body: body2 }, meta), "ply"),
+  when: /* @__PURE__ */ __name((gate, body, meta) => attachMeta({ tag: "When", gate, body }, meta), "when"),
+  fx: /* @__PURE__ */ __name((name, params, body, meta) => attachMeta({ tag: "FX", name, params, body }, meta), "fx"),
+  param: /* @__PURE__ */ __name((key, value, rawArgs, body, meta) => attachMeta({ tag: "Param", key, value, rawArgs, body }, meta), "param"),
+  track: /* @__PURE__ */ __name((trackId, body, meta) => attachMeta({ tag: "Track", trackId, body }, meta), "track"),
+  ramp: /* @__PURE__ */ __name((param, from, to, cycles, body, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body }, meta), "ramp"),
+  fast: /* @__PURE__ */ __name((factor, body, meta) => attachMeta({ tag: "Fast", factor, body }, meta), "fast"),
+  slow: /* @__PURE__ */ __name((factor, body, meta) => attachMeta({ tag: "Slow", factor, body }, meta), "slow"),
+  elongate: /* @__PURE__ */ __name((factor, body, meta) => attachMeta({ tag: "Elongate", factor, body }, meta), "elongate"),
+  late: /* @__PURE__ */ __name((offset, body, meta) => attachMeta({ tag: "Late", offset, body }, meta), "late"),
+  degrade: /* @__PURE__ */ __name((p, body, meta) => attachMeta({ tag: "Degrade", p, body }, meta), "degrade"),
+  chunk: /* @__PURE__ */ __name((n, transform, body, meta) => attachMeta({ tag: "Chunk", n, transform, body }, meta), "chunk"),
+  ply: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Ply", n, body }, meta), "ply"),
   pick: /* @__PURE__ */ __name((selector, lookup, meta) => attachMeta({ tag: "Pick", selector, lookup }, meta), "pick"),
-  struct: /* @__PURE__ */ __name((mask, body2, meta) => attachMeta({ tag: "Struct", mask, body: body2 }, meta), "struct"),
-  swing: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Swing", n, body: body2 }, meta), "swing"),
-  shuffle: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Shuffle", n, body: body2 }, meta), "shuffle"),
-  scramble: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Scramble", n, body: body2 }, meta), "scramble"),
-  chop: /* @__PURE__ */ __name((n, body2, meta) => attachMeta({ tag: "Chop", n, body: body2 }, meta), "chop"),
-  loop: /* @__PURE__ */ __name((body2, meta) => attachMeta({ tag: "Loop", body: body2 }, meta), "loop"),
+  struct: /* @__PURE__ */ __name((mask, body, meta) => attachMeta({ tag: "Struct", mask, body }, meta), "struct"),
+  swing: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Swing", n, body }, meta), "swing"),
+  shuffle: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Shuffle", n, body }, meta), "shuffle"),
+  scramble: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Scramble", n, body }, meta), "scramble"),
+  chop: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Chop", n, body }, meta), "chop"),
+  loop: /* @__PURE__ */ __name((body, meta) => attachMeta({ tag: "Loop", body }, meta), "loop"),
   code: /* @__PURE__ */ __name((code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta), "code"),
   // Phase 20-18 Wave A — signal/builder chain-ROOT smart constructors.
   // Mirror the `attachMeta` convention: only set each field when truthy
   // (the existing smart-constructor invariant — test fixtures that build
   // bare `{ tag: 'Signal', kind }` and assert via `toEqual` keep working).
-  signal: /* @__PURE__ */ __name((kind, args2, meta) => {
+  signal: /* @__PURE__ */ __name((kind, args, meta) => {
     const node = { tag: "Signal", kind };
-    if (args2) node.args = args2;
+    if (args) node.args = args;
     return attachMeta(node, meta);
   }, "signal"),
-  builder: /* @__PURE__ */ __name((kind, args2, body2, meta) => {
-    const node = { tag: "Builder", kind, args: args2 };
-    if (body2) node.body = body2;
+  builder: /* @__PURE__ */ __name((kind, args, body, meta) => {
+    const node = { tag: "Builder", kind, args };
+    if (body) node.body = body;
     return attachMeta(node, meta);
   }, "builder")
 };
@@ -3168,36 +192,36 @@ function seededRandsAtTime(t, n, seed) {
     return [Math.abs(intSeedToRand(timeToIntSeed(t + seed)))];
   }
   let s = timeToIntSeed(t + seed);
-  const out2 = [];
-  for (let i2 = 0; i2 < n; i2++) {
-    out2.push(intSeedToRand(s));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push(intSeedToRand(s));
     s = xorwise(s);
   }
-  return out2;
+  return out;
 }
 __name(seededRandsAtTime, "seededRandsAtTime");
 function withWrapperLoc(events, wrapper) {
   if (!wrapper || wrapper.length === 0) return events;
-  const range2 = wrapper[0];
+  const range = wrapper[0];
   return events.map((e) => ({
     ...e,
-    loc: e.loc ? [...e.loc, range2] : [range2]
+    loc: e.loc ? [...e.loc, range] : [range]
   }));
 }
 __name(withWrapperLoc, "withWrapperLoc");
 function fnv1a(input) {
   let h = 2166136261;
-  for (let i2 = 0; i2 < input.length; i2++) {
-    h ^= input.charCodeAt(i2);
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 __name(fnv1a, "fnv1a");
 function assignNodeId(ir, position) {
-  const start2 = ir.loc?.[0]?.start ?? -1;
+  const start = ir.loc?.[0]?.start ?? -1;
   const end = ir.loc?.[0]?.end ?? -1;
-  return fnv1a(`${start2}:${end}:${ir.tag}:${position}`);
+  return fnv1a(`${start}:${end}:${ir.tag}:${position}`);
 }
 __name(assignNodeId, "assignNodeId");
 var DEFAULT_CONTEXT = {
@@ -3254,19 +278,19 @@ function countLeavesInIR(node) {
   }
 }
 __name(countLeavesInIR, "countLeavesInIR");
-function noteToFreq(note2) {
-  if (typeof note2 === "number") {
-    return 440 * Math.pow(2, (note2 - 69) / 12);
+function noteToFreq(note) {
+  if (typeof note === "number") {
+    return 440 * Math.pow(2, (note - 69) / 12);
   }
   const noteNames = ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"];
-  const lower = note2.toLowerCase();
-  for (let i2 = 0; i2 < noteNames.length; i2++) {
-    const name2 = noteNames[i2];
-    if (lower.startsWith(name2)) {
-      const octaveStr = lower.slice(name2.length);
+  const lower = note.toLowerCase();
+  for (let i = 0; i < noteNames.length; i++) {
+    const name = noteNames[i];
+    if (lower.startsWith(name)) {
+      const octaveStr = lower.slice(name.length);
       const octave = parseInt(octaveStr, 10);
       if (!isNaN(octave)) {
-        const midi = (octave + 1) * 12 + i2;
+        const midi = (octave + 1) * 12 + i;
         return 440 * Math.pow(2, (midi - 69) / 12);
       }
     }
@@ -3274,15 +298,15 @@ function noteToFreq(note2) {
   return null;
 }
 __name(noteToFreq, "noteToFreq");
-function makeEvent(ctx, note2, params) {
+function makeEvent(ctx, note, params) {
   const duration = ctx.duration / ctx.speed;
   const merged = { ...params, ...ctx.params };
   return {
     begin: ctx.time,
     end: ctx.time + duration,
     endClipped: ctx.time + duration,
-    note: note2,
-    freq: noteToFreq(note2),
+    note,
+    freq: noteToFreq(note),
     s: merged.s ?? null,
     type: merged.s ? "sample" : "synth",
     gain: merged.gain ?? 1,
@@ -3303,9 +327,9 @@ function makeEvent(ctx, note2, params) {
   };
 }
 __name(makeEvent, "makeEvent");
-function _collectRearrange(selector, n, body2, ctx, wrapperLoc) {
-  const bodyEvents = walk(body2, ctx);
-  const out2 = [];
+function _collectRearrange(selector, n, body, ctx, wrapperLoc) {
+  const bodyEvents = walk(body, ctx);
+  const out = [];
   for (let d = 0; d < n; d++) {
     const sourceIdx = (selector[d] % n + n) % n;
     const srcStart = sourceIdx / n;
@@ -3317,7 +341,7 @@ function _collectRearrange(selector, n, body2, ctx, wrapperLoc) {
         const offsetWithinSrc = cyclePos - srcStart;
         const newBegin = ctx.cycle + dstStart + offsetWithinSrc;
         const dur = e.end - e.begin;
-        out2.push({
+        out.push({
           ...e,
           begin: newBegin,
           end: newBegin + dur,
@@ -3326,8 +350,8 @@ function _collectRearrange(selector, n, body2, ctx, wrapperLoc) {
       }
     }
   }
-  if (!wrapperLoc) return out2;
-  return out2.map((e) => ({
+  if (!wrapperLoc) return out;
+  return out.map((e) => ({
     ...e,
     loc: e.loc ? [...e.loc, wrapperLoc] : [wrapperLoc]
   }));
@@ -3393,7 +417,7 @@ function walk(ir, ctx) {
       const slotEvents = walk(ir.value, ctx);
       const bodyEvents = walk(ir.body, ctx);
       const isNumericKey = ir.key === "gain" || ir.key === "velocity" || ir.key === "pan" || ir.key === "speed";
-      const out2 = bodyEvents.map((e) => {
+      const out = bodyEvents.map((e) => {
         const slot = slotEvents.find((s) => {
           const sEnd = s.endClipped ?? s.end;
           return s.begin <= e.begin && e.begin < sEnd;
@@ -3411,7 +435,7 @@ function walk(ir, ctx) {
           // they don't have top-level event shorthand fields per IREvent.
         };
       });
-      return withWrapperLoc(out2, ir.loc);
+      return withWrapperLoc(out, ir.loc);
     }
     case "Play": {
       if (ctx.time < ctx.begin || ctx.time >= ctx.end) return [];
@@ -3429,9 +453,9 @@ function walk(ir, ctx) {
       if (total <= 0) return [];
       const events = [];
       let cursor = ctx.time;
-      for (let i2 = 0; i2 < ir.children.length; i2++) {
-        const child = ir.children[i2];
-        const slotDuration = ctx.duration * (weights[i2] / total);
+      for (let i = 0; i < ir.children.length; i++) {
+        const child = ir.children[i];
+        const slotDuration = ctx.duration * (weights[i] / total);
         const target = child.tag === "Elongate" ? child.body : child;
         const childCtx = {
           ...ctx,
@@ -3509,10 +533,10 @@ function walk(ir, ctx) {
       if (Number.isInteger(factor) && factor >= 1) {
         const events = [];
         const slotDuration = ctx.duration / factor;
-        for (let i2 = 0; i2 < factor; i2++) {
+        for (let i = 0; i < factor; i++) {
           const childCtx2 = {
             ...ctx,
-            time: ctx.time + i2 * slotDuration,
+            time: ctx.time + i * slotDuration,
             duration: slotDuration
             // Don't scale speed: the duration shrink already encodes the
             // "twice as fast" semantic for the iterated body. Multiplying
@@ -3599,7 +623,7 @@ function walk(ir, ctx) {
     case "Pick": {
       if (ir.lookup.length === 0) return [];
       const selectorEvents = walk(ir.selector, ctx);
-      const out2 = [];
+      const out = [];
       for (const sel of selectorEvents) {
         const rawIdx = typeof sel.note === "number" ? sel.note : Number(sel.note ?? 0);
         const idx = Math.max(0, Math.min(ir.lookup.length - 1, Math.round(rawIdx)));
@@ -3625,10 +649,10 @@ function walk(ir, ctx) {
             ...selectorLoc ? [selectorLoc] : [],
             ...wrapperLoc ? [wrapperLoc] : []
           ];
-          out2.push(newLoc.length > 0 ? { ...e, loc: newLoc } : e);
+          out.push(newLoc.length > 0 ? { ...e, loc: newLoc } : e);
         }
       }
-      return out2;
+      return out;
     }
     case "Struct": {
       const slots = ir.mask.trim().split(/\s+/);
@@ -3636,16 +660,16 @@ function walk(ir, ctx) {
       if (total === 0) return [];
       const bodyEvents = walk(ir.body, ctx);
       const slotWidth = 1 / total;
-      const out2 = [];
-      for (let i2 = 0; i2 < total; i2++) {
-        const slot = slots[i2];
+      const out = [];
+      for (let i = 0; i < total; i++) {
+        const slot = slots[i];
         if (slot === "~" || slot === "0" || slot === "") continue;
-        const onsetTime = ctx.cycle + i2 / total;
-        const slotLo = ctx.cycle + i2 / total;
-        const slotHi = ctx.cycle + (i2 + 1) / total;
+        const onsetTime = ctx.cycle + i / total;
+        const slotLo = ctx.cycle + i / total;
+        const slotHi = ctx.cycle + (i + 1) / total;
         for (const e of bodyEvents) {
           if (e.begin < slotHi - 1e-9 && e.end > slotLo + 1e-9) {
-            out2.push({
+            out.push({
               ...e,
               begin: onsetTime,
               end: onsetTime + slotWidth,
@@ -3654,7 +678,7 @@ function walk(ir, ctx) {
           }
         }
       }
-      return withWrapperLoc(out2, ir.loc);
+      return withWrapperLoc(out, ir.loc);
     }
     case "Swing": {
       const events = walk(ir.body, ctx);
@@ -3678,13 +702,13 @@ function walk(ir, ctx) {
     case "Ply": {
       const baseEvents = walk(ir.body, ctx);
       if (ir.n <= 1) return withWrapperLoc(baseEvents, ir.loc);
-      const out2 = [];
+      const out = [];
       for (const e of baseEvents) {
         const slotLen = (e.end - e.begin) / ir.n;
-        for (let i2 = 0; i2 < ir.n; i2++) {
-          const newBegin = e.begin + i2 * slotLen;
+        for (let i = 0; i < ir.n; i++) {
+          const newBegin = e.begin + i * slotLen;
           const newEnd = newBegin + slotLen;
-          out2.push({
+          out.push({
             ...e,
             begin: newBegin,
             end: newEnd,
@@ -3692,12 +716,12 @@ function walk(ir, ctx) {
           });
         }
       }
-      return withWrapperLoc(out2, ir.loc);
+      return withWrapperLoc(out, ir.loc);
     }
     case "Shuffle": {
       if (ir.n < 1) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
       const rands = seededRandsAtTime(ctx.cycle + 0.5, ir.n, RAND_SEED);
-      const perm = rands.map((r, i2) => [r, i2]).sort((a, b) => a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0).map((x) => x[1]);
+      const perm = rands.map((r, i) => [r, i]).sort((a, b) => a[0] > b[0] ? 1 : a[0] < b[0] ? -1 : 0).map((x) => x[1]);
       return _collectRearrange(perm, ir.n, ir.body, ctx, ir.loc?.[0]);
     }
     case "Scramble": {
@@ -3712,18 +736,18 @@ function walk(ir, ctx) {
     case "Chop": {
       if (ir.n <= 1) return withWrapperLoc(walk(ir.body, ctx), ir.loc);
       const baseEvents = walk(ir.body, ctx);
-      const out2 = [];
+      const out = [];
       for (const e of baseEvents) {
         const dur = e.end - e.begin;
         const slotLen = dur / ir.n;
         const b0 = e.params?.begin ?? 0;
         const e0 = e.params?.end ?? 1;
         const d = e0 - b0;
-        for (let i2 = 0; i2 < ir.n; i2++) {
-          const subBegin = b0 + i2 / ir.n * d;
-          const subEnd = b0 + (i2 + 1) / ir.n * d;
-          const newBegin = e.begin + i2 * slotLen;
-          out2.push({
+        for (let i = 0; i < ir.n; i++) {
+          const subBegin = b0 + i / ir.n * d;
+          const subEnd = b0 + (i + 1) / ir.n * d;
+          const newBegin = e.begin + i * slotLen;
+          out.push({
             ...e,
             begin: newBegin,
             end: newBegin + slotLen,
@@ -3732,7 +756,7 @@ function walk(ir, ctx) {
           });
         }
       }
-      return withWrapperLoc(out2, ir.loc);
+      return withWrapperLoc(out, ir.loc);
     }
   }
 }
@@ -3801,14 +825,14 @@ function gen(ir) {
       if (canCollapse(ir.children)) {
         return collapseToMini(ir.children);
       }
-      const parts2 = ir.children.map(gen);
-      return `cat(${parts2.join(", ")})`;
+      const parts = ir.children.map(gen);
+      return `cat(${parts.join(", ")})`;
     }
     case "Stack": {
       if (ir.tracks.length === 0) return '""';
-      const parts2 = ir.tracks.map(gen);
+      const parts = ir.tracks.map(gen);
       return `stack(
-  ${parts2.join(",\n  ")}
+  ${parts.join(",\n  ")}
 )`;
     }
     case "Choice": {
@@ -3840,7 +864,7 @@ function gen(ir) {
       });
       const allSimple = ir.items.every((item) => item.tag === "Play" || item.tag === "Sleep");
       if (allSimple) {
-        const firstPlay = ir.items.find((i2) => i2.tag === "Play");
+        const firstPlay = ir.items.find((i) => i.tag === "Play");
         if (firstPlay && firstPlay.tag === "Play" && firstPlay.params.s) {
           return `s("<${notes.join(" ")}>")`;
         }
@@ -3849,31 +873,31 @@ function gen(ir) {
       return `note("<${notes.join(" ")}>")`;
     }
     case "When": {
-      const body2 = gen(ir.body);
-      return `${body2}.mask("${ir.gate}")`;
+      const body = gen(ir.body);
+      return `${body}.mask("${ir.gate}")`;
     }
     case "FX": {
-      const body2 = gen(ir.body);
+      const body = gen(ir.body);
       if (Object.keys(ir.params).length > 0) {
-        let result = body2;
+        let result = body;
         for (const [k, v] of Object.entries(ir.params)) {
           result = `${result}.${k}(${v})`;
         }
         return result;
       }
-      return `${body2}.${ir.name}()`;
+      return `${body}.${ir.name}()`;
     }
     case "Ramp": {
-      const body2 = gen(ir.body);
-      return `${body2}.${ir.param}(slow(${ir.cycles}, saw))`;
+      const body = gen(ir.body);
+      return `${body}.${ir.param}(slow(${ir.cycles}, saw))`;
     }
     case "Fast": {
-      const body2 = gen(ir.body);
-      return `${body2}.fast(${ir.factor})`;
+      const body = gen(ir.body);
+      return `${body}.fast(${ir.factor})`;
     }
     case "Slow": {
-      const body2 = gen(ir.body);
-      return `${body2}.slow(${ir.factor})`;
+      const body = gen(ir.body);
+      return `${body}.slow(${ir.factor})`;
     }
     case "Loop":
       return gen(ir.body);
@@ -3882,10 +906,10 @@ function gen(ir) {
     case "Late":
       return `${gen(ir.body)}.late(${ir.offset})`;
     case "Degrade": {
-      const body2 = gen(ir.body);
-      if (ir.p === 0.5) return `${body2}.degrade()`;
+      const body = gen(ir.body);
+      if (ir.p === 0.5) return `${body}.degrade()`;
       const dropAmount = +(1 - ir.p).toFixed(4);
-      return `${body2}.degradeBy(${dropAmount})`;
+      return `${body}.degradeBy(${dropAmount})`;
     }
     case "Chunk": {
       const baseCode = gen(ir.body);
@@ -3922,21 +946,21 @@ function nodesEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 __name(nodesEqual, "nodesEqual");
-function extractTransform(body2, base) {
-  if (body2.tag === "Fast" && nodesEqual(body2.body, base)) return `fast(${body2.factor})`;
-  if (body2.tag === "Slow" && nodesEqual(body2.body, base)) return `slow(${body2.factor})`;
-  if (body2.tag === "FX" && nodesEqual(body2.body, base)) {
-    const params = Object.entries(body2.params).map(([k, v]) => `.${k}(${v})`).join("");
+function extractTransform(body, base) {
+  if (body.tag === "Fast" && nodesEqual(body.body, base)) return `fast(${body.factor})`;
+  if (body.tag === "Slow" && nodesEqual(body.body, base)) return `slow(${body.factor})`;
+  if (body.tag === "FX" && nodesEqual(body.body, base)) {
+    const params = Object.entries(body.params).map(([k, v]) => `.${k}(${v})`).join("");
     return `x => x${params}`;
   }
-  return `() => ${gen(body2)}`;
+  return `() => ${gen(body)}`;
 }
 __name(extractTransform, "extractTransform");
-function genPlay(note2, params) {
+function genPlay(note, params) {
   if (params.s) {
     return `s("${params.s}")`;
   }
-  return `note("${note2}")`;
+  return `note("${note}")`;
 }
 __name(genPlay, "genPlay");
 function canCollapse(children) {
@@ -4036,14 +1060,14 @@ function validateNode(raw, path) {
     case "Seq": {
       requireArray(node, "children", path);
       const children = node.children.map(
-        (c, i2) => validateNode(c, `${path}.children[${i2}]`)
+        (c, i) => validateNode(c, `${path}.children[${i}]`)
       );
       return { tag: "Seq", children };
     }
     case "Stack": {
       requireArray(node, "tracks", path);
       const tracks = node.tracks.map(
-        (t, i2) => validateNode(t, `${path}.tracks[${i2}]`)
+        (t, i) => validateNode(t, `${path}.tracks[${i}]`)
       );
       return { tag: "Stack", tracks };
     }
@@ -4089,7 +1113,7 @@ function validateNode(raw, path) {
     case "Cycle": {
       requireArray(node, "items", path);
       const items = node.items.map(
-        (item, i2) => validateNode(item, `${path}.items[${i2}]`)
+        (item, i) => validateNode(item, `${path}.items[${i}]`)
       );
       return { tag: "Cycle", items };
     }
@@ -4175,39 +1199,39 @@ function validateNode(raw, path) {
       } else {
         throw new Error(`${path}: field "value" must be string|number|object, got ${typeof v}`);
       }
-      const out2 = {
+      const out = {
         tag: "Param",
         key: node.key,
         value,
         rawArgs: node.rawArgs,
         body: validateNode(node.body, `${path}.body`)
       };
-      if (Array.isArray(node.loc)) out2.loc = node.loc;
-      if (typeof node.userMethod === "string") out2.userMethod = node.userMethod;
-      return out2;
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
     }
     case "Track": {
       requireField(node, "trackId", ["string"], path);
       requireField(node, "body", ["object"], path);
-      const out2 = {
+      const out = {
         tag: "Track",
         trackId: node.trackId,
         body: validateNode(node.body, `${path}.body`)
       };
-      if (Array.isArray(node.loc)) out2.loc = node.loc;
-      if (typeof node.userMethod === "string") out2.userMethod = node.userMethod;
-      return out2;
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
     }
     case "Code": {
       requireField(node, "code", ["string"], path);
-      const out2 = { tag: "Code", code: node.code, lang: "strudel" };
+      const out = { tag: "Code", code: node.code, lang: "strudel" };
       if (node.via !== void 0 && node.via !== null) {
         const via = node.via;
         if (via.literal === true) {
           if (typeof via.raw !== "string") {
             throw new Error(`${path}.via: literal arm requires string "raw"`);
           }
-          out2.via = { literal: true, raw: via.raw };
+          out.via = { literal: true, raw: via.raw };
         } else {
           requireField(via, "method", ["string"], `${path}.via`);
           requireField(via, "args", ["string"], `${path}.via`);
@@ -4217,7 +1241,7 @@ function validateNode(raw, path) {
           if (typeof via.inner !== "object" || via.inner === null) {
             throw new Error(`${path}.via: field "inner" must be an object`);
           }
-          out2.via = {
+          out.via = {
             method: via.method,
             args: via.args,
             callSiteRange: via.callSiteRange,
@@ -4226,9 +1250,9 @@ function validateNode(raw, path) {
         }
       }
       if (Array.isArray(node.loc)) {
-        out2.loc = node.loc;
+        out.loc = node.loc;
       }
-      return out2;
+      return out;
     }
     // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (lossless
     // round-trip). Mirrors the Param/Track pattern above: requireField
@@ -4239,31 +1263,31 @@ function validateNode(raw, path) {
     // shape). `args` is RAW source verbatim; we DO NOT coerce / trim.
     case "Signal": {
       requireField(node, "kind", ["string"], path);
-      const out2 = {
+      const out = {
         tag: "Signal",
         kind: node.kind
       };
       if (typeof node.args === "string") {
-        out2.args = node.args;
+        out.args = node.args;
       }
-      if (Array.isArray(node.loc)) out2.loc = node.loc;
-      if (typeof node.userMethod === "string") out2.userMethod = node.userMethod;
-      return out2;
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
     }
     case "Builder": {
       requireField(node, "kind", ["string"], path);
       requireField(node, "args", ["string"], path);
-      const out2 = {
+      const out = {
         tag: "Builder",
         kind: node.kind,
         args: node.args
       };
       if (typeof node.body === "object" && node.body !== null) {
-        out2.body = validateNode(node.body, `${path}.body`);
+        out.body = validateNode(node.body, `${path}.body`);
       }
-      if (Array.isArray(node.loc)) out2.loc = node.loc;
-      if (typeof node.userMethod === "string") out2.userMethod = node.userMethod;
-      return out2;
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
     }
     default:
       throw new Error(`${path}: unhandled tag "${node.tag}"`);
@@ -4315,126 +1339,126 @@ function parseMini(input, isSample = false, baseOffset = 0) {
 __name(parseMini, "parseMini");
 function tokenize(input) {
   const tokens = [];
-  let i2 = 0;
-  while (i2 < input.length) {
-    const ch = input[i2];
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
     if (/\s/.test(ch)) {
-      i2++;
+      i++;
       continue;
     }
     if (ch === "[") {
-      tokens.push({ type: "lbracket", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "lbracket", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (ch === "]") {
-      tokens.push({ type: "rbracket", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "rbracket", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (ch === "<") {
-      tokens.push({ type: "langle", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "langle", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (ch === ">") {
-      tokens.push({ type: "rangle", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "rangle", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (ch === "{") {
-      tokens.push({ type: "lcurly", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "lcurly", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (ch === "}") {
-      tokens.push({ type: "rcurly", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "rcurly", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (ch === ",") {
-      tokens.push({ type: "comma", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "comma", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (ch === "~") {
-      tokens.push({ type: "rest", start: i2, end: i2 + 1 });
-      i2++;
+      tokens.push({ type: "rest", start: i, end: i + 1 });
+      i++;
       continue;
     }
     if (/[a-zA-Z0-9#-]/.test(ch)) {
-      const atomStart = i2;
+      const atomStart = i;
       let atom = "";
-      while (i2 < input.length && /[a-zA-Z0-9#\-_.]/.test(input[i2])) {
-        atom += input[i2++];
+      while (i < input.length && /[a-zA-Z0-9#\-_.]/.test(input[i])) {
+        atom += input[i++];
       }
-      tokens.push({ type: "atom", value: atom, start: atomStart, end: i2 });
-      if (i2 < input.length && input[i2] === ":") {
-        const sliceStart = i2;
-        i2++;
+      tokens.push({ type: "atom", value: atom, start: atomStart, end: i });
+      if (i < input.length && input[i] === ":") {
+        const sliceStart = i;
+        i++;
         let numStr = "";
-        while (i2 < input.length && /[0-9]/.test(input[i2])) numStr += input[i2++];
+        while (i < input.length && /[0-9]/.test(input[i])) numStr += input[i++];
         const idx = parseInt(numStr, 10);
-        if (!isNaN(idx) && idx >= 0) tokens.push({ type: "slice", index: idx, start: sliceStart, end: i2 });
+        if (!isNaN(idx) && idx >= 0) tokens.push({ type: "slice", index: idx, start: sliceStart, end: i });
       }
-      if (i2 < input.length && input[i2] === "(") {
-        const euclidStart = i2;
-        i2++;
-        const args2 = [];
+      if (i < input.length && input[i] === "(") {
+        const euclidStart = i;
+        i++;
+        const args = [];
         let buf = "";
-        while (i2 < input.length && input[i2] !== ")") {
-          const c = input[i2];
+        while (i < input.length && input[i] !== ")") {
+          const c = input[i];
           if (c === ",") {
             const n = parseInt(buf.trim(), 10);
-            if (!isNaN(n)) args2.push(n);
+            if (!isNaN(n)) args.push(n);
             buf = "";
           } else {
             buf += c;
           }
-          i2++;
+          i++;
         }
         if (buf.trim().length > 0) {
           const n = parseInt(buf.trim(), 10);
-          if (!isNaN(n)) args2.push(n);
+          if (!isNaN(n)) args.push(n);
         }
-        if (i2 < input.length && input[i2] === ")") i2++;
-        if (args2.length >= 2 && args2[0] >= 0 && args2[1] > 0) {
+        if (i < input.length && input[i] === ")") i++;
+        if (args.length >= 2 && args[0] >= 0 && args[1] > 0) {
           tokens.push({
             type: "euclid",
-            hits: args2[0],
-            steps: args2[1],
-            rotation: args2.length >= 3 ? args2[2] : 0,
+            hits: args[0],
+            steps: args[1],
+            rotation: args.length >= 3 ? args[2] : 0,
             start: euclidStart,
-            end: i2
+            end: i
           });
         }
       }
-      if (i2 < input.length && input[i2] === "*") {
-        const repeatStart = i2;
-        i2++;
+      if (i < input.length && input[i] === "*") {
+        const repeatStart = i;
+        i++;
         let numStr = "";
-        while (i2 < input.length && /[0-9.]/.test(input[i2])) numStr += input[i2++];
+        while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++];
         const factor = parseFloat(numStr);
         if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: "repeat", factor, start: repeatStart, end: i2 });
+          tokens.push({ type: "repeat", factor, start: repeatStart, end: i });
         }
-      } else if (i2 < input.length && input[i2] === "?") {
-        const someStart = i2;
-        i2++;
-        tokens.push({ type: "sometimes", start: someStart, end: i2 });
-      } else if (i2 < input.length && input[i2] === "@") {
-        const elongateStart = i2;
-        i2++;
+      } else if (i < input.length && input[i] === "?") {
+        const someStart = i;
+        i++;
+        tokens.push({ type: "sometimes", start: someStart, end: i });
+      } else if (i < input.length && input[i] === "@") {
+        const elongateStart = i;
+        i++;
         let numStr = "";
-        while (i2 < input.length && /[0-9.]/.test(input[i2])) numStr += input[i2++];
+        while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++];
         const factor = parseFloat(numStr);
         if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: "elongate", factor, start: elongateStart, end: i2 });
+          tokens.push({ type: "elongate", factor, start: elongateStart, end: i });
         }
       }
       continue;
     }
-    i2++;
+    i++;
   }
   return tokens;
 }
@@ -4448,9 +1472,9 @@ function bjorklund(hits, steps) {
   ];
   while (true) {
     let firstTail = -1;
-    for (let i2 = 1; i2 < groups.length; i2++) {
-      if (groups[i2][0] !== groups[0][0]) {
-        firstTail = i2;
+    for (let i = 1; i < groups.length; i++) {
+      if (groups[i][0] !== groups[0][0]) {
+        firstTail = i;
         break;
       }
     }
@@ -4460,13 +1484,13 @@ function bjorklund(hits, steps) {
     const merged = [];
     const headCount = firstTail;
     const pairs = Math.min(headCount, tailCount);
-    for (let i2 = 0; i2 < pairs; i2++) {
-      merged.push([...groups[i2], ...groups[firstTail + i2]]);
+    for (let i = 0; i < pairs; i++) {
+      merged.push([...groups[i], ...groups[firstTail + i]]);
     }
     if (headCount > tailCount) {
-      for (let i2 = tailCount; i2 < headCount; i2++) merged.push(groups[i2]);
+      for (let i = tailCount; i < headCount; i++) merged.push(groups[i]);
     } else if (tailCount > headCount) {
-      for (let i2 = headCount; i2 < tailCount; i2++) merged.push(groups[firstTail + i2]);
+      for (let i = headCount; i < tailCount; i++) merged.push(groups[firstTail + i]);
     }
     groups = merged;
   }
@@ -4481,27 +1505,27 @@ function rotate(arr, by) {
 __name(rotate, "rotate");
 function parseTokens(tokens, isSample, baseOffset = 0) {
   const nodes = [];
-  let i2 = 0;
-  while (i2 < tokens.length) {
-    const tok = tokens[i2];
+  let i = 0;
+  while (i < tokens.length) {
+    const tok = tokens[i];
     if (tok.type === "atom") {
-      const note2 = tok.value;
+      const note = tok.value;
       const atomStart = tok.start;
       const atomLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }];
-      i2++;
+      i++;
       let sliceIndex;
-      if (i2 < tokens.length && tokens[i2].type === "slice") {
-        const sliceTok = tokens[i2];
+      if (i < tokens.length && tokens[i].type === "slice") {
+        const sliceTok = tokens[i];
         sliceIndex = sliceTok.index;
-        i2++;
+        i++;
       }
-      const params = isSample ? { s: note2 } : {};
+      const params = isSample ? { s: note } : {};
       if (sliceIndex !== void 0) params.slice = sliceIndex;
       const baseDuration = isSample ? 1 : 0.25;
-      let node = IR.play(note2, baseDuration, params, atomLoc);
-      if (i2 < tokens.length && tokens[i2].type === "euclid") {
-        const e = tokens[i2];
-        i2++;
+      let node = IR.play(note, baseDuration, params, atomLoc);
+      if (i < tokens.length && tokens[i].type === "euclid") {
+        const e = tokens[i];
+        i++;
         let pattern = bjorklund(e.hits, e.steps);
         if (e.rotation) pattern = rotate(pattern, e.rotation);
         const restSlot = IR.sleep(1);
@@ -4516,46 +1540,46 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
           };
         }
       }
-      if (i2 < tokens.length) {
-        const next = tokens[i2];
+      if (i < tokens.length) {
+        const next = tokens[i];
         if (next.type === "repeat") {
           const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
           node = IR.fast(next.factor, node, { loc: modLoc });
-          i2++;
+          i++;
         } else if (next.type === "sometimes") {
           const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
           node = IR.choice(0.5, node, IR.pure(), { loc: modLoc });
-          i2++;
+          i++;
         } else if (next.type === "elongate") {
           const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
           node = IR.elongate(next.factor, node, { loc: modLoc });
-          i2++;
+          i++;
         }
       }
       nodes.push(node);
     } else if (tok.type === "rest") {
       const restLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }];
       nodes.push(IR.sleep(1, { loc: restLoc }));
-      i2++;
+      i++;
     } else if (tok.type === "lbracket") {
       const openStart = tok.start;
       let closeEnd = tok.end;
-      i2++;
+      i++;
       const subTokens = [];
       let depth = 1;
-      while (i2 < tokens.length && depth > 0) {
-        const t = tokens[i2];
+      while (i < tokens.length && depth > 0) {
+        const t = tokens[i];
         if (t.type === "lbracket") depth++;
         if (t.type === "rbracket") {
           depth--;
           if (depth === 0) {
             closeEnd = t.end;
-            i2++;
+            i++;
             break;
           }
         }
         subTokens.push(t);
-        i2++;
+        i++;
       }
       const subNodes = parseTokens(subTokens, isSample, baseOffset);
       if (subNodes.length > 0) {
@@ -4572,17 +1596,17 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
     } else if (tok.type === "lcurly") {
       const openStart = tok.start;
       let closeEnd = tok.end;
-      i2++;
+      i++;
       const segments = [[]];
       let depth = 1;
-      while (i2 < tokens.length && depth > 0) {
-        const t = tokens[i2];
+      while (i < tokens.length && depth > 0) {
+        const t = tokens[i];
         if (t.type === "lcurly") depth++;
         if (t.type === "rcurly") {
           depth--;
           if (depth === 0) {
             closeEnd = t.end;
-            i2++;
+            i++;
             break;
           }
         }
@@ -4591,7 +1615,7 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         } else {
           segments[segments.length - 1].push(t);
         }
-        i2++;
+        i++;
       }
       const trackNodes = segments.map((seg) => parseTokens(seg, isSample, baseOffset)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
       if (trackNodes.length === 0) ; else if (trackNodes.length === 1) {
@@ -4606,22 +1630,22 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
     } else if (tok.type === "langle") {
       const openStart = tok.start;
       let closeEnd = tok.end;
-      i2++;
+      i++;
       const cycleTokens = [];
       let depth = 1;
-      while (i2 < tokens.length && depth > 0) {
-        const t = tokens[i2];
+      while (i < tokens.length && depth > 0) {
+        const t = tokens[i];
         if (t.type === "langle") depth++;
         if (t.type === "rangle") {
           depth--;
           if (depth === 0) {
             closeEnd = t.end;
-            i2++;
+            i++;
             break;
           }
         }
         cycleTokens.push(t);
-        i2++;
+        i++;
       }
       const cycleNodes = parseTokens(cycleTokens, isSample, baseOffset);
       if (cycleNodes.length > 0) {
@@ -4632,7 +1656,7 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         });
       }
     } else {
-      i2++;
+      i++;
     }
   }
   return nodes;
@@ -4641,21 +1665,21 @@ __name(parseTokens, "parseTokens");
 
 // src/ir/parseStrudel.ts
 function tagMeta(method, callSiteRange) {
-  const [start2, end] = callSiteRange;
+  const [start, end] = callSiteRange;
   return {
-    loc: [{ start: start2, end }],
+    loc: [{ start, end }],
     userMethod: method
   };
 }
 __name(tagMeta, "tagMeta");
-function wrapAsOpaque(inner, method, args2, callSiteRange) {
+function wrapAsOpaque(inner, method, args, callSiteRange) {
   return {
     tag: "Code",
     code: "",
     // unused on wrapper path; toStrudel branches on via
     lang: "strudel",
     loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
-    via: { method, args: args2, callSiteRange, inner }
+    via: { method, args, callSiteRange, inner }
   };
 }
 __name(wrapAsOpaque, "wrapAsOpaque");
@@ -4671,37 +1695,37 @@ function classifyLiteralRhs(rhs) {
   return { tag: "Code", code: t, lang: "strudel", via: { literal: true, raw: t } };
 }
 __name(classifyLiteralRhs, "classifyLiteralRhs");
-function substituteBoundIdentInArg(args2, bindings) {
-  if (!bindings) return args2;
-  const t = args2.trim();
-  if (!/^[A-Za-z_$][\w$]*$/.test(t)) return args2;
+function substituteBoundIdentInArg(args, bindings) {
+  if (!bindings) return args;
+  const t = args.trim();
+  if (!/^[A-Za-z_$][\w$]*$/.test(t)) return args;
   const node = bindings.get(t);
-  if (!node) return args2;
+  if (!node) return args;
   if (node.tag === "Code" && node.via !== void 0 && "literal" in node.via) {
     return node.via.raw;
   }
-  return args2;
+  return args;
 }
 __name(substituteBoundIdentInArg, "substituteBoundIdentInArg");
 function stripParserPrelude(code) {
   const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
   const GUARDED_BOOT_RE = /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/;
-  let i2 = 0;
-  while (i2 < code.length) {
-    let lineEnd = code.indexOf("\n", i2);
+  let i = 0;
+  while (i < code.length) {
+    let lineEnd = code.indexOf("\n", i);
     if (lineEnd === -1) lineEnd = code.length;
-    const line2 = code.slice(i2, lineEnd);
-    const trimmed = line2.trim();
+    const line = code.slice(i, lineEnd);
+    const trimmed = line.trim();
     if (trimmed === "") {
-      i2 = lineEnd + 1;
+      i = lineEnd + 1;
       continue;
     }
     if (trimmed.startsWith("//")) {
-      i2 = lineEnd + 1;
+      i = lineEnd + 1;
       continue;
     }
-    if (PRELUDE_CALL_RE.test(line2) || GUARDED_BOOT_RE.test(line2)) {
-      let j = i2;
+    if (PRELUDE_CALL_RE.test(line) || GUARDED_BOOT_RE.test(line)) {
+      let j = i;
       let depth = 0;
       let inString = false;
       let stringChar = "";
@@ -4754,97 +1778,97 @@ function stripParserPrelude(code) {
         j++;
       }
       if (depth !== 0) break;
-      i2 = j;
+      i = j;
       continue;
     }
     break;
   }
-  return { body: code.slice(i2), offset: i2 };
+  return { body: code.slice(i), offset: i };
 }
 __name(stripParserPrelude, "stripParserPrelude");
-function splitTopLevelStatements(body2, baseOffset) {
-  const out2 = [];
+function splitTopLevelStatements(body, baseOffset) {
+  const out = [];
   let depth = 0;
   let inString = false;
   let stringChar = "";
   let escaped = false;
   let segStart = 0;
-  let i2 = 0;
+  let i = 0;
   const flush = /* @__PURE__ */ __name((end) => {
-    const raw = body2.slice(segStart, end);
+    const raw = body.slice(segStart, end);
     if (raw.trim().length > 0) {
-      const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((line2) => line2.replace(/\/\/.*$/, "")).join("\n").trim();
+      const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((line) => line.replace(/\/\/.*$/, "")).join("\n").trim();
       if (stripped.length > 0) {
         const lead = raw.length - raw.trimStart().length;
-        out2.push({ text: raw.trim(), offset: baseOffset + segStart + lead });
+        out.push({ text: raw.trim(), offset: baseOffset + segStart + lead });
       }
     }
     segStart = end + 1;
   }, "flush");
-  while (i2 < body2.length) {
-    const ch = body2[i2];
+  while (i < body.length) {
+    const ch = body[i];
     if (escaped) {
       escaped = false;
-      i2++;
+      i++;
       continue;
     }
     if (inString) {
       if (ch === "\\") escaped = true;
       else if (ch === stringChar) inString = false;
-      i2++;
+      i++;
       continue;
     }
-    if (ch === "/" && body2[i2 + 1] === "/") {
-      while (i2 < body2.length && body2[i2] !== "\n") i2++;
+    if (ch === "/" && body[i + 1] === "/") {
+      while (i < body.length && body[i] !== "\n") i++;
       continue;
     }
-    if (ch === "/" && body2[i2 + 1] === "*") {
-      i2 += 2;
-      while (i2 < body2.length && !(body2[i2] === "*" && body2[i2 + 1] === "/")) i2++;
-      if (i2 < body2.length) i2 += 2;
+    if (ch === "/" && body[i + 1] === "*") {
+      i += 2;
+      while (i < body.length && !(body[i] === "*" && body[i + 1] === "/")) i++;
+      if (i < body.length) i += 2;
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      i2++;
+      i++;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      i2++;
+      i++;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      i2++;
+      i++;
       continue;
     }
     if (depth === 0 && ch === ";") {
-      flush(i2);
-      i2++;
+      flush(i);
+      i++;
       continue;
     }
     if (depth === 0 && ch === "\n") {
-      const peek = skipWhitespaceAndLineComments(body2, i2 + 1);
-      if (body2[peek] === ".") {
-        i2++;
+      const peek = skipWhitespaceAndLineComments(body, i + 1);
+      if (body[peek] === ".") {
+        i++;
         continue;
       }
-      let k = i2 - 1;
-      while (k >= segStart && /\s/.test(body2[k])) k--;
-      if (k >= segStart && body2[k] === "=") {
-        i2++;
+      let k = i - 1;
+      while (k >= segStart && /\s/.test(body[k])) k--;
+      if (k >= segStart && body[k] === "=") {
+        i++;
         continue;
       }
-      flush(i2);
-      i2++;
+      flush(i);
+      i++;
       continue;
     }
-    i2++;
+    i++;
   }
-  flush(body2.length);
-  return out2;
+  flush(body.length);
+  return out;
 }
 __name(splitTopLevelStatements, "splitTopLevelStatements");
 var SIDE_EFFECT_CALL_RE = /^[ \t]*(?:all|samples|setcps|setCps|setcpm|setCpm|useRNG|setVoicingRange|initAudio|aliasBank)\s*\(/;
@@ -4853,9 +1877,9 @@ function stripSideEffectStatements(stmts) {
 }
 __name(stripSideEffectStatements, "stripSideEffectStatements");
 var BINDING_RE = /^(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
-function buildBindingMap(body2, baseOffset) {
+function buildBindingMap(body, baseOffset) {
   const stmts = stripSideEffectStatements(
-    splitTopLevelStatements(body2, baseOffset)
+    splitTopLevelStatements(body, baseOffset)
   );
   if (stmts.length < 2) return null;
   const descs = [];
@@ -4868,22 +1892,22 @@ function buildBindingMap(body2, baseOffset) {
       finalIdx = s;
       break;
     }
-    const name2 = bm[1];
+    const name = bm[1];
     const rhs = bm[2].trim();
-    if (seen.has(name2)) return null;
-    seen.add(name2);
+    if (seen.has(name)) return null;
+    seen.add(name);
     const rhsStartInText = text.length - rhs.length;
     const rhsOffset = offset + rhsStartInText;
-    descs.push({ name: name2, rhs, rhsOffset });
+    descs.push({ name, rhs, rhsOffset });
   }
   if (finalIdx === -1) return null;
   if (finalIdx !== stmts.length - 1) return null;
   const bindings = /* @__PURE__ */ new Map();
-  const pending = new Set(descs.map((_, i2) => i2));
+  const pending = new Set(descs.map((_, i) => i));
   for (let iter = 0; iter < descs.length && pending.size > 0; iter++) {
     let progress = false;
-    for (const i2 of [...pending]) {
-      const d = descs[i2];
+    for (const i of [...pending]) {
+      const d = descs[i];
       const parsed = parseExpression(d.rhs, d.rhsOffset, void 0, bindings);
       const lit = classifyLiteralRhs(d.rhs);
       const parsedIsBareCode = parsed.tag === "Code" && parsed.via === void 0;
@@ -4891,7 +1915,7 @@ function buildBindingMap(body2, baseOffset) {
       const bare = ir.tag === "Code" && ir.via === void 0;
       if (!bare) {
         bindings.set(d.name, ir);
-        pending.delete(i2);
+        pending.delete(i);
         progress = true;
       }
     }
@@ -4930,17 +1954,17 @@ function parseStrudel(code, _opts) {
     }
     if (tracks.length === 1) {
       const t = tracks[0];
-      const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
+      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
       const trackId0 = t.label && t.label !== "$" ? t.label : "d1";
-      return IR.track(trackId0, body2, {
+      return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }]
       });
     }
     return IR.stack(
-      ...tracks.map((t, i2) => {
-        const body2 = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
-        const trackId = t.label && t.label !== "$" ? t.label : `d${i2 + 1}`;
-        return IR.track(trackId, body2, {
+      ...tracks.map((t, i) => {
+        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, void 0, opts);
+        const trackId = t.label && t.label !== "$" ? t.label : `d${i + 1}`;
+        return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }]
         });
       })
@@ -4955,41 +1979,41 @@ function lexStateAt(code, idx) {
   let inString = false;
   let stringChar = "";
   let escaped = false;
-  let i2 = 0;
-  while (i2 < idx) {
-    const ch = code[i2];
+  let i = 0;
+  while (i < idx) {
+    const ch = code[i];
     if (escaped) {
       escaped = false;
-      i2++;
+      i++;
       continue;
     }
     if (inString) {
       if (ch === "\\") escaped = true;
       else if (ch === stringChar) inString = false;
-      i2++;
+      i++;
       continue;
     }
-    if (ch === "/" && code[i2 + 1] === "/") {
-      while (i2 < idx && code[i2] !== "\n") i2++;
+    if (ch === "/" && code[i + 1] === "/") {
+      while (i < idx && code[i] !== "\n") i++;
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      i2++;
+      i++;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      i2++;
+      i++;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      i2++;
+      i++;
       continue;
     }
-    i2++;
+    i++;
   }
   return { depth, inString };
 }
@@ -5070,9 +2094,9 @@ function extractTracks(code) {
     starts.push({ dollarStart: m.index, bodyStart, commented, label });
   }
   if (starts.length === 0) return [];
-  for (let i2 = 0; i2 < starts.length; i2++) {
-    const { dollarStart, bodyStart, commented, label } = starts[i2];
-    const end = i2 + 1 < starts.length ? starts[i2 + 1].dollarStart : code.length;
+  for (let i = 0; i < starts.length; i++) {
+    const { dollarStart, bodyStart, commented, label } = starts[i];
+    const end = i + 1 < starts.length ? starts[i + 1].dollarStart : code.length;
     if (commented) {
       tracks.push({ expr: "", offset: bodyStart, dollarStart, end, commented: true, label });
       continue;
@@ -5084,18 +2108,18 @@ function extractTracks(code) {
 }
 __name(extractTracks, "extractTracks");
 function skipWhitespaceAndLineComments(src, pos) {
-  let i2 = pos;
+  let i = pos;
   for (; ; ) {
-    while (i2 < src.length && /\s/.test(src[i2])) i2++;
-    if (src[i2] === "/" && src[i2 + 1] === "/") {
-      i2 += 2;
-      while (i2 < src.length && src[i2] !== "\n") i2++;
-      if (i2 < src.length && src[i2] === "\n") i2++;
+    while (i < src.length && /\s/.test(src[i])) i++;
+    if (src[i] === "/" && src[i + 1] === "/") {
+      i += 2;
+      while (i < src.length && src[i] !== "\n") i++;
+      if (i < src.length && src[i] === "\n") i++;
       continue;
     }
     break;
   }
-  return i2;
+  return i;
 }
 __name(skipWhitespaceAndLineComments, "skipWhitespaceAndLineComments");
 function parseExpression(expr, baseOffset = 0, isSampleKey, bindings, opts) {
@@ -5328,7 +2352,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings) {
       remaining = remaining.slice(consumedSep);
     }
     if (!remaining.startsWith(".")) break;
-    const { method, args: args2, rest, argsOffset } = extractNextMethod(remaining);
+    const { method, args, rest, argsOffset } = extractNextMethod(remaining);
     if (!method) break;
     const consumed = remaining.length - rest.length;
     const callSiteRange = [
@@ -5336,15 +2360,15 @@ function applyChain(ir, chain, baseOffset = 0, bindings) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current2 = applyMethod(current2, method, args2, argsAbsoluteOffset, callSiteRange, bindings);
+    current2 = applyMethod(current2, method, args, argsAbsoluteOffset, callSiteRange, bindings);
     remainingOffset += consumed;
     remaining = rest;
   }
   return current2;
 }
 __name(applyChain, "applyChain");
-function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], bindings) {
-  const subbedArgs = substituteBoundIdentInArg(args2, bindings);
+function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings) {
+  const subbedArgs = substituteBoundIdentInArg(args, bindings);
   switch (method) {
     case "fast": {
       const n = parseFloat(subbedArgs.trim());
@@ -5357,32 +2381,32 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "every": {
-      const [nStr, transformStr] = splitFirstArg(args2);
+      const [nStr, transformStr] = splitFirstArg(args);
       const n = parseInt(nStr.trim(), 10);
       if (isNaN(n)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
-      const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
+      const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.every(n, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimes": {
-      const transform = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length), bindings) : ir;
+      const transform = args.trim() ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings) : ir;
       return IR.choice(0.5, transform, ir, tagMeta(method, callSiteRange));
     }
     case "sometimesBy": {
-      const [pStr, transformStr] = splitFirstArg(args2);
+      const [pStr, transformStr] = splitFirstArg(args);
       const p = parseFloat(pStr.trim());
       if (isNaN(p)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
-      const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
+      const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.choice(p, transform, ir, tagMeta(method, callSiteRange));
     }
     case "mask": {
-      const gateMatch = args2.trim().match(/^"([^"]*)"$/);
+      const gateMatch = args.trim().match(/^"([^"]*)"$/);
       if (gateMatch) return IR.when(gateMatch[1], ir, tagMeta(method, callSiteRange));
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "layer": {
-      const argList = splitArgs(args2);
+      const argList = splitArgs(args);
       if (argList.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const tracks = [];
       for (const funcStr of argList) {
@@ -5391,7 +2415,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
           tracks.push(ir);
           continue;
         }
-        const transformOffset = offsetOfSubArg(args2, trimmed, baseOffset);
+        const transformOffset = offsetOfSubArg(args, trimmed, baseOffset);
         tracks.push(parseTransform(trimmed, ir, transformOffset, bindings));
       }
       const [layerStart, layerEnd] = callSiteRange;
@@ -5404,10 +2428,10 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       };
     }
     case "chunk": {
-      const [nStr, transformStr] = splitFirstArg(args2);
+      const [nStr, transformStr] = splitFirstArg(args);
       const n = parseInt(nStr.trim(), 10);
       if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
-      const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
+      const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange));
     }
@@ -5425,7 +2449,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       return IR.late(t, ir, tagMeta(method, callSiteRange));
     }
     case "jux": {
-      const transformed = args2.trim() ? parseTransform(args2.trim(), ir, baseOffset + (args2.length - args2.trimStart().length), bindings) : ir;
+      const transformed = args.trim() ? parseTransform(args.trim(), ir, baseOffset + (args.length - args.trimStart().length), bindings) : ir;
       const leftPan = IR.fx("pan", { pan: -1 }, ir);
       const rightPan = IR.fx("pan", { pan: 1 }, transformed);
       const [juxStart, juxEnd] = callSiteRange;
@@ -5438,23 +2462,23 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       };
     }
     case "ply": {
-      const trimmed = args2.trim();
+      const trimmed = args.trim();
       const n = Number(trimmed);
       if (!Number.isInteger(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       if (n === 1) return ir;
       return IR.ply(n, ir, tagMeta(method, callSiteRange));
     }
     case "off": {
-      const [tStr, transformStr] = splitFirstArg(args2);
+      const [tStr, transformStr] = splitFirstArg(args);
       const t = parseFloat(tStr.trim());
       if (isNaN(t)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
-      const tStartAbs = offsetOfSubArg(args2, tStr.trim(), baseOffset);
+      const tStartAbs = offsetOfSubArg(args, tStr.trim(), baseOffset);
       const tEndAbs = tStartAbs + tStr.trim().length;
       const lateBody = IR.late(t, ir, {
         loc: [{ start: tStartAbs, end: tEndAbs }]
         // userMethod intentionally undefined — synthetic intermediate (D-09).
       });
-      const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
+      const transformOffset = transformStr ? offsetOfSubArg(args, transformStr, baseOffset) : baseOffset;
       const transformed = transformStr ? parseTransform(transformStr.trim(), lateBody, transformOffset, bindings) : lateBody;
       const [offStart, offEnd] = callSiteRange;
       return {
@@ -5483,12 +2507,12 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "pick": {
-      const inner = args2.trim();
+      const inner = args.trim();
       if (!(inner.startsWith("[") && inner.endsWith("]"))) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const arrayBody = inner.slice(1, -1);
       const elements = splitArgs(arrayBody);
       if (elements.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
-      const arrayBodyOffsetInArgs = args2.indexOf("[") + 1;
+      const arrayBodyOffsetInArgs = args.indexOf("[") + 1;
       const arrayBodyOffset = arrayBodyOffsetInArgs >= 1 ? baseOffset + arrayBodyOffsetInArgs : baseOffset;
       const lookup = elements.map((e) => {
         const elemOffset = offsetOfSubArg(arrayBody, e.trim(), arrayBodyOffset);
@@ -5497,7 +2521,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       return IR.pick(ir, lookup, tagMeta(method, callSiteRange));
     }
     case "struct": {
-      const gateMatch = args2.trim().match(/^"([^"]*)"$/);
+      const gateMatch = args.trim().match(/^"([^"]*)"$/);
       if (gateMatch) return IR.struct(gateMatch[1], ir, tagMeta(method, callSiteRange));
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
@@ -5522,15 +2546,15 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       return IR.chop(n, ir, tagMeta(method, callSiteRange));
     }
     case "p": {
-      const trimmed = args2.trim();
+      const trimmed = args.trim();
       const strMatch = trimmed.match(
         /^(?:"([a-zA-Z0-9_\-][a-zA-Z0-9_:.\- ]*?)"|'([a-zA-Z0-9_\-][a-zA-Z0-9_:.\- ]*?)')$/
       );
-      const name2 = strMatch?.[1] ?? strMatch?.[2];
-      if (!name2) {
+      const name = strMatch?.[1] ?? strMatch?.[2];
+      if (!name) {
         return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
-      return IR.track(name2, ir, tagMeta(method, callSiteRange));
+      return IR.track(name, ir, tagMeta(method, callSiteRange));
     }
     case "s":
     case "n":
@@ -5544,14 +2568,14 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "pan":
     case "speed": {
       const isSampleKey = method === "s" || method === "bank" || method === "scale";
-      const parsed = parseParamArg(args2, isSampleKey, baseOffset);
+      const parsed = parseParamArg(args, isSampleKey, baseOffset);
       if (!parsed) {
         return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
       if (method === "freq" && typeof parsed.value !== "number") {
         return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
-      return IR.param(method, parsed.value, args2, ir, tagMeta(method, callSiteRange));
+      return IR.param(method, parsed.value, args, ir, tagMeta(method, callSiteRange));
     }
     default:
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
@@ -5583,8 +2607,8 @@ function parseTransform(transformStr, defaultIr, baseOffset = 0, bindings) {
   return defaultIr;
 }
 __name(parseTransform, "parseTransform");
-function parseParamArg(args2, isSampleKey, argsOffsetAbs) {
-  const trimmed = args2.trim();
+function parseParamArg(args, isSampleKey, argsOffsetAbs) {
+  const trimmed = args.trim();
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     return { value: parseFloat(trimmed) };
   }
@@ -5593,7 +2617,7 @@ function parseParamArg(args2, isSampleKey, argsOffsetAbs) {
   const miniMatch = trimmed.match(/^"([^"]*)"$/);
   if (miniMatch) {
     const innerStr = miniMatch[1];
-    const quoteIdx = args2.indexOf('"');
+    const quoteIdx = args.indexOf('"');
     const innerOffsetAbs = quoteIdx >= 0 ? argsOffsetAbs + quoteIdx + 1 : argsOffsetAbs;
     return { value: parseMini(innerStr, isSampleKey, innerOffsetAbs) };
   }
@@ -5617,88 +2641,88 @@ function parseArrayLiteralElement(elem, receiverContext, baseOffset = 0, binding
   return parseExpression(trimmed, baseOffset + leadingWs, void 0, bindings);
 }
 __name(parseArrayLiteralElement, "parseArrayLiteralElement");
-function offsetOfSubArg(args2, subArg, argsBaseOffset) {
+function offsetOfSubArg(args, subArg, argsBaseOffset) {
   const trimmedSub = subArg.trim();
   if (!trimmedSub) return argsBaseOffset;
-  const idx = args2.indexOf(trimmedSub);
+  const idx = args.indexOf(trimmedSub);
   return idx >= 0 ? argsBaseOffset + idx : argsBaseOffset;
 }
 __name(offsetOfSubArg, "offsetOfSubArg");
 function splitRootAndChain(expr) {
-  let i2 = 0;
+  let i = 0;
   if (expr[0] === '"') {
-    i2 = 1;
-    while (i2 < expr.length && expr[i2] !== '"') {
-      if (expr[i2] === "\\" && i2 + 1 < expr.length) {
-        i2 += 2;
+    i = 1;
+    while (i < expr.length && expr[i] !== '"') {
+      if (expr[i] === "\\" && i + 1 < expr.length) {
+        i += 2;
         continue;
       }
-      i2++;
+      i++;
     }
-    if (i2 < expr.length) i2++;
+    if (i < expr.length) i++;
   } else if (expr[0] === "`") {
-    i2 = 1;
-    while (i2 < expr.length && expr[i2] !== "`") {
-      if (expr[i2] === "\\" && i2 + 1 < expr.length) {
-        i2 += 2;
+    i = 1;
+    while (i < expr.length && expr[i] !== "`") {
+      if (expr[i] === "\\" && i + 1 < expr.length) {
+        i += 2;
         continue;
       }
-      i2++;
+      i++;
     }
-    if (i2 < expr.length) i2++;
+    if (i < expr.length) i++;
   } else {
-    while (i2 < expr.length && /[a-zA-Z0-9_$]/.test(expr[i2])) i2++;
-    const afterIdent = i2;
-    i2 = skipWhitespaceAndLineComments(expr, i2);
-    if (i2 < expr.length && expr[i2] === "(") {
-      const closeIdx = findMatchingParen(expr, i2);
+    while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) i++;
+    const afterIdent = i;
+    i = skipWhitespaceAndLineComments(expr, i);
+    if (i < expr.length && expr[i] === "(") {
+      const closeIdx = findMatchingParen(expr, i);
       if (closeIdx !== -1) {
-        i2 = closeIdx + 1;
+        i = closeIdx + 1;
       }
     } else {
-      i2 = afterIdent;
+      i = afterIdent;
     }
   }
   return {
-    root: expr.slice(0, i2),
-    chain: expr.slice(i2)
+    root: expr.slice(0, i),
+    chain: expr.slice(i)
   };
 }
 __name(splitRootAndChain, "splitRootAndChain");
 function extractNextMethod(chain) {
   if (!chain.startsWith(".")) return { method: "", args: "", rest: chain, argsOffset: -1 };
-  let i2 = 1;
+  let i = 1;
   let method = "";
-  while (i2 < chain.length && /[a-zA-Z0-9_$]/.test(chain[i2])) {
-    method += chain[i2++];
+  while (i < chain.length && /[a-zA-Z0-9_$]/.test(chain[i])) {
+    method += chain[i++];
   }
   if (!method) return { method: "", args: "", rest: chain, argsOffset: -1 };
-  let args2 = "";
-  let rest = chain.slice(i2);
+  let args = "";
+  let rest = chain.slice(i);
   let argsOffset = -1;
   if (rest.startsWith("(")) {
     const closeIdx = findMatchingParen(rest, 0);
     if (closeIdx !== -1) {
-      args2 = rest.slice(1, closeIdx);
-      argsOffset = i2 + 1;
+      args = rest.slice(1, closeIdx);
+      argsOffset = i + 1;
       rest = rest.slice(closeIdx + 1);
     }
   }
-  return { method, args: args2, rest, argsOffset };
+  return { method, args, rest, argsOffset };
 }
 __name(extractNextMethod, "extractNextMethod");
 function findMatchingParen(str, startIdx) {
   let depth = 0;
   let inString = false;
   let stringChar = "";
-  for (let i2 = startIdx; i2 < str.length; i2++) {
-    const ch = str[i2];
+  for (let i = startIdx; i < str.length; i++) {
+    const ch = str[i];
     if (inString) {
-      if (ch === stringChar && str[i2 - 1] !== "\\") inString = false;
+      if (ch === stringChar && str[i - 1] !== "\\") inString = false;
       continue;
     }
-    if (ch === "/" && str[i2 + 1] === "/") {
-      while (i2 < str.length && str[i2] !== "\n") i2++;
+    if (ch === "/" && str[i + 1] === "/") {
+      while (i < str.length && str[i] !== "\n") i++;
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
@@ -5709,16 +2733,16 @@ function findMatchingParen(str, startIdx) {
     if (ch === "(" || ch === "[" || ch === "{") depth++;
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (depth === 0) return i2;
+      if (depth === 0) return i;
     }
   }
   return -1;
 }
 __name(findMatchingParen, "findMatchingParen");
 function extractParenContent(expr, prefix) {
-  const start2 = expr.indexOf(prefix);
-  if (start2 === -1) return null;
-  const parenStart = start2 + prefix.length - 1;
+  const start = expr.indexOf(prefix);
+  if (start === -1) return null;
+  const parenStart = start + prefix.length - 1;
   const closeIdx = findMatchingParen(expr, parenStart);
   if (closeIdx === -1) return null;
   return expr.slice(parenStart + 1, closeIdx);
@@ -5729,7 +2753,7 @@ function splitArgs(argsStr) {
 }
 __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
-  const args2 = [];
+  const args = [];
   let depth = 0;
   let current2 = "";
   let currentStart = 0;
@@ -5738,66 +2762,66 @@ function splitArgsWithOffsets(argsStr) {
   const pushCurrent = /* @__PURE__ */ __name(() => {
     if (current2.trim().length === 0) return;
     const consumed = skipWhitespaceAndLineComments(current2, 0);
-    args2.push({
+    args.push({
       value: current2.slice(consumed).trimEnd(),
       offset: currentStart + consumed
     });
   }, "pushCurrent");
-  for (let i2 = 0; i2 < argsStr.length; i2++) {
-    const ch = argsStr[i2];
+  for (let i = 0; i < argsStr.length; i++) {
+    const ch = argsStr[i];
     if (inString) {
       current2 += ch;
-      if (ch === stringChar && argsStr[i2 - 1] !== "\\") inString = false;
+      if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
-    if (ch === "/" && argsStr[i2 + 1] === "/") {
-      if (current2.length === 0) currentStart = i2;
-      while (i2 < argsStr.length && argsStr[i2] !== "\n") {
-        current2 += argsStr[i2];
-        i2++;
+    if (ch === "/" && argsStr[i + 1] === "/") {
+      if (current2.length === 0) currentStart = i;
+      while (i < argsStr.length && argsStr[i] !== "\n") {
+        current2 += argsStr[i];
+        i++;
       }
-      if (i2 < argsStr.length) {
-        current2 += argsStr[i2];
+      if (i < argsStr.length) {
+        current2 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current2.length === 0) currentStart = i2;
+      if (current2.length === 0) currentStart = i;
       current2 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current2.length === 0) currentStart = i2;
+      if (current2.length === 0) currentStart = i;
       current2 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current2.length === 0) currentStart = i2;
+      if (current2.length === 0) currentStart = i;
       current2 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
       current2 = "";
-      currentStart = i2 + 1;
+      currentStart = i + 1;
     } else {
-      if (current2.length === 0) currentStart = i2;
+      if (current2.length === 0) currentStart = i;
       current2 += ch;
     }
   }
   pushCurrent();
-  return args2;
+  return args;
 }
 __name(splitArgsWithOffsets, "splitArgsWithOffsets");
 function splitFirstArg(argsStr) {
-  const parts2 = splitArgs(argsStr);
-  if (parts2.length === 0) return ["", ""];
-  if (parts2.length === 1) return [parts2[0], ""];
-  return [parts2[0], parts2.slice(1).join(", ")];
+  const parts = splitArgs(argsStr);
+  if (parts.length === 0) return ["", ""];
+  if (parts.length === 1) return [parts[0], ""];
+  return [parts[0], parts.slice(1).join(", ")];
 }
 __name(splitFirstArg, "splitFirstArg");
 
@@ -5818,12 +2842,12 @@ function runRawStage(input) {
   const tracks = extractTracks(code);
   if (tracks.length === 0) {
     const trimStart = code.search(/\S/);
-    const start2 = trimStart >= 0 ? trimStart : 0;
+    const start = trimStart >= 0 ? trimStart : 0;
     return {
       tag: "Code",
       code: code.trim(),
       lang: "strudel",
-      loc: [{ start: start2, end: code.length }]
+      loc: [{ start, end: code.length }]
     };
   }
   if (tracks.length === 1) {
@@ -5908,11 +2932,11 @@ __name(parseRootWithChainMeta, "parseRootWithChainMeta");
 function runChainAppliedStage(input) {
   if (input.tag === "Stack" && input.userMethod === void 0) {
     return IR.stack(
-      ...input.tracks.map((t, i2) => {
+      ...input.tracks.map((t, i) => {
         const tMeta = t;
         const applied = applyOnTrack(t);
         const meta = tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0 ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] } : void 0;
-        return IR.track(`d${i2 + 1}`, applied, meta);
+        return IR.track(`d${i + 1}`, applied, meta);
       })
     );
   }
@@ -5955,13 +2979,13 @@ __name(runFinalStage, "runFinalStage");
 
 // src/ir/passes.ts
 function runPasses(input, passes) {
-  const out2 = [];
+  const out = [];
   let cur = input;
   for (const p of passes) {
     cur = p.run(cur);
-    out2.push({ name: p.name, ir: cur });
+    out.push({ name: p.name, ir: cur });
   }
-  return out2;
+  return out;
 }
 __name(runPasses, "runPasses");
 
@@ -6001,10 +3025,10 @@ var IREventCollectSystem = {
 };
 
 // src/engine/noteToMidi.ts
-function noteToMidi(note2) {
-  if (typeof note2 === "number") return Math.round(note2);
-  if (typeof note2 !== "string") return null;
-  const m = note2.toLowerCase().match(/^([a-g])(b|#)?(-?\d+)$/);
+function noteToMidi(note) {
+  if (typeof note === "number") return Math.round(note);
+  if (typeof note !== "string") return null;
+  const m = note.toLowerCase().match(/^([a-g])(b|#)?(-?\d+)$/);
   if (!m) return null;
   const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   const acc = m[2] === "b" ? -1 : m[2] === "#" ? 1 : 0;
@@ -6039,16 +3063,16 @@ function extractLoc(hap) {
   const ctx = hap.context;
   const raw = ctx?.locations ?? ctx?.loc;
   if (!Array.isArray(raw)) return void 0;
-  const out2 = [];
+  const out = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
-    const start2 = r.start;
+    const start = r.start;
     const end = r.end;
-    if (typeof start2 === "number" && typeof end === "number") {
-      out2.push({ start: start2, end });
+    if (typeof start === "number" && typeof end === "number") {
+      out.push({ start, end });
     }
   }
-  return out2.length > 0 ? out2 : void 0;
+  return out.length > 0 ? out : void 0;
 }
 __name(extractLoc, "extractLoc");
 function findMatchedEvent(loc, begin, locLookup) {
@@ -6058,10 +3082,10 @@ function findMatchedEvent(loc, begin, locLookup) {
   if (!candidates || candidates.length === 0) return void 0;
   let best = candidates[0];
   let bestDist = Math.abs(best.begin - begin);
-  for (let i2 = 1; i2 < candidates.length; i2++) {
-    const d = Math.abs(candidates[i2].begin - begin);
+  for (let i = 1; i < candidates.length; i++) {
+    const d = Math.abs(candidates[i].begin - begin);
     if (d < bestDist) {
-      best = candidates[i2];
+      best = candidates[i];
       bestDist = d;
     }
   }
@@ -6324,10 +3348,10 @@ var _WavEncoder = class _WavEncoder {
     for (let chunk = 0; chunk < chunksL.length; chunk++) {
       const l = chunksL[chunk];
       const r = chunksR[chunk] ?? l;
-      for (let i2 = 0; i2 < l.length; i2++) {
-        view.setInt16(offset, floatToInt16(l[i2]), true);
+      for (let i = 0; i < l.length; i++) {
+        view.setInt16(offset, floatToInt16(l[i]), true);
         offset += 2;
-        view.setInt16(offset, floatToInt16(r[i2]), true);
+        view.setInt16(offset, floatToInt16(r[i]), true);
         offset += 2;
       }
     }
@@ -6337,8 +3361,8 @@ var _WavEncoder = class _WavEncoder {
 __name(_WavEncoder, "WavEncoder");
 var WavEncoder = _WavEncoder;
 function writeString(view, offset, str) {
-  for (let i2 = 0; i2 < str.length; i2++) {
-    view.setUint8(offset + i2, str.charCodeAt(i2));
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i));
   }
 }
 __name(writeString, "writeString");
@@ -6477,26 +3501,26 @@ function safeLocalStorage() {
   }
 }
 __name(safeLocalStorage, "safeLocalStorage");
-function readTierFlag(name2) {
+function readTierFlag(name) {
   const ls = safeLocalStorage();
   if (!ls) return false;
-  return ls.getItem(`${STORAGE_PREFIX}${name2}`) === "1";
+  return ls.getItem(`${STORAGE_PREFIX}${name}`) === "1";
 }
 __name(readTierFlag, "readTierFlag");
-function writeTierFlag(name2, on) {
-  safeLocalStorage()?.setItem(`${STORAGE_PREFIX}${name2}`, on ? "1" : "0");
+function writeTierFlag(name, on) {
+  safeLocalStorage()?.setItem(`${STORAGE_PREFIX}${name}`, on ? "1" : "0");
 }
 __name(writeTierFlag, "writeTierFlag");
 function getTierFlags() {
-  const out2 = {};
-  for (const name2 of ALL_TIERS) {
-    out2[name2] = readTierFlag(name2);
+  const out = {};
+  for (const name of ALL_TIERS) {
+    out[name] = readTierFlag(name);
   }
-  return out2;
+  return out;
 }
 __name(getTierFlags, "getTierFlags");
-function setTierFlag(name2, on) {
-  writeTierFlag(name2, on);
+function setTierFlag(name, on) {
+  writeTierFlag(name, on);
 }
 __name(setTierFlag, "setTierFlag");
 function listTiers() {
@@ -6575,11 +3599,11 @@ function extractVizName(rawArg) {
   }
   if (haps.length === 0) return void 0;
   if (haps.length === 1) {
-    const out3 = renderHapValue(haps[0].value);
-    return out3 === "" ? void 0 : out3;
+    const out2 = renderHapValue(haps[0].value);
+    return out2 === "" ? void 0 : out2;
   }
-  const out2 = haps.map((h) => renderHapValue(h.value)).join(" ");
-  return out2 === "" ? void 0 : out2;
+  const out = haps.map((h) => renderHapValue(h.value)).join(" ");
+  return out === "" ? void 0 : out;
 }
 __name(extractVizName, "extractVizName");
 var _StrudelEngine = class _StrudelEngine {
@@ -6695,8 +3719,8 @@ var _StrudelEngine = class _StrudelEngine {
         } else {
           console.warn("[StrudelEngine] tierFlags.midi is ON but @strudel/midi did not export enableWebMidi.");
         }
-      } catch (err2) {
-        console.warn("[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.", err2);
+      } catch (err) {
+        console.warn("[StrudelEngine] enableWebMidi() failed; MIDI output unavailable.", err);
       }
     }
     miniMod.miniAllStrings();
@@ -6886,16 +3910,16 @@ var _StrudelEngine = class _StrudelEngine {
       }
       try {
         return await webaudioOutput(hap, deadline, duration, cps, t);
-      } catch (err2) {
-        const error = err2 instanceof Error ? err2 : new Error(String(err2));
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
         this.runtimeErrorHandler?.(error);
       }
     }, "wrappedOutput");
     this.repl = webaudioRepl({
       transpiler,
       defaultOutput: wrappedOutput,
-      onEvalError: /* @__PURE__ */ __name((err2) => {
-        this.evalResolve?.({ error: err2 });
+      onEvalError: /* @__PURE__ */ __name((err) => {
+        this.evalResolve?.({ error: err });
         this.evalResolve = null;
       }, "onEvalError")
     });
@@ -6946,16 +3970,16 @@ var _StrudelEngine = class _StrudelEngine {
             return result;
           }, "value")
         });
-        for (const name2 of legacyVizNames) {
-          const methodName = `_${name2}`;
+        for (const name of legacyVizNames) {
+          const methodName = `_${name}`;
           savedLegacyDescriptors.set(methodName, Object.getOwnPropertyDescriptor(Pattern2.prototype, methodName));
           const strudelLegacy = Pattern2.prototype[methodName];
           Object.defineProperty(Pattern2.prototype, methodName, {
             configurable: true,
             writable: true,
-            value: /* @__PURE__ */ __name(function(...args2) {
-              const result = strudelLegacy ? strudelLegacy.apply(this, args2) : this;
-              result._pendingViz = name2;
+            value: /* @__PURE__ */ __name(function(...args) {
+              const result = strudelLegacy ? strudelLegacy.apply(this, args) : this;
+              result._pendingViz = name;
               return result;
             }, "value")
           });
@@ -7101,19 +4125,19 @@ var _StrudelEngine = class _StrudelEngine {
     const result = /* @__PURE__ */ new Map();
     const lines = code.split("\n");
     let anonIndex = 0;
-    for (let i2 = 0; i2 < lines.length; i2++) {
-      if (!lines[i2].trim().startsWith("$:")) continue;
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].trim().startsWith("$:")) continue;
       const key = `$${anonIndex}`;
       anonIndex++;
       const vizId = requests.get(key);
       if (!vizId) continue;
-      let lastLineIdx = i2;
-      for (let j = i2 + 1; j < lines.length; j++) {
+      let lastLineIdx = i;
+      for (let j = i + 1; j < lines.length; j++) {
         const next = lines[j].trim();
         if (next.startsWith("$:") || next.startsWith("setcps")) break;
         if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
       }
-      const blockLines = lines.slice(i2, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
+      const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
       const contentHash = blockLines.slice(0, 120);
       result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash });
     }
@@ -7203,9 +4227,9 @@ var _StrudelEngine = class _StrudelEngine {
     const keys = Object.keys(stems);
     const sampleRate = this.audioCtx?.sampleRate ?? 44100;
     const blobs = await Promise.all(
-      keys.map(async (key, i2) => {
+      keys.map(async (key, i) => {
         const blob = await OfflineRenderer.render(stems[key], duration, sampleRate);
-        onProgress?.(key, i2 + 1, keys.length);
+        onProgress?.(key, i + 1, keys.length);
         return [key, blob];
       })
     );
@@ -7332,8 +4356,8 @@ var _StrudelEngine = class _StrudelEngine {
       let orbitNode = null;
       try {
         orbitNode = this.audioController.getOrbit(orbit, [0, 1]);
-      } catch (err2) {
-        console.warn(`[stave] Could not resolve superdough orbit ${orbit} for "${captureId}":`, err2);
+      } catch (err) {
+        console.warn(`[stave] Could not resolve superdough orbit ${orbit} for "${captureId}":`, err);
       }
       const orbitOutput = orbitNode?.output;
       if (!orbitOutput) {
@@ -7351,8 +4375,8 @@ var _StrudelEngine = class _StrudelEngine {
       }
       try {
         orbitOutput.connect(analyser);
-      } catch (err2) {
-        console.warn(`[stave] Could not tap orbit ${orbit} for "${captureId}":`, err2);
+      } catch (err) {
+        console.warn(`[stave] Could not tap orbit ${orbit} for "${captureId}":`, err);
         continue;
       }
       this.trackAnalysers.set(captureId, analyser);
@@ -7493,13 +4517,13 @@ function buildLogger() {
     const clean = raw.replace(P5_PREFIX_RE, "").trim();
     if (!clean) return;
     let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
-    let line2;
+    let line;
     const match = raw.match(FES_LINE_RE);
     if (match) {
       const wrapped = parseInt(match[1], 10);
       if (Number.isFinite(wrapped)) {
         const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
-        if (candidate >= 1) line2 = candidate;
+        if (candidate >= 1) line = candidate;
       }
     }
     const isLikelyBug = /accidentally written|is not defined|no such/i.test(
@@ -7510,7 +4534,7 @@ function buildLogger() {
       level: isLikelyBug ? "error" : "warn",
       source: currentSource ?? void 0,
       message,
-      line: line2
+      line
     });
   };
 }
@@ -7667,8 +4691,8 @@ var _HapEnergyEnvelope = class _HapEnergyEnvelope {
   }
   /** Call once per animation frame to apply decay. */
   tick() {
-    for (let i2 = 0; i2 < this.numBins; i2++) {
-      this.bins[i2] *= this.decay;
+    for (let i = 0; i < this.numBins; i++) {
+      this.bins[i] *= this.decay;
     }
   }
 };
@@ -7699,18 +4723,18 @@ var _HydraVizRenderer = class _HydraVizRenderer {
           this.analyser.getByteFrequencyData(this.freqData);
           const numBins = getVizConfig().hydraAudioBins;
           const binSize = Math.floor(this.freqData.length / numBins);
-          for (let i2 = 0; i2 < numBins; i2++) {
+          for (let i = 0; i < numBins; i++) {
             let sum = 0;
             for (let j = 0; j < binSize; j++) {
-              sum += this.freqData[i2 * binSize + j];
+              sum += this.freqData[i * binSize + j];
             }
-            a.fft[i2] = sum / (binSize * 255);
+            a.fft[i] = sum / (binSize * 255);
           }
         } else if (this.useEnvelope && this.envelope) {
           this.envelope.tick();
           const numBins = getVizConfig().hydraAudioBins;
-          for (let i2 = 0; i2 < numBins; i2++) {
-            a.fft[i2] = this.envelope.bins[i2];
+          for (let i = 0; i < numBins; i++) {
+            a.fft[i] = this.envelope.bins[i];
           }
         }
       }
@@ -7894,14 +4918,14 @@ var BG = "#090912";
 var INACTIVE_COLOR = "#75baff";
 var ACTIVE_COLOR = "#FFCA28";
 var PLAYHEAD_COLOR = "rgba(255,255,255,0.5)";
-function getValue2(hap) {
+function getValue(hap) {
   if (hap.freq !== null) return Math.round(12 * Math.log2(hap.freq / 440) + 69);
   if (typeof hap.note === "string") return noteToMidi(hap.note) ?? "_" + hap.note;
   if (typeof hap.note === "number") return hap.note;
   if (hap.s !== null) return "_" + hap.s;
   return 0;
 }
-__name(getValue2, "getValue");
+__name(getValue, "getValue");
 function parseHex(hex) {
   const s = hex.replace("#", "");
   if (s.length === 6) {
@@ -7945,7 +4969,7 @@ function PianorollSketch(_hapStreamRef, _analyserRef, schedulerRef) {
         haps = [];
       }
       const valueSet = /* @__PURE__ */ new Set();
-      for (const h of haps) valueSet.add(getValue2(h));
+      for (const h of haps) valueSet.add(getValue(h));
       const foldValues = Array.from(valueSet).sort((a, b) => {
         if (typeof a === "number" && typeof b === "number") return a - b;
         if (typeof a === "number") return -1;
@@ -7957,7 +4981,7 @@ function PianorollSketch(_hapStreamRef, _analyserRef, schedulerRef) {
       p.background(BG);
       p.noStroke();
       for (const hap of haps) {
-        const value = getValue2(hap);
+        const value = getValue(hap);
         const laneIdx = foldValues.indexOf(value);
         if (laneIdx < 0) continue;
         const duration = hap.end - hap.begin;
@@ -8001,13 +5025,13 @@ var ACTIVE_COLOR2 = "#ffffff";
 var PLAYHEAD_COLOR2 = "rgba(255,255,255,0.5)";
 var CYCLES2 = 4;
 var PLAYHEAD2 = 0.5;
-function getValue3(hap) {
+function getValue2(hap) {
   if (hap.freq !== null) return hap.freq;
   if (hap.note !== null) return hap.note;
   if (hap.s !== null) return "_" + hap.s;
   return 0;
 }
-__name(getValue3, "getValue");
+__name(getValue2, "getValue");
 function getLabel(hap) {
   if (hap.note !== null && hap.s !== null) return `${hap.s}:${hap.note}`;
   if (hap.note !== null) return String(hap.note);
@@ -8039,7 +5063,7 @@ function WordfallSketch(_hapStreamRef, _analyserRef, schedulerRef) {
       } catch {
         return;
       }
-      const allValues = haps.map((h) => getValue3(h));
+      const allValues = haps.map((h) => getValue2(h));
       const foldValues = [...new Set(allValues)].sort(
         (a, b) => typeof a === "number" && typeof b === "number" ? a - b : typeof a === "number" ? 1 : String(a).localeCompare(String(b))
       );
@@ -8052,7 +5076,7 @@ function WordfallSketch(_hapStreamRef, _analyserRef, schedulerRef) {
         const playheadY = H * PLAYHEAD2;
         const y = playheadY - timeToHap / CYCLES2 * H;
         const durationH = hapDuration / CYCLES2 * H;
-        const value = getValue3(hap);
+        const value = getValue2(hap);
         const foldIdx = foldValues.indexOf(value);
         const x = foldIdx * barW;
         const color = hap.color ?? INACTIVE_COLOR2;
@@ -8115,9 +5139,9 @@ function ScopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
         const data = new Float32Array(bufferSize);
         analyser.getFloatTimeDomainData(data);
         let triggerIndex = 0;
-        for (let i2 = 1; i2 < bufferSize; i2++) {
-          if (data[i2 - 1] > 0 && data[i2] <= 0) {
-            triggerIndex = i2;
+        for (let i = 1; i < bufferSize; i++) {
+          if (data[i - 1] > 0 && data[i] <= 0) {
+            triggerIndex = i;
             break;
           }
         }
@@ -8126,9 +5150,9 @@ function ScopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
         p.strokeWeight(2);
         p.strokeCap("round");
         p.beginShape();
-        for (let i2 = triggerIndex; i2 < bufferSize; i2++) {
-          const x = (i2 - triggerIndex) * sliceWidth;
-          const y = (POS - SCALE * data[i2]) * H;
+        for (let i = triggerIndex; i < bufferSize; i++) {
+          const x = (i - triggerIndex) * sliceWidth;
+          const y = (POS - SCALE * data[i]) * H;
           p.vertex(x, y);
         }
         p.endShape();
@@ -8219,12 +5243,12 @@ function FscopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
         analyser.getFloatFrequencyData(data);
         const sliceWidth2 = W / bufferSize;
         p.fill(COLOR);
-        for (let i2 = 0; i2 < bufferSize; i2++) {
-          const normalized = clamp((data[i2] - MIN_DB) / (MAX_DB - MIN_DB), 0, 1);
+        for (let i = 0; i < bufferSize; i++) {
+          const normalized = clamp((data[i] - MIN_DB) / (MAX_DB - MIN_DB), 0, 1);
           const v = normalized * SCALE2;
           const barH = v * H;
           const barY = (POS2 - v * LEAN) * H;
-          p.rect(i2 * sliceWidth2, barY, Math.max(sliceWidth2, 1), barH);
+          p.rect(i * sliceWidth2, barY, Math.max(sliceWidth2, 1), barH);
         }
         return;
       }
@@ -8256,15 +5280,15 @@ function FscopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
         bins[binIdx] = Math.max(bins[binIdx], decay * hap.gain);
       }
       const sliceWidth = W / NUM_BINS;
-      for (let i2 = 0; i2 < NUM_BINS; i2++) {
-        if (bins[i2] <= 0) continue;
-        const v = bins[i2] * SCALE2;
+      for (let i = 0; i < NUM_BINS; i++) {
+        if (bins[i] <= 0) continue;
+        const v = bins[i] * SCALE2;
         const barH = v * H;
         const barY = (POS2 - v * LEAN) * H;
         const col = p.color(COLOR);
-        col.setAlpha(bins[i2] * 220);
+        col.setAlpha(bins[i] * 220);
         p.fill(col);
-        p.rect(i2 * sliceWidth, barY, Math.max(sliceWidth - 1, 1), barH);
+        p.rect(i * sliceWidth, barY, Math.max(sliceWidth - 1, 1), barH);
       }
     };
   };
@@ -8312,12 +5336,12 @@ function SpectrumSketch(_hapStreamRef, analyserRef, schedulerRef) {
         ctx.putImageData(imageData2, -SPEED, 0);
         const q2 = W - SPEED;
         ctx.fillStyle = COLOR2;
-        for (let i2 = 0; i2 < bufferSize; i2++) {
-          const normalized = Math.max(0, Math.min(1, (data[i2] - MIN_DB2) / (MAX_DB2 - MIN_DB2)));
+        for (let i = 0; i < bufferSize; i++) {
+          const normalized = Math.max(0, Math.min(1, (data[i] - MIN_DB2) / (MAX_DB2 - MIN_DB2)));
           if (normalized <= 0) continue;
           ctx.globalAlpha = normalized;
-          const yEnd = Math.log(i2 + 1) / Math.log(bufferSize) * H;
-          const yStart = i2 > 0 ? Math.log(i2) / Math.log(bufferSize) * H : 0;
+          const yEnd = Math.log(i + 1) / Math.log(bufferSize) * H;
+          const yStart = i > 0 ? Math.log(i) / Math.log(bufferSize) * H : 0;
           const barH = Math.max(2, yEnd - yStart);
           ctx.fillRect(q2, H - yEnd, SPEED, barH);
         }
@@ -8423,12 +5447,12 @@ function SpiralSketch(_hapStreamRef, _analyserRef, schedulerRef) {
         p.strokeWeight(margin / 2);
         p.strokeCap("round");
         p.beginShape();
-        const inc2 = 1 / 60;
+        const inc = 1 / 60;
         let angle2 = from;
         while (angle2 <= to) {
           const [x, y] = xyOnSpiral(angle2, margin, cx, cy, rotate2);
           p.vertex(x, y);
-          angle2 += inc2;
+          angle2 += inc;
         }
         p.endShape();
       }
@@ -8506,8 +5530,8 @@ function PitchwheelSketch(_hapStreamRef, _analyserRef, schedulerRef) {
       const cy = H / 2;
       p.noStroke();
       p.fill(BASE_COLOR + "40");
-      for (let i2 = 0; i2 < EDO; i2++) {
-        const angle = freq2angle(ROOT_FREQ * Math.pow(2, i2 / EDO), ROOT_FREQ);
+      for (let i = 0; i < EDO; i++) {
+        const angle = freq2angle(ROOT_FREQ * Math.pow(2, i / EDO), ROOT_FREQ);
         const [x, y] = circlePos(cx, cy, radius, angle);
         p.circle(x, y, hapRadius * 1.2);
       }
@@ -8579,16 +5603,16 @@ function SplitPane({
       const delta = isHorizontal ? ev.clientX - startPos : ev.clientY - startPos;
       const deltaPct = delta / containerSize * 100;
       const newSizes = [...startSizes];
-      const i2 = dividerIndex;
-      newSizes[i2] = Math.max(minPct, startSizes[i2] + deltaPct);
-      newSizes[i2 + 1] = Math.max(minPct, startSizes[i2 + 1] - deltaPct);
-      if (newSizes[i2] < minPct) {
-        newSizes[i2] = minPct;
-        newSizes[i2 + 1] = startSizes[i2] + startSizes[i2 + 1] - minPct;
+      const i = dividerIndex;
+      newSizes[i] = Math.max(minPct, startSizes[i] + deltaPct);
+      newSizes[i + 1] = Math.max(minPct, startSizes[i + 1] - deltaPct);
+      if (newSizes[i] < minPct) {
+        newSizes[i] = minPct;
+        newSizes[i + 1] = startSizes[i] + startSizes[i + 1] - minPct;
       }
-      if (newSizes[i2 + 1] < minPct) {
-        newSizes[i2 + 1] = minPct;
-        newSizes[i2] = startSizes[i2] + startSizes[i2 + 1] - minPct;
+      if (newSizes[i + 1] < minPct) {
+        newSizes[i + 1] = minPct;
+        newSizes[i] = startSizes[i] + startSizes[i + 1] - minPct;
       }
       setSizes(newSizes);
     }, "onMouseMove");
@@ -8620,12 +5644,12 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i2) => /* @__PURE__ */ jsxRuntime.jsxs(React6__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React6__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
             style: {
-              [isHorizontal ? "width" : "height"]: `${sizes[i2]}%`,
+              [isHorizontal ? "width" : "height"]: `${sizes[i]}%`,
               [isHorizontal ? "height" : "width"]: "100%",
               overflow: "hidden",
               position: "relative",
@@ -8635,10 +5659,10 @@ function SplitPane({
             children: child
           }
         ),
-        i2 < childArray.length - 1 && /* @__PURE__ */ jsxRuntime.jsx(
+        i < childArray.length - 1 && /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
-            onMouseDown: (e) => handleMouseDown(i2, e),
+            onMouseDown: (e) => handleMouseDown(i, e),
             style: {
               [isHorizontal ? "width" : "height"]: 4,
               [isHorizontal ? "height" : "width"]: "100%",
@@ -8655,7 +5679,7 @@ function SplitPane({
             }
           }
         )
-      ] }, i2))
+      ] }, i))
     }
   );
 }
@@ -8882,11 +5906,11 @@ __name(subscribeToDocUpdate, "subscribeToDocUpdate");
 var STRUCT_ORIGIN = /* @__PURE__ */ Symbol.for("stave:struct");
 function withStructBatch(fn) {
   const doc = getActiveDoc();
-  let out2;
+  let out;
   doc.transact(() => {
-    out2 = fn();
+    out = fn();
   }, STRUCT_ORIGIN);
-  return out2;
+  return out;
 }
 __name(withStructBatch, "withStructBatch");
 var active = null;
@@ -9531,23 +6555,23 @@ function validateDocsIndex(label, raw) {
   if (!r.docs || typeof r.docs !== "object") {
     throw new Error(`${label}: docs must be an object`);
   }
-  for (const [name2, entry] of Object.entries(r.docs)) {
+  for (const [name, entry] of Object.entries(r.docs)) {
     if (!entry || typeof entry !== "object") {
-      throw new Error(`${label}: entry "${name2}" is not an object`);
+      throw new Error(`${label}: entry "${name}" is not an object`);
     }
     const e = entry;
     if (typeof e.signature !== "string") {
       throw new Error(
-        `${label}: entry "${name2}" is missing string "signature"`
+        `${label}: entry "${name}" is missing string "signature"`
       );
     }
     if (typeof e.description !== "string") {
       throw new Error(
-        `${label}: entry "${name2}" is missing string "description"`
+        `${label}: entry "${name}" is missing string "description"`
       );
     }
     if (e.commonMistakes !== void 0) {
-      validateMistakes(`${label}: entry "${name2}".commonMistakes`, e.commonMistakes);
+      validateMistakes(`${label}: entry "${name}".commonMistakes`, e.commonMistakes);
     }
   }
   if (r.globalMistakes !== void 0) {
@@ -9614,19 +6638,19 @@ function createHoverProvider(monaco, index) {
 }
 __name(createHoverProvider, "createHoverProvider");
 function renderHoverContents(doc, fallbackUrl) {
-  const out2 = [];
-  out2.push({ value: "```typescript\n" + doc.signature + "\n```" });
-  if (doc.description) out2.push({ value: doc.description });
-  if (doc.example) out2.push({ value: "**Example:** `" + doc.example + "`" });
-  if (doc.returns) out2.push({ value: "**Returns:** " + doc.returns });
+  const out = [];
+  out.push({ value: "```typescript\n" + doc.signature + "\n```" });
+  if (doc.description) out.push({ value: doc.description });
+  if (doc.example) out.push({ value: "**Example:** `" + doc.example + "`" });
+  if (doc.returns) out.push({ value: "**Returns:** " + doc.returns });
   const href = doc.sourceUrl ?? fallbackUrl;
   if (href) {
-    out2.push({
+    out.push({
       value: "[Reference \u2192](" + href + ")",
       isTrusted: true
     });
   }
-  return out2;
+  return out;
 }
 __name(renderHoverContents, "renderHoverContents");
 var KIND_TO_MONACO = {
@@ -9653,7 +6677,7 @@ function createDotCompletionProvider(monaco, index) {
         return { suggestions: [] };
       }
       const word = model.getWordUntilPosition(position);
-      const range2 = {
+      const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
         startColumn: word.startColumn,
@@ -9661,7 +6685,7 @@ function createDotCompletionProvider(monaco, index) {
       };
       return {
         suggestions: Object.entries(index.docs).map(
-          ([name2, doc]) => toSuggestion(monaco, name2, doc, range2)
+          ([name, doc]) => toSuggestion(monaco, name, doc, range)
         )
       };
     }
@@ -9673,36 +6697,36 @@ function createIdentifierCompletionProvider(monaco, index) {
     provideCompletionItems(model, position) {
       const word = model.getWordUntilPosition(position);
       const prefix = word.word;
-      const range2 = {
+      const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
         startColumn: word.startColumn,
         endColumn: word.endColumn
       };
       const entries2 = Object.entries(index.docs).filter(
-        ([name2]) => prefix.length === 0 ? true : name2.toLowerCase().startsWith(prefix.toLowerCase())
+        ([name]) => prefix.length === 0 ? true : name.toLowerCase().startsWith(prefix.toLowerCase())
       );
       return {
         suggestions: entries2.map(
-          ([name2, doc]) => toSuggestion(monaco, name2, doc, range2)
+          ([name, doc]) => toSuggestion(monaco, name, doc, range)
         )
       };
     }
   });
 }
 __name(createIdentifierCompletionProvider, "createIdentifierCompletionProvider");
-function toSuggestion(monaco, name2, doc, range2) {
+function toSuggestion(monaco, name, doc, range) {
   const documentation = {
     value: (doc.description ?? "") + (doc.example ? "\n\n**Example:** `" + doc.example + "`" : "") + (doc.sourceUrl ? "\n\n[Reference \u2192](" + doc.sourceUrl + ")" : ""),
     isTrusted: true
   };
   return {
-    label: name2,
+    label: name,
     kind: kindOf(monaco, doc.kind),
-    insertText: name2,
+    insertText: name,
     detail: doc.signature,
     documentation,
-    range: range2
+    range
   };
 }
 __name(toSuggestion, "toSuggestion");
@@ -12446,12 +9470,12 @@ __name(registerStrudelHover, "registerStrudelHover");
 function buildIdentifierAlternation(index, opts = {}) {
   const { includeKinds, excludeKinds, filter: filter2, extra = [] } = opts;
   const names = /* @__PURE__ */ new Set();
-  for (const [name2, doc] of Object.entries(index.docs)) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name2)) continue;
+  for (const [name, doc] of Object.entries(index.docs)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
     if (includeKinds && (!doc.kind || !includeKinds.includes(doc.kind))) continue;
     if (excludeKinds && doc.kind && excludeKinds.includes(doc.kind)) continue;
-    if (filter2 && !filter2(name2, doc)) continue;
-    names.add(name2);
+    if (filter2 && !filter2(name, doc)) continue;
+    names.add(name);
   }
   for (const n of extra) if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) names.add(n);
   return [...names].sort((a, b) => b.length - a.length || a.localeCompare(b)).map(escapeForRegex).join("|");
@@ -12501,11 +9525,11 @@ function registerSonicPiLanguage(monaco) {
   ]);
   const musicFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
     excludeKinds: ["synth", "fx", "sample"],
-    filter: /* @__PURE__ */ __name((name2, doc) => doc.category === "western_theory" || doc.category === "maths" || MUSIC_HELPER_NAMES.has(name2), "filter")
+    filter: /* @__PURE__ */ __name((name, doc) => doc.category === "western_theory" || doc.category === "maths" || MUSIC_HELPER_NAMES.has(name), "filter")
   });
   const dslFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
     excludeKinds: ["synth", "fx", "sample"],
-    filter: /* @__PURE__ */ __name((name2, doc) => doc.category !== "western_theory" && doc.category !== "maths" && !MUSIC_HELPER_NAMES.has(name2), "filter"),
+    filter: /* @__PURE__ */ __name((name, doc) => doc.category !== "western_theory" && doc.category !== "maths" && !MUSIC_HELPER_NAMES.has(name), "filter"),
     extra: ["puts", "print"]
   });
   monaco.languages.setMonarchTokensProvider("sonicpi", {
@@ -12751,22 +9775,22 @@ function registerStrudelDotCompletions(monaco) {
         return { suggestions: [] };
       }
       const word = model.getWordUntilPosition(position);
-      const range2 = {
+      const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
         startColumn: word.startColumn,
         endColumn: word.endColumn
       };
       return {
-        suggestions: Object.entries(STRUDEL_DOCS).map(([name2, doc]) => ({
-          label: name2,
+        suggestions: Object.entries(STRUDEL_DOCS).map(([name, doc]) => ({
+          label: name,
           kind: monaco.languages.CompletionItemKind.Method,
-          insertText: name2,
+          insertText: name,
           detail: doc.signature,
           documentation: { value: `${doc.description}
 
 **Example:** \`${doc.example}\`` },
-          range: range2
+          range
         }))
       };
     }
@@ -12783,18 +9807,18 @@ function registerStrudelNoteCompletions(monaco) {
         return { suggestions: [] };
       }
       const word = model.getWordUntilPosition(position);
-      const range2 = {
+      const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
         startColumn: word.startColumn,
         endColumn: word.endColumn
       };
       return {
-        suggestions: NOTE_NAMES.map((name2) => ({
-          label: name2,
+        suggestions: NOTE_NAMES.map((name) => ({
+          label: name,
           kind: monaco.languages.CompletionItemKind.Value,
-          insertText: name2,
-          range: range2
+          insertText: name,
+          range
         }))
       };
     }
@@ -12849,7 +9873,7 @@ __name(clearEvalErrors, "clearEvalErrors");
 function setLineMarker(monaco, model, opts) {
   try {
     const lineCount = model.getLineCount();
-    const line2 = opts.line != null && Number.isFinite(opts.line) && opts.line >= 1 && opts.line <= lineCount ? opts.line : null;
+    const line = opts.line != null && Number.isFinite(opts.line) && opts.line >= 1 && opts.line <= lineCount ? opts.line : null;
     const col = opts.column != null && Number.isFinite(opts.column) && opts.column >= 1 ? opts.column : 1;
     const severityMap = {
       error: monaco.MarkerSeverity.Error,
@@ -12857,9 +9881,9 @@ function setLineMarker(monaco, model, opts) {
       info: monaco.MarkerSeverity.Info
     };
     const severity = severityMap[opts.severity ?? "error"];
-    const startLine = line2 ?? 1;
-    const endLine = line2 ?? lineCount;
-    const startColumn = line2 ? col : 1;
+    const startLine = line ?? 1;
+    const endLine = line ?? lineCount;
+    const startColumn = line ? col : 1;
     const endColumn = model.getLineMaxColumn(endLine);
     monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
       {
@@ -17824,8 +14848,8 @@ __name(ensureBaseHighlightStyle, "ensureBaseHighlightStyle");
 var injectedColorClasses = /* @__PURE__ */ new Map();
 function hashColor(color) {
   let hash = 0;
-  for (let i2 = 0; i2 < color.length; i2++) {
-    hash = hash * 31 + color.charCodeAt(i2) | 0;
+  for (let i = 0; i < color.length; i++) {
+    hash = hash * 31 + color.charCodeAt(i) | 0;
   }
   return Math.abs(hash).toString(16);
 }
@@ -17870,8 +14894,8 @@ function getDecorationClassName(color) {
   return `${base} ${colorClass}`;
 }
 __name(getDecorationClassName, "getDecorationClassName");
-function locToRange(model, start2, end) {
-  const startPos = model.getPositionAt(start2);
+function locToRange(model, start, end) {
+  const startPos = model.getPositionAt(start);
   const endPos = model.getPositionAt(end);
   return {
     startLineNumber: startPos.lineNumber,
@@ -17911,8 +14935,8 @@ function useHighlighting(editor, hapStream) {
       const clearDelay = showDelay + event.audioDuration * 1e3;
       const className = getDecorationClassName(event.color);
       const showId = window.setTimeout(() => {
-        const decorations = event.loc.map(({ start: start2, end }) => ({
-          range: locToRange(model, start2, end),
+        const decorations = event.loc.map(({ start, end }) => ({
+          range: locToRange(model, start, end),
           options: {
             className,
             stickiness: 1
@@ -18015,12 +15039,12 @@ function enrichWithLookups(snap) {
       if (arr) arr.push(e);
       else locLookup.set(key, [e]);
       if (e.irNodeId) {
-        const line2 = countLines(snap.code, e.loc[0].start);
-        const ids = lineLookup.get(line2);
+        const line = countLines(snap.code, e.loc[0].start);
+        const ids = lineLookup.get(line);
         if (ids) {
           if (!ids.includes(e.irNodeId)) ids.push(e.irNodeId);
         } else {
-          lineLookup.set(line2, [e.irNodeId]);
+          lineLookup.set(line, [e.irNodeId]);
         }
       }
     }
@@ -18034,11 +15058,11 @@ function enrichWithLookups(snap) {
 }
 __name(enrichWithLookups, "enrichWithLookups");
 function countLines(code, offset) {
-  let line2 = 1;
-  for (let i2 = 0; i2 < offset && i2 < code.length; i2++) {
-    if (code.charCodeAt(i2) === 10) line2++;
+  let line = 1;
+  for (let i = 0; i < offset && i < code.length; i++) {
+    if (code.charCodeAt(i) === 10) line++;
   }
-  return line2;
+  return line;
 }
 __name(countLines, "countLines");
 function publishIRSnapshot(snap, meta) {
@@ -18146,15 +15170,15 @@ function useBreakpoints(editor, store, onResume) {
       for (const [id, meta] of entries2) {
         const event = snap?.irNodeIdLookup.get(id);
         if (event && event.loc && event.loc.length > 0) {
-          let line2 = null;
+          let line = null;
           for (const [lineKey, idsOnLine] of snap.irNodeIdsByLine) {
             if (idsOnLine.includes(id)) {
-              line2 = lineKey;
+              line = lineKey;
               break;
             }
           }
-          if (line2 == null) continue;
-          lineState.set(line2, "active");
+          if (line == null) continue;
+          lineState.set(line, "active");
           continue;
         }
         const hint = meta.lineHint;
@@ -18163,12 +15187,12 @@ function useBreakpoints(editor, store, onResume) {
         if (cur !== "active") lineState.set(hint, "orphaned");
       }
       const decorations = [];
-      for (const [line2, state4] of lineState) {
+      for (const [line, state4] of lineState) {
         decorations.push({
           range: {
-            startLineNumber: line2,
+            startLineNumber: line,
             startColumn: 1,
-            endLineNumber: line2,
+            endLineNumber: line,
             endColumn: 1
           },
           options: {
@@ -18193,12 +15217,12 @@ function useBreakpoints(editor, store, onResume) {
     });
     const mouseDisposable = editor.onMouseDown((e) => {
       if (e.target.type !== MOUSE_TARGET_GUTTER_GLYPH_MARGIN) return;
-      const line2 = e.target.position?.lineNumber;
-      if (line2 == null) return;
+      const line = e.target.position?.lineNumber;
+      if (line == null) return;
       const snap = getIRSnapshot();
-      const ids = snap?.irNodeIdsByLine.get(line2);
+      const ids = snap?.irNodeIdsByLine.get(line);
       if (!ids || ids.length === 0) return;
-      store.toggleSet(ids, { lineHint: line2 });
+      store.toggleSet(ids, { lineHint: line });
     });
     return () => {
       unsubStore();
@@ -18235,12 +15259,12 @@ function getEditorForFile(fileId) {
   return editors.get(fileId);
 }
 __name(getEditorForFile, "getEditorForFile");
-function revealLineInFile(fileId, line2) {
+function revealLineInFile(fileId, line) {
   const editor = editors.get(fileId);
   if (!editor) return false;
   try {
-    editor.revealLineInCenter?.(line2);
-    editor.setPosition?.({ lineNumber: line2, column: 1 });
+    editor.revealLineInCenter?.(line);
+    editor.setPosition?.({ lineNumber: line, column: 1 });
     editor.focus?.();
     return true;
   } catch {
@@ -18627,21 +15651,21 @@ __name(applyPersistedTheme, "applyPersistedTheme");
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
 var listeners4 = /* @__PURE__ */ new Set();
-function registerNamedViz(name2, descriptor) {
-  const existing = registry.get(name2);
+function registerNamedViz(name, descriptor) {
+  const existing = registry.get(name);
   if (existing === descriptor) return;
-  registry.set(name2, descriptor);
+  registry.set(name, descriptor);
   notifyListeners();
 }
 __name(registerNamedViz, "registerNamedViz");
-function unregisterNamedViz(name2) {
-  if (!registry.has(name2)) return;
-  registry.delete(name2);
+function unregisterNamedViz(name) {
+  if (!registry.has(name)) return;
+  registry.delete(name);
   notifyListeners();
 }
 __name(unregisterNamedViz, "unregisterNamedViz");
-function getNamedViz(name2) {
-  return registry.get(name2);
+function getNamedViz(name) {
+  return registry.get(name);
 }
 __name(getNamedViz, "getNamedViz");
 function listNamedVizNames() {
@@ -18743,8 +15767,8 @@ var _BufferedScheduler = class _BufferedScheduler {
   }
   query(begin, end) {
     const result = [];
-    for (let i2 = this.head; i2 < this.buffer.length; i2++) {
-      const h = this.buffer[i2];
+    for (let i = this.head; i < this.buffer.length; i++) {
+      const h = this.buffer[i];
       if (h.begin < end && h.end > begin) result.push(h);
     }
     return result;
@@ -18794,21 +15818,21 @@ function wrap(req) {
 }
 __name(wrap, "wrap");
 var BUNDLED_PREFIX = "__bundled_";
-function sanitizePresetName(name2) {
-  const slug = name2.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+function sanitizePresetName(name) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   return slug || "untitled";
 }
 __name(sanitizePresetName, "sanitizePresetName");
-function bundledPresetId(name2, renderer) {
-  return `${BUNDLED_PREFIX}${sanitizePresetName(name2)}_${renderer}__`;
+function bundledPresetId(name, renderer) {
+  return `${BUNDLED_PREFIX}${sanitizePresetName(name)}_${renderer}__`;
 }
 __name(bundledPresetId, "bundledPresetId");
 function isBundledPresetId(id) {
   return id.startsWith(BUNDLED_PREFIX);
 }
 __name(isBundledPresetId, "isBundledPresetId");
-function generateUniquePresetId(name2, renderer, existingIds) {
-  const slug = sanitizePresetName(name2);
+function generateUniquePresetId(name, renderer, existingIds) {
+  const slug = sanitizePresetName(name);
   const used = new Set(existingIds);
   let n = 1;
   let id = `${slug}_${renderer}_v${n}`;
@@ -18851,8 +15875,8 @@ __name(nativeSizeFor, "nativeSizeFor");
 function computeLayout(contentW, native, crop) {
   const cropW = Math.max(0.01, crop.w);
   const cropH = Math.max(0.01, crop.h);
-  const scale2 = contentW / (cropW * native.w);
-  let zoneH = cropH * native.h * scale2;
+  const scale = contentW / (cropW * native.w);
+  let zoneH = cropH * native.h * scale;
   if (zoneH > MAX_ZONE_HEIGHT) {
     const clamped = MAX_ZONE_HEIGHT / (cropH * native.h);
     return {
@@ -18865,9 +15889,9 @@ function computeLayout(contentW, native, crop) {
   if (zoneH < MIN_ZONE_HEIGHT) zoneH = MIN_ZONE_HEIGHT;
   return {
     zoneH,
-    scale: scale2,
-    tx: -crop.x * native.w * scale2,
-    ty: -crop.y * native.h * scale2
+    scale,
+    tx: -crop.x * native.w * scale,
+    ty: -crop.y * native.h * scale
   };
 }
 __name(computeLayout, "computeLayout");
@@ -18960,16 +15984,16 @@ function findVizCallLineForBlock(code, vizId, targetAfterLine) {
   const vizPattern = new RegExp(
     `\\.viz\\s*\\(\\s*["\`']${escapeRegex(vizId)}["\`']\\s*\\)`
   );
-  for (let i2 = 0; i2 < lines.length; i2++) {
-    if (!lines[i2].trim().startsWith("$:")) continue;
-    let blockEnd = i2;
-    for (let j = i2 + 1; j < lines.length; j++) {
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim().startsWith("$:")) continue;
+    let blockEnd = i;
+    for (let j = i + 1; j < lines.length; j++) {
       const next = lines[j].trim();
       if (next.startsWith("$:") || next.startsWith("setcps")) break;
       if (next !== "" && !next.startsWith("//")) blockEnd = j;
     }
     if (blockEnd + 1 !== targetAfterLine) continue;
-    for (let k = i2; k <= blockEnd; k++) {
+    for (let k = i; k <= blockEnd; k++) {
       if (vizPattern.test(lines[k])) return k + 1;
     }
   }
@@ -19121,10 +16145,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           const cropH = Math.max(0.01, entry.crop.h);
           const scaleByW = contentW2 / (cropW * nw);
           const scaleByH = newH / (cropH * nh);
-          const scale2 = Math.min(scaleByW, scaleByH);
-          const tx3 = -entry.crop.x * nw * scale2;
-          const ty = -entry.crop.y * nh * scale2;
-          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
+          const scale = Math.min(scaleByW, scaleByH);
+          const tx3 = -entry.crop.x * nw * scale;
+          const ty = -entry.crop.y * nh * scale;
+          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
         }, "onMove");
         const onUp = /* @__PURE__ */ __name((ev) => {
           resizeHandle.releasePointerCapture(ev.pointerId);
@@ -19201,10 +16225,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
             const cropH = Math.max(0.01, entry.crop.h);
             const scaleByW = contentW / (cropW * nw);
             const scaleByH = hOverride / (cropH * nh);
-            const scale2 = Math.min(scaleByW, scaleByH);
-            const tx3 = -entry.crop.x * nw * scale2;
-            const ty = -entry.crop.y * nh * scale2;
-            applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
+            const scale = Math.min(scaleByW, scaleByH);
+            const tx3 = -entry.crop.x * nw * scale;
+            const ty = -entry.crop.y * nh * scale;
+            applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
           } else {
             applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
           }
@@ -19223,10 +16247,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           const cropH = Math.max(0.01, entry.crop.h);
           const scaleByW = contentW / (cropW * nw);
           const scaleByH = hOverride / (cropH * nh);
-          const scale2 = Math.min(scaleByW, scaleByH);
-          const tx3 = -entry.crop.x * nw * scale2;
-          const ty = -entry.crop.y * nh * scale2;
-          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
+          const scale = Math.min(scaleByW, scaleByH);
+          const tx3 = -entry.crop.x * nw * scale;
+          const ty = -entry.crop.y * nh * scale;
+          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
         } else {
           applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
         }
@@ -19251,10 +16275,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           const cropH = Math.max(0.01, entry.crop.h);
           const scaleByW = contentW / (cropW * nw);
           const scaleByH = hOverride / (cropH * nh);
-          const scale2 = Math.min(scaleByW, scaleByH);
-          const tx3 = -entry.crop.x * nw * scale2;
-          const ty = -entry.crop.y * nh * scale2;
-          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale: scale2, tx: tx3, ty });
+          const scale = Math.min(scaleByW, scaleByH);
+          const tx3 = -entry.crop.x * nw * scale;
+          const ty = -entry.crop.y * nh * scale;
+          applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
         } else {
           applyLayout(entry.container, entry.container.querySelector("canvas"), layout);
         }
@@ -19645,9 +16669,9 @@ var _ErrorBoundary = class _ErrorBoundary extends React6__namespace.default.Comp
   static getDerivedStateFromError(error) {
     return { error };
   }
-  componentDidCatch(error, info2) {
-    console.error("[stave] editor subtree crashed:", error, info2.componentStack);
-    this.props.onError?.(error, info2);
+  componentDidCatch(error, info) {
+    console.error("[stave] editor subtree crashed:", error, info.componentStack);
+    this.props.onError?.(error, info);
   }
   componentDidUpdate(prev) {
     if (this.state.error && prev.resetKey !== this.props.resetKey) {
@@ -19824,11 +16848,11 @@ function PreviewView({
       return;
     }
     const ms = provider.debounceMs ?? 0;
-    const handle2 = setTimeout(() => {
+    const handle = setTimeout(() => {
       setReloadTick((n) => n + 1);
     }, ms);
     return () => {
-      clearTimeout(handle2);
+      clearTimeout(handle);
     };
   }, [
     file?.content,
@@ -20142,11 +17166,11 @@ function findGroupCoords(layout, groupId) {
 }
 __name(findGroupCoords, "findGroupCoords");
 function allGroupIds(layout) {
-  const out2 = [];
+  const out = [];
   for (const col of layout) {
-    for (const id of col) out2.push(id);
+    for (const id of col) out.push(id);
   }
-  return out2;
+  return out;
 }
 __name(allGroupIds, "allGroupIds");
 function insertGroup(layout, targetId, direction, newId) {
@@ -20170,7 +17194,7 @@ function insertGroup(layout, targetId, direction, newId) {
     newId,
     ...targetColumn.slice(insertAt)
   ];
-  return layout.map((col, i2) => i2 === c ? nextColumn : col);
+  return layout.map((col, i) => i === c ? nextColumn : col);
 }
 __name(insertGroup, "insertGroup");
 function insertEdgeGroup(layout, position, newId) {
@@ -20184,9 +17208,9 @@ function removeGroup(layout, groupId) {
   const [c] = coords;
   const nextColumn = layout[c].filter((id) => id !== groupId);
   if (nextColumn.length === 0) {
-    return layout.filter((_, i2) => i2 !== c);
+    return layout.filter((_, i) => i !== c);
   }
-  return layout.map((col, i2) => i2 === c ? nextColumn : col);
+  return layout.map((col, i) => i === c ? nextColumn : col);
 }
 __name(removeGroup, "removeGroup");
 
@@ -20194,11 +17218,11 @@ __name(removeGroup, "removeGroup");
 var registry2 = /* @__PURE__ */ new Map();
 var changeListeners = /* @__PURE__ */ new Set();
 var currentlyPlaying = null;
-function registerPlaybackSource(sourceId, stop2, label) {
-  registry2.set(sourceId, { stop: stop2, label });
+function registerPlaybackSource(sourceId, stop, label) {
+  registry2.set(sourceId, { stop, label });
   return () => {
     const entry = registry2.get(sourceId);
-    if (entry?.stop === stop2) {
+    if (entry?.stop === stop) {
       registry2.delete(sourceId);
       if (currentlyPlaying === sourceId) {
         currentlyPlaying = null;
@@ -20214,10 +17238,10 @@ function notifyPlaybackStarted(sourceId) {
     if (id === sourceId) continue;
     try {
       src.stop();
-    } catch (err2) {
+    } catch (err) {
       console.warn(
         `[playbackCoordinator] stop() threw for source "${id}" (${src.label ?? "unlabeled"}):`,
-        err2
+        err
       );
     }
   }
@@ -20263,11 +17287,11 @@ var _SampleSoundScheduler = class _SampleSoundScheduler {
     const lastCycle = Math.floor(end / SAMPLE_PATTERN_CYCLE_SECONDS);
     for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
       const cycleStart = cycle * SAMPLE_PATTERN_CYCLE_SECONDS;
-      for (let i2 = 0; i2 < SAMPLE_PATTERN_NOTES.length; i2++) {
-        const noteBegin = cycleStart + i2 * SAMPLE_PATTERN_NOTE_DURATION;
+      for (let i = 0; i < SAMPLE_PATTERN_NOTES.length; i++) {
+        const noteBegin = cycleStart + i * SAMPLE_PATTERN_NOTE_DURATION;
         const noteEnd = noteBegin + SAMPLE_PATTERN_NOTE_DURATION;
         if (noteEnd <= begin || noteBegin >= end) continue;
-        const midi = SAMPLE_PATTERN_NOTES[i2];
+        const midi = SAMPLE_PATTERN_NOTES[i];
         events.push({
           begin: noteBegin,
           end: noteEnd,
@@ -20453,8 +17477,8 @@ async function renderDrumLoopBuffer() {
       sampleRate
     );
     const noiseData = noiseBuf.getChannelData(0);
-    for (let i2 = 0; i2 < noiseData.length; i2++) {
-      noiseData[i2] = Math.random() * 2 - 1;
+    for (let i = 0; i < noiseData.length; i++) {
+      noiseData[i] = Math.random() * 2 - 1;
     }
     const noise = offline.createBufferSource();
     noise.buffer = noiseBuf;
@@ -20487,8 +17511,8 @@ async function renderDrumLoopBuffer() {
       sampleRate
     );
     const noiseData = noiseBuf.getChannelData(0);
-    for (let i2 = 0; i2 < noiseData.length; i2++) {
-      noiseData[i2] = Math.random() * 2 - 1;
+    for (let i = 0; i < noiseData.length; i++) {
+      noiseData[i] = Math.random() * 2 - 1;
     }
     const noise = offline.createBufferSource();
     noise.buffer = noiseBuf;
@@ -20510,8 +17534,8 @@ async function renderDrumLoopBuffer() {
       sampleRate
     );
     const noiseData = noiseBuf.getChannelData(0);
-    for (let i2 = 0; i2 < noiseData.length; i2++) {
-      noiseData[i2] = Math.random() * 2 - 1;
+    for (let i = 0; i < noiseData.length; i++) {
+      noiseData[i] = Math.random() * 2 - 1;
     }
     const noise = offline.createBufferSource();
     noise.buffer = noiseBuf;
@@ -20619,24 +17643,24 @@ var _ChordProgressionScheduler = class _ChordProgressionScheduler {
     const lastCycle = Math.floor(end / CYCLE_SECONDS);
     for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
       const cycleStart = cycle * CYCLE_SECONDS;
-      for (let i2 = 0; i2 < CHORD_PROGRESSION.length; i2++) {
-        const chord2 = CHORD_PROGRESSION[i2];
-        const chordBegin = cycleStart + i2 * CHORD_DURATION;
+      for (let i = 0; i < CHORD_PROGRESSION.length; i++) {
+        const chord = CHORD_PROGRESSION[i];
+        const chordBegin = cycleStart + i * CHORD_DURATION;
         const chordEnd = chordBegin + CHORD_DURATION;
         if (chordEnd <= begin || chordBegin >= end) continue;
-        for (const midi of chord2.notes) {
+        for (const midi of chord.notes) {
           events.push({
             begin: chordBegin,
             end: chordEnd,
             endClipped: chordEnd,
             note: midi,
             freq: 440 * Math.pow(2, (midi - 69) / 12),
-            s: `chord-${chord2.root}`,
+            s: `chord-${chord.root}`,
             type: "synth",
             gain: 1,
             velocity: 1,
             color: null,
-            trackId: `chord-${chord2.root}`
+            trackId: `chord-${chord.root}`
           });
         }
       }
@@ -20660,11 +17684,11 @@ async function renderChordLoopBuffer() {
   const attack = 0.02;
   const release = 0.05;
   const sustainLevel = 0.06;
-  for (let i2 = 0; i2 < CHORD_PROGRESSION.length; i2++) {
-    const chord2 = CHORD_PROGRESSION[i2];
-    const chordStart = i2 * chordDuration;
+  for (let i = 0; i < CHORD_PROGRESSION.length; i++) {
+    const chord = CHORD_PROGRESSION[i];
+    const chordStart = i * chordDuration;
     const chordEnd = chordStart + chordDuration;
-    for (const midi of chord2.notes) {
+    for (const midi of chord.notes) {
       const freq = 440 * Math.pow(2, (midi - 69) / 12);
       const osc = offline.createOscillator();
       osc.type = "triangle";
@@ -20963,7 +17987,7 @@ function useDragResize(opts) {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue2 = React6__namespace.useCallback((v) => {
+  const setValue = React6__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
@@ -21028,7 +18052,7 @@ function useDragResize(opts) {
   );
   return {
     value,
-    setValue: setValue2,
+    setValue,
     handleProps: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
     dragging
   };
@@ -21326,8 +18350,8 @@ __name(createInitialGroupState, "createInitialGroupState");
 function tabFileName(tab) {
   const file = getFile(tab.fileId);
   if (!file) return tab.fileId;
-  const parts2 = file.path.split("/");
-  return parts2[parts2.length - 1];
+  const parts = file.path.split("/");
+  return parts[parts.length - 1];
 }
 __name(tabFileName, "tabFileName");
 var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
@@ -21842,10 +18866,10 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
       const { sourceGroupId, tabId } = payload;
       const tabNodes = e.currentTarget.querySelectorAll("[data-workspace-tab]");
       let insertionIndex = tabNodes.length;
-      for (let i2 = 0; i2 < tabNodes.length; i2++) {
-        const r = tabNodes[i2].getBoundingClientRect();
+      for (let i = 0; i < tabNodes.length; i++) {
+        const r = tabNodes[i].getBoundingClientRect();
         if (e.clientX < r.left + r.width / 2) {
-          insertionIndex = i2;
+          insertionIndex = i;
           break;
         }
       }
@@ -22493,15 +19517,15 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     [layout]
   );
   const previewTabIds = React6.useMemo(() => {
-    const out2 = [];
+    const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
         if (t.kind === "editor" && t.preview === true) {
-          out2.push({ tabId: t.id, fileId: t.fileId });
+          out.push({ tabId: t.id, fileId: t.fileId });
         }
       }
     }
-    return out2;
+    return out;
   }, [groups]);
   React6.useEffect(() => {
     const unsubs = previewTabIds.map(
@@ -22927,8 +19951,8 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.engine = engine;
     this.getFileContent = getFileContent;
     this.subscribeToFile = subscribeToFile;
-    engine.setRuntimeErrorHandler((err2) => {
-      this.fireOnError(err2);
+    engine.setRuntimeErrorHandler((err) => {
+      this.fireOnError(err);
     });
     this.unregisterFromPlaybackCoordinator = registerPlaybackSource(
       fileId,
@@ -22952,17 +19976,17 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    */
   async play() {
     if (this.isDisposed) {
-      const err2 = new Error("LiveCodingRuntime: cannot play after dispose");
-      this.fireOnError(err2);
-      return { error: err2 };
+      const err = new Error("LiveCodingRuntime: cannot play after dispose");
+      this.fireOnError(err);
+      return { error: err };
     }
     try {
       if (!this.isInitialized) {
         await this.engine.init();
         this.isInitialized = true;
       }
-    } catch (err2) {
-      const error = err2 instanceof Error ? err2 : new Error(String(err2));
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
       this.fireOnError(error);
       return { error };
     }
@@ -22970,8 +19994,8 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     let evalResult;
     try {
       evalResult = await this.engine.evaluate(code);
-    } catch (err2) {
-      const error = err2 instanceof Error ? err2 : new Error(String(err2));
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
       this.fireOnError(error);
       return { error };
     }
@@ -23015,9 +20039,9 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     workspaceAudioBus.publish(this.fileId, payload);
     try {
       this.engine.play();
-    } catch (err2) {
+    } catch (err) {
       workspaceAudioBus.unpublish(this.fileId);
-      const error = err2 instanceof Error ? err2 : new Error(String(err2));
+      const error = err instanceof Error ? err : new Error(String(err));
       this.fireOnError(error);
       return { error };
     }
@@ -23270,12 +20294,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   // Internal listener dispatchers — snapshot-then-iterate so a listener
   // that unsubscribes itself during the callback doesn't break the loop.
   // -------------------------------------------------------------------------
-  fireOnError(err2) {
+  fireOnError(err) {
     if (this.errorListeners.size === 0) return;
     const snapshot = Array.from(this.errorListeners);
     for (const cb of snapshot) {
       try {
-        cb(err2);
+        cb(err);
       } catch {
       }
     }
@@ -23391,9 +20415,9 @@ function LiveCodingEditor({
     );
     runtimeRef.current = rt;
     if (engineRefProp) engineRefProp.current = engine;
-    const unsubError = rt.onError((err2) => {
-      setError(err2);
-      onError?.(err2);
+    const unsubError = rt.onError((err) => {
+      setError(err);
+      onError?.(err);
     });
     const unsubPlaying = rt.onPlayingChanged((playing) => {
       setIsPlaying(playing);
@@ -23573,8 +20597,8 @@ function StrudelEditor({
         a.click();
         URL.revokeObjectURL(url);
       }
-    } catch (err2) {
-      const e = err2;
+    } catch (err) {
+      const e = err;
       onError?.(e);
     } finally {
       setIsExporting(false);
@@ -23700,8 +20724,8 @@ var _DemoEngine = class _DemoEngine {
       this.noteIndex = 0;
       this.cyclePos = 0;
       return {};
-    } catch (err2) {
-      const error = err2 instanceof Error ? err2 : new Error(String(err2));
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
       return { error };
     }
   }
@@ -23732,8 +20756,8 @@ var _DemoEngine = class _DemoEngine {
           loc: null
         };
         this.hapStream.emitEvent(event);
-      } catch (err2) {
-        const error = err2 instanceof Error ? err2 : new Error(String(err2));
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
         this.runtimeErrorHandler?.(error);
       }
     }, 500);
@@ -23788,7 +20812,7 @@ var _DemoEngine = class _DemoEngine {
     }
     return bag;
   }
-  noteToFreq(note2) {
+  noteToFreq(note) {
     const NOTES = {
       c4: 261.63,
       d4: 293.66,
@@ -23801,11653 +20825,19 @@ var _DemoEngine = class _DemoEngine {
       d5: 587.33,
       e5: 659.25
     };
-    return NOTES[note2.toLowerCase()] ?? 440;
+    return NOTES[note.toLowerCase()] ?? 440;
   }
 };
 __name(_DemoEngine, "DemoEngine");
 var DemoEngine = _DemoEngine;
 
-// ../../../sonicPiWeb/src/engine/MinHeap.ts
-var _MinHeap = class _MinHeap {
-  constructor(keyFn) {
-    this.data = [];
-    this.keyFn = keyFn;
-  }
-  get size() {
-    return this.data.length;
-  }
-  peek() {
-    return this.data[0];
-  }
-  push(item) {
-    this.data.push(item);
-    this.bubbleUp(this.data.length - 1);
-  }
-  pop() {
-    if (this.data.length === 0) return void 0;
-    const top = this.data[0];
-    const last = this.data.pop();
-    if (this.data.length > 0) {
-      this.data[0] = last;
-      this.sinkDown(0);
-    }
-    return top;
-  }
-  clear() {
-    this.data.length = 0;
-  }
-  bubbleUp(i2) {
-    while (i2 > 0) {
-      const parent = i2 - 1 >> 1;
-      if (this.keyFn(this.data[i2]) >= this.keyFn(this.data[parent])) break;
-      [this.data[i2], this.data[parent]] = [this.data[parent], this.data[i2]];
-      i2 = parent;
-    }
-  }
-  sinkDown(i2) {
-    const n = this.data.length;
-    while (true) {
-      let smallest = i2;
-      const left = 2 * i2 + 1;
-      const right = 2 * i2 + 2;
-      if (left < n && this.keyFn(this.data[left]) < this.keyFn(this.data[smallest])) {
-        smallest = left;
-      }
-      if (right < n && this.keyFn(this.data[right]) < this.keyFn(this.data[smallest])) {
-        smallest = right;
-      }
-      if (smallest === i2) break;
-      [this.data[i2], this.data[smallest]] = [this.data[smallest], this.data[i2]];
-      i2 = smallest;
-    }
-  }
-};
-__name(_MinHeap, "MinHeap");
-var MinHeap = _MinHeap;
-
-// ../../../sonicPiWeb/src/engine/VirtualTimeScheduler.ts
-function cueGlobMatch(pattern, name2) {
-  if (pattern === name2) return true;
-  if (!pattern.includes("*") && !pattern.includes("?")) return false;
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp("^" + escaped.replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-  return re.test(name2);
-}
-__name(cueGlobMatch, "cueGlobMatch");
-var DEFAULT_SCHED_AHEAD_TIME = 0.3;
-var DEFAULT_TICK_INTERVAL_MS = 25;
-var DEFAULT_TASK_BPM = 60;
-var HEAP_TIEBREAK_EPSILON = 1e-12;
-var _VirtualTimeScheduler = class _VirtualTimeScheduler {
-  constructor(options = {}) {
-    this.tasks = /* @__PURE__ */ new Map();
-    this.tickTimer = null;
-    this.eventHandlers = [];
-    this.loopErrorHandler = null;
-    /** Monotonic counter for deterministic ordering of same-time entries */
-    this.insertionOrder = 0;
-    /** Map from `${time}:${taskId}` to insertion order for stable sorting */
-    // entryOrder Map removed — insertion order stored directly on SleepEntry (#75)
-    this._running = false;
-    /** Cue state: last cue per name with virtual time, args, and cuer's BPM. */
-    this.cueMap = /* @__PURE__ */ new Map();
-    /** Tasks waiting for a cue */
-    this.syncWaiters = /* @__PURE__ */ new Map();
-    /** One-shot audio-time-bound callbacks (SV41 — backs scheduleAtVirtualTime). */
-    this.pendingCallbacks = [];
-    this.getAudioTime = options.getAudioTime ?? (() => 0);
-    this.schedAheadTime = options.schedAheadTime ?? DEFAULT_SCHED_AHEAD_TIME;
-    this.tickInterval = options.tickInterval ?? DEFAULT_TICK_INTERVAL_MS;
-    this.queue = new MinHeap((entry) => {
-      return entry.time + entry.order * HEAP_TIEBREAK_EPSILON;
-    });
-  }
-  /** Public read of the current audio-context time (used by current_time at top level — #226). */
-  get audioTime() {
-    return this.getAudioTime();
-  }
-  get running() {
-    return this._running;
-  }
-  // ---------------------------------------------------------------------------
-  // Task registration
-  // ---------------------------------------------------------------------------
-  /**
-   * Register a named live_loop and immediately start its async chain.
-   * The loop suspends at an initial sleep(0) — it won't execute until tick().
-   */
-  registerLoop(name2, asyncFn, options) {
-    const existing = this.tasks.get(name2);
-    if (existing && existing.running) {
-      existing.asyncFn = asyncFn;
-      return;
-    }
-    const task = {
-      id: name2,
-      virtualTime: this.getAudioTime(),
-      bpm: options?.bpm ?? 60,
-      density: 1,
-      currentSynth: options?.synth ?? "beep",
-      outBus: options?.outBus ?? 0,
-      asyncFn,
-      running: true
-    };
-    this.tasks.set(name2, task);
-    this.runLoop(task);
-  }
-  getTask(taskId) {
-    return this.tasks.get(taskId);
-  }
-  /** Get names of all currently running loops. */
-  getRunningLoopNames() {
-    const names = [];
-    for (const [name2, task] of this.tasks) {
-      if (task.running) names.push(name2);
-    }
-    return names;
-  }
-  /** Stop a named loop from outside. Returns true if the loop was running. */
-  stopLoop(name2) {
-    const task = this.tasks.get(name2);
-    if (!task || !task.running) return false;
-    task.running = false;
-    return true;
-  }
-  /**
-   * Hot-swap a running loop's function.
-   * Preserves virtualTime, bpm, density, random state (SV6).
-   * The new function takes effect on the next loop iteration.
-   */
-  hotSwap(loopName, newFn) {
-    const task = this.tasks.get(loopName);
-    if (!task || !task.running) return false;
-    task.asyncFn = newFn;
-    return true;
-  }
-  /**
-   * Re-evaluate: given a new set of loop names and functions,
-   * hot-swap loops that persist, stop removed loops, start new ones.
-   */
-  reEvaluate(loops, options) {
-    const previousFns = /* @__PURE__ */ new Map();
-    const newlyStarted = [];
-    try {
-      for (const [name2, fn] of loops) {
-        const existing = this.tasks.get(name2);
-        if (existing && existing.running) {
-          previousFns.set(name2, existing.asyncFn);
-          existing.asyncFn = fn;
-        } else {
-          this.registerLoop(name2, fn, options);
-          newlyStarted.push(name2);
-        }
-      }
-      for (const [name2, task] of this.tasks) {
-        if (!loops.has(name2) && task.running) {
-          task.running = false;
-        }
-      }
-    } catch (err2) {
-      for (const [name2, prevFn] of previousFns) {
-        const task = this.tasks.get(name2);
-        if (task) task.asyncFn = prevFn;
-      }
-      for (const name2 of newlyStarted) {
-        const task = this.tasks.get(name2);
-        if (task) task.running = false;
-      }
-      throw err2;
-    }
-  }
-  // ---------------------------------------------------------------------------
-  // sleep — the core primitive
-  // ---------------------------------------------------------------------------
-  /**
-   * Schedule a sleep for the given task.
-   * Returns a Promise that ONLY tick() can resolve (SV2).
-   *
-   * Virtual time advances immediately on call (SV1).
-   */
-  scheduleSleep(taskId, beats) {
-    const task = this.tasks.get(taskId);
-    if (!task) return Promise.reject(new Error(`Unknown task: ${taskId}`));
-    const seconds = beats / task.bpm * 60;
-    const wakeTime = task.virtualTime + seconds;
-    task.virtualTime = wakeTime;
-    return new Promise((resolve) => {
-      const order = this.insertionOrder++;
-      this.queue.push({ time: wakeTime, taskId, resolve, order });
-    });
-  }
-  /**
-   * Schedule a one-shot callback to fire when audio time reaches `audioTime` (SV41).
-   *
-   * Distinct from `scheduleSleep`:
-   * - sleep entries fire at `audioTime + schedAhead >= entry.time` (lookahead horizon)
-   * - pending callbacks fire at `audioTime >= entry.audioTime` (no lookahead)
-   *
-   * The schedAhead-stripped horizon is intentional: it gives a task that resumed
-   * from a sleep firing in the same tick (lookahead horizon) time to drain its
-   * microtask queue and call `.cancel()` before the corresponding callback's
-   * horizon is checked. Used by `AudioInterpreter.reusableFx` to schedule
-   * inner-FX kill_delay in virtual time instead of real-time setTimeout
-   * (SP87, SV41 — iter pacing in real time is unstable post SV40 purge).
-   *
-   * Returns `{ cancel }` — call it to prevent the callback from firing.
-   */
-  scheduleAtVirtualTime(audioTime, cb) {
-    const entry = { audioTime, cb, cancelled: false };
-    this.pendingCallbacks.push(entry);
-    return {
-      cancel: /* @__PURE__ */ __name(() => {
-        entry.cancelled = true;
-      }, "cancel")
-    };
-  }
-  // ---------------------------------------------------------------------------
-  // Event dispatch
-  // ---------------------------------------------------------------------------
-  onEvent(handler) {
-    this.eventHandlers.push(handler);
-  }
-  /** Register a handler called when a loop throws a runtime error. */
-  onLoopError(handler) {
-    this.loopErrorHandler = handler;
-  }
-  emitEvent(event) {
-    for (const handler of this.eventHandlers) {
-      handler(event);
-    }
-  }
-  // ---------------------------------------------------------------------------
-  // sync/cue — inter-task synchronization
-  // ---------------------------------------------------------------------------
-  /**
-   * Broadcast a cue event. Any tasks waiting via waitForSync
-   * are woken and inherit the cuer's virtual time (SV5).
-   *
-   * `taskId` may identify a real scheduler task (normal DSL cue from inside
-   * a live_loop) OR a synthetic external source (e.g. `'__midi__'` from the
-   * MIDI bridge, `'__osc__'` from incoming OSC — #151). When the task does
-   * not exist, fall back to the current audio time so external sources still
-   * wake sync waiters instead of silently returning.
-   */
-  fireCue(name2, taskId, args2 = []) {
-    const task = this.tasks.get(taskId);
-    const cueVirtualTime = task?.virtualTime ?? this.getAudioTime();
-    const cueBpm = task?.bpm ?? DEFAULT_TASK_BPM;
-    this.cueMap.set(name2, { time: cueVirtualTime, args: args2, bpm: cueBpm });
-    this.emitEvent({
-      type: "cue",
-      taskId,
-      virtualTime: cueVirtualTime,
-      audioTime: this.getAudioTime(),
-      params: { name: name2, args: args2 }
-    });
-    for (const [pattern, waiters] of this.syncWaiters) {
-      if (waiters.length === 0) continue;
-      if (!cueGlobMatch(pattern, name2)) continue;
-      for (const waiter of waiters) {
-        const waiterTask = this.tasks.get(waiter.taskId);
-        if (waiterTask) {
-          waiterTask.virtualTime = cueVirtualTime;
-        }
-        waiter.resolve({ args: args2, bpm: cueBpm });
-      }
-      this.syncWaiters.delete(pattern);
-    }
-  }
-  /**
-   * Wait for a cue. The calling task suspends until fireCue(name) is called.
-   * On resume, the task inherits the cue's virtual time (SV5). The resolved
-   * payload also carries the cuer's BPM so callers using `bpm_sync: true`
-   * (sync_bpm, #236) can mutate the waiter's task.bpm.
-   */
-  waitForSync(name2, taskId) {
-    return new Promise((resolve) => {
-      const waiters = this.syncWaiters.get(name2) ?? [];
-      waiters.push({ taskId, resolve });
-      this.syncWaiters.set(name2, waiters);
-    });
-  }
-  // ---------------------------------------------------------------------------
-  // Tick — the scheduler heartbeat
-  // ---------------------------------------------------------------------------
-  /**
-   * Resolve all sleep entries up to targetTime.
-   * Entries are resolved in deterministic order (time, then insertion order).
-   *
-   * With 10ms tick interval + 300ms schedAheadTime (#71), events are resolved
-   * more frequently (100Hz vs 40Hz) and have 3x more runway before their
-   * target audio time, reducing the impact of microtask processing delays.
-   */
-  tick(targetTime) {
-    const target = targetTime ?? this.getAudioTime() + this.schedAheadTime;
-    while (this.queue.peek() && this.queue.peek().time <= target) {
-      const entry = this.queue.pop();
-      entry.resolve();
-    }
-    if (this.pendingCallbacks.length > 0) {
-      const cbHorizon = target - this.schedAheadTime;
-      let writeIdx = 0;
-      for (let i2 = 0; i2 < this.pendingCallbacks.length; i2++) {
-        const pc = this.pendingCallbacks[i2];
-        if (pc.cancelled) continue;
-        if (pc.audioTime <= cbHorizon) {
-          const fired = pc;
-          queueMicrotask(() => {
-            if (fired.cancelled) return;
-            try {
-              fired.cb();
-            } catch (err2) {
-              if (this.loopErrorHandler) this.loopErrorHandler("__pendingCallback__", err2);
-            }
-          });
-          continue;
-        }
-        this.pendingCallbacks[writeIdx++] = pc;
-      }
-      this.pendingCallbacks.length = writeIdx;
-    }
-  }
-  // ---------------------------------------------------------------------------
-  // Start / Stop
-  // ---------------------------------------------------------------------------
-  /** Start the tick timer. Loops are already running (suspended at sleep). */
-  start() {
-    if (this._running) return;
-    this._running = true;
-    this.tickTimer = setInterval(() => this.tick(), this.tickInterval);
-  }
-  /** Pause the tick timer without stopping tasks. Used during hot-swap. */
-  pauseTick() {
-    if (this.tickTimer !== null) {
-      clearInterval(this.tickTimer);
-      this.tickTimer = null;
-    }
-  }
-  /** Resume the tick timer after a pause. */
-  resumeTick() {
-    if (this.tickTimer !== null) clearInterval(this.tickTimer);
-    if (!this._running) {
-      this.tickTimer = null;
-      return;
-    }
-    this.tickTimer = setInterval(() => this.tick(), this.tickInterval);
-  }
-  stop() {
-    this._running = false;
-    if (this.tickTimer !== null) {
-      clearInterval(this.tickTimer);
-      this.tickTimer = null;
-    }
-    for (const task of this.tasks.values()) {
-      task.running = false;
-    }
-  }
-  dispose() {
-    this.stop();
-    this.tasks.clear();
-    this.queue.clear();
-    this.eventHandlers.length = 0;
-    this.cueMap.clear();
-    this.syncWaiters.clear();
-    this.pendingCallbacks.length = 0;
-  }
-  // ---------------------------------------------------------------------------
-  // Internal: loop execution
-  // ---------------------------------------------------------------------------
-  async runLoop(task) {
-    await this.scheduleSleep(task.id, 0);
-    const MAX_NOSLEEP_ITERATIONS = 1024;
-    let noSleepCount = 0;
-    while (task.running) {
-      this.fireCue(task.id, task.id);
-      const vtBefore = task.virtualTime;
-      try {
-        await task.asyncFn();
-      } catch (err2) {
-        if (err2 instanceof Error && err2.name === "StopSignal") {
-          task.running = false;
-          break;
-        }
-        if (err2 instanceof Error && err2.name === "InfiniteLoopError") {
-          task.running = false;
-          if (this.loopErrorHandler) {
-            this.loopErrorHandler(task.id, err2);
-          } else {
-            console.error(`[SonicPi] Error in loop "${task.id}":`, err2);
-          }
-          break;
-        }
-        const error = err2 instanceof Error ? err2 : new Error(String(err2));
-        if (this.loopErrorHandler) {
-          this.loopErrorHandler(task.id, error);
-        } else {
-          console.error(`[SonicPi] Error in loop "${task.id}":`, error);
-        }
-        if (task.running) {
-          await this.scheduleSleep(task.id, 1);
-        }
-      }
-      if (task.virtualTime === vtBefore) {
-        noSleepCount++;
-        if (noSleepCount >= MAX_NOSLEEP_ITERATIONS) {
-          const err2 = new Error("Infinite loop detected \u2014 did you forget a sleep?");
-          err2.name = "InfiniteLoopError";
-          task.running = false;
-          if (this.loopErrorHandler) {
-            this.loopErrorHandler(task.id, err2);
-          } else {
-            console.error(`[SonicPi] Error in loop "${task.id}":`, err2);
-          }
-          break;
-        }
-      } else {
-        noSleepCount = 0;
-      }
-    }
-  }
-};
-__name(_VirtualTimeScheduler, "VirtualTimeScheduler");
-var VirtualTimeScheduler = _VirtualTimeScheduler;
-
-// ../../../sonicPiWeb/src/engine/SeededRandom.ts
-var N = 624;
-var M = 397;
-var MATRIX_A = 2567483615;
-var UPPER_MASK = 2147483648;
-var LOWER_MASK = 2147483647;
-var _SeededRandom = class _SeededRandom {
-  constructor(seed = 0) {
-    /** Last seed passed to constructor or reset() — used by rand_reset / current_random_seed (#227). */
-    this._lastSeed = 0;
-    /** Number of next() / genrandInt32() draws since the last seed/reset — used by rand_back / current_random_seed (#227). */
-    this._idx = 0;
-    this.mt = new Int32Array(N);
-    this.mti = N + 1;
-    this._lastSeed = seed >>> 0;
-    this._idx = 0;
-    this.initGenrand(seed >>> 0);
-  }
-  /** Initialize the state array with a seed. */
-  initGenrand(s) {
-    this.mt[0] = s >>> 0;
-    for (this.mti = 1; this.mti < N; this.mti++) {
-      const prev = this.mt[this.mti - 1];
-      this.mt[this.mti] = Math.imul(1812433253, prev ^ prev >>> 30) + this.mti >>> 0;
-    }
-  }
-  /** Generate the next 32-bit unsigned integer. */
-  genrandInt32() {
-    let y;
-    const mag01 = [0, MATRIX_A];
-    if (this.mti >= N) {
-      let kk;
-      for (kk = 0; kk < N - M; kk++) {
-        y = this.mt[kk] & UPPER_MASK | this.mt[kk + 1] & LOWER_MASK;
-        this.mt[kk] = this.mt[kk + M] ^ y >>> 1 ^ mag01[y & 1];
-      }
-      for (; kk < N - 1; kk++) {
-        y = this.mt[kk] & UPPER_MASK | this.mt[kk + 1] & LOWER_MASK;
-        this.mt[kk] = this.mt[kk + (M - N)] ^ y >>> 1 ^ mag01[y & 1];
-      }
-      y = this.mt[N - 1] & UPPER_MASK | this.mt[0] & LOWER_MASK;
-      this.mt[N - 1] = this.mt[M - 1] ^ y >>> 1 ^ mag01[y & 1];
-      this.mti = 0;
-    }
-    y = this.mt[this.mti++];
-    y ^= y >>> 11;
-    y ^= y << 7 & 2636928640;
-    y ^= y << 15 & 4022730752;
-    y ^= y >>> 18;
-    return y >>> 0;
-  }
-  /** Return a float in [0, 1). Matches Ruby's Random#rand. */
-  next() {
-    const a = this.genrandInt32() >>> 5;
-    const b = this.genrandInt32() >>> 6;
-    this._idx++;
-    return (a * 67108864 + b) / 9007199254740992;
-  }
-  /** Random float in [min, max]. */
-  rrand(min, max) {
-    return min + this.next() * (max - min);
-  }
-  /** Random int in [min, max]. */
-  rrand_i(min, max) {
-    return Math.floor(this.rrand(min, max + 1));
-  }
-  /** Random element from array. */
-  choose(arr) {
-    return arr[Math.floor(this.next() * arr.length)];
-  }
-  /** Random integer in [1, sides]. */
-  dice(sides) {
-    return Math.floor(this.next() * sides) + 1;
-  }
-  /** Reset seed. */
-  reset(seed) {
-    this._lastSeed = seed >>> 0;
-    this._idx = 0;
-    this.initGenrand(seed >>> 0);
-  }
-  /**
-   * Read the seed-plus-index — matches Desktop SP's `current_random_seed`
-   * (`SPRand.get_seed_plus_idx`). Increments by one for each `next()` draw. (#227)
-   */
-  getSeedPlusIdx() {
-    return this._lastSeed + this._idx;
-  }
-  /**
-   * Re-seed to the last seed and skip forward `count` draws. Used by
-   * rand_back / rand_reset / rand_skip (#227). MT19937 isn't trivially
-   * reversible, so we re-init and replay forward — cheap enough for the
-   * `rand_back(small N)` use case (one Knuth init + N draws).
-   */
-  setIdx(count) {
-    if (count < 0) count = 0;
-    this.initGenrand(this._lastSeed);
-    this._idx = 0;
-    for (let i2 = 0; i2 < count; i2++) this.next();
-  }
-  /** Decrement idx by `amount` (clamped at 0). Matches Desktop SP rand_back. (#227) */
-  decIdx(amount = 1) {
-    this.setIdx(Math.max(0, this._idx - amount));
-  }
-  /** Increment idx by `amount` (advance the stream). Matches Desktop SP rand_skip. (#227) */
-  incIdx(amount = 1) {
-    for (let i2 = 0; i2 < amount; i2++) this.next();
-  }
-  /** Clone current state. */
-  clone() {
-    const r = new _SeededRandom();
-    r.mt.set(this.mt);
-    r.mti = this.mti;
-    r._lastSeed = this._lastSeed;
-    r._idx = this._idx;
-    return r;
-  }
-  /** Snapshot state for save/restore (used by with_random_seed). */
-  getState() {
-    return { mt: new Uint32Array(this.mt), mti: this.mti, lastSeed: this._lastSeed, idx: this._idx };
-  }
-  /** Restore state from snapshot. */
-  setState(state4) {
-    this.mt.set(state4.mt);
-    this.mti = state4.mti;
-    if (state4.lastSeed !== void 0) this._lastSeed = state4.lastSeed;
-    if (state4.idx !== void 0) this._idx = state4.idx;
-  }
-  /** Return next value without advancing state. */
-  peek() {
-    const clone = this.clone();
-    return clone.next();
-  }
-};
-__name(_SeededRandom, "SeededRandom");
-var SeededRandom = _SeededRandom;
-
-// ../../../sonicPiWeb/src/engine/NoteToFreq.ts
-var SEMITONES_PER_OCTAVE = 12;
-var A4_MIDI = 69;
-var A4_FREQ_HZ = 440;
-var MIDDLE_C_MIDI = 60;
-var DEFAULT_OCTAVE = 4;
-var NOTE_NAMES2 = {
-  c: 0,
-  d: 2,
-  e: 4,
-  f: 5,
-  g: 7,
-  a: 9,
-  b: 11
-};
-function noteToMidiStrict(note2) {
-  if (typeof note2 === "number") return note2;
-  const str = note2.toLowerCase().trim();
-  const num = Number(str);
-  if (!isNaN(num)) return num;
-  const match = str.match(/^([a-g])(s|b|#)?(\d+)?$/);
-  if (!match) return NaN;
-  const [, letter, accidental, octaveStr] = match;
-  const base = NOTE_NAMES2[letter];
-  const octave = octaveStr !== void 0 ? parseInt(octaveStr) : DEFAULT_OCTAVE;
-  let midi = (octave + 1) * SEMITONES_PER_OCTAVE + base;
-  if (accidental === "s" || accidental === "#") midi += 1;
-  if (accidental === "b") midi -= 1;
-  return midi;
-}
-__name(noteToMidiStrict, "noteToMidiStrict");
-function noteToMidi3(note2) {
-  const midi = noteToMidiStrict(note2);
-  return Number.isNaN(midi) ? MIDDLE_C_MIDI : midi;
-}
-__name(noteToMidi3, "noteToMidi");
-function midiToFreq5(midi) {
-  return A4_FREQ_HZ * Math.pow(2, (midi - A4_MIDI) / SEMITONES_PER_OCTAVE);
-}
-__name(midiToFreq5, "midiToFreq");
-function hzToMidi(freq) {
-  return SEMITONES_PER_OCTAVE * Math.log2(freq / A4_FREQ_HZ) + A4_MIDI;
-}
-__name(hzToMidi, "hzToMidi");
-function noteToFreq2(note2) {
-  return midiToFreq5(noteToMidi3(note2));
-}
-__name(noteToFreq2, "noteToFreq");
-var PITCH_CLASS_NAMES = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"];
-var _NoteInfo = class _NoteInfo {
-  constructor(midi) {
-    this._midi = midi;
-  }
-  midi_note() {
-    return this._midi;
-  }
-  octave() {
-    return Math.floor(Math.round(this._midi) / 12) - 1;
-  }
-  pitch_class() {
-    return PITCH_CLASS_NAMES[(Math.round(this._midi) % 12 + 12) % 12];
-  }
-  to_s() {
-    return `${this.pitch_class()}${this.octave()}`;
-  }
-};
-__name(_NoteInfo, "NoteInfo");
-var NoteInfo = _NoteInfo;
-function noteInfo(n) {
-  return new NoteInfo(noteToMidi3(n));
-}
-__name(noteInfo, "noteInfo");
-
-// ../../../sonicPiWeb/src/engine/Ring.ts
-var _Ring = class _Ring {
-  constructor(items) {
-    this._tick = 0;
-    this.items = [...items];
-    return new Proxy(this, {
-      get(target, prop, receiver) {
-        if (typeof prop === "string") {
-          const n = Number(prop);
-          if (!isNaN(n) && String(n) === prop) {
-            return target.at(n);
-          }
-        }
-        return Reflect.get(target, prop, receiver);
-      }
-    });
-  }
-  get length() {
-    return this.items.length;
-  }
-  /** Access by index (wraps). */
-  at(index) {
-    const len = this.items.length;
-    return this.items[(index % len + len) % len];
-  }
-  /** Auto-incrementing access. */
-  tick() {
-    return this.at(this._tick++);
-  }
-  /** Reset tick counter. */
-  resetTick() {
-    this._tick = 0;
-  }
-  /** Random element (uses Math.random — for seeded, use ctx.choose). */
-  choose() {
-    return this.items[Math.floor(Math.random() * this.items.length)];
-  }
-  /** Read tick without advancing. */
-  look() {
-    return this.at(this._tick);
-  }
-  /** Reverse the ring. */
-  reverse() {
-    return new _Ring([...this.items].reverse());
-  }
-  /** Shuffle the ring (Fisher-Yates). */
-  shuffle() {
-    const arr = [...this.items];
-    for (let i2 = arr.length - 1; i2 > 0; i2--) {
-      const j = Math.floor(Math.random() * (i2 + 1));
-      [arr[i2], arr[j]] = [arr[j], arr[i2]];
-    }
-    return new _Ring(arr);
-  }
-  /** Pick n random elements. */
-  pick(n) {
-    const result = [];
-    for (let i2 = 0; i2 < n; i2++) {
-      result.push(this.items[Math.floor(Math.random() * this.items.length)]);
-    }
-    return new _Ring(result);
-  }
-  /** First n elements. */
-  take(n) {
-    return new _Ring(this.items.slice(0, n));
-  }
-  /** Drop first n elements. */
-  drop(n) {
-    return new _Ring(this.items.slice(n));
-  }
-  /** Stretch: repeat each element n times. */
-  stretch(n) {
-    const result = [];
-    for (const item of this.items) {
-      for (let i2 = 0; i2 < n; i2++) result.push(item);
-    }
-    return new _Ring(result);
-  }
-  /** Rotate the ring by n positions. Positive = left, negative = right. */
-  rotate(n = 1) {
-    if (this.items.length === 0) return new _Ring([]);
-    const len = this.items.length;
-    const offset = (n % len + len) % len;
-    return new _Ring([...this.items.slice(offset), ...this.items.slice(0, offset)]);
-  }
-  /**
-   * Mirror: `[a,b,c]` → `[a,b,c,c,b,a]` — endpoints duplicated, length 2N.
-   * Matches desktop Sonic Pi `core.rb:802`: `(self + self.reverse) * n`
-   * (optional `n` repeats the whole mirrored ring). #354 — previously this
-   * dropped the boundary duplication (desktop's `.reflect` shape) and was
-   * swapped with `reflect()`.
-   */
-  mirror(n = 1) {
-    const base = [...this.items, ...[...this.items].reverse()];
-    const reps = Math.max(0, Math.floor(n));
-    const out2 = [];
-    for (let i2 = 0; i2 < reps; i2++) out2.push(...base);
-    return new _Ring(out2);
-  }
-  /** First element. */
-  first() {
-    return this.items[0];
-  }
-  /** Last element. */
-  last() {
-    return this.items[this.items.length - 1];
-  }
-  /** All elements except the last. */
-  butlast() {
-    return new _Ring(this.items.slice(0, -1));
-  }
-  /** Concatenate with another ring or array. */
-  concat(other) {
-    const otherItems = other instanceof _Ring ? other.toArray() : other;
-    return new _Ring([...this.items, ...otherItems]);
-  }
-  /**
-   * Reflect: `[a,b,c]` → `[a,b,c,b,a]` — palindrome, NO boundary duplication,
-   * length 2N-1. Matches desktop Sonic Pi `core.rb:796`:
-   * `res = self + self.reverse.drop(1); res += res.drop(1)*(n-1) if n>1`
-   * (`n<2` returns the single palindrome unchanged). #354 — previously this
-   * produced the boundary-duplicated shape (desktop's `.mirror`).
-   */
-  reflect(n = 1) {
-    let res = [...this.items, ...[...this.items].reverse().slice(1)];
-    const reps = Math.max(0, Math.floor(n));
-    if (reps > 1) {
-      const tail = res.slice(1);
-      const extra = [];
-      for (let i2 = 0; i2 < reps - 1; i2++) extra.push(...tail);
-      res = [...res, ...extra];
-    }
-    return new _Ring(res);
-  }
-  /** Last n elements. */
-  take_last(n) {
-    return new _Ring(this.items.slice(-n));
-  }
-  /** Remove last n elements. */
-  drop_last(n) {
-    return new _Ring(this.items.slice(0, -n));
-  }
-  /** Sort elements (ascending). */
-  sort() {
-    return new _Ring([...this.items].sort((a, b) => a - b));
-  }
-  /** Multiply all elements by n (numeric rings only). */
-  scale(n) {
-    return new _Ring(this.items.map((v) => v * n));
-  }
-  /** Repeat the ring n times. */
-  repeat(n) {
-    const result = [];
-    for (let i2 = 0; i2 < n; i2++) result.push(...this.items);
-    return new _Ring(result);
-  }
-  /** Convert to plain array. */
-  toArray() {
-    return [...this.items];
-  }
-  [Symbol.iterator]() {
-    return this.items[Symbol.iterator]();
-  }
-};
-__name(_Ring, "Ring");
-var Ring = _Ring;
-function ring(...values2) {
-  return new Ring(values2);
-}
-__name(ring, "ring");
-function knit(...args2) {
-  const result = [];
-  for (let i2 = 0; i2 < args2.length - 1; i2 += 2) {
-    const value = args2[i2];
-    const count = args2[i2 + 1];
-    for (let j = 0; j < count; j++) result.push(value);
-  }
-  return new Ring(result);
-}
-__name(knit, "knit");
-function range(start2, end, stepOrOpts = 1) {
-  const step = typeof stepOrOpts === "number" ? stepOrOpts : stepOrOpts.step ?? 1;
-  const result = [];
-  const maxSize = 1e4;
-  if (step > 0) {
-    for (let i2 = start2; i2 < end && result.length < maxSize; i2 += step) result.push(i2);
-  } else if (step < 0) {
-    for (let i2 = start2; i2 > end && result.length < maxSize; i2 += step) result.push(i2);
-  }
-  if (result.length >= maxSize) {
-    console.warn("[SonicPi] range() capped at 10000 elements");
-  }
-  return new Ring(result);
-}
-__name(range, "range");
-var _Ramp = class _Ramp {
-  constructor(items) {
-    this._tick = 0;
-    this.items = [...items];
-    return new Proxy(this, {
-      get(target, prop, receiver) {
-        if (typeof prop === "string") {
-          const n = Number(prop);
-          if (!isNaN(n) && String(n) === prop) return target.at(n);
-        }
-        return Reflect.get(target, prop, receiver);
-      }
-    });
-  }
-  get length() {
-    return this.items.length;
-  }
-  at(index) {
-    if (this.items.length === 0) return void 0;
-    if (index <= 0) return this.items[0];
-    if (index >= this.items.length) return this.items[this.items.length - 1];
-    return this.items[index];
-  }
-  tick() {
-    return this.at(this._tick++);
-  }
-  look() {
-    return this.at(this._tick);
-  }
-  resetTick() {
-    this._tick = 0;
-  }
-  toArray() {
-    return [...this.items];
-  }
-  [Symbol.iterator]() {
-    return this.items[Symbol.iterator]();
-  }
-};
-__name(_Ramp, "Ramp");
-var Ramp = _Ramp;
-function doubles(start2, num_doubles = 1) {
-  if (typeof start2 !== "number") {
-    throw new Error(`Start value for doubles needs to be a number, got: ${String(start2)}`);
-  }
-  if (num_doubles < 0) return halves(start2, -num_doubles);
-  const out2 = [];
-  let v = start2;
-  for (let i2 = 0; i2 < num_doubles; i2++) {
-    out2.push(v);
-    v *= 2;
-  }
-  return new Ring(out2);
-}
-__name(doubles, "doubles");
-function halves(start2, num_halves = 1) {
-  if (typeof start2 !== "number") {
-    throw new Error(`Start value for halves needs to be a number, got: ${String(start2)}`);
-  }
-  if (num_halves < 0) return doubles(start2, -num_halves);
-  const out2 = [];
-  let v = start2;
-  for (let i2 = 0; i2 < num_halves; i2++) {
-    out2.push(v);
-    v /= 2;
-  }
-  return new Ring(out2);
-}
-__name(halves, "halves");
-function line(start2, finish, stepsOrOpts = 4) {
-  const steps = typeof stepsOrOpts === "number" ? stepsOrOpts : stepsOrOpts.steps ?? 4;
-  const result = [];
-  for (let i2 = 0; i2 < steps; i2++) {
-    result.push(steps === 1 ? start2 : start2 + (finish - start2) * (i2 / (steps - 1)));
-  }
-  return new Ring(result);
-}
-__name(line, "line");
-
-// ../../../sonicPiWeb/src/engine/EuclideanRhythm.ts
-function spread(hits, total, rotation = 0) {
-  if (hits >= total) return new Ring(Array(total).fill(true));
-  if (hits <= 0) return new Ring(Array(total).fill(false));
-  let pattern = bjorklund2(hits, total);
-  if (rotation !== 0) {
-    const r = (rotation % total + total) % total;
-    pattern = [...pattern.slice(r), ...pattern.slice(0, r)];
-  }
-  return new Ring(pattern);
-}
-__name(spread, "spread");
-function bjorklund2(hits, total) {
-  let groups = [];
-  for (let i2 = 0; i2 < total; i2++) {
-    groups.push([i2 < hits]);
-  }
-  let tail = total - hits;
-  while (tail > 1) {
-    const head = groups.length - tail;
-    const min = Math.min(head, tail);
-    const newGroups = [];
-    for (let i2 = 0; i2 < min; i2++) {
-      newGroups.push([...groups[i2], ...groups[head + i2]]);
-    }
-    const remaining = head > tail ? groups.slice(min, head) : groups.slice(head + min);
-    groups = [...newGroups, ...remaining];
-    tail = remaining.length;
-  }
-  return groups.flat();
-}
-__name(bjorklund2, "bjorklund");
-
-// ../../../sonicPiWeb/src/engine/ChordScale.ts
-var CHORD_TYPES = {
-  major: [0, 4, 7],
-  minor: [0, 3, 7],
-  dim: [0, 3, 6],
-  diminished: [0, 3, 6],
-  aug: [0, 4, 8],
-  augmented: [0, 4, 8],
-  dom7: [0, 4, 7, 10],
-  "7": [0, 4, 7, 10],
-  major7: [0, 4, 7, 11],
-  M7: [0, 4, 7, 11],
-  minor7: [0, 3, 7, 10],
-  m7: [0, 3, 7, 10],
-  dim7: [0, 3, 6, 9],
-  aug7: [0, 4, 8, 10],
-  halfdim: [0, 3, 6, 10],
-  "m7-5": [0, 3, 6, 10],
-  m9: [0, 3, 7, 10, 14],
-  dom9: [0, 4, 7, 10, 14],
-  "9": [0, 4, 7, 10, 14],
-  major9: [0, 4, 7, 11, 14],
-  M9: [0, 4, 7, 11, 14],
-  minor11: [0, 3, 7, 10, 14, 17],
-  dom11: [0, 4, 7, 10, 14, 17],
-  "11": [0, 4, 7, 10, 14, 17],
-  minor13: [0, 3, 7, 10, 14, 17, 21],
-  dom13: [0, 4, 7, 10, 14, 17, 21],
-  "13": [0, 4, 7, 10, 14, 17, 21],
-  sus2: [0, 2, 7],
-  sus4: [0, 5, 7],
-  power: [0, 7],
-  "1": [0],
-  "5": [0, 7],
-  "+5": [0, 4, 8],
-  m_plus_5: [0, 3, 8],
-  sus2sus4: [0, 2, 5, 7],
-  add9: [0, 4, 7, 14],
-  add11: [0, 4, 7, 17],
-  add13: [0, 4, 7, 21],
-  madd9: [0, 3, 7, 14],
-  madd11: [0, 3, 7, 17],
-  madd13: [0, 3, 7, 21],
-  "6": [0, 4, 7, 9],
-  m6: [0, 3, 7, 9],
-  "6_9": [0, 4, 7, 9, 14],
-  m6_9: [0, 3, 7, 9, 14],
-  // Extended chords — from Desktop SP chord.rb
-  "7sus2": [0, 2, 7, 10],
-  "7sus4": [0, 5, 7, 10],
-  "7-5": [0, 4, 6, 10],
-  "7+5": [0, 4, 8, 10],
-  "m7+5": [0, 3, 8, 10],
-  "m7+9": [0, 3, 7, 10, 14],
-  "9sus4": [0, 5, 7, 10, 14],
-  "6*9": [0, 4, 7, 9, 14],
-  "m6*9": [0, 3, 7, 9, 14],
-  "7-9": [0, 4, 7, 10, 13],
-  "m7-9": [0, 3, 7, 10, 13],
-  "7-10": [0, 4, 7, 10, 15],
-  "7-11": [0, 4, 7, 10, 16],
-  "7-13": [0, 4, 7, 10, 20],
-  "9+5": [0, 10, 13],
-  "m9+5": [0, 10, 14],
-  "7+5-9": [0, 4, 8, 10, 13],
-  "m7+5-9": [0, 3, 8, 10, 13],
-  "11+": [0, 4, 7, 10, 14, 18],
-  "m11+": [0, 3, 7, 10, 14, 18],
-  add2: [0, 2, 4, 7],
-  add4: [0, 4, 5, 7],
-  madd2: [0, 2, 3, 7],
-  madd4: [0, 3, 5, 7],
-  // Aliases
-  M: [0, 4, 7],
-  m: [0, 3, 7],
-  maj: [0, 4, 7],
-  min: [0, 3, 7],
-  a: [0, 4, 8],
-  i: [0, 3, 6],
-  i7: [0, 3, 6, 9],
-  m7b5: [0, 3, 6, 10],
-  maj9: [0, 4, 7, 11, 14],
-  maj11: [0, 4, 7, 11, 14, 17],
-  m11: [0, 3, 7, 10, 14, 17],
-  m13: [0, 3, 7, 10, 14, 17, 21]
-};
-var SCALE_TYPES = {
-  major: [0, 2, 4, 5, 7, 9, 11],
-  minor: [0, 2, 3, 5, 7, 8, 10],
-  natural_minor: [0, 2, 3, 5, 7, 8, 10],
-  harmonic_minor: [0, 2, 3, 5, 7, 8, 11],
-  melodic_minor: [0, 2, 3, 5, 7, 9, 11],
-  dorian: [0, 2, 3, 5, 7, 9, 10],
-  phrygian: [0, 1, 3, 5, 7, 8, 10],
-  lydian: [0, 2, 4, 6, 7, 9, 11],
-  mixolydian: [0, 2, 4, 5, 7, 9, 10],
-  aeolian: [0, 2, 3, 5, 7, 8, 10],
-  locrian: [0, 1, 3, 5, 6, 8, 10],
-  minor_pentatonic: [0, 3, 5, 7, 10],
-  major_pentatonic: [0, 2, 4, 7, 9],
-  blues: [0, 3, 5, 6, 7, 10],
-  chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-  whole_tone: [0, 2, 4, 6, 8, 10],
-  whole: [0, 2, 4, 6, 8, 10],
-  diminished: [0, 2, 3, 5, 6, 8, 9, 11],
-  octatonic: [0, 2, 3, 5, 6, 8, 9, 11],
-  hex_major6: [0, 2, 4, 5, 7, 9],
-  hex_dorian: [0, 2, 3, 5, 7, 10],
-  hex_phrygian: [0, 1, 3, 5, 8, 10],
-  hex_major7: [0, 2, 4, 7, 9, 11],
-  hex_sus: [0, 2, 5, 7, 9, 10],
-  hex_aeolian: [0, 3, 5, 7, 8, 10],
-  hungarian_minor: [0, 2, 3, 6, 7, 8, 11],
-  gypsy: [0, 2, 3, 6, 7, 8, 11],
-  hirajoshi: [0, 4, 6, 7, 11],
-  iwato: [0, 1, 5, 6, 10],
-  kumoi: [0, 2, 3, 7, 9],
-  in_sen: [0, 1, 5, 7, 10],
-  yo: [0, 3, 5, 7, 10],
-  pelog: [0, 1, 3, 7, 8],
-  chinese: [0, 4, 6, 7, 11],
-  egyptian: [0, 2, 5, 7, 10],
-  prometheus: [0, 2, 4, 6, 9, 10],
-  scriabin: [0, 1, 4, 7, 9],
-  indian: [0, 4, 5, 7, 8, 11],
-  enigmatic: [0, 1, 4, 6, 8, 10, 11],
-  spanish: [0, 1, 3, 4, 5, 7, 8, 10],
-  neapolitan_major: [0, 1, 3, 5, 7, 9, 11],
-  neapolitan_minor: [0, 1, 3, 5, 7, 8, 11],
-  bebop_major: [0, 2, 4, 5, 7, 8, 9, 11],
-  bebop_minor: [0, 2, 3, 5, 7, 8, 10, 11],
-  bebop_dominant: [0, 2, 4, 5, 7, 9, 10, 11],
-  super_locrian: [0, 1, 3, 4, 6, 8, 10],
-  persian: [0, 1, 4, 5, 6, 8, 11],
-  arabic: [0, 2, 4, 5, 6, 8, 10],
-  japanese: [0, 1, 5, 7, 8],
-  lydian_minor: [0, 2, 4, 6, 7, 8, 10],
-  // Aliases
-  ionian: [0, 2, 4, 5, 7, 9, 11],
-  diatonic: [0, 2, 4, 5, 7, 9, 11],
-  // Extended scales — from Desktop SP scale.rb
-  melodic_minor_asc: [0, 2, 3, 5, 7, 9, 11],
-  melodic_minor_desc: [0, 2, 3, 5, 7, 8, 10],
-  bartok: [0, 2, 4, 6, 7, 9, 10],
-  bhairav: [0, 1, 4, 5, 7, 8, 11],
-  locrian_major: [0, 2, 4, 5, 6, 8, 10],
-  ahirbhairav: [0, 1, 4, 5, 7, 9, 11],
-  harmonic_major: [0, 2, 4, 5, 7, 8, 11],
-  romanian_minor: [0, 2, 3, 6, 7, 9, 11],
-  hindu: [0, 2, 4, 5, 7, 9, 10],
-  todi: [0, 1, 3, 6, 7, 8, 11],
-  purvi: [0, 1, 4, 5, 7, 8, 11],
-  marva: [0, 1, 4, 5, 7, 9, 10],
-  melodic_major: [0, 2, 4, 5, 7, 9, 10],
-  leading_whole: [0, 2, 4, 6, 8, 10, 11],
-  augmented: [0, 3, 4, 7, 8, 11],
-  augmented2: [0, 1, 4, 5, 8, 9],
-  blues_major: [0, 2, 3, 6, 8, 11],
-  blues_minor: [0, 3, 5, 6, 9, 11],
-  diminished2: [0, 2, 3, 5, 6, 8, 9, 11],
-  // Messiaen modes of limited transposition
-  messiaen1: [0, 2, 4, 6, 8, 10],
-  messiaen2: [0, 1, 3, 4, 6, 7, 9, 10],
-  messiaen3: [0, 2, 3, 5, 6, 8, 9, 11],
-  messiaen4: [0, 1, 4, 5, 6, 9, 10, 11],
-  messiaen5: [0, 1, 5, 6, 7, 11],
-  messiaen6: [0, 2, 4, 5, 7, 9, 10, 11],
-  messiaen7: [0, 1, 2, 4, 5, 6, 7, 9, 10, 11],
-  // Pentatonic aliases
-  yu: [0, 3, 5, 7, 10],
-  gong: [0, 2, 4, 7, 9],
-  shang: [0, 2, 5, 7, 10],
-  jiao: [0, 3, 5, 7, 10],
-  zhi: [0, 2, 4, 7, 9],
-  ritusen: [0, 2, 4, 7, 9]
-};
-function chord(root, type = "major", numOctavesOrOpts = 1) {
-  const numOctaves = typeof numOctavesOrOpts === "number" ? numOctavesOrOpts : numOctavesOrOpts.num_octaves ?? 1;
-  const rootMidi = noteToMidi3(root);
-  const intervals = CHORD_TYPES[type];
-  if (!intervals) {
-    console.warn(`[SonicPi] Unknown chord type: ${type}, using major`);
-    return chord(root, "major", numOctaves);
-  }
-  const notes = [];
-  for (let oct = 0; oct < numOctaves; oct++) {
-    for (const interval of intervals) {
-      notes.push(rootMidi + interval + oct * 12);
-    }
-  }
-  return new Ring(notes);
-}
-__name(chord, "chord");
-function scale(root, type = "major", numOctavesOrOpts = 1) {
-  const numOctaves = typeof numOctavesOrOpts === "number" ? numOctavesOrOpts : numOctavesOrOpts.num_octaves ?? 1;
-  const rootMidi = noteToMidi3(root);
-  const intervals = SCALE_TYPES[type];
-  if (!intervals) {
-    console.warn(`[SonicPi] Unknown scale type: ${type}, using major`);
-    return scale(root, "major", numOctaves);
-  }
-  const notes = [];
-  for (let oct = 0; oct < numOctaves; oct++) {
-    for (const interval of intervals) {
-      notes.push(rootMidi + interval + oct * 12);
-    }
-  }
-  notes.push(rootMidi + 12 * numOctaves);
-  return new Ring(notes);
-}
-__name(scale, "scale");
-function chord_invert(notes, inversion) {
-  let arr = Array.isArray(notes) ? [...notes] : notes.toArray();
-  let shift = Math.round(inversion);
-  while (shift > 0) {
-    const lowest = arr.shift();
-    arr.push(lowest + 12);
-    shift -= 1;
-  }
-  while (shift < 0) {
-    const highest = arr.pop();
-    arr.push(highest - 12);
-    arr.sort((a, b) => a - b);
-    shift += 1;
-  }
-  arr.sort((a, b) => a - b);
-  return new Ring(arr);
-}
-__name(chord_invert, "chord_invert");
-function note(n) {
-  return noteToMidi3(n);
-}
-__name(note, "note");
-function note_range(low, high) {
-  const lo = noteToMidi3(low);
-  const hi = noteToMidi3(high);
-  const notes = [];
-  const maxNotes = 1e4;
-  for (let n = lo; n <= hi && notes.length < maxNotes; n++) {
-    notes.push(n);
-  }
-  if (notes.length >= maxNotes) {
-    console.warn("[SonicPi] note_range capped at 10000 notes");
-  }
-  return new Ring(notes);
-}
-__name(note_range, "note_range");
-function chord_degree(degreeVal, root, scaleType = "major", chordNumNotes = 4, opts = {}) {
-  const idx = parseDegree(degreeVal);
-  scale(root, scaleType);
-  const scaleIntervals = SCALE_TYPES[scaleType] ?? SCALE_TYPES["major"];
-  const len = scaleIntervals.length;
-  if (idx < 0 || idx >= len) {
-    console.warn(`[SonicPi] chord_degree index ${idx} out of range for scale ${scaleType}`);
-    return chord(root, "major");
-  }
-  const rootMidi = noteToMidi3(root) + scaleIntervals[idx];
-  const notes = [rootMidi];
-  for (let i2 = 1; i2 < chordNumNotes; i2++) {
-    const degIdx = (idx + i2 * 2) % len;
-    const octOffset = Math.floor((idx + i2 * 2) / len) * 12;
-    notes.push(noteToMidi3(root) + scaleIntervals[degIdx] + octOffset);
-  }
-  if (opts.invert !== void 0 && opts.invert !== null) {
-    return chord_invert(notes, opts.invert);
-  }
-  return new Ring(notes);
-}
-__name(chord_degree, "chord_degree");
-function degree(degreeVal, root, scaleType = "major") {
-  const idx = parseDegree(degreeVal);
-  const scaleIntervals = SCALE_TYPES[scaleType] ?? SCALE_TYPES["major"];
-  const len = scaleIntervals.length;
-  const octOffset = Math.floor(idx / len) * 12;
-  const degIdx = (idx % len + len) % len;
-  return noteToMidi3(root) + scaleIntervals[degIdx] + octOffset;
-}
-__name(degree, "degree");
-function parseDegree(d) {
-  if (typeof d === "number") return d - 1;
-  const roman = {
-    i: 0,
-    ii: 1,
-    iii: 2,
-    iv: 3,
-    v: 4,
-    vi: 5,
-    vii: 6
-  };
-  return roman[d.toLowerCase()] ?? 0;
-}
-__name(parseDegree, "parseDegree");
-function chord_names() {
-  return Object.keys(CHORD_TYPES);
-}
-__name(chord_names, "chord_names");
-function scale_names() {
-  return Object.keys(SCALE_TYPES);
-}
-__name(scale_names, "scale_names");
-
-// ../../../sonicPiWeb/src/engine/ProgramBuilder.ts
-var DEFAULT_LOOP_BUDGET = 1e5;
-var _InfiniteLoopError = class _InfiniteLoopError extends Error {
-  constructor(message = "Infinite loop detected \u2014 did you forget a sleep?") {
-    super(message);
-    this.name = "InfiniteLoopError";
-  }
-};
-__name(_InfiniteLoopError, "InfiniteLoopError");
-var InfiniteLoopError = _InfiniteLoopError;
-var _ProgramBuilder = class _ProgramBuilder {
-  constructor(seed = 0, initialTicks) {
-    this.steps = [];
-    this.currentSynth = "beep";
-    this.ticks = /* @__PURE__ */ new Map();
-    this.densityFactor = 1;
-    this.nextRef = 1;
-    this._lastRef = 0;
-    this._budgetRemaining = DEFAULT_LOOP_BUDGET;
-    this._transpose = 0;
-    this._synthDefaults = {};
-    this._sampleDefaults = {};
-    this._debug = true;
-    this._argChecks = true;
-    this._timingGuarantees = false;
-    this._argBpmScaling = true;
-    this._currentBpm = 60;
-    // Iteration-context fields for current_time / current_beat introspection (#226).
-    // Set once per iteration by SonicPiEngine before invoking the user body callback.
-    // _currentBeat persists across iterations via engine's loopBeats map; the other
-    // two reset because the builder is recreated each iteration.
-    this._iterationStartAudioTime = 0;
-    this._currentBuildSeconds = 0;
-    this._currentBeat = 0;
-    this._schedAheadTime = 0;
-    // SP95(d) #393: scheduler access for build-time sync resolution. When set
-    // (the audio build path wires it before builderFn), `sync` awaits the
-    // scheduler-resolved cue payload mid-build instead of pushing a runtime
-    // step — so the value binds to `e` and post-sync reads (get / e[:val]) run
-    // AFTER the cue fires. Null on manual / capture builders, which keep the
-    // legacy runtime-step path (the QueryInterpreter never wires it, so an
-    // S3 sync loop can't register a phantom waiter through the capture pass).
-    this._syncScheduler = null;
-    this._syncTaskId = null;
-    // --- OSC: deferred (issue #196) ---
-    /**
-     * Builder-captured OSC defaults for the `osc` shorthand. `use_osc`
-     * mutates these synchronously at build time AND emits a deferred
-     * `useOsc` step (the latter is for cross-task visibility).
-     * `osc(path, ...)` reads these at build time and pushes a deferred
-     * `oscSend` step using the captured destination.
-     */
-    this._oscHost = "localhost";
-    this._oscPort = 4560;
-    // --- Data constructors (pure, no side effects) ---
-    this.ring = ring;
-    this.knit = knit;
-    this.range = range;
-    this.line = line;
-    this.spread = spread;
-    this.chord = chord;
-    this.scale = scale;
-    this.chord_invert = chord_invert;
-    this.note = note;
-    this.note_range = note_range;
-    this.noteToMidi = noteToMidi3;
-    this.midiToFreq = midiToFreq5;
-    this.note_info = noteInfo;
-    // --- Wave 1 DSL additions ---
-    this.hz_to_midi = hzToMidi;
-    this.midi_to_hz = midiToFreq5;
-    this.chord_degree = chord_degree;
-    this.degree = degree;
-    this.chord_names = chord_names;
-    this.scale_names = scale_names;
-    this.rng = new SeededRandom(seed);
-    if (initialTicks) this.ticks = new Map(initialTicks);
-  }
-  /** Snapshot current tick state — saved by the engine between loop iterations. */
-  getTicks() {
-    return new Map(this.ticks);
-  }
-  get density() {
-    return this.densityFactor;
-  }
-  set density(d) {
-    this.densityFactor = d;
-  }
-  /** Returns the node reference of the last play() call, for use with control(). */
-  get lastRef() {
-    return this._lastRef;
-  }
-  play(noteVal, opts) {
-    if (noteVal instanceof Ring || Array.isArray(noteVal)) {
-      const notes = noteVal instanceof Ring ? noteVal.toArray() : noteVal;
-      for (const n of notes) this._pushPlayStep(n, opts);
-      return this;
-    }
-    this._pushPlayStep(noteVal, opts);
-    return this;
-  }
-  _pushPlayStep(noteVal, opts) {
-    if (noteVal === null || noteVal === void 0 || noteVal === "rest") return;
-    let midi;
-    let noteName;
-    if (typeof noteVal === "string") {
-      const resolved = noteToMidiStrict(noteVal);
-      if (Number.isNaN(resolved)) noteName = noteVal;
-      midi = resolved + this._transpose;
-    } else {
-      midi = noteVal + this._transpose;
-    }
-    const synth = opts?.synth;
-    const srcLine = opts?._srcLine;
-    const cleanOpts = { ...this._synthDefaults, ...opts };
-    delete cleanOpts._srcLine;
-    delete cleanOpts.synth;
-    if (!this._argBpmScaling) cleanOpts._argBpmScaling = 0;
-    this._lastRef = this.nextRef++;
-    this.steps.push({
-      tag: "play",
-      note: midi,
-      opts: cleanOpts,
-      synth: synth ?? this.currentSynth,
-      srcLine,
-      ...noteName !== void 0 ? { noteName } : {}
-    });
-  }
-  sleep(beats) {
-    const scaled = beats / this.densityFactor;
-    this.steps.push({ tag: "sleep", beats: scaled });
-    this._currentBeat += scaled;
-    this._currentBuildSeconds += scaled * 60 / this._currentBpm;
-    this._budgetRemaining = DEFAULT_LOOP_BUDGET;
-    return this;
-  }
-  /** Alias for sleep — Sonic Pi accepts both. */
-  wait(beats) {
-    return this.sleep(beats);
-  }
-  /**
-   * Decrement loop iteration budget. Throws InfiniteLoopError when budget
-   * is exhausted. Injected by the transpiler at loop back-edges.
-   */
-  __checkBudget__() {
-    if (--this._budgetRemaining <= 0) {
-      throw new InfiniteLoopError();
-    }
-  }
-  sample(name2, opts) {
-    const srcLine = opts?._srcLine;
-    const cleanOpts = { ...this._sampleDefaults, ...opts };
-    delete cleanOpts._srcLine;
-    if (!this._argBpmScaling) cleanOpts._argBpmScaling = 0;
-    this.steps.push({ tag: "sample", name: name2, opts: cleanOpts, srcLine });
-    return this;
-  }
-  use_synth(name2) {
-    this.currentSynth = name2;
-    this.steps.push({ tag: "useSynth", name: name2 });
-    return this;
-  }
-  use_bpm(bpm) {
-    this._currentBpm = bpm;
-    this.steps.push({ tag: "useBpm", bpm });
-    return this;
-  }
-  /** Read-only view of the builder's current bpm. Used by SonicPiEngine when a
-   *  nested `live_loop` registers from inside another's builderFn — the
-   *  nested loop must inherit the *parent's* in-flight bpm (set by `b.use_bpm`
-   *  during this build phase), not the engine-level `defaultBpm` (which is
-   *  only mutated by top-level `use_bpm`). See SP72. */
-  get currentBpm() {
-    return this._currentBpm;
-  }
-  /** Read-only view of the builder's current default synth. Same rationale as
-   *  currentBpm: nested `live_loop` registrations need the parent's in-flight
-   *  synth, not the engine-level `defaultSynth`. */
-  get currentDefaultSynth() {
-    return this.currentSynth;
-  }
-  /** Set BPM to match a sample's natural tempo. */
-  use_sample_bpm(name2, opts) {
-    const dur = this.sample_duration(name2, opts);
-    return this.use_bpm(60 / dur);
-  }
-  use_random_seed(seed) {
-    this.rng.reset(seed);
-    return this;
-  }
-  /** Read seed + idx — matches Desktop SP's current_random_seed. (#227) */
-  current_random_seed() {
-    return this.rng.getSeedPlusIdx();
-  }
-  /**
-   * Roll the rand stream back by `amount` draws. Returns the value the next
-   * `rand` would now produce (peek). Matches Desktop SP rand_back. (#227)
-   */
-  rand_back(amount = 1) {
-    this.rng.decIdx(amount);
-    return this.rng.peek();
-  }
-  /**
-   * Skip the rand stream forward by `amount` draws. Returns the value the next
-   * `rand` would now produce (peek). Matches Desktop SP rand_skip. (#227)
-   */
-  rand_skip(amount = 1) {
-    this.rng.incIdx(amount);
-    return this.rng.peek();
-  }
-  /** Reset rand stream to its last seed (equivalent to setIdx 0). (#227) */
-  rand_reset() {
-    this.rng.setIdx(0);
-    return this;
-  }
-  /**
-   * Seed the per-iteration introspection state. Called by SonicPiEngine before
-   * invoking the user's body callback.
-   *
-   * - `audioTime` is the task's virtualTime at iteration start (current_time)
-   * - `beat` is the persisted across-iteration beat counter (current_beat)
-   * - `schedAhead` is the engine's schedule-ahead window (current_sched_ahead_time)
-   * - `bpm` (optional) seeds _currentBpm so current_beat_duration reflects the
-   *    task's bpm without pushing a useBpm step. User's `use_bpm` inside the
-   *    body still overrides per-step.
-   * (#226)
-   */
-  setIterationContext(audioTime, beat, schedAhead, bpm) {
-    this._iterationStartAudioTime = audioTime;
-    this._currentBeat = beat;
-    this._currentBuildSeconds = 0;
-    this._schedAheadTime = schedAhead;
-    if (bpm !== void 0) this._currentBpm = bpm;
-  }
-  /**
-   * SP95(d) #393: give this builder scheduler access so `sync` can await a
-   * cue payload during build (audio path only). The scheduler is the SOLE
-   * resolver — same invariant as scheduleSleep (SV2). Cleared implicitly by
-   * builder recreation each iteration; manual / capture builders never call
-   * this, so their `sync` keeps the legacy runtime-step behavior.
-   */
-  setSyncContext(scheduler, taskId) {
-    this._syncScheduler = scheduler;
-    this._syncTaskId = taskId;
-  }
-  /** Read the build-phase beat counter (engine persists this across iterations). */
-  get currentBeatRaw() {
-    return this._currentBeat;
-  }
-  /** Sum of `sleep` arguments since the loop started. Matches Desktop SP. (#226) */
-  current_beat() {
-    return this._currentBeat;
-  }
-  /** Duration of one beat in seconds at the current bpm. (#226) */
-  current_beat_duration() {
-    return 60 / this._currentBpm;
-  }
-  // Tier C PR #3 (#255). bt/rt are pure BPM math — NOT current_beat / current_time
-  // wrappers (audit-corrected scope). vt is an alias of current_time (= the
-  // thread's local virtual run time). Per-task bpm scoping matters: a
-  // bt(1) inside a live_loop at use_bpm 120 must read THAT loop's bpm.
-  bt(t) {
-    return t * 60 / this._currentBpm;
-  }
-  rt(t) {
-    return t * this._currentBpm / 60;
-  }
-  vt() {
-    return this.current_time();
-  }
-  /**
-   * Logical (virtual) time in seconds at the current build position. Quantised
-   * to the most recent sleep — matches Desktop SP's "wall-clock time quantised
-   * to a nearby sleep point". (#226)
-   */
-  current_time() {
-    return this._iterationStartAudioTime + this._currentBuildSeconds;
-  }
-  /** Engine's schedule-ahead window in seconds. (#226) */
-  current_sched_ahead_time() {
-    return this._schedAheadTime;
-  }
-  cue(name2, ...args2) {
-    this.steps.push({ tag: "cue", name: name2, args: args2 });
-    return this;
-  }
-  sync(name2, opts) {
-    const bpmSync = opts?.bpm_sync === true;
-    if (!bpmSync && this._syncScheduler && this._syncTaskId !== null) {
-      const taskId = this._syncTaskId;
-      return this._syncScheduler.waitForSync(name2, taskId).then(
-        (payload) => syncArgsToMap(payload.args)
-      );
-    }
-    this.steps.push(bpmSync ? { tag: "sync", name: name2, bpmSync: true } : { tag: "sync", name: name2 });
-    return this;
-  }
-  /**
-   * sync_bpm — alias for sync with bpm_sync: true (#236).
-   * Inherits both virtual time AND BPM from the cuer at wake time.
-   * Matches desktop `core.rb:4490-4494`.
-   */
-  sync_bpm(name2) {
-    this.steps.push({ tag: "sync", name: name2, bpmSync: true });
-    return this;
-  }
-  control(nodeRef, params) {
-    const p = !this._argBpmScaling ? { ...params, _argBpmScaling: 0 } : params;
-    this.steps.push({ tag: "control", nodeRef, params: p });
-    return this;
-  }
-  with_fx(name2, optsOrFn, maybeFn) {
-    let opts;
-    let fn;
-    if (typeof optsOrFn === "function") {
-      opts = {};
-      fn = optsOrFn;
-    } else {
-      opts = optsOrFn;
-      fn = maybeFn;
-    }
-    const fxRef = this.nextRef++;
-    this._lastRef = fxRef;
-    const inner = this.forkBuilder("same-thread");
-    fn(inner, fxRef);
-    const fxOpts = !this._argBpmScaling ? { ...opts, _argBpmScaling: 0 } : opts;
-    this.steps.push({ tag: "fx", name: name2, opts: fxOpts, body: inner.build(), nodeRef: fxRef });
-    return this;
-  }
-  in_thread(buildFn) {
-    const inner = this.forkBuilder("forked");
-    buildFn(inner);
-    this.steps.push({ tag: "thread", body: inner.build() });
-    return this;
-  }
-  at(times, values2, buildFn) {
-    const timesArr = Array.isArray(times) ? times : [times];
-    for (let i2 = 0; i2 < timesArr.length; i2++) {
-      const offset = timesArr[i2];
-      const val = values2 ? values2[i2 % values2.length] : i2;
-      const inner = this.forkBuilder("forked");
-      if (offset > 0) inner.sleep(offset);
-      buildFn(inner, val);
-      this.steps.push({ tag: "thread", body: inner.build() });
-    }
-    return this;
-  }
-  /**
-   * Single source of truth for which per-thread / per-build state threads into
-   * a nested block's sub-builder. Replaces three hand-maintained copies that
-   * had drifted (#343). Desktop SP semantics (ref/sources/desktop-sp):
-   *  - 'same-thread' (with_fx): no thread fork → ALL thread-locals continue,
-   *    including the tick map and the random STREAM, shared by reference.
-   *  - 'forked' (in_thread / at): forks a thread → inherits a SNAPSHOT of
-   *    thread-locals but gets a FRESH tick scope and a RE-SEEDED rng
-   *    (runtime.rb:1062-1067 only re-seeds on a new thread).
-   */
-  forkBuilder(mode) {
-    const inner = mode === "forked" ? new _ProgramBuilder(this.rng.next() * 4294967295) : new _ProgramBuilder();
-    inner.currentSynth = this.currentSynth;
-    inner.densityFactor = this.densityFactor;
-    inner._argBpmScaling = this._argBpmScaling;
-    inner._transpose = this._transpose;
-    inner._synthDefaults = { ...this._synthDefaults };
-    inner._sampleDefaults = { ...this._sampleDefaults };
-    inner._currentBpm = this._currentBpm;
-    inner._oscHost = this._oscHost;
-    inner._oscPort = this._oscPort;
-    inner._iterationStartAudioTime = this._iterationStartAudioTime;
-    inner._currentBuildSeconds = this._currentBuildSeconds;
-    inner._currentBeat = this._currentBeat;
-    inner._schedAheadTime = this._schedAheadTime;
-    if (mode === "same-thread") {
-      inner.ticks = this.ticks;
-      inner.rng = this.rng;
-    }
-    return inner;
-  }
-  live_audio(name2, optsOrStop, maybeOpts) {
-    if (optsOrStop === "stop") {
-      this.steps.push({ tag: "liveAudio", name: name2, opts: maybeOpts ?? {}, stop: true });
-      return this;
-    }
-    this.steps.push({ tag: "liveAudio", name: name2, opts: optsOrStop ?? {} });
-    return this;
-  }
-  stop() {
-    this.steps.push({ tag: "stop" });
-    return this;
-  }
-  /**
-   * Stop a named live_loop at the scheduled time (issue #194).
-   * Without this deferred step, `stop_loop :name` inside a live_loop
-   * fires at BUILD time (beat 0), killing target loops before any
-   * preceding `sleep` elapses — silent failure mode confirmed by
-   * the welcome-buffer finale bug.
-   */
-  stop_loop(name2) {
-    this.steps.push({ tag: "stopLoop", name: name2 });
-    return this;
-  }
-  /** Free a running synth node immediately. */
-  kill(nodeRef) {
-    this.steps.push({ tag: "kill", nodeRef });
-    return this;
-  }
-  /**
-   * Set master volume at the scheduled time (issue #197).
-   * Without this deferred step, ducking patterns
-   * (`set_volume 0.3; sleep 4; set_volume 1.0`) collapse: both calls
-   * fire at beat 0, last-writer wins, no ducking.
-   */
-  set_volume(vol) {
-    this.steps.push({ tag: "setVolume", vol });
-    return this;
-  }
-  // --- Mixer setters (Tier C PR #3, #255) — deferred steps -----------------
-  // Fire at scheduled virtual time so sweeps sequence against playback.
-  // `set_mixer_control!` accepts an opts hash (pre_amp/amp/hpf/lpf/*_bypass);
-  // `reset_mixer!` restores the MIXER config defaults. Cross-engine ethic:
-  // arity is enforced where the step pushes (here), not in the bridge.
-  set_mixer_control(opts) {
-    if (typeof opts !== "object" || opts === null) {
-      throw new TypeError(`set_mixer_control! expects an opts hash, got ${typeof opts}`);
-    }
-    this.steps.push({ tag: "setMixerControl", opts });
-    return this;
-  }
-  reset_mixer(...args2) {
-    if (args2.length > 0) {
-      throw new Error(`reset_mixer! expects no arguments, got ${args2.length}`);
-    }
-    this.steps.push({ tag: "resetMixer" });
-    return this;
-  }
-  // --- Recording (#228) — deferred steps -----------------------------------
-  // Lifecycle is sequenced against the scheduled program, not the build
-  // pass. The user's mental model is "start, play 8 notes, stop, save" —
-  // running them at build time fires save before any audio plays.
-  // Cross-engine arity ethic: rest args + length guard so passing extras
-  // errors instead of silently swallowing.
-  recording_start(...args2) {
-    if (args2.length > 0) {
-      throw new Error(`recording_start expects no arguments, got ${args2.length}`);
-    }
-    this.steps.push({ tag: "recordingStart" });
-    return this;
-  }
-  recording_stop(...args2) {
-    if (args2.length > 0) {
-      throw new Error(`recording_stop expects no arguments, got ${args2.length}`);
-    }
-    this.steps.push({ tag: "recordingStop" });
-    return this;
-  }
-  recording_save(...args2) {
-    if (args2.length === 0 || args2.length > 1) {
-      throw new Error(`recording_save expects 1 argument (filename), got ${args2.length}`);
-    }
-    const filename = args2[0];
-    if (typeof filename !== "string") {
-      throw new Error(`recording_save: filename must be a string, got ${typeof filename}`);
-    }
-    this.steps.push({ tag: "recordingSave", filename });
-    return this;
-  }
-  recording_delete(...args2) {
-    if (args2.length > 0) {
-      throw new Error(`recording_delete expects no arguments, got ${args2.length}`);
-    }
-    this.steps.push({ tag: "recordingDelete" });
-    return this;
-  }
-  use_osc(host, port) {
-    this._oscHost = host;
-    this._oscPort = port;
-    this.steps.push({ tag: "useOsc", host, port });
-    return this;
-  }
-  /** Emit an OSC message to the use_osc-set default destination. */
-  osc(path, ...args2) {
-    this.steps.push({ tag: "oscSend", host: this._oscHost, port: this._oscPort, path, args: args2 });
-    return this;
-  }
-  /** Emit an OSC message — the host provides the actual transport. */
-  osc_send(host, port, path, ...args2) {
-    this.steps.push({ tag: "oscSend", host, port, path, args: args2 });
-    return this;
-  }
-  // --- MIDI output: 14 deferred entry points (issue #195) ---
-  // All push a `midiOut` step with a `kind` discriminator. The interpreter
-  // dispatches at scheduled virtual time. Auto note-off for `midi(...)` is
-  // BPM-aware (sustain in beats → seconds via the task's current bpm).
-  /** midi shorthand: note-on + auto note-off after `sustain` beats. */
-  midi(note2, opts = {}) {
-    const sustain = opts.sustain ?? 1;
-    const velocity = opts.velocity ?? opts.vel ?? 100;
-    const channel = opts.channel ?? 1;
-    this.steps.push({ tag: "midiOut", kind: "noteOn", args: [note2, velocity, channel] });
-    this.steps.push({ tag: "midiOut", kind: "noteOff", args: [note2, channel, sustain] });
-    return this;
-  }
-  midi_note_on(note2, velocity = 100, opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "noteOn", args: [note2, velocity, opts.channel ?? 1] });
-    return this;
-  }
-  midi_note_off(note2, opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "noteOff", args: [note2, opts.channel ?? 1, 0] });
-    return this;
-  }
-  midi_cc(controller, value, opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "cc", args: [controller, value, opts.channel ?? 1] });
-    return this;
-  }
-  midi_pitch_bend(val, opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "pitchBend", args: [val, opts.channel ?? 1] });
-    return this;
-  }
-  midi_channel_pressure(val, opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "channelPressure", args: [val, opts.channel ?? 1] });
-    return this;
-  }
-  midi_poly_pressure(note2, val, opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "polyPressure", args: [note2, val, opts.channel ?? 1] });
-    return this;
-  }
-  midi_prog_change(program, opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "progChange", args: [program, opts.channel ?? 1] });
-    return this;
-  }
-  midi_clock_tick() {
-    this.steps.push({ tag: "midiOut", kind: "clockTick", args: [] });
-    return this;
-  }
-  midi_start() {
-    this.steps.push({ tag: "midiOut", kind: "start", args: [] });
-    return this;
-  }
-  midi_stop() {
-    this.steps.push({ tag: "midiOut", kind: "stop", args: [] });
-    return this;
-  }
-  midi_continue() {
-    this.steps.push({ tag: "midiOut", kind: "continue", args: [] });
-    return this;
-  }
-  midi_all_notes_off(opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "allNotesOff", args: [opts.channel ?? 1] });
-    return this;
-  }
-  midi_notes_off(opts = {}) {
-    this.steps.push({ tag: "midiOut", kind: "allNotesOff", args: [opts.channel ?? 1] });
-    return this;
-  }
-  /** Play multiple notes simultaneously as a chord. */
-  play_chord(notes, opts) {
-    return this.play(notes, opts);
-  }
-  /** Play notes sequentially with sleep(1) between each. */
-  play_pattern(notes, opts) {
-    for (const n of notes) {
-      this.play(n, opts);
-      this.sleep(1);
-    }
-    return this;
-  }
-  /**
-   * Tier B PR #2 (#233) — block-form tuplet scheduling.
-   *
-   * `tuplets [70, [72, 72], 70, [82, 82, 82]] do |n| play n end`
-   *   - Bare element → `block.call(n); sleep duration` (default 1 beat).
-   *   - Sub-list of size N → fits N `block + sleep` calls into `duration`
-   *     beats by wrapping in `with_density(N)`.
-   *
-   * Optional `swing:` opt offsets every Nth tuplet by that many beats via
-   * `at([swing], …)`. Swing is density-scaled inside sub-lists so the
-   * offset stays proportional to the local pulse. Mirrors upstream
-   * `core.rb:486-512`. Pre-resolved at build time (the block runs N times
-   * synchronously, pushing N play+sleep step pairs); the resulting steps
-   * fire at scheduled virtual time exactly like a hand-written sequence.
-   */
-  tuplets(tuplet_list, optsOrFn, maybeFn) {
-    const opts = typeof optsOrFn === "function" ? {} : optsOrFn;
-    const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn;
-    if (typeof fn !== "function") {
-      throw new Error("tuplets requires a block");
-    }
-    const duration = opts.duration ?? 1;
-    const swing = opts.swing ?? 0;
-    const swing_pulse = opts.swing_pulse ?? 2;
-    const swing_offset = (opts.swing_offset ?? 0) + 1;
-    const items = tuplet_list instanceof Ring ? tuplet_list.toArray() : Array.from(tuplet_list);
-    for (const el of items) {
-      if (Array.isArray(el)) {
-        const n = el.length;
-        this.with_density(n, (b) => {
-          el.forEach((tuplet, idx) => {
-            const should_swing = swing !== 0 && n % swing_pulse === 0 && (idx + swing_offset) % swing_pulse === 0;
-            if (should_swing) {
-              b.at([swing / n], null, (inner) => fn(inner, tuplet));
-            } else {
-              fn(b, tuplet);
-            }
-            b.sleep(duration);
-          });
-        });
-      } else {
-        fn(this, el);
-        this.sleep(duration);
-      }
-    }
-    return this;
-  }
-  /** Return the current synth name. */
-  get current_synth_name() {
-    return this.currentSynth;
-  }
-  /**
-   * Tier B PR #2 (#233) — defaults / setting introspection. All four are
-   * called bare (`puts current_debug`) so they're methods returning a value,
-   * not getters — see BARE_CALLABLE in TreeSitterTranspiler.ts which emits
-   * `__b.NAME()` with parens.
-   */
-  current_synth_defaults() {
-    return { ...this._synthDefaults };
-  }
-  current_sample_defaults() {
-    return { ...this._sampleDefaults };
-  }
-  current_debug() {
-    return this._debug;
-  }
-  /**
-   * We don't validate synth arg names against synthinfo — unknown args are
-   * silently dropped at SoundLayer normalization. Returning the upstream
-   * default (`true`) keeps existing user code that branches on this read
-   * working. When `use_arg_checks` ships in Tier C, this becomes a real read.
-   */
-  current_arg_checks() {
-    return this._argChecks;
-  }
-  current_timing_guarantees() {
-    return this._timingGuarantees;
-  }
-  /** Deferred set — fires at runtime (interleaved with sleeps). */
-  set(key, value) {
-    this.steps.push({ tag: "set", key, value });
-    return this;
-  }
-  puts(...args2) {
-    const msg = args2.map((a) => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    this.steps.push({ tag: "print", message: msg });
-    return this;
-  }
-  print(...args2) {
-    return this.puts(...args2);
-  }
-  // --- Random (resolved eagerly at build time) ---
-  rrand(min, max) {
-    return this.rng.rrand(min, max);
-  }
-  rrand_i(min, max) {
-    return this.rng.rrand_i(min, max);
-  }
-  rand(...args2) {
-    if (args2.length > 1) {
-      throw new Error(
-        `wrong number of arguments to rand (given ${args2.length}, expected 0..1). For a [min, max] range, use rrand(min, max) instead.`
-      );
-    }
-    const max = args2[0] ?? 1;
-    return this.rng.rrand(0, max);
-  }
-  rand_i(...args2) {
-    if (args2.length > 1) {
-      throw new Error(
-        `wrong number of arguments to rand_i (given ${args2.length}, expected 0..1). For a [min, max] integer range, use rrand_i(min, max) instead.`
-      );
-    }
-    const max = args2[0] ?? 2;
-    return this.rng.rrand_i(0, max - 1);
-  }
-  rand_look() {
-    return this.rng.peek();
-  }
-  choose(arr) {
-    return this.rng.choose(arr);
-  }
-  shuffle(arr) {
-    const items = arr instanceof Ring ? arr.toArray() : [...arr];
-    for (let i2 = items.length - 1; i2 > 0; i2--) {
-      const j = this.rng.rrand_i(0, i2);
-      [items[i2], items[j]] = [items[j], items[i2]];
-    }
-    return new Ring(items);
-  }
-  pick(arr, n = 1) {
-    const items = arr instanceof Ring ? arr.toArray() : [...arr];
-    const result = [];
-    for (let i2 = 0; i2 < n; i2++) {
-      result.push(items[Math.floor(this.rng.next() * items.length)]);
-    }
-    return new Ring(result);
-  }
-  /** Random distribution — returns a value between -max and +max. */
-  rdist(max, centre = 0) {
-    return centre + this.rng.rrand(-max, max);
-  }
-  dice(sides, bonus = 0) {
-    return this.rng.dice(sides) + bonus;
-  }
-  one_in(n) {
-    return this.rng.rrand_i(1, n) === 1;
-  }
-  // --- Tick (resolved at build time, per-builder counter) ---
-  tick(name2 = "__default", opts) {
-    const step = opts?.step ?? 1;
-    const v = (this.ticks.get(name2) ?? -step) + step;
-    this.ticks.set(name2, v);
-    return v;
-  }
-  look(name2 = "__default", offset = 0) {
-    return (this.ticks.get(name2) ?? 0) + offset;
-  }
-  /** Reset a named tick counter (or the default counter). */
-  tick_reset(name2 = "__default") {
-    this.ticks.delete(name2);
-  }
-  /** Reset ALL tick counters. */
-  tick_reset_all() {
-    this.ticks.clear();
-  }
-  /** Set a named tick counter to a specific value. Subsequent `tick(name)` returns value+step. */
-  tick_set(nameOrValue, value) {
-    if (typeof nameOrValue === "number") {
-      this.ticks.set("__default", nameOrValue);
-    } else {
-      this.ticks.set(nameOrValue, value ?? 0);
-    }
-  }
-  // --- Transpose ---
-  /** Set transpose offset (semitones) for all subsequent play calls. */
-  use_transpose(semitones) {
-    this._transpose = semitones;
-    return this;
-  }
-  /** Temporarily set transpose for a block, then restore. */
-  with_transpose(semitones, buildFn) {
-    const prev = this._transpose;
-    this._transpose = semitones;
-    buildFn(this);
-    this._transpose = prev;
-    return this;
-  }
-  /** Temporarily shift by N octaves within block, then restore. */
-  with_octave(octaves, buildFn) {
-    const prev = this._transpose;
-    this._transpose = prev + octaves * 12;
-    buildFn(this);
-    this._transpose = prev;
-    return this;
-  }
-  /** Run block with a specific random seed, then restore. */
-  with_random_seed(seed, buildFn) {
-    const prevState = this.rng.getState();
-    this.rng.reset(seed);
-    buildFn(this);
-    this.rng.setState(prevState);
-    return this;
-  }
-  // --- Synth defaults ---
-  /** Set default synthesis parameters for all subsequent play calls. */
-  use_synth_defaults(opts) {
-    this._synthDefaults = { ...opts };
-    return this;
-  }
-  /** Set default sample parameters for all subsequent sample calls. */
-  use_sample_defaults(opts) {
-    this._sampleDefaults = { ...opts };
-    return this;
-  }
-  /** Temporarily set synth defaults for a block, then restore. */
-  with_synth_defaults(opts, buildFn) {
-    const prev = this._synthDefaults;
-    this._synthDefaults = { ...opts };
-    buildFn(this);
-    this._synthDefaults = prev;
-    return this;
-  }
-  /** Temporarily set sample defaults for a block, then restore. */
-  with_sample_defaults(opts, buildFn) {
-    const prev = this._sampleDefaults;
-    this._sampleDefaults = { ...opts };
-    buildFn(this);
-    this._sampleDefaults = prev;
-    return this;
-  }
-  /** Merge new opts into the existing synth defaults (vs `use_synth_defaults` which replaces). */
-  use_merged_synth_defaults(opts) {
-    this._synthDefaults = { ...this._synthDefaults, ...opts };
-    return this;
-  }
-  /** Merge new opts into the existing sample defaults. */
-  use_merged_sample_defaults(opts) {
-    this._sampleDefaults = { ...this._sampleDefaults, ...opts };
-    return this;
-  }
-  /** Block-form merge of synth defaults — restores the previous map after the block. */
-  with_merged_synth_defaults(opts, buildFn) {
-    const prev = this._synthDefaults;
-    this._synthDefaults = { ...prev, ...opts };
-    buildFn(this);
-    this._synthDefaults = prev;
-    return this;
-  }
-  /** Block-form merge of sample defaults — restores the previous map after the block. */
-  with_merged_sample_defaults(opts, buildFn) {
-    const prev = this._sampleDefaults;
-    this._sampleDefaults = { ...prev, ...opts };
-    buildFn(this);
-    this._sampleDefaults = prev;
-    return this;
-  }
-  // --- BPM block ---
-  /** Temporarily set BPM for a block. Sleeps inside are scaled. Restores previous BPM after. */
-  with_bpm(bpm, buildFn) {
-    const prev = this._currentBpm;
-    this._currentBpm = bpm;
-    this.steps.push({ tag: "useBpm", bpm });
-    buildFn(this);
-    this._currentBpm = prev;
-    this.steps.push({ tag: "useBpm", bpm: prev });
-    return this;
-  }
-  /** Temporarily set synth for a block, then restore. */
-  with_synth(name2, buildFn) {
-    const prev = this.currentSynth;
-    this.currentSynth = name2;
-    this.steps.push({ tag: "useSynth", name: name2 });
-    buildFn(this);
-    this.currentSynth = prev;
-    this.steps.push({ tag: "useSynth", name: prev });
-    return this;
-  }
-  // --- Debug ---
-  /** Permanently set density factor — divides sleep times. */
-  use_density(factor) {
-    this.densityFactor = factor;
-    return this;
-  }
-  /** Run block with density factor — divides sleep times. */
-  with_density(factor, buildFn) {
-    const prev = this.densityFactor;
-    this.densityFactor = prev * factor;
-    buildFn(this);
-    this.densityFactor = prev;
-    return this;
-  }
-  /** Enable/disable debug output. In browser, this is a no-op flag. */
-  use_debug(enabled) {
-    this._debug = enabled;
-    return this;
-  }
-  /** Set schedule-ahead time to 0 for this thread — responsive MIDI input (#149). */
-  use_real_time() {
-    this.steps.push({ tag: "useRealTime" });
-    return this;
-  }
-  /**
-   * Control whether time params (release, attack, phase, etc.) are automatically
-   * BPM-scaled. Default: true (matching Desktop Sonic Pi).
-   * With false, time params are treated as seconds, not beats.
-   */
-  use_arg_bpm_scaling(enabled) {
-    this._argBpmScaling = enabled;
-    return this;
-  }
-  /** Temporarily set arg_bpm_scaling for a block, then restore. */
-  with_arg_bpm_scaling(enabled, buildFn) {
-    const prev = this._argBpmScaling;
-    this._argBpmScaling = enabled;
-    buildFn(this);
-    this._argBpmScaling = prev;
-    return this;
-  }
-  /**
-   * Toggle synth-arg validation. Default: true. We always validate today, so
-   * this primarily exists to gate the validator without surprising users
-   * coming from desktop. `current_arg_checks` reads the same flag.
-   */
-  use_arg_checks(enabled) {
-    this._argChecks = enabled;
-    return this;
-  }
-  /** Block-form arg-checks toggle — restores previous flag after the block. */
-  with_arg_checks(enabled, buildFn) {
-    const prev = this._argChecks;
-    this._argChecks = enabled;
-    buildFn(this);
-    this._argChecks = prev;
-    return this;
-  }
-  /** Block-form debug toggle — restores previous flag after the block. */
-  with_debug(enabled, buildFn) {
-    const prev = this._debug;
-    this._debug = enabled;
-    buildFn(this);
-    this._debug = prev;
-    return this;
-  }
-  /**
-   * Toggle strict-timing mode. Desktop SP drops synth dispatches that miss
-   * their schedule window; in the browser our scheduler is already best-effort
-   * with a generous lookahead, so the flag is recorded for parity but doesn't
-   * change behavior today. `current_timing_guarantees` reads the same flag.
-   */
-  use_timing_guarantees(enabled) {
-    this._timingGuarantees = enabled;
-    return this;
-  }
-  /** Block-form timing-guarantees toggle — restores previous flag after the block. */
-  with_timing_guarantees(enabled, buildFn) {
-    const prev = this._timingGuarantees;
-    this._timingGuarantees = enabled;
-    buildFn(this);
-    this._timingGuarantees = prev;
-    return this;
-  }
-  // --- Utility functions ---
-  /**
-   * Returns true if `val` is divisible by `factor`.
-   * Sonic Pi's `factor?(val, factor)` → `val % factor === 0`
-   */
-  factor_q(val, factor) {
-    return val % factor === 0;
-  }
-  /**
-   * Create a ring of booleans from 0/1 values.
-   * `bools(1,0,1,0)` → Ring([true, false, true, false])
-   */
-  bools(...values2) {
-    return new Ring(values2.map((v) => v !== 0));
-  }
-  /**
-   * `stretch([1,2,3], 2)` → Ring([1,1,2,2,3,3]). Repeat each element n times.
-   * Ruby invocation `[1,2,3].stretch(2)` is the Ring method; this is the bare form.
-   */
-  stretch(arr, n) {
-    const items = arr instanceof Ring ? arr.toArray() : [...arr];
-    const result = [];
-    for (const item of items) {
-      for (let i2 = 0; i2 < n; i2++) result.push(item);
-    }
-    return new Ring(result);
-  }
-  /**
-   * `ramp(60, 64, 67)` → non-cycling ring: clamps to last value instead of wrapping.
-   * Used for envelope-shape iteration that should hold the final value.
-   */
-  ramp(...values2) {
-    return new Ramp(values2);
-  }
-  /**
-   * Play a sequence of notes with timed intervals.
-   * `play_pattern_timed [:c4, :e4, :g4], [0.5, 0.25]`
-   */
-  play_pattern_timed(notes, times, opts) {
-    const timeArr = Array.isArray(times) ? times : [times];
-    for (let i2 = 0; i2 < notes.length; i2++) {
-      this.play(notes[i2], opts);
-      if (i2 < notes.length - 1) {
-        this.sleep(timeArr[i2 % timeArr.length]);
-      }
-    }
-    return this;
-  }
-  /**
-   * Get the duration of a sample in beats. Stub: returns 1.
-   * Real implementation needs SuperSonic bridge access.
-   */
-  sample_duration(_name, _opts) {
-    return 1;
-  }
-  noteToFreq(n) {
-    return midiToFreq5(noteToMidi3(n));
-  }
-  /** Round val to nearest multiple of step. */
-  quantise(val, step) {
-    return Math.round(val / step) * step;
-  }
-  /** Alias for quantise (US spelling). */
-  quantize(val, step) {
-    return this.quantise(val, step);
-  }
-  /** Generate a ring of notes spanning n octaves from root. */
-  octs(note2, numOctaves = 1) {
-    return new Ring(Array.from({ length: numOctaves }, (_, i2) => note2 + i2 * 12));
-  }
-  /** Build the final Program. */
-  build() {
-    return [...this.steps];
-  }
-};
-__name(_ProgramBuilder, "ProgramBuilder");
-var ProgramBuilder = _ProgramBuilder;
-function syncArgsToMap(args2) {
-  if (args2.length === 0) return {};
-  if (args2.length === 1) return args2[0];
-  return args2;
-}
-__name(syncArgsToMap, "syncArgsToMap");
-
-// ../../../sonicPiWeb/src/engine/config.ts
-var MIXER = {
-  /** [TAU] Mixer pre-amplification. Sonic Tau baseline
-   *  (app.bundle.js:1786-1787) for browser WASM. */
-  PRE_AMP: 0.3,
-  /** [TAU] Mixer final amplification. Sonic Tau baseline
-   *  (app.bundle.js:1786-1787) for browser WASM — deliberately soft to
-   *  keep the signal in the linear range below Limiter.ar(0.99). */
-  AMP: 0.8,
-  /** [TAU] High-pass filter cutoff (Hz). Removes subsonic rumble that can
-   *  damage speakers. Desktop SP uses synthdef default. Sonic Tau sends 21
-   *  explicitly (app.bundle.js:1788-1789). */
-  HPF: 21,
-  /** [TAU] Low-pass filter cutoff (MIDI note). Removes ultrasonic content that
-   *  causes aliasing. Desktop SP uses synthdef default. Sonic Tau sends 135.5
-   *  explicitly (app.bundle.js:1790-1791). */
-  LPF: 135.5,
-  /** [TAU] Limiter bypass flag. 0 = limiter active (Limiter.ar threshold=0.99,
-   *  lookahead=10ms). Prevents hard clipping. Sonic Tau sends 0 explicitly
-   *  (app.bundle.js:1792-1793). */
-  LIMITER_BYPASS: 0
-};
-var AUDIO_IO = {
-  /** [SP] Maximum stereo track outputs beyond master. Each track gets a
-   *  stereo pair for per-track level metering and visualization. */
-  MAX_TRACK_OUTPUTS: 6,
-  /** [SP] FFT size for AnalyserNode. Higher = more frequency resolution,
-   *  more latency. 2048 is standard for music visualization. */
-  ANALYSER_FFT_SIZE: 2048,
-  /** [SP] Smoothing constant for AnalyserNode frequency data.
-   *  0 = no smoothing (jumpy), 1 = frozen. 0.8 = smooth for UI. */
-  ANALYSER_SMOOTHING: 0.8};
-var PARAM_RANGES = {
-  // Amplitude & panning
-  amp: [0, null],
-  // v_positive(:amp) — no upper clamp (compression handles it)
-  pan: [-1, 1],
-  // v_between_inclusive(:pan, -1, 1)
-  pre_amp: [0, null],
-  // v_positive(:pre_amp)
-  // ADSR envelope
-  attack: [0, null],
-  // v_positive(:attack)
-  decay: [0, null],
-  // v_positive(:decay)
-  sustain: [0, null],
-  // v_positive(:sustain)
-  release: [0, null],
-  // v_positive(:release)
-  attack_level: [0, null],
-  // v_positive(:attack_level)
-  decay_level: [0, null],
-  // v_positive(:decay_level)
-  sustain_level: [0, null],
-  // v_positive(:sustain_level)
-  // Filters
-  cutoff: [0, 130],
-  // v_positive(:cutoff), v_less_than(:cutoff, 131)
-  lpf: [0, 130],
-  // same as cutoff (alias)
-  hpf: [0, 130],
-  // same range
-  res: [0, 1],
-  // v_positive(:res), v_less_than(:res, 1)
-  // FX
-  mix: [0, 1],
-  // v_between_inclusive(:mix, 0, 1)
-  pre_mix: [0, 1],
-  // v_between_inclusive(:pre_mix, 0, 1)
-  room: [0, 1],
-  // v_between_inclusive(:room, 0, 1)
-  damp: [0, 1],
-  // v_between_inclusive(:damp, 0, 1)
-  // Modulation
-  mod_phase_offset: [0, 1],
-  // v_between_inclusive(:mod_phase_offset, 0, 1)
-  pulse_width: [0, 1],
-  // v_between_exclusive(:pulse_width, 0, 1)
-  dpulse_width: [0, 1],
-  // v_between_exclusive(:dpulse_width, 0, 1)
-  mod_pulse_width: [0, 1],
-  // v_between_exclusive(:mod_pulse_width, 0, 1)
-  // Timing (pre-BPM-scaling, so in beats)
-  phase: [0, null],
-  // v_positive(:phase)
-  mod_phase: [0, null],
-  // v_positive(:mod_phase)
-  // Sample playback
-  rate: [null, null],
-  // no range (negative = reverse)
-  start: [0, 1],
-  // v_between_inclusive(:start, 0, 1)
-  finish: [0, 1],
-  // v_between_inclusive(:finish, 0, 1)
-  // Slide times
-  amp_slide: [0, null],
-  // v_positive(:amp_slide)
-  pan_slide: [0, null],
-  // v_positive(:pan_slide)
-  cutoff_slide: [0, null],
-  // v_positive(:cutoff_slide)
-  // Piano/pluck specific
-  vel: [0, 1],
-  // v_between_inclusive(:vel, 0, 1)
-  hard: [0, 1],
-  // v_between_inclusive(:hard, 0, 1)
-  stereo_width: [0, 1],
-  // v_between_inclusive(:stereo_width, 0, 1)
-  coef: [-1, 1]
-  // v_between_inclusive(:coef, -1, 1)
-};
-
-// ../../../sonicPiWeb/src/engine/SoundLayer.ts
-var SYNTH_NAME_ALIASES = {
-  sine: "beep",
-  // synthinfo.rb:9614 — :sine => Beep.new
-  mod_beep: "mod_sine"
-  // synthinfo.rb — :mod_beep => ModSine.new
-};
-function resolveSynthName(name2) {
-  return SYNTH_NAME_ALIASES[name2] ?? name2;
-}
-__name(resolveSynthName, "resolveSynthName");
-var TIME_PARAMS = /* @__PURE__ */ new Set([
-  // ADSR envelope
-  "attack",
-  "decay",
-  "sustain",
-  "release",
-  // tb303 filter envelope
-  "cutoff_attack",
-  "cutoff_decay",
-  "cutoff_sustain",
-  "cutoff_release",
-  // FX time params — tagged :bpm_scale => true in Sonic Pi's synthinfo.rb.
-  // echo/delay/ping_pong: phase, max_phase
-  // slicer/wobble/tremolo/panslicer/ixi_techno/flanger: phase
-  // flanger: delay
-  "phase",
-  "max_phase",
-  "pre_delay",
-  "delay",
-  // Mod synths: modulation rate (mod_saw, mod_tri, mod_pulse, etc.)
-  "mod_phase"
-]);
-var FX_TIME_DEFAULTS = {
-  echo: { phase: 0.25, decay: 2, max_phase: 2 },
-  delay: { phase: 0.25, decay: 2, max_phase: 2 },
-  // same as echo — synthinfo.rb FXDelay
-  slicer: { phase: 0.25 },
-  wobble: { phase: 0.5 },
-  panslicer: { phase: 0.25 },
-  ixi_techno: { phase: 4 },
-  flanger: { phase: 4 },
-  tremolo: { phase: 4 },
-  ping_pong: { phase: 0.25, max_phase: 1 },
-  chorus: { decay: 1e-5, max_phase: 1 }
-};
-var SYNTH_TIME_DEFAULTS_BASE = {
-  release: 1
-};
-var SYNTH_TIME_DEFAULTS_OVERRIDE = {
-  dark_sea_horn: { attack: 1, release: 4 },
-  growl: { attack: 0.1, release: 1 },
-  hoover: { attack: 0.05, release: 1 },
-  rhodey: { attack: 1e-3, decay: 1, release: 1 },
-  organ_tonewheel: { attack: 0.01, sustain: 1, release: 0.01 },
-  gabberkick: { attack: 1e-3, decay: 0.01, sustain: 0.3, release: 0.02 },
-  singer: { attack: 1, release: 4 },
-  kalimba: { sustain: 4, release: 1 },
-  rodeo: { decay: 1, sustain: 0.8, release: 1 },
-  zawa: { phase: 1, release: 1 },
-  synth_violin: { release: 1 },
-  piano: { release: 1 },
-  pluck: { release: 1 },
-  pretty_bell: { release: 1 },
-  winwood_lead: { release: 1 },
-  // Mod synths: mod_phase needs injection at non-60 BPM
-  mod_saw: { release: 1, mod_phase: 0.25 },
-  mod_dsaw: { release: 1, mod_phase: 0.25 },
-  mod_sine: { release: 1, mod_phase: 0.25 },
-  mod_beep: { release: 1, mod_phase: 0.25 },
-  mod_tri: { release: 1, mod_phase: 0.25 },
-  mod_pulse: { release: 1, mod_phase: 0.25 },
-  mod_fm: { release: 1, mod_phase: 0.25 },
-  // SC808 drums — each has unique decay default (no release, decay controls length)
-  sc808_bassdrum: { decay: 2 },
-  sc808_snare: { decay: 4.2 },
-  sc808_clap: {},
-  // no non-zero time defaults
-  sc808_open_hihat: { decay: 0.5 },
-  sc808_closed_hihat: { decay: 0.42 },
-  sc808_cowbell: { decay: 9.5 },
-  sc808_tom_lo: { decay: 4 },
-  sc808_tom_mid: { decay: 16 },
-  sc808_tom_hi: { decay: 11 },
-  sc808_maracas: { decay: 0.1 },
-  sc808_claves: { decay: 0.1 },
-  sc808_rimshot: { decay: 0.07 },
-  sc808_open_cymbal: { decay: 2 },
-  sc808_conga_lo: { decay: 18 },
-  sc808_conga_mid: { decay: 9 },
-  sc808_conga_hi: { decay: 6 }
-};
-var SYMBOL_DEFAULTS = [
-  ["decay_level", "sustain_level"]
-];
-var STRIP_PARAMS = /* @__PURE__ */ new Set([
-  "on",
-  // conditional trigger flag — should_trigger? mutates args_h
-  "slide",
-  // global slide propagation (expanded before stripping)
-  "duration",
-  // converted to sustain by calculateSustain before stripping
-  "beat_stretch",
-  // handled by translateSampleOpts before this stage
-  "pitch_stretch",
-  "rpitch",
-  "_argBpmScaling",
-  // use_arg_bpm_scaling flag — consumed by normalize, not sent to scsynth
-  "reps",
-  // with_fx repeat count — consumed by AudioInterpreter
-  "kill_delay"
-  // with_fx kill delay — consumed by AudioInterpreter
-]);
-var SLIDE_PARAMS = [
-  "amp_slide",
-  "pan_slide",
-  "cutoff_slide",
-  "lpf_slide",
-  "hpf_slide",
-  "res_slide",
-  "note_slide",
-  "pitch_slide",
-  "attack_slide",
-  "decay_slide",
-  "sustain_slide",
-  "release_slide"
-];
-var SYNTH_ALIASES = {
-  sc808_snare: [["cutoff", "lpf"]],
-  sc808_clap: [["cutoff", "lpf"]],
-  dpulse: [["dpulse_width", "pulse_width"]]
-};
-function normalizePlayParams(synthName, params, bpm, warnFn) {
-  const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
-  let p = { ...params };
-  p = calculateSustain(p);
-  p = expandSlideParam(p);
-  p = stripNonScynthParams(p);
-  p = resolveSymbolDefaults(p);
-  p = injectMandatoryDefaults(p);
-  p = injectSynthTimeDefaults(synthName, p);
-  p = aliasSynthParams(synthName, p);
-  p = mungeSynthOpts(synthName, p);
-  p = validateAndClamp(p, warnFn);
-  if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
-  return p;
-}
-__name(normalizePlayParams, "normalizePlayParams");
-function normalizeSampleParams(params, bpm, warnFn) {
-  const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
-  let p = { ...params };
-  p = calculateSustain(p);
-  p = expandSlideParam(p);
-  p = stripNonScynthParams(p);
-  p = injectSampleDefaults(p);
-  p = validateAndClamp(p, warnFn);
-  if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
-  return p;
-}
-__name(normalizeSampleParams, "normalizeSampleParams");
-function normalizeControlParams(params, bpm, warnFn) {
-  const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
-  let p = { ...params };
-  p = stripNonScynthParams(p);
-  p = validateAndClamp(p, warnFn);
-  if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
-  return p;
-}
-__name(normalizeControlParams, "normalizeControlParams");
-function normalizeFxParams(fxName, params, bpm, warnFn) {
-  const shouldScaleBpm = !("_argBpmScaling" in params && !params._argBpmScaling);
-  let p = { ...params };
-  p = stripNonScynthParams(p);
-  p = resolveSymbolDefaults(p);
-  p = injectFxTimeDefaults(fxName, p);
-  p = validateAndClamp(p, warnFn);
-  if (shouldScaleBpm) p = scaleTimeParamsToBpm(p, bpm);
-  return p;
-}
-__name(normalizeFxParams, "normalizeFxParams");
-function calculateSustain(params) {
-  if (!("duration" in params)) return params;
-  if ("sustain" in params) return params;
-  const duration = params.duration;
-  const attack = params.attack ?? 0;
-  const decay = params.decay ?? 0;
-  const release = params.release ?? 1;
-  const sustain = Math.max(0, duration - attack - decay - release);
-  const p = { ...params };
-  p.sustain = sustain;
-  return p;
-}
-__name(calculateSustain, "calculateSustain");
-function expandSlideParam(params) {
-  if (!("slide" in params)) return params;
-  const slideValue = params.slide;
-  const p = { ...params };
-  for (const key of SLIDE_PARAMS) {
-    if (!(key in p)) p[key] = slideValue;
-  }
-  return p;
-}
-__name(expandSlideParam, "expandSlideParam");
-function stripNonScynthParams(params) {
-  for (const key of STRIP_PARAMS) {
-    if (key in params) {
-      const p = { ...params };
-      for (const k of STRIP_PARAMS) delete p[k];
-      return p;
-    }
-  }
-  return params;
-}
-__name(stripNonScynthParams, "stripNonScynthParams");
-function resolveSymbolDefaults(params) {
-  let p = params;
-  for (const [param, targetParam] of SYMBOL_DEFAULTS) {
-    if (!(param in p) && targetParam in p) {
-      if (p === params) p = { ...params };
-      p[param] = p[targetParam];
-    }
-  }
-  return p;
-}
-__name(resolveSymbolDefaults, "resolveSymbolDefaults");
-function injectMandatoryDefaults(params) {
-  return params;
-}
-__name(injectMandatoryDefaults, "injectMandatoryDefaults");
-function injectSynthTimeDefaults(synthName, params) {
-  const name2 = synthName.replace(/^sonic-pi-/, "");
-  const defaults = SYNTH_TIME_DEFAULTS_OVERRIDE[name2] ?? SYNTH_TIME_DEFAULTS_BASE;
-  let p = params;
-  for (const [key, val] of Object.entries(defaults)) {
-    if (!(key in p)) {
-      if (p === params) p = { ...params };
-      p[key] = val;
-    }
-  }
-  return p;
-}
-__name(injectSynthTimeDefaults, "injectSynthTimeDefaults");
-function injectFxTimeDefaults(fxName, params) {
-  const name2 = fxName.replace(/^(sonic-pi-)?fx_/, "");
-  const defaults = FX_TIME_DEFAULTS[name2];
-  if (!defaults) return params;
-  let p = params;
-  for (const [key, val] of Object.entries(defaults)) {
-    if (!(key in p)) {
-      if (p === params) p = { ...params };
-      p[key] = val;
-    }
-  }
-  return p;
-}
-__name(injectFxTimeDefaults, "injectFxTimeDefaults");
-function injectSampleDefaults(params) {
-  const hasEnvelope = "attack" in params || "decay" in params || "sustain" in params || "release" in params;
-  if (hasEnvelope) {
-    const p = { ...params };
-    if (!("pre_amp" in p)) p.pre_amp = 1;
-    return p;
-  }
-  return params;
-}
-__name(injectSampleDefaults, "injectSampleDefaults");
-function aliasSynthParams(synthName, params) {
-  const name2 = synthName.replace(/^sonic-pi-/, "");
-  const aliases = SYNTH_ALIASES[name2];
-  if (!aliases) return params;
-  let p = params;
-  for (const [from, to] of aliases) {
-    if (from in p && !(to in p)) {
-      if (p === params) p = { ...params };
-      p[to] = p[from];
-      delete p[from];
-    }
-  }
-  return p;
-}
-__name(aliasSynthParams, "aliasSynthParams");
-function mungeSynthOpts(synthName, params) {
-  const name2 = synthName.replace(/^sonic-pi-/, "");
-  if (name2 === "tb303") {
-    const p = { ...params };
-    if (p.attack != null && p.cutoff_attack == null) p.cutoff_attack = p.attack;
-    if (p.decay != null && p.cutoff_decay == null) p.cutoff_decay = p.decay;
-    if (p.sustain != null && p.cutoff_sustain == null) p.cutoff_sustain = p.sustain;
-    if (p.release != null && p.cutoff_release == null) p.cutoff_release = p.release;
-    if (p.cutoff_min == null) p.cutoff_min = 30;
-    return p;
-  }
-  return params;
-}
-__name(mungeSynthOpts, "mungeSynthOpts");
-function validateAndClamp(params, warnFn) {
-  let p = params;
-  for (const key of Object.keys(params)) {
-    const range2 = PARAM_RANGES[key];
-    if (!range2) continue;
-    const [min, max] = range2;
-    const val = p[key];
-    if (val < 0 && TIME_PARAMS.has(key)) continue;
-    if (min !== null && val < min) {
-      if (p === params) p = { ...params };
-      p[key] = min;
-      warnFn?.(`${key}: ${val} clamped to ${min} (min)`);
-    } else if (max !== null && val > max) {
-      if (p === params) p = { ...params };
-      p[key] = max;
-      warnFn?.(`${key}: ${val} clamped to ${max} (max)`);
-    }
-  }
-  return p;
-}
-__name(validateAndClamp, "validateAndClamp");
-function scaleTimeParamsToBpm(params, bpm) {
-  if (bpm === 60) return params;
-  const factor = 60 / bpm;
-  let p = params;
-  for (const key of Object.keys(params)) {
-    if (TIME_PARAMS.has(key) || key.endsWith("_slide")) {
-      if (p[key] < 0) continue;
-      if (p === params) p = { ...params };
-      p[key] = p[key] * factor;
-    }
-  }
-  return p;
-}
-__name(scaleTimeParamsToBpm, "scaleTimeParamsToBpm");
-function translateSampleOpts(opts, bpm, sampleDuration) {
-  if (!opts) return {};
-  const result = {};
-  for (const [key, value] of Object.entries(opts)) {
-    switch (key) {
-      case "beat_stretch": {
-        const existingRate = result["rate"] ?? 1;
-        if (sampleDuration !== null) {
-          result["rate"] = 1 / value * existingRate * (bpm / (60 / sampleDuration));
-        } else {
-          result["rate"] = existingRate / value;
-        }
-        break;
-      }
-      case "pitch_stretch": {
-        const existingRate = result["rate"] ?? 1;
-        const existingPitch = result["pitch"] ?? 0;
-        if (sampleDuration !== null) {
-          const newRate = 1 / value * (bpm / (60 / sampleDuration));
-          const pitchShift = 12 * Math.log2(newRate);
-          result["rate"] = newRate * existingRate;
-          result["pitch"] = existingPitch - pitchShift;
-        } else {
-          result["rate"] = existingRate / value;
-        }
-        break;
-      }
-      case "rpitch":
-        result["rate"] = (result["rate"] ?? 1) * Math.pow(2, value / 12);
-        break;
-      // Sonic Pi aliases: sample players use 'lpf'/'hpf', not 'cutoff'
-      case "cutoff":
-        result["lpf"] = value;
-        break;
-      case "cutoff_slide":
-        result["lpf_slide"] = value;
-        break;
-      default:
-        result[key] = value;
-        break;
-    }
-  }
-  return result;
-}
-__name(translateSampleOpts, "translateSampleOpts");
-var SIMPLE_SAMPLER_ARGS = /* @__PURE__ */ new Set([
-  "amp",
-  "amp_slide",
-  "amp_slide_shape",
-  "amp_slide_curve",
-  "pan",
-  "pan_slide",
-  "pan_slide_shape",
-  "pan_slide_curve",
-  "cutoff",
-  "cutoff_slide",
-  "cutoff_slide_shape",
-  "cutoff_slide_curve",
-  "lpf",
-  "lpf_slide",
-  "lpf_slide_shape",
-  "lpf_slide_curve",
-  "hpf",
-  "hpf_slide",
-  "hpf_slide_shape",
-  "hpf_slide_curve",
-  "rate",
-  "slide",
-  "beat_stretch",
-  "rpitch",
-  "attack",
-  "decay",
-  "sustain",
-  "release",
-  "attack_level",
-  "decay_level",
-  "sustain_level",
-  "env_curve",
-  // Internal params (stripped before sending to scsynth)
-  "on",
-  "duration",
-  "pitch_stretch",
-  // Our internal params
-  "_srcLine",
-  "out_bus",
-  "_argBpmScaling"
-]);
-function selectSamplePlayer(opts) {
-  if (!opts) return "sonic-pi-basic_stereo_player";
-  for (const key of Object.keys(opts)) {
-    if (!SIMPLE_SAMPLER_ARGS.has(key)) {
-      return "sonic-pi-stereo_player";
-    }
-  }
-  return "sonic-pi-basic_stereo_player";
-}
-__name(selectSamplePlayer, "selectSamplePlayer");
-
-// ../../../sonicPiWeb/src/engine/interpreters/AudioInterpreter.ts
-var NOTE_EVENT_VISUAL_DURATION = 0.25;
-var SAMPLE_EVENT_VISUAL_DURATION = 0.5;
-async function runProgram(program, ctx, fxCounter) {
-  if (!fxCounter) fxCounter = { value: 0 };
-  let currentSynth = "beep";
-  let currentBpm = ctx.scheduler.getTask(ctx.taskId)?.bpm ?? 60;
-  let nextNodeRef = 1;
-  for (const step of program) {
-    const task = ctx.scheduler.getTask(ctx.taskId);
-    if (!task?.running) break;
-    switch (step.tag) {
-      case "play": {
-        if ("on" in step.opts && !step.opts.on) break;
-        if (!Number.isFinite(step.note)) {
-          const reason = step.noteName !== void 0 ? `"${step.noteName}" isn't a valid note name (use e.g. 60, :c4, :eb3)` : `note resolved to ${step.note}. Check for division by zero or invalid arithmetic (e.g. \`play 60 / 0\`).`;
-          ctx.printHandler?.(`[Warning] play skipped \u2014 ${reason}`);
-          break;
-        }
-        const audioTime = task.virtualTime + ctx.schedAheadTime;
-        const synth = resolveSynthName(step.synth ?? currentSynth);
-        const nodeRef = nextNodeRef++;
-        if (ctx.bridge) {
-          if ((synth === "sound_in" || synth === "sound_in_stereo") && !ctx.bridge.isLiveAudioStreaming(synth)) {
-            ctx.bridge.startLiveAudio(synth, { stereo: synth === "sound_in_stereo" }).catch((err2) => ctx.printHandler?.(`Mic input failed: ${err2.message}`));
-          }
-          step.opts.note = step.note;
-          const playWarn = ctx.printHandler ? (m) => ctx.printHandler(`[Warning] play :${synth} \u2014 ${m}`) : void 0;
-          const params = normalizePlayParams(synth, step.opts, currentBpm, playWarn);
-          params.out_bus = task.outBus;
-          ctx.bridge.triggerSynth(synth, audioTime, params).then((realNodeId) => ctx.nodeRefMap.set(nodeRef, realNodeId)).catch((err2) => {
-            ctx.printHandler?.(`Synth '${synth}' failed: ${err2.message}`);
-          });
-        }
-        const audioCtxTime = ctx.bridge?.audioContext?.currentTime ?? 0;
-        ctx.eventStream.emitEvent({
-          audioTime,
-          audioDuration: NOTE_EVENT_VISUAL_DURATION,
-          scheduledAheadMs: (audioTime - audioCtxTime) * 1e3,
-          midiNote: step.note,
-          s: synth,
-          srcLine: step.srcLine ?? null,
-          trackId: ctx.taskId
-        });
-        break;
-      }
-      case "sample": {
-        if (step.opts && "on" in step.opts && !step.opts.on) break;
-        const audioTime = task.virtualTime + ctx.schedAheadTime;
-        if (ctx.bridge) {
-          const sampleOpts = task.outBus !== 0 ? { ...step.opts, out_bus: task.outBus } : step.opts;
-          ctx.bridge.playSample(step.name, audioTime, sampleOpts, currentBpm).catch((err2) => {
-            ctx.printHandler?.(`Sample '${step.name}' failed: ${err2.message}`);
-          });
-        }
-        const audioCtxTime = ctx.bridge?.audioContext?.currentTime ?? 0;
-        ctx.eventStream.emitEvent({
-          audioTime,
-          audioDuration: SAMPLE_EVENT_VISUAL_DURATION,
-          scheduledAheadMs: (audioTime - audioCtxTime) * 1e3,
-          midiNote: null,
-          s: step.name,
-          srcLine: step.srcLine ?? null,
-          trackId: ctx.taskId
-        });
-        break;
-      }
-      case "sleep":
-        ctx.bridge?.flushMessages();
-        await ctx.scheduler.scheduleSleep(ctx.taskId, step.beats);
-        break;
-      case "useSynth":
-        currentSynth = resolveSynthName(step.name);
-        if (task) task.currentSynth = currentSynth;
-        break;
-      case "useBpm":
-        currentBpm = step.bpm;
-        if (task) task.bpm = step.bpm;
-        break;
-      case "useRealTime":
-        ctx.schedAheadTime = 0;
-        break;
-      case "control": {
-        const realNodeId = ctx.nodeRefMap.get(step.nodeRef);
-        if (realNodeId && ctx.bridge) {
-          const audioTime = task.virtualTime + ctx.schedAheadTime;
-          const ctlWarn = ctx.printHandler ? (m) => ctx.printHandler(`[Warning] control \u2014 ${m}`) : void 0;
-          const normalized = normalizeControlParams(step.params, currentBpm, ctlWarn);
-          const paramList = [];
-          for (const [k, v] of Object.entries(normalized)) {
-            paramList.push(k, v);
-          }
-          ctx.bridge.sendTimedControl(audioTime, realNodeId, paramList);
-        }
-        break;
-      }
-      case "kill": {
-        const killNodeId = ctx.nodeRefMap.get(step.nodeRef);
-        if (killNodeId && ctx.bridge) {
-          ctx.bridge.freeNode(killNodeId);
-        }
-        break;
-      }
-      case "cue":
-        ctx.scheduler.fireCue(step.name, ctx.taskId, step.args ?? []);
-        break;
-      case "set":
-        if (ctx.globalStore) {
-          ctx.globalStore.set(step.key, step.value);
-        }
-        break;
-      case "sync": {
-        ctx.bridge?.flushMessages();
-        const payload = await ctx.scheduler.waitForSync(step.name, ctx.taskId);
-        if (step.bpmSync) {
-          currentBpm = payload.bpm;
-          if (task) task.bpm = payload.bpm;
-        }
-        break;
-      }
-      case "fx": {
-        const reps = step.opts.reps ?? 1;
-        if (!ctx.bridge) {
-          for (let rep = 0; rep < reps; rep++) await runProgram(step.body, ctx, fxCounter);
-          break;
-        }
-        const fxIndex = fxCounter.value++;
-        const fxKey = `${ctx.taskId}:fx${fxIndex}`;
-        const prevOutBus = task.outBus;
-        const existing = ctx.reusableFx.get(fxKey);
-        if (existing) {
-          if (existing.killTimer) {
-            existing.killTimer.cancel();
-            existing.killTimer = void 0;
-          }
-          if (step.nodeRef && existing.nodeId !== void 0) {
-            ctx.nodeRefMap.set(step.nodeRef, existing.nodeId);
-          }
-          task.outBus = existing.bus;
-          try {
-            for (let rep = 0; rep < reps; rep++) await runProgram(step.body, ctx, fxCounter);
-          } finally {
-            task.outBus = prevOutBus;
-            ctx.bridge.flushMessages();
-            if (ctx.reusableFx.get(fxKey) === existing) {
-              const killDelay = step.opts.kill_delay ?? 1;
-              const killAt = task.virtualTime + killDelay;
-              existing.killTimer = ctx.scheduler.scheduleAtVirtualTime(killAt, () => {
-                ctx.bridge.freeNode(existing.nodeId);
-                ctx.bridge.freeGroup(existing.groupId);
-                ctx.bridge.freeBus(existing.bus);
-                ctx.reusableFx.delete(fxKey);
-              });
-            }
-          }
-        } else {
-          const newBus = ctx.bridge.allocateBus();
-          const fxGroupId = ctx.bridge.createFxGroup();
-          let fxNodeId;
-          try {
-            const audioTime = task.virtualTime + ctx.schedAheadTime;
-            const fxWarn = ctx.printHandler ? (m) => ctx.printHandler(`[Warning] with_fx :${step.name} \u2014 ${m}`) : void 0;
-            const fxOpts = normalizeFxParams(step.name, step.opts, currentBpm, fxWarn);
-            fxNodeId = await ctx.bridge.applyFx(step.name, audioTime, fxOpts, newBus, prevOutBus);
-            if (step.nodeRef && fxNodeId !== void 0) {
-              ctx.nodeRefMap.set(step.nodeRef, fxNodeId);
-            }
-            task.outBus = newBus;
-            ctx.bridge.flushMessages();
-            const state4 = {
-              bus: newBus,
-              groupId: fxGroupId,
-              nodeId: fxNodeId,
-              outBus: prevOutBus
-            };
-            ctx.reusableFx.set(fxKey, state4);
-            for (let rep = 0; rep < reps; rep++) await runProgram(step.body, ctx, fxCounter);
-          } finally {
-            task.outBus = prevOutBus;
-            ctx.bridge.flushMessages();
-            const killDelay = step.opts.kill_delay ?? 1;
-            const state4 = ctx.reusableFx.get(fxKey);
-            if (state4) {
-              const killAt = task.virtualTime + killDelay;
-              state4.killTimer = ctx.scheduler.scheduleAtVirtualTime(killAt, () => {
-                ctx.bridge.freeNode(state4.nodeId);
-                ctx.bridge.freeGroup(state4.groupId);
-                ctx.bridge.freeBus(state4.bus);
-                ctx.reusableFx.delete(fxKey);
-              });
-            }
-          }
-        }
-        break;
-      }
-      case "thread": {
-        const task2 = ctx.scheduler.getTask(ctx.taskId);
-        if (!task2) break;
-        const threadName = `${ctx.taskId}__thread_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const threadBody = step.body;
-        ctx.scheduler.registerLoop(threadName, async () => {
-          await runProgram(threadBody, {
-            ...ctx,
-            taskId: threadName
-          });
-          const t = ctx.scheduler.getTask(threadName);
-          if (t) t.running = false;
-        }, {
-          bpm: task2.bpm,
-          synth: task2.currentSynth,
-          outBus: task2.outBus
-        });
-        break;
-      }
-      case "liveAudio": {
-        if (ctx.bridge) {
-          if (step.stop) {
-            ctx.bridge.stopLiveAudio(step.name);
-          } else {
-            ctx.bridge.startLiveAudio(step.name, { stereo: !!step.opts.stereo }).catch((err2) => ctx.printHandler?.(`live_audio failed: ${err2.message}`));
-          }
-        }
-        break;
-      }
-      case "oscSend":
-        if (ctx.oscHandler) {
-          ctx.oscHandler(step.host, step.port, step.path, ...step.args);
-        } else {
-          ctx.printHandler?.(`[Warning] osc_send: no handler set \u2014 message to ${step.host}:${step.port}${step.path} dropped`);
-        }
-        break;
-      case "print":
-        ctx.printHandler?.(step.message);
-        break;
-      case "stop":
-        ctx.bridge?.flushMessages();
-        if (task) task.running = false;
-        return;
-      // --- Deferred-step DSL fixes (issue #193) ---
-      case "stopLoop":
-        ctx.scheduler.stopLoop(step.name);
-        break;
-      case "setVolume": {
-        const vol = Math.max(0, Math.min(5, step.vol));
-        if (ctx.onVolumeChange) {
-          ctx.onVolumeChange(vol);
-        } else {
-          ctx.bridge?.setMasterVolume(vol / 5);
-        }
-        break;
-      }
-      case "setMixerControl":
-        ctx.bridge?.setMixerControl(step.opts);
-        break;
-      case "resetMixer":
-        ctx.bridge?.resetMixer();
-        break;
-      case "useOsc":
-        break;
-      case "recordingStart":
-        await ctx.onRecordingEvent?.("start");
-        break;
-      case "recordingStop":
-        await ctx.onRecordingEvent?.("stop");
-        break;
-      case "recordingSave":
-        await ctx.onRecordingEvent?.("save", step.filename);
-        break;
-      case "recordingDelete":
-        await ctx.onRecordingEvent?.("delete");
-        break;
-      case "midiOut": {
-        const mb = ctx.midiBridge;
-        if (!mb) break;
-        const a = step.args;
-        switch (step.kind) {
-          case "noteOn": {
-            const [note2, vel, ch] = a;
-            const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
-            mb.noteOn(n, vel, ch);
-            break;
-          }
-          case "noteOff": {
-            const [note2, ch, sustainBeats] = a;
-            const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
-            if (sustainBeats > 0) {
-              const seconds = sustainBeats * 60 / currentBpm;
-              mb.scheduleNoteOff(n, ch, seconds);
-            } else {
-              mb.noteOff(n, ch);
-            }
-            break;
-          }
-          case "cc": {
-            const [c, v, ch] = a;
-            mb.cc(c, v, ch);
-            break;
-          }
-          case "pitchBend": {
-            const [v, ch] = a;
-            mb.pitchBend(v, ch);
-            break;
-          }
-          case "channelPressure": {
-            const [v, ch] = a;
-            mb.channelPressure(v, ch);
-            break;
-          }
-          case "polyPressure": {
-            const [n, v, ch] = a;
-            mb.polyPressure(n, v, ch);
-            break;
-          }
-          case "progChange": {
-            const [p, ch] = a;
-            mb.programChange(p, ch);
-            break;
-          }
-          case "clockTick":
-            mb.clockTick();
-            break;
-          case "start":
-            mb.midiStart();
-            break;
-          case "stop":
-            mb.midiStop();
-            break;
-          case "continue":
-            mb.midiContinue();
-            break;
-          case "allNotesOff": {
-            const [ch] = a;
-            mb.allNotesOff(ch);
-            break;
-          }
-        }
-        break;
-      }
-    }
-  }
-  ctx.bridge?.flushMessages();
-}
-__name(runProgram, "runProgram");
-
-// ../../../sonicPiWeb/src/engine/interpreters/QueryInterpreter.ts
-function queryProgram(program, begin, end, bpm, startTime = 0) {
-  const events = [];
-  let time = startTime;
-  let currentSynth = "beep";
-  let currentBpm = bpm;
-  const beatDuration = /* @__PURE__ */ __name(() => 60 / currentBpm, "beatDuration");
-  for (const step of program) {
-    if (time > end) break;
-    switch (step.tag) {
-      case "play":
-        if (time >= begin) {
-          events.push({
-            type: "synth",
-            time,
-            duration: (step.opts.release ?? 0.25) * beatDuration(),
-            params: { synth: step.synth ?? currentSynth, note: step.note, ...step.opts }
-          });
-        }
-        break;
-      case "sample":
-        if (time >= begin) {
-          events.push({
-            type: "sample",
-            time,
-            duration: null,
-            // real duration depends on sample file
-            params: { name: step.name, ...step.opts }
-          });
-        }
-        break;
-      case "sleep":
-        time += step.beats * beatDuration();
-        break;
-      case "useSynth":
-        currentSynth = step.name;
-        break;
-      case "useBpm":
-        currentBpm = step.bpm;
-        break;
-      case "fx": {
-        const fxEvents = queryProgram(step.body, begin, end, currentBpm, time);
-        events.push(...fxEvents);
-        const fxResult = programDurationAndBpm(step.body, currentBpm);
-        time += fxResult.duration;
-        currentBpm = fxResult.finalBpm;
-        break;
-      }
-      case "thread": {
-        const threadEvents = queryProgram(step.body, begin, end, currentBpm, time);
-        events.push(...threadEvents);
-        break;
-      }
-      case "stop":
-        return events;
-    }
-  }
-  return events;
-}
-__name(queryProgram, "queryProgram");
-function programDurationAndBpm(program, bpm) {
-  let dur = 0;
-  let currentBpm = bpm;
-  for (const step of program) {
-    if (step.tag === "sleep") dur += step.beats * (60 / currentBpm);
-    if (step.tag === "useBpm") currentBpm = step.bpm;
-    if (step.tag === "fx") {
-      const inner = programDurationAndBpm(step.body, currentBpm);
-      dur += inner.duration;
-      currentBpm = inner.finalBpm;
-    }
-  }
-  return { duration: dur, finalBpm: currentBpm };
-}
-__name(programDurationAndBpm, "programDurationAndBpm");
-function programDuration(program, bpm) {
-  return programDurationAndBpm(program, bpm).duration;
-}
-__name(programDuration, "programDuration");
-function queryLoopProgram(input, begin, end, bpm) {
-  const isFactory = typeof input === "function";
-  let ticks;
-  let firstProgram;
-  if (isFactory) {
-    const result = input(void 0, 0);
-    firstProgram = result.program;
-    ticks = result.ticks;
-  } else {
-    firstProgram = input;
-  }
-  const iterDuration = programDuration(firstProgram, bpm);
-  if (iterDuration <= 0) return [];
-  const events = [];
-  const firstIter = Math.floor(begin / iterDuration);
-  const lastIter = Math.ceil(end / iterDuration);
-  for (let i2 = firstIter; i2 <= lastIter; i2++) {
-    const iterStart = i2 * iterDuration;
-    let program;
-    if (isFactory && i2 > firstIter) {
-      const result = input(ticks, i2);
-      program = result.program;
-      ticks = result.ticks;
-    } else {
-      program = firstProgram;
-    }
-    const iterEvents = queryProgram(program, begin, end, bpm, iterStart);
-    events.push(...iterEvents);
-  }
-  return events.sort((a, b) => a.time - b.time);
-}
-__name(queryLoopProgram, "queryLoopProgram");
-
-// ../../../sonicPiWeb/src/engine/osc.ts
-var NTP_EPOCH_OFFSET = 2208988800;
-function audioTimeToNTP(audioTime, audioCtxCurrentTime) {
-  const wallNow = (performance.timeOrigin + performance.now()) / 1e3;
-  const delta = audioTime - audioCtxCurrentTime;
-  return wallNow + delta + NTP_EPOCH_OFFSET;
-}
-__name(audioTimeToNTP, "audioTimeToNTP");
-function pad4(n) {
-  return n + 3 & -4;
-}
-__name(pad4, "pad4");
-var SINGLE_BUF = new ArrayBuffer(4096);
-var SINGLE_DV = new DataView(SINGLE_BUF);
-var MSG_BUF = new ArrayBuffer(4096);
-var MSG_DV = new DataView(MSG_BUF);
-var MULTI_BUF = new ArrayBuffer(65536);
-var MULTI_DV = new DataView(MULTI_BUF);
-function writeString2(dv, off, s) {
-  const start2 = off;
-  for (let i2 = 0; i2 < s.length; i2++) dv.setUint8(off++, s.charCodeAt(i2));
-  const end = start2 + pad4(s.length + 1);
-  while (off < end) dv.setUint8(off++, 0);
-  return off;
-}
-__name(writeString2, "writeString");
-function writeNTP(dv, off, ntpTime) {
-  const secs = Math.floor(ntpTime) >>> 0;
-  const frac = (ntpTime - Math.floor(ntpTime)) * 4294967296 >>> 0;
-  dv.setUint32(off, secs, false);
-  off += 4;
-  dv.setUint32(off, frac, false);
-  off += 4;
-  return off;
-}
-__name(writeNTP, "writeNTP");
-function writeBundleTag(dv, off) {
-  dv.setUint8(off++, 35);
-  dv.setUint8(off++, 98);
-  dv.setUint8(off++, 117);
-  dv.setUint8(off++, 110);
-  dv.setUint8(off++, 100);
-  dv.setUint8(off++, 108);
-  dv.setUint8(off++, 101);
-  dv.setUint8(off++, 0);
-  return off;
-}
-__name(writeBundleTag, "writeBundleTag");
-function writeArgs(dv, off, args2) {
-  let types = ",";
-  for (let i2 = 0; i2 < args2.length; i2++) {
-    const a = args2[i2];
-    types += typeof a === "string" ? "s" : Number.isInteger(a) ? "i" : "f";
-  }
-  off = writeString2(dv, off, types);
-  for (let i2 = 0; i2 < args2.length; i2++) {
-    const a = args2[i2];
-    if (typeof a === "string") {
-      off = writeString2(dv, off, a);
-    } else if (Number.isInteger(a)) {
-      dv.setInt32(off, a, false);
-      off += 4;
-    } else {
-      dv.setFloat32(off, a, false);
-      off += 4;
-    }
-  }
-  return off;
-}
-__name(writeArgs, "writeArgs");
-function encodeSingleBundle(ntpTime, address, args2) {
-  let off = 0;
-  off = writeBundleTag(SINGLE_DV, off);
-  off = writeNTP(SINGLE_DV, off, ntpTime);
-  const sizeOff = off;
-  off += 4;
-  const msgStart = off;
-  off = writeString2(SINGLE_DV, off, address);
-  off = writeArgs(SINGLE_DV, off, args2);
-  SINGLE_DV.setUint32(sizeOff, off - msgStart, false);
-  return new Uint8Array(SINGLE_BUF, 0, off);
-}
-__name(encodeSingleBundle, "encodeSingleBundle");
-function encodeMessage(address, args2) {
-  let off = 0;
-  off = writeString2(MSG_DV, off, address);
-  off = writeArgs(MSG_DV, off, args2);
-  return new Uint8Array(MSG_BUF, 0, off);
-}
-__name(encodeMessage, "encodeMessage");
-function encodeBundle(ntpTime, messages) {
-  let off = 0;
-  off = writeBundleTag(MULTI_DV, off);
-  off = writeNTP(MULTI_DV, off, ntpTime);
-  for (const msg of messages) {
-    const msgBytes = encodeMessage(msg.address, msg.args);
-    MULTI_DV.setUint32(off, msgBytes.length, false);
-    off += 4;
-    new Uint8Array(MULTI_BUF, off, msgBytes.length).set(msgBytes);
-    off += msgBytes.length;
-  }
-  return new Uint8Array(MULTI_BUF, 0, off);
-}
-__name(encodeBundle, "encodeBundle");
-
-// ../../../sonicPiWeb/src/engine/buildTrackMonitorSynthDef.ts
-var RATE_CONTROL = 1;
-var RATE_AUDIO = 2;
-var BINOP_MULTIPLY = 2;
-function writePstring(view, offset, s) {
-  view.setUint8(offset, s.length);
-  offset += 1;
-  for (let i2 = 0; i2 < s.length; i2++) {
-    view.setUint8(offset + i2, s.charCodeAt(i2));
-  }
-  return offset + s.length;
-}
-__name(writePstring, "writePstring");
-function writeUGen(view, offset, name2, rate, inputs, numOutputs, outputRate, special = 0) {
-  offset = writePstring(view, offset, name2);
-  view.setInt8(offset, rate);
-  offset += 1;
-  view.setInt16(offset, inputs.length, false);
-  offset += 2;
-  view.setInt16(offset, numOutputs, false);
-  offset += 2;
-  view.setInt16(offset, special, false);
-  offset += 2;
-  for (const [ugenIdx, outIdx] of inputs) {
-    view.setInt16(offset, ugenIdx, false);
-    offset += 2;
-    view.setInt16(offset, outIdx, false);
-    offset += 2;
-  }
-  for (let i2 = 0; i2 < numOutputs; i2++) {
-    view.setInt8(offset, outputRate);
-    offset += 1;
-  }
-  return offset;
-}
-__name(writeUGen, "writeUGen");
-function writeParamName(view, offset, name2, index) {
-  offset = writePstring(view, offset, name2);
-  view.setInt16(offset, index, false);
-  return offset + 2;
-}
-__name(writeParamName, "writeParamName");
-function buildTrackMonitorSynthDef() {
-  const buf = new ArrayBuffer(246);
-  const view = new DataView(buf);
-  let o = 0;
-  view.setUint8(o, 83);
-  o += 1;
-  view.setUint8(o, 67);
-  o += 1;
-  view.setUint8(o, 103);
-  o += 1;
-  view.setUint8(o, 102);
-  o += 1;
-  view.setInt32(o, 1, false);
-  o += 4;
-  view.setInt16(o, 1, false);
-  o += 2;
-  o = writePstring(view, o, "sonic_pi_track_monitor");
-  view.setInt16(o, 0, false);
-  o += 2;
-  view.setInt16(o, 4, false);
-  o += 2;
-  view.setFloat32(o, 0, false);
-  o += 4;
-  view.setFloat32(o, 0, false);
-  o += 4;
-  view.setFloat32(o, 0, false);
-  o += 4;
-  view.setFloat32(o, 1, false);
-  o += 4;
-  view.setInt16(o, 4, false);
-  o += 2;
-  o = writeParamName(view, o, "in_bus", 0);
-  o = writeParamName(view, o, "out_bus_master", 1);
-  o = writeParamName(view, o, "out_bus_track", 2);
-  o = writeParamName(view, o, "amp", 3);
-  view.setInt16(o, 6, false);
-  o += 2;
-  o = writeUGen(
-    view,
-    o,
-    "Control",
-    RATE_CONTROL,
-    [],
-    // no inputs
-    4,
-    RATE_CONTROL
-  );
-  o = writeUGen(
-    view,
-    o,
-    "In",
-    RATE_AUDIO,
-    [[0, 0]],
-    // input: Control.in_bus
-    2,
-    RATE_AUDIO
-  );
-  o = writeUGen(
-    view,
-    o,
-    "BinaryOpUGen",
-    RATE_AUDIO,
-    [[1, 0], [0, 3]],
-    // In.L, Control.amp
-    1,
-    RATE_AUDIO,
-    BINOP_MULTIPLY
-  );
-  o = writeUGen(
-    view,
-    o,
-    "BinaryOpUGen",
-    RATE_AUDIO,
-    [[1, 1], [0, 3]],
-    // In.R, Control.amp
-    1,
-    RATE_AUDIO,
-    BINOP_MULTIPLY
-  );
-  o = writeUGen(
-    view,
-    o,
-    "Out",
-    RATE_AUDIO,
-    [[0, 1], [2, 0], [3, 0]],
-    // Control.out_bus_master, scaled_L, scaled_R
-    0,
-    RATE_AUDIO
-  );
-  o = writeUGen(
-    view,
-    o,
-    "Out",
-    RATE_AUDIO,
-    [[0, 2], [2, 0], [3, 0]],
-    // Control.out_bus_track, scaled_L, scaled_R
-    0,
-    RATE_AUDIO
-  );
-  view.setInt16(o, 0, false);
-  o += 2;
-  if (o !== 246) {
-    throw new Error(
-      `SynthDef binary size mismatch: wrote ${o} bytes, expected 246. This is a bug in buildTrackMonitorSynthDef().`
-    );
-  }
-  return new Uint8Array(buf);
-}
-__name(buildTrackMonitorSynthDef, "buildTrackMonitorSynthDef");
-
-// ../../../sonicPiWeb/src/engine/SuperSonicBridge.ts
-function formatOscTrace(address, args2, audioTime) {
-  if (address === "/s_new" && args2.length >= 4) {
-    const synthName = args2[0];
-    const nodeId = args2[1];
-    const addAction = args2[2];
-    const targetGroup = args2[3];
-    const params = {};
-    for (let i2 = 4; i2 < args2.length; i2 += 2) {
-      const key = args2[i2];
-      const val = args2[i2 + 1];
-      if (key !== void 0 && val !== void 0) {
-        params[String(key)] = val;
-      }
-    }
-    const paramsStr = Object.entries(params).map(([k, v]) => `${k}: ${typeof v === "number" ? Number(v.toFixed(4)) : v}`).join(", ");
-    return `[t:${audioTime.toFixed(4)}] ${address} "${synthName}" ${nodeId} ${addAction} ${targetGroup} {${paramsStr}}`;
-  }
-  if (address === "/n_set" && args2.length >= 1) {
-    const nodeId = args2[0];
-    const params = {};
-    for (let i2 = 1; i2 < args2.length; i2 += 2) {
-      const key = args2[i2];
-      const val = args2[i2 + 1];
-      if (key !== void 0 && val !== void 0) {
-        params[String(key)] = val;
-      }
-    }
-    const paramsStr = Object.entries(params).map(([k, v]) => `${k}: ${typeof v === "number" ? Number(v.toFixed(4)) : v}`).join(", ");
-    return `[t:${audioTime.toFixed(4)}] ${address} ${nodeId} {${paramsStr}}`;
-  }
-  return `[t:${audioTime.toFixed(4)}] ${address} ${args2.join(" ")}`;
-}
-__name(formatOscTrace, "formatOscTrace");
-var COMMON_SYNTHDEFS = [
-  "sonic-pi-beep",
-  "sonic-pi-saw",
-  "sonic-pi-prophet",
-  "sonic-pi-tb303",
-  "sonic-pi-supersaw",
-  "sonic-pi-pluck",
-  "sonic-pi-pretty_bell",
-  "sonic-pi-piano",
-  "sonic-pi-basic_stereo_player"
-  // Note: sonic-pi-stereo_player is NOT in the CDN (404). Loaded lazily on demand.
-];
-var NUM_OUTPUT_CHANNELS = 2 + AUDIO_IO.MAX_TRACK_OUTPUTS * 2;
-var _SuperSonicBridge = class _SuperSonicBridge {
-  constructor(options = {}) {
-    this.sonic = null;
-    this.loadedSynthDefs = /* @__PURE__ */ new Set();
-    this.pendingSynthDefLoads = /* @__PURE__ */ new Map();
-    this.loadedSamples = /* @__PURE__ */ new Map();
-    this.pendingSampleLoads = /* @__PURE__ */ new Map();
-    /** Sample duration cache — populated asynchronously on first load via Web Audio decode. */
-    this.sampleDurations = /* @__PURE__ */ new Map();
-    // Pinned to @0.57.0 to match the runtime SuperSonic version (SV22:
-    // CDN packages must pin together). The init() override at line 213
-    // sets this from options or to the same pinned URL — this default
-    // only matters before init() runs.
-    this.resolvedSampleBaseURL = "https://unpkg.com/supersonic-scsynth-samples@0.57.0/samples/";
-    this.nextBufNum = 0;
-    this.analyserNode = null;
-    this.analyserL = null;
-    this.analyserR = null;
-    /** Optional warning sink — set by SonicPiEngine so SoundLayer clamp
-     *  messages for samples reach the UI log (SV19 — accept with signal). */
-    this.warnHandler = null;
-    /** rand_buf — buffer of random values for slicer/wobble/panslicer FX.
-     *  Desktop SP loads rand-stream.wav (studio.rb:87). We generate in-memory. */
-    this.randBufId = -1;
-    /** Audio bus allocator — buses 0-15 are hardware, 16+ are private */
-    this.nextBusNum = NUM_OUTPUT_CHANNELS;
-    this.freeBuses = [];
-    /** Live audio (mic/line-in) streams keyed by name */
-    this.liveAudioStreams = /* @__PURE__ */ new Map();
-    /** Names whose startLiveAudio getUserMedia is currently in-flight — race lock (#152) */
-    this.pendingLiveAudio = /* @__PURE__ */ new Set();
-    /** Per-track AnalyserNodes keyed by track name */
-    this.trackAnalysers = /* @__PURE__ */ new Map();
-    /** Track name → scsynth bus pair (stereo, starting at bus 2) */
-    this.trackBuses = /* @__PURE__ */ new Map();
-    /** Next available track bus pair */
-    this.nextTrackBus = 2;
-    this.splitter = null;
-    this.masterMerger = null;
-    this.masterGainNode = null;
-    /** Per-loop monitor state: loopBus (internal routing) + monitorNodeId (scsynth node) */
-    this.loopMonitors = /* @__PURE__ */ new Map();
-    /** Whether the track-monitor SynthDef has been loaded via /d_recv */
-    this.monitorSynthDefLoaded = false;
-    /** scsynth mixer node ID — for controlling master volume via /n_set */
-    this.mixerNodeId = 0;
-    /** Runtime mixer params — initialised from MIXER (config.ts) and mutable
-     *  via setMixerAmp / setMixerPreAmp so the Prefs panel can drive them
-     *  live without an engine restart. setMasterVolume reads currentMixerPreAmp
-     *  as the per-volume baseline (so volume × pre_amp keeps composing). */
-    this.currentMixerAmp = MIXER.AMP;
-    this.currentMixerPreAmp = MIXER.PRE_AMP;
-    /** Last clamped 0..1 volume so pre_amp recomputes correctly when the user
-     *  drags pre_amp without touching volume. */
-    this.currentMasterVolume = 1;
-    /** Optional callback for OSC trace logging — receives formatted trace strings like desktop Sonic Pi. */
-    this.oscTraceHandler = null;
-    /** SuperSonic.osc encoder (preferred) or fallback */
-    this.oscEncoder = null;
-    /** SuperSonic constructor ref — needed for static osc access */
-    this.SuperSonicClass = null;
-    /**
-     * Delayed message queue — matches Sonic Pi's __delayed_messages.
-     * Messages are queued during computation and flushed as a single
-     * OSC bundle on sleep, so all events between sleeps share one NTP timetag.
-     */
-    this.messageQueue = [];
-    this.messageQueueAudioTime = 0;
-    this.options = options;
-  }
-  async init() {
-    const SuperSonicClass = this.options.SuperSonicClass ?? globalThis.SuperSonic;
-    if (!SuperSonicClass) {
-      throw new Error(
-        "SuperSonic not found. Pass it via options.SuperSonicClass or load via CDN."
-      );
-    }
-    this.SuperSonicClass = SuperSonicClass;
-    this.oscEncoder = SuperSonicClass.osc ?? { encodeSingleBundle };
-    const pkgBase = "https://unpkg.com/supersonic-scsynth@0.57.0/dist/";
-    const coreBase = "https://unpkg.com/supersonic-scsynth-core@0.57.0/";
-    this.resolvedSampleBaseURL = this.options.sampleBaseURL ?? "https://unpkg.com/supersonic-scsynth-samples@0.57.0/samples/";
-    this.sonic = new SuperSonicClass({
-      baseURL: this.options.baseURL ?? pkgBase,
-      workerBaseURL: this.options.baseURL ?? `${pkgBase}workers/`,
-      wasmBaseURL: this.options.coreBaseURL ?? `${coreBase}wasm/`,
-      coreBaseURL: this.options.coreBaseURL ?? coreBase,
-      synthdefBaseURL: this.options.synthdefBaseURL ?? "https://unpkg.com/supersonic-scsynth-synthdefs@0.57.0/synthdefs/",
-      sampleBaseURL: this.resolvedSampleBaseURL,
-      autoConnect: false,
-      scsynthOptions: { numOutputBusChannels: NUM_OUTPUT_CHANNELS }
-    });
-    await this.sonic.init();
-    await this.sonic.loadSynthDefs(COMMON_SYNTHDEFS);
-    for (const name2 of COMMON_SYNTHDEFS) {
-      this.loadedSynthDefs.add(name2);
-    }
-    const mixerGroupId = this.sonic.nextNodeId();
-    this.sonic.send("/g_new", mixerGroupId, 0, 0);
-    this.sonic.send("/g_new", 102, 2, mixerGroupId);
-    this.sonic.send("/g_new", 101, 2, 102);
-    this.sonic.send("/g_new", 100, 2, 101);
-    this.sonic.send("/d_recv", buildTrackMonitorSynthDef());
-    this.monitorSynthDefLoaded = true;
-    await this.sonic.loadSynthDef("sonic-pi-mixer");
-    const mixerBus = this.allocateBus();
-    this.mixerNodeId = this.sonic.nextNodeId();
-    this.sonic.send(
-      "/s_new",
-      "sonic-pi-mixer",
-      this.mixerNodeId,
-      0,
-      mixerGroupId,
-      "out_bus",
-      0,
-      "in_bus",
-      mixerBus,
-      "amp",
-      this.currentMixerAmp,
-      "pre_amp",
-      this.currentMasterVolume * this.currentMixerPreAmp,
-      "hpf",
-      MIXER.HPF,
-      "lpf",
-      MIXER.LPF,
-      "limiter_bypass",
-      MIXER.LIMITER_BYPASS
-    );
-    await this.sonic.sync();
-    const audioCtx = this.sonic.audioContext;
-    const workletNode = this.sonic.node.input ?? this.sonic.node;
-    this.splitter = audioCtx.createChannelSplitter(NUM_OUTPUT_CHANNELS);
-    workletNode.connect(this.splitter);
-    this.masterMerger = audioCtx.createChannelMerger(2);
-    this.splitter.connect(this.masterMerger, 0, 0);
-    this.splitter.connect(this.masterMerger, 1, 1);
-    this.masterGainNode = audioCtx.createGain();
-    this.masterGainNode.gain.value = 1;
-    this.analyserNode = audioCtx.createAnalyser();
-    this.analyserNode.fftSize = AUDIO_IO.ANALYSER_FFT_SIZE;
-    this.analyserNode.smoothingTimeConstant = AUDIO_IO.ANALYSER_SMOOTHING;
-    this.masterMerger.connect(this.analyserNode);
-    this.analyserNode.connect(this.masterGainNode);
-    this.masterGainNode.connect(audioCtx.destination);
-    this.analyserL = audioCtx.createAnalyser();
-    this.analyserL.fftSize = AUDIO_IO.ANALYSER_FFT_SIZE;
-    this.analyserL.smoothingTimeConstant = AUDIO_IO.ANALYSER_SMOOTHING;
-    this.analyserR = audioCtx.createAnalyser();
-    this.analyserR.fftSize = AUDIO_IO.ANALYSER_FFT_SIZE;
-    this.analyserR.smoothingTimeConstant = AUDIO_IO.ANALYSER_SMOOTHING;
-    this.splitter.connect(this.analyserL, 0);
-    this.splitter.connect(this.analyserR, 1);
-  }
-  get audioContext() {
-    return this.sonic?.audioContext ?? null;
-  }
-  get analyser() {
-    return this.analyserNode;
-  }
-  /**
-   * Master output node — sits between scsynth's mixer output and
-   * `audioContext.destination`. Tap point for the DSL `recording_*`
-   * functions (#228). Downstream of all SoundLayer param normalization,
-   * so recording captures exactly what the user hears.
-   */
-  get masterOutputNode() {
-    return this.masterGainNode;
-  }
-  get analyserLeft() {
-    return this.analyserL;
-  }
-  get analyserRight() {
-    return this.analyserR;
-  }
-  /** Expose SuperSonic metrics for diagnostics. Returns null if not available. */
-  getMetrics() {
-    if (!this.sonic) return null;
-    const s = this.sonic;
-    if (typeof s.getMetrics === "function") {
-      return s.getMetrics();
-    }
-    return null;
-  }
-  /** Set master volume (0-1). Controls both scsynth mixer pre_amp and Web Audio gain. */
-  setMasterVolume(volume) {
-    const clamped = Math.max(0, Math.min(1, volume));
-    this.currentMasterVolume = clamped;
-    const scaledPreAmp = clamped * this.currentMixerPreAmp;
-    this.sonic?.send("/n_set", this.mixerNodeId, "pre_amp", scaledPreAmp);
-    if (this.masterGainNode) {
-      this.masterGainNode.gain.setTargetAtTime(clamped, this.masterGainNode.context.currentTime, 0.02);
-    }
-  }
-  /** Set mixer amp (final gain stage). Live — sends /n_set immediately if
-   *  the mixer node is alive. New value also persists for any future
-   *  resetMixer / re-init. Range typically 0.5–6 (3 lands at WASM parity
-   *  with desktop's pre-driver-attenuation peak; 6 clips Limiter.ar). */
-  setMixerAmp(amp) {
-    this.currentMixerAmp = amp;
-    if (this.sonic && this.mixerNodeId) {
-      this.sonic.send("/n_set", this.mixerNodeId, "amp", amp);
-    }
-  }
-  /** Set mixer pre_amp baseline. Effective wire value = masterVolume × preAmp,
-   *  so dragging this slider with volume<1 still attenuates proportionally. */
-  setMixerPreAmp(preAmp) {
-    this.currentMixerPreAmp = preAmp;
-    if (this.sonic && this.mixerNodeId) {
-      const scaledPreAmp = this.currentMasterVolume * preAmp;
-      this.sonic.send("/n_set", this.mixerNodeId, "pre_amp", scaledPreAmp);
-    }
-  }
-  /**
-   * Set arbitrary mixer params (Tier C PR #3 #255 — set_mixer_control! DSL).
-   * The allowlist matches the sonic-pi-mixer synthdef's parameter vocabulary
-   * (pre_amp/amp/hpf/lpf and four bypass flags). Param names not in this
-   * set are silently dropped by scsynth, so we filter + surface a console
-   * warning instead — making the parameter-name boundary loud rather than
-   * quiet. Returns the names actually applied for telemetry / test assertion.
-   */
-  setMixerControl(opts) {
-    if (!this.sonic) return [];
-    const ALLOWED = /* @__PURE__ */ new Set([
-      "pre_amp",
-      "amp",
-      "hpf",
-      "lpf",
-      "hpf_bypass",
-      "lpf_bypass",
-      "limiter_bypass",
-      "leak_dc_bypass"
-    ]);
-    const applied = [];
-    for (const [key, value] of Object.entries(opts)) {
-      if (!ALLOWED.has(key)) {
-        console.warn(`[SonicPi] set_mixer_control! ignoring unknown param "${key}". Known: ${[...ALLOWED].join(", ")}`);
-        continue;
-      }
-      if (typeof value !== "number" || !Number.isFinite(value)) continue;
-      this.sonic.send("/n_set", this.mixerNodeId, key, value);
-      applied.push(key);
-    }
-    return applied;
-  }
-  /**
-   * Reset mixer to MIXER config defaults (Tier C PR #3 #255 — reset_mixer! DSL).
-   * Mirrors the initialization sequence in connect() so a sweep can be
-   * undone in one call.
-   */
-  resetMixer() {
-    if (!this.sonic) return;
-    this.sonic.send(
-      "/n_set",
-      this.mixerNodeId,
-      "amp",
-      MIXER.AMP,
-      "pre_amp",
-      MIXER.PRE_AMP,
-      "hpf",
-      MIXER.HPF,
-      "lpf",
-      MIXER.LPF,
-      "limiter_bypass",
-      MIXER.LIMITER_BYPASS,
-      "hpf_bypass",
-      0,
-      "lpf_bypass",
-      0,
-      "leak_dc_bypass",
-      0
-    );
-  }
-  /**
-   * Snapshot scsynth-side info for the `scsynth_info` DSL fn (#255).
-   * SuperSonic doesn't expose all of scsynth's runtime constants; we surface
-   * what we know (sample_rate, num_buffers from MIXER/AUDIO_BUFFERS config)
-   * and fill the rest with the values from a default scsynth instance so
-   * user code that does `scsynth_info.sample_rate` gets a real number.
-   */
-  getScsynthInfo() {
-    const sampleRate = this.sonic?.audioContext.sampleRate ?? 44100;
-    return {
-      sample_rate: sampleRate,
-      sample_dur: 1 / sampleRate,
-      radians_per_sample: 2 * Math.PI / sampleRate,
-      control_rate: sampleRate / 64,
-      control_dur: 64 / sampleRate,
-      subsample_offset: 0,
-      num_output_busses: 16,
-      num_input_busses: 16,
-      num_audio_busses: 1024,
-      num_control_busses: 4096,
-      num_buffers: 4096
-    };
-  }
-  /** Snapshot for the `status` DSL fn (#255). Counts loaded synthdefs. */
-  getStatus() {
-    const sampleRate = this.sonic?.audioContext.sampleRate ?? 44100;
-    return {
-      ugens: 0,
-      // not tracked in WASM scsynth
-      synths: 0,
-      // not tracked
-      groups: 2,
-      // synthGroup + fxGroup + mixerGroup vary; report 2 as floor
-      sdefs: this.loadedSynthDefs.size,
-      avg_cpu: 0,
-      // not exposed by SuperSonic
-      peak_cpu: 0,
-      nom_samp_rate: sampleRate,
-      act_samp_rate: sampleRate,
-      audio_busses: 1024,
-      control_busses: 4096
-    };
-  }
-  /**
-   * Enable OSC trace logging — callback receives formatted trace strings
-   * matching desktop Sonic Pi's output style.
-   *
-   * Example output:
-   *   /s_new "sonic-pi-basic_stereo_player" 1003 0 100 {buf: 0, amp: 1.5, lpf: 130, out_bus: 0}
-   */
-  setOscTraceHandler(handler) {
-    this.oscTraceHandler = handler;
-  }
-  /**
-   * Queue an OSC message for batched dispatch.
-   * Sonic Pi's model: all play/sample calls between sleeps are collected,
-   * then dispatched as ONE OSC bundle on sleep — sharing a single NTP timetag.
-   */
-  queueMessage(audioTime, address, args2) {
-    this.messageQueueAudioTime = audioTime;
-    this.messageQueue.push({ address, args: args2 });
-    if (this.oscTraceHandler) {
-      this.oscTraceHandler(formatOscTrace(address, args2, audioTime));
-    }
-  }
-  /**
-   * Flush all queued messages as a single OSC bundle.
-   * Called by the interpreter on sleep/sync/end-of-iteration.
-   * Matches Sonic Pi's __schedule_delayed_blocks_and_messages!
-   */
-  flushMessages(audioTime) {
-    if (!this.sonic || this.messageQueue.length === 0) return;
-    const t = audioTime ?? this.messageQueueAudioTime;
-    const ntpTime = audioTimeToNTP(t, this.sonic.audioContext.currentTime);
-    if (this.messageQueue.length === 1) {
-      const msg = this.messageQueue[0];
-      const bundle = this.oscEncoder.encodeSingleBundle(ntpTime, msg.address, msg.args);
-      this.sonic.sendOSC(bundle);
-    } else {
-      try {
-        const bundle = encodeBundle(ntpTime, this.messageQueue);
-        this.sonic.sendOSC(bundle);
-      } catch {
-        for (const msg of this.messageQueue) {
-          const single = this.oscEncoder.encodeSingleBundle(ntpTime, msg.address, msg.args);
-          this.sonic.sendOSC(single);
-        }
-      }
-    }
-    this.messageQueue.length = 0;
-  }
-  /**
-   * Eagerly load multiple FX synthdef binaries in parallel. Called from
-   * engine.init() to warm the synthdef cache before any FX is used —
-   * eliminates the first-use fetch latency that would otherwise add ~50-200ms
-   * to the first /s_new for a previously-unseen FX (SP5 trap). Idempotent and
-   * safe to call multiple times; ensureSynthDefLoaded de-dupes via
-   * loadedSynthDefs + pendingSynthDefLoads.
-   *
-   * Pass FX names WITHOUT the `sonic-pi-fx_` prefix (e.g. 'reverb', 'echo') —
-   * the prefix is added internally to match ensureSynthDefLoaded's contract.
-   *
-   * Failures are swallowed (per-name) so one missing synthdef doesn't block
-   * the rest. Missing FX surface at /s_new dispatch time as before (SP5).
-   */
-  async preloadFxSynthDefs(names) {
-    if (!this.sonic) return;
-    await Promise.all(
-      names.map(
-        (n) => this.ensureSynthDefLoaded(`sonic-pi-fx_${n}`).catch(() => {
-        })
-      )
-    );
-  }
-  /**
-   * Preload ONE synth synthdef binary, REJECTING on failure. The
-   * non-swallowing counterpart to `preloadFxSynthDefs` — the #318/#323
-   * pre-Run preflight needs a truthful per-name pass/fail so it can block
-   * Run (or surface it) instead of the SP5 silent-drop-at-/s_new. Pass the
-   * synth name WITHOUT prefix ('saw', 'prophet'); `ensureSynthDefLoaded`
-   * adds `sonic-pi-`. Safe only because #320 fixed the reject-leak — a
-   * failed preflight no longer poisons the later real /s_new.
-   */
-  preloadSynth(name2) {
-    return this.ensureSynthDefLoaded(name2);
-  }
-  /**
-   * Preload ONE FX synthdef binary, REJECTING on failure (see
-   * `preloadSynth`). Pass the FX name WITHOUT prefix ('reverb', 'echo') —
-   * `sonic-pi-fx_` is added here to match `preloadFxSynthDefs`'s contract.
-   */
-  preloadFx(name2) {
-    return this.ensureSynthDefLoaded(`sonic-pi-fx_${name2}`);
-  }
-  ensureSynthDefLoaded(name2) {
-    const fullName = name2.startsWith("sonic-pi-") ? name2 : `sonic-pi-${name2}`;
-    if (this.loadedSynthDefs.has(fullName)) return Promise.resolve();
-    const pending = this.pendingSynthDefLoads.get(fullName);
-    if (pending) return pending;
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    const p = this.sonic.loadSynthDef(fullName).then(() => {
-      this.loadedSynthDefs.add(fullName);
-    }).finally(() => {
-      this.pendingSynthDefLoads.delete(fullName);
-    });
-    this.pendingSynthDefLoads.set(fullName, p);
-    return p;
-  }
-  ensureSampleLoaded(name2) {
-    const existing = this.loadedSamples.get(name2);
-    if (existing !== void 0) return Promise.resolve(existing);
-    const pending = this.pendingSampleLoads.get(name2);
-    if (pending) return pending;
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    const bufNum = this.nextBufNum++;
-    const p = this.sonic.loadSample(bufNum, `${name2}.flac`).then(() => {
-      this.loadedSamples.set(name2, bufNum);
-      this.fetchSampleDuration(name2).catch((err2) => console.warn(`[SonicPi] Could not determine duration for ${name2}: ${err2.message}`));
-      return bufNum;
-    }).finally(() => {
-      this.pendingSampleLoads.delete(name2);
-    });
-    this.pendingSampleLoads.set(name2, p);
-    return p;
-  }
-  /**
-   * Decode the sample via Web Audio to get its exact duration in seconds.
-   * Fires once per sample name and caches the result.
-   * Used by beat_stretch / pitch_stretch to apply Sonic Pi's exact formula.
-   */
-  async fetchSampleDuration(name2) {
-    if (this.sampleDurations.has(name2)) return;
-    if (!this.sonic) return;
-    const url = `${this.resolvedSampleBaseURL}${name2}.flac`;
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await this.sonic.audioContext.decodeAudioData(arrayBuffer);
-    this.sampleDurations.set(name2, audioBuffer.duration);
-  }
-  /**
-   * Trigger a synth. Fast path: if synthdef already loaded, no async/await overhead.
-   * The await in ensureSynthDefLoaded creates a microtask yield even on cache hit,
-   * which at 43 events/sec causes significant event loop contention. See #71.
-   */
-  triggerSynth(synthName, audioTime, params) {
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    const fullName = synthName.startsWith("sonic-pi-") ? synthName : `sonic-pi-${synthName}`;
-    if (this.loadedSynthDefs.has(fullName)) {
-      return Promise.resolve(this.triggerSynthImmediate(fullName, audioTime, params));
-    }
-    return this.ensureSynthDefLoaded(fullName).then(
-      () => this.triggerSynthImmediate(fullName, audioTime, params)
-    );
-  }
-  triggerSynthImmediate(fullName, audioTime, params) {
-    const nodeId = this.sonic.nextNodeId();
-    const paramList = [];
-    for (const key in params) {
-      paramList.push(key, params[key]);
-    }
-    this.queueMessage(audioTime, "/s_new", [fullName, nodeId, 0, 100, ...paramList]);
-    if ((this.sonic?.audioContext?.currentTime ?? 0) > 0) {
-      this.scheduleNodeFree(nodeId, audioTime, params);
-    }
-    return nodeId;
-  }
-  /**
-   * Schedule /n_free for a synth node after its expected lifetime.
-   * Uses setTimeout + sonic.send() — the immediate send path is reliable
-   * for /n_free (scsynth may not process /n_free inside timetaged bundles).
-   * The setTimeout fires on the main thread, but each call is <1ms.
-   * See #73, #75.
-   */
-  scheduleNodeFree(nodeId, audioTime, params) {
-    const attack = params.attack ?? 0;
-    const decay = params.decay ?? 0;
-    const sustain = params.sustain ?? 0;
-    const release = params.release ?? 1;
-    const duration = attack + decay + sustain + release;
-    const freeTime = audioTime + duration + 0.1;
-    const audioCtx = this.sonic?.audioContext;
-    if (!audioCtx) return;
-    const delayMs = (freeTime - audioCtx.currentTime) * 1e3;
-    if (delayMs <= 0) return;
-    setTimeout(() => {
-      this.sonic?.send("/n_free", nodeId);
-    }, delayMs);
-  }
-  /**
-   * Play a sample. Fast path: if sample + synthdef already loaded, no async overhead.
-   * See triggerSynth comment re: microtask yield cost at high event density (#71).
-   */
-  playSample(sampleName, audioTime, opts, bpm) {
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    const playerName = selectSamplePlayer(opts);
-    const bufNum = this.loadedSamples.get(sampleName);
-    if (bufNum !== void 0 && this.loadedSynthDefs.has(playerName)) {
-      return Promise.resolve(this.playSampleImmediate(sampleName, bufNum, playerName, audioTime, opts, bpm));
-    }
-    return this.playSampleSlow(sampleName, playerName, audioTime, opts, bpm);
-  }
-  playSampleImmediate(sampleName, bufNum, playerName, audioTime, opts, bpm) {
-    const nodeId = this.sonic.nextNodeId();
-    const duration = this.sampleDurations.get(sampleName) ?? null;
-    const translated = translateSampleOpts(opts, bpm ?? 60, duration);
-    const sampleWarn = this.warnHandler ? (m) => this.warnHandler(`[Warning] sample :${sampleName} \u2014 ${m}`) : void 0;
-    const params = normalizeSampleParams(translated, bpm ?? 60, sampleWarn);
-    const paramList = ["buf", bufNum];
-    for (const key in params) {
-      paramList.push(key, params[key]);
-    }
-    this.queueMessage(audioTime, "/s_new", [playerName, nodeId, 0, 100, ...paramList]);
-    if ((this.sonic?.audioContext?.currentTime ?? 0) > 0) {
-      this.scheduleSampleNodeFree(nodeId, sampleName, audioTime, params);
-    }
-    return nodeId;
-  }
-  /**
-   * Schedule /n_free for a sample node after its expected playback duration.
-   * Uses setTimeout + sonic.send() (same as scheduleNodeFree).
-   */
-  scheduleSampleNodeFree(nodeId, sampleName, audioTime, params) {
-    const sampleDur = this.sampleDurations.get(sampleName) ?? null;
-    const rate = Math.abs(params.rate ?? 1);
-    const finish = params.finish ?? 1;
-    const start2 = params.start ?? 0;
-    const release = params.release ?? 0;
-    const attack = params.attack ?? 0;
-    const sustain = params.sustain ?? 0;
-    let playDuration;
-    if (sustain > 0 && sustain < 100) {
-      playDuration = attack + sustain + release;
-    } else if (sampleDur !== null && rate > 0) {
-      playDuration = sampleDur * (finish - start2) / rate + release;
-    } else {
-      playDuration = 2;
-    }
-    const freeTime = audioTime + playDuration + 0.1;
-    const audioCtx = this.sonic?.audioContext;
-    if (!audioCtx) return;
-    const delayMs = (freeTime - audioCtx.currentTime) * 1e3;
-    if (delayMs <= 0) return;
-    setTimeout(() => {
-      this.sonic?.send("/n_free", nodeId);
-    }, delayMs);
-  }
-  async playSampleSlow(sampleName, playerName, audioTime, opts, bpm) {
-    const bufNum = await this.ensureSampleLoaded(sampleName);
-    if (playerName !== "sonic-pi-basic_stereo_player") {
-      await this.ensureSynthDefLoaded(playerName);
-    }
-    return this.playSampleImmediate(sampleName, bufNum, playerName, audioTime, opts, bpm);
-  }
-  /** Apply an FX. Fast path when synthdef already loaded. */
-  applyFx(fxName, audioTime, params, inBus, outBus = 0) {
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    const fullName = fxName.startsWith("sonic-pi-") ? fxName : `sonic-pi-fx_${fxName}`;
-    if (this.loadedSynthDefs.has(fullName)) {
-      return Promise.resolve(this.applyFxImmediate(fullName, audioTime, params, inBus, outBus));
-    }
-    return this.ensureSynthDefLoaded(fullName).then(
-      () => this.applyFxImmediate(fullName, audioTime, params, inBus, outBus)
-    );
-  }
-  applyFxImmediate(fullName, audioTime, params, inBus, outBus) {
-    const nodeId = this.sonic.nextNodeId();
-    const paramList = ["in_bus", inBus, "out_bus", outBus];
-    if (_SuperSonicBridge.RAND_BUF_FX.has(fullName)) {
-      if (this.randBufId < 0) {
-        const bufNum = this.nextBufNum++;
-        this.sonic.send("/b_alloc", bufNum, 16, 1);
-        this.sonic.send(
-          "/b_setn",
-          bufNum,
-          0,
-          16,
-          0.23,
-          -0.71,
-          0.52,
-          -0.33,
-          0.89,
-          -0.14,
-          0.67,
-          -0.82,
-          0.41,
-          -0.58,
-          0.76,
-          -0.27,
-          0.93,
-          -0.45,
-          0.18,
-          -0.63
-        );
-        this.randBufId = bufNum;
-      }
-      paramList.push("rand_buf", this.randBufId);
-    }
-    for (const key in params) {
-      paramList.push(key, params[key]);
-    }
-    this.queueMessage(audioTime, "/s_new", [fullName, nodeId, 0, 101, ...paramList]);
-    return nodeId;
-  }
-  /**
-   * Returns true if a live audio stream under this name is currently active
-   * OR mid-acquisition. Used by AudioInterpreter to avoid re-starting the
-   * mic on every `synth :sound_in` dispatch inside a live_loop (#152).
-   */
-  isLiveAudioStreaming(name2) {
-    return this.liveAudioStreams.has(name2) || this.pendingLiveAudio.has(name2);
-  }
-  /**
-   * Start capturing live audio from the system input (microphone/line-in).
-   * The stream is connected to the scsynth AudioWorkletNode so SoundIn.ar
-   * inside the `sonic-pi-sound_in` synthdef can read the mic signal.
-   *
-   * **Idempotent and race-safe** (#152): if a stream already exists under
-   * this name, or a `getUserMedia` call is in-flight for it, returns
-   * immediately. Without this the AudioInterpreter's per-dispatch auto-start
-   * would tear down and re-acquire the mic ~10×/sec inside a live_loop,
-   * making the browser indicator flicker and the audio drop out.
-   */
-  async startLiveAudio(name2, opts) {
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    if (this.liveAudioStreams.has(name2) || this.pendingLiveAudio.has(name2)) return;
-    this.pendingLiveAudio.add(name2);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: opts?.stereo ? 2 : 1
-        }
-      });
-      if (!this.pendingLiveAudio.has(name2)) {
-        stream.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      const audioCtx = this.sonic.audioContext;
-      const source = audioCtx.createMediaStreamSource(stream);
-      const nodeWrapper = this.sonic.node;
-      const workletNode = nodeWrapper.input ?? this.sonic.node;
-      source.connect(workletNode);
-      this.liveAudioStreams.set(name2, { stream, source });
-    } finally {
-      this.pendingLiveAudio.delete(name2);
-    }
-  }
-  /** Stop a named live audio stream and release its resources. */
-  stopLiveAudio(name2) {
-    const entry = this.liveAudioStreams.get(name2);
-    if (entry) {
-      entry.source.disconnect();
-      entry.stream.getTracks().forEach((t) => t.stop());
-      this.liveAudioStreams.delete(name2);
-    }
-  }
-  /**
-   * Stop every active live audio stream and release mic tracks (#152).
-   * Called on engine stop so the browser's mic indicator clears and the
-   * mic stops feeding scsynth's input channel between runs.
-   *
-   * Also clears pendingLiveAudio so any in-flight getUserMedia call
-   * detects the cancellation after its await and tears down the stream
-   * it just acquired instead of racing past the stop.
-   */
-  stopAllLiveAudio() {
-    this.pendingLiveAudio.clear();
-    for (const name2 of Array.from(this.liveAudioStreams.keys())) {
-      this.stopLiveAudio(name2);
-    }
-  }
-  /**
-   * Allocate a stereo output bus for a track with its own AnalyserNode.
-   * Returns the bus number to use as out_bus in synth params.
-   * The bus audio is automatically routed to speakers via the worklet's
-   * multi-channel output + Web Audio ChannelSplitter.
-   */
-  allocateTrackBus(trackId) {
-    const existing = this.trackBuses.get(trackId);
-    if (existing !== void 0) return existing;
-    if (this.nextTrackBus >= NUM_OUTPUT_CHANNELS) {
-      return 0;
-    }
-    const busNum = this.nextTrackBus;
-    this.nextTrackBus += 2;
-    this.trackBuses.set(trackId, busNum);
-    if (this.sonic && this.splitter) {
-      const audioCtx = this.sonic.audioContext;
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = AUDIO_IO.ANALYSER_FFT_SIZE;
-      analyser.smoothingTimeConstant = AUDIO_IO.ANALYSER_SMOOTHING;
-      const merger = audioCtx.createChannelMerger(2);
-      this.splitter.connect(merger, busNum, 0);
-      this.splitter.connect(merger, busNum + 1, 1);
-      merger.connect(analyser);
-      this.trackAnalysers.set(trackId, analyser);
-    }
-    return busNum;
-  }
-  /** Get the per-track AnalyserNode for a specific track. */
-  getTrackAnalyser(trackId) {
-    return this.trackAnalysers.get(trackId) ?? null;
-  }
-  /** Get all per-track AnalyserNodes. */
-  getAllTrackAnalysers() {
-    return this.trackAnalysers;
-  }
-  // ── Per-loop audio isolation (monitor synths) ────────────────
-  //
-  // Each live_loop gets:
-  //   1. A loopBus (internal scsynth bus, from the 128-bus pool)
-  //   2. A monitor synth in group 102 (reads loopBus, writes to
-  //      bus 0 for the mixer AND to a trackBus output channel
-  //      for the per-track AnalyserNode)
-  //
-  // task.outBus is set to loopBus so all synths + FX in that loop
-  // write there. The monitor fans out post-FX.
-  //
-  // Bare code (no live_loop) keeps outBus = 0, no monitor.
-  /**
-   * Create a per-loop monitor synth. Returns the loopBus number that
-   * the loop's synths should write to (via task.outBus).
-   *
-   * If a monitor already exists for this name (hot-swap), reuses it.
-   * The monitor persists across loop iterations (SP11 pattern — same
-   * lifecycle as persistentFx).
-   */
-  createLoopMonitor(name2) {
-    const existing = this.loopMonitors.get(name2);
-    if (existing) return existing.loopBus;
-    if (!this.sonic || !this.monitorSynthDefLoaded) return 0;
-    const loopBus = this.allocateBus();
-    const trackBus = this.allocateTrackBus(name2);
-    const monitorNodeId = this.sonic.nextNodeId();
-    this.sonic.send(
-      "/s_new",
-      "sonic_pi_track_monitor",
-      monitorNodeId,
-      1,
-      102,
-      "in_bus",
-      loopBus,
-      "out_bus_master",
-      0,
-      "out_bus_track",
-      trackBus,
-      "amp",
-      1
-    );
-    this.loopMonitors.set(name2, { loopBus, monitorNodeId });
-    return loopBus;
-  }
-  /**
-   * Get the loopBus for a named loop (0 if no monitor exists).
-   * The engine uses this to set task.outBus.
-   */
-  getLoopBus(name2) {
-    return this.loopMonitors.get(name2)?.loopBus ?? 0;
-  }
-  /**
-   * Free a specific loop's monitor synth and return its bus to the pool.
-   * Called when a loop is removed during hot-swap.
-   */
-  freeLoopMonitor(name2) {
-    const monitor = this.loopMonitors.get(name2);
-    if (!monitor) return;
-    this.sonic?.send("/n_free", monitor.monitorNodeId);
-    this.freeBus(monitor.loopBus);
-    this.loopMonitors.delete(name2);
-  }
-  /**
-   * Free all monitor synths (called on stop / re-evaluate).
-   * The loopBus numbers are returned to the pool so they can be
-   * reused on the next run. Monitor synths are also freed via
-   * /g_freeAll 102 in freeAllNodes(), but we clean the map here
-   * so createLoopMonitor() knows to recreate them.
-   */
-  clearLoopMonitors() {
-    for (const [, { loopBus }] of this.loopMonitors) {
-      this.freeBus(loopBus);
-    }
-    this.loopMonitors.clear();
-  }
-  /** Allocate a private audio bus for FX routing. Reserves a stereo pair
-   *  (bus N and N+1) — every relevant synthdef in our chain
-   *  (basic_stereo_player, fx_*) reads or writes 2 channels. Adjacent
-   *  mono allocations would collide on the inner channel, summing the
-   *  upstream stereo write into a downstream stereo write at the same
-   *  address (exp-008). NUM_OUTPUT_CHANNELS is even by construction. */
-  allocateBus() {
-    if (this.freeBuses.length > 0) return this.freeBuses.pop();
-    const bus = this.nextBusNum;
-    this.nextBusNum += 2;
-    return bus;
-  }
-  /** Release a private audio bus back to the pool. Guards against duplicate frees. */
-  freeBus(busNum) {
-    if (!this.freeBuses.includes(busNum)) this.freeBuses.push(busNum);
-  }
-  /**
-   * Register a custom (user-uploaded) sample from raw audio file bytes.
-   * The ArrayBuffer is passed to SuperSonic's loadSample() which decodes
-   * it via Web Audio and copies the PCM data to the WASM shared buffer.
-   * After registration, `sample :user_mykick` works like any built-in sample.
-   */
-  async registerCustomSample(name2, audioData) {
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    const bufNum = this.nextBufNum++;
-    await this.sonic.loadSample(bufNum, audioData);
-    this.loadedSamples.set(name2, bufNum);
-    try {
-      const audioBuffer = await this.sonic.audioContext.decodeAudioData(audioData.slice(0));
-      this.sampleDurations.set(name2, audioBuffer.duration);
-    } catch {
-    }
-  }
-  /** Check if a sample has been loaded (duration cached). */
-  isSampleLoaded(name2) {
-    return this.loadedSamples.has(name2);
-  }
-  /** Get cached sample duration in seconds, or undefined if not yet loaded. */
-  getSampleDuration(name2) {
-    return this.sampleDurations.get(name2);
-  }
-  /** Return loaded sample names (Tier C PR #2 #253 — for sample_paths host stub). */
-  getLoadedSampleNames() {
-    return Array.from(this.loadedSamples.keys());
-  }
-  /**
-   * Preload a sample into the cache (Tier C PR #2 #253 — for load_samples DSL).
-   * Returns the buffer number once loaded. Same lazy-load path used by sample
-   * playback — re-loads are deduped via pendingSampleLoads.
-   */
-  preloadSample(name2) {
-    return this.ensureSampleLoaded(name2);
-  }
-  /**
-   * Free a single sample from the loaded cache (Tier C PR #2 #253).
-   * The next `sample :name` re-loads it from CDN. We don't free the scsynth
-   * buffer slot — bufNum recycling would require tracking which synths still
-   * reference it, and the cost of holding an unused buffer is one int. Drops
-   * the duration cache entry too so beat_stretch falls back to default.
-   */
-  freeSample(name2) {
-    const had = this.loadedSamples.delete(name2);
-    this.sampleDurations.delete(name2);
-    return had;
-  }
-  /** Free every loaded sample (Tier C PR #2 #253). Returns the count freed. */
-  freeAllSamples() {
-    const count = this.loadedSamples.size;
-    this.loadedSamples.clear();
-    this.sampleDurations.clear();
-    return count;
-  }
-  /** Free all synth, FX, and monitor nodes (clean slate for re-evaluate). */
-  freeAllNodes() {
-    if (!this.sonic) return;
-    this.sonic.purge().catch(() => {
-    });
-    this.sonic.send("/g_freeAll", 100);
-    this.sonic.send("/g_freeAll", 101);
-    this.sonic.send("/g_freeAll", 102);
-    this.clearLoopMonitors();
-  }
-  /**
-   * Drain future-scheduled bundles from the WASM scheduler queue WITHOUT
-   * killing currently-rendering synths.
-   *
-   * Use case: hot-swap (#296). Each iteration of a live_loop batches its
-   * /s_new bundles per SV9 and ships them with future timetags spanning the
-   * iteration. On hot-swap, those queued bundles belong to the OLD body; if
-   * left alone, they fire on top of the new body's bundles, audibly stacking
-   * samples on rapid changed-code re-runs. /g_freeAll would also kill
-   * already-rendering envelopes (the click-on-Run), so this separates the
-   * two concerns: cancel queued plans, preserve rendered audio.
-   *
-   * Bundles that have ALREADY been processed by scsynth (synth node spawned,
-   * currently rendering) are NOT affected — those live in group 100 and
-   * decay naturally per their envelopes. This matches Desktop SP behavior,
-   * where Kernel.sleep blocks the Ruby thread so no future bundles are ever
-   * queued in the first place.
-   */
-  purgePendingBundles() {
-    if (!this.sonic) return;
-    this.sonic.purge().catch(() => {
-    });
-  }
-  /** Create a new group inside the FX group (101). Returns group ID. */
-  createFxGroup() {
-    if (!this.sonic) throw new Error("SuperSonic not initialized");
-    const groupId = this.sonic.nextNodeId();
-    this.sonic.send("/g_new", groupId, 1, 101);
-    return groupId;
-  }
-  /** Kill an entire group and all its contents. */
-  freeGroup(groupId) {
-    this.sonic?.send("/n_free", groupId);
-  }
-  /** Queue a timestamped /n_set control message for batched dispatch. */
-  sendTimedControl(audioTime, nodeId, params) {
-    this.queueMessage(audioTime, "/n_set", [nodeId, ...params]);
-  }
-  /** Send raw OSC message to SuperSonic (immediate, no timestamp). */
-  send(address, ...args2) {
-    this.sonic?.send(address, ...args2);
-  }
-  freeNode(nodeId) {
-    this.sonic?.send("/n_free", nodeId);
-  }
-  dispose() {
-    this.stopAllLiveAudio();
-    if (this.masterGainNode) {
-      this.masterGainNode.disconnect();
-      this.masterGainNode = null;
-    }
-    if (this.analyserNode) {
-      this.analyserNode.disconnect();
-      this.analyserNode = null;
-    }
-    if (this.sonic) {
-      this.sonic.destroy();
-      this.sonic = null;
-    }
-    this.loadedSynthDefs.clear();
-    this.loadedSamples.clear();
-  }
-};
-__name(_SuperSonicBridge, "SuperSonicBridge");
-/** FX that require rand_buf injection — matches Desktop SP's on_start hooks.
- *  REF: synthinfo.rb:6960 FXSlicer, :7225 FXWobble, :7470 FXPanSlicer */
-_SuperSonicBridge.RAND_BUF_FX = /* @__PURE__ */ new Set([
-  "sonic-pi-fx_slicer",
-  "sonic-pi-fx_wobble",
-  "sonic-pi-fx_panslicer"
-]);
-var SuperSonicBridge = _SuperSonicBridge;
-
-// ../../../sonicPiWeb/src/engine/Recorder.ts
-var DEFAULT_CHANNELS = 2;
-var SCRIPT_PROCESSOR_BUFFER_SIZE = 4096;
-var WAV_HEADER_SIZE = 44;
-var WAV_FMT_CHUNK_SIZE = 16;
-var WAV_FMT_PCM = 1;
-var BITS_PER_SAMPLE = 16;
-var BYTES_PER_SAMPLE = 2;
-var WAV_RIFF_DATA_OFFSET = 36;
-var INT16_NEGATIVE_SCALE = 32768;
-var INT16_POSITIVE_SCALE = 32767;
-var _Recorder = class _Recorder {
-  constructor(audioCtx, source, options) {
-    /** Per-channel chunk lists. chunks[ch] is an array of Float32Array buffers. */
-    this.chunks = [];
-    this.processor = null;
-    this.silentSink = null;
-    this._state = "idle";
-    this.audioCtx = audioCtx;
-    this.source = source;
-    this.channels = options?.channels ?? DEFAULT_CHANNELS;
-  }
-  get state() {
-    return this._state;
-  }
-  /** Start recording. */
-  start() {
-    if (this._state === "recording") return;
-    this.chunks = Array.from({ length: this.channels }, () => []);
-    this.processor = this.audioCtx.createScriptProcessor(
-      SCRIPT_PROCESSOR_BUFFER_SIZE,
-      this.channels,
-      this.channels
-    );
-    const chunks = this.chunks;
-    const channels = this.channels;
-    this.processor.onaudioprocess = (e) => {
-      const input = e.inputBuffer;
-      const numCh = Math.min(input.numberOfChannels, channels);
-      for (let ch = 0; ch < numCh; ch++) {
-        chunks[ch].push(new Float32Array(input.getChannelData(ch)));
-      }
-    };
-    this.silentSink = this.audioCtx.createGain();
-    this.silentSink.gain.value = 0;
-    this.source.connect(this.processor);
-    this.processor.connect(this.silentSink);
-    this.silentSink.connect(this.audioCtx.destination);
-    if (typeof globalThis !== "undefined" && globalThis.__recorderTrace) {
-      globalThis.__recorderTraceEvents ?? (globalThis.__recorderTraceEvents = []);
-      globalThis.__recorderTraceEvents.push({
-        event: "start",
-        t: performance.now(),
-        ctxState: this.audioCtx.state,
-        ctxTime: this.audioCtx.currentTime,
-        silentSinkGain: this.silentSink.gain.value,
-        sourceCtor: this.source.constructor.name,
-        ctxDestinationMaxChannelCount: this.audioCtx.destination.maxChannelCount,
-        ctxDestinationNumberOfInputs: this.audioCtx.destination.numberOfInputs
-      });
-      globalThis.__lastRecorder = this;
-    }
-    this._state = "recording";
-  }
-  /** Stop recording and return the audio as a WAV Blob. */
-  async stop() {
-    if (this._state !== "recording" || !this.processor) {
-      throw new Error("Not recording");
-    }
-    const processor = this.processor;
-    const silentSink = this.silentSink;
-    const source = this.source;
-    if (typeof globalThis !== "undefined" && globalThis.__recorderTrace) {
-      globalThis.__recorderTraceEvents ?? (globalThis.__recorderTraceEvents = []);
-      const evs = globalThis.__recorderTraceEvents;
-      evs.push({
-        event: "stop:enter",
-        t: performance.now(),
-        ctxState: this.audioCtx.state,
-        ctxTime: this.audioCtx.currentTime,
-        silentSinkGain: silentSink ? silentSink.gain.value : null
-      });
-    }
-    const tailMs = SCRIPT_PROCESSOR_BUFFER_SIZE / this.audioCtx.sampleRate * 1e3;
-    await new Promise((resolve) => {
-      const prev = processor.onaudioprocess;
-      let done = false;
-      const finish = /* @__PURE__ */ __name(() => {
-        if (done) return;
-        done = true;
-        resolve();
-      }, "finish");
-      processor.onaudioprocess = (e) => {
-        prev?.call(processor, e);
-        finish();
-      };
-      setTimeout(finish, tailMs + 50);
-    });
-    try {
-      source.disconnect(processor);
-    } catch {
-    }
-    try {
-      processor.disconnect();
-    } catch {
-    }
-    if (silentSink) {
-      try {
-        silentSink.disconnect();
-      } catch {
-      }
-    }
-    processor.onaudioprocess = null;
-    this.processor = null;
-    this.silentSink = null;
-    const wavBlob = this.encodeWav(this.chunks, this.audioCtx.sampleRate);
-    this._state = "stopped";
-    if (typeof globalThis !== "undefined" && globalThis.__recorderTrace) {
-      const evs = globalThis.__recorderTraceEvents;
-      evs.push({
-        event: "stop:exit",
-        t: performance.now(),
-        wavSize: wavBlob.size,
-        ctxState: this.audioCtx.state,
-        ctxTime: this.audioCtx.currentTime
-      });
-    }
-    return wavBlob;
-  }
-  /** Stop recording and trigger a browser download. */
-  async stopAndDownload(filename) {
-    const blob = await this.stop();
-    _Recorder.saveBlobToDownload(blob, filename);
-  }
-  /**
-   * Trigger a browser download for an already-captured Blob.
-   * Split out from stopAndDownload so the DSL `recording_save` step
-   * can be invoked separately from `recording_stop` (#228).
-   */
-  static saveBlobToDownload(blob, filename) {
-    const downloadBlob = blob.type === "audio/wav" ? new Blob([blob], { type: "application/octet-stream" }) : blob;
-    const url = URL.createObjectURL(downloadBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename ?? `sonicpi-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[T:]/g, "-")}.wav`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-  /** Cancel recording without saving. */
-  cancel() {
-    if (this.processor) {
-      this.processor.onaudioprocess = null;
-      try {
-        this.source.disconnect(this.processor);
-      } catch {
-      }
-      try {
-        this.processor.disconnect();
-      } catch {
-      }
-    }
-    if (this.silentSink) {
-      try {
-        this.silentSink.disconnect();
-      } catch {
-      }
-    }
-    this.processor = null;
-    this.silentSink = null;
-    this.chunks = [];
-    this._state = "idle";
-  }
-  /** Build a 16-bit PCM WAV from per-channel float32 chunk lists. */
-  encodeWav(chunks, sampleRate) {
-    const numChannels = chunks.length;
-    const length = chunks[0]?.reduce((acc, c) => acc + c.length, 0) ?? 0;
-    const blockAlign = numChannels * BYTES_PER_SAMPLE;
-    const dataSize = length * blockAlign;
-    const buffer = new ArrayBuffer(WAV_HEADER_SIZE + dataSize);
-    const view = new DataView(buffer);
-    this.writeString(view, 0, "RIFF");
-    view.setUint32(4, WAV_RIFF_DATA_OFFSET + dataSize, true);
-    this.writeString(view, 8, "WAVE");
-    this.writeString(view, 12, "fmt ");
-    view.setUint32(16, WAV_FMT_CHUNK_SIZE, true);
-    view.setUint16(20, WAV_FMT_PCM, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * blockAlign, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, BITS_PER_SAMPLE, true);
-    this.writeString(view, 36, "data");
-    view.setUint32(40, dataSize, true);
-    const channels = chunks.map((chs) => {
-      const out2 = new Float32Array(length);
-      let off = 0;
-      for (const c of chs) {
-        out2.set(c, off);
-        off += c.length;
-      }
-      return out2;
-    });
-    let offset = WAV_HEADER_SIZE;
-    for (let i2 = 0; i2 < length; i2++) {
-      for (let ch = 0; ch < numChannels; ch++) {
-        const sample = Math.max(-1, Math.min(1, channels[ch][i2]));
-        view.setInt16(
-          offset,
-          sample < 0 ? sample * INT16_NEGATIVE_SCALE : sample * INT16_POSITIVE_SCALE,
-          true
-        );
-        offset += BYTES_PER_SAMPLE;
-      }
-    }
-    return new Blob([buffer], { type: "audio/wav" });
-  }
-  writeString(view, offset, str) {
-    for (let i2 = 0; i2 < str.length; i2++) {
-      view.setUint8(offset + i2, str.charCodeAt(i2));
-    }
-  }
-};
-__name(_Recorder, "Recorder");
-var Recorder = _Recorder;
-
-// ../../../sonicPiWeb/src/engine/FxNames.ts
-var ALL_FX_NAMES = [
-  "reverb",
-  "echo",
-  "distortion",
-  "slicer",
-  "wobble",
-  "ixi_techno",
-  "compressor",
-  "rlpf",
-  "rhpf",
-  "hpf",
-  "lpf",
-  "normaliser",
-  "pan",
-  "band_eq",
-  "flanger",
-  "krush",
-  "bitcrusher",
-  "ring_mod",
-  "octaver",
-  "vowel",
-  "tanh",
-  "gverb",
-  "pitch_shift",
-  "whammy",
-  "tremolo",
-  "level",
-  "mono",
-  "ping_pong",
-  "panslicer",
-  // Filter variants — from synthinfo.rb FX classes
-  "bpf",
-  "rbpf",
-  "nbpf",
-  "nrbpf",
-  "nlpf",
-  "nrlpf",
-  "nhpf",
-  "nrhpf",
-  "eq"
-];
-
-// ../../../sonicPiWeb/src/engine/DslNames.ts
-var DSL_NAMES = [
-  "__b",
-  "live_loop",
-  "with_fx",
-  "use_bpm",
-  "use_synth",
-  "use_random_seed",
-  "use_arg_bpm_scaling",
-  "with_arg_bpm_scaling",
-  "in_thread",
-  "at",
-  "density",
-  "ring",
-  "knit",
-  "range",
-  "line",
-  "spread",
-  "rrand",
-  "rrand_i",
-  "rand",
-  "rand_i",
-  "choose",
-  "dice",
-  "one_in",
-  "rdist",
-  "chord",
-  "scale",
-  "chord_invert",
-  "note",
-  "note_range",
-  "chord_degree",
-  "degree",
-  "chord_names",
-  "scale_names",
-  "noteToMidi",
-  "midiToFreq",
-  "noteToFreq",
-  "note_info",
-  "hz_to_midi",
-  "midi_to_hz",
-  "quantise",
-  "quantize",
-  "octs",
-  "current_bpm",
-  "puts",
-  "print",
-  "stop",
-  "stop_loop",
-  // Volume & introspection
-  "set_volume",
-  "current_synth",
-  "current_volume",
-  // Catalog queries
-  "synth_names",
-  "fx_names",
-  "all_sample_names",
-  // Sample management
-  "load_sample",
-  "sample_info",
-  // Global store
-  "get",
-  "set",
-  // Sample catalog
-  "sample_names",
-  "sample_groups",
-  "sample_loaded",
-  "sample_duration",
-  // MIDI input
-  "get_cc",
-  "get_pitch_bend",
-  "get_note_on",
-  "get_note_off",
-  // MIDI output
-  "midi",
-  "midi_note_on",
-  "midi_note_off",
-  "midi_cc",
-  "midi_pitch_bend",
-  "midi_channel_pressure",
-  "midi_poly_pressure",
-  "midi_prog_change",
-  "midi_clock_tick",
-  "midi_start",
-  "midi_stop",
-  "midi_continue",
-  "midi_all_notes_off",
-  "midi_notes_off",
-  "midi_devices",
-  // OSC
-  "use_osc",
-  "osc",
-  "osc_send",
-  // Sample BPM
-  "use_sample_bpm",
-  // Debug (no-op in browser — silences log output in Desktop SP)
-  "use_debug",
-  // Latency — set schedule-ahead to 0 for responsive MIDI input (#149)
-  "use_real_time",
-  // Tier A — global tick context (#211)
-  "tick",
-  "look",
-  "tick_set",
-  "tick_reset",
-  "tick_reset_all",
-  // Tier A — ring helpers (#211)
-  "pick",
-  "shuffle",
-  "stretch",
-  "bools",
-  "ramp",
-  // Tier A — pattern helpers (#211)
-  "play_pattern",
-  "play_chord",
-  "play_pattern_timed",
-  // Tier A — asserts + counter helpers (#211)
-  "assert",
-  "assert_equal",
-  "assert_similar",
-  "assert_not",
-  "assert_error",
-  "inc",
-  "dec",
-  // Tier A — define is transpiler-handled (TreeSitterTranspiler.transpileDefine);
-  // these names are blocklist-safe entries so user code that introspects them
-  // doesn't fall through to globalThis. (#211)
-  "define",
-  "ndefine",
-  // Tier A — time_warp is transpiler-handled (transpileTimeWarp → __b.at(...)).
-  // Runtime stub is a fallback for the regex transpiler path. (#211)
-  "time_warp",
-  // Tier B — timing introspection (#226). Inside live_loops these route to
-  // __b.current_* for per-task reads; at top level they read engine state.
-  "current_beat",
-  "current_beat_duration",
-  "current_time",
-  "current_sched_ahead_time",
-  // Tier B — PRNG inspection (#227). Per-task reads/mutations of the rand
-  // stream. All four are pure build-time on the per-loop builder's RNG.
-  "current_random_seed",
-  "rand_back",
-  "rand_skip",
-  "rand_reset",
-  // Tier B — recording (#228). Deferred ProgramBuilder steps that fire at
-  // scheduled virtual time so the lifecycle sequences with the surrounding
-  // play / sleep program — running them at build time would mis-order
-  // recording_save before any audio plays. Rest-arg + length guards in
-  // ProgramBuilder.recording_* enforce Desktop SP fixed-arity. The handler
-  // wired into runProgram's ctx taps masterOutputNode (downstream of all
-  // SoundLayer param normalization), so the WAV captures exactly what the
-  // user hears. Top-level dslValues entries forward to topLevelBuilder.
-  "recording_start",
-  "recording_stop",
-  "recording_save",
-  "recording_delete",
-  // Tier B PR #2 — pure ring constructors (#233). Both delegate to each
-  // other for negative counts (matches upstream `core.rb:1919-1970`).
-  "doubles",
-  "halves",
-  // Tier B PR #2 — defaults / setting introspection (#233). Inside live_loops
-  // these route via __b for per-task reads; at top level they read the
-  // topLevelBuilder's state. current_arg_checks/current_timing_guarantees
-  // are flag readers — Tier C wired the toggle setters that drive them.
-  "current_synth_defaults",
-  "current_sample_defaults",
-  "current_arg_checks",
-  "current_debug",
-  "current_timing_guarantees",
-  // Tier B PR #2 — block-form tuplet scheduling (#233). The transpiler
-  // routes `tuplets [...] do |x| ... end` to __b.tuplets(list, opts, cb),
-  // resolving the list/opts at build time then pushing N play+sleep step
-  // pairs per the block (one per leaf element). Density wraps each
-  // sub-list so N elements fit in `duration` beats.
-  "tuplets",
-  // Tier B PR #2 — defonce (#212 / #233). The transpiler emits a bare
-  // assignment `name = defonce("name", opts, (__b) => { ...; return last })`
-  // so the cached value lands in proxy storage. The runtime registrar caches
-  // against engine.defonceCache; opts.override re-runs the body. Cached
-  // values are spread into persistedFns at the next eval so removing the
-  // defonce line doesn't break still-running live_loops that read `name`.
-  "defonce",
-  // Tier B PR #3 — sync_bpm (#236). Deferred ProgramBuilder step that wraps
-  // sync with bpm_sync: true. Inside live_loops the transpiler routes
-  // through __b.sync_bpm via BUILDER_METHODS; at top level the runtime stub
-  // forwards to topLevelBuilder.sync_bpm. Cuer's BPM travels through the
-  // extended cueMap entry; AudioInterpreter's sync handler mutates task.bpm
-  // when step.bpmSync is true.
-  "sync_bpm",
-  // Tier B PR #3 — run_code (#236). Host-side dynamic eval — calls back into
-  // engine.evaluate with the supplied string. Top-level only; throws inside
-  // live_loops to match desktop spider re-entry semantics.
-  "run_code",
-  // Tier B PR #3 — eval_file / run_file (#236). Browser-sandbox stubs: the
-  // engine has no filesystem access, so both throw an informative error
-  // pointing users at run_code(string) / load_example(:name) instead.
-  // Listed in the public DSL surface so user code that references them
-  // gets a clear redirect rather than a silent globalThis lookup miss.
-  "eval_file",
-  "run_file",
-  // Tier B PR #3 — load_example (#236). Looks up an example by name in the
-  // bundled registry then forwards to the host's loadExampleHandler so the
-  // editor replaces its buffer + re-runs. Top-level only (host-bridge).
-  "load_example",
-  // Tier C PR #1 — state wrappers (#251). Toggle/merge family. Imperative
-  // forms mutate _argChecks/_debug/_timingGuarantees/_synthDefaults/
-  // _sampleDefaults on the builder; block forms save → set → run → restore.
-  // Inside live_loops the transpiler routes via __b through BUILDER_METHODS
-  // for the imperative forms and via the block-opener path (line ~1052) for
-  // the with_* forms. Top-level dslValues forward to topLevelBuilder.
-  "use_arg_checks",
-  "use_timing_guarantees",
-  "use_merged_synth_defaults",
-  "use_merged_sample_defaults",
-  "with_arg_checks",
-  "with_debug",
-  "with_timing_guarantees",
-  "with_merged_synth_defaults",
-  "with_merged_sample_defaults",
-  // Tier C PR #2 — sample/buffer registry (#253). Top-level host-bridge stubs
-  // for the sample-cache surface. sample_paths returns the bundled+custom
-  // names list (no real fs in browser). sample_buffer/buffer return browser
-  // shapes of the desktop Buffer object — duration-bearing info dictionaries
-  // since user-buffer recording is deferred to a later PR.
-  "sample_paths",
-  "sample_buffer",
-  "sample_free",
-  "sample_free_all",
-  "load_samples",
-  "buffer",
-  // Tier C PR #3 — mixer + introspection (#255). set_mixer_control! /
-  // reset_mixer! are deferred ProgramBuilder steps (mirror set_volume
-  // lifecycle so sweeps sequence with playback). scsynth_info / status
-  // are pure host-queries from the bridge. vt is an alias of current_time.
-  // bt / rt are pure BPM math (NOT current_beat wrappers — see #255 audit).
-  "set_mixer_control",
-  "reset_mixer",
-  "scsynth_info",
-  "status",
-  "vt",
-  "bt",
-  "rt"
-];
-
-// ../../../sonicPiWeb/src/engine/Sandbox.ts
-var SANDBOX_WRAPPER_LINES = 37;
-var BLOCKED_GLOBALS = [
-  "fetch",
-  "XMLHttpRequest",
-  "WebSocket",
-  "EventSource",
-  "localStorage",
-  "sessionStorage",
-  "indexedDB",
-  "document",
-  "window",
-  "navigator",
-  "location",
-  "history",
-  "setTimeout",
-  "setInterval",
-  "clearTimeout",
-  "clearInterval",
-  "Worker",
-  "SharedWorker",
-  "ServiceWorker",
-  "importScripts",
-  "postMessage",
-  "globalThis",
-  "eval",
-  "Function"
-];
-var BLOCKED_SET = new Set(BLOCKED_GLOBALS);
-function createIsolatedExecutor(transpiledCode, dslParamNames, extraScope) {
-  const scopeBase = {};
-  for (const name2 of BLOCKED_GLOBALS) {
-    scopeBase[name2] = void 0;
-  }
-  if (extraScope) {
-    for (const [k, v] of Object.entries(extraScope)) {
-      scopeBase[k] = v;
-    }
-  }
-  const scopeStack = [];
-  const scopeLocals = /* @__PURE__ */ new Map();
-  const scope = new Proxy(scopeBase, {
-    has() {
-      return true;
-    },
-    get(target, prop) {
-      if (typeof prop === "string") {
-        if (BLOCKED_SET.has(prop)) return void 0;
-        const currentScopeName = scopeStack[scopeStack.length - 1] ?? null;
-        if (currentScopeName !== null) {
-          const locals = scopeLocals.get(currentScopeName);
-          if (locals && locals.has(prop)) return locals.get(prop);
-        }
-        if (prop in target) return target[prop];
-      }
-      return globalThis[prop];
-    },
-    set(target, prop, value) {
-      if (typeof prop === "string") {
-        const currentScopeName = scopeStack[scopeStack.length - 1] ?? null;
-        if (currentScopeName !== null && currentScopeName !== "__run_once") {
-          let locals = scopeLocals.get(currentScopeName);
-          if (!locals) {
-            locals = /* @__PURE__ */ new Map();
-            scopeLocals.set(currentScopeName, locals);
-          }
-          locals.set(prop, value);
-          return true;
-        }
-      }
-      target[prop] = value;
-      return true;
-    }
-  });
-  const scopeHandle = {
-    enterScope(name2) {
-      scopeStack.push(name2);
-    },
-    exitScope() {
-      scopeStack.pop();
-    }
-  };
-  const mergePolyfill = `if (!Object.prototype.merge) { Object.defineProperty(Object.prototype, 'merge', { value: function(other) { return {...this, ...other}; }, writable: true, configurable: true, enumerable: false }); }
-`;
-  const stringRingPolyfill = `if (!String.prototype.ring) { Object.defineProperty(String.prototype, 'ring', { get: function() { return this.split(''); }, configurable: true, enumerable: false }); }
-`;
-  const arrayAtPolyfill = `{ const _origAt = Array.prototype.at; Object.defineProperty(Array.prototype, 'at', { value: function(i) { return this[((i % this.length) + this.length) % this.length]; }, writable: true, configurable: true }); }
-`;
-  const arrayTakePolyfill = `if (!Array.prototype.take) { Object.defineProperty(Array.prototype, 'take', { value: function(n) { return this.slice(0, n); }, writable: true, configurable: true }); }
-`;
-  const spOperatorPolyfill = [
-    "var __spNoteRe = /^[a-g][sb#]?\\d*$/i;",
-    'function __spIsNote(v) { return typeof v === "string" && __spNoteRe.test(v); }',
-    'function __spToNum(v) { return __spIsNote(v) && typeof note === "function" ? note(v) : v; }',
-    'function __spIsRing(v) { return v != null && typeof v === "object" && typeof v.toArray === "function" && typeof v.tick === "function"; }',
-    "function __spAdd(a, b) {",
-    "  if (a == null || b == null) return null;",
-    "  a = __spToNum(a); b = __spToNum(b);",
-    "  if (__spIsRing(a) && __spIsRing(b)) return a.concat(b);",
-    "  if (__spIsRing(a) && Array.isArray(b)) return a.concat(b);",
-    "  if (Array.isArray(a) && __spIsRing(b)) return ring.apply(null, [].concat(a, b.toArray()));",
-    '  if (typeof a === "number" && Array.isArray(b)) return b.map(function(x) { return a + x; });',
-    '  if (Array.isArray(a) && typeof b === "number") return a.map(function(x) { return x + b; });',
-    '  if (typeof a === "number" && __spIsRing(b)) return ring.apply(null, b.toArray().map(function(x) { return a + x; }));',
-    '  if (__spIsRing(a) && typeof b === "number") return ring.apply(null, a.toArray().map(function(x) { return x + b; }));',
-    "  return a + b;",
-    "}",
-    "function __spSub(a, b) {",
-    "  if (a == null || b == null) return null;",
-    "  a = __spToNum(a); b = __spToNum(b);",
-    '  if (typeof a === "number" && Array.isArray(b)) return b.map(function(x) { return a - x; });',
-    '  if (Array.isArray(a) && typeof b === "number") return a.map(function(x) { return x - b; });',
-    '  if (typeof a === "number" && __spIsRing(b)) return ring.apply(null, b.toArray().map(function(x) { return a - x; }));',
-    '  if (__spIsRing(a) && typeof b === "number") return ring.apply(null, a.toArray().map(function(x) { return x - b; }));',
-    "  return a - b;",
-    "}",
-    "function __spMul(a, b) {",
-    '  if (__spIsRing(a) && typeof b === "number") return a.repeat(b);',
-    '  if (typeof a === "number" && __spIsRing(b)) return b.repeat(a);',
-    // Ruby Array * Integer → repeat the array (not arithmetic).
-    // Needed for patterns like `hats = [1,0,1,0] * 4`.
-    '  if (Array.isArray(a) && typeof b === "number") return new Array(b).fill(a).flat();',
-    '  if (typeof a === "number" && Array.isArray(b)) return new Array(a).fill(b).flat();',
-    "  return a * b;",
-    "}",
-    // Ruby x.kind_of?(Class) / x.is_a?(Class) — dispatch by class name.
-    // Class arg comes in as a string (the transpiler JSON-encodes the
-    // constant name) so we can match without needing the runtime to have
-    // bindings for Integer, Numeric, etc.
-    "function __spIsA(x, cls) {",
-    "  switch (cls) {",
-    '    case "Integer":  return Number.isInteger(x);',
-    '    case "Float":    return typeof x === "number" && !Number.isInteger(x);',
-    '    case "Numeric":  return typeof x === "number";',
-    '    case "String":   return typeof x === "string";',
-    '    case "Symbol":   return typeof x === "string";',
-    '    case "Array":    return Array.isArray(x);',
-    '    case "Hash":     return x !== null && typeof x === "object" && !Array.isArray(x) && !__spIsRing(x);',
-    '    case "NilClass": return x === null || x === undefined;',
-    '    case "TrueClass":  return x === true;',
-    '    case "FalseClass": return x === false;',
-    '    case "Proc":     return typeof x === "function";',
-    "  }",
-    // Unknown class name — try the runtime binding. If it's a function,
-    // fall back to instanceof; otherwise return false (Ruby semantics for
-    // an undefined class would raise NameError, but silent false is safer
-    // than crashing a live loop).
-    '  try { var t = eval(cls); return typeof t === "function" ? (x instanceof t) : false; }',
-    "  catch (e) { return false; }",
-    "}"
-  ].join("\n") + "\n";
-  const wrappedCode = `with(__scope__) { return (async () => {
-${mergePolyfill}${stringRingPolyfill}${arrayAtPolyfill}${arrayTakePolyfill}${spOperatorPolyfill}${transpiledCode}
-})(); }`;
-  const polyfillLineCount = (mergePolyfill + stringRingPolyfill + arrayAtPolyfill + arrayTakePolyfill + spOperatorPolyfill).split("\n").length;
-  SANDBOX_WRAPPER_LINES = 2 + polyfillLineCount;
-  try {
-    const fn = new Function("__scope__", wrappedCode);
-    const execute = /* @__PURE__ */ __name((...dslArgs) => {
-      for (let i2 = 0; i2 < dslParamNames.length; i2++) {
-        scope[dslParamNames[i2]] = dslArgs[i2];
-      }
-      return fn(scope);
-    }, "execute");
-    return { execute, scopeHandle };
-  } catch (e) {
-    if (e instanceof SyntaxError) {
-      const msg = e.message;
-      const lineMatch = e.stack?.match(/<anonymous>:(\d+):\d+/) ?? msg.match(/line\s+(\d+)/i);
-      if (lineMatch) {
-        const jsLine = parseInt(lineMatch[1], 10);
-        const wrapperLines = 2 + polyfillLineCount;
-        const sourceLine = jsLine - wrapperLines;
-        const enriched = new SyntaxError(`${msg} (line ${sourceLine > 0 ? sourceLine : 1})`);
-        enriched.stack = e.stack;
-        throw enriched;
-      }
-      throw e;
-    }
-    console.warn("[SonicPi] Sandbox unavailable \u2014 running without global blocking");
-    const asyncBody = `return (async () => {
-${transpiledCode}
-})();`;
-    try {
-      const fn = new Function(...dslParamNames, asyncBody);
-      return { execute: fn, scopeHandle };
-    } catch (fallbackErr) {
-      if (fallbackErr instanceof SyntaxError) {
-        const fbMsg = fallbackErr.message;
-        const fbMatch = fallbackErr.stack?.match(/<anonymous>:(\d+):\d+/) ?? fbMsg.match(/line\s+(\d+)/i);
-        if (fbMatch) {
-          const raw = parseInt(fbMatch[1], 10);
-          const adjusted = raw - 2;
-          const enriched = new SyntaxError(`${fbMsg} (line ${adjusted > 0 ? adjusted : 1})`);
-          enriched.stack = fallbackErr.stack;
-          throw enriched;
-        }
-      }
-      throw fallbackErr;
-    }
-  }
-}
-__name(createIsolatedExecutor, "createIsolatedExecutor");
-function validateCode(code) {
-  const warnings = [];
-  if (/\bconstructor\b/.test(code)) {
-    warnings.push('Code accesses "constructor" \u2014 this may not work in sandbox mode.');
-  }
-  if (/__proto__/.test(code)) {
-    warnings.push('Code accesses "__proto__" \u2014 this may not work in sandbox mode.');
-  }
-  return warnings;
-}
-__name(validateCode, "validateCode");
-
-// ../../../sonicPiWeb/src/engine/TreeSitterTranspiler.ts
-var Parser2 = null;
-var RubyLanguage = null;
-var _initPromise = null;
-function initTreeSitter(opts) {
-  if (_initPromise) return _initPromise;
-  _initPromise = _doInit(opts);
-  return _initPromise;
-}
-__name(initTreeSitter, "initTreeSitter");
-async function _doInit(opts) {
-  const isBrowser = typeof window !== "undefined";
-  let prevOnError = null;
-  let rejectHandler = null;
-  if (isBrowser) {
-    prevOnError = window.onerror;
-    window.onerror = (msg) => {
-      if (typeof msg === "string" && (msg.includes("Aborted") || msg.includes("_abort"))) {
-        return true;
-      }
-      return prevOnError ? prevOnError(...arguments) : false;
-    };
-    rejectHandler = /* @__PURE__ */ __name((e) => {
-      const reason = String(e.reason ?? "");
-      if (reason.includes("Aborted") || reason.includes("_abort") || reason.includes("LinkError")) {
-        e.preventDefault();
-      }
-    }, "rejectHandler");
-    window.addEventListener("unhandledrejection", rejectHandler);
-  }
-  try {
-    const mod = await Promise.resolve().then(() => __toESM(require_tree_sitter(), 1));
-    const TSParser = mod.Parser ?? mod.default ?? mod;
-    const tsWasm = opts?.treeSitterWasmUrl ?? "/tree-sitter.wasm";
-    const rubyWasm = opts?.rubyWasmUrl ?? "/tree-sitter-ruby.wasm";
-    const initWithTimeout = Promise.race([
-      TSParser.init({
-        locateFile: /* @__PURE__ */ __name((_filename, _scriptDir) => tsWasm, "locateFile")
-      }),
-      new Promise(
-        (_, reject) => setTimeout(() => reject(new Error("tree-sitter init timeout")), 5e3)
-      )
-    ]);
-    await initWithTimeout;
-    const TSLanguage = mod.Language ?? TSParser.Language;
-    Parser2 = new TSParser();
-    RubyLanguage = await TSLanguage.load(rubyWasm);
-    Parser2.setLanguage(RubyLanguage);
-    return true;
-  } catch (err2) {
-    console.warn("[TreeSitter] Init failed, regex fallback will be used:", err2);
-    _initPromise = null;
-    return false;
-  } finally {
-    if (isBrowser) {
-      setTimeout(() => {
-        window.onerror = prevOnError;
-        if (rejectHandler) window.removeEventListener("unhandledrejection", rejectHandler);
-      }, 200);
-    }
-  }
-}
-__name(_doInit, "_doInit");
-function isTreeSitterReady() {
-  return Parser2 !== null && RubyLanguage !== null;
-}
-__name(isTreeSitterReady, "isTreeSitterReady");
-function findFirstErrorNode(node) {
-  if (node.type === "ERROR" || node.isMissing) return node;
-  for (let i2 = 0; i2 < node.childCount; i2++) {
-    const found = findFirstErrorNode(node.child(i2));
-    if (found) return found;
-  }
-  return null;
-}
-__name(findFirstErrorNode, "findFirstErrorNode");
-function treeSitterTranspile(ruby) {
-  if (!isTreeSitterReady()) {
-    return { code: "", ok: false, errors: ["tree-sitter not initialized"] };
-  }
-  ruby = ruby.split("\n").map((line2) => {
-    const trimmed = line2.trim();
-    if (/^\/[^/].*\/$/.test(trimmed) && !/[=~<>!]/.test(trimmed)) {
-      return line2.replace(trimmed, `# ${trimmed.slice(1, -1).trim()}`);
-    }
-    return line2;
-  }).join("\n");
-  const tree = Parser2.parse(ruby);
-  const errors = [];
-  const ctx = {
-    source: ruby,
-    errors,
-    insideLoop: false,
-    definedFunctions: /* @__PURE__ */ new Set(),
-    indent: "",
-    inthreadLoopCounter: { n: 0 }
-  };
-  const js = transpileNode(tree.rootNode, ctx);
-  if (errors.length === 0 && tree.rootNode.hasError) {
-    const bad = findFirstErrorNode(tree.rootNode);
-    const line2 = (bad ?? tree.rootNode).startPosition.row + 1;
-    const snippet = (bad?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 50);
-    errors.push(`Syntax error at line ${line2}: your code could not be parsed${snippet ? ` (near \`${snippet}\`)` : ""}`);
-  }
-  if (errors.length > 0) {
-    return { code: js, ok: false, errors };
-  }
-  try {
-    new Function(js);
-    return { code: js, ok: true, errors: [] };
-  } catch (e) {
-    return { code: js, ok: false, errors: [`Invalid JS output: ${e.message}`] };
-  }
-}
-__name(treeSitterTranspile, "treeSitterTranspile");
-var BUILDER_METHODS = /* @__PURE__ */ new Set([
-  // Core
-  "play",
-  "sleep",
-  "wait",
-  "sample",
-  "sync",
-  "sync_bpm",
-  "cue",
-  "set",
-  "use_synth",
-  "use_bpm",
-  "use_random_seed",
-  "control",
-  "stop",
-  "live_audio",
-  "with_fx",
-  "in_thread",
-  "at",
-  "puts",
-  "print",
-  // Random (resolved eagerly)
-  "rrand",
-  "rrand_i",
-  "rand",
-  "rand_i",
-  "choose",
-  "dice",
-  "one_in",
-  "rdist",
-  "rand_look",
-  "shuffle",
-  "pick",
-  // Tick (#211)
-  "tick",
-  "look",
-  "tick_reset",
-  "tick_reset_all",
-  "tick_set",
-  // Transpose
-  "use_transpose",
-  "with_transpose",
-  // Synth defaults / BPM / synth blocks
-  "use_synth_defaults",
-  "use_sample_defaults",
-  "with_synth_defaults",
-  "with_sample_defaults",
-  "with_bpm",
-  "with_synth",
-  "use_density",
-  // Debug + latency
-  "use_debug",
-  "use_real_time",
-  // BPM scaling control
-  "use_arg_bpm_scaling",
-  "with_arg_bpm_scaling",
-  // Utility
-  "factor_q",
-  "bools",
-  "play_pattern_timed",
-  "sample_duration",
-  "stretch",
-  "ramp",
-  "hz_to_midi",
-  "midi_to_hz",
-  "quantise",
-  "quantize",
-  "octs",
-  "kill",
-  "play_chord",
-  "play_pattern",
-  "tuplets",
-  "with_octave",
-  "with_random_seed",
-  "with_density",
-  "noteToMidi",
-  "midiToFreq",
-  "noteToFreq",
-  "note_info",
-  // Data constructors
-  "ring",
-  "knit",
-  "range",
-  "line",
-  "spread",
-  "chord",
-  "scale",
-  "chord_invert",
-  "note",
-  "note_range",
-  "chord_degree",
-  "degree",
-  "chord_names",
-  "scale_names",
-  // OSC
-  "osc_send",
-  // Sample BPM
-  "use_sample_bpm",
-  // Tier B — timing introspection (#226). Per-task pure reads — must route
-  // through __b so the value reflects the calling task, not engine state.
-  "current_beat",
-  "current_beat_duration",
-  "current_time",
-  "current_sched_ahead_time",
-  // Tier C PR #3 — bt/rt/vt (#255). Per-task pure reads (bt/rt depend on the
-  // calling task's bpm; vt is a current_time alias). Inside live_loops the
-  // task's __b carries the right bpm; top-level dslValues forward to topLevelBuilder.
-  "bt",
-  "rt",
-  "vt",
-  // Tier B — PRNG inspection (#227). Per-task RNG mutations — route through
-  // __b so they hit the calling builder's seeded random stream.
-  "current_random_seed",
-  "rand_back",
-  "rand_skip",
-  "rand_reset",
-  // Tier B PR #2 — defaults / setting introspection (#233). Per-task pure
-  // reads — route through __b so per-loop use_*_defaults are visible.
-  "current_synth_defaults",
-  "current_sample_defaults",
-  "current_arg_checks",
-  "current_debug",
-  "current_timing_guarantees",
-  // Tier C PR #1 — state wrappers (#251). Imperative toggle/merge family
-  // routes through __b so per-task state mutations don't leak to siblings.
-  // Block forms are registered separately at the block-opener path below.
-  "use_arg_checks",
-  "use_timing_guarantees",
-  "use_merged_synth_defaults",
-  "use_merged_sample_defaults",
-  "with_arg_checks",
-  "with_debug",
-  "with_timing_guarantees",
-  "with_merged_synth_defaults",
-  "with_merged_sample_defaults",
-  // Deferred-step DSL contract (issue #193 — must mirror methods on
-  // ProgramBuilder so they fire at scheduled virtual time, not build time).
-  "stop_loop",
-  "set_volume",
-  "use_osc",
-  "osc",
-  "midi",
-  "midi_note_on",
-  "midi_note_off",
-  "midi_cc",
-  "midi_pitch_bend",
-  "midi_channel_pressure",
-  "midi_poly_pressure",
-  "midi_prog_change",
-  "midi_clock_tick",
-  "midi_start",
-  "midi_stop",
-  "midi_continue",
-  "midi_all_notes_off",
-  "midi_notes_off",
-  // Tier B — recording (#228). Deferred so the lifecycle sequences against
-  // the audio playback timeline. Building them at top-level immediate
-  // would fire recording_save before any notes from the surrounding
-  // `8.times do` had played, leaving the WAV empty.
-  "recording_start",
-  "recording_stop",
-  "recording_save",
-  "recording_delete",
-  // Tier C PR #3 — mixer setters (#255). Deferred so a `set_mixer_control!
-  // lpf: 30; sleep 4; reset_mixer!` sweep sequences with playback. Same
-  // lifecycle reasoning as set_volume (#197).
-  "set_mixer_control",
-  "reset_mixer",
-  // Budget
-  "__checkBudget__"
-]);
-var TOP_LEVEL_SCOPE = /* @__PURE__ */ new Set([
-  "live_loop",
-  "stop_loop",
-  "define",
-  "use_bpm",
-  "use_synth",
-  "use_random_seed",
-  "use_arg_bpm_scaling",
-  "in_thread",
-  "at",
-  "density",
-  "with_fx",
-  "with_arg_bpm_scaling",
-  // Global store
-  "set",
-  "get",
-  // Sample catalog
-  "sample_duration",
-  "sample_names",
-  "sample_groups",
-  "sample_loaded",
-  // Output
-  "puts",
-  "print",
-  "stop",
-  // Volume & introspection
-  "set_volume",
-  "current_synth",
-  "current_volume",
-  // Catalog queries
-  "synth_names",
-  "fx_names",
-  "all_sample_names",
-  // Sample management
-  "load_sample",
-  "sample_info",
-  // Math / music theory
-  "hz_to_midi",
-  "midi_to_hz",
-  "quantise",
-  "quantize",
-  "octs",
-  "chord_degree",
-  "degree",
-  "chord_names",
-  "scale_names",
-  "current_bpm",
-  // Data constructors (also on builder, but available at top level)
-  "ring",
-  "knit",
-  "range",
-  "line",
-  "spread",
-  "chord",
-  "scale",
-  "chord_invert",
-  "note",
-  "note_range",
-  // OSC
-  "use_osc",
-  "osc",
-  "osc_send",
-  // MIDI shorthand
-  "midi",
-  // Sample BPM
-  "use_sample_bpm"
-]);
-var UNIMPLEMENTED_DSL = /* @__PURE__ */ new Set([
-  "load_samples",
-  "load_sample"
-]);
-var BARE_CALLABLE = /* @__PURE__ */ new Set([
-  "tick",
-  "look",
-  "stop",
-  "tick_reset_all",
-  "rand",
-  "rand_i",
-  "chord_names",
-  "scale_names",
-  // Tier B — timing introspection (#226). Ruby calls these without parens.
-  "current_beat",
-  "current_beat_duration",
-  "current_time",
-  "current_sched_ahead_time",
-  // Tier B — PRNG inspection (#227). current_random_seed and rand_reset are
-  // typically called without parens. rand_back / rand_skip take an optional
-  // arg but are also valid bare (rand_back == rand_back(1)).
-  "current_random_seed",
-  "rand_back",
-  "rand_skip",
-  "rand_reset",
-  // Tier B — recording (#228). Three of the four are 0-arity and routinely
-  // called bare (`recording_start`, not `recording_start()`). Inside a
-  // BARE_DSL_CALLS-wrapped run-once block they need __b.recording_*()
-  // emitted so the deferred step actually pushes onto the program.
-  // `recording_save` always carries an arg and parses as a method_call,
-  // so it doesn't need this list — but including it means a bare
-  // `recording_save` (forgotten filename) trips the arity guard at build.
-  "recording_start",
-  "recording_stop",
-  "recording_delete",
-  "recording_save",
-  // Tier B PR #2 — defaults / setting introspection (#233). Routinely called
-  // bare in user code (`puts current_debug`, `if current_arg_checks`).
-  "current_synth_defaults",
-  "current_sample_defaults",
-  "current_arg_checks",
-  "current_debug"
-]);
-var BARE_CALLABLE_TOP_LEVEL = /* @__PURE__ */ new Set([
-  "current_bpm"
-]);
-var SYNTH_NAMES = /* @__PURE__ */ new Set([
-  "beep",
-  "sine",
-  "saw",
-  "pulse",
-  "subpulse",
-  "square",
-  "tri",
-  "dsaw",
-  "dpulse",
-  "dtri",
-  "fm",
-  "mod_fm",
-  "mod_saw",
-  "mod_dsaw",
-  "mod_sine",
-  "mod_beep",
-  "mod_tri",
-  "mod_pulse",
-  "supersaw",
-  "hoover",
-  "prophet",
-  "zawa",
-  "dark_ambience",
-  "growl",
-  "hollow",
-  "blade",
-  "piano",
-  "pluck",
-  "pretty_bell",
-  "dull_bell",
-  "tech_saws",
-  "chipbass",
-  "chiplead",
-  "chipnoise",
-  "tb303",
-  "bass_foundation",
-  "bass_highend",
-  "organ_tonewheel",
-  "rhodey",
-  "rodeo",
-  "kalimba",
-  "gabberkick",
-  "noise",
-  "pnoise",
-  "bnoise",
-  "gnoise",
-  "cnoise",
-  "sound_in",
-  "sound_in_stereo",
-  "sc808_bassdrum",
-  "sc808_snare",
-  "sc808_clap",
-  "sc808_tomlo",
-  "sc808_tommid",
-  "sc808_tomhi",
-  "sc808_congalo",
-  "sc808_congamid",
-  "sc808_congahi",
-  "sc808_rimshot",
-  "sc808_claves",
-  "sc808_maracas",
-  "sc808_cowbell",
-  "sc808_closed_hihat",
-  "sc808_open_hihat",
-  "sc808_cymbal"
-]);
-function transpileNode(node, ctx) {
-  const type = node.type;
-  switch (type) {
-    // ---- Root ----
-    case "program":
-      return transpileProgram(node, ctx);
-    // ---- Literals ----
-    case "integer":
-    case "float":
-      return node.text;
-    case "true":
-      return "true";
-    case "false":
-      return "false";
-    case "nil":
-      return "null";
-    case "self":
-      return "this";
-    case "simple_symbol":
-      return `"${node.text.slice(1)}"`;
-    case "hash_key_symbol":
-      return node.text.replace(/:$/, "");
-    case "string": {
-      return transpileString(node, ctx);
-    }
-    case "string_content":
-      return node.text;
-    case "escape_sequence":
-      return node.text;
-    case "interpolation": {
-      const inner = node.namedChildren.map((c) => transpileNode(c, ctx)).join("");
-      return "${" + inner + "}";
-    }
-    case "symbol_array":
-    case "string_array":
-      return `[${node.namedChildren.map((c) => `"${c.text}"`).join(", ")}]`;
-    case "array": {
-      const elements = node.namedChildren.map((c) => transpileNode(c, ctx));
-      return `[${elements.join(", ")}]`;
-    }
-    case "hash": {
-      const pairs = node.namedChildren.map((c) => transpileNode(c, ctx));
-      return `{ ${pairs.join(", ")} }`;
-    }
-    case "pair": {
-      const key = node.namedChildren[0];
-      const value = node.namedChildren[1];
-      const keyStr = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : transpileNode(key, ctx);
-      return `${keyStr}: ${transpileNode(value, ctx)}`;
-    }
-    case "subarray":
-      return `[${node.namedChildren.map((c) => transpileNode(c, ctx)).join(", ")}]`;
-    // ---- Identifiers ----
-    case "identifier": {
-      const name2 = node.text;
-      if (name2 === "nil") return "null";
-      if (name2 === "true") return "true";
-      if (name2 === "false") return "false";
-      const parentType = node.parent?.type;
-      const isStatement = parentType === "body_statement" || parentType === "program" || parentType === "then" || parentType === "block_body";
-      if (isStatement && ctx.definedFunctions.has(name2)) {
-        return `${name2}(__b)`;
-      }
-      if (BARE_CALLABLE.has(name2)) {
-        const prefix = ctx.insideLoop ? "__b." : "";
-        return `${prefix}${name2}()`;
-      }
-      if (BARE_CALLABLE_TOP_LEVEL.has(name2)) {
-        return `${name2}()`;
-      }
-      return name2;
-    }
-    case "constant":
-      return node.text;
-    case "global_variable":
-      return node.text;
-    case "instance_variable":
-      return `this.${node.text.slice(1)}`;
-    case "class_variable":
-      return node.text;
-    // ---- Expressions ----
-    case "assignment": {
-      const lhs = node.namedChildren[0];
-      const rhs = node.namedChildren[1];
-      const lhsStr = transpileNode(lhs, ctx);
-      const rhsStr = transpileNode(rhs, ctx);
-      if (ctx.insideLoop && /^__b\.(play|sample)\(/.test(rhsStr)) {
-        return `${rhsStr}; ${lhsStr} = __b.lastRef`;
-      }
-      return `${lhsStr} = ${rhsStr}`;
-    }
-    case "operator_assignment": {
-      const lhs = node.namedChildren[0];
-      const op = node.children.find((c) => c.type.endsWith("=") && c.type !== "identifier");
-      const rhs = node.namedChildren[1];
-      const opText = op ? op.text : "+=";
-      return `${transpileNode(lhs, ctx)} ${opText} ${transpileNode(rhs, ctx)}`;
-    }
-    case "conditional": {
-      const cond = node.namedChildren[0];
-      const trueBranch = node.namedChildren[1];
-      const falseBranch = node.namedChildren[2];
-      return `${transpileNode(cond, ctx)} ? ${transpileNode(trueBranch, ctx)} : ${transpileNode(falseBranch, ctx)}`;
-    }
-    case "binary": {
-      const left = node.namedChildren[0];
-      const right = node.namedChildren[1];
-      const op = node.children.find((c) => !c.isNamed)?.text ?? node.children[1]?.text ?? "+";
-      const jsOp = op === "and" ? "&&" : op === "or" ? "||" : op === "**" ? "**" : op;
-      if (op === "**") {
-        return `Math.pow(${transpileNode(left, ctx)}, ${transpileNode(right, ctx)})`;
-      }
-      const lhs = transpileNode(left, ctx);
-      const rhs = transpileNode(right, ctx);
-      if (op === "+") return `__spAdd(${lhs}, ${rhs})`;
-      if (op === "-") return `__spSub(${lhs}, ${rhs})`;
-      if (op === "*") return `__spMul(${lhs}, ${rhs})`;
-      return `${lhs} ${jsOp} ${rhs}`;
-    }
-    case "unary": {
-      const operand = node.namedChildren[0];
-      const op = node.children[0]?.text ?? "-";
-      if (op === "defined?") return `(typeof ${transpileNode(operand, ctx)} !== 'undefined')`;
-      const jsOp = op === "not" ? "!" : op;
-      return `${jsOp}${transpileNode(operand, ctx)}`;
-    }
-    case "parenthesized_statements": {
-      const inner = node.namedChildren.map((c) => transpileNode(c, ctx));
-      if (inner.length === 1) return `(${inner[0]})`;
-      return `(${inner.join(", ")})`;
-    }
-    case "range": {
-      const from = transpileNode(node.namedChildren[0], ctx);
-      const to = transpileNode(node.namedChildren[1], ctx);
-      const exclusive = node.text.includes("...");
-      if (exclusive) {
-        return `Array.from({length: ${to} - ${from}}, (_, _i) => ${from} + _i)`;
-      }
-      return `Array.from({length: ${to} - ${from} + 1}, (_, _i) => ${from} + _i)`;
-    }
-    // ---- Method calls — the heart of the DSL ----
-    case "call":
-    case "method_call": {
-      return transpileMethodCall(node, ctx);
-    }
-    case "argument_list": {
-      return transpileArgList(node, ctx);
-    }
-    case "element_reference": {
-      const obj = transpileNode(node.namedChildren[0], ctx);
-      if (node.namedChildren[1]?.type === "range") {
-        const rangeNode = node.namedChildren[1];
-        const from = transpileNode(rangeNode.namedChildren[0], ctx);
-        const toNode = rangeNode.namedChildren[1];
-        const toStr = transpileNode(toNode, ctx);
-        if (toStr === "-1" || toNode.type === "unary" && toNode.namedChildren[0]?.text === "1") {
-          return `${obj}.slice(${from})`;
-        }
-        if (toStr.startsWith("-")) {
-          const absVal = parseInt(toStr.slice(1));
-          return `${obj}.slice(${from}, ${-(absVal - 1) || void 0})`;
-        }
-        return `${obj}.slice(${from}, ${toStr} + 1)`;
-      }
-      const args2 = node.namedChildren.slice(1).map((c) => transpileNode(c, ctx));
-      return `${obj}[${args2.join(", ")}]`;
-    }
-    case "scope_resolution":
-      return transpileScopeResolution(node, ctx);
-    // Ruby splat `*expr` → JS spread `...expr` (works in array literals
-    // and call arguments — same surface as Ruby's common usage).
-    case "splat_argument": {
-      const child = node.namedChildren[0];
-      return child ? `...${transpileNode(child, ctx)}` : "...";
-    }
-    // ---- Blocks ----
-    case "do_block":
-    case "block": {
-      return transpileBlockBody(node, ctx);
-    }
-    case "block_parameters": {
-      const params = node.namedChildren.map((c) => transpileNode(c, ctx));
-      return params.join(", ");
-    }
-    case "block_body":
-    case "body_statement": {
-      return transpileChildren(node, ctx);
-    }
-    // ---- Control flow ----
-    case "if": {
-      return transpileIf(node, ctx);
-    }
-    case "unless": {
-      return transpileUnless(node, ctx);
-    }
-    case "if_modifier": {
-      const body2 = node.namedChildren[0];
-      const cond = node.namedChildren[1];
-      return `if (${transpileNode(cond, ctx)}) { ${transpileNode(body2, ctx)} }`;
-    }
-    case "unless_modifier": {
-      const body2 = node.namedChildren[0];
-      const cond = node.namedChildren[1];
-      return `if (!(${transpileNode(cond, ctx)})) { ${transpileNode(body2, ctx)} }`;
-    }
-    case "while": {
-      const cond = node.namedChildren[0];
-      const bodyNode = node.namedChildren[1];
-      const bodyCtx = { ...ctx };
-      const bodyStr = bodyNode ? transpileNode(bodyNode, bodyCtx) : "";
-      return `while (${transpileNode(cond, ctx)}) {
-${ctx.indent}  __b.__checkBudget__()
-${bodyStr}
-${ctx.indent}}`;
-    }
-    case "until": {
-      const cond = node.namedChildren[0];
-      const bodyNode = node.namedChildren[1];
-      const bodyStr = bodyNode ? transpileNode(bodyNode, ctx) : "";
-      return `while (!(${transpileNode(cond, ctx)})) {
-${ctx.indent}  __b.__checkBudget__()
-${bodyStr}
-${ctx.indent}}`;
-    }
-    case "for": {
-      const varNode = node.namedChildren[0];
-      const iterNode = node.namedChildren[1];
-      const bodyNode = node.namedChildren[2];
-      const bodyStr = bodyNode ? transpileNode(bodyNode, ctx) : "";
-      return `for (const ${transpileNode(varNode, ctx)} of ${transpileNode(iterNode, ctx)}) {
-${ctx.indent}  __b.__checkBudget__()
-${bodyStr}
-${ctx.indent}}`;
-    }
-    case "case": {
-      return transpileCase(node, ctx);
-    }
-    case "when": {
-      return "";
-    }
-    case "else":
-      return "";
-    case "then":
-      return transpileChildren(node, ctx);
-    case "begin": {
-      return transpileBeginRescue(node, ctx);
-    }
-    case "rescue":
-    case "ensure":
-      return "";
-    case "return": {
-      const val = node.namedChildren[0];
-      if (val) return `return ${transpileNode(val, ctx)}`;
-      return "return";
-    }
-    // ---- Method/function definitions ----
-    case "method": {
-      const nameNode = node.namedChildren[0];
-      const params = node.namedChildren.find((c) => c.type === "method_parameters");
-      const body2 = node.namedChildren.find((c) => c.type === "body_statement");
-      ctx.definedFunctions.add(nameNode.text);
-      const paramStr = params ? params.namedChildren.map((c) => transpileNode(c, ctx)).join(", ") : "";
-      const bodyStr = body2 ? transpileNode(body2, ctx) : "";
-      return `function ${nameNode.text}(${paramStr}) {
-${bodyStr}
-${ctx.indent}}`;
-    }
-    // ---- Lambda ----
-    case "lambda": {
-      const params = node.namedChildren.find((c) => c.type === "lambda_parameters" || c.type === "block_parameters");
-      const body2 = node.namedChildren.find((c) => c.type === "block" || c.type === "do_block") ?? node.namedChildren[node.namedChildCount - 1];
-      const paramStr = params ? params.namedChildren.map((c) => transpileNode(c, ctx)).join(", ") : "";
-      const bodyStr = body2 ? transpileNode(body2, ctx) : "";
-      return `(${paramStr}) => { ${bodyStr} }`;
-    }
-    // ---- Block argument (&:method → (x) => x.method()) ----
-    case "block_argument": {
-      const inner = node.namedChildren[0];
-      if (inner?.type === "simple_symbol") {
-        const method = inner.text.slice(1);
-        return `(__x) => __x.${method}()`;
-      }
-      return transpileNode(inner, ctx);
-    }
-    // ---- Multiple assignment: a, b = [1, 2] → [a, b] = [1, 2] ----
-    case "left_assignment_list": {
-      const vars = node.namedChildren.map((c) => transpileNode(c, ctx));
-      return `[${vars.join(", ")}]`;
-    }
-    // ---- Splat/rest ----
-    case "splat_parameter":
-    case "rest_assignment":
-      return `...${node.namedChildren[0]?.text ?? ""}`;
-    case "keyword_parameter": {
-      const name2 = node.namedChildren[0]?.text ?? "";
-      const defaultVal = node.namedChildren[1];
-      if (defaultVal) return `${name2} = ${transpileNode(defaultVal, ctx)}`;
-      return name2;
-    }
-    case "optional_parameter": {
-      const name2 = node.namedChildren[0]?.text ?? "";
-      const defaultVal = node.namedChildren[1];
-      if (defaultVal) return `${name2} = ${transpileNode(defaultVal, ctx)}`;
-      return name2;
-    }
-    case "destructured_parameter":
-      return node.text;
-    // ---- Comments ----
-    case "comment":
-      return `//${node.text.slice(1)}`;
-    // Sonic Pi uses /text/ as multi-line comments. Ruby's grammar parses
-    // these as regex literals. Convert to JS comments.
-    case "regex":
-      return `// ${node.text.slice(1, -1).trim()}`;
-    // ---- Misc ----
-    case "expression_statement":
-      return transpileChildren(node, ctx);
-    case "empty_statement":
-      return "";
-    case "ERROR": {
-      ctx.errors.push(`Parse error at line ${node.startPosition.row + 1}: ${node.text.slice(0, 50)}`);
-      return `/* PARSE ERROR: ${node.text.slice(0, 30)} */`;
-    }
-    // ---- Default: structural wrapper OR unsupported feature ----
-    // Only nodes in STRUCTURAL_WRAPPERS silently pass through. Everything
-    // else flags via pushUnsupported so the user gets a report link instead
-    // of a cryptic JS parser error downstream. This closes the silent-leak
-    // path where an unknown node with namedChildren would recurse and emit
-    // malformed JS (e.g., `Math::PI` → `Math::PI` → "Unexpected token ':'").
-    default: {
-      if (STRUCTURAL_WRAPPERS.has(node.type)) {
-        return node.namedChildCount > 0 ? transpileChildren(node, ctx) : node.text;
-      }
-      if (node.text.trim()) {
-        pushUnsupported(
-          ctx,
-          node,
-          node.type,
-          `Ruby construct \`${node.type}\` isn't supported yet`
-        );
-      }
-      return "undefined";
-    }
-  }
-}
-__name(transpileNode, "transpileNode");
-var BARE_DSL_CALLS = /* @__PURE__ */ new Set([
-  "play",
-  "sleep",
-  "sample",
-  "cue",
-  "sync",
-  "puts",
-  "print",
-  "control",
-  "kill",
-  "synth",
-  "play_chord",
-  "play_pattern",
-  "play_pattern_timed",
-  "use_synth_defaults",
-  "use_sample_defaults",
-  "use_transpose",
-  // Tier B — recording (#228). Bare top-level recording_* triggers the
-  // implicit live_loop :__run_once wrapper so __b is in scope; the
-  // resulting __b.recording_* calls fire as deferred steps at scheduled
-  // virtual time.
-  "recording_start",
-  "recording_stop",
-  "recording_save",
-  "recording_delete"
-]);
-var TOP_LEVEL_SETTINGS = /* @__PURE__ */ new Set(["use_bpm", "use_random_seed", "use_debug", "use_arg_bpm_scaling"]);
-function transpileProgram(node, ctx) {
-  const children = node.namedChildren;
-  const hasBareCode = children.some((c) => {
-    if (c.type === "call" || c.type === "method_call") {
-      const method = c.childForFieldName("method")?.text ?? c.namedChildren[0]?.text;
-      if (BARE_DSL_CALLS.has(method)) return true;
-      if (method === "times" || method === "each") return true;
-    }
-    return false;
-  });
-  const hasBareFx = children.some((c) => {
-    if (c.type !== "call" && c.type !== "method_call") return false;
-    const method = c.childForFieldName("method")?.text ?? c.namedChildren[0]?.text;
-    if (method !== "with_fx") return false;
-    const text = c.text ?? "";
-    return !/live_loop/.test(text);
-  });
-  const hasBareLoop = children.some((c) => {
-    if (c.type !== "call" && c.type !== "method_call") return false;
-    const method = c.childForFieldName("method")?.text ?? c.namedChildren[0]?.text;
-    if (method !== "loop") return false;
-    return c.namedChildren.some((x) => x.type === "do_block" || x.type === "block");
-  });
-  if (!hasBareCode && !hasBareFx && !hasBareLoop) {
-    return transpileChildren(node, ctx);
-  }
-  const topLevel = [];
-  const bareCode = [];
-  const blocks = [];
-  for (const child of children) {
-    if (child.type === "comment") {
-      bareCode.push(child);
-      continue;
-    }
-    const method = child.type === "call" || child.type === "method_call" ? child.childForFieldName("method")?.text ?? child.namedChildren[0]?.text : null;
-    const isBareFxNode = method === "with_fx" && !/live_loop/.test(child.text ?? "");
-    const isBareLoopNode = method === "loop" && child.namedChildren.some((c) => c.type === "do_block" || c.type === "block");
-    if (method && TOP_LEVEL_SETTINGS.has(method)) {
-      topLevel.push(child);
-    } else if (method && !isBareFxNode && (method === "live_loop" || method === "define" || method === "ndefine" || method === "defonce" || method === "with_fx" || method === "in_thread" || isBareLoopNode)) {
-      blocks.push(child);
-    } else {
-      bareCode.push(child);
-    }
-  }
-  for (const child of blocks) {
-    const m = child.type === "call" || child.type === "method_call" ? child.childForFieldName("method")?.text ?? child.namedChildren[0]?.text : null;
-    if (m === "define" || m === "ndefine") {
-      const argsNode = child.childForFieldName("arguments");
-      const nameNode = argsNode?.namedChildren?.[0];
-      if (nameNode) {
-        const funcName = nameNode.type === "simple_symbol" ? nameNode.text.slice(1) : nameNode.type === "string" ? nameNode.text.replace(/['"]/g, "") : nameNode.text;
-        ctx.definedFunctions.add(funcName);
-      }
-    }
-  }
-  const topJS = topLevel.map((c) => transpileNode(c, ctx)).filter(Boolean);
-  const bareCtx = { ...ctx, insideLoop: true, asyncBody: true };
-  const bareJS = bareCode.map((c) => "  " + transpileNode(c, bareCtx)).filter((s) => s.trim());
-  let topLoopCounter = 0;
-  const blockJS = blocks.map((c) => {
-    const m = c.type === "call" || c.type === "method_call" ? c.childForFieldName("method")?.text ?? c.namedChildren[0]?.text : null;
-    if (m === "loop") {
-      const body2 = c.namedChildren.find((x) => x.type === "do_block" || x.type === "block");
-      if (body2) {
-        const bodyCtx = { ...ctx, insideLoop: true, asyncBody: true };
-        const bodyStr = transpileBlockBody(body2, bodyCtx);
-        const name2 = `__loop_${topLoopCounter++}`;
-        return `live_loop("${name2}", async (__b) => {
-${bodyStr}
-${ctx.indent}})`;
-      }
-    }
-    return transpileNode(c, ctx);
-  }).filter(Boolean);
-  const parts2 = [];
-  if (topJS.length > 0) parts2.push(topJS.join("\n"));
-  if (bareJS.length > 0) {
-    parts2.push(`live_loop("__run_once", async (__b) => {
-${bareJS.join("\n")}
-  __b.stop()
-})`);
-  }
-  if (blockJS.length > 0) parts2.push(blockJS.join("\n"));
-  return parts2.join("\n");
-}
-__name(transpileProgram, "transpileProgram");
-function transpileMethodCall(node, ctx) {
-  const type = node.type;
-  if (type === "call" || type === "method_call") {
-    const receiver = node.childForFieldName("receiver");
-    const methodNode = node.childForFieldName("method");
-    const argsNode = node.childForFieldName("arguments");
-    const blockNode = node.namedChildren.find((c) => c.type === "do_block" || c.type === "block");
-    if (receiver && methodNode) {
-      return transpileReceiverMethodCall(receiver, methodNode, argsNode, blockNode, node, ctx);
-    }
-    const rawMethodName = methodNode?.text ?? node.namedChildren[0]?.text ?? node.text;
-    const methodName = rawMethodName.endsWith("!") ? rawMethodName.slice(0, -1) : rawMethodName;
-    if (methodName === "live_loop") {
-      return transpileLiveLoop(node, argsNode, blockNode, ctx);
-    }
-    if (methodName === "define" || methodName === "ndefine") {
-      return transpileDefine(node, argsNode, blockNode, ctx, methodName);
-    }
-    if (methodName === "defonce") {
-      return transpileDefonce(node, argsNode, blockNode, ctx);
-    }
-    if (methodName === "with_fx" || methodName === "with_synth" || methodName === "with_bpm" || methodName === "with_transpose" || methodName === "with_arg_bpm_scaling" || methodName === "with_synth_defaults" || methodName === "with_sample_defaults" || methodName === "with_random_seed" || methodName === "with_octave" || methodName === "with_density" || methodName === "with_arg_checks" || methodName === "with_debug" || methodName === "with_timing_guarantees" || methodName === "with_merged_synth_defaults" || methodName === "with_merged_sample_defaults") {
-      return transpileWithBlock(methodName, argsNode, blockNode, ctx);
-    }
-    if (methodName === "in_thread") {
-      return transpileInThread(argsNode, blockNode, ctx);
-    }
-    if (methodName === "at") {
-      return transpileAt(argsNode, blockNode, ctx);
-    }
-    if (methodName === "time_warp") {
-      return transpileTimeWarp(argsNode, blockNode, ctx);
-    }
-    if (methodName === "tuplets") {
-      return transpileTuplets(argsNode, blockNode, ctx);
-    }
-    if (methodName === "assert_error" && blockNode) {
-      const bodyCtx = { ...ctx, insideLoop: true };
-      const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-      return `assert_error((__b) => {
-${bodyStr}
-${ctx.indent}})`;
-    }
-    if (methodName === "density") {
-      return transpileDensity(argsNode, blockNode, ctx);
-    }
-    if (methodName === "uncomment") {
-      if (blockNode) {
-        const bodyCtx = { ...ctx };
-        return transpileBlockBody(blockNode, bodyCtx);
-      }
-      return "";
-    }
-    if (methodName === "comment") {
-      return "/* commented out */";
-    }
-    if (methodName === "loop") {
-      const block = blockNode ?? node.namedChildren.find((c) => c.type === "block");
-      if (block) {
-        const bodyStr = transpileBlockBody(block, ctx);
-        return `while (true) {
-${ctx.indent}  __b.__checkBudget__()
-${bodyStr}
-${ctx.indent}}`;
-      }
-    }
-    if (methodName === "stop") {
-      return "__b.stop()";
-    }
-    if (methodName === "use_synth") {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      const prefix = ctx.insideLoop ? "__b." : "";
-      return `${prefix}use_synth(${args3})`;
-    }
-    if (methodName === "use_bpm") {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      const prefix = ctx.insideLoop ? "__b." : "";
-      return `${prefix}use_bpm(${args3})`;
-    }
-    if (methodName === "use_random_seed") {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      const prefix = ctx.insideLoop ? "__b." : "";
-      return `${prefix}use_random_seed(${args3})`;
-    }
-    if (methodName === "use_synth_defaults" || methodName === "use_sample_defaults") {
-      const args3 = argsNode ? transpileArgListAsOpts(argsNode, ctx) : "{}";
-      const prefix = ctx.insideLoop ? "__b." : "";
-      return `${prefix}${methodName}(${args3})`;
-    }
-    if (methodName === "load_samples" || methodName === "load_sample") {
-      return "/* load_samples: no-op in browser */";
-    }
-    if (methodName === "osc_send") {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      const prefix = ctx.insideLoop ? "__b." : "";
-      return `${prefix}osc_send(${args3})`;
-    }
-    if (methodName === "synth") {
-      return transpileSynthCommand(argsNode, ctx);
-    }
-    if (SYNTH_NAMES.has(methodName)) {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      return `__b.play(${args3}, { synth: "${methodName}" })`;
-    }
-    if (ctx.definedFunctions.has(methodName)) {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      return `${methodName}(__b${args3 ? ", " + args3 : ""})`;
-    }
-    if (methodName.endsWith("?")) {
-      const cleanName = methodName.slice(0, -1) + "_q";
-      const prefix = ctx.insideLoop ? "__b." : "";
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      return `${prefix}${cleanName}(${args3})`;
-    }
-    if ((methodName === "sync" || methodName === "sync_bpm") && ctx.asyncBody) {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      return `await __b.${methodName}(${args3})`;
-    }
-    if (BUILDER_METHODS.has(methodName)) {
-      const prefix = ctx.insideLoop ? "__b." : "";
-      const needsSrcLine = methodName === "play" || methodName === "sample";
-      const nodeCtx = { ...ctx, srcLine: node.startPosition.row + 1 };
-      const args3 = argsNode ? transpileArgList(argsNode, nodeCtx, needsSrcLine) : "";
-      return `${prefix}${methodName}(${args3})`;
-    }
-    if (TOP_LEVEL_SCOPE.has(methodName)) {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      return `${methodName}(${args3})`;
-    }
-    if (UNIMPLEMENTED_DSL.has(methodName)) {
-      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-      return `${methodName}(${args3})`;
-    }
-    const args2 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${methodName}(${args2})`;
-  }
-  return node.text;
-}
-__name(transpileMethodCall, "transpileMethodCall");
-function transpileReceiverMethodCall(receiver, methodNode, argsNode, blockNode, fullNode, ctx) {
-  const method = methodNode.text;
-  const recStr = transpileNode(receiver, ctx);
-  if (method === "times" && blockNode) {
-    const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-    const varName = params?.namedChildren[0]?.text ?? "_i";
-    const bodyStr = transpileBlockBody(blockNode, ctx);
-    return `for (let ${varName} = 0; ${varName} < ${recStr}; ${varName}++) {
-${ctx.indent}  __b.__checkBudget__()
-${bodyStr}
-${ctx.indent}}`;
-  }
-  if (method === "each" && blockNode) {
-    const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-    const paramNames = params?.namedChildren?.map((c) => c.text) ?? [];
-    const bodyStr = transpileBlockBody(blockNode, ctx);
-    const bindings = paramNames.length === 0 ? "_item" : paramNames.length === 1 ? paramNames[0] : `[${paramNames.join(", ")}]`;
-    return `for (const ${bindings} of ${recStr}) {
-${ctx.indent}  __b.__checkBudget__()
-${bodyStr}
-${ctx.indent}}`;
-  }
-  if (method === "each_with_index" && blockNode) {
-    const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-    const itemVar = params?.namedChildren[0]?.text ?? "_item";
-    const idxVar = params?.namedChildren[1]?.text ?? "_i";
-    const bodyStr = transpileBlockBody(blockNode, ctx);
-    const arrTmp = `__ewi_${ctx.indent.length}`;
-    return `{ const ${arrTmp} = ${recStr}; for (let ${idxVar} = 0; ${idxVar} < ${arrTmp}.length; ${idxVar}++) {
-${ctx.indent}  __b.__checkBudget__()
-${ctx.indent}  const ${itemVar} = ${arrTmp}[${idxVar}]
-${bodyStr}
-${ctx.indent}} }`;
-  }
-  if ((method === "map" || method === "select" || method === "reject" || method === "collect") && blockNode) {
-    const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-    const varName = params?.namedChildren[0]?.text ?? "_item";
-    const jsMethod = method === "select" || method === "reject" ? "filter" : "map";
-    const isReject = method === "reject";
-    const bodyStr = transpileBlockBody(blockNode, ctx);
-    const negation = isReject ? "!" : "";
-    return `${recStr}.${jsMethod}((${varName}) => ${negation}(${bodyStr}))`;
-  }
-  if ((method === "map" || method === "select" || method === "reject" || method === "collect") && !blockNode) {
-    const inlineBlock = fullNode.namedChildren.find((c) => c.type === "block");
-    if (inlineBlock) {
-      const params = inlineBlock.namedChildren.find((c) => c.type === "block_parameters");
-      const varName = params?.namedChildren[0]?.text ?? "_item";
-      const jsMethod = method === "select" || method === "reject" ? "filter" : "map";
-      const isReject = method === "reject";
-      const bodyStr = transpileBlockBody(inlineBlock, ctx);
-      const negation = isReject ? "!" : "";
-      return `${recStr}.${jsMethod}((${varName}) => ${negation}(${bodyStr}))`;
-    }
-  }
-  if (method === "tick") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    if (args3) return `${recStr}?.at(__b.tick(${args3}))`;
-    return `${recStr}?.at(__b.tick())`;
-  }
-  if (method === "look") {
-    return `${recStr}?.at(__b.look())`;
-  }
-  if (method === "choose") {
-    return `__b.choose(${recStr})`;
-  }
-  if (method === "reverse") {
-    return `${recStr}.reverse()`;
-  }
-  if (method === "shuffle") {
-    return `__b.shuffle(${recStr})`;
-  }
-  if (method === "mirror" || method === "reflect") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.${method}(${args3})`;
-  }
-  if (method === "ramp") {
-    return `${recStr}.ramp()`;
-  }
-  if (method === "stretch") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.stretch(${args3})`;
-  }
-  if (method === "drop") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.drop(${args3})`;
-  }
-  if (method === "butlast") {
-    return `${recStr}.butlast()`;
-  }
-  if (method === "take") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.take(${args3})`;
-  }
-  if (method === "pick") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `__b.pick(${recStr}${args3 ? ", " + args3 : ""})`;
-  }
-  if (method === "ring") {
-    return `__b.ring(...${recStr})`;
-  }
-  if (method === "to_a") {
-    return `Array.from(${recStr})`;
-  }
-  if (method === "to_sym" || method === "to_s") {
-    return recStr;
-  }
-  if (method === "to_i") {
-    return `Math.floor(${recStr})`;
-  }
-  if (method === "to_f") {
-    return `Number(${recStr})`;
-  }
-  if (method === "length" || method === "size" || method === "count") {
-    return `${recStr}.length`;
-  }
-  if (method === "abs") {
-    return `Math.abs(${recStr})`;
-  }
-  if (method === "min") return `Math.min(...${recStr})`;
-  if (method === "max") return `Math.max(...${recStr})`;
-  if (method === "sum" && !blockNode) {
-    return `${recStr}.reduce((a, b) => a + b, 0)`;
-  }
-  if (method === "avg" && !blockNode) {
-    return `(${recStr}.reduce((a, b) => a + b, 0) / ${recStr}.length)`;
-  }
-  if (method === "values" && !blockNode && !argsNode) {
-    return `Object.values(${recStr})`;
-  }
-  if (method === "keys" && !blockNode && !argsNode) {
-    return `Object.keys(${recStr})`;
-  }
-  if (method === "first") {
-    return `${recStr}[0]`;
-  }
-  if (method === "last") {
-    return `${recStr}.at(-1)`;
-  }
-  if (method === "flat_map") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.flatMap(${args3})`;
-  }
-  if (method === "include?") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.includes(${args3})`;
-  }
-  if (method === "sort") {
-    return `${recStr}.sort()`;
-  }
-  if (method === "zip") {
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    return `${recStr}.map((__v, __i) => [__v, ${args3 ? args3.split(", ").map((a) => `(${a})[__i] ?? null`).join(", ") : ""}])`;
-  }
-  if (method === "sample" && !argsNode) {
-    return `__b.choose(${recStr})`;
-  }
-  if (method === "kind_of?" || method === "is_a?" || method === "instance_of?") {
-    const arg = argsNode?.namedChildren?.[0];
-    const argText = arg ? arg.text : "Object";
-    return `__spIsA(${recStr}, ${JSON.stringify(argText)})`;
-  }
-  if (method.endsWith("?")) {
-    const cleanName = method.slice(0, -1) + "_q";
-    const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
-    if (method === "factor?") {
-      return `__b.factor_q(${args3 ? recStr + ", " + args3 : recStr})`;
-    }
-    return `${recStr}.${cleanName}(${args3})`;
-  }
-  const args2 = argsNode ? transpileArgList(argsNode, ctx) : "";
-  if (args2) return `${recStr}.${method}(${args2})`;
-  if (fullNode.text.includes("(")) return `${recStr}.${method}()`;
-  return `${recStr}.${method}()`;
-}
-__name(transpileReceiverMethodCall, "transpileReceiverMethodCall");
-var SCOPE_RESOLUTION_MAP = {
-  "Math::PI": "Math.PI",
-  "Math::E": "Math.E",
-  "Float::INFINITY": "Infinity",
-  "Float::NAN": "NaN"
-};
-function transpileScopeResolution(node, ctx) {
-  const text = node.text;
-  if (text in SCOPE_RESOLUTION_MAP) return SCOPE_RESOLUTION_MAP[text];
-  pushUnsupported(
-    ctx,
-    node,
-    "scope_resolution",
-    `Ruby namespace/constant access \`${text}\` isn't mapped yet`
-  );
-  return "undefined";
-}
-__name(transpileScopeResolution, "transpileScopeResolution");
-var REPORT_BUG_URL = "https://github.com/MrityunjayBhardwaj/SonicPi.js/issues/new";
-function pushUnsupported(ctx, node, featureId, humanMessage) {
-  const line2 = node.startPosition.row + 1;
-  const snippet = node.text.replace(/\s+/g, " ").slice(0, 60);
-  const title = `Unsupported Ruby feature: ${featureId}`;
-  const body2 = [
-    `The transpiler doesn't handle this yet.`,
-    ``,
-    `**Feature:** \`${featureId}\``,
-    `**Code:** \`${snippet}\``,
-    `**Line:** ${line2}`
-  ].join("\n");
-  const reportUrl = `${REPORT_BUG_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body2)}`;
-  ctx.errors.push(
-    `Line ${line2}: ${humanMessage}. Report: ${reportUrl}`
-  );
-}
-__name(pushUnsupported, "pushUnsupported");
-var STRUCTURAL_WRAPPERS = /* @__PURE__ */ new Set([
-  "program",
-  "expression_statement",
-  "parenthesized_statements",
-  "body_statement",
-  "block_body",
-  "then",
-  "else",
-  "elsif",
-  "argument_list",
-  "empty_statement",
-  // Pattern inside `case/when` — wraps a single value (literal, range, class,
-  // etc.) that `case` already compares against. Passes through to the child.
-  "pattern",
-  // `do` keyword block inside for/until/while constructs that already have
-  // explicit handlers — the grammar wraps the body in a `do` node.
-  "do",
-  // `in` keyword inside `for x in arr` — the `for` handler at case 'for'
-  // already pulls the iterator from namedChildren, so `in` here is just
-  // the keyword token with no semantic payload.
-  "in"
-]);
-function transpileLiveLoop(node, argsNode, blockNode, ctx) {
-  const args2 = argsNode?.namedChildren ?? [];
-  let name2 = "main";
-  let syncName = null;
-  const extraOpts = [];
-  for (const arg of args2) {
-    if (arg.type === "simple_symbol") {
-      name2 = arg.text.slice(1);
-    } else if (arg.type === "pair") {
-      const key = arg.namedChildren[0];
-      const val = arg.namedChildren[1];
-      const keyName = key.text.replace(/:$/, "");
-      if (keyName === "sync") {
-        syncName = val.type === "simple_symbol" ? val.text.slice(1) : transpileNode(val, ctx);
-      } else if (keyName === "delay") {
-        extraOpts.push(`delay: ${transpileNode(val, ctx)}`);
-      }
-    }
-  }
-  if (!blockNode) {
-    const line2 = node.startPosition?.row != null ? node.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: live_loop :${name2} is missing 'do ... end' block`);
-    return `/* parse error: live_loop :${name2} missing block */`;
-  }
-  const bodyCtx = { ...ctx, insideLoop: true, asyncBody: true };
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  const optsArg = syncName ? `{sync: "${syncName}"}, ` : "";
-  return `live_loop("${name2}", ${optsArg}async (__b) => {
-${bodyStr}
-${ctx.indent}})`;
-}
-__name(transpileLiveLoop, "transpileLiveLoop");
-function transpileDefine(node, argsNode, blockNode, ctx, methodName = "define") {
-  const args2 = argsNode?.namedChildren ?? [];
-  let name2 = "unnamed";
-  for (const arg of args2) {
-    if (arg.type === "simple_symbol") {
-      name2 = arg.text.slice(1);
-    }
-  }
-  ctx.definedFunctions.add(name2);
-  if (!blockNode) {
-    const line2 = node.startPosition?.row != null ? node.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: ${methodName} :${name2} is missing 'do ... end' block`);
-    return `/* parse error: ${methodName} :${name2} missing block */`;
-  }
-  const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-  const paramStr = params ? params.namedChildren.map((c) => transpileNode(c, ctx)).join(", ") : "";
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  const decl = `function ${name2}(__b${paramStr ? ", " + paramStr : ""}) {
-${bodyStr}
-${ctx.indent}}`;
-  if (methodName === "define") {
-    return `${decl};
-${ctx.indent}define(${JSON.stringify(name2)}, ${name2})`;
-  }
-  return decl;
-}
-__name(transpileDefine, "transpileDefine");
-function transpileDefonce(node, argsNode, blockNode, ctx) {
-  const args2 = argsNode?.namedChildren ?? [];
-  let name2 = "unnamed";
-  const optPairs = [];
-  for (const arg of args2) {
-    if (arg.type === "simple_symbol") {
-      name2 = arg.text.slice(1);
-    } else if (arg.type === "pair") {
-      const key = arg.namedChildren[0];
-      const val = arg.namedChildren[1];
-      const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
-      optPairs.push(`${keyName}: ${transpileNode(val, ctx)}`);
-    }
-  }
-  if (!blockNode) {
-    const line2 = node.startPosition?.row != null ? node.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: defonce :${name2} is missing 'do ... end' block`);
-    return `/* parse error: defonce :${name2} missing block */`;
-  }
-  const bodyChildren = blockNode.namedChildren.filter((c) => c.type !== "block_parameters");
-  if (bodyChildren.length === 0) {
-    return `${name2} = defonce(${JSON.stringify(name2)}, ${optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}"}, (__b) => undefined)`;
-  }
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const lastIdx = bodyChildren.length - 1;
-  const stmts = bodyChildren.map((c, i2) => {
-    const expr = transpileNode(c, bodyCtx);
-    return i2 === lastIdx ? `${ctx.indent}  return ${expr}` : `${ctx.indent}  ${expr}`;
-  });
-  const optsStr = optPairs.length > 0 ? `{ ${optPairs.join(", ")} }` : "{}";
-  return `${name2} = defonce(${JSON.stringify(name2)}, ${optsStr}, (__b) => {
-${stmts.join("\n")}
-${ctx.indent}})`;
-}
-__name(transpileDefonce, "transpileDefonce");
-function transpileWithBlock(methodName, argsNode, blockNode, ctx) {
-  const args2 = argsNode?.namedChildren ?? [];
-  const positional = [];
-  const opts = [];
-  for (const arg of args2) {
-    if (arg.type === "pair") {
-      const key = arg.namedChildren[0];
-      const val = arg.namedChildren[1];
-      const keyName = key.text.replace(/:$/, "");
-      if (keyName === "reps") {
-        opts.push(`reps: ${transpileNode(val, ctx)}`);
-      } else {
-        opts.push(`${keyName}: ${transpileNode(val, ctx)}`);
-      }
-    } else {
-      positional.push(transpileNode(arg, ctx));
-    }
-  }
-  if (!blockNode) {
-    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: ${methodName} is missing 'do ... end' block`);
-    return `/* parse error: ${methodName} missing block */`;
-  }
-  const prefix = ctx.insideLoop ? "__b." : "";
-  const bodyCtx = ctx.insideLoop ? { ...ctx, insideLoop: true } : { ...ctx };
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  const optsStr = opts.length > 0 ? `{ ${opts.join(", ")} }` : "";
-  const posStr = positional.join(", ");
-  const blockParams = blockNode?.namedChildren.find((c) => c.type === "block_parameters");
-  const fxParamName = blockParams?.namedChildren[0]?.text;
-  let callbackParams;
-  if (ctx.insideLoop) {
-    callbackParams = fxParamName ? `(__b, ${fxParamName})` : "(__b)";
-  } else {
-    callbackParams = fxParamName ? `(${fxParamName})` : "()";
-  }
-  const argParts = [posStr, optsStr, `${callbackParams} => {
-` + bodyStr + "\n" + ctx.indent + "}"].filter(Boolean);
-  return `${prefix}${methodName}(${argParts.join(", ")})`;
-}
-__name(transpileWithBlock, "transpileWithBlock");
-function transpileInThread(argsNode, blockNode, ctx) {
-  if (!blockNode) {
-    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: in_thread is missing 'do ... end' block`);
-    return `/* parse error: in_thread missing block */`;
-  }
-  const prefix = ctx.insideLoop ? "__b." : "";
-  let nameExpr = null;
-  const args2 = argsNode?.namedChildren ?? [];
-  for (const arg of args2) {
-    if (arg.type === "pair") {
-      const key = arg.namedChildren[0]?.text?.replace(/:$/, "");
-      if (key === "name") {
-        nameExpr = transpileNode(arg.namedChildren[1], ctx);
-      }
-    }
-  }
-  const rawChildren = blockNode.namedChildren ?? [];
-  const bodyChildren = rawChildren.length === 1 && rawChildren[0]?.type === "body_statement" ? rawChildren[0].namedChildren ?? [] : rawChildren;
-  const setupChildren = [];
-  const loopChildren = [];
-  let sawLoop = false;
-  let droppedAfterLoop = false;
-  for (const child of bodyChildren) {
-    const m = child.type === "call" || child.type === "method_call" ? child.childForFieldName("method")?.text ?? child.namedChildren[0]?.text : null;
-    const isLoop = m === "loop" && child.namedChildren.some((c) => c.type === "do_block" || c.type === "block");
-    if (isLoop) {
-      loopChildren.push(child);
-      sawLoop = true;
-    } else if (sawLoop) {
-      droppedAfterLoop = true;
-    } else {
-      setupChildren.push(child);
-    }
-  }
-  if (loopChildren.length === 0) {
-    const bodyCtx = { ...ctx, insideLoop: true };
-    const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-    if (nameExpr !== null) {
-      return `${prefix}in_thread({ name: ${nameExpr} }, (__b) => {
-${bodyStr}
-${ctx.indent}})`;
-    }
-    return `${prefix}in_thread((__b) => {
-${bodyStr}
-${ctx.indent}})`;
-  }
-  if (droppedAfterLoop) {
-    const line2 = blockNode.startPosition?.row != null ? blockNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Warning at line ${line2}: statements after \`loop do\` inside in_thread are unreachable and were dropped.`);
-  }
-  const counter = ctx.inthreadLoopCounter ?? { n: 0 };
-  const baseName = nameExpr !== null ? nameExpr : null;
-  const parts2 = [];
-  if (setupChildren.length > 0) {
-    const setupCtx = { ...ctx, insideLoop: true };
-    const setupStr = setupChildren.map((c) => "  " + transpileNode(c, setupCtx)).filter((s) => s.trim()).join("\n");
-    if (nameExpr !== null) {
-      parts2.push(`${prefix}in_thread({ name: ${nameExpr} }, (__b) => {
-${setupStr}
-${ctx.indent}})`);
-    } else {
-      parts2.push(`${prefix}in_thread((__b) => {
-${setupStr}
-${ctx.indent}})`);
-    }
-  }
-  for (const loopNode of loopChildren) {
-    const body2 = loopNode.namedChildren.find((c) => c.type === "do_block" || c.type === "block");
-    const bodyCtx = { ...ctx, insideLoop: true };
-    const bodyStr = transpileBlockBody(body2, bodyCtx);
-    const idx = counter.n++;
-    const autoName = baseName !== null ? `(${baseName}) + "__loop_${idx}"` : `"__inthread_loop_${idx}"`;
-    const liveLoopPrefix = ctx.insideLoop ? "__b." : "";
-    parts2.push(`${liveLoopPrefix}live_loop(${autoName}, (__b) => {
-${bodyStr}
-${ctx.indent}})`);
-  }
-  return parts2.join("\n");
-}
-__name(transpileInThread, "transpileInThread");
-function transpileAt(argsNode, blockNode, ctx) {
-  if (!blockNode) {
-    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: at is missing 'do ... end' block`);
-    return `/* parse error: at missing block */`;
-  }
-  const args2 = argsNode?.namedChildren ?? [];
-  const positional = args2.filter((a) => a.type !== "pair").map((a) => transpileNode(a, ctx));
-  const timesArr = positional[0] ?? "[]";
-  const valuesArr = positional[1] ?? "null";
-  const prefix = ctx.insideLoop ? "__b." : "";
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-  const paramNames = params?.namedChildren.map((c) => c.text) ?? [];
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  const paramStr = paramNames.length > 0 ? ", " + paramNames.join(", ") : "";
-  return `${prefix}at(${timesArr}, ${valuesArr}, (__b${paramStr}) => {
-${bodyStr}
-${ctx.indent}})`;
-}
-__name(transpileAt, "transpileAt");
-function transpileTimeWarp(argsNode, blockNode, ctx) {
-  if (!blockNode) {
-    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: time_warp is missing 'do ... end' block`);
-    return `/* parse error: time_warp missing block */`;
-  }
-  const offset = argsNode?.namedChildren[0] ? transpileNode(argsNode.namedChildren[0], ctx) : "0";
-  const prefix = ctx.insideLoop ? "__b." : "";
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  return `${prefix}at([${offset}], null, (__b) => {
-${bodyStr}
-${ctx.indent}})`;
-}
-__name(transpileTimeWarp, "transpileTimeWarp");
-function transpileTuplets(argsNode, blockNode, ctx) {
-  if (!blockNode) {
-    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: tuplets is missing 'do ... end' block`);
-    return `/* parse error: tuplets missing block */`;
-  }
-  const args2 = argsNode?.namedChildren ?? [];
-  const positional = args2.filter((a) => a.type !== "pair").map((a) => transpileNode(a, ctx));
-  const pairs = args2.filter((a) => a.type === "pair");
-  const listExpr = positional[0] ?? "[]";
-  const optsExpr = pairs.length > 0 ? "{ " + pairs.map((p) => {
-    const key = p.namedChildren[0];
-    const val = p.namedChildren[1];
-    const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
-    return `${keyName}: ${transpileNode(val, ctx)}`;
-  }).join(", ") + " }" : "{}";
-  const prefix = ctx.insideLoop ? "__b." : "";
-  const bodyCtx = { ...ctx, insideLoop: true };
-  const params = blockNode.namedChildren.find((c) => c.type === "block_parameters");
-  const paramNames = params?.namedChildren.map((c) => c.text) ?? [];
-  const bodyStr = transpileBlockBody(blockNode, bodyCtx);
-  const paramStr = paramNames.length > 0 ? ", " + paramNames.join(", ") : "";
-  return `${prefix}tuplets(${listExpr}, ${optsExpr}, (__b${paramStr}) => {
-${bodyStr}
-${ctx.indent}})`;
-}
-__name(transpileTuplets, "transpileTuplets");
-function transpileDensity(argsNode, blockNode, ctx) {
-  if (!blockNode) {
-    const line2 = argsNode?.startPosition?.row != null ? argsNode.startPosition.row + 1 : "?";
-    ctx.errors.push(`Parse error at line ${line2}: density is missing 'do ... end' block`);
-    return `/* parse error: density missing block */`;
-  }
-  const factor = argsNode?.namedChildren[0] ? transpileNode(argsNode.namedChildren[0], ctx) : "1";
-  const bodyStr = transpileBlockBody(blockNode, ctx);
-  const bRef = ctx.insideLoop ? "__b" : "__densityB";
-  const lines = ["{"];
-  if (!ctx.insideLoop) lines.push(`  const ${bRef} = { density: 1 }`);
-  lines.push(`  const __prevDensity = ${bRef}.density`);
-  lines.push(`  ${bRef}.density = __prevDensity * ${factor}`);
-  lines.push(bodyStr);
-  lines.push(`  ${bRef}.density = __prevDensity`);
-  lines.push("}");
-  return lines.join("\n" + ctx.indent);
-}
-__name(transpileDensity, "transpileDensity");
-function transpileSynthCommand(argsNode, ctx) {
-  if (!argsNode) return `__b.play(52, { synth: "beep" })`;
-  const args2 = argsNode.namedChildren;
-  const synthNameNode = args2[0];
-  const synthName = synthNameNode ? transpileNode(synthNameNode, ctx) : '"beep"';
-  const positional = [];
-  const kwargs = [`synth: ${synthName}`];
-  let noteExpr = null;
-  for (let i2 = 1; i2 < args2.length; i2++) {
-    const arg = args2[i2];
-    if (arg.type === "pair") {
-      const key = arg.namedChildren[0];
-      const val = arg.namedChildren[1];
-      const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
-      if (keyName === "note") {
-        noteExpr = transpileNode(val, ctx);
-      } else {
-        kwargs.push(`${keyName}: ${transpileNode(val, ctx)}`);
-      }
-    } else {
-      positional.push(transpileNode(arg, ctx));
-    }
-  }
-  const optsStr = `{ ${kwargs.join(", ")} }`;
-  if (positional.length > 0) {
-    return `__b.play(${positional.join(", ")}, ${optsStr})`;
-  }
-  const note2 = noteExpr ?? "52";
-  return `__b.play(${note2}, ${optsStr})`;
-}
-__name(transpileSynthCommand, "transpileSynthCommand");
-function transpileIf(node, ctx) {
-  const children = node.namedChildren;
-  const condition = children[0];
-  const consequence = children[1];
-  let result = `if (${transpileNode(condition, ctx)}) {
-`;
-  if (consequence) result += transpileNode(consequence, ctx) + "\n";
-  result += ctx.indent + "}";
-  for (let i2 = 2; i2 < children.length; i2++) {
-    const child = children[i2];
-    if (child.type === "elsif") {
-      const elsifCond = child.namedChildren[0];
-      const elsifBody = child.namedChildren[1];
-      result += ` else if (${transpileNode(elsifCond, ctx)}) {
-`;
-      if (elsifBody) result += transpileNode(elsifBody, ctx) + "\n";
-      result += ctx.indent + "}";
-    } else if (child.type === "else") {
-      const elseBody = child.namedChildren[0];
-      result += ` else {
-`;
-      if (elseBody) result += transpileNode(elseBody, ctx) + "\n";
-      result += ctx.indent + "}";
-    }
-  }
-  return result;
-}
-__name(transpileIf, "transpileIf");
-function transpileUnless(node, ctx) {
-  const condition = node.namedChildren[0];
-  const body2 = node.namedChildren[1];
-  let result = `if (!(${transpileNode(condition, ctx)})) {
-`;
-  if (body2) result += transpileNode(body2, ctx) + "\n";
-  result += ctx.indent + "}";
-  for (let i2 = 2; i2 < node.namedChildren.length; i2++) {
-    const child = node.namedChildren[i2];
-    if (child.type === "else") {
-      const elseBody = child.namedChildren[0];
-      result += ` else {
-`;
-      if (elseBody) result += transpileNode(elseBody, ctx) + "\n";
-      result += ctx.indent + "}";
-    }
-  }
-  return result;
-}
-__name(transpileUnless, "transpileUnless");
-function transpileCase(node, ctx) {
-  const children = node.namedChildren;
-  const expr = children[0];
-  const exprStr = transpileNode(expr, ctx);
-  let result = "";
-  let first = true;
-  for (let i2 = 1; i2 < children.length; i2++) {
-    const child = children[i2];
-    if (child.type === "when") {
-      const pattern = child.namedChildren[0];
-      child.namedChildren[1];
-      child.namedChildren.filter((_, idx) => {
-        return idx < child.namedChildCount - 1 || child.namedChildCount === 1;
-      });
-      let conditions;
-      if (child.namedChildCount === 1) {
-        conditions = [transpileNode(pattern, ctx)];
-        const condStr2 = conditions.map((c) => `${exprStr} === ${c}`).join(" || ");
-        if (first) {
-          result += `if (${condStr2}) {
-`;
-          first = false;
-        } else {
-          result += ` else if (${condStr2}) {
-`;
-        }
-        result += ctx.indent + "}";
-        continue;
-      }
-      const patternNodes = child.namedChildren.slice(0, -1).filter((p) => p.type !== "comment");
-      const bodyNode = child.namedChildren[child.namedChildCount - 1];
-      conditions = patternNodes.map((p) => transpileNode(p, ctx));
-      const condStr = conditions.map((c) => `${exprStr} === ${c}`).join(" || ");
-      if (first) {
-        result += `if (${condStr}) {
-`;
-        first = false;
-      } else {
-        result += ` else if (${condStr}) {
-`;
-      }
-      if (bodyNode) result += transpileNode(bodyNode, ctx) + "\n";
-      result += ctx.indent + "}";
-    } else if (child.type === "else") {
-      const elseBody = child.namedChildren[0];
-      result += ` else {
-`;
-      if (elseBody) result += transpileNode(elseBody, ctx) + "\n";
-      result += ctx.indent + "}";
-    }
-  }
-  return result;
-}
-__name(transpileCase, "transpileCase");
-function transpileBeginRescue(node, ctx) {
-  const children = node.namedChildren;
-  let result = "try {\n";
-  for (const child of children) {
-    if (child.type === "rescue") {
-      const errorVar = child.namedChildren.find((c) => c.type === "exception_variable")?.namedChildren[0]?.text ?? "_e";
-      const rescueBody = child.namedChildren.find((c) => c.type === "then" || c.type === "body_statement");
-      result += ctx.indent + `} catch (${errorVar}) {
-`;
-      if (rescueBody) result += transpileNode(rescueBody, ctx) + "\n";
-    } else if (child.type === "ensure") {
-      const ensureBody = child.namedChildren[0];
-      result += ctx.indent + "} finally {\n";
-      if (ensureBody) result += transpileNode(ensureBody, ctx) + "\n";
-    } else {
-      result += transpileNode(child, ctx) + "\n";
-    }
-  }
-  result += ctx.indent + "}";
-  return result;
-}
-__name(transpileBeginRescue, "transpileBeginRescue");
-function transpileString(node, ctx) {
-  const hasInterpolation = node.namedChildren.some((c) => c.type === "interpolation");
-  if (hasInterpolation) {
-    let result = "`";
-    for (const child of node.children) {
-      if (child.type === '"') continue;
-      if (child.type === "interpolation") {
-        result += transpileNode(child, ctx);
-      } else if (child.type === "string_content") {
-        result += child.text;
-      } else if (child.type === "escape_sequence") {
-        result += child.text;
-      }
-    }
-    result += "`";
-    return result;
-  }
-  return node.text;
-}
-__name(transpileString, "transpileString");
-function transpileBlockBody(blockNode, ctx) {
-  const bodyChildren = blockNode.namedChildren.filter(
-    (c) => c.type !== "block_parameters"
-  );
-  return bodyChildren.map((c) => ctx.indent + "  " + transpileNode(c, ctx)).join("\n");
-}
-__name(transpileBlockBody, "transpileBlockBody");
-function transpileArgList(node, ctx, injectSrcLine = false) {
-  const args2 = node.namedChildren;
-  const positional = [];
-  const kwargs = [];
-  for (const arg of args2) {
-    if (arg.type === "pair") {
-      const key = arg.namedChildren[0];
-      const val = arg.namedChildren[1];
-      if (key.type === "hash_key_symbol") {
-        kwargs.push(`${key.text.replace(/:$/, "")}: ${transpileNode(val, ctx)}`);
-      } else if (key.type === "simple_symbol") {
-        kwargs.push(`${key.text.slice(1)}: ${transpileNode(val, ctx)}`);
-      } else {
-        kwargs.push(`[${transpileNode(key, ctx)}]: ${transpileNode(val, ctx)}`);
-      }
-    } else {
-      positional.push(transpileNode(arg, ctx));
-    }
-  }
-  if (injectSrcLine && ctx.srcLine !== void 0) {
-    kwargs.push(`_srcLine: ${ctx.srcLine}`);
-  }
-  if (kwargs.length > 0) {
-    return [...positional, `{ ${kwargs.join(", ")} }`].join(", ");
-  }
-  return positional.join(", ");
-}
-__name(transpileArgList, "transpileArgList");
-function transpileArgListAsOpts(node, ctx) {
-  const args2 = node.namedChildren;
-  const opts = [];
-  for (const arg of args2) {
-    if (arg.type === "pair") {
-      const key = arg.namedChildren[0];
-      const val = arg.namedChildren[1];
-      const keyName = key.type === "hash_key_symbol" ? key.text.replace(/:$/, "") : key.type === "simple_symbol" ? key.text.slice(1) : transpileNode(key, ctx);
-      opts.push(`${keyName}: ${transpileNode(val, ctx)}`);
-    }
-  }
-  return `{ ${opts.join(", ")} }`;
-}
-__name(transpileArgListAsOpts, "transpileArgListAsOpts");
-function transpileChildren(node, ctx) {
-  return node.namedChildren.map((c) => transpileNode(c, ctx)).filter((s) => s.trim() !== "").join("\n");
-}
-__name(transpileChildren, "transpileChildren");
-function detectLanguage(code) {
-  const trimmed = code.trim();
-  if (/\bdo\s*(\|.*\|)?\s*$/.test(trimmed)) return "ruby";
-  if (/\bend\s*$/.test(trimmed)) return "ruby";
-  if (/:\w+/.test(trimmed) && !/['"`]/.test(trimmed.split(":")[0])) return "ruby";
-  if (/\blive_loop\s+:/.test(trimmed)) return "ruby";
-  if (/\bsample\s+:/.test(trimmed)) return "ruby";
-  if (/\buse_synth\s+:/.test(trimmed)) return "ruby";
-  if (/\basync\b/.test(trimmed)) return "js";
-  if (/\bawait\b/.test(trimmed)) return "js";
-  if (/\bb\./.test(trimmed)) return "js";
-  if (/=>/.test(trimmed)) return "js";
-  if (/\bconst\b|\blet\b|\bvar\b/.test(trimmed)) return "js";
-  return "ruby";
-}
-__name(detectLanguage, "detectLanguage");
-function autoTranspileDetailed(code) {
-  const lang = detectLanguage(code);
-  if (lang === "js") return { code, hasError: false };
-  if (!isTreeSitterReady()) {
-    throw new Error("[SonicPi] TreeSitter parser not available \u2014 the audio engine may still be loading. Try clicking Run again.");
-  }
-  const tsResult = treeSitterTranspile(code);
-  if (tsResult.errors.length > 0) {
-    return { code, hasError: true, errorMessage: tsResult.errors.join("; "), method: "tree-sitter" };
-  }
-  try {
-    new Function(tsResult.code);
-  } catch (e) {
-    return { code: tsResult.code, hasError: true, errorMessage: `TreeSitter produced invalid JS: ${e}`, method: "tree-sitter" };
-  }
-  return { code: tsResult.code, hasError: false, method: "tree-sitter" };
-}
-__name(autoTranspileDetailed, "autoTranspileDetailed");
-
-// ../../../sonicPiWeb/src/engine/Sp95Lint.ts
-function findLiveLoops(src) {
-  const out2 = [];
-  const re = /\blive_loop\s+:([a-zA-Z_][a-zA-Z0-9_]*)\b[^\n]*?\bdo\b/g;
-  let m;
-  while ((m = re.exec(src)) !== null) {
-    const name2 = m[1];
-    const bodyStart = m.index + m[0].length;
-    let depth = 1;
-    let i2 = bodyStart;
-    let bodyEnd = bodyStart;
-    while (i2 < src.length && depth > 0) {
-      const nl = src.indexOf("\n", i2);
-      const lineEnd = nl === -1 ? src.length : nl;
-      const line2 = src.slice(i2, lineEnd);
-      const sanitized = line2.replace(/#.*$/, "").replace(/'[^']*'|"[^"]*"/g, '""');
-      const doCount = (sanitized.match(/\bdo\b/g) || []).length;
-      const endCount = (sanitized.match(/\bend\b/g) || []).length;
-      bodyEnd = lineEnd;
-      if (depth + doCount - endCount <= 0) break;
-      depth += doCount - endCount;
-      if (nl === -1) break;
-      i2 = nl + 1;
-    }
-    out2.push({ name: name2, body: src.slice(bodyStart, bodyEnd) });
-  }
-  return out2;
-}
-__name(findLiveLoops, "findLiveLoops");
-function detectCrossLoopSetGet(loops) {
-  const SET_RE = /\bset\s+:([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-  const GET_RE = /\bget\s*\(?\s*:([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-  const setsByKey = /* @__PURE__ */ new Map();
-  const getsByKey = /* @__PURE__ */ new Map();
-  for (const lp of loops) {
-    let m;
-    SET_RE.lastIndex = 0;
-    while ((m = SET_RE.exec(lp.body)) !== null) {
-      if (!setsByKey.has(m[1])) setsByKey.set(m[1], /* @__PURE__ */ new Set());
-      setsByKey.get(m[1]).add(lp.name);
-    }
-    GET_RE.lastIndex = 0;
-    while ((m = GET_RE.exec(lp.body)) !== null) {
-      if (!getsByKey.has(m[1])) getsByKey.set(m[1], /* @__PURE__ */ new Set());
-      getsByKey.get(m[1]).add(lp.name);
-    }
-  }
-  const offenders = /* @__PURE__ */ new Set();
-  for (const [key, setters] of setsByKey) {
-    const getters = getsByKey.get(key);
-    if (!getters) continue;
-    for (const g of getters) if (!setters.has(g)) offenders.add(key);
-  }
-  if (offenders.size === 0) return [];
-  const keys = [...offenders].map((k) => `:${k}`).join(", ");
-  return [{
-    pattern: "cross-loop-set-get",
-    title: "Cross-loop set/get is a v1 limitation (#350)",
-    message: `Detected set in one live_loop and get(${keys}) in another \u2014 the reader will see a stale or null value because set is a deferred runtime step but get is read at build time. Same-loop set/get (or sync-as-gate within one loop) works fine. Workaround: do the set and get inside the SAME live_loop, or use cue+sync (without payload) to gate the read. See SP95 / #350.`
-  }];
-}
-__name(detectCrossLoopSetGet, "detectCrossLoopSetGet");
-function detectCuePayloadViaSync(src) {
-  const CUE_KW_RE = /\bcue\b\s*\(?\s*:([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:,|\)\s*,)\s*[a-zA-Z_][a-zA-Z0-9_]*\s*:/g;
-  const cueNames = /* @__PURE__ */ new Set();
-  let m;
-  while ((m = CUE_KW_RE.exec(src)) !== null) cueNames.add(m[1]);
-  if (cueNames.size === 0) return [];
-  const offenders = [];
-  for (const name2 of cueNames) {
-    const SYNC_RE = new RegExp(`\\bsync\\b\\s*\\(?\\s*:${name2}\\b`);
-    if (SYNC_RE.test(src)) offenders.push(name2);
-  }
-  if (offenders.length === 0) return [];
-  const list = offenders.map((n) => `:${n}`).join(", ");
-  return [{
-    pattern: "cue-payload-via-sync-return",
-    title: "cue payload via sync return-value is a v1 limitation (#351)",
-    message: `Detected cue ${list} with keyword payload + a matching sync ${list}. The payload (val:, key:, etc.) is sent on the cue but NOT delivered through sync's return value in v1 \u2014 your receiver will read nil/undefined and play silently. Workaround: store the value via globalStore (set/get within the same loop, gated by sync) instead of attaching it to the cue. See SP95 / #351.`
-  }];
-}
-__name(detectCuePayloadViaSync, "detectCuePayloadViaSync");
-function detectSyncReturnIndexed(src) {
-  const ASSIGN_RE = /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*sync\b\s*\(?\s*:([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-  const bindings = [];
-  let m;
-  while ((m = ASSIGN_RE.exec(src)) !== null) {
-    bindings.push({ varName: m[1], cueName: m[2], afterIndex: m.index + m[0].length });
-  }
-  if (bindings.length === 0) return [];
-  const offenderCues = /* @__PURE__ */ new Set();
-  for (const b of bindings) {
-    const tail = src.slice(b.afterIndex, b.afterIndex + 2048);
-    const INDEX_RE = new RegExp(`\\b${b.varName}\\s*\\[`);
-    const DOT_RE = new RegExp(`\\b${b.varName}\\s*\\.\\s*[a-zA-Z_]`);
-    if (INDEX_RE.test(tail) || DOT_RE.test(tail)) offenderCues.add(b.cueName);
-  }
-  if (offenderCues.size === 0) return [];
-  const list = [...offenderCues].map((n) => `:${n}`).join(", ");
-  return [{
-    pattern: "sync-return-indexed",
-    title: "Indexing the sync return-value yields undefined (#351)",
-    message: `Detected the pattern: e = sync ${list} ... e[\u2026] (or e.field). In v1, sync returns the builder itself, NOT the cue's payload \u2014 indexing it gives undefined and any play(undefined) is silently skipped. Workaround: don't rely on sync's return value; instead store the data via set in the cuer's loop and get it in the receiver after sync (same-loop set/get works inside a single loop; cross-loop is also a v1 limitation per #350). See SP95 / #351.`
-  }];
-}
-__name(detectSyncReturnIndexed, "detectSyncReturnIndexed");
-function detectSp95Limitations(src) {
-  const loops = findLiveLoops(src);
-  return [
-    ...detectCrossLoopSetGet(loops),
-    ...detectCuePayloadViaSync(src),
-    ...detectSyncReturnIndexed(src)
-  ];
-}
-__name(detectSp95Limitations, "detectSp95Limitations");
-
-// ../../../sonicPiWeb/src/engine/examples.ts
-var examples = [
-  {
-    name: "Hello Beep",
-    difficulty: "beginner",
-    description: "The simplest possible Sonic Pi program \u2014 one note.",
-    ruby: `play 60
-sleep 1
-play 64
-sleep 1
-play 67`,
-    js: `live_loop("hello", async ({play, sleep}) => {
-  await play(60)
-  await sleep(1)
-  await play(64)
-  await sleep(1)
-  await play(67)
-  await sleep(1)
-})`
-  },
-  {
-    name: "Basic Beat",
-    difficulty: "beginner",
-    description: "A four-on-the-floor drum pattern with kick and snare.",
-    ruby: `live_loop :drums do
-  sample :bd_haus
-  sleep 0.5
-  sample :sn_dub
-  sleep 0.5
-end`,
-    js: `live_loop("drums", async ({sample, sleep}) => {
-  await sample("bd_haus")
-  await sleep(0.5)
-  await sample("sn_dub")
-  await sleep(0.5)
-})`
-  },
-  {
-    name: "Ambient Pad",
-    difficulty: "beginner",
-    description: "Slow chord washes with reverb \u2014 ambient music in 6 lines.",
-    ruby: `use_synth :prophet
-live_loop :pad do
-  play chord(:e3, :minor), release: 4, amp: 0.6
-  sleep 4
-end`,
-    js: `live_loop("pad", async ({play, sleep, use_synth, chord}) => {
-  use_synth("prophet")
-  const notes = chord("e3", "minor")
-  for (const n of notes) {
-    await play(n, {release: 4, amp: 0.6})
-  }
-  await sleep(4)
-})`
-  },
-  {
-    name: "Arpeggio",
-    difficulty: "intermediate",
-    description: "A rising arpeggio using ring and tick \u2014 Sonic Pi's signature pattern.",
-    ruby: `use_synth :tb303
-live_loop :arp do
-  play (ring 60, 64, 67, 72).tick, release: 0.2, cutoff: 80
-  sleep 0.25
-end`,
-    js: `live_loop("arp", async ({play, sleep, use_synth, ring, tick}) => {
-  use_synth("tb303")
-  const notes = ring(60, 64, 67, 72)
-  await play(notes[tick()], {release: 0.2, cutoff: 80})
-  await sleep(0.25)
-})`
-  },
-  {
-    name: "Euclidean Rhythm",
-    difficulty: "intermediate",
-    description: "Euclidean rhythms \u2014 spread hits evenly across steps.",
-    ruby: `live_loop :euclidean do
-  pattern = spread(5, 8)
-  8.times do |i|
-    sample :bd_tek if pattern[i]
-    sleep 0.25
-  end
-end`,
-    js: `live_loop("euclidean", async ({sample, sleep, spread}) => {
-  const pattern = spread(5, 8)
-  for (let i = 0; i < 8; i++) {
-    if (pattern[i]) await sample("bd_tek")
-    await sleep(0.25)
-  }
-})`
-  },
-  {
-    name: "Random Melody",
-    difficulty: "intermediate",
-    description: "Seeded random melody \u2014 deterministic but unpredictable.",
-    ruby: `use_random_seed 42
-live_loop :melody do
-  use_synth :pluck
-  play scale(:c4, :minor_pentatonic).choose, release: 0.3
-  sleep 0.25
-end`,
-    js: `live_loop("melody", async ({play, sleep, use_synth, use_random_seed, scale, choose}) => {
-  use_random_seed(42)
-  use_synth("pluck")
-  const notes = scale("c4", "minor_pentatonic")
-  await play(choose(notes), {release: 0.3})
-  await sleep(0.25)
-})`
-  },
-  {
-    name: "Sync/Cue",
-    difficulty: "intermediate",
-    description: "Two loops synchronized \u2014 the bass waits for the drums.",
-    ruby: `live_loop :drums do
-  sample :bd_haus
-  sleep 0.5
-  cue :tick
-  sample :sn_dub
-  sleep 0.5
-end
-
-live_loop :bass do
-  sync :tick
-  use_synth :tb303
-  play :e2, release: 0.3, cutoff: 70
-  sleep 0.5
-end`,
-    js: `live_loop("drums", async ({sample, sleep, cue}) => {
-  await sample("bd_haus")
-  await sleep(0.5)
-  cue("tick")
-  await sample("sn_dub")
-  await sleep(0.5)
-})
-
-live_loop("bass", async ({play, sleep, sync, use_synth}) => {
-  await sync("tick")
-  use_synth("tb303")
-  await play("e2", {release: 0.3, cutoff: 70})
-  await sleep(0.5)
-})`
-  },
-  {
-    name: "Multi-Layer",
-    difficulty: "intermediate",
-    description: "Three simultaneous loops \u2014 drums, bass, and lead.",
-    ruby: `use_bpm 120
-
-live_loop :drums do
-  sample :bd_haus
-  sleep 0.5
-  sample :hat_snap
-  sleep 0.25
-  sample :hat_snap
-  sleep 0.25
-end
-
-live_loop :bass do
-  use_synth :tb303
-  notes = ring(:e2, :e2, :g2, :a2)
-  play notes.tick, release: 0.3, cutoff: 60
-  sleep 1
-end
-
-live_loop :lead do
-  use_synth :pluck
-  play scale(:e4, :minor_pentatonic).choose, release: 0.2
-  sleep 0.25
-end`,
-    js: `live_loop("drums", async ({sample, sleep, use_bpm}) => {
-  use_bpm(120)
-  await sample("bd_haus")
-  await sleep(0.5)
-  await sample("hat_snap")
-  await sleep(0.25)
-  await sample("hat_snap")
-  await sleep(0.25)
-})
-
-live_loop("bass", async ({play, sleep, use_synth, use_bpm, ring, tick}) => {
-  use_bpm(120)
-  use_synth("tb303")
-  const notes = ring("e2", "e2", "g2", "a2")
-  await play(notes[tick()], {release: 0.3, cutoff: 60})
-  await sleep(1)
-})
-
-live_loop("lead", async ({play, sleep, use_synth, use_bpm, scale, choose}) => {
-  use_bpm(120)
-  use_synth("pluck")
-  const notes = scale("e4", "minor_pentatonic")
-  await play(choose(notes), {release: 0.2})
-  await sleep(0.25)
-})`
-  },
-  {
-    name: "FX Chain",
-    difficulty: "intermediate",
-    description: "Nested effects \u2014 reverb wrapping distortion.",
-    ruby: `live_loop :fx_demo do
-  with_fx :reverb, room: 0.8 do
-    with_fx :distortion, distort: 0.5 do
-      play 50, release: 0.5
-      sleep 0.5
-      play 55, release: 0.5
-      sleep 0.5
-    end
-  end
-end`,
-    js: `live_loop("fx_demo", async (ctx) => {
-  await ctx.with_fx("reverb", {room: 0.8}, async (rv) => {
-    await rv.with_fx("distortion", {distort: 0.5}, async (dist) => {
-      await dist.play(50, {release: 0.5})
-      await dist.sleep(0.5)
-      await dist.play(55, {release: 0.5})
-      await dist.sleep(0.5)
-    })
-  })
-})`
-  },
-  {
-    name: "Minimal Techno",
-    difficulty: "intermediate",
-    description: "A stripped-down techno loop with Euclidean hi-hats.",
-    ruby: `use_bpm 130
-
-live_loop :kick do
-  sample :bd_haus, amp: 1.5
-  sleep 1
-end
-
-live_loop :hats do
-  pattern = spread(7, 16)
-  16.times do |i|
-    sample :hat_snap, amp: 0.4 if pattern[i]
-    sleep 0.25
-  end
-end
-
-live_loop :acid do
-  use_synth :tb303
-  notes = ring(:e2, :e2, :e3, :e2, :g2, :e2, :a2, :e2)
-  play notes.tick, release: 0.2, cutoff: rrand(40, 120), res: 0.3
-  sleep 0.25
-end`,
-    js: `live_loop("kick", async ({sample, sleep, use_bpm}) => {
-  use_bpm(130)
-  await sample("bd_haus", {amp: 1.5})
-  await sleep(1)
-})
-
-live_loop("hats", async ({sample, sleep, use_bpm, spread}) => {
-  use_bpm(130)
-  const pattern = spread(7, 16)
-  for (let i = 0; i < 16; i++) {
-    if (pattern[i]) await sample("hat_snap", {amp: 0.4})
-    await sleep(0.25)
-  }
-})
-
-live_loop("acid", async ({play, sleep, use_synth, use_bpm, ring, tick, rrand}) => {
-  use_bpm(130)
-  use_synth("tb303")
-  const notes = ring("e2", "e2", "e3", "e2", "g2", "e2", "a2", "e2")
-  await play(notes[tick()], {release: 0.2, cutoff: rrand(40, 120), res: 0.3})
-  await sleep(0.25)
-})`
-  },
-  // ========================================================================
-  // Advanced — Original compositions (community-style Sonic Pi pieces)
-  // ========================================================================
-  {
-    name: "Midnight Drive",
-    difficulty: "advanced",
-    description: "Synthwave/retrowave \u2014 lush saw pads, arpeggiated lead, punchy drums, 80s feel.",
-    ruby: `# "Midnight Drive" \u2014 Synthwave
-# Inspired by the Sonic Pi community
-# Technique: layered supersaws, gated arpeggios, retro drum programming
-
-use_bpm 110
-
-live_loop :director do
-  set :section, 0  # intro: pad + slow arp
-  sleep 32
-  set :section, 1  # verse: drums enter, bass joins
-  sleep 32
-  set :section, 2  # chorus: full energy, lead soars
-  sleep 48
-  set :section, 3  # breakdown: strip to pad + arp
-  sleep 16
-  set :section, 4  # outro: fade all
-  sleep 16
-  stop
-end
-
-live_loop :pad do
-  s = get[:section]
-  use_synth :supersaw
-  vol = 0
-  vol = 0.3 if s == 0 or s == 3
-  vol = 0.25 if s == 1
-  vol = 0.4 if s == 2
-  vol = 0.15 if s == 4
-  with_fx :reverb, room: 0.85, mix: 0.6 do
-    with_fx :lpf, cutoff: 85 do
-      chords = [chord(:e3, :minor7), chord(:c3, :major7),
-                chord(:a2, :minor7), chord(:b2, :minor)]
-      play chords.tick, attack: 2, release: 6, amp: vol
-      sleep 4
-    end
-  end
-end
-
-live_loop :arp do
-  s = get[:section]
-  use_synth :saw
-  vol = 0
-  vol = 0.2 if s == 0 or s == 3
-  vol = 0.3 if s == 1
-  vol = 0.4 if s == 2
-  vol = 0.1 if s == 4
-  notes = ring(:e4, :g4, :b4, :e5, :b4, :g4, :d5, :b4)
-  with_fx :echo, phase: 0.375, decay: 4, mix: 0.35 do
-    play notes.tick, release: 0.15, amp: vol, cutoff: 95
-    sleep 0.25
-  end
-end
-
-live_loop :bass do
-  s = get[:section]
-  use_synth :tb303
-  vol = 0
-  vol = 0.5 if s == 1
-  vol = 0.7 if s == 2
-  vol = 0.3 if s == 4
-  notes = ring(:e2, :e2, :c2, :c2, :a1, :a1, :b1, :b1)
-  play notes.tick, release: 0.3, cutoff: 70, res: 0.3, amp: vol
-  sleep 0.5
-end
-
-live_loop :kick do
-  s = get[:section]
-  vol = 0
-  vol = 1.5 if s == 1
-  vol = 2.0 if s == 2
-  vol = 0.8 if s == 4
-  sample :bd_haus, amp: vol
-  sleep 1
-end
-
-live_loop :snare do
-  s = get[:section]
-  vol = 0
-  vol = 0.8 if s == 1
-  vol = 1.2 if s == 2
-  sleep 1
-  sample :sn_dub, amp: vol
-  sleep 1
-end
-
-live_loop :hats do
-  s = get[:section]
-  vol = 0
-  vol = rrand(0.2, 0.5) if s == 1 or s == 2
-  sample :drum_cymbal_closed, amp: vol
-  sleep 0.25
-end
-
-live_loop :lead do
-  s = get[:section]
-  use_synth :saw
-  vol = 0
-  vol = 0.35 if s == 2
-  notes = [:e5, :d5, :b4, :g4, :a4, :b4, :d5, :e5,
-           :g5, :e5, :d5, :b4, :a4, :g4, :a4, :b4]
-  with_fx :reverb, room: 0.7 do
-    with_fx :flanger, phase: 2, mix: 0.3 do
-      play notes.tick, release: 0.4, amp: vol, cutoff: 105
-      sleep 0.5
-    end
-  end
-end`,
-    js: ""
-  },
-  {
-    name: "Rainforest",
-    difficulty: "advanced",
-    description: "Ambient/generative \u2014 layered nature textures, random plucks, evolving pad, no drums.",
-    ruby: `# "Rainforest" \u2014 Ambient / Generative
-# Inspired by the Sonic Pi community
-# Technique: rrand for organic randomness, layered textures, no fixed rhythm
-
-use_bpm 70
-
-live_loop :director do
-  set :section, 0  # dawn: quiet pad emerges
-  sleep 32
-  set :section, 1  # morning: bird plucks begin
-  sleep 48
-  set :section, 2  # midday: full canopy, all layers
-  sleep 64
-  set :section, 3  # dusk: thin out, slower
-  sleep 32
-  set :section, 4  # night: fade to silence
-  sleep 16
-  stop
-end
-
-live_loop :canopy_pad do
-  s = get[:section]
-  use_synth :dark_ambience
-  vol = 0
-  vol = 0.2 if s == 0
-  vol = 0.3 if s == 1
-  vol = 0.4 if s == 2
-  vol = 0.25 if s == 3
-  vol = 0.1 if s == 4
-  with_fx :reverb, room: 0.95, mix: 0.8 do
-    notes = [chord(:e3, :minor7), chord(:g3, :major7),
-             chord(:a3, :minor), chord(:d3, :sus4)]
-    play notes.choose, attack: 4, release: 8, amp: vol, cutoff: rrand(60, 80)
-    sleep rrand(6, 10)
-  end
-end
-
-live_loop :bird_plucks do
-  s = get[:section]
-  use_synth :pluck
-  vol = 0
-  vol = 0.25 if s == 1
-  vol = 0.4 if s == 2
-  vol = 0.2 if s == 3
-  with_fx :echo, phase: rrand(0.2, 0.5), decay: 3, mix: 0.4 do
-    with_fx :reverb, room: 0.8 do
-      notes = scale(:e5, :minor_pentatonic, num_octaves: 2)
-      play notes.choose, release: rrand(0.1, 0.4), amp: vol
-    end
-  end
-  sleep rrand(0.3, 1.5)
-end
-
-live_loop :water_drops do
-  s = get[:section]
-  use_synth :sine
-  vol = 0
-  vol = 0.15 if s == 1 or s == 3
-  vol = 0.25 if s == 2
-  with_fx :reverb, room: 0.9 do
-    play rrand_i(72, 96), release: rrand(0.05, 0.2), amp: vol
-  end
-  sleep rrand(0.5, 3.0)
-end
-
-live_loop :wind do
-  s = get[:section]
-  use_synth :cnoise
-  vol = 0
-  vol = 0.03 if s == 0 or s == 4
-  vol = 0.04 if s == 1 or s == 3
-  vol = 0.06 if s == 2
-  with_fx :lpf, cutoff: rrand(50, 70) do
-    play :c4, release: rrand(3, 6), amp: vol
-  end
-  sleep rrand(4, 8)
-end
-
-live_loop :deep_pulse do
-  s = get[:section]
-  use_synth :sine
-  vol = 0
-  vol = 0.2 if s == 2
-  vol = 0.15 if s == 1 or s == 3
-  with_fx :reverb, room: 0.9 do
-    play [:e2, :g2, :a2, :d2].choose, attack: 2, release: 6, amp: vol
-  end
-  sleep rrand(6, 12)
-end
-
-live_loop :insects do
-  s = get[:section]
-  use_synth :square
-  vol = 0
-  vol = 0.05 if s == 2
-  vol = 0.03 if s == 3
-  with_fx :hpf, cutoff: 100 do
-    play rrand_i(90, 110), release: rrand(0.02, 0.08), amp: vol if one_in(3)
-  end
-  sleep rrand(0.1, 0.4)
-end`,
-    js: ""
-  },
-  {
-    name: "Concrete Jungle",
-    difficulty: "advanced",
-    description: "Drum & Bass \u2014 fast breakbeat patterns, deep reese bass, chopped hats.",
-    ruby: `# "Concrete Jungle" \u2014 Drum & Bass
-# Inspired by the Sonic Pi community
-# Technique: fast breakbeats, reese bass with wobble, chopped hat patterns
-
-use_bpm 174
-
-live_loop :director do
-  set :section, 0  # intro: hats + sparse kick
-  sleep 32
-  set :section, 1  # build: bass enters, drums fill
-  sleep 32
-  set :section, 2  # drop: full breakbeat + reese
-  sleep 64
-  set :section, 3  # breakdown: half-time, pad
-  sleep 16
-  set :section, 4  # drop 2: full, more chopped
-  sleep 64
-  stop
-end
-
-live_loop :kick do
-  s = get[:section]
-  vol = 0
-  vol = 0.8 if s == 0
-  vol = 1.5 if s == 1
-  vol = 2.5 if s == 2 or s == 4
-  vol = 1.0 if s == 3
-  pattern = spread(3, 8)
-  sample :bd_tek, amp: vol if pattern.tick
-  sleep 0.25
-end
-
-live_loop :snare do
-  s = get[:section]
-  vol = 0
-  vol = 0.6 if s == 1
-  vol = 1.5 if s == 2 or s == 4
-  vol = 0.8 if s == 3
-  sleep 1
-  sample :sn_dub, amp: vol
-  sleep 1
-end
-
-live_loop :hats do
-  s = get[:section]
-  vol = 0
-  vol = rrand(0.2, 0.5) if s == 0 or s == 1
-  vol = rrand(0.3, 0.7) if s == 2 or s == 4
-  vol = rrand(0.1, 0.3) if s == 3
-  sample :drum_cymbal_closed, amp: vol, rate: rrand(0.9, 1.3) if spread(5, 8).tick
-  sleep 0.125
-end
-
-live_loop :ghost_snares do
-  s = get[:section]
-  vol = 0
-  vol = 0.4 if s == 2 or s == 4
-  pattern = knit(false, 3, true, 1, false, 2, true, 1, false, 1)
-  sample :sn_dub, amp: vol * rrand(0.3, 0.6), rate: 1.4 if pattern.tick
-  sleep 0.25
-end
-
-live_loop :reese do
-  s = get[:section]
-  use_synth :tb303
-  vol = 0
-  vol = 0.4 if s == 1
-  vol = 0.7 if s == 2
-  vol = 0.8 if s == 4
-  vol = 0.3 if s == 3
-  notes = ring(:e1, :e1, :g1, :e1, :a1, :e1, :d1, :e1)
-  with_fx :wobble, phase: 0.5, mix: 0.6 do
-    with_fx :distortion, distort: 0.4 do
-      play notes.tick, release: 0.4, cutoff: rrand(60, 100), res: 0.7, amp: vol
-      sleep 0.5
-    end
-  end
-end
-
-live_loop :pad do
-  s = get[:section]
-  use_synth :hollow
-  vol = 0
-  vol = 0.3 if s == 3
-  vol = 0.15 if s == 0
-  with_fx :reverb, room: 0.9 do
-    play chord(:e3, :minor7), release: 8, amp: vol, cutoff: 75
-  end
-  sleep 8
-end
-
-live_loop :stab do
-  s = get[:section]
-  use_synth :supersaw
-  vol = 0
-  vol = 0.4 if s == 2
-  vol = 0.5 if s == 4
-  if one_in(4)
-    with_fx :reverb, room: 0.6 do
-      play chord(:e4, :minor), release: 0.15, amp: vol, cutoff: 100
-    end
-  end
-  sleep 0.5
-end`,
-    js: ""
-  },
-  {
-    name: "Solar Flare",
-    difficulty: "advanced",
-    description: "Progressive trance \u2014 building arpeggios, filter sweeps, euphoric chords, four-on-floor.",
-    ruby: `# "Solar Flare" \u2014 Progressive Trance
-# Inspired by the Sonic Pi community
-# Technique: line() filter sweeps, building arpeggios, layered pads
-
-use_bpm 138
-
-live_loop :director do
-  set :section, 0  # intro: kick + rising filter arp
-  sleep 32
-  set :section, 1  # build: pads enter, arp intensifies
-  sleep 32
-  set :section, 2  # drop: full euphoric chords + bass
-  sleep 64
-  set :section, 3  # breakdown: pad solo, no drums
-  sleep 16
-  set :section, 4  # climax: everything, peak energy
-  sleep 48
-  stop
-end
-
-live_loop :kick do
-  s = get[:section]
-  vol = 0
-  vol = 1.5 if s == 0 or s == 1
-  vol = 2.0 if s == 2 or s == 4
-  sample :bd_haus, amp: vol
-  sleep 1
-end
-
-live_loop :offbeat_hat do
-  s = get[:section]
-  vol = 0
-  vol = 0.4 if s == 0 or s == 1
-  vol = 0.6 if s == 2 or s == 4
-  sleep 0.5
-  sample :drum_cymbal_closed, amp: vol
-  sleep 0.5
-end
-
-live_loop :clap do
-  s = get[:section]
-  vol = 0
-  vol = 0.8 if s == 1
-  vol = 1.2 if s == 2 or s == 4
-  sleep 1
-  sample :sn_dub, amp: vol
-  sleep 1
-end
-
-live_loop :arp do
-  s = get[:section]
-  use_synth :saw
-  vol = 0
-  vol = 0.2 if s == 0
-  vol = 0.3 if s == 1
-  vol = 0.4 if s == 2 or s == 4
-  vol = 0.15 if s == 3
-  co = 70
-  co = 90 if s == 1
-  co = 110 if s >= 2
-  notes = scale(:a3, :minor_pentatonic, num_octaves: 2)
-  with_fx :echo, phase: 0.25, decay: 4, mix: 0.4 do
-    play notes.tick, release: 0.15, amp: vol, cutoff: co
-    sleep 0.125
-  end
-end
-
-live_loop :pad do
-  s = get[:section]
-  use_synth :prophet
-  vol = 0
-  vol = 0.3 if s == 1
-  vol = 0.5 if s == 2
-  vol = 0.6 if s == 3
-  vol = 0.5 if s == 4
-  chords = [chord(:a3, :minor), chord(:f3, :major),
-            chord(:c4, :major), chord(:g3, :major)]
-  with_fx :reverb, room: 0.8, mix: 0.5 do
-    play chords.tick, attack: 1, release: 6, amp: vol, cutoff: 90
-    sleep 4
-  end
-end
-
-live_loop :bass do
-  s = get[:section]
-  use_synth :sine
-  vol = 0
-  vol = 0.6 if s == 2
-  vol = 0.8 if s == 4
-  notes = ring(:a1, :a1, :f1, :f1, :c2, :c2, :g1, :g1)
-  play notes.tick, release: 0.4, amp: vol
-  sleep 0.5
-end
-
-live_loop :riser do
-  s = get[:section]
-  use_synth :cnoise
-  vol = 0
-  vol = 0.06 if s == 1
-  vol = 0.08 if s == 3
-  with_fx :hpf, cutoff: rrand(70, 100) do
-    play :c4, release: 4, amp: vol
-  end
-  sleep 4
-end`,
-    js: ""
-  },
-  {
-    name: "Pocket Groove",
-    difficulty: "advanced",
-    description: "Lo-fi hip hop \u2014 dusty drums, mellow piano chords, vinyl crackle, jazzy bass.",
-    ruby: `# "Pocket Groove" \u2014 Lo-fi Hip Hop
-# Inspired by the Sonic Pi community
-# Technique: swing timing, noise textures, mellow timbres, jazzy harmony
-
-use_bpm 85
-
-live_loop :director do
-  set :section, 0  # intro: vinyl + piano only
-  sleep 16
-  set :section, 1  # verse: drums enter, bass joins
-  sleep 32
-  set :section, 2  # chorus: lead melody + full band
-  sleep 48
-  set :section, 3  # bridge: strip to piano + bass
-  sleep 16
-  set :section, 4  # outro: fade all layers
-  sleep 16
-  stop
-end
-
-live_loop :vinyl do
-  s = get[:section]
-  use_synth :cnoise
-  vol = 0
-  vol = 0.03 if s <= 3
-  vol = 0.02 if s == 4
-  with_fx :lpf, cutoff: 80 do
-    with_fx :hpf, cutoff: 40 do
-      play :c4, release: 4, amp: vol
-    end
-  end
-  sleep 4
-end
-
-live_loop :piano do
-  s = get[:section]
-  use_synth :piano
-  vol = 0
-  vol = 0.4 if s == 0 or s == 3
-  vol = 0.35 if s == 1
-  vol = 0.5 if s == 2
-  vol = 0.2 if s == 4
-  chords = [chord(:d3, :minor7), chord(:g3, :dom7),
-            chord(:c3, :major7), chord(:a2, :minor7)]
-  with_fx :lpf, cutoff: 90 do
-    with_fx :reverb, room: 0.5, mix: 0.3 do
-      play chords.tick, release: 1.5, amp: vol
-      sleep 2
-    end
-  end
-end
-
-live_loop :kick do
-  s = get[:section]
-  vol = 0
-  vol = 1.2 if s == 1
-  vol = 1.5 if s == 2
-  sample :bd_808, amp: vol
-  sleep 1
-end
-
-live_loop :snare do
-  s = get[:section]
-  vol = 0
-  vol = 0.6 if s == 1
-  vol = 0.8 if s == 2
-  sleep 1
-  sample :sn_dub, amp: vol, rate: 0.9
-  sleep 1
-end
-
-live_loop :hats do
-  s = get[:section]
-  vol = 0
-  vol = rrand(0.15, 0.35) if s == 1 or s == 2
-  pattern = knit(true, 1, false, 1, true, 1, true, 1)
-  sample :drum_cymbal_closed, amp: vol, rate: rrand(0.8, 1.1) if pattern.tick
-  sleep 0.25
-end
-
-live_loop :bass do
-  s = get[:section]
-  use_synth :fm
-  vol = 0
-  vol = 0.4 if s == 1 or s == 3
-  vol = 0.5 if s == 2
-  vol = 0.2 if s == 4
-  notes = ring(:d2, :d2, :g2, :g2, :c2, :c2, :a1, :a1)
-  with_fx :lpf, cutoff: 75 do
-    play notes.tick, release: 0.5, amp: vol, cutoff: 70
-    sleep 0.5
-  end
-end
-
-live_loop :lead do
-  s = get[:section]
-  use_synth :pluck
-  vol = 0
-  vol = 0.35 if s == 2
-  notes = scale(:d4, :dorian)
-  with_fx :reverb, room: 0.6 do
-    play notes.choose, release: rrand(0.3, 0.6), amp: vol if one_in(2)
-  end
-  sleep 0.5
-end`,
-    js: ""
-  },
-  {
-    name: "Neon Grid",
-    difficulty: "advanced",
-    description: "Cyberpunk techno \u2014 industrial kick, metallic hats, dark acid line, glitchy FX.",
-    ruby: `# "Neon Grid" \u2014 Cyberpunk Techno
-# Inspired by the Sonic Pi community
-# Technique: TB-303 acid, krush/distortion, Euclidean patterns, glitch FX
-
-use_bpm 135
-
-live_loop :director do
-  set :section, 0  # intro: kick + sparse acid
-  sleep 32
-  set :section, 1  # build: hats enter, acid intensifies
-  sleep 32
-  set :section, 2  # drop: full acid + industrial drums
-  sleep 64
-  set :section, 3  # break: glitch noise + sparse hits
-  sleep 16
-  set :section, 4  # climax: everything crushed
-  sleep 48
-  stop
-end
-
-live_loop :kick do
-  s = get[:section]
-  vol = 0
-  vol = 1.5 if s == 0 or s == 1
-  vol = 2.5 if s == 2 or s == 4
-  vol = 0.8 if s == 3
-  with_fx :distortion, distort: 0.2 do
-    sample :bd_tek, amp: vol
-  end
-  sleep 0.5
-end
-
-live_loop :hats do
-  s = get[:section]
-  vol = 0
-  vol = rrand(0.2, 0.5) if s == 1
-  vol = rrand(0.3, 0.7) if s == 2 or s == 4
-  pattern = spread(7, 16)
-  sample :drum_cymbal_closed, amp: vol, rate: rrand(1.0, 1.5) if pattern.tick
-  sleep 0.125
-end
-
-live_loop :clap do
-  s = get[:section]
-  vol = 0
-  vol = 1.0 if s == 1 or s == 2
-  vol = 1.5 if s == 4
-  sleep 1
-  sample :sn_dub, amp: vol
-  sleep 1
-end
-
-live_loop :acid do
-  s = get[:section]
-  use_synth :tb303
-  vol = 0
-  vol = 0.3 if s == 0
-  vol = 0.5 if s == 1
-  vol = 0.7 if s == 2
-  vol = 0.8 if s == 4
-  vol = 0.2 if s == 3
-  lo = 50
-  hi = 100
-  lo = 60 if s >= 2
-  hi = 120 if s >= 2
-  with_fx :distortion, distort: 0.5 do
-    notes = ring(:e1, :e1, :e2, :e1, :g1, :e1, :bb1, :a1)
-    play notes.tick, release: 0.2, cutoff: rrand(lo, hi), res: 0.85, amp: vol
-    sleep 0.25
-  end
-end
-
-live_loop :glitch do
-  s = get[:section]
-  use_synth :cnoise
-  vol = 0
-  vol = 0.06 if s == 3
-  vol = 0.04 if s == 4
-  with_fx :krush, gain: 8, cutoff: rrand(60, 100) do
-    play :c4, release: rrand(0.05, 0.2), amp: vol if one_in(3)
-  end
-  sleep 0.125
-end
-
-live_loop :dark_pad do
-  s = get[:section]
-  use_synth :dark_ambience
-  vol = 0
-  vol = 0.2 if s == 0
-  vol = 0.25 if s == 2 or s == 4
-  vol = 0.3 if s == 3
-  with_fx :reverb, room: 0.8 do
-    play chord(:e2, :minor), release: 8, amp: vol
-  end
-  sleep 8
-end
-
-live_loop :perc do
-  s = get[:section]
-  vol = 0
-  vol = 0.4 if s == 2 or s == 4
-  pattern = spread(3, 8)
-  sample :perc_bell, amp: vol * rrand(0.3, 0.8), rate: rrand(0.5, 2.0) if pattern.tick
-  sleep 0.25
-end`,
-    js: ""
-  },
-  {
-    name: "Cloud Cathedral",
-    difficulty: "advanced",
-    description: "Post-rock/ambient \u2014 reverb-drenched plucks, swelling pads, delayed melody that builds.",
-    ruby: `# "Cloud Cathedral" \u2014 Post-rock / Ambient
-# Inspired by the Sonic Pi community
-# Technique: deep reverb/delay stacking, slow crescendo, tremolo swells
-
-use_bpm 100
-
-live_loop :director do
-  set :section, 0  # intro: single plucks in space
-  sleep 32
-  set :section, 1  # build: pad swells, melody forms
-  sleep 32
-  set :section, 2  # peak: full arrangement, drums enter
-  sleep 48
-  set :section, 3  # descent: strip layers, slow down
-  sleep 24
-  set :section, 4  # silence: final note rings out
-  sleep 8
-  stop
-end
-
-live_loop :plucks do
-  s = get[:section]
-  use_synth :pluck
-  vol = 0
-  vol = 0.3 if s == 0
-  vol = 0.35 if s == 1
-  vol = 0.4 if s == 2
-  vol = 0.25 if s == 3
-  vol = 0.15 if s == 4
-  notes = ring(:e4, :b4, :g4, :d5, :a4, :e5, :b4, :fs5)
-  with_fx :reverb, room: 0.95, mix: 0.7 do
-    with_fx :echo, phase: 0.75, decay: 6, mix: 0.5 do
-      play notes.tick, release: rrand(0.3, 0.8), amp: vol
-    end
-  end
-  sleep 1
-end
-
-live_loop :pad do
-  s = get[:section]
-  use_synth :hollow
-  vol = 0
-  vol = 0.2 if s == 1
-  vol = 0.4 if s == 2
-  vol = 0.3 if s == 3
-  vol = 0.1 if s == 4
-  chords = [chord(:e3, :sus4), chord(:b2, :sus2),
-            chord(:g3, :major7), chord(:d3, :sus4)]
-  with_fx :reverb, room: 0.9, mix: 0.6 do
-    with_fx :tremolo, phase: 4, mix: 0.3 do
-      play chords.tick, attack: 4, release: 8, amp: vol, cutoff: 80
-      sleep 8
-    end
-  end
-end
-
-live_loop :melody do
-  s = get[:section]
-  use_synth :blade
-  vol = 0
-  vol = 0.2 if s == 1
-  vol = 0.35 if s == 2
-  vol = 0.15 if s == 3
-  notes = [:e5, :d5, :b4, :a4, :g4, :a4, :b4, :d5]
-  durs = [1.5, 1, 0.5, 1, 1.5, 1, 0.5, 1]
-  with_fx :reverb, room: 0.85 do
-    with_fx :echo, phase: 0.5, decay: 4, mix: 0.4 do
-      i = tick % 8
-      play notes[i], release: durs[i] * 0.8, amp: vol, cutoff: 90
-      sleep durs[i]
-    end
-  end
-end
-
-live_loop :bass_drone do
-  s = get[:section]
-  use_synth :sine
-  vol = 0
-  vol = 0.2 if s == 1
-  vol = 0.35 if s == 2
-  vol = 0.15 if s == 3
-  notes = ring(:e2, :e2, :b1, :g2)
-  play notes.tick, attack: 2, release: 6, amp: vol
-  sleep 8
-end
-
-live_loop :drums do
-  s = get[:section]
-  k_vol = 0
-  s_vol = 0
-  k_vol = 1.2 if s == 2
-  s_vol = 0.6 if s == 2
-  sample :bd_haus, amp: k_vol
-  sleep 1
-  sample :sn_dub, amp: s_vol
-  sleep 1
-  sample :bd_haus, amp: k_vol * 0.7
-  sleep 1
-  sample :sn_dub, amp: s_vol * 0.8
-  sleep 1
-end
-
-live_loop :shimmer do
-  s = get[:section]
-  use_synth :saw
-  vol = 0
-  vol = 0.08 if s == 2
-  vol = 0.05 if s == 3
-  with_fx :reverb, room: 0.95, mix: 0.9 do
-    with_fx :hpf, cutoff: 90 do
-      play scale(:e5, :minor_pentatonic).choose, release: 0.1, amp: vol if one_in(3)
-    end
-  end
-  sleep 0.25
-end`,
-    js: ""
-  },
-  {
-    name: "Algorithm",
-    difficulty: "advanced",
-    description: "Algorave/live-coding showcase \u2014 randomized params, Euclidean rhythms, density variations.",
-    ruby: `# "Algorithm" \u2014 Algorave
-# Inspired by the Sonic Pi community
-# Technique: every parameter randomized within ranges, Euclidean rhythms, density, spread
-
-use_bpm 128
-
-live_loop :director do
-  set :section, 0  # intro: sparse algorithmic textures
-  sleep 32
-  set :section, 1  # build: layers accumulate
-  sleep 32
-  set :section, 2  # peak: maximum density
-  sleep 48
-  set :section, 3  # variation: shift all patterns
-  sleep 32
-  set :section, 4  # outro: dissolve
-  sleep 16
-  stop
-end
-
-live_loop :algo_kick do
-  s = get[:section]
-  vol = 0
-  vol = 1.5 if s == 0 or s == 1
-  vol = 2.0 if s == 2 or s == 3
-  vol = 1.0 if s == 4
-  hits = 4
-  hits = 5 if s == 3
-  pattern = spread(hits, 8)
-  sample :bd_haus, amp: vol if pattern.tick
-  sleep 0.25
-end
-
-live_loop :algo_snare do
-  s = get[:section]
-  vol = 0
-  vol = 0.6 if s == 1
-  vol = 1.0 if s == 2 or s == 3
-  vol = 0.4 if s == 4
-  hits = 3
-  hits = 5 if s == 3
-  pattern = spread(hits, 16)
-  sample :sn_dub, amp: vol * rrand(0.6, 1.0) if pattern.tick
-  sleep 0.25
-end
-
-live_loop :algo_hats do
-  s = get[:section]
-  vol = 0
-  vol = rrand(0.1, 0.3) if s == 0
-  vol = rrand(0.2, 0.5) if s == 1 or s == 2
-  vol = rrand(0.3, 0.6) if s == 3
-  vol = rrand(0.05, 0.2) if s == 4
-  hits = 5
-  hits = 7 if s >= 2
-  steps = 8
-  steps = 16 if s >= 2
-  pattern = spread(hits, steps)
-  sample :drum_cymbal_closed, amp: vol, rate: rrand(0.8, 1.6) if pattern.tick
-  sleep 0.125
-end
-
-live_loop :algo_bass do
-  s = get[:section]
-  use_synth :tb303
-  vol = 0
-  vol = 0.4 if s == 0
-  vol = 0.5 if s == 1
-  vol = 0.7 if s == 2
-  vol = 0.6 if s == 3
-  vol = 0.3 if s == 4
-  notes = scale(:e1, :minor_pentatonic)
-  with_fx :distortion, distort: rrand(0.1, 0.5) do
-    play notes.choose, release: 0.2, cutoff: rrand(50, 110), res: rrand(0.2, 0.9), amp: vol
-    sleep 0.25
-  end
-end
-
-live_loop :algo_lead do
-  s = get[:section]
-  synths = [:saw, :square, :pluck, :blade, :zawa]
-  use_synth synths.choose
-  vol = 0
-  vol = 0.2 if s == 1
-  vol = 0.35 if s == 2
-  vol = 0.3 if s == 3
-  vol = 0.1 if s == 4
-  notes = scale(:e4, :minor_pentatonic, num_octaves: 2)
-  with_fx :echo, phase: [0.25, 0.375, 0.5].choose, decay: rrand(2, 6), mix: 0.4 do
-    with_fx :reverb, room: rrand(0.4, 0.9) do
-      play notes.choose, release: rrand(0.1, 0.4), amp: vol, cutoff: rrand(70, 110) if one_in(2)
-    end
-  end
-  sleep 0.25
-end
-
-live_loop :algo_pad do
-  s = get[:section]
-  use_synth [:prophet, :hollow, :dark_ambience].choose
-  vol = 0
-  vol = 0.2 if s == 1
-  vol = 0.3 if s == 2
-  vol = 0.35 if s == 3
-  vol = 0.15 if s == 4
-  roots = [:e3, :a3, :b3, :d3, :g3]
-  types = [:minor7, :minor, :sus4, :sus2]
-  with_fx :reverb, room: rrand(0.6, 0.95) do
-    play chord(roots.choose, types.choose), attack: 2, release: rrand(4, 8), amp: vol
-  end
-  sleep rrand(4, 8)
-end
-
-live_loop :algo_perc do
-  s = get[:section]
-  vol = 0
-  vol = 0.3 if s == 2
-  vol = 0.4 if s == 3
-  vol = 0.15 if s == 4
-  sample :perc_bell, amp: vol * rrand(0.2, 0.8), rate: rrand(0.3, 3.0) if one_in(4)
-  sleep 0.25
-end`,
-    js: ""
-  },
-  {
-    name: "Blade Runner x Techno",
-    difficulty: "advanced",
-    description: "10 synced loops \u2014 percussion, harmonic engine, synthbass. Techniques: define, line().mirror.tick, panslicer, sync.",
-    ruby: `# =====================================================
-#  BLADE RUNNER x TECHNO
-#  10 synced loops: percussion + harmonic engine + synthbass
-#  Techniques: define, line().mirror.tick, panslicer, sync
-# =====================================================
-
-use_bpm 115
-
-amp_master = 1.0
-c_blade    = 72
-c_perc     = 115
-
-define :pattern do |p|
-  p.ring.tick == "x"
-end
-
-live_loop :met1 do
-  sleep 1
-end
-
-# KICK
-live_loop :kick, sync: :met1 do
-  sample :bd_haus, amp: 1.5 * amp_master, cutoff: c_perc      if pattern "x-----------x---"
-  sample :bd_tek,  amp: 0.5 * amp_master, cutoff: c_perc + 12 if pattern "x-----------x---"
-  sleep 0.25
-end
-
-# SNARE
-with_fx :reverb, mix: 0.3, room: 0.72 do
-  live_loop :snare, sync: :met1 do
-    sleep 1
-    sample :drum_snare_hard, rate: 1.8, cutoff: c_perc, amp: 0.65 * amp_master
-    sample :drum_snare_hard, rate: 1.6, start: 0.03, cutoff: c_perc, pan: 0.25, amp: 0.65 * amp_master
-    sample :drum_snare_hard, rate: 1.5, start: 0.06, cutoff: c_perc, pan: -0.25, amp: 0.65 * amp_master
-    sleep 1
-  end
-end
-
-# HI-HATS
-with_fx :panslicer, mix: 0.22 do
-  with_fx :reverb, mix: 0.15 do
-    live_loop :hats, sync: :met1 do
-      a = rrand(0.38, 0.72) * amp_master
-      sample :drum_cymbal_closed, amp: a, rate: 2.2, finish: 0.5, pan: [-0.4, 0.4].choose, cutoff: c_perc if pattern "x-x-x-x-x-x-x-x-xxx-x-x-x-"
-      sleep 0.125
-    end
-  end
-end
-
-# CRASH
-with_fx :reverb, mix: 0.75 do
-  live_loop :crash, sync: :met1 do
-    sleep 15.5
-    sample :drum_splash_soft, amp: 0.07 * amp_master, cutoff: c_perc - 12, rate: 1.4, finish: 0.3
-    sleep 0.5
-  end
-end
-
-# HARMONIC ENGINE
-with_fx :panslicer, mix: 0.18, phase: 8 do
-  with_fx :reverb, room: 0.97, mix: 0.78, damp: 0.4 do
-
-    # PADS
-    live_loop :pads, sync: :met1 do
-      use_synth :blade
-      sweep = (line c_blade - 16, c_blade + 16, steps: 16).mirror.tick
-
-      [:c3, :eb3, :g3, :b3].each do |n|
-        play n, attack: 3.0, sustain: 5.0, release: 4.0, amp: 1.3 * amp_master, cutoff: sweep, vibrato_rate: 4.5, vibrato_depth: 0.10, vibrato_delay: 1.5, vibrato_onset: 0.8
-      end
-      sleep 12
-
-      [:eb3, :g3, :bb3, :d4, :f4].each do |n|
-        play n, attack: 3.0, sustain: 5.0, release: 4.0, amp: 1.3 * amp_master, cutoff: sweep + 8, vibrato_rate: 5.0, vibrato_depth: 0.12, vibrato_delay: 1.2, vibrato_onset: 0.7
-      end
-      sleep 12
-
-      [:ab2, :c3, :eb3, :g3].each do |n|
-        play n, attack: 3.0, sustain: 5.0, release: 4.0, amp: 1.4 * amp_master, cutoff: sweep + 14, vibrato_rate: 5.5, vibrato_depth: 0.15, vibrato_delay: 1.0, vibrato_onset: 0.6
-      end
-      sleep 12
-
-      [:g2, :b2, :d3, :f3, :a3].each do |n|
-        play n, attack: 3.5, sustain: 5.0, release: 4.5, amp: 1.4 * amp_master, cutoff: sweep + 20, vibrato_rate: 6.0, vibrato_depth: 0.18, vibrato_delay: 0.8, vibrato_onset: 0.5
-      end
-      sleep 12
-    end
-
-    # MELODY
-    live_loop :melody, sync: :pads do
-      use_synth :blade
-      vib = (line 0.10, 0.30, steps: 48).mirror.tick
-
-      play :c5, attack: 1.5, sustain: 2.5, release: 2.5, amp: 0.58 * amp_master, cutoff: c_blade + 6, vibrato_rate: 5.5, vibrato_depth: vib, vibrato_delay: 0.8, vibrato_onset: 0.5
-      sleep 5
-      play :eb5, attack: 0.8, sustain: 1.5, release: 1.8, amp: 0.52 * amp_master, cutoff: c_blade + 4, vibrato_rate: 5.2, vibrato_depth: vib + 0.02, vibrato_delay: 0.6, vibrato_onset: 0.4
-      sleep 4
-      play :g5, attack: 0.6, sustain: 1.2, release: 1.5, amp: 0.50 * amp_master, cutoff: c_blade + 8, vibrato_rate: 5.8, vibrato_depth: vib + 0.02, vibrato_delay: 0.5, vibrato_onset: 0.3
-      sleep 3
-
-      play :bb5, attack: 2.0, sustain: 3.5, release: 2.5, amp: 0.64 * amp_master, cutoff: c_blade + 12, vibrato_rate: 6.0, vibrato_depth: vib + 0.04, vibrato_delay: 0.9, vibrato_onset: 0.5
-      sleep 6
-      play :g5, attack: 0.8, sustain: 2.0, release: 2.0, amp: 0.56 * amp_master, cutoff: c_blade + 10, vibrato_rate: 5.8, vibrato_depth: vib + 0.02, vibrato_delay: 0.7, vibrato_onset: 0.4
-      sleep 6
-
-      play :c6, attack: 2.5, sustain: 5.5, release: 3.0, amp: 0.68 * amp_master, cutoff: c_blade + 20, vibrato_rate: 6.5, vibrato_depth: vib + 0.08, vibrato_delay: 1.2, vibrato_onset: 0.6
-      sleep 12
-
-      play :d6, attack: 3.0, sustain: 4.5, release: 3.5, amp: 0.66 * amp_master, cutoff: c_blade + 24, vibrato_rate: 7.0, vibrato_depth: vib + 0.10, vibrato_delay: 1.0, vibrato_onset: 0.7
-      sleep 8
-      play :b5, attack: 1.2, sustain: 1.8, release: 2.2, amp: 0.55 * amp_master, cutoff: c_blade + 18, vibrato_rate: 6.5, vibrato_depth: vib + 0.05, vibrato_delay: 0.6, vibrato_onset: 0.4
-      sleep 4
-    end
-
-    # ECSTASY ARPEGGIOS
-    live_loop :ecstasy, sync: :pads do
-      use_synth :blade
-      arp_chords = [
-        [:c4, :eb4, :g4, :b4, :c5, :g4],
-        [:eb4, :g4, :bb4, :d5, :f5, :bb4],
-        [:ab4, :c5, :eb5, :g5, :ab5, :eb5],
-        [:g4, :b4, :d5, :f5, :a5, :d5],
-      ]
-      4.times do |i|
-        arp = arp_chords[i]
-        spd = 1.2 - (i * 0.05)
-        breath = 12.0 - (arp.length * spd)
-        with_fx :echo, phase: 0.75, mix: (line 0.08, 0.72, steps: 128).mirror.tick do
-          arp.each do |n|
-            play n, attack: 0.04, sustain: spd * 0.32, release: spd * 0.58, amp: rrand(0.18, 0.32) * amp_master, cutoff: c_blade + (i * 6) + rrand(-4, 8), vibrato_rate: rrand(6, 9), vibrato_depth: rrand(0.08, 0.16), vibrato_delay: 0.12, vibrato_onset: 0.06
-            sleep spd
-          end
-        end
-        sleep [breath, 0.25].max
-      end
-    end
-
-    # TEARS
-    live_loop :tears, sync: :pads do
-      use_synth :blade
-      tear_data = [[:eb6, 12], [:g6, 12], [:c7, 12], [:b6, 12]]
-      tear_data.each do |td|
-        if one_in(2)
-          play td[0], attack: rrand(2.5, 4.5), sustain: rrand(3.0, 5.5), release: rrand(4.0, 7.0), amp: rrand(0.12, 0.22) * amp_master, cutoff: rrand(92, 108), vibrato_rate: rrand(4.5, 7.0), vibrato_depth: rrand(0.18, 0.34), vibrato_delay: rrand(1.2, 2.5), vibrato_onset: rrand(0.5, 1.0)
-        end
-        sleep td[1]
-      end
-    end
-
-    # SHIMMER
-    live_loop :shimmer, sync: :pads do
-      use_synth :blade
-      pool = [:c6, :eb6, :g6, :bb6, :d7, :c7, :g6, :eb6, :ab6, :f6, :b6, :d6]
-      pool.each do |n|
-        unless one_in(3)
-          play n, attack: rrand(1.0, 3.0), sustain: rrand(0.5, 2.0), release: rrand(3.5, 6.0), amp: rrand(0.06, 0.16) * amp_master, cutoff: rrand(94, 112), vibrato_rate: rrand(7.0, 10.0), vibrato_depth: rrand(0.14, 0.30), vibrato_delay: rrand(0.3, 0.8), vibrato_onset: rrand(0.2, 0.5)
-        end
-        sleep rrand(1.0, 3.0)
-      end
-    end
-
-  end
-end
-
-# SYNTHBASS
-with_fx :panslicer, mix: 0.28 do
-  with_fx :reverb, mix: 0.28 do
-    live_loop :synthbass, sync: :pads do
-      use_synth :tech_saws
-      bass_data = [[:c2, 56], [:eb2, 60], [:ab2, 65], [:g2, 69]]
-      bass_data.each do |bd|
-        play bd[0], sustain: 8.5, release: 3.0, cutoff: bd[1], amp: 0.78 * amp_master, attack: 0.1
-        sleep 12
-      end
-    end
-  end
-end`,
-    js: ""
-  }
-];
-function getExample(name2) {
-  return examples.find((e) => e.name.toLowerCase() === name2.toLowerCase());
-}
-__name(getExample, "getExample");
-
-// ../../../sonicPiWeb/src/engine/SynthParams.ts
-var SYNTH_PARAMS = {
-  // Common params shared by most synths
-  _common: [
-    "note",
-    "amp",
-    "pan",
-    "attack",
-    "decay",
-    "sustain",
-    "release",
-    "attack_level",
-    "decay_level",
-    "sustain_level",
-    "note_slide",
-    "amp_slide",
-    "pan_slide",
-    "cutoff",
-    "cutoff_slide",
-    "res"
-  ],
-  // Synth-specific additions (empty = uses only common)
-  beep: [],
-  saw: [],
-  sine: [],
-  square: [],
-  tri: [],
-  pulse: ["pulse_width", "pulse_width_slide"],
-  noise: [],
-  pnoise: [],
-  bnoise: [],
-  gnoise: [],
-  cnoise: [],
-  prophet: [],
-  tb303: ["wave", "pulse_width", "pulse_width_slide"],
-  supersaw: ["detune", "detune_slide"],
-  dsaw: ["detune", "detune_slide"],
-  dpulse: ["detune", "detune_slide", "pulse_width", "pulse_width_slide"],
-  dtri: ["detune", "detune_slide"],
-  pluck: ["noise_amp", "max_delay_time", "pluck_decay"],
-  pretty_bell: [],
-  piano: ["vel", "hard", "stereo_width"],
-  fm: ["divisor", "depth", "depth_slide", "divisor_slide"],
-  mod_fm: ["divisor", "depth", "depth_slide", "divisor_slide", "mod_phase", "mod_range", "mod_phase_slide"],
-  mod_saw: ["mod_phase", "mod_range", "mod_phase_slide", "mod_width"],
-  mod_pulse: ["mod_phase", "mod_range", "mod_phase_slide", "mod_width", "pulse_width", "pulse_width_slide"],
-  mod_tri: ["mod_phase", "mod_range", "mod_phase_slide", "mod_width"],
-  chipbass: [],
-  chiplead: ["width"],
-  chipnoise: ["freq_band"],
-  dark_ambience: ["ring", "room", "reverb_time"],
-  hollow: ["noise", "norm"],
-  growl: [],
-  zawa: ["wave", "phase", "phase_offset", "invert_wave", "range", "disable_wave"],
-  blade: ["vibrato_rate", "vibrato_depth", "vibrato_delay", "vibrato_onset"],
-  tech_saws: [],
-  sound_in: ["input"],
-  sound_in_stereo: ["input"]
-};
-var FX_PARAMS = {
-  // Common params shared by most FX
-  _common: ["amp", "amp_slide", "mix", "mix_slide", "pre_amp", "pre_amp_slide"],
-  // FX-specific additions
-  reverb: ["room", "room_slide", "damp", "damp_slide"],
-  echo: ["phase", "phase_slide", "decay", "decay_slide", "max_phase"],
-  delay: ["phase", "phase_slide", "decay", "decay_slide", "max_phase"],
-  distortion: ["distort", "distort_slide"],
-  slicer: ["phase", "phase_slide", "wave", "pulse_width", "smooth", "probability"],
-  wobble: ["phase", "phase_slide", "wave", "cutoff_min", "cutoff_max", "res"],
-  ixi_techno: ["phase", "phase_slide", "cutoff_min", "cutoff_max", "res"],
-  compressor: ["threshold", "clamp_time", "slope_above", "slope_below", "relax_time"],
-  rlpf: ["cutoff", "cutoff_slide", "res", "res_slide"],
-  rhpf: ["cutoff", "cutoff_slide", "res", "res_slide"],
-  hpf: ["cutoff", "cutoff_slide"],
-  lpf: ["cutoff", "cutoff_slide"],
-  normaliser: ["level", "level_slide"],
-  pan: ["pan", "pan_slide"],
-  band_eq: ["freq", "freq_slide", "res", "res_slide", "db", "db_slide"],
-  flanger: ["phase", "phase_slide", "wave", "depth", "decay", "feedback", "delay"],
-  krush: ["cutoff", "cutoff_slide", "res", "res_slide", "gain", "gain_slide"],
-  bitcrusher: ["sample_rate", "sample_rate_slide", "bits", "bits_slide", "cutoff", "cutoff_slide"],
-  ring_mod: ["freq", "freq_slide", "mod_amp", "mod_amp_slide"],
-  chorus: ["phase", "phase_slide", "decay", "max_phase"],
-  octaver: ["super_amp", "sub_amp", "subsub_amp"],
-  vowel: ["vowel_sound", "voice"],
-  tanh: ["krunch", "krunch_slide"],
-  gverb: ["spread", "spread_slide", "damp", "damp_slide", "room", "release", "ref_level", "tail_level"],
-  pitch_shift: ["pitch", "pitch_slide", "window_size", "pitch_dis", "time_dis"],
-  whammy: ["transpose", "transpose_slide", "max_delay_time", "deltime", "grainsize"],
-  tremolo: ["phase", "phase_slide", "wave", "depth", "depth_slide"],
-  record: ["buffer"],
-  sound_out: ["output"],
-  sound_out_stereo: ["output"],
-  level: [],
-  mono: [],
-  autotuner: ["note"]
-};
-function getSynthParams(synthName) {
-  const common = SYNTH_PARAMS._common ?? [];
-  const specific = SYNTH_PARAMS[synthName] ?? [];
-  return [...common, ...specific];
-}
-__name(getSynthParams, "getSynthParams");
-function getFxParams(fxName) {
-  const common = FX_PARAMS._common ?? [];
-  const specific = FX_PARAMS[fxName] ?? [];
-  return [...common, ...specific];
-}
-__name(getFxParams, "getFxParams");
-
-// ../../../sonicPiWeb/src/engine/FriendlyErrors.ts
-var KNOWN_SYNTHS = [
-  "beep",
-  "saw",
-  "prophet",
-  "tb303",
-  "supersaw",
-  "pluck",
-  "pretty_bell",
-  "piano",
-  "dsaw",
-  "dpulse",
-  "dtri",
-  "fm",
-  "mod_fm",
-  "mod_saw",
-  "mod_pulse",
-  "mod_tri",
-  "sine",
-  "square",
-  "tri",
-  "pulse",
-  "noise",
-  "pnoise",
-  "bnoise",
-  "gnoise",
-  "cnoise",
-  "chipbass",
-  "chiplead",
-  "chipnoise",
-  "dark_ambience",
-  "hollow",
-  "growl",
-  "zawa",
-  "blade",
-  "tech_saws",
-  "sound_in",
-  "sound_in_stereo"
-];
-var KNOWN_SAMPLES = [
-  "bd_haus",
-  "bd_zum",
-  "bd_808",
-  "bd_boom",
-  "bd_klub",
-  "bd_pure",
-  "bd_tek",
-  "sn_dub",
-  "sn_dolf",
-  "sn_zome",
-  "sn_generic",
-  "hat_snap",
-  "hat_cab",
-  "hat_raw",
-  "loop_amen",
-  "loop_breakbeat",
-  "loop_compus",
-  "loop_garzul",
-  "loop_industrial",
-  "ambi_choir",
-  "ambi_dark_woosh",
-  "ambi_drone",
-  "ambi_glass_hum",
-  "ambi_lunar_land",
-  "bass_dnb_f",
-  "bass_hit_c",
-  "bass_thick_c",
-  "bass_voxy_c",
-  "elec_beep",
-  "elec_bell",
-  "elec_blip",
-  "elec_chime",
-  "elec_ping",
-  "perc_bell",
-  "perc_snap",
-  "perc_swoosh"
-];
-var KNOWN_FX = [
-  "reverb",
-  "echo",
-  "distortion",
-  "slicer",
-  "wobble",
-  "ixi_techno",
-  "compressor",
-  "rlpf",
-  "rhpf",
-  "hpf",
-  "lpf",
-  "normaliser",
-  "pan",
-  "band_eq",
-  "flanger",
-  "krush",
-  "bitcrusher",
-  "ring_mod",
-  "octaver",
-  "vowel",
-  "tanh",
-  "gverb",
-  "pitch_shift",
-  "whammy",
-  "tremolo",
-  "record",
-  "sound_out",
-  "sound_out_stereo",
-  "level",
-  "mono",
-  "autotuner"
-];
-function extractLineFromStack(err2, lineOffset) {
-  const msg = err2.message ?? "";
-  const stack = err2.stack ?? "";
-  const syntaxMatch = msg.match(/line\s+(\d+)/i) ?? stack.match(/Function.*?:(\d+):\d+/) ?? stack.match(/<anonymous>:(\d+):\d+/) ?? stack.match(/eval.*?:(\d+):\d+/);
-  if (syntaxMatch) {
-    const raw = parseInt(syntaxMatch[1], 10);
-    const wrapperLines = lineOffset > 0 ? lineOffset : SANDBOX_WRAPPER_LINES;
-    const adjusted = raw - wrapperLines;
-    return adjusted > 0 ? adjusted : raw > 0 ? 1 : void 0;
-  }
-  const runtimeMatch = stack.match(/<anonymous>:(\d+):\d+/) ?? stack.match(/eval.*?:(\d+):\d+/);
-  if (runtimeMatch) {
-    const raw = parseInt(runtimeMatch[1], 10);
-    const wrapperLines = lineOffset > 0 ? lineOffset : SANDBOX_WRAPPER_LINES;
-    const adjusted = raw - wrapperLines;
-    return adjusted > 0 ? adjusted : 1;
-  }
-  return void 0;
-}
-__name(extractLineFromStack, "extractLineFromStack");
-function closestMatch(input, candidates) {
-  let best = null;
-  let bestDist = Infinity;
-  for (const c of candidates) {
-    const d = editDistance(input.toLowerCase(), c.toLowerCase());
-    if (d < bestDist) {
-      bestDist = d;
-      best = c;
-    }
-  }
-  return bestDist <= 3 ? best : null;
-}
-__name(closestMatch, "closestMatch");
-function editDistance(a, b) {
-  const m = a.length, n = b.length;
-  const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-  for (let i2 = 0; i2 <= m; i2++) dp[i2][0] = i2;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-  for (let i2 = 1; i2 <= m; i2++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i2][j] = a[i2 - 1] === b[j - 1] ? dp[i2 - 1][j - 1] : 1 + Math.min(dp[i2 - 1][j], dp[i2][j - 1], dp[i2 - 1][j - 1]);
-    }
-  }
-  return dp[m][n];
-}
-__name(editDistance, "editDistance");
-var ERROR_PATTERNS = [
-  // Unknown synth
-  {
-    test: /* @__PURE__ */ __name((msg) => /unknown synth|synthdef.*not found|loadSynthDef/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const nameMatch = msg.match(/sonic-pi-(\w+)/i) ?? msg.match(/synth[:\s]+["']?(\w+)["']?/i);
-      const name2 = nameMatch?.[1]?.replace("sonic-pi-", "") ?? "unknown";
-      const suggestion = closestMatch(name2, KNOWN_SYNTHS);
-      return {
-        title: `Synth :${name2} not found`,
-        message: `I don't know a synth called :${name2}.` + (suggestion ? ` Did you mean :${suggestion}?` : "") + `
-
-Available synths include: ${KNOWN_SYNTHS.slice(0, 8).map((s) => ":" + s).join(", ")}...
-
-Try: use_synth("${suggestion ?? "beep"}")`
-      };
-    }, "transform")
-  },
-  // Unknown sample
-  {
-    test: /* @__PURE__ */ __name((msg) => /sample.*not found|loadSample.*failed|sample.*flac/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const nameMatch = msg.match(/sample[:\s]*["']?(\w+)["']?/i) ?? msg.match(/(\w+)\.flac/i);
-      const name2 = nameMatch?.[1] ?? "unknown";
-      const suggestion = closestMatch(name2, KNOWN_SAMPLES);
-      return {
-        title: `Sample :${name2} not found`,
-        message: `I couldn't find a sample called :${name2}.` + (suggestion ? ` Did you mean :${suggestion}?` : "") + `
-
-Some built-in samples: ${KNOWN_SAMPLES.slice(0, 6).map((s) => ":" + s).join(", ")}...`
-      };
-    }, "transform")
-  },
-  // Unknown FX
-  {
-    test: /* @__PURE__ */ __name((msg) => /unknown fx|fx.*not found|loadSynthDef.*fx/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const nameMatch = msg.match(/sonic-pi-fx_(\w+)/i) ?? msg.match(/fx[:\s]+["']?(\w+)["']?/i);
-      const name2 = nameMatch?.[1]?.replace("sonic-pi-fx_", "") ?? "unknown";
-      const suggestion = closestMatch(name2, KNOWN_FX);
-      return {
-        title: `FX :${name2} not found`,
-        message: `I don't know an FX called :${name2}.` + (suggestion ? ` Did you mean :${suggestion}?` : "") + `
-
-Available FX include: ${KNOWN_FX.slice(0, 8).map((f) => ":" + f).join(", ")}...`
-      };
-    }, "transform")
-  },
-  // Unknown parameter for synth or FX
-  {
-    test: /* @__PURE__ */ __name((msg) => /unknown param|invalid.*param|unrecognised.*param|unrecognized.*param/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const synthMatch = msg.match(/synth[:\s]+["']?(\w+)["']?/i);
-      const fxMatch = msg.match(/fx[:\s]+["']?(\w+)["']?/i);
-      const paramMatch = msg.match(/param(?:eter)?[:\s]+["']?(\w+)["']?/i);
-      const badParam = paramMatch?.[1] ?? "unknown";
-      const isFx = !!fxMatch;
-      const name2 = fxMatch?.[1] ?? synthMatch?.[1] ?? "unknown";
-      const validParams = isFx ? getFxParams(name2) : getSynthParams(name2);
-      const suggestion = validParams.length > 0 ? closestMatch(badParam, validParams) : null;
-      const kind = isFx ? "FX" : "synth";
-      return {
-        title: `Unknown parameter :${badParam} for ${kind} :${name2}`,
-        message: `The ${kind} :${name2} doesn't have a parameter called :${badParam}.` + (suggestion ? ` Did you mean :${suggestion}?` : "") + `
-
-Valid parameters for :${name2} include:
-  ` + validParams.slice(0, 12).map((p) => ":" + p).join(", ") + (validParams.length > 12 ? "..." : "")
-      };
-    }, "transform")
-  },
-  // Note out of range or invalid
-  {
-    test: /* @__PURE__ */ __name((msg) => /invalid note|note.*range|unknown note|cannot convert.*note/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => ({
-      title: "Invalid note",
-      message: `That doesn't look like a valid note.
-
-Notes can be:
-  - MIDI numbers: play(60)  (middle C)
-  - Note names:   play("c4"), play("fs3"), play("eb5")
-  - Symbols:      play("c4")  (use strings in JS, not Ruby symbols)`
-    }), "transform")
-  },
-  // sleep with bad value
-  {
-    test: /* @__PURE__ */ __name((msg) => /sleep.*NaN|sleep.*undefined|sleep.*negative/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => ({
-      title: "Invalid sleep value",
-      message: `sleep() needs a positive number of beats.
-
-Examples:
-  sleep(1)     \u2192 wait 1 beat
-  sleep(0.5)   \u2192 wait half a beat
-  sleep(0.25)  \u2192 wait a quarter beat`
-    }), "transform")
-  },
-  // Not initialized
-  {
-    test: /* @__PURE__ */ __name((msg) => /not initialized|call init/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name(() => ({
-      title: "Engine not ready",
-      message: `The sound engine hasn't started yet.
-
-Make sure to call init() before evaluating code:
-  const engine = new SonicPiEngine()
-  await engine.init()
-  await engine.evaluate(code)`
-    }), "transform")
-  },
-  // Unknown task
-  {
-    test: /* @__PURE__ */ __name((msg) => /unknown task/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const nameMatch = msg.match(/task[:\s]*["']?(\w+)["']?/i);
-      const name2 = nameMatch?.[1] ?? "unknown";
-      return {
-        title: `Unknown loop: ${name2}`,
-        message: `There's no live_loop called "${name2}" running.
-
-Make sure your code defines the loop:
-  live_loop("${name2}", async ({play, sleep}) => {
-    await play(60)
-    await sleep(1)
-  })`
-      };
-    }, "transform")
-  },
-  // Transpile failure — code couldn't be converted to JS
-  {
-    test: /* @__PURE__ */ __name((msg) => /transpile|tree-?sitter|invalid js output/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const detail = msg.replace(/.*?:\s*/, "");
-      return {
-        title: "Code couldn't be understood",
-        message: `Your code has a syntax issue the transpiler couldn't handle.
-
-Detail: ${detail}
-
-Common causes:
-  - Unclosed do/end block (every "do" needs a matching "end")
-  - Missing comma between arguments
-  - Unsupported Ruby syntax (not all Ruby features are available)
-
-Tip: Try commenting out sections to find which part causes the issue.`
-      };
-    }, "transform")
-  },
-  // Infinite loop detected
-  {
-    test: /* @__PURE__ */ __name((msg) => /infinite loop|did you forget.*sleep/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name(() => ({
-      title: "Infinite loop detected",
-      message: `Your code is running in a tight loop without sleeping.
-
-Every live_loop and loop needs a sleep:
-
-  live_loop :drums do
-    sample :bd_haus
-    sleep 0.5          # \u2190 don't forget this!
-  end
-
-Without sleep, the loop runs thousands of times per second and freezes the browser.`
-    }), "transform")
-  },
-  // Nil/undefined access (very common with get/set)
-  {
-    test: /* @__PURE__ */ __name((msg) => /cannot read prop.*of undefined|cannot read prop.*of null|undefined is not an object/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const propMatch = msg.match(/property '(\w+)'/i) ?? msg.match(/property "(\w+)"/i);
-      const prop = propMatch?.[1] ?? "unknown";
-      return {
-        title: "Trying to use something that doesn't exist yet",
-        message: `You tried to access .${prop} on something that is nil/undefined.
-
-Common causes:
-  - Using get[:name] before set :name was called
-  - Variable not yet assigned in this iteration
-  - case/when didn't match any branch (variables inside when are undefined outside)
-
-Tip: Make sure set() runs before get[], or provide a default:
-  val = get[:myval] || 0`
-      };
-    }, "transform")
-  },
-  // Wrong number of arguments
-  {
-    test: /* @__PURE__ */ __name((msg) => /expected \d+ arguments|takes \d+ arguments|too (many|few) arguments/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => ({
-      title: "Wrong number of arguments",
-      message: `${msg}
-
-Check the function signature. In Sonic Pi:
-  play 60                    \u2192 one note
-  play 60, amp: 0.5          \u2192 note + options
-  sample :bd_haus, rate: 2   \u2192 sample + options
-
-Options use key: value syntax (colon after the name).`
-    }), "transform")
-  },
-  // Stack overflow (deeply nested calls)
-  {
-    test: /* @__PURE__ */ __name((msg) => /maximum call stack|stack overflow/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name(() => ({
-      title: "Code nested too deeply",
-      message: `Your code has too many nested calls \u2014 it ran out of stack space.
-
-Common causes:
-  - A define function calling itself without stopping (infinite recursion)
-  - Very deeply nested with_fx blocks (try reducing nesting)
-
-Tip: Make sure recursive functions have a base case that stops the recursion.`
-    }), "transform")
-  },
-  // Redeclaration error (const/let)
-  {
-    test: /* @__PURE__ */ __name((msg) => /redeclaration|has already been declared|identifier.*already/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const varMatch = msg.match(/(?:of\s+|identifier\s+)'?(\w+)'?/i);
-      const name2 = varMatch?.[1] ?? "variable";
-      return {
-        title: `"${name2}" declared twice`,
-        message: `The variable "${name2}" is being declared more than once.
-
-In Sonic Pi, you can reassign variables freely:
-  x = 1
-  x = 2    # \u2190 this is fine
-
-If you're seeing this error, it may be a transpiler issue.
-Try renaming the variable or restarting.`
-      };
-    }, "transform")
-  },
-  // Invalid note / NaN play
-  {
-    test: /* @__PURE__ */ __name((msg) => /NaN.*play|play.*NaN|invalid.*midi/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name(() => ({
-      title: "Note couldn't be played",
-      message: `The note value resolved to something that isn't a valid pitch.
-
-Valid notes:
-  play 60          \u2192 MIDI note 60 (middle C)
-  play :c4          \u2192 C in octave 4
-  play :eb3         \u2192 E-flat in octave 3
-  play :fs5         \u2192 F-sharp in octave 5
-
-Note: Sharps use "s" (not #), flats use "b".`
-    }), "transform")
-  },
-  // B9 (#390): `raise`/`fail` are real Ruby keywords we don't support in the
-  // browser sandbox. They transpile to a bare call, so the generic handler below
-  // would frame them as a typo ("raise is not a function"). Name them as
-  // unsupported keywords instead. Must precede the generic "is not a function".
-  {
-    test: /* @__PURE__ */ __name((msg) => /\b(raise|fail) is not a function/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const kw = /\bfail is not a function/i.test(msg) ? "fail" : "raise";
-      return {
-        title: `${kw} isn't supported yet`,
-        message: `"${kw}" is a Ruby keyword that isn't available in the browser sandbox yet.
-
-If you want to stop your code, use \`stop\` instead.
-To leave a note for yourself, use a comment (\`# like this\`).`
-      };
-    }, "transform")
-  },
-  // Type errors (common JS mistakes)
-  {
-    test: /* @__PURE__ */ __name((msg) => /is not a function/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const fnMatch = msg.match(/(\w+) is not a function/i);
-      const fn = fnMatch?.[1] ?? "unknown";
-      return {
-        title: `${fn} is not a function`,
-        message: `Hmm, "${fn}" isn't available as a function here.
-
-Common causes:
-  - Typo in function name
-  - Using a Ruby method that hasn't been implemented yet
-  - Calling a DSL function outside a live_loop`
-      };
-    }, "transform")
-  },
-  // ReferenceError (undefined variable)
-  {
-    test: /* @__PURE__ */ __name((msg) => /is not defined/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const varMatch = msg.match(/(\w+) is not defined/i);
-      const name2 = varMatch?.[1] ?? "unknown";
-      return {
-        title: `${name2} is not defined`,
-        message: `I don't know what "${name2}" means.
-
-If this is a Sonic Pi symbol like :${name2}, use a string instead: "${name2}"
-If this is a variable, make sure to define it with let or const first.`
-      };
-    }, "transform")
-  },
-  // Parse errors from TreeSitter transpiler (contain "Parse error at line N")
-  {
-    test: /* @__PURE__ */ __name((msg) => /parse error at line/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => {
-      const errors = msg.split(";").map((s) => s.trim()).filter(Boolean);
-      const formatted = errors.map((e) => `  ${e}`).join("\n");
-      const lineMatch = msg.match(/parse error at line (\d+)/i);
-      const line2 = lineMatch ? parseInt(lineMatch[1], 10) : void 0;
-      return {
-        title: "Syntax error \u2014 your code could not be parsed",
-        message: `${formatted}
-
-Check for:
-  - Missing "do" after live_loop :name
-  - Unclosed do/end blocks
-  - Mismatched quotes or parentheses`,
-        line: line2
-      };
-    }, "transform")
-  },
-  // Syntax errors (JS-level, from new Function())
-  {
-    test: /* @__PURE__ */ __name((msg) => /syntaxerror|unexpected token|unexpected end/i.test(msg), "test"),
-    transform: /* @__PURE__ */ __name((msg) => ({
-      title: "Syntax error",
-      message: `There's a syntax problem in your code.
-
-Common causes:
-  - Missing closing bracket ) or }
-  - Using Ruby do/end instead of JS { }
-  - Missing comma between arguments
-
-Tip: If you're writing Sonic Pi syntax, the transpiler handles most Ruby \u2192 JS conversion automatically.`
-    }), "transform")
-  }
-];
-function friendlyError(err2, lineOffset = 0) {
-  const msg = err2.message;
-  for (const pattern of ERROR_PATTERNS) {
-    if (pattern.test(msg)) {
-      const result = pattern.transform(msg, err2);
-      return {
-        title: result.title,
-        message: result.message,
-        line: result.line ?? extractLineFromStack(err2, lineOffset),
-        original: err2
-      };
-    }
-  }
-  return {
-    title: "Something went wrong",
-    message: `${msg}
-
-If this keeps happening, try simplifying your code and adding things back one at a time.`,
-    line: extractLineFromStack(err2, lineOffset),
-    original: err2
-  };
-}
-__name(friendlyError, "friendlyError");
-function formatFriendlyError(fe) {
-  const lineInfo = fe.line ? ` (line ${fe.line})` : "";
-  return `\u2500\u2500 ${fe.title}${lineInfo} \u2500\u2500
-
-${fe.message}`;
-}
-__name(formatFriendlyError, "formatFriendlyError");
-
-// ../../../sonicPiWeb/src/engine/ComponentScan.ts
-function stripComments(code) {
-  const withoutBlocks = code.replace(/^=begin\b[\s\S]*?^=end\b.*$/gm, "");
-  return withoutBlocks.split("\n").map((line2) => {
-    for (let i2 = 0; i2 < line2.length; i2++) {
-      if (line2[i2] === "#" && line2[i2 + 1] !== "{") return line2.slice(0, i2);
-    }
-    return line2;
-  }).join("\n");
-}
-__name(stripComments, "stripComments");
-var NAME = "([a-zA-Z_][a-zA-Z0-9_]*)";
-var PATTERNS = [
-  ["samples", new RegExp(`\\bsample\\s*\\(?\\s*[:"']${NAME}`, "g")],
-  ["synths", new RegExp(`\\buse_synth\\s*\\(?\\s*[:"']${NAME}`, "g")],
-  ["synths", new RegExp(`\\bsynth\\s*\\(?\\s*[:"']${NAME}`, "g")],
-  ["fx", new RegExp(`\\bwith_fx\\s*\\(?\\s*[:"']${NAME}`, "g")]
-];
-function scanComponentNames(code) {
-  const manifest = {
-    samples: /* @__PURE__ */ new Set(),
-    fx: /* @__PURE__ */ new Set(),
-    synths: /* @__PURE__ */ new Set()
-  };
-  const src = stripComments(code);
-  for (const [bucket, re] of PATTERNS) {
-    re.lastIndex = 0;
-    let m;
-    while ((m = re.exec(src)) !== null) {
-      manifest[bucket].add(bucket === "synths" ? resolveSynthName(m[1]) : m[1]);
-    }
-  }
-  return manifest;
-}
-__name(scanComponentNames, "scanComponentNames");
-
-// ../../../sonicPiWeb/src/engine/ComponentResolver.ts
-function isCustomSampleName(name2) {
-  return name2.startsWith("user_");
-}
-__name(isCustomSampleName, "isCustomSampleName");
-async function resolveComponentManifest(manifest, loaders) {
-  const hardMisses = [];
-  const warnings = [];
-  const settle = /* @__PURE__ */ __name(async (name2, loader, kind) => {
-    try {
-      await loader(name2);
-    } catch {
-      if (kind === "sample" && isCustomSampleName(name2)) {
-        warnings.push(name2);
-      } else {
-        hardMisses.push(name2);
-      }
-    }
-  }, "settle");
-  await Promise.all([
-    ...[...manifest.samples].map((n) => settle(n, loaders.sample, "sample")),
-    ...[...manifest.fx].map((n) => settle(n, loaders.fx, "fx")),
-    ...[...manifest.synths].map((n) => settle(n, loaders.synth, "synth"))
-  ]);
-  hardMisses.sort();
-  warnings.sort();
-  return { hardMisses, warnings };
-}
-__name(resolveComponentManifest, "resolveComponentManifest");
-
-// ../../../sonicPiWeb/src/engine/Stratum.ts
-function detectStratum(code) {
-  const joined = code.replace(/\/\/.*$/gm, "");
-  const s3Patterns = [
-    /\bMath\.random\b/,
-    /\bDate\.now\b/,
-    /\bfetch\b/,
-    /\bXMLHttpRequest\b/,
-    /\bsync\s*\(/,
-    /\bcue\s*\(/
-  ];
-  for (const pattern of s3Patterns) {
-    if (pattern.test(joined)) return 3 /* S3 */;
-  }
-  if (/^\s*(let|var)\s+\w+/m.test(joined)) {
-    if (/\w+\s*(\+\+|--|(\+|-|\*|\/)?=)/.test(joined)) {
-      return 3 /* S3 */;
-    }
-  }
-  const s2Patterns = [
-    /\brrand\b/,
-    /\brrand_i\b/,
-    /\bchoose\b/,
-    /\bdice\b/,
-    /\buse_random_seed\b/
-  ];
-  for (const pattern of s2Patterns) {
-    if (pattern.test(joined)) return 2 /* S2 */;
-  }
-  return 1 /* S1 */;
-}
-__name(detectStratum, "detectStratum");
-
-// ../../../sonicPiWeb/src/engine/SoundEventStream.ts
-var _SoundEventStream = class _SoundEventStream {
-  constructor() {
-    this.handlers = /* @__PURE__ */ new Set();
-  }
-  on(handler) {
-    this.handlers.add(handler);
-  }
-  off(handler) {
-    this.handlers.delete(handler);
-  }
-  /** Emit a sound event to all subscribers. */
-  emitEvent(event) {
-    for (const handler of this.handlers) {
-      try {
-        handler(event);
-      } catch {
-      }
-    }
-  }
-  dispose() {
-    this.handlers.clear();
-  }
-};
-__name(_SoundEventStream, "SoundEventStream");
-var SoundEventStream = _SoundEventStream;
-
-// ../../../sonicPiWeb/src/engine/Asserts.ts
-var _AssertionFailedError = class _AssertionFailedError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "AssertionFailedError";
-  }
-};
-__name(_AssertionFailedError, "AssertionFailedError");
-var AssertionFailedError = _AssertionFailedError;
-function fail(msg) {
-  throw new AssertionFailedError(msg);
-}
-__name(fail, "fail");
-function assert(condition, msg) {
-  if (!condition) fail(msg ?? `assert failed (got ${JSON.stringify(condition)})`);
-  return true;
-}
-__name(assert, "assert");
-function assert_equal(a, b, msg) {
-  if (a === b) return true;
-  if (typeof a === "object" && typeof b === "object" && a !== null && b !== null) {
-    if (JSON.stringify(a) === JSON.stringify(b)) return true;
-  }
-  fail(msg ?? `assert_equal failed: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`);
-}
-__name(assert_equal, "assert_equal");
-function assert_similar(a, b, msg, epsilon = 1e-9) {
-  if (typeof a === "number" && typeof b === "number") {
-    if (Math.abs(a - b) > epsilon) {
-      fail(msg ?? `assert_similar failed: ${a} \u2249 ${b} (epsilon=${epsilon})`);
-    }
-    return true;
-  }
-  return assert_equal(a, b, msg);
-}
-__name(assert_similar, "assert_similar");
-function assert_not(condition, msg) {
-  if (condition) fail(msg ?? `assert_not failed (got ${JSON.stringify(condition)})`);
-  return true;
-}
-__name(assert_not, "assert_not");
-function assert_error(blockFn, msg) {
-  try {
-    blockFn();
-  } catch {
-    return true;
-  }
-  fail(msg ?? "assert_error failed: block did not raise an exception");
-}
-__name(assert_error, "assert_error");
-function inc(x) {
-  return x + 1;
-}
-__name(inc, "inc");
-function dec(x) {
-  return x - 1;
-}
-__name(dec, "dec");
-
-// ../../../sonicPiWeb/src/engine/MidiBridge.ts
-var NOTE_ON = 144;
-var NOTE_OFF = 128;
-var CONTROL_CHANGE = 176;
-var PITCH_BEND = 224;
-var CHANNEL_PRESSURE = 208;
-var POLY_PRESSURE = 160;
-var PROGRAM_CHANGE = 192;
-var MIDI_TIMING_CLOCK = 248;
-var CHANNEL_NIBBLE_MASK = 15;
-var MIDI_DATA_MASK = 127;
-var MIDI_CLOCKS_PER_QUARTER_NOTE = 24;
-var PITCH_BEND_14BIT_MAX = 16383;
-var ALL_NOTES_OFF_CC = 123;
-var SECONDS_PER_MINUTE = 60;
-var _MidiBridge = class _MidiBridge {
-  constructor() {
-    this.midiAccess = null;
-    /** All selected output ports — sends go to every one. */
-    this.selectedOutputs = [];
-    this.selectedInputs = [];
-    this.inputListeners = /* @__PURE__ */ new Map();
-    this.handlers = [];
-    /** Last CC value per "controller:channel". */
-    this.ccState = /* @__PURE__ */ new Map();
-    /**
-     * Last pitch bend per channel.
-     * Stored as normalised float in [-1, 1].
-     * Raw 14-bit value: 0x0000 = -1, 0x2000 = 0, 0x3FFF = +1.
-     */
-    this.pitchBendState = /* @__PURE__ */ new Map();
-    this.noteOnState = /* @__PURE__ */ new Map();
-    this.noteOffState = /* @__PURE__ */ new Map();
-    /** Running MIDI clock interval (started by startClock / stopped by stopClock). */
-    this.clockInterval = null;
-    /**
-     * Tracks pending auto-note-offs scheduled by `midi(...)` shorthand and the
-     * deferred `midiOut`-with-sustain step. engine.stop() calls
-     * cancelPendingNoteOffs() to fire each pending note's off NOW (so external
-     * devices don't hang) and prevent the timer's deferred fire from sending a
-     * stale note-off into a fresh run (#200).
-     */
-    this.pendingNoteOffs = /* @__PURE__ */ new Set();
-  }
-  // ---------------------------------------------------------------------------
-  // Initialisation
-  // ---------------------------------------------------------------------------
-  /** Request MIDI access from the browser. */
-  async init() {
-    if (!navigator.requestMIDIAccess) {
-      console.warn("[MIDI] Web MIDI API not available in this browser");
-      return false;
-    }
-    try {
-      this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
-      return true;
-    } catch (err2) {
-      console.warn("[MIDI] Access denied:", err2);
-      return false;
-    }
-  }
-  /** List available MIDI devices. */
-  getDevices() {
-    if (!this.midiAccess) return [];
-    const devices = [];
-    this.midiAccess.inputs.forEach((input) => {
-      devices.push({ id: input.id, name: input.name ?? input.id, type: "input" });
-    });
-    this.midiAccess.outputs.forEach((output) => {
-      devices.push({ id: output.id, name: output.name ?? output.id, type: "output" });
-    });
-    return devices;
-  }
-  // ---------------------------------------------------------------------------
-  // Device selection (multi-output, multi-input)
-  // ---------------------------------------------------------------------------
-  /**
-   * Add an output device to the active set.
-   * All subsequent send calls go to every selected output.
-   */
-  selectOutput(deviceId) {
-    if (!this.midiAccess) return false;
-    const output = this.midiAccess.outputs.get(deviceId);
-    if (!output) return false;
-    if (!this.selectedOutputs.some((o) => o.id === deviceId)) {
-      this.selectedOutputs.push(output);
-    }
-    return true;
-  }
-  /** Remove an output device from the active set. */
-  deselectOutput(deviceId) {
-    this.selectedOutputs = this.selectedOutputs.filter((o) => o.id !== deviceId);
-  }
-  /** Clear all selected outputs. */
-  clearOutputs() {
-    this.selectedOutputs = [];
-  }
-  /**
-   * Add an input device. Incoming MIDI fires registered event handlers.
-   * Multiple inputs are supported simultaneously.
-   */
-  selectInput(deviceId) {
-    if (!this.midiAccess) return false;
-    if (this.inputListeners.has(deviceId)) return true;
-    const input = this.midiAccess.inputs.get(deviceId);
-    if (!input) return false;
-    const listener = /* @__PURE__ */ __name((e) => this.handleMidiMessage(e), "listener");
-    input.addEventListener("midimessage", listener);
-    this.inputListeners.set(deviceId, listener);
-    this.selectedInputs.push(input);
-    return true;
-  }
-  /** Stop listening on an input device. */
-  deselectInput(deviceId) {
-    const listener = this.inputListeners.get(deviceId);
-    if (!listener) return;
-    const input = this.selectedInputs.find((i2) => i2.id === deviceId);
-    if (input) input.removeEventListener("midimessage", listener);
-    this.inputListeners.delete(deviceId);
-    this.selectedInputs = this.selectedInputs.filter((i2) => i2.id !== deviceId);
-  }
-  /** Register a handler for all incoming MIDI events. */
-  onMidiEvent(handler) {
-    this.handlers.push(handler);
-  }
-  // ---------------------------------------------------------------------------
-  // Output — notes
-  // ---------------------------------------------------------------------------
-  /** Send MIDI note on. Channel 1-16, note 0-127, velocity 0-127. */
-  noteOn(note2, velocity = 100, channel = 1) {
-    const status = NOTE_ON | channel - 1 & CHANNEL_NIBBLE_MASK;
-    this.send([status, note2 & MIDI_DATA_MASK, velocity & MIDI_DATA_MASK]);
-  }
-  /** Send MIDI note off. */
-  noteOff(note2, channel = 1) {
-    const status = NOTE_OFF | channel - 1 & CHANNEL_NIBBLE_MASK;
-    this.send([status, note2 & MIDI_DATA_MASK, 0]);
-  }
-  /**
-   * Schedule a note-off after `delaySeconds`. Returns the entry so the caller
-   * can ignore it; the bridge tracks the timer and clears it on stop().
-   */
-  scheduleNoteOff(note2, channel, delaySeconds) {
-    const entry = { timer: 0, note: note2, channel };
-    entry.timer = setTimeout(() => {
-      this.pendingNoteOffs.delete(entry);
-      this.noteOff(note2, channel);
-    }, delaySeconds * 1e3);
-    this.pendingNoteOffs.add(entry);
-  }
-  /**
-   * Cancel every pending auto note-off and immediately fire its note-off so
-   * external MIDI devices don't hang. Called from engine.stop() (#200).
-   */
-  cancelPendingNoteOffs() {
-    for (const entry of this.pendingNoteOffs) {
-      clearTimeout(entry.timer);
-      this.noteOff(entry.note, entry.channel);
-    }
-    this.pendingNoteOffs.clear();
-  }
-  // ---------------------------------------------------------------------------
-  // Output — continuous controllers
-  // ---------------------------------------------------------------------------
-  /** Send MIDI CC (control change). controller 0-127, value 0-127. */
-  cc(controller, value, channel = 1) {
-    const status = CONTROL_CHANGE | channel - 1 & CHANNEL_NIBBLE_MASK;
-    this.send([status, controller & MIDI_DATA_MASK, value & MIDI_DATA_MASK]);
-  }
-  /** Send all notes off on a channel (CC 123). */
-  allNotesOff(channel = 1) {
-    this.cc(ALL_NOTES_OFF_CC, 0, channel);
-  }
-  /**
-   * Send MIDI pitch bend. val is normalised [-1, 1] (0 = centre).
-   * Maps to 14-bit value: 0x2000 = centre, 0x0000 = -1, 0x3FFF = +1.
-   */
-  pitchBend(val, channel = 1) {
-    const clamped = Math.max(-1, Math.min(1, val));
-    const raw = Math.round((clamped + 1) * 0.5 * PITCH_BEND_14BIT_MAX);
-    const lsb = raw & MIDI_DATA_MASK;
-    const msb = raw >> 7 & MIDI_DATA_MASK;
-    const status = PITCH_BEND | channel - 1 & CHANNEL_NIBBLE_MASK;
-    this.send([status, lsb, msb]);
-  }
-  /**
-   * Send MIDI channel pressure (aftertouch). val 0-127.
-   * Affects all notes on the channel.
-   */
-  channelPressure(val, channel = 1) {
-    const status = CHANNEL_PRESSURE | channel - 1 & CHANNEL_NIBBLE_MASK;
-    this.send([status, val & MIDI_DATA_MASK]);
-  }
-  /**
-   * Send MIDI polyphonic key pressure. val 0-127.
-   * Targets a specific note on the channel.
-   */
-  polyPressure(note2, val, channel = 1) {
-    const status = POLY_PRESSURE | channel - 1 & CHANNEL_NIBBLE_MASK;
-    this.send([status, note2 & MIDI_DATA_MASK, val & MIDI_DATA_MASK]);
-  }
-  /**
-   * Send MIDI program change. program 0-127.
-   * Switches the sound/patch on the receiving device.
-   */
-  programChange(program, channel = 1) {
-    const status = PROGRAM_CHANGE | channel - 1 & CHANNEL_NIBBLE_MASK;
-    this.send([status, program & MIDI_DATA_MASK]);
-  }
-  // ---------------------------------------------------------------------------
-  // Output — MIDI clock & transport
-  // ---------------------------------------------------------------------------
-  /** Send a single MIDI timing clock pulse (0xF8). 24 per quarter note. */
-  clockTick() {
-    this.send([MIDI_TIMING_CLOCK]);
-  }
-  /**
-   * Start a continuous MIDI clock at the given BPM.
-   * Sends 24 pulses per quarter note using setInterval.
-   * Call stopClock() to halt. Safe to call multiple times — restarts the clock.
-   */
-  startClock(bpm) {
-    this.stopClock();
-    const intervalMs = SECONDS_PER_MINUTE / bpm / MIDI_CLOCKS_PER_QUARTER_NOTE * 1e3;
-    this.clockInterval = setInterval(() => this.clockTick(), intervalMs);
-  }
-  /** Stop the running MIDI clock. */
-  stopClock() {
-    if (this.clockInterval !== null) {
-      clearInterval(this.clockInterval);
-      this.clockInterval = null;
-    }
-  }
-  /** Send MIDI Start (0xFA) — tells external devices to begin playback. */
-  midiStart() {
-    this.send([250]);
-  }
-  /** Send MIDI Stop (0xFC) — tells external devices to stop. */
-  midiStop() {
-    this.send([252]);
-  }
-  /** Send MIDI Continue (0xFB) — resume from current position. */
-  midiContinue() {
-    this.send([251]);
-  }
-  // ---------------------------------------------------------------------------
-  // Input state readers
-  // ---------------------------------------------------------------------------
-  /**
-   * Return the most recently received CC value (0–127) for a controller.
-   * Matches Sonic Pi's get_cc(controller, channel: 1).
-   * Returns 0 if no CC has been received.
-   */
-  getCCValue(controller, channel = 1) {
-    return this.ccState.get(`${controller}:${channel}`) ?? 0;
-  }
-  /** Inject a CC value — used in tests and for programmatic control. */
-  setCCValue(controller, value, channel = 1) {
-    this.ccState.set(`${controller}:${channel}`, value);
-  }
-  getLastNoteOn(channel = 1) {
-    return this.noteOnState.get(`${channel}`) ?? null;
-  }
-  getLastNoteOff(channel = 1) {
-    return this.noteOffState.get(`${channel}`) ?? null;
-  }
-  /**
-   * Return the most recently received pitch bend normalised to [-1, 1].
-   * Returns 0 (centre) if no pitch bend message has been received.
-   */
-  getPitchBend(channel = 1) {
-    return this.pitchBendState.get(channel) ?? 0;
-  }
-  // ---------------------------------------------------------------------------
-  // Internal — input parsing
-  // ---------------------------------------------------------------------------
-  handleMidiMessage(e) {
-    const data = e.data;
-    if (!data || data.length < 1) return;
-    const status = data[0] & 240;
-    const channel = (data[0] & 15) + 1;
-    switch (status) {
-      case 144:
-        if (data.length >= 3 && data[2] > 0) {
-          this.emit({ type: "note_on", channel, note: data[1], velocity: data[2] });
-          this.noteOnState.set(`${channel}`, { note: data[1], velocity: data[2] });
-        } else {
-          this.emit({ type: "note_off", channel, note: data[1] });
-          this.noteOffState.set(`${channel}`, data[1]);
-        }
-        break;
-      case 128:
-        this.emit({ type: "note_off", channel, note: data[1] });
-        this.noteOffState.set(`${channel}`, data[1]);
-        break;
-      case 176: {
-        if (data.length < 3) break;
-        const ccNum = data[1];
-        const ccVal = data[2];
-        this.ccState.set(`${ccNum}:${channel}`, ccVal);
-        this.emit({ type: "cc", channel, cc: ccNum, value: ccVal });
-        break;
-      }
-      case 224: {
-        if (data.length < 3) break;
-        const raw = data[2] << 7 | data[1];
-        const normalised = (raw - 8192) / 8192;
-        this.pitchBendState.set(channel, normalised);
-        this.emit({ type: "pitch_bend", channel, value: normalised });
-        break;
-      }
-      case 208: {
-        if (data.length < 2) break;
-        this.emit({ type: "channel_pressure", channel, value: data[1] });
-        break;
-      }
-      case 160: {
-        if (data.length < 3) break;
-        this.emit({ type: "poly_pressure", channel, note: data[1], value: data[2] });
-        break;
-      }
-    }
-  }
-  send(data) {
-    for (const output of this.selectedOutputs) {
-      try {
-        output.send(data);
-      } catch {
-      }
-    }
-  }
-  emit(event) {
-    for (const handler of this.handlers) {
-      try {
-        handler(event);
-      } catch {
-      }
-    }
-  }
-  // ---------------------------------------------------------------------------
-  // Cleanup
-  // ---------------------------------------------------------------------------
-  dispose() {
-    this.stopClock();
-    for (const [id, listener] of this.inputListeners) {
-      const input = this.selectedInputs.find((i2) => i2.id === id);
-      if (input) input.removeEventListener("midimessage", listener);
-    }
-    this.inputListeners.clear();
-    this.selectedInputs = [];
-    this.selectedOutputs = [];
-    this.midiAccess = null;
-    this.handlers = [];
-  }
-};
-__name(_MidiBridge, "MidiBridge");
-var MidiBridge = _MidiBridge;
-
-// ../../../sonicPiWeb/src/engine/SampleCatalog.ts
-var SAMPLES = [
-  // Bass drums
-  { name: "bd_808", category: "bass drum" },
-  { name: "bd_boom", category: "bass drum" },
-  { name: "bd_fat", category: "bass drum" },
-  { name: "bd_gas", category: "bass drum" },
-  { name: "bd_haus", category: "bass drum" },
-  { name: "bd_klub", category: "bass drum" },
-  { name: "bd_pure", category: "bass drum" },
-  { name: "bd_tek", category: "bass drum" },
-  { name: "bd_zum", category: "bass drum" },
-  // Snares
-  { name: "sn_dolf", category: "snare" },
-  { name: "sn_dub", category: "snare" },
-  { name: "sn_generic", category: "snare" },
-  { name: "sn_zome", category: "snare" },
-  // Hi-hats
-  { name: "hat_bdu", category: "hi-hat" },
-  { name: "hat_cab", category: "hi-hat" },
-  { name: "hat_cats", category: "hi-hat" },
-  { name: "hat_em", category: "hi-hat" },
-  { name: "hat_gem", category: "hi-hat" },
-  { name: "hat_metal", category: "hi-hat" },
-  { name: "hat_noiz", category: "hi-hat" },
-  { name: "hat_raw", category: "hi-hat" },
-  { name: "hat_snap", category: "hi-hat" },
-  { name: "hat_star", category: "hi-hat" },
-  { name: "hat_tap", category: "hi-hat" },
-  { name: "hat_zild", category: "hi-hat" },
-  // Loops
-  { name: "loop_amen", category: "loop" },
-  { name: "loop_amen_full", category: "loop" },
-  { name: "loop_breakbeat", category: "loop" },
-  { name: "loop_compus", category: "loop" },
-  { name: "loop_garzul", category: "loop" },
-  { name: "loop_industrial", category: "loop" },
-  { name: "loop_mika", category: "loop" },
-  { name: "loop_safari", category: "loop" },
-  { name: "loop_tabla", category: "loop" },
-  // Ambient
-  { name: "ambi_choir", category: "ambient" },
-  { name: "ambi_dark_woosh", category: "ambient" },
-  { name: "ambi_drone", category: "ambient" },
-  { name: "ambi_glass_hum", category: "ambient" },
-  { name: "ambi_glass_rub", category: "ambient" },
-  { name: "ambi_haunted_hum", category: "ambient" },
-  { name: "ambi_lunar_land", category: "ambient" },
-  { name: "ambi_piano", category: "ambient" },
-  { name: "ambi_sauna", category: "ambient" },
-  { name: "ambi_soft_buzz", category: "ambient" },
-  { name: "ambi_swoosh", category: "ambient" },
-  // Bass
-  { name: "bass_dnb_f", category: "bass" },
-  { name: "bass_drop_c", category: "bass" },
-  { name: "bass_hard_c", category: "bass" },
-  { name: "bass_hit_c", category: "bass" },
-  { name: "bass_thick_c", category: "bass" },
-  { name: "bass_voxy_c", category: "bass" },
-  { name: "bass_voxy_hit_c", category: "bass" },
-  { name: "bass_woodsy_c", category: "bass" },
-  // Electronic
-  { name: "elec_beep", category: "electronic" },
-  { name: "elec_bell", category: "electronic" },
-  { name: "elec_blip", category: "electronic" },
-  { name: "elec_blip2", category: "electronic" },
-  { name: "elec_blup", category: "electronic" },
-  { name: "elec_bong", category: "electronic" },
-  { name: "elec_chime", category: "electronic" },
-  { name: "elec_cymbal", category: "electronic" },
-  { name: "elec_filt_snare", category: "electronic" },
-  { name: "elec_flip", category: "electronic" },
-  { name: "elec_fuzz_tom", category: "electronic" },
-  { name: "elec_hollow_kick", category: "electronic" },
-  { name: "elec_lo_snare", category: "electronic" },
-  { name: "elec_mid_snare", category: "electronic" },
-  { name: "elec_ping", category: "electronic" },
-  { name: "elec_plip", category: "electronic" },
-  { name: "elec_pop", category: "electronic" },
-  { name: "elec_snare", category: "electronic" },
-  { name: "elec_soft_kick", category: "electronic" },
-  { name: "elec_tick", category: "electronic" },
-  { name: "elec_triangle", category: "electronic" },
-  { name: "elec_twang", category: "electronic" },
-  { name: "elec_twip", category: "electronic" },
-  { name: "elec_wood", category: "electronic" },
-  // Percussion
-  { name: "perc_bell", category: "percussion" },
-  { name: "perc_snap", category: "percussion" },
-  { name: "perc_snap2", category: "percussion" },
-  { name: "perc_swoosh", category: "percussion" },
-  { name: "perc_till", category: "percussion" },
-  // Tabla
-  { name: "tabla_dhec", category: "tabla" },
-  { name: "tabla_ghe1", category: "tabla" },
-  { name: "tabla_ghe2", category: "tabla" },
-  { name: "tabla_ghe3", category: "tabla" },
-  { name: "tabla_ghe4", category: "tabla" },
-  { name: "tabla_ghe5", category: "tabla" },
-  { name: "tabla_ghe6", category: "tabla" },
-  { name: "tabla_ghe7", category: "tabla" },
-  { name: "tabla_ghe8", category: "tabla" },
-  { name: "tabla_ke1", category: "tabla" },
-  { name: "tabla_ke2", category: "tabla" },
-  { name: "tabla_ke3", category: "tabla" },
-  { name: "tabla_na", category: "tabla" },
-  { name: "tabla_na_o", category: "tabla" },
-  { name: "tabla_na_s", category: "tabla" },
-  { name: "tabla_re", category: "tabla" },
-  { name: "tabla_tas1", category: "tabla" },
-  { name: "tabla_tas2", category: "tabla" },
-  { name: "tabla_tas3", category: "tabla" },
-  { name: "tabla_te1", category: "tabla" },
-  { name: "tabla_te2", category: "tabla" },
-  { name: "tabla_te_m", category: "tabla" },
-  { name: "tabla_te_ne", category: "tabla" },
-  { name: "tabla_tun1", category: "tabla" },
-  { name: "tabla_tun2", category: "tabla" },
-  { name: "tabla_tun3", category: "tabla" },
-  // Vinyl
-  { name: "vinyl_backspin", category: "vinyl" },
-  { name: "vinyl_hiss", category: "vinyl" },
-  { name: "vinyl_rewind", category: "vinyl" },
-  { name: "vinyl_scratch", category: "vinyl" },
-  // --- Missing samples added from Desktop SP synthinfo.rb ---
-  // Bass drums (missing)
-  { name: "bd_ada", category: "bass drum" },
-  { name: "bd_sone", category: "bass drum" },
-  { name: "bd_zome", category: "bass drum" },
-  { name: "bd_mehackit", category: "bass drum" },
-  { name: "bd_chip", category: "bass drum" },
-  { name: "bd_jazz", category: "bass drum" },
-  // Drum kit
-  { name: "drum_bass_hard", category: "drum" },
-  { name: "drum_bass_soft", category: "drum" },
-  { name: "drum_cowbell", category: "drum" },
-  { name: "drum_cymbal_closed", category: "drum" },
-  { name: "drum_cymbal_hard", category: "drum" },
-  { name: "drum_cymbal_open", category: "drum" },
-  { name: "drum_cymbal_pedal", category: "drum" },
-  { name: "drum_cymbal_soft", category: "drum" },
-  { name: "drum_heavy_kick", category: "drum" },
-  { name: "drum_roll", category: "drum" },
-  { name: "drum_snare_hard", category: "drum" },
-  { name: "drum_snare_soft", category: "drum" },
-  { name: "drum_splash_hard", category: "drum" },
-  { name: "drum_splash_soft", category: "drum" },
-  { name: "drum_tom_hi_hard", category: "drum" },
-  { name: "drum_tom_hi_soft", category: "drum" },
-  { name: "drum_tom_lo_hard", category: "drum" },
-  { name: "drum_tom_lo_soft", category: "drum" },
-  { name: "drum_tom_mid_hard", category: "drum" },
-  { name: "drum_tom_mid_soft", category: "drum" },
-  // Guitar
-  { name: "guit_harmonics", category: "guitar" },
-  { name: "guit_e_fifths", category: "guitar" },
-  { name: "guit_e_slide", category: "guitar" },
-  { name: "guit_em9", category: "guitar" },
-  // Misc
-  { name: "misc_burp", category: "misc" },
-  { name: "misc_cineboom", category: "misc" },
-  { name: "misc_crow", category: "misc" },
-  // Ride cymbals
-  { name: "ride_tri", category: "ride" },
-  { name: "ride_via", category: "ride" },
-  // Hi-hats (missing)
-  { name: "hat_gnu", category: "hi-hat" },
-  { name: "hat_gump", category: "hi-hat" },
-  { name: "hat_hier", category: "hi-hat" },
-  { name: "hat_len", category: "hi-hat" },
-  { name: "hat_mess", category: "hi-hat" },
-  { name: "hat_psych", category: "hi-hat" },
-  { name: "hat_sci", category: "hi-hat" },
-  { name: "hat_yosh", category: "hi-hat" },
-  { name: "hat_zan", category: "hi-hat" },
-  { name: "hat_zap", category: "hi-hat" },
-  // Electronic (missing)
-  { name: "elec_hi_snare", category: "electronic" },
-  // Percussion (missing)
-  { name: "perc_bell2", category: "percussion" },
-  { name: "perc_door", category: "percussion" },
-  { name: "perc_impact1", category: "percussion" },
-  { name: "perc_impact2", category: "percussion" },
-  { name: "perc_swash", category: "percussion" },
-  // Bass (missing)
-  { name: "bass_trance_c", category: "bass" },
-  // Loops (missing)
-  { name: "loop_3d_printer", category: "loop" },
-  { name: "loop_drone_g_97", category: "loop" },
-  { name: "loop_electric", category: "loop" },
-  { name: "loop_mehackit1", category: "loop" },
-  { name: "loop_mehackit2", category: "loop" },
-  { name: "loop_perc1", category: "loop" },
-  { name: "loop_perc2", category: "loop" },
-  { name: "loop_weirdo", category: "loop" },
-  // Glitch
-  { name: "glitch_bass_g", category: "glitch" },
-  { name: "glitch_perc1", category: "glitch" },
-  { name: "glitch_perc2", category: "glitch" },
-  { name: "glitch_perc3", category: "glitch" },
-  { name: "glitch_perc4", category: "glitch" },
-  { name: "glitch_perc5", category: "glitch" },
-  { name: "glitch_robot1", category: "glitch" },
-  { name: "glitch_robot2", category: "glitch" },
-  // Mehackit
-  { name: "mehackit_phone1", category: "mehackit" },
-  { name: "mehackit_phone2", category: "mehackit" },
-  { name: "mehackit_phone3", category: "mehackit" },
-  { name: "mehackit_phone4", category: "mehackit" },
-  { name: "mehackit_robot1", category: "mehackit" },
-  { name: "mehackit_robot2", category: "mehackit" },
-  { name: "mehackit_robot3", category: "mehackit" },
-  { name: "mehackit_robot4", category: "mehackit" },
-  { name: "mehackit_robot5", category: "mehackit" },
-  { name: "mehackit_robot6", category: "mehackit" },
-  { name: "mehackit_robot7", category: "mehackit" },
-  // Arovane
-  { name: "arovane_beat_a", category: "arovane" },
-  { name: "arovane_beat_b", category: "arovane" },
-  { name: "arovane_beat_c", category: "arovane" },
-  { name: "arovane_beat_d", category: "arovane" },
-  { name: "arovane_beat_e", category: "arovane" },
-  // TBD (Thorsten Sideboard)
-  { name: "tbd_fxbed_loop", category: "tbd" },
-  { name: "tbd_highkey_c4", category: "tbd" },
-  { name: "tbd_pad_1", category: "tbd" },
-  { name: "tbd_pad_2", category: "tbd" },
-  { name: "tbd_pad_3", category: "tbd" },
-  { name: "tbd_pad_4", category: "tbd" },
-  { name: "tbd_perc_blip", category: "tbd" },
-  { name: "tbd_perc_hat", category: "tbd" },
-  { name: "tbd_perc_tap_1", category: "tbd" },
-  { name: "tbd_perc_tap_2", category: "tbd" },
-  { name: "tbd_voctone", category: "tbd" }
-];
-function getCategories() {
-  return [...new Set(SAMPLES.map((s) => s.category))];
-}
-__name(getCategories, "getCategories");
-function getSampleNames() {
-  return SAMPLES.map((s) => s.name);
-}
-__name(getSampleNames, "getSampleNames");
-
-// ../../../sonicPiWeb/src/engine/CustomSampleStore.ts
-var DB_NAME2 = "spw-custom-samples";
-var DB_VERSION2 = 1;
-var STORE_NAME2 = "samples";
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME2, DB_VERSION2);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME2)) {
-        db.createObjectStore(STORE_NAME2, { keyPath: "name" });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-__name(openDB, "openDB");
-async function loadAllCustomSamples() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx3 = db.transaction(STORE_NAME2, "readonly");
-    const request = tx3.objectStore(STORE_NAME2).getAll();
-    request.onsuccess = () => {
-      db.close();
-      resolve(request.result);
-    };
-    request.onerror = () => {
-      db.close();
-      reject(request.error);
-    };
-  });
-}
-__name(loadAllCustomSamples, "loadAllCustomSamples");
-
-// ../../../sonicPiWeb/src/engine/SonicPiEngine.ts
-var CLAMP_WARN_RE = /clamped to .+ \((min|max)\)$/;
-var PREFLIGHT_TIMEOUT_MS = 5e3;
-var randomSuffix = /* @__PURE__ */ __name(() => Math.random().toString(36).slice(2, 6), "randomSuffix");
-var _SonicPiEngine = class _SonicPiEngine {
-  constructor(options) {
-    this.scheduler = null;
-    this.bridge = null;
-    this.eventStream = new SoundEventStream();
-    this.initialized = false;
-    this.playing = false;
-    /**
-     * Origin for top-level `current_time` rebase (#364 item 4). Desktop SP resets
-     * `spider_time` to 0 at every job start (`runtime.rb:120,939`
-     * `__init_spider_time_and_beat!`). Our `scheduler.audioTime` is a live read
-     * of the monotonic `AudioContext.currentTime` clock, which only resets when
-     * the context is closed. `stop()` correctly preserves the bridge for reuse,
-     * so without this rebase a fresh Run after Stop reports prior session time
-     * (verified: V1=1.616, V2 after 5s wait + Run=8.677, Δ=+7.061s).
-     *
-     * Internal scheduling MUST keep using absolute `audioCtx.currentTime` (sleep
-     * queues, cue timestamps, /s_new timetags all interact with audioCtx). Only
-     * the user-visible top-level `current_time` reader subtracts this origin.
-     */
-    this._spiderTimeOrigin = 0;
-    this.runtimeErrorHandler = null;
-    this.printHandler = null;
-    this.cueHandler = null;
-    this.loadExampleHandler = null;
-    /**
-     * Non-fatal warnings surfaced to the user (audio still runs). Wired by
-     * App.ts to `Console.logWarning` so a v1 limitation is **visible** in
-     * the editor console rather than producing the SP95 "silent failure"
-     * churn bomb (the director/section pattern playing nothing without any
-     * indication). Title is short ("Cross-loop set/get"), message is the
-     * actionable explanation ("use same-loop sync-gate instead — #350").
-     * Per-evaluate dedup happens in the detector that emits (Sp95Lint.ts).
-     */
-    this.warningHandler = null;
-    /**
-     * Per-evaluation dedup set for clamp/range warnings (issue #202, G4).
-     * SoundLayer's validateAndClamp emits one warning per out-of-range param,
-     * which fires every loop iteration → log floods. We dedup by exact message
-     * so the user sees each unique clamp once per evaluation.
-     * Cleared on each evaluate() call (re-running the user's code resets the
-     * "what have we already told them" memory — they may have changed the
-     * offending value, or want to be told again because they re-pressed Run).
-     */
-    this.warnDedup = /* @__PURE__ */ new Set();
-    this.currentCode = "";
-    this.currentStratum = 1 /* S1 */;
-    /** Maps DSL nodeRef → SuperSonic nodeId for control messages */
-    this.nodeRefMap = /* @__PURE__ */ new Map();
-    /** Reusable inner FX nodes — persists across loop iterations. See issue #70.
-     *  `killTimer` is the pending virtual-time-scheduled kill handle (SV41) that
-     *  frees this FX after kill_delay seconds of virtual time if no follow-up
-     *  iteration cancels it. On hot-swap / stop we MUST `.cancel()` these before
-     *  dropping the map entries, otherwise the stale callback fires later and
-     *  calls freeBus/freeGroup on what are by then NEW live FX resources —
-     *  corrupting the bus pool and silently killing groups (issue #290, SP82). */
-    this.reusableFx = /* @__PURE__ */ new Map();
-    /** Pending volume to apply when bridge initializes */
-    this.pendingVolume = null;
-    /** Stored builder functions for capture/query path */
-    // SP95(d) #393: builderFn may be async — an S3 (sync/cue) loop body awaits a
-    // scheduler-resolved sync payload mid-build (matching desktop's blocking sync).
-    // S1/S2 bodies stay synchronous; `await` on their void return is identity, and
-    // the QueryInterpreter path (capture, S1/S2 only) ignores the return value.
-    this.loopBuilders = /* @__PURE__ */ new Map();
-    /** Per-loop seed counters for deterministic random */
-    this.loopSeeds = /* @__PURE__ */ new Map();
-    /** Per-loop tick counters — persisted across iterations so ring.tick() advances correctly */
-    this.loopTicks = /* @__PURE__ */ new Map();
-    /** Per-loop beat counter — persisted across iterations so current_beat keeps growing (#226) */
-    this.loopBeats = /* @__PURE__ */ new Map();
-    /** Tracks which loops have completed their initial sync — persists across hot-swaps. */
-    this.loopSynced = /* @__PURE__ */ new Set();
-    /**
-     * Build-phase nesting depth (issue #198). Incremented around each
-     * synchronous builderFn invocation. > 0 means we are currently
-     * building one live_loop's iteration step array; any `live_loop`
-     * call that fires now is a NESTED registration and gets sibling-once
-     * semantics rather than re-binding on every outer tick.
-     */
-    this.buildNestingDepth = 0;
-    /** Names that already received the "nested live_loop" warning so we don't spam. */
-    this.nestedWarned = /* @__PURE__ */ new Set();
-    /**
-     * The ProgramBuilder currently executing its synchronous builderFn (SP72).
-     * Set in `asyncFn` around the `builderFn(builder)` call, restored on exit.
-     * When a nested `live_loop` registers from inside another's builderFn,
-     * `wrappedLiveLoop` reads `currentBuildBuilder.currentBpm` /
-     * `currentBuildBuilder.currentDefaultSynth` to inherit the parent's
-     * in-flight bpm/synth — which is what `b.use_bpm(N)` / `b.use_synth(:n)`
-     * inside the parent's body just set. The engine-level `defaultBpm` /
-     * `defaultSynth` are mutated only by *top-level* `use_bpm` / `use_synth`,
-     * so they would yield the wrong value here (commonly 60 / 'beep' for
-     * code wrapped in `in_thread` by capture tools).
-     */
-    this.currentBuildBuilder = null;
-    /** Persistent top-level FX state — keyed by scope ID, shared across loops in same with_fx. */
-    this.persistentFx = /* @__PURE__ */ new Map();
-    /** Maps loop name → FX scope ID (loops under same with_fx share a scope). */
-    this.loopFxScope = /* @__PURE__ */ new Map();
-    /** Maps FX scope ID → FX chain definition. */
-    this.fxScopeChains = /* @__PURE__ */ new Map();
-    /** Compile-once cache: source code → transpiled JS. Reused on hot-swap with unchanged code (#8). */
-    this.transpileCache = /* @__PURE__ */ new Map();
-    /**
-     * MIDI I/O bridge — exposed for shell-level device management (listing devices,
-     * opening ports, registering event handlers). Not intended for direct note
-     * triggering from application code; use the DSL functions (`midi_note_on`,
-     * `midi_cc`, etc.) inside `live_loop` blocks instead, so events are
-     * scheduler-aware and time-stamped correctly.
-     */
-    this.midiBridge = new MidiBridge();
-    /** Global key-value store — shared across all loops via get/set */
-    this.globalStore = /* @__PURE__ */ new Map();
-    /** User-defined functions — `define`/`ndefine` register here. Seeded back into the
-     *  next eval's scopeBase so removing a `define` line from the buffer does not
-     *  break a still-running live_loop that calls it. (#215) */
-    this.definedFns = /* @__PURE__ */ new Map();
-    /**
-     * True only while evaluating the synchronous top-level body of user code
-     * (the window between `sandbox.execute(...)` start and resolve in
-     * `evaluate()`). Used by `run_code` and `load_example` to refuse calls
-     * that come from inside a live_loop body's later async iteration —
-     * re-entering `evaluate` from there would dispose the running scheduler
-     * mid-iteration. (#240 / #241)
-     */
-    this.inTopLevelEval = false;
-    /** Cached `defonce` values (#212 / #233). Survive across re-evals — that's
-     *  the whole point. Cleared only on full engine reset / dispose. */
-    this.defonceCache = /* @__PURE__ */ new Map();
-    /** Host-provided OSC send handler. Engine fires this; host wires to actual transport. */
-    this.oscHandler = null;
-    /** Active Recorder instance (#228). Null when not recording. */
-    this.recorder = null;
-    /** Last completed recording, awaiting recording_save / recording_delete (#228). */
-    this.lastRecording = null;
-    /**
-     * In-flight stop+encode promise (#228). recording_stop is async — the
-     * MediaRecorder.onstop fires after a chunk flush, then we decode webm and
-     * re-encode as WAV. recording_save must await this so the natural pattern
-     *   recording_start; play …; recording_stop; recording_save "x.wav"
-     * does not save before the blob is ready.
-     */
-    this.pendingRecordingStop = null;
-    this.bridgeOptions = options?.bridge ?? {};
-    this.schedAheadTime = options?.schedAheadTime ?? DEFAULT_SCHED_AHEAD_TIME;
-  }
-  get schedAhead() {
-    return this.schedAheadTime;
-  }
-  /**
-   * Initialize the engine. Must be called once before `evaluate()`.
-   * Safe to call multiple times — subsequent calls are no-ops.
-   *
-   * Audio initializes via SuperSonic (WebAssembly). If that fails (e.g. in
-   * test environments or when WebAssembly is blocked), the engine continues
-   * without audio — the scheduler still runs and `capture` queries still work.
-   * Check `hasAudio` after `init()` to know whether audio is available.
-   */
-  async init() {
-    if (this.initialized) return;
-    this.bridge = new SuperSonicBridge(this.bridgeOptions);
-    if (this.printHandler) this.bridge.warnHandler = this.printHandler;
-    const bridgeInit = this.bridge.init().then(() => {
-      if (this.pendingVolume !== null) {
-        this.bridge.setMasterVolume(this.pendingVolume);
-      }
-      this.bridge.setOscTraceHandler((msg) => {
-        if (this.printHandler) this.printHandler(msg);
-      });
-      this.bridge.preloadFxSynthDefs(ALL_FX_NAMES).catch(() => {
-      });
-    }).catch((err2) => {
-      console.warn("[SonicPi] SuperSonic init failed, running without audio:", err2);
-      this.bridge = null;
-    });
-    const isBrowser = typeof window !== "undefined";
-    const treeSitterInit = isBrowser ? initTreeSitter().catch(() => {
-    }) : Promise.resolve();
-    await Promise.all([bridgeInit, treeSitterInit]);
-    this.midiBridge.onMidiEvent((event) => {
-      const sched = this.scheduler;
-      if (!sched) return;
-      const ch = event.channel ?? 1;
-      sched.fireCue(`/midi:*:${ch}/${event.type}`, "__midi__", [event]);
-      sched.fireCue(`/midi/${event.type}`, "__midi__", [event]);
-    });
-    this.initialized = true;
-  }
-  /** Whether audio output is available. False when SuperSonic failed to initialize. */
-  get hasAudio() {
-    return this.bridge !== null;
-  }
-  /**
-   * Evaluate and schedule a Sonic Pi program.
-   *
-   * Accepts Ruby DSL syntax (auto-transpiled) or raw JS builder code.
-   * On the first call, `play()` must be called afterward to start the scheduler.
-   * On subsequent calls while playing, loops are hot-swapped in place.
-   *
-   * Returns `{ error }` on syntax or runtime errors during evaluation.
-   * Does NOT throw — check the return value. Runtime errors inside `live_loop`
-   * bodies after the scheduler has started are delivered via `setRuntimeErrorHandler`.
-   */
-  async evaluate(code) {
-    if (!this.initialized) {
-      return { error: new Error("SonicPiEngine not initialized \u2014 call init() first") };
-    }
-    try {
-      const isReEvaluate = this.scheduler !== null && this.playing;
-      if (isReEvaluate && code === this.currentCode) {
-        return {};
-      }
-      this.currentCode = code;
-      this.currentStratum = detectStratum(code);
-      this.warnDedup.clear();
-      if (this.warningHandler) {
-        const seen = /* @__PURE__ */ new Set();
-        for (const w of detectSp95Limitations(code)) {
-          const key = w.pattern + "|" + w.title;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          this.warningHandler(w.title, w.message);
-        }
-      }
-      if (!isReEvaluate) {
-        if (this.bridge) {
-          const manifest = scanComponentNames(code);
-          let timer;
-          const timeout = new Promise((resolve) => {
-            timer = setTimeout(() => resolve("timeout"), PREFLIGHT_TIMEOUT_MS);
-          });
-          const resolved = await Promise.race([
-            resolveComponentManifest(manifest, {
-              sample: /* @__PURE__ */ __name((n) => this.bridge.preloadSample(n), "sample"),
-              synth: /* @__PURE__ */ __name((n) => this.bridge.preloadSynth(n), "synth"),
-              fx: /* @__PURE__ */ __name((n) => this.bridge.preloadFx(n), "fx")
-            }),
-            timeout
-          ]);
-          if (timer) clearTimeout(timer);
-          if (resolved === "timeout") {
-            if (this.printHandler) {
-              this.printHandler(
-                "[Warning] component preflight timed out \u2014 starting anyway; any missing sounds will load when available"
-              );
-            }
-          } else {
-            const { hardMisses, warnings } = resolved;
-            for (const w of warnings) {
-              if (this.printHandler) {
-                this.printHandler(
-                  `[Warning] sample :${w} isn't loaded yet \u2014 it will play once registered`
-                );
-              }
-            }
-            if (hardMisses.length > 0) {
-              const list = hardMisses.map((n) => `:${n}`).join(", ");
-              return { error: new Error(`Couldn't load: ${list}`) };
-            }
-          }
-        }
-        if (this.scheduler) {
-          this.scheduler.dispose();
-        }
-        const audioCtx = this.bridge?.audioContext;
-        this._spiderTimeOrigin = audioCtx?.currentTime ?? 0;
-        this.scheduler = new VirtualTimeScheduler({
-          getAudioTime: /* @__PURE__ */ __name(() => audioCtx?.currentTime ?? 0, "getAudioTime"),
-          schedAheadTime: this.schedAheadTime
-        });
-        this.scheduler.onLoopError((loopName, err2) => {
-          const msg = `Error in loop '${loopName}': ${err2.message}`;
-          if (this.runtimeErrorHandler) this.runtimeErrorHandler(err2);
-          if (this.printHandler) this.printHandler(msg);
-          else console.error("[SonicPi]", msg);
-        });
-        this.scheduler.onEvent((event) => {
-          if (event.type === "cue" && this.cueHandler) {
-            const name2 = event.params.name;
-            this.cueHandler(name2, event.audioTime);
-          }
-        });
-        this.loopBuilders.clear();
-        this.loopSeeds.clear();
-      }
-      let transpiledCode;
-      const cached = this.transpileCache.get(code);
-      if (cached) {
-        transpiledCode = cached;
-      } else {
-        const result = autoTranspileDetailed(code);
-        if (result.hasError) {
-          const errorMsg = result.errorMessage || "Unknown syntax error";
-          return { error: new SyntaxError(errorMsg) };
-        }
-        transpiledCode = result.code;
-        this.transpileCache.set(code, transpiledCode);
-      }
-      if (this.bridge) {
-        const stillUsed = {
-          sound_in: /['"]sound_in['"]/.test(transpiledCode),
-          sound_in_stereo: /['"]sound_in_stereo['"]/.test(transpiledCode)
-        };
-        if (!stillUsed.sound_in) this.bridge.stopLiveAudio("sound_in");
-        if (!stillUsed.sound_in_stereo) this.bridge.stopLiveAudio("sound_in_stereo");
-      }
-      let defaultBpm = 60;
-      let defaultSynth = "beep";
-      const scheduler = this.scheduler;
-      const topLevelUseBpm = /* @__PURE__ */ __name((bpm) => {
-        defaultBpm = bpm;
-      }, "topLevelUseBpm");
-      const topLevelUseSynth = /* @__PURE__ */ __name((name2) => {
-        defaultSynth = name2;
-      }, "topLevelUseSynth");
-      const topLevelUseArgBpmScaling = /* @__PURE__ */ __name((_enabled) => {
-      }, "topLevelUseArgBpmScaling");
-      const topLevelWithArgBpmScaling = /* @__PURE__ */ __name((_enabled, fn) => {
-        fn();
-      }, "topLevelWithArgBpmScaling");
-      const pendingLoops = /* @__PURE__ */ new Map();
-      const pendingDefaults = /* @__PURE__ */ new Map();
-      let currentVolume = 1;
-      const set_volume = /* @__PURE__ */ __name((vol) => {
-        currentVolume = Math.max(0, Math.min(5, vol));
-        this.bridge?.setMasterVolume(currentVolume / 5);
-      }, "set_volume");
-      const setVolumeShared = /* @__PURE__ */ __name((vol) => set_volume(vol), "setVolumeShared");
-      const current_synth_fn = /* @__PURE__ */ __name(() => defaultSynth, "current_synth_fn");
-      const current_volume_fn = /* @__PURE__ */ __name(() => currentVolume, "current_volume_fn");
-      const warn = /* @__PURE__ */ __name((msg) => {
-        if (this.printHandler) this.printHandler(`[Warning] ${msg}`);
-        else console.warn("[SonicPi]", msg);
-      }, "warn");
-      const recordingHandler = /* @__PURE__ */ __name(async (kind, filename) => {
-        switch (kind) {
-          case "start": {
-            if (this.recorder && this.recorder.state === "recording") {
-              warn("recording_start: already recording \u2014 call recording_stop first");
-              return;
-            }
-            const audioCtx = this.bridge?.audioContext;
-            const tap = this.bridge?.masterOutputNode;
-            if (!audioCtx || !tap) {
-              warn("recording_start: audio bridge not initialised \u2014 recording skipped");
-              return;
-            }
-            this.recorder = new Recorder(audioCtx, tap);
-            this.recorder.start();
-            return;
-          }
-          case "stop": {
-            if (!this.recorder || this.recorder.state !== "recording") {
-              return;
-            }
-            const r = this.recorder;
-            this.recorder = null;
-            this.pendingRecordingStop = (async () => {
-              try {
-                this.lastRecording = await r.stop();
-              } catch (err2) {
-                warn(`recording_stop: ${err2.message}`);
-              }
-            })();
-            await this.pendingRecordingStop;
-            return;
-          }
-          case "save": {
-            if (this.pendingRecordingStop) {
-              await this.pendingRecordingStop;
-            }
-            if (!this.lastRecording) {
-              warn("recording_save: no completed recording to save (call recording_stop first)");
-              return;
-            }
-            Recorder.saveBlobToDownload(this.lastRecording, filename);
-            return;
-          }
-          case "delete":
-            this.lastRecording = null;
-            return;
-        }
-      }, "recordingHandler");
-      const synth_names_fn = /* @__PURE__ */ __name(() => [
-        // Bells / oscillators
-        "beep",
-        "sine",
-        "saw",
-        "prophet",
-        "tb303",
-        "supersaw",
-        "pluck",
-        "pretty_bell",
-        "dull_bell",
-        "piano",
-        "dsaw",
-        "dpulse",
-        "dtri",
-        "square",
-        "tri",
-        "pulse",
-        "subpulse",
-        "fm",
-        // Mod synths
-        "mod_fm",
-        "mod_saw",
-        "mod_dsaw",
-        "mod_sine",
-        "mod_beep",
-        "mod_tri",
-        "mod_pulse",
-        // Noise variants
-        "noise",
-        "pnoise",
-        "bnoise",
-        "gnoise",
-        "cnoise",
-        // Chip
-        "chipbass",
-        "chiplead",
-        "chipnoise",
-        // Vintage / classic
-        "dark_ambience",
-        "hollow",
-        "growl",
-        "zawa",
-        "blade",
-        "tech_saws",
-        "hoover",
-        "bass_foundation",
-        "bass_highend",
-        "organ_tonewheel",
-        // Plucked / acoustic family
-        "rhodey",
-        "rodeo",
-        "kalimba",
-        "gabberkick",
-        // SC808 drum kit
-        "sc808_bassdrum",
-        "sc808_snare",
-        "sc808_clap",
-        "sc808_tomlo",
-        "sc808_tommid",
-        "sc808_tomhi",
-        "sc808_congalo",
-        "sc808_congamid",
-        "sc808_congahi",
-        "sc808_rimshot",
-        "sc808_claves",
-        "sc808_maracas",
-        "sc808_cowbell",
-        "sc808_closed_hihat",
-        "sc808_open_hihat",
-        "sc808_cymbal"
-        // Note: dark_sea_horn, singer, winwood_lead are in Desktop SP's synthinfo.rb
-        //   but their compiled .scsyndef binaries are not published on the SuperSonic CDN
-        //   (HTTP 404 at all known versions). Listing them would cause /s_new dispatch
-        //   to silently fail per SP5. Track in artifacts/designs/full-parity-gaps.md.
-        // Note: sound_in, sound_in_stereo, live_audio require Web Audio mic permission
-        //   plumbing which is not yet implemented. Track separately.
-      ], "synth_names_fn");
-      const fx_names_fn = /* @__PURE__ */ __name(() => [...ALL_FX_NAMES], "fx_names_fn");
-      const load_sample_fn = /* @__PURE__ */ __name((_name) => {
-      }, "load_sample_fn");
-      const sample_info_fn = /* @__PURE__ */ __name((name2) => {
-        const dur = this.bridge?.getSampleDuration(name2);
-        return dur !== void 0 ? { duration: dur } : null;
-      }, "sample_info_fn");
-      const all_sample_names_fn = /* @__PURE__ */ __name(() => sample_names(), "all_sample_names_fn");
-      const topLevelPuts = /* @__PURE__ */ __name((...args2) => {
-        const msg = args2.map((a) => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-        if (this.printHandler) this.printHandler(msg);
-        else console.log("[SonicPi]", msg);
-      }, "topLevelPuts");
-      const topLevelStop = /* @__PURE__ */ __name(() => {
-      }, "topLevelStop");
-      const stop_loop = /* @__PURE__ */ __name((name2) => {
-        scheduler.stopLoop(name2);
-      }, "stop_loop");
-      let scopeHandle = null;
-      const wrappedLiveLoop = /* @__PURE__ */ __name((name2, builderFnOrOpts, maybeFn) => {
-        let builderFn;
-        let syncTarget = null;
-        if (typeof builderFnOrOpts === "function") {
-          builderFn = builderFnOrOpts;
-        } else {
-          syncTarget = builderFnOrOpts.sync ?? null;
-          builderFn = maybeFn;
-        }
-        const isNested = this.buildNestingDepth > 0 && !isReEvaluate;
-        if (isNested) {
-          const existing = scheduler.getTask(name2);
-          if (existing && existing.running) {
-            return;
-          }
-          if (!this.nestedWarned.has(name2)) {
-            this.nestedWarned.add(name2);
-            const msg = `[Warning] live_loop :${name2} is declared inside another live_loop. It will be registered as a sibling top-level loop on FIRST occurrence only. Any guards (if/unless/one_in/...) wrapping it are evaluated at first occurrence; subsequent toggles do not register or unregister it.`;
-            if (this.printHandler) this.printHandler(msg);
-            else console.warn("[SonicPi]", msg);
-          }
-        }
-        const loopBus = this.bridge?.createLoopMonitor(name2) ?? 0;
-        this.loopBuilders.set(name2, builderFn);
-        if (!this.loopSeeds.has(name2)) {
-          let hash = 0;
-          for (let i2 = 0; i2 < name2.length; i2++) {
-            hash = (hash << 5) - hash + name2.charCodeAt(i2) | 0;
-          }
-          this.loopSeeds.set(name2, Math.abs(hash));
-        }
-        const asyncFn = /* @__PURE__ */ __name(async () => {
-          if (syncTarget && !this.loopSynced.has(name2)) {
-            this.loopSynced.add(name2);
-            await scheduler.waitForSync(syncTarget, name2);
-          }
-          const task = scheduler.getTask(name2);
-          if (!task) return;
-          const scopeId = this.loopFxScope.get(name2);
-          if (scopeId && !this.persistentFx.has(scopeId) && this.bridge) {
-            const fxChain = this.fxScopeChains.get(scopeId);
-            if (fxChain && fxChain.length > 0) {
-              const audioTime = task.virtualTime + this.schedAheadTime;
-              let currentOutBus = task.outBus;
-              const buses = [];
-              const groups = [];
-              const nodeIds = [];
-              for (const fx of fxChain) {
-                const bus = this.bridge.allocateBus();
-                const groupId = this.bridge.createFxGroup();
-                const fxWarn = this.printHandler ? (m) => this.printHandler(`[Warning] with_fx :${fx.name} \u2014 ${m}`) : void 0;
-                const fxOpts = normalizeFxParams(fx.name, fx.opts, task.bpm, fxWarn);
-                const nodeId = await this.bridge.applyFx(fx.name, audioTime, fxOpts, bus, currentOutBus);
-                this.bridge.flushMessages();
-                buses.push(bus);
-                groups.push(groupId);
-                nodeIds.push(nodeId);
-                currentOutBus = bus;
-              }
-              this.persistentFx.set(scopeId, { buses, groups, nodeIds, outBus: currentOutBus });
-            }
-          }
-          if (scopeId) {
-            const fxState = this.persistentFx.get(scopeId);
-            if (fxState) {
-              task.outBus = fxState.outBus;
-            }
-          }
-          const seed = this.loopSeeds.get(name2) ?? 0;
-          this.loopSeeds.set(name2, seed + 1);
-          const builder = new ProgramBuilder(seed, this.loopTicks.get(name2));
-          if (task.currentSynth && task.currentSynth !== "beep") {
-            builder.use_synth(task.currentSynth);
-          }
-          builder.setIterationContext(
-            task.virtualTime - this._spiderTimeOrigin,
-            this.loopBeats.get(name2) ?? 0,
-            this.schedAheadTime,
-            task.bpm
-          );
-          scopeHandle?.enterScope(name2);
-          this.buildNestingDepth++;
-          const prevBuildBuilder = this.currentBuildBuilder;
-          this.currentBuildBuilder = builder;
-          builder.setSyncContext(scheduler, name2);
-          try {
-            await builderFn(builder);
-          } finally {
-            this.currentBuildBuilder = prevBuildBuilder;
-            this.buildNestingDepth--;
-            scopeHandle?.exitScope();
-          }
-          this.loopTicks.set(name2, builder.getTicks());
-          this.loopBeats.set(name2, builder.currentBeatRaw);
-          const program = builder.build();
-          await runProgram(program, {
-            bridge: this.bridge,
-            scheduler,
-            taskId: name2,
-            eventStream: this.eventStream,
-            schedAheadTime: this.schedAheadTime,
-            printHandler: this.printHandler ?? void 0,
-            nodeRefMap: this.nodeRefMap,
-            reusableFx: this.reusableFx,
-            globalStore: this.globalStore,
-            oscHandler: this.oscHandler ?? void 0,
-            midiBridge: this.midiBridge,
-            onVolumeChange: setVolumeShared,
-            onRecordingEvent: recordingHandler
-          });
-          scheduler.fireCue(name2, name2);
-        }, "asyncFn");
-        const parentBuilder = this.currentBuildBuilder;
-        const inheritedBpm = this.buildNestingDepth > 0 && parentBuilder ? parentBuilder.currentBpm : defaultBpm;
-        const inheritedSynth = this.buildNestingDepth > 0 && parentBuilder ? parentBuilder.currentDefaultSynth : defaultSynth;
-        if (this.buildNestingDepth > 0 && isReEvaluate) {
-          const existing = scheduler.getTask(name2);
-          if (existing && existing.running) {
-            scheduler.hotSwap(name2, asyncFn);
-            existing.bpm = inheritedBpm;
-            existing.currentSynth = inheritedSynth;
-            existing.outBus = loopBus;
-          } else {
-            scheduler.registerLoop(name2, asyncFn, { bpm: inheritedBpm, synth: inheritedSynth });
-            const task = scheduler.getTask(name2);
-            if (task) task.outBus = loopBus;
-          }
-        } else if (isReEvaluate) {
-          pendingLoops.set(name2, asyncFn);
-          pendingDefaults.set(name2, { bpm: defaultBpm, synth: defaultSynth });
-        } else {
-          scheduler.registerLoop(name2, asyncFn);
-          const task = scheduler.getTask(name2);
-          if (task) {
-            task.bpm = inheritedBpm;
-            task.currentSynth = inheritedSynth;
-            task.outBus = loopBus;
-          }
-        }
-      }, "wrappedLiveLoop");
-      const topFxStack = [];
-      let currentFxScopeId = null;
-      let fxScopeCounter = 0;
-      const topLevelWithFx = /* @__PURE__ */ __name((fxName, optsOrFn, maybeFn) => {
-        let opts;
-        let fn;
-        if (typeof optsOrFn === "function") {
-          opts = {};
-          fn = optsOrFn;
-        } else {
-          opts = optsOrFn;
-          fn = maybeFn;
-        }
-        topFxStack.push({ name: fxName, opts });
-        const isOutermost = currentFxScopeId === null;
-        if (isOutermost) {
-          currentFxScopeId = `__fxscope_${fxScopeCounter++}`;
-        }
-        try {
-          fn(null);
-        } finally {
-          topFxStack.pop();
-          if (isOutermost) {
-            currentFxScopeId = null;
-          }
-        }
-      }, "topLevelWithFx");
-      const originalWrappedLiveLoop = wrappedLiveLoop;
-      const fxAwareWrappedLiveLoop = /* @__PURE__ */ __name((name2, builderFnOrOpts, maybeFn) => {
-        let builderFn;
-        let opts = null;
-        if (typeof builderFnOrOpts === "function") {
-          builderFn = builderFnOrOpts;
-        } else {
-          opts = builderFnOrOpts;
-          builderFn = maybeFn;
-        }
-        if (topFxStack.length > 0 && currentFxScopeId) {
-          const stackFingerprint = topFxStack.map(
-            (f) => `${f.name}:${JSON.stringify(f.opts)}`
-          ).join("|");
-          const scopeId = `${currentFxScopeId}:${stackFingerprint}`;
-          this.loopFxScope.set(name2, scopeId);
-          if (!this.fxScopeChains.has(scopeId)) {
-            this.fxScopeChains.set(scopeId, [...topFxStack]);
-          }
-          if (opts) {
-            originalWrappedLiveLoop(name2, opts, builderFn);
-          } else {
-            originalWrappedLiveLoop(name2, builderFn);
-          }
-        } else {
-          if (opts) {
-            originalWrappedLiveLoop(name2, opts, builderFn);
-          } else {
-            originalWrappedLiveLoop(name2, builderFn);
-          }
-        }
-      }, "fxAwareWrappedLiveLoop");
-      let storedRandomSeed = null;
-      const topLevelUseRandomSeed = /* @__PURE__ */ __name((seed) => {
-        storedRandomSeed = seed;
-        topLevelBuilder.use_random_seed(seed);
-      }, "topLevelUseRandomSeed");
-      const topLevelInThread = /* @__PURE__ */ __name((fn) => {
-        const name2 = `__thread_${Date.now()}_${randomSuffix()}`;
-        fxAwareWrappedLiveLoop(name2, (b) => {
-          fn(b);
-          b.stop();
-        });
-      }, "topLevelInThread");
-      const topLevelAt = /* @__PURE__ */ __name((times, values2, fn) => {
-        for (let i2 = 0; i2 < times.length; i2++) {
-          const t = times[i2];
-          const v = values2 ? values2[i2] : void 0;
-          const name2 = `__at_${Date.now()}_${i2}_${randomSuffix()}`;
-          fxAwareWrappedLiveLoop(name2, (b) => {
-            if (t > 0) b.sleep(t);
-            if (v !== void 0) {
-              fn(b, v);
-            } else {
-              fn(b);
-            }
-            b.stop();
-          });
-        }
-      }, "topLevelAt");
-      const topLevelDensity = /* @__PURE__ */ __name((_factor, fn) => {
-        if (typeof _factor === "function") {
-          ;
-          _factor(null);
-        } else if (typeof fn === "function") {
-          fn(null);
-        }
-      }, "topLevelDensity");
-      const set = /* @__PURE__ */ __name((key, value) => {
-        this.globalStore.set(key, value);
-      }, "set");
-      const storeGet = /* @__PURE__ */ __name((key) => this.globalStore.get(key) ?? null, "storeGet");
-      const getFn = /* @__PURE__ */ __name((key) => storeGet(key), "getFn");
-      const get = new Proxy(getFn, {
-        get(target, property, receiver) {
-          if (typeof property === "symbol" || property in target) {
-            return Reflect.get(target, property, receiver);
-          }
-          return storeGet(property);
-        }
-      });
-      const get_cc = /* @__PURE__ */ __name((controller, channel = 1) => this.midiBridge.getCCValue(controller, channel), "get_cc");
-      const get_pitch_bend = /* @__PURE__ */ __name((channel = 1) => this.midiBridge.getPitchBend(channel), "get_pitch_bend");
-      const sample_names = /* @__PURE__ */ __name(() => getSampleNames(), "sample_names");
-      const sample_groups = /* @__PURE__ */ __name(() => getCategories(), "sample_groups");
-      const sample_loaded = /* @__PURE__ */ __name((name2) => {
-        if (!this.bridge) return false;
-        return this.bridge.isSampleLoaded(name2);
-      }, "sample_loaded");
-      const sample_duration = /* @__PURE__ */ __name((name2) => {
-        if (!this.bridge) return 0;
-        return this.bridge.getSampleDuration(name2) ?? 0;
-      }, "sample_duration");
-      const midi = /* @__PURE__ */ __name((note2, opts = {}) => {
-        const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
-        const vel = opts.velocity ?? opts.vel ?? 100;
-        const sus = opts.sustain ?? 1;
-        const ch = opts.channel ?? 1;
-        this.midiBridge.noteOn(n, vel, ch);
-        this.midiBridge.scheduleNoteOff(n, ch, sus);
-      }, "midi");
-      const midi_note_on = /* @__PURE__ */ __name((note2, velocity = 100, opts = {}) => {
-        const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
-        this.midiBridge.noteOn(n, velocity, opts.channel ?? 1);
-      }, "midi_note_on");
-      const midi_note_off = /* @__PURE__ */ __name((note2, opts = {}) => {
-        const n = typeof note2 === "string" ? noteToMidi3(note2) : note2;
-        this.midiBridge.noteOff(n, opts.channel ?? 1);
-      }, "midi_note_off");
-      const midi_cc = /* @__PURE__ */ __name((controller, value, opts = {}) => this.midiBridge.cc(controller, value, opts.channel ?? 1), "midi_cc");
-      const midi_pitch_bend = /* @__PURE__ */ __name((val, opts = {}) => this.midiBridge.pitchBend(val, opts.channel ?? 1), "midi_pitch_bend");
-      const midi_channel_pressure = /* @__PURE__ */ __name((val, opts = {}) => this.midiBridge.channelPressure(val, opts.channel ?? 1), "midi_channel_pressure");
-      const midi_poly_pressure = /* @__PURE__ */ __name((note2, val, opts = {}) => this.midiBridge.polyPressure(note2, val, opts.channel ?? 1), "midi_poly_pressure");
-      const midi_prog_change = /* @__PURE__ */ __name((program, opts = {}) => this.midiBridge.programChange(program, opts.channel ?? 1), "midi_prog_change");
-      const midi_clock_tick = /* @__PURE__ */ __name(() => this.midiBridge.clockTick(), "midi_clock_tick");
-      const midi_start = /* @__PURE__ */ __name(() => this.midiBridge.midiStart(), "midi_start");
-      const midi_stop = /* @__PURE__ */ __name(() => this.midiBridge.midiStop(), "midi_stop");
-      const midi_continue = /* @__PURE__ */ __name(() => this.midiBridge.midiContinue(), "midi_continue");
-      const midi_all_notes_off = /* @__PURE__ */ __name((opts = {}) => this.midiBridge.allNotesOff(opts.channel ?? 1), "midi_all_notes_off");
-      const midi_notes_off = /* @__PURE__ */ __name((opts = {}) => this.midiBridge.allNotesOff(opts.channel ?? 1), "midi_notes_off");
-      const midi_devices = /* @__PURE__ */ __name(() => this.midiBridge.getDevices(), "midi_devices");
-      const get_note_on = /* @__PURE__ */ __name((channel = 1) => this.midiBridge.getLastNoteOn(channel), "get_note_on");
-      const get_note_off = /* @__PURE__ */ __name((channel = 1) => this.midiBridge.getLastNoteOff(channel), "get_note_off");
-      let oscDefaultHost = "localhost";
-      let oscDefaultPort = 4560;
-      const topLevelOscSend = /* @__PURE__ */ __name((host, port, path, ...args2) => {
-        if (this.oscHandler) {
-          this.oscHandler(host, port, path, ...args2);
-        } else {
-          topLevelPuts(`[Warning] osc_send: no handler set \u2014 message to ${host}:${port}${path} dropped`);
-        }
-      }, "topLevelOscSend");
-      const use_osc = /* @__PURE__ */ __name((host, port) => {
-        oscDefaultHost = host;
-        oscDefaultPort = port;
-      }, "use_osc");
-      const osc = /* @__PURE__ */ __name((path, ...args2) => topLevelOscSend(oscDefaultHost, oscDefaultPort, path, ...args2), "osc");
-      const topLevelPrint = topLevelPuts;
-      const current_bpm = /* @__PURE__ */ __name(() => defaultBpm, "current_bpm");
-      const quantise = /* @__PURE__ */ __name((val, step) => Math.round(val / step) * step, "quantise");
-      const quantize = quantise;
-      const octs = /* @__PURE__ */ __name((n, numOctaves = 1) => Array.from({ length: numOctaves }, (_, i2) => n + i2 * 12), "octs");
-      const topLevelBuilder = new ProgramBuilder();
-      const tlRrand = /* @__PURE__ */ __name((min, max) => topLevelBuilder.rrand(min, max), "tlRrand");
-      const tlRrandI = /* @__PURE__ */ __name((min, max) => topLevelBuilder.rrand_i(min, max), "tlRrandI");
-      const tlRand = /* @__PURE__ */ __name((...args2) => topLevelBuilder.rand(...args2), "tlRand");
-      const tlRandI = /* @__PURE__ */ __name((...args2) => topLevelBuilder.rand_i(...args2), "tlRandI");
-      const tlChoose = /* @__PURE__ */ __name((arr) => topLevelBuilder.choose(arr), "tlChoose");
-      const tlDice = /* @__PURE__ */ __name((n) => topLevelBuilder.dice(n ?? 6), "tlDice");
-      const tlOneIn = /* @__PURE__ */ __name((n) => topLevelBuilder.one_in(n), "tlOneIn");
-      const tlRdist = /* @__PURE__ */ __name((max, centre) => topLevelBuilder.rdist(max, centre ?? 0), "tlRdist");
-      const dslNames = [...DSL_NAMES];
-      const dslValues = [
-        topLevelBuilder,
-        fxAwareWrappedLiveLoop,
-        topLevelWithFx,
-        topLevelUseBpm,
-        topLevelUseSynth,
-        topLevelUseRandomSeed,
-        topLevelUseArgBpmScaling,
-        topLevelWithArgBpmScaling,
-        topLevelInThread,
-        topLevelAt,
-        topLevelDensity,
-        ring,
-        knit,
-        range,
-        line,
-        spread,
-        tlRrand,
-        tlRrandI,
-        tlRand,
-        tlRandI,
-        tlChoose,
-        tlDice,
-        tlOneIn,
-        tlRdist,
-        chord,
-        scale,
-        chord_invert,
-        note,
-        note_range,
-        chord_degree,
-        degree,
-        chord_names,
-        scale_names,
-        noteToMidi3,
-        midiToFreq5,
-        noteToFreq2,
-        noteInfo,
-        hzToMidi,
-        midiToFreq5,
-        quantise,
-        quantize,
-        octs,
-        current_bpm,
-        topLevelPuts,
-        topLevelPrint,
-        topLevelStop,
-        stop_loop,
-        // Volume & introspection
-        set_volume,
-        current_synth_fn,
-        current_volume_fn,
-        // Catalog queries
-        synth_names_fn,
-        fx_names_fn,
-        all_sample_names_fn,
-        // Sample management
-        load_sample_fn,
-        sample_info_fn,
-        // Global store
-        get,
-        set,
-        // Sample catalog
-        sample_names,
-        sample_groups,
-        sample_loaded,
-        sample_duration,
-        // MIDI input
-        get_cc,
-        get_pitch_bend,
-        get_note_on,
-        get_note_off,
-        // MIDI output
-        midi,
-        midi_note_on,
-        midi_note_off,
-        midi_cc,
-        midi_pitch_bend,
-        midi_channel_pressure,
-        midi_poly_pressure,
-        midi_prog_change,
-        midi_clock_tick,
-        midi_start,
-        midi_stop,
-        midi_continue,
-        midi_all_notes_off,
-        midi_notes_off,
-        midi_devices,
-        // OSC
-        use_osc,
-        osc,
-        topLevelOscSend,
-        // Sample BPM
-        (name2) => topLevelBuilder.use_sample_bpm(name2),
-        // Debug (no-op in browser)
-        (_val) => {
-        },
-        // Latency — no-op at top level; inside loops it's handled by ProgramBuilder + AudioInterpreter
-        () => {
-        },
-        // Global tick context (#211 Tier A)
-        (name2, opts) => topLevelBuilder.tick(name2 ?? "__default", opts),
-        (name2, offset) => topLevelBuilder.look(name2 ?? "__default", offset ?? 0),
-        (nameOrValue, value) => topLevelBuilder.tick_set(nameOrValue, value),
-        (name2) => topLevelBuilder.tick_reset(name2 ?? "__default"),
-        () => topLevelBuilder.tick_reset_all(),
-        // Ring helpers (#211 Tier A)
-        (arr, n = 1) => topLevelBuilder.pick(arr, n),
-        (arr) => topLevelBuilder.shuffle(arr),
-        (arr, n) => topLevelBuilder.stretch(arr, n),
-        (...values2) => topLevelBuilder.bools(...values2),
-        (...values2) => topLevelBuilder.ramp(...values2),
-        // Pattern helpers (#211 Tier A) — deferred steps via topLevelBuilder
-        (notes, opts) => {
-          topLevelBuilder.play_pattern(notes, opts);
-        },
-        (notes, opts) => {
-          topLevelBuilder.play_chord(notes, opts);
-        },
-        (notes, times, opts) => {
-          topLevelBuilder.play_pattern_timed(notes, times, opts);
-        },
-        // Asserts + counter helpers (#211 Tier A) — pure build-time
-        assert,
-        assert_equal,
-        assert_similar,
-        assert_not,
-        assert_error,
-        inc,
-        dec,
-        // define — transpiler emits both the function decl AND a register call
-        // (transpileDefine line ~1586). The register persists the fn across
-        // re-evals so removing a `define` line from the buffer does not break
-        // a still-running live_loop that calls it. (#215)
-        (name2, fn) => {
-          if (typeof name2 === "string" && typeof fn === "function") {
-            this.definedFns.set(name2, fn);
-          }
-        },
-        // ndefine — same call shape as define, but does NOT persist across
-        // re-evals (the register call is omitted by the transpiler).
-        () => {
-        },
-        // time_warp — the transpiler turns `time_warp 0.5 do ... end` into
-        // `__b.at([0.5], null, ...)`. This runtime stub catches the rare regex
-        // fallback path; it forwards to topLevelAt's array-of-times shape. (#211)
-        (offset, fn) => topLevelAt([offset], null, fn),
-        // Tier B — timing introspection (#226). Top-level forms read engine
-        // state directly; inside live_loops the transpiler routes through
-        // BUILDER_METHODS so __b.current_* gives per-task reads.
-        () => 0,
-        // current_beat: top-level has no beat counter
-        () => 60 / defaultBpm,
-        // current_beat_duration
-        () => scheduler.audioTime - this._spiderTimeOrigin,
-        // current_time: rebased per-Run (#364 item 4)
-        () => this.schedAheadTime,
-        // current_sched_ahead_time
-        // Tier B — PRNG inspection (#227). Top-level mutates topLevelBuilder's
-        // RNG; inside live_loops these route to __b.* for per-loop RNG.
-        () => topLevelBuilder.current_random_seed(),
-        (n) => topLevelBuilder.rand_back(n ?? 1),
-        (n) => topLevelBuilder.rand_skip(n ?? 1),
-        () => {
-          topLevelBuilder.rand_reset();
-        },
-        // Tier B — recording (#228). Forward to topLevelBuilder so the
-        // arity guards (rest args + length check) live in one place. The
-        // pushed steps fire at scheduled virtual time via recordingHandler
-        // wired into the runProgram ctx above. Inside live_loops the
-        // transpiler routes through __b directly (BUILDER_METHODS).
-        (...args2) => {
-          topLevelBuilder.recording_start(...args2);
-        },
-        (...args2) => {
-          topLevelBuilder.recording_stop(...args2);
-        },
-        (...args2) => {
-          topLevelBuilder.recording_save(...args2);
-        },
-        (...args2) => {
-          topLevelBuilder.recording_delete(...args2);
-        },
-        // Tier B PR #2 — pure ring constructors (#233)
-        doubles,
-        halves,
-        // Tier B PR #2 — defaults / setting introspection (#233). Forward
-        // to topLevelBuilder so the value reflects top-level use_*_defaults
-        // calls. Inside live_loops the transpiler routes through __b.
-        () => topLevelBuilder.current_synth_defaults(),
-        () => topLevelBuilder.current_sample_defaults(),
-        () => topLevelBuilder.current_arg_checks(),
-        () => topLevelBuilder.current_debug(),
-        () => topLevelBuilder.current_timing_guarantees(),
-        // Tier B PR #2 — block-form tuplets (#233). Forwards to topLevelBuilder
-        // so steps land on the top-level program. Inside live_loops the
-        // transpiler emits `__b.tuplets(...)` directly via BUILDER_METHODS.
-        (list, optsOrFn, maybeFn) => {
-          topLevelBuilder.tuplets(
-            list,
-            optsOrFn,
-            maybeFn
-          );
-        },
-        // Tier B PR #2 — defonce (#212 / #233). Cache lookup; runs body once
-        // (or again on `override: true`). The transpiler emits a bare
-        // assignment `name = defonce(...)` so the Sandbox proxy captures the
-        // cached value into scope-isolated storage. Spread back into
-        // persistedFns above so `name` reads still work after the line is
-        // removed from the buffer (matches define persistence #215).
-        (name2, opts, fn) => {
-          if (typeof name2 !== "string" || typeof fn !== "function") return void 0;
-          if (!opts?.override && this.defonceCache.has(name2)) {
-            return this.defonceCache.get(name2);
-          }
-          const value = fn(topLevelBuilder);
-          this.defonceCache.set(name2, value);
-          return value;
-        },
-        // Tier B PR #3 — sync_bpm (#236). Inside live_loops the transpiler
-        // routes `sync_bpm :name` to `__b.sync_bpm(name)` via BUILDER_METHODS.
-        // At top level outside in_thread/live_loop the call has no effect —
-        // top-level code runs once linearly and there's no concurrent
-        // context to park. Surface that as a printHandler warning so the
-        // user gets an actionable signal instead of a silent no-op (#239).
-        (name2) => {
-          topLevelBuilder.sync_bpm(name2);
-          if (this.printHandler) {
-            this.printHandler(`[Warning] sync_bpm :${name2} at top level has no effect \u2014 wrap in in_thread or call from inside a live_loop body.`);
-          }
-        },
-        // Tier B PR #3 — run_code (#236). Host-side dynamic eval. Replaces
-        // all running loops with the supplied code, equivalent to pressing
-        // Run with a fresh buffer. Returns a Promise that resolves when the
-        // new evaluation completes. Refuses calls from inside a live_loop
-        // body iteration — re-entering evaluate() from there would dispose
-        // the running scheduler mid-iteration. (#240)
-        (code2) => {
-          if (typeof code2 !== "string") {
-            throw new TypeError(`run_code expects a string, got ${typeof code2}`);
-          }
-          if (!this.inTopLevelEval) {
-            throw new Error(
-              "run_code can only be called at top level \u2014 calling it from inside a live_loop body re-enters the engine which is not supported. Use cue/sync to coordinate between loops instead."
-            );
-          }
-          return this.evaluate(code2);
-        },
-        // Tier B PR #3 — eval_file / run_file (#236). Both stubs throw an
-        // informative error redirecting users to the working alternatives.
-        // Sonic Pi Web has no filesystem; on desktop these read a .rb file
-        // from disk. We surface that limitation explicitly rather than
-        // silently no-op'ing, so user-error from copy-pasted desktop code
-        // gets a useful message in the editor's runtime-error overlay.
-        (_path) => {
-          throw new Error(
-            "browser sandbox: no filesystem access; use run_code(string) or load_example(:name) instead"
-          );
-        },
-        (_path) => {
-          throw new Error(
-            "browser sandbox: no filesystem access; use run_code(string) or load_example(:name) instead"
-          );
-        },
-        // Tier B PR #3 — load_example (#236). Looks up the example by name in
-        // the bundled registry; on hit, calls the host's loadExampleHandler so
-        // the editor replaces its buffer + re-runs. On miss, throws an
-        // informative error listing the available names. If no host handler
-        // is registered (engine-only test harness), throws a different error
-        // explaining the missing wiring rather than silently no-op'ing.
-        (name2) => {
-          if (typeof name2 !== "string") {
-            throw new TypeError(`load_example expects a name (string or symbol), got ${typeof name2}`);
-          }
-          if (!this.inTopLevelEval) {
-            throw new Error(
-              "load_example can only be called at top level \u2014 calling it from inside a live_loop replaces the running buffer mid-iteration which is not supported."
-            );
-          }
-          const example = getExample(name2);
-          if (!example) {
-            throw new Error(`load_example: no example named "${name2}". See examples panel for the full list.`);
-          }
-          if (!this.loadExampleHandler) {
-            throw new Error("load_example requires a host editor \u2014 no loadExampleHandler registered on the engine.");
-          }
-          this.loadExampleHandler(example);
-        },
-        // Tier C PR #1 — state wrappers (#251). Imperative forms forward to
-        // topLevelBuilder so top-level toggles persist into per-task __b state
-        // when live_loops are scheduled. Block forms wrap a build callback the
-        // sandbox-emitted IIFE supplies, mirroring with_synth_defaults.
-        (enabled) => {
-          topLevelBuilder.use_arg_checks(enabled);
-        },
-        (enabled) => {
-          topLevelBuilder.use_timing_guarantees(enabled);
-        },
-        (opts) => {
-          topLevelBuilder.use_merged_synth_defaults(opts);
-        },
-        (opts) => {
-          topLevelBuilder.use_merged_sample_defaults(opts);
-        },
-        (enabled, fn) => {
-          topLevelBuilder.with_arg_checks(enabled, fn);
-        },
-        (enabled, fn) => {
-          topLevelBuilder.with_debug(enabled, fn);
-        },
-        (enabled, fn) => {
-          topLevelBuilder.with_timing_guarantees(enabled, fn);
-        },
-        (opts, fn) => {
-          topLevelBuilder.with_merged_synth_defaults(opts, fn);
-        },
-        (opts, fn) => {
-          topLevelBuilder.with_merged_sample_defaults(opts, fn);
-        },
-        // Tier C PR #2 — sample/buffer registry (#253). Top-level host stubs.
-        // sample_paths returns the bundled+custom names (browser equivalent of
-        // Desktop SP's filesystem paths). Optional `filter` substring match
-        // matches the upstream sound.rb behavior loosely. Without `filter`,
-        // returns every name we know about.
-        (filter2) => {
-          const all = sample_names();
-          const loaded = this.bridge?.getLoadedSampleNames() ?? [];
-          const merged = [...all];
-          for (const name2 of loaded) if (!merged.includes(name2)) merged.push(name2);
-          if (typeof filter2 === "string" && filter2.length > 0) {
-            return merged.filter((n) => n.includes(filter2));
-          }
-          return merged;
-        },
-        // sample_buffer(name) — returns a buffer-info dictionary. Unlike Desktop
-        // SP's Buffer object, recording into the buffer is out of scope for
-        // this PR; we expose name + duration so user code that asks for
-        // sample_buffer(:foo).duration works.
-        (name2) => {
-          if (typeof name2 !== "string") {
-            throw new TypeError(`sample_buffer expects a name (string or symbol), got ${typeof name2}`);
-          }
-          const dur = this.bridge?.getSampleDuration(name2);
-          return { name: name2, duration: dur ?? 0 };
-        },
-        // sample_free(name) — drop a single sample from the loaded cache.
-        // Returns true if it was loaded, false otherwise. The bufNum slot is
-        // not recycled (would require reference counting); the cost is one
-        // integer of waste per freed sample.
-        (name2) => {
-          if (typeof name2 !== "string") return false;
-          return this.bridge?.freeSample(name2) ?? false;
-        },
-        // sample_free_all — drop every sample from the loaded cache. Returns
-        // the count freed. Useful before benchmarks or for memory pressure.
-        () => {
-          return this.bridge?.freeAllSamples() ?? 0;
-        },
-        // load_samples(*names) — preload a list of samples so the first
-        // sample :name call is instant (no first-load CDN fetch latency).
-        // Accepts varargs so `load_samples :bd_haus, :sn_dub` works; the
-        // transpiler unpacks symbols into individual string args.
-        (...names) => {
-          if (!this.bridge) return;
-          const flat = names.flat();
-          for (const n of flat) {
-            if (typeof n === "string") {
-              void this.bridge.preloadSample(n).catch(() => {
-              });
-            }
-          }
-        },
-        // buffer(name, duration?) — browser stub. Desktop SP allocates a
-        // recording buffer; we don't have user-buffer recording yet, so the
-        // call returns a buffer-info shape that mirrors sample_buffer. This
-        // unblocks code that calls .duration on the result without erroring.
-        (name2, duration) => {
-          if (typeof name2 !== "string") {
-            throw new TypeError(`buffer expects a name (string or symbol), got ${typeof name2}`);
-          }
-          const known = this.bridge?.getSampleDuration(name2);
-          return { name: name2, duration: known ?? duration ?? 8 };
-        },
-        // Tier C PR #3 — set_mixer_control! / reset_mixer! (#255). Deferred
-        // ProgramBuilder steps. Top-level forms forward to topLevelBuilder so
-        // a bare `set_mixer_control! lpf: 30; sleep 4; reset_mixer!` sequences
-        // against playback (mirrors set_volume / recording lifecycle).
-        (opts) => {
-          topLevelBuilder.set_mixer_control(opts);
-        },
-        (...args2) => {
-          topLevelBuilder.reset_mixer(...args2);
-        },
-        // Tier C PR #3 — scsynth_info / status (#255). Pure host-queries from
-        // the bridge. Both return a flat info dict; in tests with no bridge
-        // they return safe placeholder shapes so user code that reads .field
-        // doesn't crash.
-        () => this.bridge?.getScsynthInfo() ?? {
-          sample_rate: 44100,
-          sample_dur: 1 / 44100,
-          radians_per_sample: 2 * Math.PI / 44100,
-          control_rate: 44100 / 64,
-          control_dur: 64 / 44100,
-          subsample_offset: 0,
-          num_output_busses: 16,
-          num_input_busses: 16,
-          num_audio_busses: 1024,
-          num_control_busses: 4096,
-          num_buffers: 4096
-        },
-        () => this.bridge?.getStatus() ?? {
-          ugens: 0,
-          synths: 0,
-          groups: 0,
-          sdefs: 0,
-          avg_cpu: 0,
-          peak_cpu: 0,
-          nom_samp_rate: 44100,
-          act_samp_rate: 44100,
-          audio_busses: 1024,
-          control_busses: 4096
-        },
-        // Tier C PR #3 — vt / bt / rt (#255). Pure BPM math + virtual-time
-        // alias. At top level use_bpm only updates `defaultBpm` (it does not
-        // call topLevelBuilder.use_bpm), and `current_time` reads
-        // scheduler.audioTime rebased per-Run (#364 item 4) — so we mirror
-        // those sources here. Inside live_loops the transpiler routes through
-        // __b via BUILDER_METHODS, where per-task _currentBpm and _audioTime
-        // are correct.
-        () => scheduler.audioTime - this._spiderTimeOrigin,
-        // vt: thread's local virtual run time (rebased)
-        (t) => t * 60 / defaultBpm,
-        // bt: beats → seconds at current bpm
-        (t) => t * defaultBpm / 60
-        // rt: seconds → beats (bypasses bpm scaling)
-      ];
-      const codeWarnings = validateCode(transpiledCode);
-      for (const warning of codeWarnings) {
-        if (this.printHandler) this.printHandler(`[Warning] ${warning}`);
-        else console.warn("[SonicPi]", warning);
-      }
-      const persistedFns = {
-        ...Object.fromEntries(this.defonceCache),
-        ...Object.fromEntries(this.definedFns)
-      };
-      const sandbox = createIsolatedExecutor(transpiledCode, dslNames, persistedFns);
-      scopeHandle = sandbox.scopeHandle;
-      const prevInTopLevelEval = this.inTopLevelEval;
-      this.inTopLevelEval = true;
-      try {
-        if (isReEvaluate) {
-          this.loopFxScope.clear();
-          this.fxScopeChains.clear();
-        }
-        await sandbox.execute(...dslValues);
-      } finally {
-        this.inTopLevelEval = prevInTopLevelEval;
-      }
-      if (isReEvaluate) {
-        const oldLoops = scheduler.getRunningLoopNames();
-        const removedLoops = oldLoops.filter((name2) => !pendingLoops.has(name2));
-        const hasNewLoops = [...pendingLoops.keys()].some((name2) => !oldLoops.includes(name2));
-        for (const name2 of removedLoops) {
-          this.loopBuilders.delete(name2);
-          this.loopSeeds.delete(name2);
-          this.loopTicks.delete(name2);
-          this.loopBeats.delete(name2);
-          this.loopSynced.delete(name2);
-        }
-        scheduler.pauseTick();
-        if (this.bridge) {
-          this.bridge.purgePendingBundles();
-          const survivingScopes = new Set(this.fxScopeChains.keys());
-          for (const [scopeId, state4] of this.persistentFx) {
-            if (survivingScopes.has(scopeId)) continue;
-            for (const nodeId of state4.nodeIds) this.bridge.freeNode(nodeId);
-            for (const group of state4.groups) this.bridge.freeGroup(group);
-            for (const bus of state4.buses) this.bridge.freeBus(bus);
-            this.persistentFx.delete(scopeId);
-          }
-          for (const state4 of this.reusableFx.values()) {
-            state4.killTimer?.cancel();
-            this.bridge.freeNode(state4.nodeId);
-            this.bridge.freeGroup(state4.groupId);
-            this.bridge.freeBus(state4.bus);
-          }
-          this.reusableFx.clear();
-          for (const name2 of removedLoops) {
-            this.bridge.freeLoopMonitor(name2);
-          }
-          this.nodeRefMap.clear();
-        }
-        await this.preCreatePersistentFx(defaultBpm);
-        scheduler.reEvaluate(pendingLoops, { bpm: defaultBpm, synth: defaultSynth });
-        for (const [name2, defaults] of pendingDefaults) {
-          const task = scheduler.getTask(name2);
-          if (task) {
-            task.bpm = defaults.bpm;
-            task.currentSynth = defaults.synth;
-            task.outBus = this.bridge?.getLoopBus(name2) ?? 0;
-          }
-        }
-        scheduler.resumeTick();
-      }
-      if (!isReEvaluate) {
-        await this.preCreatePersistentFx(defaultBpm);
-      }
-      return {};
-    } catch (err2) {
-      const error = err2 instanceof Error ? err2 : new Error(String(err2));
-      return { error };
-    }
-  }
-  /**
-   * Synchronously pre-create persistent FX nodes for every top-level scope
-   * before any loop iteration fires audio through them. Called from BOTH the
-   * first-eval path AND the hot-swap path (after freeAllNodes + map clear).
-   *
-   * Why this exists: the lazy creation at line 612 runs INSIDE the loop's
-   * first iteration, AT virtualTime + schedAheadTime. The same iteration
-   * then queues sample /s_new with the same timetag. scsynth receives both
-   * bundles and processes them in the order they arrive at its scheduler — a
-   * sub-frame race. When the race loses, sample /s_new fires onto a bus whose
-   * FX node hasn't been created yet → silent / dry clap (user-reported
-   * "music plays wrongly" residual on Update; the same race exists on first
-   * Run but is masked because the user just clicked Play).
-   *
-   * Why this fixes it: FX nodes are CREATED HERE with audioTime=0 (immediate).
-   * scsynth processes them now, BEFORE any future-timed sample bundle can
-   * land. By the time loops start iterating, persistentFx is populated, the
-   * lazy-creation block at line 612 is skipped via .has(), and task.outBus
-   * is set to the live FX bus before any sample plays.
-   *
-   * Why only FX (not samples): FX are bus receivers — they must exist before
-   * audio flows through them. Samples are continuous per-iteration events
-   * scheduled via virtual time; pre-creating them would block real-time
-   * scheduling. FX setup is one-time per scope.
-   *
-   * Idempotent: scopes already in `persistentFx` are skipped.
-   */
-  async preCreatePersistentFx(bpm) {
-    if (!this.bridge) return;
-    for (const [scopeId, fxChain] of this.fxScopeChains) {
-      if (!fxChain || fxChain.length === 0) continue;
-      if (this.persistentFx.has(scopeId)) continue;
-      let currentOutBus = 0;
-      const buses = [];
-      const groups = [];
-      const nodeIds = [];
-      for (const fx of fxChain) {
-        const bus = this.bridge.allocateBus();
-        const groupId = this.bridge.createFxGroup();
-        const fxWarn = this.printHandler ? (m) => this.printHandler(`[Warning] with_fx :${fx.name} \u2014 ${m}`) : void 0;
-        const fxOpts = normalizeFxParams(fx.name, fx.opts, bpm, fxWarn);
-        const nodeId = await this.bridge.applyFx(fx.name, 0, fxOpts, bus, currentOutBus);
-        this.bridge.flushMessages(0);
-        buses.push(bus);
-        groups.push(groupId);
-        nodeIds.push(nodeId);
-        currentOutBus = bus;
-      }
-      this.persistentFx.set(scopeId, { buses, groups, nodeIds, outBus: currentOutBus });
-    }
-  }
-  /** Start the scheduler. Call after the first `evaluate()`. */
-  play() {
-    if (!this.scheduler) return;
-    if (this.playing) return;
-    this.playing = true;
-    this.scheduler.start();
-  }
-  /** Stop all loops and free audio resources. The next `evaluate()` starts fresh. */
-  stop() {
-    if (!this.playing) return;
-    this.playing = false;
-    this.scheduler?.stop();
-    this.midiBridge.cancelPendingNoteOffs();
-    if (this.recorder) {
-      this.recorder.cancel();
-      this.recorder = null;
-    }
-    if (this.bridge) {
-      this.bridge.freeAllNodes();
-      this.bridge.stopAllLiveAudio();
-    }
-    this.nodeRefMap.clear();
-    this.scheduler?.dispose();
-    this.scheduler = null;
-    this.loopBuilders.clear();
-    this.loopSeeds.clear();
-    this.loopTicks.clear();
-    this.loopBeats.clear();
-    this.loopSynced.clear();
-    this.definedFns.clear();
-    this.defonceCache.clear();
-    for (const state4 of this.persistentFx.values()) {
-      for (const bus of state4.buses) this.bridge?.freeBus(bus);
-    }
-    this.persistentFx.clear();
-    for (const state4 of this.reusableFx.values()) {
-      state4.killTimer?.cancel();
-      this.bridge?.freeBus(state4.bus);
-    }
-    this.reusableFx.clear();
-    this.loopFxScope.clear();
-    this.fxScopeChains.clear();
-    this.buildNestingDepth = 0;
-    this.nestedWarned.clear();
-  }
-  dispose() {
-    if (this.playing) this.stop();
-    if (this.recorder) {
-      this.recorder.cancel();
-      this.recorder = null;
-    }
-    this.lastRecording = null;
-    this.pendingRecordingStop = null;
-    this.scheduler?.dispose();
-    this.scheduler = null;
-    this.eventStream.dispose();
-    this.bridge?.dispose();
-    this.bridge = null;
-    this.initialized = false;
-    this.currentStratum = 3 /* S3 */;
-    this.loopBuilders.clear();
-    this.loopSeeds.clear();
-    this.globalStore.clear();
-    this.definedFns.clear();
-    this.defonceCache.clear();
-  }
-  /** Register a handler for runtime errors inside `live_loop` bodies. */
-  setRuntimeErrorHandler(handler) {
-    this.runtimeErrorHandler = handler;
-  }
-  /**
-   * Register a handler for non-fatal warnings — v1 limitations and latent
-   * issues detected at build time. Audio still runs after a warning; the
-   * warning is the SP95-loud co-gate's user-facing surface (#350/#351
-   * cross-loop set/get + cue-payload-via-sync are silent without this).
-   */
-  setWarningHandler(handler) {
-    this.warningHandler = handler;
-  }
-  /**
-   * Emit a build-time warning to the user. Safe no-op when no handler
-   * is wired (e.g. capture.ts headless runs) — the warning is signaled
-   * via the App's editor console only.
-   */
-  emitWarning(title, msg) {
-    if (this.warningHandler) this.warningHandler(title, msg);
-  }
-  /** Register a handler for `puts` / `print` output from user code. */
-  setPrintHandler(handler) {
-    const wrapped = /* @__PURE__ */ __name((msg) => {
-      if (CLAMP_WARN_RE.test(msg)) {
-        if (this.warnDedup.has(msg)) return;
-        this.warnDedup.add(msg);
-      }
-      handler(msg);
-    }, "wrapped");
-    this.printHandler = wrapped;
-    if (this.bridge) this.bridge.warnHandler = wrapped;
-  }
-  /** Register a handler for cue events (for the CueLog panel). */
-  setCueHandler(handler) {
-    this.cueHandler = handler;
-  }
-  /**
-   * Register a handler for `load_example(:name)` calls in user code (#236).
-   * The host (App.ts) wires this to its loadExample(example) method which
-   * replaces the editor buffer with the example's Ruby code and runs it.
-   * If unset, load_example throws an informative error so the engine works
-   * standalone without requiring an editor harness.
-   */
-  setLoadExampleHandler(handler) {
-    this.loadExampleHandler = handler;
-  }
-  /**
-   * Register a handler for `osc_send` calls in user code.
-   * The engine fires this handler; the host wires it to actual transport
-   * (e.g. WebSocket → UDP bridge). If no handler is set, osc_send logs a warning.
-   */
-  setOscHandler(handler) {
-    this.oscHandler = handler;
-  }
-  /**
-   * Set master volume. Range: 0 (silent) to 1 (full).
-   * Safe to call before `init()` — applied when the audio bridge is ready.
-   */
-  setVolume(volume) {
-    this.pendingVolume = volume;
-    this.bridge?.setMasterVolume(volume);
-  }
-  /** Set mixer amp (0.5–6 typical). Live — propagates to scsynth /n_set
-   *  immediately if the bridge is up; otherwise queued for next mixer init. */
-  setMixerAmp(amp) {
-    this.bridge?.setMixerAmp(amp);
-  }
-  /** Set mixer pre_amp baseline. Effective wire pre_amp = volume × pre_amp. */
-  setMixerPreAmp(preAmp) {
-    this.bridge?.setMixerPreAmp(preAmp);
-  }
-  /** Get a friendly version of the last error (for display in a log pane). */
-  static formatError(err2) {
-    return friendlyError(err2);
-  }
-  /** Format a friendly error as a display string. */
-  static formatErrorString(err2) {
-    return formatFriendlyError(friendlyError(err2));
-  }
-  /** Get SuperSonic scsynth metrics for diagnostics. */
-  getMetrics() {
-    return this.bridge?.getMetrics() ?? null;
-  }
-  /**
-   * Register a custom user-uploaded sample with the audio engine.
-   * The sample becomes playable as `sample :user_<name>` in code.
-   * Requires engine to be initialized with audio support.
-   */
-  async registerCustomSample(name2, audioData) {
-    if (!this.bridge) throw new Error("Audio engine not available \u2014 cannot register custom sample");
-    await this.bridge.registerCustomSample(name2, audioData);
-  }
-  /**
-   * Load all custom samples from IndexedDB into the audio engine.
-   * Called automatically during init when audio is available.
-   * Safe to call again after uploading new samples.
-   */
-  async loadCustomSamplesFromDB() {
-    if (!this.bridge) return 0;
-    try {
-      const records = await loadAllCustomSamples();
-      for (const record of records) {
-        if (!this.bridge.isSampleLoaded(record.name)) {
-          await this.bridge.registerCustomSample(record.name, record.audioData);
-        }
-      }
-      return records.length;
-    } catch {
-      return 0;
-    }
-  }
-  get components() {
-    const result = {
-      streaming: { eventStream: this.eventStream }
-    };
-    const audioCtx = this.bridge?.audioContext;
-    const analyser = this.bridge?.analyser;
-    if (audioCtx && analyser) {
-      const trackAnalysers = this.bridge?.getAllTrackAnalysers();
-      const analyserL = this.bridge?.analyserLeft ?? void 0;
-      const analyserR = this.bridge?.analyserRight ?? void 0;
-      result.audio = { analyser, analyserL, analyserR, audioCtx, trackAnalysers };
-    }
-    if (this.currentStratum <= 2 /* S2 */) {
-      const loopBuilders = this.loopBuilders;
-      const scheduler = this.scheduler;
-      result.capture = {
-        async queryRange(begin, end) {
-          const events = [];
-          for (const [name2, builderFn] of loopBuilders) {
-            const task = scheduler?.getTask(name2);
-            const bpm = task?.bpm ?? 60;
-            const factory = /* @__PURE__ */ __name((ticks, iteration) => {
-              const builder = new ProgramBuilder(iteration ?? 0, ticks);
-              if (task?.currentSynth && task.currentSynth !== "beep") {
-                builder.use_synth(task.currentSynth);
-              }
-              builderFn(builder);
-              return { program: builder.build(), ticks: builder.getTicks() };
-            }, "factory");
-            events.push(...queryLoopProgram(factory, begin, end, bpm));
-          }
-          return events.sort((a, b) => a.time - b.time);
-        }
-      };
-    }
-    return result;
-  }
-};
-__name(_SonicPiEngine, "SonicPiEngine");
-var SonicPiEngine = _SonicPiEngine;
-
 // src/engine/sonicpi/adapter.ts
+var SONICPI_ENGINE_MODULE = "../../../../../../sonicPiWeb/src/engine/SonicPiEngine";
+async function loadRawSonicPiEngine() {
+  const load = new Function("m", "return import(m)");
+  return (await load(SONICPI_ENGINE_MODULE)).SonicPiEngine;
+}
+__name(loadRawSonicPiEngine, "loadRawSonicPiEngine");
 var SUPERSONIC_CDN = "https://unpkg.com/supersonic-scsynth@latest";
 async function importFromCDN(url) {
   const load = new Function("url", "return import(url)");
@@ -35459,34 +20849,34 @@ function parseVizRequests(code) {
   const lines = code.split("\n");
   const loopPattern = /live_loop\s*(?:\(\s*["'](\w+)["']|:(\w+)\s)/;
   const loopBlocks = /* @__PURE__ */ new Map();
-  for (let i2 = 0; i2 < lines.length; i2++) {
-    const trimmed = lines[i2].trim();
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
     if (trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
     const loopMatch = trimmed.match(loopPattern);
     if (loopMatch) {
-      const name2 = loopMatch[1] ?? loopMatch[2];
-      const start2 = i2;
+      const name = loopMatch[1] ?? loopMatch[2];
+      const start = i;
       let depth = 0;
       let end = lines.length - 1;
-      for (let j = i2; j < lines.length; j++) {
+      for (let j = i; j < lines.length; j++) {
         if (/\bdo\b/.test(lines[j])) depth++;
         if (/\bend\b/.test(lines[j])) depth--;
         depth += (lines[j].match(/[{(]/g) ?? []).length;
         depth -= (lines[j].match(/[})]/g) ?? []).length;
-        if (depth <= 0 && j > i2) {
+        if (depth <= 0 && j > i) {
           end = j;
           break;
         }
       }
-      loopBlocks.set(name2, { start: start2, end });
+      loopBlocks.set(name, { start, end });
     }
   }
   const vizCallPattern = /\bviz\s+:(\w+)|viz\s*\(\s*["':]+(\w+)["']?\s*\)/;
-  for (const [name2, block] of loopBlocks) {
-    for (let i2 = block.start; i2 <= block.end; i2++) {
-      const vizMatch = lines[i2].match(vizCallPattern);
+  for (const [name, block] of loopBlocks) {
+    for (let i = block.start; i <= block.end; i++) {
+      const vizMatch = lines[i].match(vizCallPattern);
       if (vizMatch) {
-        requests.set(name2, {
+        requests.set(name, {
           vizId: vizMatch[1] ?? vizMatch[2],
           afterLine: block.end + 1
         });
@@ -35495,24 +20885,24 @@ function parseVizRequests(code) {
     }
   }
   const commentVizPattern = /(?:\/\/|#)\s*@viz\s+(\w+)/;
-  for (let i2 = 0; i2 < lines.length; i2++) {
-    const vizMatch = lines[i2].match(commentVizPattern);
+  for (let i = 0; i < lines.length; i++) {
+    const vizMatch = lines[i].match(commentVizPattern);
     if (vizMatch) {
       let trackName = null;
-      for (let j = i2 - 1; j >= 0; j--) {
+      for (let j = i - 1; j >= 0; j--) {
         const trimmed = lines[j].trim();
         if (trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
         const loopMatch = trimmed.match(loopPattern);
         if (loopMatch) {
-          const name2 = loopMatch[1] ?? loopMatch[2];
-          if (loopBlocks.has(name2)) {
-            trackName = name2;
+          const name = loopMatch[1] ?? loopMatch[2];
+          if (loopBlocks.has(name)) {
+            trackName = name;
           }
           break;
         }
       }
       if (trackName && !requests.has(trackName)) {
-        requests.set(trackName, { vizId: vizMatch[1], afterLine: i2 + 1 });
+        requests.set(trackName, { vizId: vizMatch[1], afterLine: i + 1 });
       }
     }
   }
@@ -35523,7 +20913,7 @@ function stripVizCalls(code) {
   return code.replace(/^[ \t]*viz[ \t]+:\w+[ \t]*$/gm, "").replace(/^[ \t]*viz[ \t]*\([ \t]*["']\w+["'][ \t]*\)[ \t]*$/gm, "").replace(/^[ \t]*(?:\/\/|#)[ \t]*@viz[ \t]+\w+[ \t]*$/gm, "");
 }
 __name(stripVizCalls, "stripVizCalls");
-var _SonicPiEngine2 = class _SonicPiEngine2 {
+var _SonicPiEngine = class _SonicPiEngine {
   constructor(options) {
     this.raw = null;
     this.hapStream = new HapStream();
@@ -35544,7 +20934,8 @@ var _SonicPiEngine2 = class _SonicPiEngine2 {
       SuperSonicClass = mod.SuperSonic ?? mod.default;
     } catch {
     }
-    this.raw = new SonicPiEngine({
+    const RawEngineClass = await loadRawSonicPiEngine();
+    this.raw = new RawEngineClass({
       ...this.options,
       bridge: SuperSonicClass ? { SuperSonicClass } : {}
     });
@@ -35554,9 +20945,9 @@ var _SonicPiEngine2 = class _SonicPiEngine2 {
         let loc = null;
         if (e.srcLine && e.srcLine > 0 && e.srcLine <= this.originalLines.length) {
           const idx = e.srcLine - 1;
-          const start2 = this.lineOffsets[idx];
-          const end = start2 + this.originalLines[idx].length;
-          loc = [{ start: start2, end }];
+          const start = this.lineOffsets[idx];
+          const end = start + this.originalLines[idx].length;
+          loc = [{ start, end }];
         }
         const event = {
           audioTime: e.audioTime,
@@ -35582,9 +20973,9 @@ var _SonicPiEngine2 = class _SonicPiEngine2 {
     this.originalLines = code.split("\n");
     this.lineOffsets = [];
     let offset = 0;
-    for (const line2 of this.originalLines) {
+    for (const line of this.originalLines) {
       this.lineOffsets.push(offset);
-      offset += line2.length + 1;
+      offset += line.length + 1;
     }
     this.vizRequests = parseVizRequests(code);
     const activeTrackIds = new Set(this.vizRequests.keys());
@@ -35647,8 +21038,8 @@ var _SonicPiEngine2 = class _SonicPiEngine2 {
     return bag;
   }
 };
-__name(_SonicPiEngine2, "SonicPiEngine");
-var SonicPiEngine2 = _SonicPiEngine2;
+__name(_SonicPiEngine, "SonicPiEngine");
+var SonicPiEngine = _SonicPiEngine;
 
 // src/visualizers/mountVizRenderer.ts
 function mountVizRenderer(container, source, components, size, onError) {
@@ -36193,8 +21584,8 @@ function VizEditor({
 __name(VizEditor, "VizEditor");
 
 // src/engine/friendlyErrors.ts
-function parseStackLocation(err2) {
-  const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 ? String(err2.stack ?? "") : "";
+function parseStackLocation(err) {
+  const stack = typeof err === "object" && err !== null && "stack" in err ? String(err.stack ?? "") : "";
   if (!stack) return null;
   const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
   if (v8Eval)
@@ -36221,9 +21612,9 @@ function levenshtein(a, b) {
   let prev = new Array(lb + 1);
   let curr = new Array(lb + 1);
   for (let j = 0; j <= lb; j++) prev[j] = j;
-  for (let i2 = 1; i2 <= la; i2++) {
-    curr[0] = i2;
-    const ac = a.charCodeAt(i2 - 1);
+  for (let i = 1; i <= la; i++) {
+    curr[0] = i;
+    const ac = a.charCodeAt(i - 1);
     for (let j = 1; j <= lb; j++) {
       const cost = ac === b.charCodeAt(j - 1) ? 0 : 1;
       curr[j] = Math.min(
@@ -36265,8 +21656,8 @@ var REFERENCE_ERROR_PATTERNS = [
   // Safari: "Can't find variable: foo"
   /^Can't find variable: (\w+)$/
 ];
-function extractReferenceIdentifier(err2) {
-  const message = typeof err2 === "object" && err2 !== null && "message" in err2 ? String(err2.message) : String(err2);
+function extractReferenceIdentifier(err) {
+  const message = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
   if (!message) return null;
   const trimmed = message.replace(/^Uncaught\s+/, "").trim();
   for (const re of REFERENCE_ERROR_PATTERNS) {
@@ -36289,7 +21680,7 @@ function extractMissingSoundName(rawMessage) {
 __name(extractMissingSoundName, "extractMissingSoundName");
 function buildAliasSuffix(missingName, ctx) {
   if (!ctx) return "";
-  const parts2 = [];
+  const parts = [];
   if (ctx.resolutions && ctx.resolutions.length > 0) {
     const seen = /* @__PURE__ */ new Set();
     const lines = [];
@@ -36299,17 +21690,17 @@ function buildAliasSuffix(missingName, ctx) {
       seen.add(key);
       lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
     }
-    parts2.push(`tried alias ${lines.join(", ")}`);
+    parts.push(`tried alias ${lines.join(", ")}`);
   }
   if (missingName && ctx.lookupAlias) {
     const target = ctx.lookupAlias(missingName);
     if (target) {
-      parts2.push(`alias map: \`${missingName}\` \u2192 \`${target}\` (but \`${target}\` is not loaded)`);
+      parts.push(`alias map: \`${missingName}\` \u2192 \`${target}\` (but \`${target}\` is not loaded)`);
     } else {
-      parts2.push(`alias map: no entry for \`${missingName}\``);
+      parts.push(`alias map: no entry for \`${missingName}\``);
     }
   }
-  return parts2.length > 0 ? ` (${parts2.join("; ")})` : "";
+  return parts.length > 0 ? ` (${parts.join("; ")})` : "";
 }
 __name(buildAliasSuffix, "buildAliasSuffix");
 function asRegExp(match) {
@@ -36361,15 +21752,15 @@ function collectMistakes(index, ctx) {
       }
     }
   }
-  for (const [name2, doc] of Object.entries(index.docs)) {
-    if (name2 === ctx.identifier) continue;
+  for (const [name, doc] of Object.entries(index.docs)) {
+    if (name === ctx.identifier) continue;
     for (const m of doc.commonMistakes ?? []) {
       if (evalMistake(m, ctx)) {
         hits.push({
           mistake: m,
           specificity: SPECIFICITY[m.detect.kind],
           order: order++,
-          symbol: { name: name2, doc }
+          symbol: { name, doc }
         });
       }
     }
@@ -36386,15 +21777,15 @@ function collectMistakes(index, ctx) {
   return rankHits(hits);
 }
 __name(collectMistakes, "collectMistakes");
-function defaultDocsUrl(runtime, name2) {
-  return `/docs/reference/${runtime}/#${name2.toLowerCase()}`;
+function defaultDocsUrl(runtime, name) {
+  return `/docs/reference/${runtime}/#${name.toLowerCase()}`;
 }
 __name(defaultDocsUrl, "defaultDocsUrl");
-function formatFriendlyError2(err2, runtime, options = {}) {
-  const rawMessage = typeof err2 === "object" && err2 !== null && "message" in err2 ? String(err2.message) : String(err2);
-  const stack = typeof err2 === "object" && err2 !== null && "stack" in err2 && typeof err2.stack === "string" ? err2.stack : void 0;
-  const loc = parseStackLocation(err2);
-  const identifier = extractReferenceIdentifier(err2);
+function formatFriendlyError(err, runtime, options = {}) {
+  const rawMessage = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
+  const stack = typeof err === "object" && err !== null && "stack" in err && typeof err.stack === "string" ? err.stack : void 0;
+  const loc = parseStackLocation(err);
+  const identifier = extractReferenceIdentifier(err);
   const missingName = extractMissingSoundName(rawMessage);
   const aliasSuffix = buildAliasSuffix(missingName, options.aliasContext);
   const appendAlias = /* @__PURE__ */ __name((msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg, "appendAlias");
@@ -36468,7 +21859,7 @@ function formatFriendlyError2(err2, runtime, options = {}) {
     column: loc?.column
   };
 }
-__name(formatFriendlyError2, "formatFriendlyError");
+__name(formatFriendlyError, "formatFriendlyError");
 
 // src/visualizers/p5Compiler.ts
 function isFullLifecycleSketch(code) {
@@ -36481,9 +21872,9 @@ function getP5LineOffset(code) {
 }
 __name(getP5LineOffset, "getP5LineOffset");
 function compileP5Code(code, source) {
-  const body2 = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
+  const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
   const lineOffset = getP5LineOffset(code);
-  new Function("p", "stave", body2);
+  new Function("p", "stave", body);
   return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
     current: { w: 400, h: 300 }
   }) => {
@@ -36507,12 +21898,12 @@ function compileP5Code(code, source) {
       };
       let lifecycle;
       try {
-        const compile = new Function("p", "stave", body2);
+        const compile = new Function("p", "stave", body);
         lifecycle = compile(p, stave);
-      } catch (err2) {
-        const error = err2 instanceof Error ? err2 : new Error(String(err2));
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
         installErrorSketch(p, error.message);
-        const parts2 = formatFriendlyError2(error, "p5", {
+        const parts = formatFriendlyError(error, "p5", {
           index: P5_DOCS_INDEX
         });
         const loc = parseStackLocation(error);
@@ -36521,9 +21912,9 @@ function compileP5Code(code, source) {
           level: "error",
           runtime: "p5",
           source,
-          message: parts2.message,
-          suggestion: parts2.suggestion,
-          stack: parts2.stack,
+          message: parts.message,
+          suggestion: parts.suggestion,
+          stack: parts.stack,
           line: userLine,
           column: loc?.column
         });
@@ -36571,29 +21962,29 @@ function buildLegacyBody(userCode) {
 __name(buildLegacyBody, "buildLegacyBody");
 function installLifecycle(p, lifecycle, source, lineOffset) {
   const pi = p;
-  const reportLifecycleError = /* @__PURE__ */ __name((hook, err2) => {
-    const error = err2 instanceof Error ? err2 : new Error(String(err2));
-    const parts2 = formatFriendlyError2(error, "p5", { index: P5_DOCS_INDEX });
+  const reportLifecycleError = /* @__PURE__ */ __name((hook, err) => {
+    const error = err instanceof Error ? err : new Error(String(err));
+    const parts = formatFriendlyError(error, "p5", { index: P5_DOCS_INDEX });
     const loc = parseStackLocation(error);
     const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
     emitLog({
       level: "error",
       runtime: "p5",
       source,
-      message: `${hook}(): ${parts2.message}`,
-      suggestion: parts2.suggestion,
-      stack: parts2.stack,
+      message: `${hook}(): ${parts.message}`,
+      suggestion: parts.suggestion,
+      stack: parts.stack,
       line: userLine,
       column: loc?.column
     });
   }, "reportLifecycleError");
   const wrap4 = /* @__PURE__ */ __name((hook, fn) => {
     if (!fn) return void 0;
-    return function(...args2) {
+    return function(...args) {
       try {
-        return fn.apply(this, args2);
-      } catch (err2) {
-        reportLifecycleError(hook, err2);
+        return fn.apply(this, args);
+      } catch (err) {
+        reportLifecycleError(hook, err);
       }
     };
   }, "wrap");
@@ -36640,11 +22031,11 @@ __name(getHydraLineOffset, "getHydraLineOffset");
 
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
-  const { id, name: name2, renderer, code, requires } = preset;
+  const { id, name, renderer, code, requires } = preset;
   if (renderer === "hydra") {
     return {
       id,
-      label: name2,
+      label: name,
       renderer: "hydra",
       requires,
       factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(compileHydraCode(code)), "factory")
@@ -36653,7 +22044,7 @@ function compilePreset(preset) {
   if (renderer === "p5") {
     return {
       id,
-      label: name2,
+      label: name,
       renderer: "p5",
       requires,
       // Pass `name` (the workspace path) as the source so the factory's
@@ -36661,7 +22052,7 @@ function compilePreset(preset) {
       // the file. Without it, a top-level `new Mp()` typo surfaced on
       // the preview canvas but nowhere else — no Console row, no
       // Monaco squiggle.
-      factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(code, name2)), "factory")
+      factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(code, name)), "factory")
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
@@ -36692,17 +22083,17 @@ function useTrackMeta(fileId, trackId) {
   return { meta, set };
 }
 __name(useTrackMeta, "useTrackMeta");
-var DB_NAME3 = "stave-snapshots";
-var DB_VERSION3 = 1;
-var STORE_NAME3 = "snapshots";
+var DB_NAME2 = "stave-snapshots";
+var DB_VERSION2 = 1;
+var STORE_NAME2 = "snapshots";
 var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
 function openDb2() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME3, DB_VERSION3);
+    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME3)) {
-        const store = db.createObjectStore(STORE_NAME3, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_NAME2)) {
+        const store = db.createObjectStore(STORE_NAME2, { keyPath: "id" });
         store.createIndex("byProject", "projectId", { unique: false });
       }
     };
@@ -36732,17 +22123,17 @@ async function saveSnapshot(projectId, label, kind = "manual") {
   const record = { ...meta, bytes };
   const db = await openDb2();
   await wrap2(
-    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).put(record)
+    db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2).put(record)
   );
   if (kind === "auto") {
-    const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+    const index = db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).index("byProject");
     const all = await wrap2(index.getAll(projectId));
     const autos = all.filter(
       (r) => r.kind === "auto" || r.label.startsWith(AUTO_SNAPSHOT_PREFIX)
     ).sort((a, b) => b.createdAt - a.createdAt);
     const toDelete = autos.slice(MAX_AUTO_SNAPSHOTS);
     if (toDelete.length > 0) {
-      const wstore = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
+      const wstore = db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2);
       for (const r of toDelete) await wrap2(wstore.delete(r.id));
     }
   }
@@ -36752,7 +22143,7 @@ async function saveSnapshot(projectId, label, kind = "manual") {
 __name(saveSnapshot, "saveSnapshot");
 async function listSnapshots(projectId) {
   const db = await openDb2();
-  const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
+  const index = db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).index("byProject");
   const all = await wrap2(index.getAll(projectId));
   db.close();
   return all.map(({ bytes: _bytes, ...meta }) => meta).sort((a, b) => b.createdAt - a.createdAt);
@@ -36761,7 +22152,7 @@ __name(listSnapshots, "listSnapshots");
 async function deleteSnapshot(id) {
   const db = await openDb2();
   await wrap2(
-    db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).delete(id)
+    db.transaction(STORE_NAME2, "readwrite").objectStore(STORE_NAME2).delete(id)
   );
   db.close();
 }
@@ -36769,7 +22160,7 @@ __name(deleteSnapshot, "deleteSnapshot");
 async function restoreSnapshot(id) {
   const db = await openDb2();
   const stored = await wrap2(
-    db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).get(id)
+    db.transaction(STORE_NAME2, "readonly").objectStore(STORE_NAME2).get(id)
   );
   db.close();
   if (!stored) throw new Error(`snapshot ${id} not found`);
@@ -36815,16 +22206,16 @@ async function restoreSnapshot(id) {
 __name(restoreSnapshot, "restoreSnapshot");
 
 // src/workspace/projectRegistry.ts
-var DB_NAME4 = "stave-projects";
-var DB_VERSION4 = 1;
-var STORE_NAME4 = "projects";
+var DB_NAME3 = "stave-projects";
+var DB_VERSION3 = 1;
+var STORE_NAME3 = "projects";
 function openDb3() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME4, DB_VERSION4);
+    const req = indexedDB.open(DB_NAME3, DB_VERSION3);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME4)) {
-        db.createObjectStore(STORE_NAME4, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_NAME3)) {
+        db.createObjectStore(STORE_NAME3, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -36833,7 +22224,7 @@ function openDb3() {
 }
 __name(openDb3, "openDb");
 function tx2(db, mode) {
-  return db.transaction(STORE_NAME4, mode).objectStore(STORE_NAME4);
+  return db.transaction(STORE_NAME3, mode).objectStore(STORE_NAME3);
 }
 __name(tx2, "tx");
 function wrap3(req) {
@@ -36862,10 +22253,10 @@ async function getLastOpenedProject() {
   return list[0];
 }
 __name(getLastOpenedProject, "getLastOpenedProject");
-async function createProject(name2) {
+async function createProject(name) {
   const meta = {
     id: crypto.randomUUID(),
-    name: name2,
+    name,
     createdAt: Date.now(),
     lastOpenedAt: Date.now()
   };
@@ -36909,12 +22300,12 @@ async function setProjectBackgroundCrop(id, crop) {
   db.close();
 }
 __name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
-async function renameProject(id, name2) {
+async function renameProject(id, name) {
   const db = await openDb3();
   const store = tx2(db, "readwrite");
   const existing = await wrap3(store.get(id));
   if (existing) {
-    await wrap3(store.put({ ...existing, name: name2 }));
+    await wrap3(store.put({ ...existing, name }));
   }
   db.close();
 }
@@ -37176,7 +22567,7 @@ __name(SonicPiChrome, "SonicPiChrome");
 var SONICPI_RUNTIME = {
   extensions: [".sonicpi"],
   language: "sonicpi",
-  createEngine: /* @__PURE__ */ __name(() => new SonicPiEngine2(), "createEngine"),
+  createEngine: /* @__PURE__ */ __name(() => new SonicPiEngine(), "createEngine"),
   renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsxRuntime.jsx(SonicPiChrome, { ...ctx }), "renderChrome")
 };
 function refToString(ref) {
@@ -37429,12 +22820,12 @@ function CompiledVizMount(props) {
       const result = compilePreset(preset);
       emitFixed({ runtime: rendererType, source: file.path });
       return { descriptor: result, compileError: null };
-    } catch (err2) {
-      const message = err2 instanceof Error ? err2.message : String(err2);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       const runtime = rendererType;
       const index = runtime === "p5" ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
-      const parts2 = formatFriendlyError2(
-        err2 instanceof Error ? err2 : new Error(message),
+      const parts = formatFriendlyError(
+        err instanceof Error ? err : new Error(message),
         runtime,
         { index }
       );
@@ -37442,11 +22833,11 @@ function CompiledVizMount(props) {
         level: "error",
         runtime,
         source: file.path,
-        message: parts2.message,
-        suggestion: parts2.suggestion,
-        stack: parts2.stack,
-        line: parts2.line,
-        column: parts2.column
+        message: parts.message,
+        suggestion: parts.suggestion,
+        stack: parts.stack,
+        line: parts.line,
+        column: parts.column
       });
       return { descriptor: null, compileError: message };
     }
@@ -37491,18 +22882,18 @@ function CompiledVizMount(props) {
     let mounted = null;
     const reportError = /* @__PURE__ */ __name((e) => {
       const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
-      const parts2 = formatFriendlyError2(e, runtime, { index });
+      const parts = formatFriendlyError(e, runtime, { index });
       const offset = isP5 ? getP5LineOffset(file.content) : runtime === "hydra" ? getHydraLineOffset() : 0;
-      const line2 = parts2.line != null && offset > 0 ? Math.max(1, parts2.line - offset) : parts2.line;
+      const line = parts.line != null && offset > 0 ? Math.max(1, parts.line - offset) : parts.line;
       emitLog({
         level: "error",
         runtime,
         source: file.path,
-        message: parts2.message,
-        suggestion: parts2.suggestion,
-        stack: parts2.stack,
-        line: line2,
-        column: parts2.column
+        message: parts.message,
+        suggestion: parts.suggestion,
+        stack: parts.stack,
+        line,
+        column: parts.column
       });
     }, "reportError");
     try {
@@ -37514,8 +22905,8 @@ function CompiledVizMount(props) {
         reportError
       );
       rendererRef.current = mounted;
-    } catch (err2) {
-      reportError(err2 instanceof Error ? err2 : new Error(String(err2)));
+    } catch (err) {
+      reportError(err instanceof Error ? err : new Error(String(err)));
     }
     return () => {
       rendererRef.current = null;
@@ -37738,29 +23129,29 @@ function installGlobalErrorCatch() {
   installed3 = true;
   window.addEventListener("error", (event) => {
     if (!event.error && !event.message) return;
-    const err2 = event.error instanceof Error ? event.error : new Error(event.message || "Uncaught error");
-    emitFromGlobal(err2);
+    const err = event.error instanceof Error ? event.error : new Error(event.message || "Uncaught error");
+    emitFromGlobal(err);
   });
   window.addEventListener(
     "unhandledrejection",
     (event) => {
       const reason = event.reason;
-      const err2 = reason instanceof Error ? reason : new Error(
+      const err = reason instanceof Error ? reason : new Error(
         typeof reason === "string" ? reason : "Unhandled promise rejection"
       );
-      emitFromGlobal(err2);
+      emitFromGlobal(err);
     }
   );
 }
 __name(installGlobalErrorCatch, "installGlobalErrorCatch");
-function emitFromGlobal(err2, _kind) {
-  const parts2 = formatFriendlyError2(err2, "stave");
-  const loc = parseStackLocation(err2);
+function emitFromGlobal(err, _kind) {
+  const parts = formatFriendlyError(err, "stave");
+  const loc = parseStackLocation(err);
   emitLog({
     level: "error",
     runtime: "stave",
-    message: parts2.message,
-    stack: parts2.stack,
+    message: parts.message,
+    stack: parts.stack,
     line: loc?.line,
     column: loc?.column
   });
@@ -37812,7 +23203,7 @@ exports.SOUND_ALIASES = SOUND_ALIASES;
 exports.STRUDEL_DOCS_INDEX = STRUDEL_DOCS_INDEX;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
 exports.ScopeSketch = ScopeSketch;
-exports.SonicPiEngine = SonicPiEngine2;
+exports.SonicPiEngine = SonicPiEngine;
 exports.SpectrumSketch = SpectrumSketch;
 exports.SpiralSketch = SpiralSketch;
 exports.SplitPane = SplitPane;
@@ -37859,7 +23250,7 @@ exports.emitLog = emitLog;
 exports.extractReferenceIdentifier = extractReferenceIdentifier;
 exports.filter = filter;
 exports.flushToPreset = flushToPreset;
-exports.formatFriendlyError = formatFriendlyError2;
+exports.formatFriendlyError = formatFriendlyError;
 exports.fuzzyMatch = fuzzyMatch;
 exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveProjectId = getActiveProjectId;
