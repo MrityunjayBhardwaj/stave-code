@@ -2389,3 +2389,73 @@ the bisect-then-pre/post-snippet observation pattern IS the lokayata
 gate. Future phases should treat a multi-phase-old residual as a
 re-pose signal automatically — RUN the bisect before assuming the
 prior classification is still load-bearing.
+
+## P71 — Fixed-window measurement over-states distribution coverage (a deterministic sample masquerading as representative)
+
+**Pattern:** a coverage metric (real-world parity %, test pass rate,
+crash-free %, any "how good are we across the wild" number) is computed
+against a sample that is DETERMINISTIC, not representative — e.g. a
+`SELECT … ORDER BY x LIMIT n OFFSET 0` pull, the first n files
+alphabetically, a fixed seed. Every measurement re-reads the SAME rows.
+The number climbs to a milestone (e.g. 100%) and the team declares the
+concern "done" — but the milestone describes the WINDOW, not the
+distribution. The work optimized a blind spot.
+
+**Symptom:** a "resample" returns identical results. The metric is
+suspiciously clean (100%, 0 failures) after sustained effort. The
+sampling code has a hard-coded `offset=0` / `LIMIT n` / fixed seed with
+no parameterization. Nobody has measured a DIFFERENT window.
+
+**Detection:** the cheap executed check — pull a genuinely different
+slice (offset n, a different seed, a wider N) and re-measure. Example
+(Stave parity, 2026-05-22): the 20-1x cadence reached "100% N=50" via
+`parity-bakery.mjs`'s `order=hash.asc&limit=N*2&offset=0`. A "resample"
+returned a 50/50 hash overlap (proving the pull is deterministic, not
+random). A genuine sweep:
+
+```
+offset 0   (the cadence's window): 100%  (50/50)
+offset 100 (never measured):        92%  (46/50)
+offset 250 (never measured):        84%  (42/50)
+N=500 (offset 0, full page):      90.4%  (452/500)
+```
+
+The true distribution parity was 90.4%, not 100%. The dominant gap
+class (#141/#140 binding-ref, 50% of fallbacks) had been INVISIBLE
+because it never appeared in the offset=0 window — and had even been
+marked "closed" against a fixed-window exemplar.
+
+**Wrong fix (the trap):**
+(a) **Trust the milestone:** declare the concern done and pivot. The
+blind spot ships; the real coverage is unknown; the "closed" gap
+classes silently recur in production.
+(b) **One more fixed-window pass:** measure a slightly bigger fixed
+window (N=50 → N=100, still offset 0). Same blind spot, marginally
+wider.
+(c) **Randomize once, measure once:** a single random sample is better
+than a fixed one but a single draw still has variance; a low draw looks
+like a regression, a high draw re-inflates the false confidence.
+
+**Right fix:** parameterize the sampling (offset / seed / window) and
+SWEEP — measure several windows (or a large single page) and report the
+aggregate + the per-window spread. Treat the spread as a confidence
+signal, not noise. Generalizes the 20-14 Bakery reality-check finding
+("curated-corpus parity over-states real-world parity ~2:1") to ANY
+fixed-sample metric: a fixed sample over-states distribution coverage,
+full stop. The harness MUST make the distribution measurable; a metric
+you can only compute one way is a metric you can't trust.
+
+**REF:**
+- `packages/app/scripts/parity-bakery.mjs` (the `--offset` fix; merged
+  PR #166, commit `6131e5f`, on main `7ebcef7` — the run header now
+  flags offset=0 as "the historically-pinned window; NOT the full
+  distribution")
+- https://github.com/MrityunjayBhardwaj/stave-code/issues/165 (the
+  N=500 distribution finding + ranked gap-class backlog)
+- https://github.com/MrityunjayBhardwaj/stave-code/issues/141
+  (reopened — the dominant lever that the fixed window hid)
+- `memory/project_phase_20_musician_timeline.md` (the "Phase 20-21
+  MERGED" block + the corrected 90.4% distribution number)
+- Sister pattern: the 20-14 Bakery reality check (curated corpus
+  over-states ~2:1) is the SAME generalization at a different sample
+  layer — both are fixed-sample-over-states-distribution.

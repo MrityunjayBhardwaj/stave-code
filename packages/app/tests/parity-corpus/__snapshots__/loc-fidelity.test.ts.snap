@@ -622,7 +622,7 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "hh",
   },
   {
-    "tag": "Code",
+    "tag": "Slow",
     "text": ".slow(numChords)",
   },
   {
@@ -644,6 +644,41 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "hh",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-141-arith-rhs — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Code",
+    "text": ".cpm(bpm)",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-141-arith-unreferenced — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Play",
+    "text": "bd",
+  },
+]
+`;
+
+exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mortem gate) > bakery-141-binding-arg-text — loc→source-slice map is stable & in-bounds 1`] = `
+[
+  {
+    "tag": "Slow",
+    "text": ".slow(n)",
+  },
+  {
+    "tag": "Play",
+    "text": "bd",
   },
 ]
 `;

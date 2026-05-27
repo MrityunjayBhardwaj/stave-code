@@ -1165,55 +1165,116 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-140-binding-t
         },
       },
       {
-        "code": "",
-        "lang": "strudel",
-        "tag": "Code",
-        "via": {
-          "args": "numChords",
-          "inner": {
-            "body": {
-              "code": "",
-              "lang": "strudel",
-              "tag": "Code",
-              "via": {
-                "args": ""<2@3 4>"",
-                "inner": {
-                  "items": [
-                    {
-                      "duration": 0.25,
-                      "note": "sd",
-                      "params": {
-                        "gain": 1,
-                        "velocity": 1,
-                      },
-                      "tag": "Play",
+        "body": {
+          "body": {
+            "code": "",
+            "lang": "strudel",
+            "tag": "Code",
+            "via": {
+              "args": ""<2@3 4>"",
+              "inner": {
+                "items": [
+                  {
+                    "duration": 0.25,
+                    "note": "sd",
+                    "params": {
+                      "gain": 1,
+                      "velocity": 1,
                     },
-                    {
-                      "duration": 0.25,
-                      "note": "hh",
-                      "params": {
-                        "gain": 1,
-                        "velocity": 1,
-                      },
-                      "tag": "Play",
+                    "tag": "Play",
+                  },
+                  {
+                    "duration": 0.25,
+                    "note": "hh",
+                    "params": {
+                      "gain": 1,
+                      "velocity": 1,
                     },
-                  ],
-                  "tag": "Cycle",
-                },
-                "method": "fast",
+                    "tag": "Play",
+                  },
+                ],
+                "tag": "Cycle",
               },
+              "method": "fast",
             },
-            "key": "bank",
-            "rawArgs": ""RolandTR707"",
-            "tag": "Param",
-            "userMethod": "bank",
-            "value": "RolandTR707",
           },
-          "method": "slow",
+          "key": "bank",
+          "rawArgs": ""RolandTR707"",
+          "tag": "Param",
+          "userMethod": "bank",
+          "value": "RolandTR707",
         },
+        "factor": 4,
+        "tag": "Slow",
+        "userMethod": "slow",
       },
     ],
     "userMethod": "stack",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-141-arith-rhs parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "code": "",
+    "lang": "strudel",
+    "tag": "Code",
+    "via": {
+      "args": "172/4",
+      "inner": {
+        "duration": 1,
+        "note": "bd",
+        "params": {
+          "gain": 1,
+          "s": "bd",
+          "velocity": 1,
+        },
+        "tag": "Play",
+      },
+      "method": "cpm",
+    },
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-141-arith-unreferenced parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "duration": 1,
+    "note": "bd",
+    "params": {
+      "gain": 1,
+      "s": "bd",
+      "velocity": 1,
+    },
+    "tag": "Play",
+  },
+  "tag": "Track",
+  "trackId": "d1",
+}
+`;
+
+exports[`strudel.cc parity corpus — structural IR shape > bakery-141-binding-arg-text parses to a stable IR shape 1`] = `
+{
+  "body": {
+    "body": {
+      "duration": 1,
+      "note": "bd",
+      "params": {
+        "gain": 1,
+        "s": "bd",
+        "velocity": 1,
+      },
+      "tag": "Play",
+    },
+    "factor": 4,
+    "tag": "Slow",
+    "userMethod": "slow",
   },
   "tag": "Track",
   "trackId": "d1",

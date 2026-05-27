@@ -2263,3 +2263,110 @@ the capture creates a new IR projection layer.
   section)
 - `.planning/phases/20-musician-timeline/20-21-SUMMARY.md` (the PV54
   NOT-triggered confirmation under "Catalogue updates")
+
+## PV55 — A real-world coverage % must be measured against a distribution sample, never a fixed-offset window
+
+**Claim:** any metric that claims to describe behaviour "across the
+wild" (real-world parity %, crash-free rate, the fraction of community
+code that parses) MUST be computed from a sample that varies across the
+distribution — multiple windows, a randomized draw, or a large single
+page — NEVER from a deterministic fixed slice (`ORDER BY x LIMIT n
+OFFSET 0`, the first n files alphabetically, a fixed seed). A fixed
+slice is a WINDOW; its % describes the window, not the population. The
+harness that computes the metric MUST expose the sampling parameter
+(offset / seed / N) so the distribution is measurable — a metric you
+can only compute one way is a metric you cannot trust.
+
+**Why:** a deterministic pull re-reads the same rows every run, so the
+metric is stable but unrepresentative. Gap classes outside the window
+are invisible — including classes previously marked "closed" against a
+fixed-window exemplar (the #141/#140 binding-ref class was closed, then
+found at 50% of fallbacks once the window moved). Optimizing the visible
+window to a milestone (100%) produces a false "done" signal; the real
+distribution coverage can be 10+ points lower (Stave: 100% window vs
+90.4% N=500).
+
+**Span:** the parity-bakery harness (`packages/app/scripts/parity-
+bakery.mjs`) + every downstream claim of "real-world parity is X%" in
+SUMMARY docs, memory, and roadmap decisions. Any future coverage metric
+(test-corpus pass rate, fuzz crash-free %, etc.) inherits this
+invariant.
+
+**Maintained by:** (1) the `--offset` parameter on parity-bakery.mjs
+(merged PR #166) — the run header flags offset=0 as "the historically-
+pinned window; NOT the full distribution"; (2) the discipline that any
+"parity is X%" claim cites N + the sampling method (window vs sweep vs
+random) — a bare "100%" with no sampling provenance is suspect; (3) the
+sweep practice: step `--offset 0,N,2N,…` or pull a large single page,
+report aggregate + per-window spread.
+
+**Breaks when:** (a) a coverage % is reported from a single fixed window
+without sampling provenance (the 2026-05-22 finding — six phases of
+"parity %" were all offset=0); (b) a "resample" that returns identical
+rows is mistaken for distribution validation (it only proves
+determinism); (c) a single random draw is treated as the distribution
+(one draw has variance — a low draw reads as regression, a high draw
+re-inflates false confidence).
+
+**Sister invariant:** the 20-14 Bakery reality check ("curated-corpus
+parity over-states real-world parity ~2:1") is the SAME claim at the
+curated-vs-wild sample layer. PV55 generalizes it: ANY fixed sample
+over-states distribution coverage. Pairs with hetvabhasa **P71**
+(fixed-window measurement over-states distribution coverage — the error
+pattern PV55 is the invariant-defense against).
+
+**REF:**
+- `packages/app/scripts/parity-bakery.mjs` (the `--offset` sweep
+  parameter; PR #166, commit `6131e5f`, on main `7ebcef7`)
+- https://github.com/MrityunjayBhardwaj/stave-code/issues/165 (the
+  N=500 distribution finding: 90.4% true vs 100% window; ranked
+  gap-class backlog)
+- `memory/project_phase_20_musician_timeline.md` (the corrected 90.4%
+  distribution number + the harness-blind-spot lesson)
+- hetvabhasa P71 (the paired error pattern)
+
+---
+
+## PV49/PV53 addendum (20-22, CANDIDATE) — textual raw-RHS substitution may target ONLY value-operands + round-trip via.args, NEVER a loc-bearing re-parse at the use site
+
+**STATUS:** CANDIDATE (single occurrence — promote to a full PV on
+recurrence per dharana-spec; for now this addendum + memory carry it).
+
+**ORIGIN:** Phase 20-22 Wave B (#141 D-01). The `substituteBoundIdentInArg`
+primitive replaces a bound-literal ident in a method arg with the binding's
+raw RHS text (`via.raw`). The F2 pre-mortem (RESEARCH §F2) named the precise
+loc-fidelity hazard: a naive `args.replace(ident, raw)` re-parsed with
+use-site offsets computes every derived `loc` against a string that no
+longer matches the user's source ("right tokens, wrong absolute index").
+
+**WHY:** without this fence, textual substitution silently breaks PV49
+loc-additivity — the IR-shape snapshot stays green (it strips loc) while
+runtime click-to-source / highlight-on-event drifts. The loc-fidelity
+snapshot is the only gate that catches it. Removing the fence reopens the
+exact 20-15/20-16 silent-loc-drift class.
+
+**HOW:** the primitive's output is consumed in EXACTLY TWO loc-safe
+positions:
+  (1) numeric value operands of recognised arms (`parseFloat`/`parseInt`)
+      — the parsed scalar carries NO loc; the tag's loc is the unchanged
+      `callSiteRange`; the substituted text NEVER becomes a loc anchor; and
+  (2) the `wrapAsOpaque` round-trip `via.args` string — a code-invariance
+      string, NOT a loc anchor (`callSiteRange` is computed independently
+      of `args` at the pre-applyMethod call-site).
+It is FORBIDDEN at position (3): routing a substituted string into a
+loc-bearing mini-notation re-parse at the use site. String→mini-leaf cases
+(`n(stringBinding)`) ALREADY structure via the existing subtree splice
+(parseStrudel.ts:1131/1248/1430) — that path carries the DEFINITION-SITE
+loc and is left untouched.
+
+**OBSERVED (the proof the fence held):** after wiring, the loc-fidelity
+snapshot over all 50 pre-existing fixtures showed ZERO `"text"` field
+changes — only tag-name changes (`Code`→`Slow`). Every
+`src.slice(loc.start, loc.end)` still byte-matched the original source.
+The empty-`"text"`-diff is the authoritative STOP gate for this class.
+
+**REF:** PV49 (loc-additivity substrate), PV53 (binding substitution =
+optional-arg threading + bounded fixpoint), PV52 (the `'literal' in via`
+discriminated-union guard the primitive's single new `bindings.get()`
+reader honors), hetvabhasa P70/PK18 (cascade discipline — the F2 fence
+was anticipated, not rediscovered through failure).

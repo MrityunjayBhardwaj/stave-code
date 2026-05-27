@@ -9,12 +9,20 @@ import { classifyLiteralRhs } from '../parseStrudel'
  * matcher line is what keeps "substitute a literal as term-splicing" from
  * silently becoming "evaluate an expression on the parser side".
  *
- * Loosening the regex (e.g. adding `\s` or `[+\-]`) MUST break the
- * boundary cases below — they are the matcher-line guarantee:
- *   - `4 + 1` is an expression, not a literal → null
- *   - templates / calls / arrays / arrow / concat → null
+ * The matcher-line guarantee (still LOCKED — substitute, NEVER evaluate):
  *   - `via.raw` is byte-equal to the TRIMMED RHS for every literal case
- *     (term-splicing, never evaluation)
+ *     (term-splicing, never evaluation — `172/4` stays the string, we
+ *     never compute `43`)
+ *   - templates / calls / arrays / arrow / concat / operand-idents → null
+ *
+ * Phase 20-22 D-02 (the verdict lever) WIDENED the matcher to an
+ * ENUMERATED arithmetic grammar: number literals joined by exactly the
+ * four operators `/ * + -` (optional inter-token spaces) now classify as
+ * literals whose `via.raw` is the verbatim source. So `4 + 1`, `4+1`,
+ * `1 - 1`, `172/4` moved from negative → positive (the arithmetic arm).
+ * The grammar stays CLOSED: parens, calls, operand identifiers (`bpm/2`),
+ * `${}`-templates, and operators outside the set (`**`/`%`/`<<`) remain
+ * null. THAT closure is now the matcher-line guarantee these tests pin.
  *
  * D-1a ships the type widen + this helper. D-1b (this file) locks the
  * contract. E-1 wires it into buildBindingMap. The single named home
@@ -33,6 +41,14 @@ describe('classifyLiteralRhs — STRICT literal recognition (20-17 G3 / D-02 COR
       { rhs: '"bd"', expectedRaw: '"bd"' },
       // Plain single-quoted — `^'[^']*'$`
       { rhs: "'<sd hh>'", expectedRaw: "'<sd hh>'" },
+      // Phase 20-22 D-02 — enumerated arithmetic arm (`/ * + -` between
+      // number tokens; raw is verbatim, NEVER evaluated to a result).
+      { rhs: '172/4', expectedRaw: '172/4' },
+      { rhs: '121.9/60/4', expectedRaw: '121.9/60/4' },
+      { rhs: '4 + 1', expectedRaw: '4 + 1' },
+      { rhs: '4+1', expectedRaw: '4+1' },
+      { rhs: '1 - 1', expectedRaw: '1 - 1' },
+      { rhs: '2*3', expectedRaw: '2*3' },
     ]
 
     for (const { rhs, expectedRaw } of positives) {
@@ -70,10 +86,24 @@ describe('classifyLiteralRhs — STRICT literal recognition (20-17 G3 / D-02 COR
 
   describe('negatives — non-literal RHS returns null (caller keeps bare Code → opaque fence fires)', () => {
     const negatives: string[] = [
-      // Arithmetic — `+` is not in the number regex
-      '4 + 1',
-      '4+1',
-      '1 - 1',
+      // Phase 20-22 D-02 — the CLOSED-grammar boundary (these stay null;
+      // admitting any of them would be the interpreter scope-creep trap):
+      //   - operand identifier (would be a second binding ref, recursive)
+      'bpm/2',
+      'n / 4',
+      //   - parenthesised grouping
+      '(1+2)/3',
+      '(4)',
+      //   - operators outside the enumerated `/ * + -` set
+      '2**3',
+      '10%3',
+      '1<<2',
+      //   - leading / trailing / lone operator
+      '/4',
+      '4/',
+      '*',
+      // String concatenation (operands are quoted strings, not NUM tokens)
+      '"a" + "b"',
       // Template literal
       '`x${n}`',
       // Function call
@@ -84,8 +114,6 @@ describe('classifyLiteralRhs — STRICT literal recognition (20-17 G3 / D-02 COR
       // Array literal
       '[1,2]',
       '[1, 2, 3]',
-      // String concatenation
-      '"a" + "b"',
       // Mini pattern call (a wrapped string, NOT a bare string literal)
       'n("0")',
       // Identifier reference (E-1 G2 territory — handled by bound-ident-root, not by literal classification)

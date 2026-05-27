@@ -4633,15 +4633,30 @@ function wrapAsOpaque(inner, method, args2, callSiteRange) {
   };
 }
 __name(wrapAsOpaque, "wrapAsOpaque");
+var NUM = String.raw`-?\d+(?:\.\d+)?`;
+var ARITH_RHS = new RegExp(`^${NUM}(?:[ \\t]*[/*+\\-][ \\t]*${NUM})+$`);
 function classifyLiteralRhs(rhs) {
   const t = rhs.trim();
   const isNum = /^-?\d+(\.\d+)?$/.test(t);
   const isDq = /^"[^"]*"$/.test(t);
   const isSq = /^'[^']*'$/.test(t);
-  if (!(isNum || isDq || isSq)) return null;
+  const isArith = ARITH_RHS.test(t);
+  if (!(isNum || isDq || isSq || isArith)) return null;
   return { tag: "Code", code: t, lang: "strudel", via: { literal: true, raw: t } };
 }
 __name(classifyLiteralRhs, "classifyLiteralRhs");
+function substituteBoundIdentInArg(args2, bindings) {
+  if (!bindings) return args2;
+  const t = args2.trim();
+  if (!/^[A-Za-z_$][\w$]*$/.test(t)) return args2;
+  const node = bindings.get(t);
+  if (!node) return args2;
+  if (node.tag === "Code" && node.via !== void 0 && "literal" in node.via) {
+    return node.via.raw;
+  }
+  return args2;
+}
+__name(substituteBoundIdentInArg, "substituteBoundIdentInArg");
 function stripParserPrelude(code) {
   const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
   const GUARDED_BOOT_RE = /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/;
@@ -5303,21 +5318,22 @@ function applyChain(ir, chain, baseOffset = 0, bindings) {
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], bindings) {
+  const subbedArgs = substituteBoundIdentInArg(args2, bindings);
   switch (method) {
     case "fast": {
-      const n = parseFloat(args2.trim());
+      const n = parseFloat(subbedArgs.trim());
       if (!isNaN(n)) return IR.fast(n, ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "slow": {
-      const n = parseFloat(args2.trim());
+      const n = parseFloat(subbedArgs.trim());
       if (!isNaN(n)) return IR.slow(n, ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "every": {
       const [nStr, transformStr] = splitFirstArg(args2);
       const n = parseInt(nStr.trim(), 10);
-      if (isNaN(n)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(n)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.every(n, transform, ir, tagMeta(method, callSiteRange));
@@ -5329,7 +5345,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "sometimesBy": {
       const [pStr, transformStr] = splitFirstArg(args2);
       const p = parseFloat(pStr.trim());
-      if (isNaN(p)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(p)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.choice(p, transform, ir, tagMeta(method, callSiteRange));
@@ -5337,11 +5353,11 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "mask": {
       const gateMatch = args2.trim().match(/^"([^"]*)"$/);
       if (gateMatch) return IR.when(gateMatch[1], ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "layer": {
       const argList = splitArgs(args2);
-      if (argList.length === 0) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (argList.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const tracks = [];
       for (const funcStr of argList) {
         const trimmed = funcStr.trim();
@@ -5364,7 +5380,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "chunk": {
       const [nStr, transformStr] = splitFirstArg(args2);
       const n = parseInt(nStr.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const transformOffset = transformStr ? offsetOfSubArg(args2, transformStr, baseOffset) : baseOffset;
       const transform = transformStr ? parseTransform(transformStr.trim(), ir, transformOffset, bindings) : ir;
       return IR.chunk(n, transform, ir, tagMeta(method, callSiteRange));
@@ -5373,13 +5389,13 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       return IR.degrade(0.5, ir, tagMeta(method, callSiteRange));
     }
     case "degradeBy": {
-      const amount = parseFloat(args2.trim());
-      if (isNaN(amount)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const amount = parseFloat(subbedArgs.trim());
+      if (isNaN(amount)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.degrade(1 - amount, ir, tagMeta(method, callSiteRange));
     }
     case "late": {
-      const t = parseFloat(args2.trim());
-      if (isNaN(t)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const t = parseFloat(subbedArgs.trim());
+      if (isNaN(t)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.late(t, ir, tagMeta(method, callSiteRange));
     }
     case "jux": {
@@ -5398,14 +5414,14 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "ply": {
       const trimmed = args2.trim();
       const n = Number(trimmed);
-      if (!Number.isInteger(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (!Number.isInteger(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       if (n === 1) return ir;
       return IR.ply(n, ir, tagMeta(method, callSiteRange));
     }
     case "off": {
       const [tStr, transformStr] = splitFirstArg(args2);
       const t = parseFloat(tStr.trim());
-      if (isNaN(t)) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (isNaN(t)) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const tStartAbs = offsetOfSubArg(args2, tStr.trim(), baseOffset);
       const tEndAbs = tStartAbs + tStr.trim().length;
       const lateBody = IR.late(t, ir, {
@@ -5436,16 +5452,16 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "resonance":
     case "lpf":
     case "hpf": {
-      const val = parseFloat(args2.trim());
+      const val = parseFloat(subbedArgs.trim());
       if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "pick": {
       const inner = args2.trim();
-      if (!(inner.startsWith("[") && inner.endsWith("]"))) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (!(inner.startsWith("[") && inner.endsWith("]"))) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const arrayBody = inner.slice(1, -1);
       const elements = splitArgs(arrayBody);
-      if (elements.length === 0) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      if (elements.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const arrayBodyOffsetInArgs = args2.indexOf("[") + 1;
       const arrayBodyOffset = arrayBodyOffsetInArgs >= 1 ? baseOffset + arrayBodyOffsetInArgs : baseOffset;
       const lookup = elements.map((e) => {
@@ -5457,26 +5473,26 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
     case "struct": {
       const gateMatch = args2.trim().match(/^"([^"]*)"$/);
       if (gateMatch) return IR.struct(gateMatch[1], ir, tagMeta(method, callSiteRange));
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
     case "swing": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.swing(n, ir, tagMeta(method, callSiteRange));
     }
     case "shuffle": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.shuffle(n, ir, tagMeta(method, callSiteRange));
     }
     case "scramble": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.scramble(n, ir, tagMeta(method, callSiteRange));
     }
     case "chop": {
-      const n = parseInt(args2.trim(), 10);
-      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, args2, callSiteRange);
+      const n = parseInt(subbedArgs.trim(), 10);
+      if (isNaN(n) || n < 1) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       return IR.chop(n, ir, tagMeta(method, callSiteRange));
     }
     case "p": {
@@ -5486,7 +5502,7 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       );
       const name2 = strMatch?.[1] ?? strMatch?.[2];
       if (!name2) {
-        return wrapAsOpaque(ir, method, args2, callSiteRange);
+        return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
       return IR.track(name2, ir, tagMeta(method, callSiteRange));
     }
@@ -5504,15 +5520,15 @@ function applyMethod(ir, method, args2, baseOffset = 0, callSiteRange = [0, 0], 
       const isSampleKey = method === "s" || method === "bank" || method === "scale";
       const parsed = parseParamArg(args2, isSampleKey, baseOffset);
       if (!parsed) {
-        return wrapAsOpaque(ir, method, args2, callSiteRange);
+        return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
       if (method === "freq" && typeof parsed.value !== "number") {
-        return wrapAsOpaque(ir, method, args2, callSiteRange);
+        return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       }
       return IR.param(method, parsed.value, args2, ir, tagMeta(method, callSiteRange));
     }
     default:
-      return wrapAsOpaque(ir, method, args2, callSiteRange);
+      return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
   }
 }
 __name(applyMethod, "applyMethod");
@@ -24361,13 +24377,13 @@ var NOTE_NAMES2 = {
   a: 9,
   b: 11
 };
-function noteToMidi3(note2) {
+function noteToMidiStrict(note2) {
   if (typeof note2 === "number") return note2;
   const str = note2.toLowerCase().trim();
   const num = Number(str);
   if (!isNaN(num)) return num;
   const match = str.match(/^([a-g])(s|b|#)?(\d+)?$/);
-  if (!match) return MIDDLE_C_MIDI;
+  if (!match) return NaN;
   const [, letter, accidental, octaveStr] = match;
   const base = NOTE_NAMES2[letter];
   const octave = octaveStr !== void 0 ? parseInt(octaveStr) : DEFAULT_OCTAVE;
@@ -24375,6 +24391,11 @@ function noteToMidi3(note2) {
   if (accidental === "s" || accidental === "#") midi += 1;
   if (accidental === "b") midi -= 1;
   return midi;
+}
+__name(noteToMidiStrict, "noteToMidiStrict");
+function noteToMidi3(note2) {
+  const midi = noteToMidiStrict(note2);
+  return Number.isNaN(midi) ? MIDDLE_C_MIDI : midi;
 }
 __name(noteToMidi3, "noteToMidi");
 function midiToFreq5(midi) {
@@ -25057,6 +25078,15 @@ var _ProgramBuilder = class _ProgramBuilder {
     this._currentBuildSeconds = 0;
     this._currentBeat = 0;
     this._schedAheadTime = 0;
+    // SP95(d) #393: scheduler access for build-time sync resolution. When set
+    // (the audio build path wires it before builderFn), `sync` awaits the
+    // scheduler-resolved cue payload mid-build instead of pushing a runtime
+    // step — so the value binds to `e` and post-sync reads (get / e[:val]) run
+    // AFTER the cue fires. Null on manual / capture builders, which keep the
+    // legacy runtime-step path (the QueryInterpreter never wires it, so an
+    // S3 sync loop can't register a phantom waiter through the capture pass).
+    this._syncScheduler = null;
+    this._syncTaskId = null;
     // --- OSC: deferred (issue #196) ---
     /**
      * Builder-captured OSC defaults for the `osc` shorthand. `use_osc`
@@ -25116,7 +25146,15 @@ var _ProgramBuilder = class _ProgramBuilder {
   }
   _pushPlayStep(noteVal, opts) {
     if (noteVal === null || noteVal === void 0 || noteVal === "rest") return;
-    const midi = (typeof noteVal === "string" ? noteToMidi3(noteVal) : noteVal) + this._transpose;
+    let midi;
+    let noteName;
+    if (typeof noteVal === "string") {
+      const resolved = noteToMidiStrict(noteVal);
+      if (Number.isNaN(resolved)) noteName = noteVal;
+      midi = resolved + this._transpose;
+    } else {
+      midi = noteVal + this._transpose;
+    }
     const synth = opts?.synth;
     const srcLine = opts?._srcLine;
     const cleanOpts = { ...this._synthDefaults, ...opts };
@@ -25129,7 +25167,8 @@ var _ProgramBuilder = class _ProgramBuilder {
       note: midi,
       opts: cleanOpts,
       synth: synth ?? this.currentSynth,
-      srcLine
+      srcLine,
+      ...noteName !== void 0 ? { noteName } : {}
     });
   }
   sleep(beats) {
@@ -25238,6 +25277,17 @@ var _ProgramBuilder = class _ProgramBuilder {
     this._schedAheadTime = schedAhead;
     if (bpm !== void 0) this._currentBpm = bpm;
   }
+  /**
+   * SP95(d) #393: give this builder scheduler access so `sync` can await a
+   * cue payload during build (audio path only). The scheduler is the SOLE
+   * resolver — same invariant as scheduleSleep (SV2). Cleared implicitly by
+   * builder recreation each iteration; manual / capture builders never call
+   * this, so their `sync` keeps the legacy runtime-step behavior.
+   */
+  setSyncContext(scheduler, taskId) {
+    this._syncScheduler = scheduler;
+    this._syncTaskId = taskId;
+  }
   /** Read the build-phase beat counter (engine persists this across iterations). */
   get currentBeatRaw() {
     return this._currentBeat;
@@ -25281,6 +25331,12 @@ var _ProgramBuilder = class _ProgramBuilder {
   }
   sync(name2, opts) {
     const bpmSync = opts?.bpm_sync === true;
+    if (!bpmSync && this._syncScheduler && this._syncTaskId !== null) {
+      const taskId = this._syncTaskId;
+      return this._syncScheduler.waitForSync(name2, taskId).then(
+        (payload) => syncArgsToMap(payload.args)
+      );
+    }
     this.steps.push(bpmSync ? { tag: "sync", name: name2, bpmSync: true } : { tag: "sync", name: name2 });
     return this;
   }
@@ -25290,7 +25346,8 @@ var _ProgramBuilder = class _ProgramBuilder {
    * Matches desktop `core.rb:4490-4494`.
    */
   sync_bpm(name2) {
-    return this.sync(name2, { bpm_sync: true });
+    this.steps.push({ tag: "sync", name: name2, bpmSync: true });
+    return this;
   }
   control(nodeRef, params) {
     const p = !this._argBpmScaling ? { ...params, _argBpmScaling: 0 } : params;
@@ -25991,6 +26048,12 @@ var _ProgramBuilder = class _ProgramBuilder {
 };
 __name(_ProgramBuilder, "ProgramBuilder");
 var ProgramBuilder = _ProgramBuilder;
+function syncArgsToMap(args2) {
+  if (args2.length === 0) return {};
+  if (args2.length === 1) return args2[0];
+  return args2;
+}
+__name(syncArgsToMap, "syncArgsToMap");
 
 // ../../../sonicPiWeb/src/engine/config.ts
 var MIXER = {
@@ -26546,6 +26609,11 @@ async function runProgram(program, ctx, fxCounter) {
     switch (step.tag) {
       case "play": {
         if ("on" in step.opts && !step.opts.on) break;
+        if (!Number.isFinite(step.note)) {
+          const reason = step.noteName !== void 0 ? `"${step.noteName}" isn't a valid note name (use e.g. 60, :c4, :eb3)` : `note resolved to ${step.note}. Check for division by zero or invalid arithmetic (e.g. \`play 60 / 0\`).`;
+          ctx.printHandler?.(`[Warning] play skipped \u2014 ${reason}`);
+          break;
+        }
         const audioTime = task.virtualTime + ctx.schedAheadTime;
         const synth = resolveSynthName(step.synth ?? currentSynth);
         const nodeRef = nextNodeRef++;
@@ -29034,6 +29102,15 @@ function isTreeSitterReady() {
   return Parser2 !== null && RubyLanguage !== null;
 }
 __name(isTreeSitterReady, "isTreeSitterReady");
+function findFirstErrorNode(node) {
+  if (node.type === "ERROR" || node.isMissing) return node;
+  for (let i2 = 0; i2 < node.childCount; i2++) {
+    const found = findFirstErrorNode(node.child(i2));
+    if (found) return found;
+  }
+  return null;
+}
+__name(findFirstErrorNode, "findFirstErrorNode");
 function treeSitterTranspile(ruby) {
   if (!isTreeSitterReady()) {
     return { code: "", ok: false, errors: ["tree-sitter not initialized"] };
@@ -29056,6 +29133,12 @@ function treeSitterTranspile(ruby) {
     inthreadLoopCounter: { n: 0 }
   };
   const js = transpileNode(tree.rootNode, ctx);
+  if (errors.length === 0 && tree.rootNode.hasError) {
+    const bad = findFirstErrorNode(tree.rootNode);
+    const line2 = (bad ?? tree.rootNode).startPosition.row + 1;
+    const snippet = (bad?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 50);
+    errors.push(`Syntax error at line ${line2}: your code could not be parsed${snippet ? ` (near \`${snippet}\`)` : ""}`);
+  }
   if (errors.length > 0) {
     return { code: js, ok: false, errors };
   }
@@ -29848,7 +29931,7 @@ function transpileProgram(node, ctx) {
     }
   }
   const topJS = topLevel.map((c) => transpileNode(c, ctx)).filter(Boolean);
-  const bareCtx = { ...ctx, insideLoop: true };
+  const bareCtx = { ...ctx, insideLoop: true, asyncBody: true };
   const bareJS = bareCode.map((c) => "  " + transpileNode(c, bareCtx)).filter((s) => s.trim());
   let topLoopCounter = 0;
   const blockJS = blocks.map((c) => {
@@ -29856,10 +29939,10 @@ function transpileProgram(node, ctx) {
     if (m === "loop") {
       const body2 = c.namedChildren.find((x) => x.type === "do_block" || x.type === "block");
       if (body2) {
-        const bodyCtx = { ...ctx, insideLoop: true };
+        const bodyCtx = { ...ctx, insideLoop: true, asyncBody: true };
         const bodyStr = transpileBlockBody(body2, bodyCtx);
         const name2 = `__loop_${topLoopCounter++}`;
-        return `live_loop("${name2}", (__b) => {
+        return `live_loop("${name2}", async (__b) => {
 ${bodyStr}
 ${ctx.indent}})`;
       }
@@ -29869,7 +29952,7 @@ ${ctx.indent}})`;
   const parts2 = [];
   if (topJS.length > 0) parts2.push(topJS.join("\n"));
   if (bareJS.length > 0) {
-    parts2.push(`live_loop("__run_once", (__b) => {
+    parts2.push(`live_loop("__run_once", async (__b) => {
 ${bareJS.join("\n")}
   __b.stop()
 })`);
@@ -29991,6 +30074,10 @@ ${ctx.indent}}`;
       const prefix = ctx.insideLoop ? "__b." : "";
       const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
       return `${prefix}${cleanName}(${args3})`;
+    }
+    if ((methodName === "sync" || methodName === "sync_bpm") && ctx.asyncBody) {
+      const args3 = argsNode ? transpileArgList(argsNode, ctx) : "";
+      return `await __b.${methodName}(${args3})`;
     }
     if (BUILDER_METHODS.has(methodName)) {
       const prefix = ctx.insideLoop ? "__b." : "";
@@ -30271,10 +30358,10 @@ function transpileLiveLoop(node, argsNode, blockNode, ctx) {
     ctx.errors.push(`Parse error at line ${line2}: live_loop :${name2} is missing 'do ... end' block`);
     return `/* parse error: live_loop :${name2} missing block */`;
   }
-  const bodyCtx = { ...ctx, insideLoop: true };
+  const bodyCtx = { ...ctx, insideLoop: true, asyncBody: true };
   const bodyStr = transpileBlockBody(blockNode, bodyCtx);
   const optsArg = syncName ? `{sync: "${syncName}"}, ` : "";
-  return `live_loop("${name2}", ${optsArg}(__b) => {
+  return `live_loop("${name2}", ${optsArg}async (__b) => {
 ${bodyStr}
 ${ctx.indent}})`;
 }
@@ -32809,6 +32896,23 @@ Valid notes:
 Note: Sharps use "s" (not #), flats use "b".`
     }), "transform")
   },
+  // B9 (#390): `raise`/`fail` are real Ruby keywords we don't support in the
+  // browser sandbox. They transpile to a bare call, so the generic handler below
+  // would frame them as a typo ("raise is not a function"). Name them as
+  // unsupported keywords instead. Must precede the generic "is not a function".
+  {
+    test: /* @__PURE__ */ __name((msg) => /\b(raise|fail) is not a function/i.test(msg), "test"),
+    transform: /* @__PURE__ */ __name((msg) => {
+      const kw = /\bfail is not a function/i.test(msg) ? "fail" : "raise";
+      return {
+        title: `${kw} isn't supported yet`,
+        message: `"${kw}" is a Ruby keyword that isn't available in the browser sandbox yet.
+
+If you want to stop your code, use \`stop\` instead.
+To leave a note for yourself, use a comment (\`# like this\`).`
+      };
+    }, "transform")
+  },
   // Type errors (common JS mistakes)
   {
     test: /* @__PURE__ */ __name((msg) => /is not a function/i.test(msg), "test"),
@@ -33794,6 +33898,10 @@ var _SonicPiEngine = class _SonicPiEngine {
     /** Pending volume to apply when bridge initializes */
     this.pendingVolume = null;
     /** Stored builder functions for capture/query path */
+    // SP95(d) #393: builderFn may be async — an S3 (sync/cue) loop body awaits a
+    // scheduler-resolved sync payload mid-build (matching desktop's blocking sync).
+    // S1/S2 bodies stay synchronous; `await` on their void return is identity, and
+    // the QueryInterpreter path (capture, S1/S2 only) ignores the return value.
     this.loopBuilders = /* @__PURE__ */ new Map();
     /** Per-loop seed counters for deterministic random */
     this.loopSeeds = /* @__PURE__ */ new Map();
@@ -34295,8 +34403,9 @@ var _SonicPiEngine = class _SonicPiEngine {
           this.buildNestingDepth++;
           const prevBuildBuilder = this.currentBuildBuilder;
           this.currentBuildBuilder = builder;
+          builder.setSyncContext(scheduler, name2);
           try {
-            builderFn(builder);
+            await builderFn(builder);
           } finally {
             this.currentBuildBuilder = prevBuildBuilder;
             this.buildNestingDepth--;
