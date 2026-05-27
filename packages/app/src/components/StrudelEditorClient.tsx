@@ -193,8 +193,22 @@ export default function StrudelEditorClient({
   useEffect(() => {
     async function registerAllVizFiles() {
       const allFiles = listWorkspaceFiles();
-      for (const f of allFiles) {
-        if (f.language !== "p5js" && f.language !== "hydra") continue;
+      const vizFiles = allFiles.filter(
+        (f) => f.language === "p5js" || f.language === "hydra",
+      );
+      // Basename (sans extension) of every p5 viz file. When a hydra file
+      // shares a basename with a p5 file (e.g. scope.p5 + scope.hydra), the
+      // bare mode name belongs to the p5 default renderer — register the
+      // hydra one as "<name>:hydra" so inline `.viz("scope")` deterministically
+      // resolves to the p5 preset instead of last-write-wins (#181). This
+      // also keeps inline `.viz("scope")` in lockstep with the `.scope()`
+      // backdrop, which always prefers the p5 file.
+      const baseOf = (p: string) =>
+        p.split("/").pop()!.replace(/\.[^.]+$/, "");
+      const p5Basenames = new Set(
+        vizFiles.filter((f) => f.language === "p5js").map((f) => baseOf(f.path)),
+      );
+      for (const f of vizFiles) {
         let presetId = getPresetIdForFile(f);
         if (!presetId) {
           const baseName = f.path.replace(/\.[^.]+$/, "");
@@ -202,7 +216,13 @@ export default function StrudelEditorClient({
         }
         await flushToPreset(f.id, presetId);
         const preset = await VizPresetStore.get(presetId);
-        if (preset) registerPresetAsNamedViz(preset);
+        if (!preset) continue;
+        const base = baseOf(f.path);
+        const name =
+          f.language === "hydra" && p5Basenames.has(base)
+            ? `${base}:hydra`
+            : preset.name;
+        registerPresetAsNamedViz(preset, name);
       }
     }
     registerAllVizFiles();

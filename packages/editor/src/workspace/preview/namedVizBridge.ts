@@ -45,16 +45,25 @@ import type { VizPreset } from '../../visualizers/vizPreset'
  * Idempotent for same-preset calls: registering the same descriptor
  * twice is a no-op. Registering a DIFFERENT descriptor for the same
  * name replaces the entry (so saves pick up fresh code).
+ *
+ * `name` defaults to `preset.name` but can be overridden to register
+ * under a renderer-qualified key (e.g. `"scope:hydra"`) when two presets
+ * share a basename — see the `mode:renderer` convention in
+ * `resolveDescriptor`. This keeps the bare mode name reserved for the
+ * default renderer instead of last-write-wins between p5 and hydra.
  */
-export function registerPresetAsNamedViz(preset: VizPreset): boolean {
+export function registerPresetAsNamedViz(
+  preset: VizPreset,
+  name: string = preset.name,
+): boolean {
   try {
     const descriptor = compilePreset(preset)
-    registerNamedViz(preset.name, descriptor)
+    registerNamedViz(name, descriptor)
     return true
   } catch {
     // Compile error — drop any stale registration so inline lookups
     // don't return a broken descriptor.
-    unregisterNamedViz(preset.name)
+    unregisterNamedViz(name)
     return false
   }
 }

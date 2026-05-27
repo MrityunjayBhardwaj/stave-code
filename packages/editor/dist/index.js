@@ -23026,13 +23026,13 @@ var P5_VIZ = createCompiledVizProvider({
 });
 
 // src/workspace/preview/namedVizBridge.ts
-function registerPresetAsNamedViz(preset) {
+function registerPresetAsNamedViz(preset, name = preset.name) {
   try {
     const descriptor = compilePreset(preset);
-    registerNamedViz(preset.name, descriptor);
+    registerNamedViz(name, descriptor);
     return true;
   } catch {
-    unregisterNamedViz(preset.name);
+    unregisterNamedViz(name);
     return false;
   }
 }
