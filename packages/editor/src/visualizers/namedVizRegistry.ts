@@ -46,7 +46,34 @@ import type { VizDescriptor } from './types'
 type Listener = () => void
 
 const registry = new Map<string, VizDescriptor>()
+/**
+ * Normalized-name index: `normalizeVizName(name) → exact name`. Lets
+ * `.viz("pianoroll")` resolve to a preset registered as `"Piano Roll"`,
+ * matching the SAME normalization the code-driven backdrop uses
+ * (`toLowerCase().replace(/[\s\-_]/g,"")` — see StaveApp / useVizRefWatcher).
+ * Without it, the bundled `"Piano Roll"` preset was reachable inline only
+ * by its exact display name, while every other standard viz (whose preset
+ * name already equals its canonical id) resolved fine — so inline pianoroll
+ * silently fell through to the built-in sketch and diverged from the
+ * backdrop (P73 / PV56).
+ *
+ * Exact lookups always win over normalized ones (see `getNamedViz`), so a
+ * user preset literally named `"pianoroll"` still shadows `"Piano Roll"`.
+ * When two distinct names normalize to the same key, last-registered wins
+ * — the same last-write-wins the basename de-collision (#181) already
+ * guards against for real clashes.
+ */
+const normIndex = new Map<string, string>()
 const listeners = new Set<Listener>()
+
+/**
+ * Canonical viz-name normalization — case-insensitive, ignores spaces,
+ * hyphens, and underscores. Mirrors the backdrop's normalization so a
+ * single preset answers to every spelling on every surface.
+ */
+export function normalizeVizName(name: string): string {
+  return name.toLowerCase().replace(/[\s\-_]/g, '')
+}
 
 /**
  * Register a descriptor under a user-chosen name. Idempotent — calling
@@ -62,6 +89,7 @@ export function registerNamedViz(
   const existing = registry.get(name)
   if (existing === descriptor) return
   registry.set(name, descriptor)
+  normIndex.set(normalizeVizName(name), name)
   notifyListeners()
 }
 
@@ -72,6 +100,10 @@ export function registerNamedViz(
 export function unregisterNamedViz(name: string): void {
   if (!registry.has(name)) return
   registry.delete(name)
+  // Only drop the normalized index entry if it still points at THIS name —
+  // a different name may have overwritten the shared key after registration.
+  const norm = normalizeVizName(name)
+  if (normIndex.get(norm) === name) normIndex.delete(norm)
   notifyListeners()
 }
 
@@ -82,6 +114,18 @@ export function unregisterNamedViz(name: string): void {
  */
 export function getNamedViz(name: string): VizDescriptor | undefined {
   return registry.get(name)
+}
+
+/**
+ * Look up a descriptor by NORMALIZED name — case/space/hyphen/underscore
+ * insensitive. Returns `undefined` if no registered name normalizes to the
+ * same key. `resolveDescriptor` calls this AFTER an exact `getNamedViz`
+ * miss, so exact names always win. This is the hop that lets inline
+ * `.viz("pianoroll")` reach the bundled `"Piano Roll"` preset.
+ */
+export function getNamedVizByNormalized(name: string): VizDescriptor | undefined {
+  const exactName = normIndex.get(normalizeVizName(name))
+  return exactName ? registry.get(exactName) : undefined
 }
 
 /**
@@ -123,6 +167,7 @@ export function onNamedVizChanged(cb: Listener): () => void {
  */
 export function __resetNamedVizRegistryForTests(): void {
   registry.clear()
+  normIndex.clear()
   listeners.clear()
 }
 

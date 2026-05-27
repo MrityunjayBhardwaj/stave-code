@@ -15652,17 +15652,25 @@ __name(applyPersistedTheme, "applyPersistedTheme");
 
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
+var normIndex = /* @__PURE__ */ new Map();
 var listeners4 = /* @__PURE__ */ new Set();
+function normalizeVizName(name) {
+  return name.toLowerCase().replace(/[\s\-_]/g, "");
+}
+__name(normalizeVizName, "normalizeVizName");
 function registerNamedViz(name, descriptor) {
   const existing = registry.get(name);
   if (existing === descriptor) return;
   registry.set(name, descriptor);
+  normIndex.set(normalizeVizName(name), name);
   notifyListeners();
 }
 __name(registerNamedViz, "registerNamedViz");
 function unregisterNamedViz(name) {
   if (!registry.has(name)) return;
   registry.delete(name);
+  const norm = normalizeVizName(name);
+  if (normIndex.get(norm) === name) normIndex.delete(norm);
   notifyListeners();
 }
 __name(unregisterNamedViz, "unregisterNamedViz");
@@ -15670,6 +15678,11 @@ function getNamedViz(name) {
   return registry.get(name);
 }
 __name(getNamedViz, "getNamedViz");
+function getNamedVizByNormalized(name) {
+  const exactName = normIndex.get(normalizeVizName(name));
+  return exactName ? registry.get(exactName) : void 0;
+}
+__name(getNamedVizByNormalized, "getNamedVizByNormalized");
 function listNamedVizNames() {
   return Array.from(registry.keys());
 }
@@ -15702,7 +15715,7 @@ __name(notifyListeners, "notifyListeners");
 
 // src/visualizers/resolveDescriptor.ts
 function resolveDescriptor(vizId, descriptors) {
-  const named = getNamedViz(vizId);
+  const named = getNamedViz(vizId) ?? getNamedVizByNormalized(vizId);
   if (named) return named;
   const exact = descriptors.find((d) => d.id === vizId);
   if (exact) return exact;

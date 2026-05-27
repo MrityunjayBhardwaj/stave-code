@@ -1616,10 +1616,15 @@ declare const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[];
  * Resolves a viz ID to a VizDescriptor using the "mode:renderer" convention.
  *
  * Resolution order:
- *   1. User-named viz registry — exact name match in the runtime
- *      `namedVizRegistry` (populated by saved viz presets). User intent
- *      wins over built-ins, so a user-saved preset named `"pianoroll"`
- *      shadows the built-in `"pianoroll:hydra"` for their inline usage.
+ *   1. User-named viz registry — exact name match first, then a
+ *      NORMALIZED match (case/space/hyphen/underscore insensitive) in the
+ *      runtime `namedVizRegistry` (populated by saved viz presets). User
+ *      intent wins over built-ins, so a user-saved preset named
+ *      `"pianoroll"` shadows the built-in `"pianoroll:hydra"`. The
+ *      normalized hop is what lets inline `.viz("pianoroll")` reach the
+ *      bundled `"Piano Roll"` preset — the SAME preset the `.pianoroll()`
+ *      backdrop renders — instead of falling through to the built-in
+ *      sketch (P73 / PV56).
  *   2. Exact match on `descriptor.id`
  *      e.g. "pianoroll:hydra" → "pianoroll:hydra"
  *   3. Default renderer — append `":${defaultRenderer}"` from config and retry
