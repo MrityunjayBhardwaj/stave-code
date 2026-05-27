@@ -1,0 +1,71 @@
+import { test, expect, type Page } from '@playwright/test'
+
+// Strudel-official viz methods (#174). Pasted Strudel viz code must work
+// out of the gate, mirroring Strudel's inline-vs-fullscreen semantic:
+//   - `._name()` (underscore) → inline viz zone
+//   - `.name()`  (non-underscore) → Stave backdrop ("set bg") + UI update
+// and NEVER strudel's own fullscreen `#test-canvas` (which Stave doesn't load).
+
+const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+
+async function setCode(page: Page, code: string): Promise<void> {
+  const ok = await page.evaluate((c) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const e = (window as any).monaco?.editor?.getEditors?.()?.[0]
+    if (!e) return false
+    e.getModel()?.setValue(c)
+    return true
+  }, code)
+  expect(ok).toBe(true)
+  await page.waitForTimeout(150)
+}
+
+async function runCode(page: Page): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.focus())
+  await page.keyboard.press(`${MOD}+Enter`)
+  await page.waitForTimeout(2500)
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+  await page.waitForTimeout(1000)
+})
+
+test('non-underscore .scope() pins the backdrop and updates the "set bg" indicator', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', e => errors.push(String(e)))
+
+  await setCode(page, `$: note("c e g").s("sawtooth").scope()`)
+  await runCode(page)
+
+  const bgIndicator = page.locator('[data-pinned]')
+  await expect(bgIndicator).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
+  await expect(bgIndicator).toContainText(/bg:.*scope/i)
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+  // strudel's own fullscreen canvas must NOT be injected
+  expect(await page.locator('canvas#test-canvas').count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test('non-underscore .pianoroll() resolves to "Piano Roll.p5" via normalized basename', async ({ page }) => {
+  await setCode(page, `$: note("c e g").s("sawtooth").pianoroll()`)
+  await runCode(page)
+  const bgIndicator = page.locator('[data-pinned]')
+  await expect(bgIndicator).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
+  await expect(bgIndicator).toContainText(/bg:.*piano/i)
+})
+
+test('underscore ._punchcard() and ._tscope() render inline with no error and no fullscreen canvas', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', e => errors.push(String(e)))
+
+  await setCode(page, `$: note("c e g").s("sawtooth")._punchcard()\n$: s("hh*8")._tscope()`)
+  await runCode(page)
+
+  expect(await page.locator('canvas#test-canvas').count()).toBe(0)
+  // underscore forms are inline only — they must NOT pin the backdrop
+  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false')
+  expect(errors).toEqual([])
+})
