@@ -2519,3 +2519,42 @@ by building with the sibling absent.
   — the opaque-import fix), `packages/app/vercel.json` (the deploy build)
 - Surfaced by the first production deploy of Stave on Vercel (2026-05-27,
   live at stave.live).
+
+## P73 — One concept, two implementations, two consumers → divergence the user reads as "looks different"
+
+**Pattern:** a single user-facing concept (a viz like `pianoroll`) is
+implemented TWICE — a built-in renderer (`DEFAULT_VIZ_DESCRIPTORS` →
+`PianorollSketch`, TS) AND an editable preset file (`Piano Roll.p5`, p5
+code). Two consumers each pick a different one: inline `.viz()` /
+`._name()` resolves via `resolveDescriptor` (named-preset first, else
+built-in); the code-driven `.name()` backdrop renders the preset FILE via
+the preview provider. Same name, different code → different pixels. The
+user reports "inline and bg look different"; the real defect is the
+DUALITY, not either renderer.
+
+The duality is MASKED when the two happen to converge: scope matched only
+because `scope.p5`'s basename already equals the descriptor id `"scope"`
+AND `SCOPE_P5_CODE` reads `stave.analyser` (present in both contexts).
+Pianoroll diverges because the file is named `"Piano Roll"` (≠ id
+`"pianoroll"`) so inline falls to the built-in, and `PIANOROLL_P5_CODE`
+draws notes only from `stave.scheduler`.
+
+**Symptom:** two surfaces that "should" show the same viz show different
+visuals; fixing one surface's resolution just moves the seam to another
+viz.
+
+**Wrong fix (the trap):** patch resolution so both surfaces point at the
+SAME ONE of the two implementations (e.g. register the preset under the
+descriptor id so inline uses it too). This is (a) per-viz whack-a-mole and
+(b) regressed in practice — registering `Piano Roll.p5` under `"pianoroll"`
+blanked BOTH inline and bg (preset needs scheduler data the inline zone
+supplies differently + double-registration mount churn). A SECOND
+resolution tweak after the first didn't fix it is the workaround-cascade
+signal: STOP — the framing ("two implementations is fine, just align the
+pointers") is wrong.
+
+**Real fix:** collapse the duality — ONE implementation per concept, used
+by every render surface. Stave decision 2026-05-28: Model B — the editable
+preset files are the single source of truth; retire the duplicate built-in
+sketches; make presets render in the inline zone too (provide a populated
+scheduler). See PV56.

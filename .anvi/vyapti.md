@@ -2400,3 +2400,39 @@ shared union is the span; the editor-only audit was too narrow.
 
 **REF:** PV54 (the base obligation), hetvabhasa P72 (transform-only tests
 skip tsc), #169 / PR #170, `packages/app/src/components/IRInspectorPanel.tsx:89`.
+
+## PV56 — One viz concept = one implementation, shared by every render surface
+
+**Claim:** each visualization concept (`"pianoroll"`, `"scope"`, …) must
+have EXACTLY ONE implementation, resolved the SAME way by every surface
+that renders it — inline `.viz()` / `._name()` zones, the code-driven
+`.name()` backdrop, and the manual backdrop picker. No surface may carry
+its own private renderer for a concept another surface also renders. The
+moment a concept has two implementations (a built-in sketch AND an
+editable preset), the surfaces drift and the user sees inconsistency
+(P73).
+
+**Why:** divergent renderers for the same name are indistinguishable to
+the user but produce different pixels; consistency can't be enforced by
+patching resolution per-surface (whack-a-mole). A single source of truth
+makes consistency structural, not policed.
+
+**Span:** the viz-resolution boundary — `DEFAULT_VIZ_DESCRIPTORS` (built-in
+sketches, `packages/editor/src/visualizers/defaultDescriptors.ts`), the
+named-viz registry (preset files), `resolveDescriptor` (inline), and the
+backdrop file-mapping (`StaveApp.handleCodeBackdropChange` + the preview
+provider). Currently MISALIGNED: built-ins and presets coexist; inline and
+backdrop resolve differently.
+
+**Target state — Model B (decided 2026-05-28, NOT YET IMPLEMENTED):** the
+editable preset files ARE the implementation; built-in sketches retired or
+demoted to seed content; inline zones provide a populated `stave.scheduler`
+so scheduler-driven preset code (e.g. `PIANOROLL_P5_CODE`) renders inline;
+`resolveDescriptor` and the backdrop both resolve a viz name to the same
+preset. End-user impact: standard viz are editable like any viz file —
+edit `Piano Roll.p5`, it changes everywhere it appears.
+
+**Maintained by:** (NOT YET) retirement of the `DEFAULT_VIZ_DESCRIPTORS`
+sketch duplicates + inline scheduler wiring. Until then scope is
+consistent (both use the `scope.p5` preset — PR #178 commit 5) but
+pianoroll is not (inline = built-in, bg = preset).
