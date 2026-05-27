@@ -2459,3 +2459,63 @@ you can only compute one way is a metric you can't trust.
 - Sister pattern: the 20-14 Bakery reality check (curated corpus
   over-states ~2:1) is the SAME generalization at a different sample
   layer — both are fixed-sample-over-states-distribution.
+
+---
+
+## P72 — The green local signal is not the deploy gate (local FS + transform-only tests hide clean-clone failures)
+
+**Pattern:** `pnpm test` and `pnpm build` pass locally, so the code is
+declared shippable — but the local environment quietly satisfies
+dependencies the real deploy environment (clean clone / CI / Vercel) does
+NOT. Two distinct sub-mechanisms, same root: the local signal measures a
+richer environment than production.
+
+  (a) **Transform-only tests skip type-checking.** Vitest (esbuild/swc
+  transform) runs green without ever running `tsc`. A type error stays
+  latent indefinitely. Only the production build (`next build` → full
+  `tsc`) is the typecheck gate. (Stave: `TAG_COLOR` non-exhaustive over
+  `PatternIR["tag"]` after Signal/Builder were added in 20-18 — green for
+  7 days, surfaced only at the first `next build`, #169.)
+
+  (b) **The local filesystem resolves imports a clean clone can't.** A
+  relative import that escapes the repo into a SIBLING project
+  (`../../../../../../sonicPiWeb/...`) resolves locally because the sibling
+  is on disk, and bundlers happily bundle it. A clean clone has only the
+  one repo → unresolvable → build fails. (Stave: editor
+  `adapter.ts` imported the Sonic Pi engine from the sibling `sonicPiWeb`
+  repo, #171.)
+
+**Symptom:** all local suites + local build green; the FIRST deploy on a
+clean machine (Vercel/CI/a fresh `git clone`) fails — type error, or
+`Could not resolve "<path that climbs out of the repo>"`. "Works on my
+machine" in its purest form.
+
+**Detection (cheap, executed):**
+- Run the REAL build, not just tests: `pnpm --filter @stave/app build`
+  (it runs `tsc`). A green vitest run is not a typecheck.
+- Reproduce the clean clone for portability: move any sibling repo aside
+  (`mv ../sonicPiWeb /tmp/`), then `pnpm turbo run build --filter=@stave/app`
+  must still succeed and emit `packages/app/.next/BUILD_ID`. Restore after.
+- `grep -rn "\.\./\.\./\.\./\.\." packages/*/src` — any import climbing 4+
+  levels is escaping the repo; treat as a portability smell.
+
+**Wrong fix (the trap):** trust the local green; or, when CI fails, add a
+CI-only shim / vendor a stale prebuilt artifact / commit `dist/` and hope
+it stays fresh — papering over the environment gap instead of closing it.
+
+**Right fix:** make the local check match the deploy environment.
+(a) Run `next build` (full `tsc`) before declaring shippable; never rely
+on vitest for type safety. (b) No repo-escaping imports — vendor the dep,
+publish it as a package, or load it via an OPAQUE dynamic import
+(`new Function('m','return import(m)')`) so the bundler can't statically
+resolve the absent sibling (the Stave Sonic Pi decoupling, #172). Verify
+by building with the sibling absent.
+
+**REF:**
+- `memory/feedback_build_gates_vs_local.md` (the working rule)
+- #169 / PR #170 (the latent type error — sub-mechanism a)
+- #171 / PR #172 (the sibling-repo import — sub-mechanism b)
+- `packages/editor/src/engine/sonicpi/adapter.ts` (`loadRawSonicPiEngine`
+  — the opaque-import fix), `packages/app/vercel.json` (the deploy build)
+- Surfaced by the first production deploy of Stave on Vercel (2026-05-27,
+  live at stave.live).

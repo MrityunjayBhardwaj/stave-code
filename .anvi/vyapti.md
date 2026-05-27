@@ -2370,3 +2370,33 @@ optional-arg threading + bounded fixpoint), PV52 (the `'literal' in via`
 discriminated-union guard the primitive's single new `bindings.get()`
 reader honors), hetvabhasa P70/PK18 (cascade discipline — the F2 fence
 was anticipated, not rediscovered through failure).
+
+---
+
+## PV54 addendum (20-22 deploy, 2026-05-27) — the additive-tag FLOOR span reaches APP-SIDE exhaustive `Record<PatternIR["tag"], T>` consumers, not just editor-package switches
+
+**ORIGIN:** The first production `next build` (#169) failed: `TAG_COLOR:
+Record<PatternIR["tag"], string>` in `packages/app/src/components/
+IRInspectorPanel.tsx` was missing `Signal`/`Builder` — the tags 20-18
+added. 20-18's FLOOR-grep audit covered the 11 editor-package exhaustive
+`switch(.tag)` sites but NOT this app-side exhaustive `Record` keyed on
+the tag union.
+
+**WHY:** PV54's obligation ("every new top-level PatternIR `tag` requires
+updating every exhaustive consumer of the tag union") had a span gap — it
+was scoped to the EDITOR package. A `Record<PatternIR["tag"], T>` in the
+APP is equally exhaustive over the union and equally breaks when the union
+grows, but `tsc` only catches it at `next build` (vitest is transform-only
+— see hetvabhasa P72). So the break stayed latent ~7 days until deploy.
+
+**HOW — the widened FLOOR-grep obligation:** when adding a top-level
+PatternIR tag, grep BOTH packages for exhaustive consumers of the union:
+- editor: `switch` over `.tag` (the original 11 sites), AND
+- app: `Record<PatternIR["tag"], …>` / `{ [K in PatternIR["tag"]]: … }` /
+  any object literal keyed by the full tag set (e.g. `TAG_COLOR`).
+The cheap gate is `pnpm --filter @stave/app build` (full `tsc`) — a green
+vitest run does NOT exercise these. Cross-package exhaustiveness over a
+shared union is the span; the editor-only audit was too narrow.
+
+**REF:** PV54 (the base obligation), hetvabhasa P72 (transform-only tests
+skip tsc), #169 / PR #170, `packages/app/src/components/IRInspectorPanel.tsx:89`.
