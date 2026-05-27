@@ -434,6 +434,36 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     [activeProject.id],
   );
 
+  /**
+   * Code-driven backdrop — a non-underscore Strudel viz method (`.scope()`,
+   * `.pianoroll()`, …) in user code sets the project backdrop. The engine
+   * surfaces the resolved renderer id (e.g. "scope", "pianoroll"); we map it
+   * to a project viz FILE because the backdrop is file-keyed.
+   *
+   * Matching is by NORMALIZED basename (lowercase, alphanumerics only) so
+   * `Piano Roll.p5` matches "pianoroll" and `scope.p5` matches "scope".
+   * p5js files win over hydra (the default renderer). No-ops silently when
+   * the project has no matching viz file, or when the resolved backdrop is
+   * already pinned (handleSetAsBackground is idempotent on the shell side).
+   */
+  const handleBackdropVizFromCode = useCallback(
+    (vizId: string) => {
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const target = norm(vizId);
+      const matches = listWorkspaceFiles().filter(
+        (f) =>
+          (f.language === "p5js" || f.language === "hydra") &&
+          norm(f.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
+      );
+      if (matches.length === 0) return; // no viz file for this descriptor
+      const fileId =
+        matches.find((f) => f.language === "p5js")?.id ?? matches[0].id;
+      if (fileId === backgroundFileId) return; // already pinned
+      handleSetAsBackground(fileId);
+    },
+    [backgroundFileId, handleSetAsBackground],
+  );
+
   // Restore the persisted backdrop when the active project changes.
   // Reads the stored fileId from project metadata and pushes it into
   // the shell + local state. Skips the push when nothing is stored or
@@ -1073,6 +1103,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 shellRef={shellRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
+                onBackdropVizRequested={handleBackdropVizFromCode}
                 backgroundCrop={backgroundCrop}
                 onBackgroundFileChange={(_groupId, fileId) => {
                   setBackgroundFileId(fileId);

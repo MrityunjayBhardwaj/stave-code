@@ -139,6 +139,13 @@ interface StrudelEditorClientProps {
   onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
   /** Crop region applied to the pinned backdrop. `null` = full rect. */
   backgroundCrop?: { x: number; y: number; w: number; h: number } | null;
+  /**
+   * Fires after a successful Strudel evaluate when user code called a
+   * non-underscore viz method (`.scope()`, `.pianoroll()`, …). `vizId` is
+   * the resolved Stave renderer id. StaveApp maps it to a project viz file
+   * and pins it as the backdrop. Not called when no such method was used.
+   */
+  onBackdropVizRequested?: (vizId: string) => void;
 }
 
 export default function StrudelEditorClient({
@@ -150,6 +157,7 @@ export default function StrudelEditorClient({
   onCropViz,
   onBackgroundFileChange,
   backgroundCrop,
+  onBackdropVizRequested,
 }: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
@@ -263,6 +271,12 @@ export default function StrudelEditorClient({
   // runtime state (isPlaying/error/bpm/autoRefresh) mirrors runtime events
   // into React state so chromeForTab can read it cheaply.
   const runtimesRef = useRef<Map<string, LiveCodingRuntime>>(new Map());
+  // Latest-value ref: each runtime's onEvaluateSuccess handler is registered
+  // ONCE (runtimes are cached in runtimesRef), so reading the prop directly in
+  // that closure would capture the first-render value. The ref keeps the call
+  // fresh across re-renders without re-creating runtimes.
+  const onBackdropVizRequestedRef = useRef(onBackdropVizRequested);
+  onBackdropVizRequestedRef.current = onBackdropVizRequested;
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
   }>>(new Map());
@@ -422,6 +436,14 @@ export default function StrudelEditorClient({
           // collect is total. Anything thrown here is unexpected — keep
           // the eval-success path quiet.
         }
+
+        // Code-driven backdrop — a non-underscore viz method (`.scope()`,
+        // `.pianoroll()`, …) in user code maps to Stave's backdrop. The
+        // runtime exposes the resolved renderer id; StaveApp resolves it to
+        // a viz file and pins it (the "set bg" UI auto-updates). Read on the
+        // same eval-success edge so it tracks code edits.
+        const backdropViz = runtime.getBackdropVizRequest();
+        if (backdropViz) onBackdropVizRequestedRef.current?.(backdropViz);
       }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {
