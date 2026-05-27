@@ -135,6 +135,14 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
   // pink (#ec4899) or Param's orange (#fb923c). 20-12 design-system pass
   // lands the final swatch token.
   Track:    "var(--ir-track, #94a3b8)",
+  // Phase 20-18 — Signal/Builder Layer-1/2 IR substrate tags. Signal =
+  // continuous signals (sine/perlin/irand/…); Builder = chord/arrange/
+  // cat/transpose construction roots. Distinct placeholder hues (indigo-400
+  // / green-400) that don't collide with neighbours (Cycle #06b6d4,
+  // Play #10b981); the final swatch tokens (--ir-signal / --ir-builder)
+  // land in the design-system pass, same as Track's placeholder.
+  Signal:   "var(--ir-signal, #818cf8)",
+  Builder:  "var(--ir-builder, #4ade80)",
 };
 
 // summarize / children moved to IRInspectorChrome.ts (Phase 20-04 wave δ)
