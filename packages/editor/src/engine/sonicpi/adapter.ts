@@ -13,12 +13,30 @@
  * The adapter knows about the editor: viz, components, highlighting.
  */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — resolved at build time via relative path to sibling project
-import { SonicPiEngine as RawSonicPiEngine } from '../../../../../../sonicPiWeb/src/engine/SonicPiEngine'
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import type { SoundEvent } from '../../../../../../sonicPiWeb/src/engine/SoundEventStream'
+// Sonic Pi's engine lives in the sibling `sonicPiWeb` repo, NOT vendored into
+// stave-code yet (#171). A static import broke the production build on a clean
+// clone (the sibling isn't there). Until sonicPiWeb is published as a package,
+// the engine is loaded via an OPAQUE dynamic import — esbuild can't resolve the
+// path at build time, so the bundle builds anywhere — and the Sonic Pi
+// templates are hidden (packages/app/src/templates.ts) so this path is never
+// exercised in shipped builds. To restore Sonic Pi: vendor/package sonicPiWeb
+// and swap loadRawSonicPiEngine() back to a static import.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RawSonicPiEngine = any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SoundEvent = any
+
+const SONICPI_ENGINE_MODULE = '../../../../../../sonicPiWeb/src/engine/SonicPiEngine'
+
+/** Load the sibling Sonic Pi engine class via an opaque dynamic import so the
+ *  bundler does not statically resolve the (unvendored) sibling path. Mirrors
+ *  the `importFromCDN` bundler-proof pattern below. */
+async function loadRawSonicPiEngine(): Promise<{ new (o: unknown): RawSonicPiEngine }> {
+  const load = new Function('m', 'return import(m)') as (
+    m: string,
+  ) => Promise<{ SonicPiEngine: { new (o: unknown): RawSonicPiEngine } }>
+  return (await load(SONICPI_ENGINE_MODULE)).SonicPiEngine
+}
 
 import type { LiveCodingEngine, EngineComponents } from '../LiveCodingEngine'
 import { HapStream } from '../HapStream'
@@ -150,7 +168,8 @@ export class SonicPiEngine implements LiveCodingEngine {
       // Silent mode — engine works without audio
     }
 
-    this.raw = new RawSonicPiEngine({
+    const RawEngineClass = await loadRawSonicPiEngine()
+    this.raw = new RawEngineClass({
       ...this.options,
       bridge: SuperSonicClass ? { SuperSonicClass: SuperSonicClass as never } : {},
     })
