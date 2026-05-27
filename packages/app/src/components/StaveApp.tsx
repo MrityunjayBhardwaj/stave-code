@@ -435,19 +435,26 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   );
 
   /**
-   * Code-driven backdrop — a non-underscore Strudel viz method (`.scope()`,
-   * `.pianoroll()`, …) in user code sets the project backdrop. The engine
-   * surfaces the resolved renderer id (e.g. "scope", "pianoroll"); we map it
-   * to a project viz FILE because the backdrop is file-keyed.
+   * Code-driven backdrop — CODE IS THE SOURCE OF TRUTH. Fires on every
+   * Strudel eval with the code's current backdrop viz, or `null` when the
+   * code has no non-underscore viz method:
+   *   - renderer id ("scope", "pianoroll", …) → pin the matching viz file
+   *   - null → clear the backdrop (removing `.scope()` un-pins it; this also
+   *     overrides a manually-picked backdrop on the next eval, by design)
    *
-   * Matching is by NORMALIZED basename (lowercase, alphanumerics only) so
-   * `Piano Roll.p5` matches "pianoroll" and `scope.p5` matches "scope".
-   * p5js files win over hydra (the default renderer). No-ops silently when
-   * the project has no matching viz file, or when the resolved backdrop is
-   * already pinned (handleSetAsBackground is idempotent on the shell side).
+   * The backdrop is file-keyed, so we map the renderer id to a project viz
+   * FILE by NORMALIZED basename (lowercase, alphanumerics only) — `Piano
+   * Roll.p5` matches "pianoroll", `scope.p5` matches "scope". p5js wins over
+   * hydra. No-ops when nothing changes (idempotent — no churn in live mode)
+   * or when the project has no matching viz file (leaves the backdrop as-is
+   * rather than clearing, so a typo'd viz name doesn't blank the screen).
    */
-  const handleBackdropVizFromCode = useCallback(
-    (vizId: string) => {
+  const handleCodeBackdropChange = useCallback(
+    (vizId: string | null) => {
+      if (vizId === null) {
+        if (backgroundFileId !== null) handleSetAsBackground(null);
+        return;
+      }
       const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
       const target = norm(vizId);
       const matches = listWorkspaceFiles().filter(
@@ -455,7 +462,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           (f.language === "p5js" || f.language === "hydra") &&
           norm(f.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
       );
-      if (matches.length === 0) return; // no viz file for this descriptor
+      if (matches.length === 0) return; // no viz file — leave backdrop as-is
       const fileId =
         matches.find((f) => f.language === "p5js")?.id ?? matches[0].id;
       if (fileId === backgroundFileId) return; // already pinned
@@ -1103,7 +1110,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 shellRef={shellRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
-                onBackdropVizRequested={handleBackdropVizFromCode}
+                onCodeBackdropChange={handleCodeBackdropChange}
                 backgroundCrop={backgroundCrop}
                 onBackgroundFileChange={(_groupId, fileId) => {
                   setBackgroundFileId(fileId);

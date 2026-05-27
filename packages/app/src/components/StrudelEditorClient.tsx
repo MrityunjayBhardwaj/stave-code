@@ -140,12 +140,14 @@ interface StrudelEditorClientProps {
   /** Crop region applied to the pinned backdrop. `null` = full rect. */
   backgroundCrop?: { x: number; y: number; w: number; h: number } | null;
   /**
-   * Fires after a successful Strudel evaluate when user code called a
-   * non-underscore viz method (`.scope()`, `.pianoroll()`, …). `vizId` is
-   * the resolved Stave renderer id. StaveApp maps it to a project viz file
-   * and pins it as the backdrop. Not called when no such method was used.
+   * Fires after EVERY successful Strudel evaluate with the code's current
+   * backdrop viz — the resolved renderer id of a non-underscore viz method
+   * (`.scope()`, `.pianoroll()`, …), or `null` when the code has none. Code
+   * is the source of truth: StaveApp pins the resolved viz file as the
+   * backdrop, or clears the backdrop when `null` (so removing the method
+   * un-pins it). Fires on every eval so the backdrop tracks code edits.
    */
-  onBackdropVizRequested?: (vizId: string) => void;
+  onCodeBackdropChange?: (vizId: string | null) => void;
 }
 
 export default function StrudelEditorClient({
@@ -157,7 +159,7 @@ export default function StrudelEditorClient({
   onCropViz,
   onBackgroundFileChange,
   backgroundCrop,
-  onBackdropVizRequested,
+  onCodeBackdropChange,
 }: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
@@ -275,8 +277,8 @@ export default function StrudelEditorClient({
   // ONCE (runtimes are cached in runtimesRef), so reading the prop directly in
   // that closure would capture the first-render value. The ref keeps the call
   // fresh across re-renders without re-creating runtimes.
-  const onBackdropVizRequestedRef = useRef(onBackdropVizRequested);
-  onBackdropVizRequestedRef.current = onBackdropVizRequested;
+  const onCodeBackdropChangeRef = useRef(onCodeBackdropChange);
+  onCodeBackdropChangeRef.current = onCodeBackdropChange;
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
   }>>(new Map());
@@ -438,12 +440,12 @@ export default function StrudelEditorClient({
         }
 
         // Code-driven backdrop — a non-underscore viz method (`.scope()`,
-        // `.pianoroll()`, …) in user code maps to Stave's backdrop. The
-        // runtime exposes the resolved renderer id; StaveApp resolves it to
-        // a viz file and pins it (the "set bg" UI auto-updates). Read on the
-        // same eval-success edge so it tracks code edits.
-        const backdropViz = runtime.getBackdropVizRequest();
-        if (backdropViz) onBackdropVizRequestedRef.current?.(backdropViz);
+        // `.pianoroll()`, …) maps to Stave's backdrop; its absence clears it.
+        // Code is the source of truth, so we forward on EVERY eval (null
+        // included) — removing the method un-pins the backdrop on next eval.
+        // StaveApp resolves the id to a viz file (or clears) and the "set bg"
+        // UI auto-updates. Idempotent on StaveApp's side (no churn in live mode).
+        onCodeBackdropChangeRef.current?.(runtime.getBackdropVizRequest());
       }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {

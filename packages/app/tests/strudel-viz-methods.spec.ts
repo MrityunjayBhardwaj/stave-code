@@ -57,6 +57,21 @@ test('non-underscore .pianoroll() resolves to "Piano Roll.p5" via normalized bas
   await expect(bgIndicator).toContainText(/bg:.*piano/i)
 })
 
+test('removing the non-underscore method clears the backdrop (code is source of truth)', async ({ page }) => {
+  await setCode(page, `$: note("c e g").s("sawtooth").scope()`)
+  await runCode(page)
+  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
+
+  // Remove the .scope() call. Manual Ctrl+Enter while playing is a no-op
+  // in this codebase (re-eval comes from live mode or stop+play), so force
+  // a fresh evaluate via stop+play to verify the clear semantic.
+  await setCode(page, `$: note("c e g").s("sawtooth")`)
+  await page.keyboard.press(`${MOD}+.`) // stop
+  await page.waitForTimeout(500)
+  await runCode(page) // play → fresh eval
+  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false', { timeout: 6000 })
+})
+
 test('underscore ._punchcard() and ._tscope() render inline with no error and no fullscreen canvas', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))
