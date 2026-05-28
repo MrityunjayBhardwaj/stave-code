@@ -301,6 +301,363 @@ function tabFileName(tab: WorkspaceTab): string {
   return parts[parts.length - 1]
 }
 
+interface GroupTabBarProps {
+  group: WorkspaceGroupState
+  canClose: boolean
+  onTabBarDragOver: (e: React.DragEvent<HTMLDivElement>) => void
+  onTabBarDrop: (e: React.DragEvent<HTMLDivElement>) => void
+  onTabClick: (tabId: string) => void
+  onTabClose: (tabId: string) => void
+  onTabDragStart: (e: React.DragEvent<HTMLDivElement>, tab: WorkspaceTab) => void
+  onTabContextMenu?: (tab: WorkspaceTab, x: number, y: number) => void
+  onTabPromote: (tabId: string) => void
+  onSplitRight: () => void
+  onSplitDown: () => void
+  onCloseGroup: () => void
+}
+
+// Subcomponent so each group owns its scroll-overflow state and
+// scrollIntoView refs — hooks can't live inside a `.map` callback.
+function GroupTabBar({
+  group,
+  canClose,
+  onTabBarDragOver,
+  onTabBarDrop,
+  onTabClick,
+  onTabClose,
+  onTabDragStart,
+  onTabContextMenu,
+  onTabPromote,
+  onSplitRight,
+  onSplitDown,
+  onCloseGroup,
+}: GroupTabBarProps): React.ReactElement {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const activeTabElRef = useRef<HTMLDivElement | null>(null)
+  const menuBtnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [overflow, setOverflow] = useState<{ left: boolean; right: boolean }>({
+    left: false,
+    right: false,
+  })
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  // Recompute overflow flags whenever the strip resizes, scrolls, or the
+  // tab list changes. ResizeObserver covers parent resize and tab insertion
+  // (which changes scrollWidth) — the scroll listener covers user scrolling.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = (): void => {
+      const left = el.scrollLeft > 0
+      const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+      setOverflow((prev) =>
+        prev.left === left && prev.right === right ? prev : { left, right },
+      )
+    }
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    ro?.observe(el)
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro?.disconnect()
+    }
+  }, [group.tabs.length])
+
+  // Scroll the active tab into view whenever activation changes. inline:
+  // 'nearest' is a no-op when the element is already fully visible, so this
+  // doesn't fight the user's manual scrolling.
+  useEffect(() => {
+    const el = activeTabElRef.current
+    if (!el || typeof el.scrollIntoView !== 'function') return
+    el.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [group.activeTabId])
+
+  // Close the overflow menu on outside click or Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDoc = (e: MouseEvent): void => {
+      const t = e.target as Node | null
+      if (menuRef.current?.contains(t)) return
+      if (menuBtnRef.current?.contains(t)) return
+      setMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
+
+  const hasOverflow = overflow.left || overflow.right
+
+  return (
+    <div
+      data-workspace-group-tabbar={group.id}
+      onDragOver={onTabBarDragOver}
+      onDrop={onTabBarDrop}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        background: 'var(--surface)',
+        borderBottom: '1px solid var(--border)',
+        height: 30,
+        flexShrink: 0,
+      }}
+    >
+      {/* Scrollable strip wrapper — positioning context for fade overlays */}
+      <div
+        style={{
+          position: 'relative',
+          flex: 1,
+          minWidth: 0,
+          height: '100%',
+        }}
+      >
+        <div
+          ref={scrollRef}
+          data-workspace-tab-strip={group.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
+          {group.tabs.map((tab) => {
+            const isActive = tab.id === group.activeTabId
+            const isPreview =
+              tab.kind === 'editor' && (tab as { preview?: boolean }).preview === true
+            return (
+              <div
+                key={tab.id}
+                ref={isActive ? activeTabElRef : undefined}
+                data-workspace-tab={tab.id}
+                data-tab-kind={tab.kind}
+                data-tab-active={isActive ? 'true' : 'false'}
+                data-tab-preview={isPreview ? 'true' : 'false'}
+                draggable
+                onDragStart={(e) => onTabDragStart(e, tab)}
+                onClick={() => onTabClick(tab.id)}
+                onContextMenu={(e) => {
+                  if (!onTabContextMenu) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onTabContextMenu(tab, e.clientX, e.clientY)
+                }}
+                onDoubleClick={() => {
+                  if (isPreview) onTabPromote(tab.id)
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  padding: '0 8px',
+                  height: '100%',
+                  cursor: 'grab',
+                  background: isActive ? 'var(--background)' : 'transparent',
+                  borderRight: '1px solid var(--border)',
+                  color: isActive
+                    ? 'var(--foreground)'
+                    : 'var(--foreground-muted)',
+                  fontSize: 11,
+                  fontStyle: isPreview ? 'italic' : 'normal',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'none',
+                  flexShrink: 0,
+                }}
+              >
+                <span>
+                  {tab.kind === 'preview' ? '🎥 ' : ''}
+                  {tabFileName(tab)}
+                </span>
+                <button
+                  data-testid={`tab-close-${tab.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onTabClose(tab.id)
+                  }}
+                  style={closeBtnStyle}
+                >
+                  {'×'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+        {/* Fade cues — only render on the side that has hidden tabs */}
+        {overflow.left && (
+          <div
+            aria-hidden
+            data-testid={`tab-strip-fade-left-${group.id}`}
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: 18,
+              pointerEvents: 'none',
+              background:
+                'linear-gradient(to right, var(--surface), transparent)',
+            }}
+          />
+        )}
+        {overflow.right && (
+          <div
+            aria-hidden
+            data-testid={`tab-strip-fade-right-${group.id}`}
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              right: 0,
+              width: 18,
+              pointerEvents: 'none',
+              background:
+                'linear-gradient(to left, var(--surface), transparent)',
+            }}
+          />
+        )}
+      </div>
+
+      {/* Pinned action cluster — never scrolls off-screen */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          padding: '0 4px',
+          flexShrink: 0,
+          position: 'relative',
+        }}
+      >
+        {hasOverflow && (
+          <button
+            ref={menuBtnRef}
+            data-testid={`tab-overflow-menu-${group.id}`}
+            onClick={() => setMenuOpen((v) => !v)}
+            title="Show all tabs"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            style={actionBtnStyle}
+          >
+            {'˅'}
+          </button>
+        )}
+        <button
+          data-testid={`group-split-${group.id}`}
+          onClick={onSplitRight}
+          title="Split right (⌘\\)"
+          style={actionBtnStyle}
+        >
+          {'│'}
+        </button>
+        <button
+          data-testid={`group-split-down-${group.id}`}
+          onClick={onSplitDown}
+          title="Split down (⌘⇧\\)"
+          style={actionBtnStyle}
+        >
+          {'─'}
+        </button>
+        {canClose && (
+          <button
+            data-testid={`group-close-${group.id}`}
+            onClick={onCloseGroup}
+            title="Close group"
+            style={actionBtnStyle}
+          >
+            {'×'}
+          </button>
+        )}
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            role="menu"
+            data-testid={`tab-overflow-list-${group.id}`}
+            style={{
+              position: 'absolute',
+              top: '100%',
+              right: 4,
+              zIndex: 100,
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+              minWidth: 200,
+              maxHeight: 320,
+              overflowY: 'auto',
+              padding: '4px 0',
+              marginTop: 2,
+            }}
+          >
+            {group.tabs.map((tab) => {
+              const isActive = tab.id === group.activeTabId
+              return (
+                <div
+                  key={tab.id}
+                  role="menuitem"
+                  data-testid={`tab-overflow-item-${tab.id}`}
+                  onClick={() => {
+                    onTabClick(tab.id)
+                    setMenuOpen(false)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    background: isActive
+                      ? 'var(--accent-soft, rgba(117,186,255,0.18))'
+                      : 'transparent',
+                    color: isActive
+                      ? 'var(--foreground)'
+                      : 'var(--foreground-muted)',
+                  }}
+                >
+                  <span
+                    style={{
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      flex: 1,
+                    }}
+                  >
+                    {tab.kind === 'preview' ? '🎥 ' : ''}
+                    {tabFileName(tab)}
+                  </span>
+                  <button
+                    data-testid={`tab-overflow-close-${tab.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onTabClose(tab.id)
+                    }}
+                    style={closeBtnStyle}
+                  >
+                    {'×'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellProps>(function WorkspaceShell({
   initialTabs = [],
   initialGroups,
@@ -1748,144 +2105,39 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             outlineOffset: -2,
           }}
         >
-          {/* Tab bar */}
-          <div
-            data-workspace-group-tabbar={group.id}
-            onDragOver={(e) => {
+          {/* Tab bar (scroll strip + overflow menu + pinned actions) */}
+          <GroupTabBar
+            group={group}
+            canClose={canClose}
+            onTabBarDragOver={(e) => {
               if (!e.dataTransfer.types.includes(DRAG_MIME)) return
               e.preventDefault()
               e.stopPropagation()
               e.dataTransfer.dropEffect = 'move'
             }}
-            onDrop={(e) => handleTabBarDrop(e, group.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: 'var(--surface)',
-              borderBottom: '1px solid var(--border)',
-              height: 30,
-              flexShrink: 0,
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              // Hide the scrollbar visually (Firefox + legacy IE).
-              // Webkit uses the injected CSS rule in tabbarScrollStyle below.
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
+            onTabBarDrop={(e) => handleTabBarDrop(e, group.id)}
+            onTabClick={(tabId) => handleTabClick(group.id, tabId)}
+            onTabClose={(tabId) => handleTabClose(group.id, tabId)}
+            onTabDragStart={(e, tab) => handleTabDragStart(e, group.id, tab)}
+            onTabContextMenu={onTabContextMenu}
+            onTabPromote={(tabId) => {
+              setGroups((prev) => {
+                const g = prev.get(group.id)
+                if (!g) return prev
+                const nextTabs = g.tabs.map((t) =>
+                  t.id === tabId && t.kind === 'editor'
+                    ? { ...t, preview: false }
+                    : t,
+                )
+                const nx = new Map(prev)
+                nx.set(group.id, { ...g, tabs: nextTabs })
+                return nx
+              })
             }}
-          >
-            {group.tabs.map((tab) => {
-              const isActive = tab.id === group.activeTabId
-              const isPreview =
-                tab.kind === 'editor' && (tab as { preview?: boolean }).preview === true
-              return (
-                <div
-                  key={tab.id}
-                  data-workspace-tab={tab.id}
-                  data-tab-kind={tab.kind}
-                  data-tab-active={isActive ? 'true' : 'false'}
-                  data-tab-preview={isPreview ? 'true' : 'false'}
-                  draggable
-                  onDragStart={(e) => handleTabDragStart(e, group.id, tab)}
-                  onClick={() => handleTabClick(group.id, tab.id)}
-                  onContextMenu={(e) => {
-                    if (!onTabContextMenu) return
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onTabContextMenu(tab, e.clientX, e.clientY)
-                  }}
-                  onDoubleClick={() => {
-                    // Double-click promotes a preview tab to pinned.
-                    if (isPreview) {
-                      setGroups((prev) => {
-                        const g = prev.get(group.id)
-                        if (!g) return prev
-                        const nextTabs = g.tabs.map((t) =>
-                          t.id === tab.id && t.kind === 'editor'
-                            ? { ...t, preview: false }
-                            : t,
-                        )
-                        const nx = new Map(prev)
-                        nx.set(group.id, { ...g, tabs: nextTabs })
-                        return nx
-                      })
-                    }
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 3,
-                    padding: '0 8px',
-                    height: '100%',
-                    cursor: 'grab',
-                    background: isActive
-                      ? 'var(--background)'
-                      : 'transparent',
-                    borderRight: '1px solid var(--border)',
-                    color: isActive
-                      ? 'var(--foreground)'
-                      : 'var(--foreground-muted)',
-                    fontSize: 11,
-                    fontStyle: isPreview ? 'italic' : 'normal',
-                    whiteSpace: 'nowrap',
-                    userSelect: 'none',
-                  }}
-                >
-                  <span>
-                    {tab.kind === 'preview' ? '\uD83C\uDFA5 ' : ''}
-                    {tabFileName(tab)}
-                  </span>
-                  <button
-                    data-testid={`tab-close-${tab.id}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleTabClose(group.id, tab.id)
-                    }}
-                    style={closeBtnStyle}
-                  >
-                    {'\u00D7'}
-                  </button>
-                </div>
-              )
-            })}
-            <div style={{ flex: 1 }} />
-            {/* Group actions */}
-            <div
-              style={{
-                display: 'flex',
-                gap: 1,
-                padding: '0 4px',
-                flexShrink: 0,
-              }}
-            >
-              <button
-                data-testid={`group-split-${group.id}`}
-                onClick={() => handleSplit(group.id, 'east')}
-                title="Split right (⌘\\)"
-                style={actionBtnStyle}
-              >
-                {'\u2502'}
-              </button>
-              <button
-                data-testid={`group-split-down-${group.id}`}
-                onClick={() => handleSplit(group.id, 'south')}
-                title="Split down (⌘⇧\\)"
-                style={actionBtnStyle}
-              >
-                {'\u2500'}
-              </button>
-              {canClose && (
-                <button
-                  data-testid={`group-close-${group.id}`}
-                  onClick={() => handleCloseGroup(group.id)}
-                  title="Close group"
-                  style={actionBtnStyle}
-                >
-                  {'\u00D7'}
-                </button>
-              )}
-            </div>
-          </div>
-
+            onSplitRight={() => handleSplit(group.id, 'east')}
+            onSplitDown={() => handleSplit(group.id, 'south')}
+            onCloseGroup={() => handleCloseGroup(group.id)}
+          />
           {/* Content area */}
           <div
             data-workspace-group-content={group.id}
