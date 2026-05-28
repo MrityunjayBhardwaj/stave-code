@@ -2436,3 +2436,25 @@ edit `Piano Roll.p5`, it changes everywhere it appears.
 sketch duplicates + inline scheduler wiring. Until then scope is
 consistent (both use the `scope.p5` preset — PR #178 commit 5) but
 pianoroll is not (inline = built-in, bg = preset).
+
+**STATUS UPDATE 2026-05-28 (PR #178 / #183):** SATISFIED at the
+resolution + render layer. `resolveDescriptor` now does exact-then-normalized
+named-registry lookup (commit 03ec8ea); `PIANOROLL_P5_CODE` was upgraded to
+the rich single source (fold lanes + classified colors + active highlight +
+note-name parse, commit 37a0d3d). Inline `.viz("pianoroll")` and the
+`.pianoroll()` backdrop render the identical preset — verified by direct
+screenshot comparison for both melodic and `stack(note, drums)` patterns.
+All 7 standard p5 viz are now structurally single-source through the
+named-viz registry. The built-in `DEFAULT_VIZ_DESCRIPTORS` p5 entries are
+dead code in the app (presets always win) but PHYSICALLY REMAIN for picker /
+demo / standalone embedders; physical retirement (move bundled code into
+the editor package, delete TS sketch classes) is tracked as #184 — that
+closes the duality everywhere, not just where it was previously visible.
+Until #184 lands, the invariant relies on the app's seed-and-register
+sequence (`StrudelEditorClient.registerAllVizFiles` + bundled-preset
+useEffect) running before inline resolution — which is the case today.
+
+**Catalogue cross-ref:** see P73 (the trap framing was partly
+misattributed; observation revealed the true cause) and P74 (the
+consolidation-downgrade trap surfaced HERE — solving P73 silently broke
+note-name patterns until porting the rich logic).
