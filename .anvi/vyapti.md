@@ -2458,3 +2458,125 @@ useEffect) running before inline resolution — which is the case today.
 misattributed; observation revealed the true cause) and P74 (the
 consolidation-downgrade trap surfaced HERE — solving P73 silently broke
 note-name patterns until porting the rich logic).
+
+## PV57 — Workspace UI-shell state is local-first, per-project, persisted across reloads
+
+**Claim:** The user's open-tab set, tab order, per-group active tab,
+pane-split layout, active group, and per-group `backgroundFileId` are
+preferences of THIS device for THIS project and must survive a page
+refresh. They are NOT part of the Y.Doc (the cross-device data model),
+and they MUST be scoped per project so switching projects loads each
+project's own state.
+
+**Why:** without persistence the user re-arranges the shell on every
+reload — work lost on every save-tab-close-coffee-break cycle. Not
+persisting also forces a "show everything by default" fallback that
+overwhelms first-time visitors (the 11-tab wall before #175). Choosing
+localStorage over Yjs reflects that tab state is per-device (a user's
+phone often wants different open tabs from their laptop) and avoids the
+`whenSynced` race the Yjs path would otherwise need to navigate.
+
+**Span:** `packages/editor/src/workspace/tabPersistence.ts` (storage +
+validate/hydrate helpers), `packages/editor/src/workspace/WorkspaceShell.tsx`
+(`initialGroups`/`initialLayout`/`initialActiveGroupId` props and the
+`onGroupsChange` sink), `packages/app/src/components/StrudelEditorClient.tsx`
+(hydrate-at-mount + save-on-change wiring with `projectId` scoping),
+`packages/app/src/components/EditorWrapper.tsx` (pre-mount seed of the
+files the snapshot may reference — see PV58).
+
+**Maintained by:**
+- Storage key `stave:workspace:${projectId}:state`. ProjectId scoping
+  comes from `StaveApp`'s existing `key={activeProject.id}` remount on
+  project switch — within a mount, the project is stable.
+- Schema-versioned snapshot (`SHELL_STATE_VERSION`). Version mismatch on
+  read returns null so future format changes degrade gracefully (user
+  loses tab state once instead of crashing on the load path).
+- Single sink: `WorkspaceShell.onGroupsChange` fires reactively via a
+  single `useEffect([groups, layout, activeGroupId])`. Every internal
+  mutation (open / close / reorder / split / active-change / backdrop
+  transition) flows through ONE save call.
+- Read-time validation: every persisted `fileId` and `backgroundFileId`
+  is checked against the live workspace; stale references are pruned,
+  empty layout columns collapsed, `activeTabId`/`activeGroupId`
+  reassigned to live targets. If nothing usable remains, the loader
+  returns null and the consumer falls back to `buildDefaultSnapshot`
+  (a single tab on the project's Strudel file, or empty).
+- Preview tabs are DROPPED at write time — they're transient by design
+  (VSCode parity); resurrecting them across reload would invent
+  "pinned" tabs the user never asked for.
+- SSR-safe everywhere (`typeof window === 'undefined'` guards), and
+  every storage call is wrapped in try/catch so Safari private-mode /
+  quota errors degrade to "no persistence this session" not to a crash.
+
+**REF:** PR #185 (#175). Related: PV58 (the hydrate-after-seed
+discipline that makes this work), PV59 (the delta-watcher seeding
+discipline that makes the shrunk default stick).
+
+## PV58 — Persisted-state hydration runs AFTER all data sources it references are fully populated
+
+**Claim:** When a component hydrates from a persisted snapshot at render
+time (inside `useRef` / `useState` initializers), every data source the
+hydrate validator consults — workspace stores, registries, IDB-backed
+caches — must already contain the records the snapshot might reference.
+Any seed step that populates those sources MUST complete BEFORE the
+component that hydrates renders.
+
+**Why:** if the seed runs in a sibling `useEffect`, it fires AFTER the
+first render's hydrate. The hydrate validator drops every persisted
+reference whose record doesn't yet exist — silently — and falls back to
+the default state. The persisted blob is correct; the validation just
+ran a render too early. (P76.)
+
+**Span:** any pair `(hydrate, seed)` where the hydrate validates
+against the seed's output. In Stave: `tabPersistence.loadShellState`
+validates against `listWorkspaceFiles()`; `seedMissingPresetFiles` is
+what populates the workspace file store. The pair lives across the
+editor/app boundary — the hydrate is inside `@stave/editor` consumed
+by `@stave/app`, the seed is inside `@stave/app`'s `EditorWrapper`.
+
+**Maintained by:**
+- Seeds hoisted to the pre-mount bootstrap path. In Stave that's
+  `EditorWrapper`'s dynamic-import async closure (same place as
+  `seedProjectFromTemplate`), which `await`s `initProjectDoc` before
+  the inner closure returns the StaveApp component to render.
+- Seed idempotency. `seedMissingPresetFiles` uses
+  `seedWorkspaceFile`'s create-or-load semantics, so re-running it on
+  every session is free. Idempotency is what lets us safely move the
+  seed to a path that fires on every load (not just first-run).
+- A defense-in-depth duplicate (the existing post-mount
+  `useEffect(() => seedMissingPresetFiles(), [])` in
+  `StrudelEditorClient`) is retained for callers that mount the
+  client outside the `EditorWrapper` bootstrap path.
+
+**REF:** PR #185 — `EditorWrapper.tsx` seed hoist; P76 for the
+diagnostic shape; `tabPersistence.validatePersistedState` for the
+validation path that triggers the trap when this invariant breaks.
+
+## PV59 — Delta watchers seed their baseline from the GROUND TRUTH, not from a derived subset
+
+**Claim:** A watcher that computes `added = current − previous` on every
+source change must seed `previous` from the FULL underlying source, not
+from a smaller subset currently rendered. Otherwise the first fire
+treats the complement of the subset as "added" and re-creates exactly
+the state the consumer wanted to avoid.
+
+**Why:** the delta semantics are "items added or removed AFTER mount" —
+implemented as a set-difference against a baseline. If the baseline is a
+subset of the source, the difference produces the unrendered remainder
+as a false-positive add. (P77.)
+
+**Span:** every place a watcher subscribes to a data-source change feed
+and maintains a `prev*Ref` snapshot. In Stave: `StrudelEditorClient`
+watches `subscribeToFileList` to mirror create / delete events from the
+workspace into tab adds / closes; the `prevFileIdsRef` is the baseline.
+
+**Maintained by:**
+- The baseline seed reads the FULL source at mount, not the rendered
+  subset: `new Set(listWorkspaceFiles().map(f => f.id))`, NOT
+  `new Set(initialTabs.map(t => t.fileId))`.
+- The watcher is therefore safe under a shrunk default (#175): tabs
+  start as a subset of the workspace, the watcher sees no delta until
+  the user actually adds or removes a file.
+
+**REF:** PR #185 — `StrudelEditorClient.tsx` `prevFileIdsRef`
+correction; P77 for the diagnostic shape.

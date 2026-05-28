@@ -2631,3 +2631,139 @@ highlight, playhead line).
 **REF:** PR #178 / #183 — `packages/app/src/templates.ts` PIANOROLL_P5_CODE
 (commit 37a0d3d); `packages/editor/src/visualizers/sketches/PianorollSketch.ts`
 (retired source — physical removal tracked #184).
+
+## P75 — Playwright `page.addInitScript` re-fires on `page.reload()` and erases test-setup state mid-test
+
+**Pattern:** A test uses `page.addInitScript(...)` to wipe storage / seed a
+fixture / install a shim BEFORE the first `goto`. The test mutates state,
+then calls `page.reload()` to verify the state survived. The assertion
+fails: the reloaded page sees the DEFAULT state.
+
+**Mechanism:** `addInitScript` is registered on the browser **context** —
+Playwright re-runs it on EVERY navigation in that context, including
+`page.reload()`, `page.goBack()`, and any in-page navigation. So when the
+test reloads to verify "state survived," the init script fires AGAIN
+**before** the page boots, wipes the just-persisted state, and the page
+hydrates from nothing.
+
+**Symptom (silent):** a state-survives-reload test fails with "only the
+default present." Direct localStorage / IDB dumps right BEFORE the reload
+show the state IS persisted; dumps right AFTER show it gone. No exception,
+no console warning — the wipe runs successfully, just at the wrong moment.
+
+**Wrong fix:** add `await page.waitForTimeout(...)` before the reload
+(the timing is irrelevant), or move the setup inside the test body
+without re-thinking when it should fire.
+
+**Real fix:** for one-shot setup (clear / seed / cookie), do it BEFORE the
+first real `goto`, not via `addInitScript`:
+
+```ts
+await page.goto('about:blank')
+await page.evaluate(() => { localStorage.removeItem('x') })
+await page.goto('/')         // the test's actual first nav
+// ...mutate state...
+await page.reload()          // now reload preserves the mutated state
+```
+
+`addInitScript` is correct for things that genuinely must run on every
+page (a global shim, a console-error capture). Test fixture setup is not
+one of them.
+
+**Detection signal:** state-survives-reload test failing while the
+persistence layer's own unit tests pass + a direct localStorage dump
+right before reload confirms the state is there.
+
+**REF:** PR #185 (#175 tab persistence) — see
+`packages/app/tests/tab-persistence.spec.ts:wipeShellStateOnce` for the
+correct pattern.
+
+## P76 — `seed-after-mount` race: persistence hydrates from a workspace store that's still being populated
+
+**Pattern:** A component hydrates from a persisted snapshot inside a
+`useRef`/`useState` initializer at first render. The hydrate validator
+prunes any persisted reference whose underlying record is not yet present
+in the data store. But the data store is itself seeded via a sibling
+`useEffect` that runs AFTER the first render. Result: the hydrate
+validator drops every persisted reference as "stale" and falls back to
+the default state — even though the records would have existed by the
+NEXT render.
+
+**Concrete instance (Stave, #175):** `StrudelEditorClient` read its
+persisted tab snapshot inside a `useRef` initializer at mount and
+validated each tab's `fileId` against `listWorkspaceFiles()`. The
+bundled viz preset files were seeded into the workspace store by a
+sibling `useEffect(() => seedMissingPresetFiles(), [])`. Persisted tabs
+referencing those viz files got pruned on every reload → only the
+Strudel tab survived restoration. The persisted state was correct; the
+validation just ran a render too early.
+
+**Symptom (silent):** persistence "doesn't work" — open tabs / set state,
+refresh, only the default subset comes back. The persisted blob itself,
+inspected before reload, contains the FULL state. The bug isn't in
+serialize or persist; it's in WHEN the read happens relative to seed.
+
+**Wrong fix:** call `setTimeout` or `requestAnimationFrame` before the
+hydrate (introduces a flash of default state); guess at a debounce; defer
+hydrate into a `useEffect` (forces an imperative re-open dance for every
+persisted tab, defeating the whole "shell mounts hydrated" model).
+
+**Real fix:** hoist the seed BEFORE the consumer's render — same place,
+same call, just earlier in the lifecycle. For Stave the seed moved from
+`StrudelEditorClient`'s `useEffect` (post-mount) to `EditorWrapper`'s
+dynamic-import bootstrap (pre-mount), alongside the existing
+`seedProjectFromTemplate` call. The seed is idempotent (create-or-load),
+so running it on every session is free.
+
+**General rule (PV58):** persisted-state hydration must run AFTER all
+data sources it references are fully populated. If the consumer reads
+those sources at render time, the seed must complete BEFORE render.
+
+**REF:** PR #185 (#175) — `EditorWrapper.tsx:seedMissingPresetFiles()`
+hoist; see PV58.
+
+## P77 — Delta watcher seeded from the rendered subset, not from the full source — first delta misfires as "add everything new"
+
+**Pattern:** Code subscribes to a data source change feed (`subscribeToFileList`,
+a Yjs observer, etc.) to keep the UI's tab/pane/menu set in sync with the
+underlying source. The subscriber computes deltas as
+`current_source − previous_rendered_subset`. The "previous" baseline is
+seeded from what's CURRENTLY RENDERED, not from what's CURRENTLY IN THE
+SOURCE. Result: items that exist in the source but aren't yet rendered
+(common after shrinking a default) get re-detected as "added" on the
+first delta computation and auto-opened, defeating the shrink.
+
+**Concrete instance (Stave, #175):** `StrudelEditorClient` watched the
+workspace file list and routed adds → `openOrFocusFile`, deletes →
+`closeTabsForFile`. `prevFileIdsRef` was seeded from
+`initialTabs.map(t => t.fileId)` (the rendered tab subset). When the
+default shrank from 11 tabs → 1 tab, the first `subscribeToFileList` fire
+saw the other 10 workspace files (which existed but weren't tabs) as
+"added" → re-opened all 10 → 11 tabs anyway. The persistence layer was
+fine; the file-list watcher quietly undid the shrink.
+
+**Symptom (silent):** changing a UI default (fewer tabs, fewer rows,
+fewer menu items) "doesn't work" — the user-visible default reverts on
+the first source-change fire (often within the same tick of mount).
+
+**Wrong fix:** suppress the watcher for the first fire ("skip initial");
+add a flag that distinguishes "initial mount" from "real change"
+(brittle, race-prone, and breaks tests of the real change path).
+
+**Real fix:** seed the baseline from the FULL UNDERLYING SOURCE, not
+from the rendered subset:
+
+```ts
+// before: prevIdsRef = new Set(initialTabs.map(t => t.fileId))   ← rendered subset
+// after:  prevIdsRef = new Set(listWorkspaceFiles().map(f => f.id))  ← full source
+```
+
+The watcher now computes a true delta — items added or removed AFTER
+mount — and the rendered subset is free to be smaller than the source
+without re-explosion.
+
+**General rule (PV59):** delta watchers seed from the GROUND TRUTH the
+delta is computed against, not from a subset of it.
+
+**REF:** PR #185 (#175) — `StrudelEditorClient.tsx:prevFileIdsRef` seed
+correction; see PV59.
