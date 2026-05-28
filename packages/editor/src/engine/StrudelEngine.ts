@@ -66,6 +66,39 @@ export function extractVizName(rawArg: unknown): string | undefined {
 }
 
 /**
+ * Strudel's official inline-visualization vocabulary → the Stave renderer
+ * id each one maps to. The keys are Strudel's Pattern viz methods (verified
+ * against `@strudel/draw` + `@strudel/webaudio` source): `pianoroll`,
+ * `punchcard`, `spiral`, `pitchwheel` (draw); `scope`, `tscope`, `fscope`,
+ * `spectrum` (webaudio); `wordfall` (draw).
+ *
+ * Each method is intercepted in BOTH chain forms so pasted Strudel code
+ * works out of the gate:
+ *   - `._name()` (underscore) → inline viz zone (mini, in-REPL form)
+ *   - `.name()`  (non-underscore) → Stave backdrop (the "big"/fullscreen form)
+ *
+ * Aliases map to the nearest Stave renderer that exists today:
+ *   - `tscope` → `scope`     (Strudel itself aliases tscope = scope)
+ *   - `punchcard` → `pianoroll` (no PunchcardSketch yet — approximation;
+ *      a real punchcard renderer is a tracked follow-up)
+ *
+ * We deliberately do NOT chain to Strudel's real method: `@strudel/draw`
+ * isn't loaded, and the webaudio `scope`/`spectrum`/`fscope` would draw
+ * strudel's own fullscreen `#test-canvas` — the very thing Stave avoids.
+ */
+export const STRUDEL_VIZ_METHODS: Record<string, string> = {
+  pianoroll: 'pianoroll',
+  punchcard: 'pianoroll',
+  wordfall: 'wordfall',
+  scope: 'scope',
+  tscope: 'scope',
+  fscope: 'fscope',
+  spectrum: 'spectrum',
+  spiral: 'spiral',
+  pitchwheel: 'pitchwheel',
+}
+
+/**
  * Single source of truth for audio in Stave.
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
  *
@@ -89,6 +122,12 @@ export class StrudelEngine implements LiveCodingEngine {
   private trackSchedulers: Map<string, PatternScheduler> = new Map()
   // Per-track viz requests captured during the last evaluate() call
   private vizRequests: Map<string, string> = new Map()
+  // Backdrop viz requested by a non-underscore Strudel viz method (e.g.
+  // `.scope()`, `.pianoroll()`) during the last evaluate(). Strudel's
+  // non-underscore viz methods are its "big"/fullscreen form — we map them
+  // to Stave's backdrop instead of drawing strudel's own fullscreen canvas.
+  // Resolved renderer id (e.g. 'scope', 'pianoroll'); null when none called.
+  private backdropVizRequest: string | null = null
   // Reference to superdough audio controller (set during init)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private audioController: any = null
@@ -498,6 +537,11 @@ export class StrudelEngine implements LiveCodingEngine {
 
     const capturedPatterns = new Map<string, any>() // eslint-disable-line @typescript-eslint/no-explicit-any
     const capturedVizRequests = new Map<string, string>()
+    // Backdrop viz requested via a non-underscore method this evaluate.
+    // Singular (last `.scope()`/`.pianoroll()` call wins); set directly by
+    // the method wrappers below via this closure, independent of `.p()`
+    // capture so a bare top-level `.scope()` still registers.
+    let capturedBackdropViz: string | null = null
     let anonIndex = 0
     // Auto-orbit counter: each captured $: block with a .viz() request but no
     // explicit .orbit(N) gets its own unique orbit number starting high enough
@@ -529,8 +573,10 @@ export class StrudelEngine implements LiveCodingEngine {
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'p')
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern.prototype, 'viz')
 
-    // Legacy viz names for backwards compat with Strudel's ._pianoroll(), ._scope(), etc.
-    const legacyVizNames = ['pianoroll', 'punchcard', 'wordfall', 'scope', 'fscope', 'spectrum', 'spiral', 'pitchwheel', 'markCSS']
+    // Strudel-official viz methods (see STRUDEL_VIZ_METHODS). Both chain
+    // forms of every name are intercepted below; we save the prior
+    // descriptors (some non-underscore forms are live @strudel/webaudio
+    // methods) so they restore cleanly after evaluate.
     const savedLegacyDescriptors = new Map<string, PropertyDescriptor | undefined>()
 
     // Install setter trap — fires when injectPatternMethods does Pattern.prototype.p = fn
@@ -563,18 +609,37 @@ export class StrudelEngine implements LiveCodingEngine {
           },
         })
 
-        // Install legacy ._pianoroll(), ._scope(), etc. wrappers AFTER injectPatternMethods
-        for (const name of legacyVizNames) {
-          const methodName = `_${name}`
-          savedLegacyDescriptors.set(methodName, Object.getOwnPropertyDescriptor(Pattern.prototype, methodName))
-          const strudelLegacy = (Pattern.prototype as any)[methodName] // eslint-disable-line @typescript-eslint/no-explicit-any
-          Object.defineProperty(Pattern.prototype, methodName, {
+        // Install Strudel-official viz method wrappers AFTER injectPatternMethods.
+        // For each official viz name we intercept BOTH chain forms so pasted
+        // Strudel code works out of the gate:
+        //   - `._name()` (underscore) → inline viz zone  (tags `_pendingViz`,
+        //      read by the `.p()` wrapper below → capturedVizRequests)
+        //   - `.name()`  (non-underscore) → Stave backdrop  (sets the
+        //      `capturedBackdropViz` closure directly; does not depend on `.p()`)
+        // Neither form chains to Strudel's real method: `@strudel/draw` isn't
+        // loaded, and the live webaudio `scope`/`spectrum`/`fscope` would draw
+        // strudel's fullscreen `#test-canvas`. Returning `this` keeps the chain
+        // intact while Stave renders the viz its own way.
+        for (const [name, renderer] of Object.entries(STRUDEL_VIZ_METHODS)) {
+          // Underscore form → inline viz zone.
+          const underscore = `_${name}`
+          savedLegacyDescriptors.set(underscore, Object.getOwnPropertyDescriptor(Pattern.prototype, underscore))
+          Object.defineProperty(Pattern.prototype, underscore, {
             configurable: true,
             writable: true,
-            value: function(this: any, ...args: any[]) { // eslint-disable-line @typescript-eslint/no-explicit-any
-              const result = strudelLegacy ? strudelLegacy.apply(this, args) : this
-              result._pendingViz = name
-              return result
+            value: function(this: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+              this._pendingViz = renderer
+              return this
+            },
+          })
+          // Non-underscore form → backdrop (Strudel's "big"/fullscreen form).
+          savedLegacyDescriptors.set(name, Object.getOwnPropertyDescriptor(Pattern.prototype, name))
+          Object.defineProperty(Pattern.prototype, name, {
+            configurable: true,
+            writable: true,
+            value: function(this: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+              capturedBackdropViz = renderer
+              return this
             },
           })
         }
@@ -662,6 +727,7 @@ export class StrudelEngine implements LiveCodingEngine {
           })
         }
         this.vizRequests = capturedVizRequests
+        this.backdropVizRequest = capturedBackdropViz
 
         // Per-track analyser side-taps: for each captured pattern, discover the
         // orbit it plays through and connect the orbit's output GainNode to a
@@ -704,6 +770,7 @@ export class StrudelEngine implements LiveCodingEngine {
         this.lastPatternIR = null
         this.lastIREvents = []
         this.lastIRNodeLocLookup = null
+        this.backdropVizRequest = null
       }
 
       return result
@@ -748,10 +815,18 @@ export class StrudelEngine implements LiveCodingEngine {
       scheduler: this.getPatternScheduler(),
       trackSchedulers: this.trackSchedulers,
     }
-    // Build inlineViz from vizRequests + line scanning
-    if (this.vizRequests.size > 0 && this.lastEvaluatedCode) {
+    // Build inlineViz from vizRequests + line scanning. Created when there's
+    // EITHER an inline viz request OR a code-driven backdrop request, so a
+    // bare `.scope()` (backdrop, no inline `.viz()`) still surfaces.
+    const hasInlineViz = this.vizRequests.size > 0 && this.lastEvaluatedCode
+    if (hasInlineViz || this.backdropVizRequest) {
       bag.inlineViz = {
-        vizRequests: this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode),
+        vizRequests: hasInlineViz
+          ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode!)
+          : new Map(),
+        backdropRequest: this.backdropVizRequest
+          ? { vizId: this.backdropVizRequest }
+          : undefined,
       }
     }
     // Expose Pattern IR if available

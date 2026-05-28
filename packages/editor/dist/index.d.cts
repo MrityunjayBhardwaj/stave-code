@@ -898,6 +898,16 @@ interface InlineVizComponent {
      * When absent, falls back to the global streaming component.
      */
     trackStreams?: Map<string, HapStream>;
+    /**
+     * Backdrop viz requested via a non-underscore Strudel viz method
+     * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate. The
+     * non-underscore form is Strudel's "big"/fullscreen viz; Stave maps it
+     * to the project backdrop. `vizId` is the resolved Stave renderer id
+     * (e.g. "scope", "pianoroll"). Absent when no such method was called.
+     */
+    backdropRequest?: {
+        vizId: string;
+    };
 }
 /** Pattern IR derived from the last successful evaluate(). */
 interface IRComponent {
@@ -1055,6 +1065,7 @@ declare class StrudelEngine implements LiveCodingEngine {
     private loadedSoundNames;
     private trackSchedulers;
     private vizRequests;
+    private backdropVizRequest;
     private audioController;
     private trackAnalysers;
     private trackOrbit;
@@ -1605,10 +1616,15 @@ declare const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[];
  * Resolves a viz ID to a VizDescriptor using the "mode:renderer" convention.
  *
  * Resolution order:
- *   1. User-named viz registry — exact name match in the runtime
- *      `namedVizRegistry` (populated by saved viz presets). User intent
- *      wins over built-ins, so a user-saved preset named `"pianoroll"`
- *      shadows the built-in `"pianoroll:hydra"` for their inline usage.
+ *   1. User-named viz registry — exact name match first, then a
+ *      NORMALIZED match (case/space/hyphen/underscore insensitive) in the
+ *      runtime `namedVizRegistry` (populated by saved viz presets). User
+ *      intent wins over built-ins, so a user-saved preset named
+ *      `"pianoroll"` shadows the built-in `"pianoroll:hydra"`. The
+ *      normalized hop is what lets inline `.viz("pianoroll")` reach the
+ *      bundled `"Piano Roll"` preset — the SAME preset the `.pianoroll()`
+ *      backdrop renders — instead of falling through to the built-in
+ *      sketch (P73 / PV56).
  *   2. Exact match on `descriptor.id`
  *      e.g. "pianoroll:hydra" → "pianoroll:hydra"
  *   3. Default renderer — append `":${defaultRenderer}"` from config and retry
@@ -4355,6 +4371,15 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * (PV38 / PK13 step 8 — musician half).
      */
     getHapStream(): HapStream | null;
+    /**
+     * Backdrop viz requested by a non-underscore Strudel viz method
+     * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate, or `null`.
+     * Read-through accessor over the engine's components, mirroring
+     * `getHapStream`. Consumed by StrudelEditorClient → StaveApp, which maps
+     * the resolved renderer id to a project viz file and pins it as the
+     * backdrop (the "set bg" UI then auto-updates from `backgroundFileId`).
+     */
+    getBackdropVizRequest(): string | null;
     /** Phase 20-07 — explicit user-driven pause. Engine pauses scheduler. */
     pause(): void;
     /** Phase 20-07 — resume after pause (or breakpoint hit). */
@@ -4844,8 +4869,14 @@ declare function getPresetIdForFile(file: WorkspaceFile): string | undefined;
  * Idempotent for same-preset calls: registering the same descriptor
  * twice is a no-op. Registering a DIFFERENT descriptor for the same
  * name replaces the entry (so saves pick up fresh code).
+ *
+ * `name` defaults to `preset.name` but can be overridden to register
+ * under a renderer-qualified key (e.g. `"scope:hydra"`) when two presets
+ * share a basename — see the `mode:renderer` convention in
+ * `resolveDescriptor`. This keeps the bare mode name reserved for the
+ * default renderer instead of last-write-wins between p5 and hydra.
  */
-declare function registerPresetAsNamedViz(preset: VizPreset): boolean;
+declare function registerPresetAsNamedViz(preset: VizPreset, name?: string): boolean;
 
 /**
  * Shared event store for every runtime's info / warn / error messages.

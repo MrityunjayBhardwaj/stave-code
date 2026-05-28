@@ -40,6 +40,14 @@ export interface InlineVizComponent {
    * When absent, falls back to the global streaming component.
    */
   trackStreams?: Map<string, HapStream>
+  /**
+   * Backdrop viz requested via a non-underscore Strudel viz method
+   * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate. The
+   * non-underscore form is Strudel's "big"/fullscreen viz; Stave maps it
+   * to the project backdrop. `vizId` is the resolved Stave renderer id
+   * (e.g. "scope", "pianoroll"). Absent when no such method was called.
+   */
+  backdropRequest?: { vizId: string }
 }
 
 /** Pattern IR derived from the last successful evaluate(). */

@@ -662,6 +662,18 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     return this.engine.components.streaming?.hapStream ?? null
   }
 
+  /**
+   * Backdrop viz requested by a non-underscore Strudel viz method
+   * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate, or `null`.
+   * Read-through accessor over the engine's components, mirroring
+   * `getHapStream`. Consumed by StrudelEditorClient → StaveApp, which maps
+   * the resolved renderer id to a project viz file and pins it as the
+   * backdrop (the "set bg" UI then auto-updates from `backgroundFileId`).
+   */
+  getBackdropVizRequest(): string | null {
+    return this.engine.components.inlineViz?.backdropRequest?.vizId ?? null
+  }
+
   // -------------------------------------------------------------------------
   // Phase 20-07 — debugger pause/resume + BreakpointStore accessor.
   //

@@ -2459,3 +2459,175 @@ you can only compute one way is a metric you can't trust.
 - Sister pattern: the 20-14 Bakery reality check (curated corpus
   over-states ~2:1) is the SAME generalization at a different sample
   layer — both are fixed-sample-over-states-distribution.
+
+---
+
+## P72 — The green local signal is not the deploy gate (local FS + transform-only tests hide clean-clone failures)
+
+**Pattern:** `pnpm test` and `pnpm build` pass locally, so the code is
+declared shippable — but the local environment quietly satisfies
+dependencies the real deploy environment (clean clone / CI / Vercel) does
+NOT. Two distinct sub-mechanisms, same root: the local signal measures a
+richer environment than production.
+
+  (a) **Transform-only tests skip type-checking.** Vitest (esbuild/swc
+  transform) runs green without ever running `tsc`. A type error stays
+  latent indefinitely. Only the production build (`next build` → full
+  `tsc`) is the typecheck gate. (Stave: `TAG_COLOR` non-exhaustive over
+  `PatternIR["tag"]` after Signal/Builder were added in 20-18 — green for
+  7 days, surfaced only at the first `next build`, #169.)
+
+  (b) **The local filesystem resolves imports a clean clone can't.** A
+  relative import that escapes the repo into a SIBLING project
+  (`../../../../../../sonicPiWeb/...`) resolves locally because the sibling
+  is on disk, and bundlers happily bundle it. A clean clone has only the
+  one repo → unresolvable → build fails. (Stave: editor
+  `adapter.ts` imported the Sonic Pi engine from the sibling `sonicPiWeb`
+  repo, #171.)
+
+**Symptom:** all local suites + local build green; the FIRST deploy on a
+clean machine (Vercel/CI/a fresh `git clone`) fails — type error, or
+`Could not resolve "<path that climbs out of the repo>"`. "Works on my
+machine" in its purest form.
+
+**Detection (cheap, executed):**
+- Run the REAL build, not just tests: `pnpm --filter @stave/app build`
+  (it runs `tsc`). A green vitest run is not a typecheck.
+- Reproduce the clean clone for portability: move any sibling repo aside
+  (`mv ../sonicPiWeb /tmp/`), then `pnpm turbo run build --filter=@stave/app`
+  must still succeed and emit `packages/app/.next/BUILD_ID`. Restore after.
+- `grep -rn "\.\./\.\./\.\./\.\." packages/*/src` — any import climbing 4+
+  levels is escaping the repo; treat as a portability smell.
+
+**Wrong fix (the trap):** trust the local green; or, when CI fails, add a
+CI-only shim / vendor a stale prebuilt artifact / commit `dist/` and hope
+it stays fresh — papering over the environment gap instead of closing it.
+
+**Right fix:** make the local check match the deploy environment.
+(a) Run `next build` (full `tsc`) before declaring shippable; never rely
+on vitest for type safety. (b) No repo-escaping imports — vendor the dep,
+publish it as a package, or load it via an OPAQUE dynamic import
+(`new Function('m','return import(m)')`) so the bundler can't statically
+resolve the absent sibling (the Stave Sonic Pi decoupling, #172). Verify
+by building with the sibling absent.
+
+**REF:**
+- `memory/feedback_build_gates_vs_local.md` (the working rule)
+- #169 / PR #170 (the latent type error — sub-mechanism a)
+- #171 / PR #172 (the sibling-repo import — sub-mechanism b)
+- `packages/editor/src/engine/sonicpi/adapter.ts` (`loadRawSonicPiEngine`
+  — the opaque-import fix), `packages/app/vercel.json` (the deploy build)
+- Surfaced by the first production deploy of Stave on Vercel (2026-05-27,
+  live at stave.live).
+
+## P73 — One concept, two implementations, two consumers → divergence the user reads as "looks different"
+
+**Pattern:** a single user-facing concept (a viz like `pianoroll`) is
+implemented TWICE — a built-in renderer (`DEFAULT_VIZ_DESCRIPTORS` →
+`PianorollSketch`, TS) AND an editable preset file (`Piano Roll.p5`, p5
+code). Two consumers each pick a different one: inline `.viz()` /
+`._name()` resolves via `resolveDescriptor` (named-preset first, else
+built-in); the code-driven `.name()` backdrop renders the preset FILE via
+the preview provider. Same name, different code → different pixels. The
+user reports "inline and bg look different"; the real defect is the
+DUALITY, not either renderer.
+
+The duality is MASKED when the two happen to converge: scope matched only
+because `scope.p5`'s basename already equals the descriptor id `"scope"`
+AND `SCOPE_P5_CODE` reads `stave.analyser` (present in both contexts).
+Pianoroll diverges because the file is named `"Piano Roll"` (≠ id
+`"pianoroll"`) so inline falls to the built-in, and `PIANOROLL_P5_CODE`
+draws notes only from `stave.scheduler`.
+
+**Symptom:** two surfaces that "should" show the same viz show different
+visuals; fixing one surface's resolution just moves the seam to another
+viz.
+
+**Wrong fix (the trap):** patch resolution so both surfaces point at the
+SAME ONE of the two implementations (e.g. register the preset under the
+descriptor id so inline uses it too). This is (a) per-viz whack-a-mole and
+(b) regressed in practice — registering `Piano Roll.p5` under `"pianoroll"`
+blanked BOTH inline and bg (preset needs scheduler data the inline zone
+supplies differently + double-registration mount churn). A SECOND
+resolution tweak after the first didn't fix it is the workaround-cascade
+signal: STOP — the framing ("two implementations is fine, just align the
+pointers") is wrong.
+
+**Real fix:** collapse the duality — ONE implementation per concept, used
+by every render surface. Stave decision 2026-05-28: Model B — the editable
+preset files are the single source of truth; retire the duplicate built-in
+sketches; make presets render in the inline zone too (provide a populated
+scheduler). See PV56.
+
+**RESOLVED (2026-05-28, PR #178 / #183, commits 03ec8ea + 37a0d3d):**
+- Collapse happened at the RESOLVER, not per-pointer: `namedVizRegistry` got
+  a normalized-name index (`normalizeVizName` = lower + strip space/-/_) and
+  `resolveDescriptor` tries exact `getNamedViz` then `getNamedVizByNormalized`.
+  So `.viz("pianoroll")` reaches the `"Piano Roll"` preset — the SAME source
+  the backdrop normalizes to. This is the SAME normalization the backdrop
+  already used, so the two surfaces converge by construction (not whack-a-mole).
+- **The "wrong fix trap" framing above was PARTLY MISATTRIBUTED.** Direct
+  observation (Playwright + screenshots, 2026-05-28) showed that pointing
+  inline at the preset did NOT blank it from scheduler/registration churn:
+  the inline zone mounted the preset and rendered fine for NUMERIC notes
+  (distinctColors 13, zero churn). The blank was the PRESET'S OWN BUG —
+  `PIANOROLL_P5_CODE` did `h.note ?? 60` and fed the note-NAME string "c" to
+  fill()/rect() → NaN → silent no-op (60fps of "🌸 received NaN in fill()").
+  `note("c e g")` (the common case) blanked; `note("48 52 55")` did not. The
+  earlier "register-under-id blanked BOTH" was the string-note NaN, not
+  empty-scheduler/double-registration. Lesson: when a memory cites a
+  mechanism for a regression ("churn", "empty scheduler"), OBSERVE the actual
+  failure before trusting it — the real cause was a 1-line type bug. See P74.
+- Built-in sketches are now dead in the app (presets always win); physical
+  retirement of `DEFAULT_VIZ_DESCRIPTORS` p5 entries deferred to #184.
+
+## P74 — Consolidation downgrades silently when the surviving implementation is lower-fidelity than the one it replaces
+
+**Pattern:** Two implementations of the same concept exist (P73); the duality
+gets collapsed onto ONE of them as the "single source of truth"; the surviving
+implementation looks correct in isolation but is QUIETLY LESS COMPLETE than
+the one it's replacing. The surfaces that had been pointing at the richer
+implementation now degrade — sometimes invisibly (a feature that "used to
+work" is now silently absent), sometimes catastrophically (the rich code
+guarded a case the simpler code crashes on).
+
+**Concrete instance (Stave, 2026-05-28):** Model B chose the bundled
+`PIANOROLL_P5_CODE` preset as the canonical pianoroll. Inline `.viz()` had
+been resolving to the TS `PianorollSketch` built-in, which (a) converted note
+NAMES → MIDI via `noteToMidi` and (b) carried fold-by-pitch lanes, gain×velocity
+alpha, active-note outlines, and a drum/bass/pad classification. The preset
+had none of that. Switching inline to the preset made `note("c e g")` blank
+(NaN → silent no-op in fill()/rect()) and lost the rich structure on every
+surface. Inline now matched the backdrop — but both were worse than the
+backdrop alone had been before.
+
+**Symptom (this trap is invisible without observation):** test suites stay
+green (the consolidation is a string/registry change, no type/test surface
+breaks). Existing e2e ASSERTING the resolution converges (e.g. "backdrop
+indicator says pianoroll") also pass. Only the rendered output reveals the
+downgrade — and only on the inputs the richer code uniquely handled (here:
+note names, which is the common case). A pixel-count "non-blank" test fires
+once the canvas is uniformly background.
+
+**Wrong fix:** declare the consolidation done because tests pass + the
+indicator/state asserts succeed. The user finds the downgrade in real use
+ten cycles later, attributes it to "Model B regressed pianoroll" rather
+than to the framework's failure to observe rendered output during
+consolidation.
+
+**Real fix:** observation is a HARD gate on consolidation. Before declaring
+the surviving implementation the source of truth: (1) screenshot the rendered
+output of BOTH surfaces on representative inputs of the RICHER one's domain;
+(2) port the richer one's load-bearing logic into the survivor (or escalate
+back to "single source = the richer code, in the right package"); (3)
+re-screenshot. Without (1)/(2)/(3), "single source of truth" trades visible
+inconsistency for invisible regression. In this instance: the rich logic
+(fold lanes + classification + active highlight + note-name parse) was
+ported into `PIANOROLL_P5_CODE` (commit 37a0d3d), verified by direct
+observation of inline + backdrop screenshots for `note("c e g a c5 ...")` and
+a `stack(note, drums)` pattern (orange drum lanes + purple melody, active
+highlight, playhead line).
+
+**REF:** PR #178 / #183 — `packages/app/src/templates.ts` PIANOROLL_P5_CODE
+(commit 37a0d3d); `packages/editor/src/visualizers/sketches/PianorollSketch.ts`
+(retired source — physical removal tracked #184).

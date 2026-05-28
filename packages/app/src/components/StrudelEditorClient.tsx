@@ -139,6 +139,15 @@ interface StrudelEditorClientProps {
   onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
   /** Crop region applied to the pinned backdrop. `null` = full rect. */
   backgroundCrop?: { x: number; y: number; w: number; h: number } | null;
+  /**
+   * Fires after EVERY successful Strudel evaluate with the code's current
+   * backdrop viz — the resolved renderer id of a non-underscore viz method
+   * (`.scope()`, `.pianoroll()`, …), or `null` when the code has none. Code
+   * is the source of truth: StaveApp pins the resolved viz file as the
+   * backdrop, or clears the backdrop when `null` (so removing the method
+   * un-pins it). Fires on every eval so the backdrop tracks code edits.
+   */
+  onCodeBackdropChange?: (vizId: string | null) => void;
 }
 
 export default function StrudelEditorClient({
@@ -150,6 +159,7 @@ export default function StrudelEditorClient({
   onCropViz,
   onBackgroundFileChange,
   backgroundCrop,
+  onCodeBackdropChange,
 }: StrudelEditorClientProps = {}) {
   // Register providers once
   ensureProviders();
@@ -183,8 +193,22 @@ export default function StrudelEditorClient({
   useEffect(() => {
     async function registerAllVizFiles() {
       const allFiles = listWorkspaceFiles();
-      for (const f of allFiles) {
-        if (f.language !== "p5js" && f.language !== "hydra") continue;
+      const vizFiles = allFiles.filter(
+        (f) => f.language === "p5js" || f.language === "hydra",
+      );
+      // Basename (sans extension) of every p5 viz file. When a hydra file
+      // shares a basename with a p5 file (e.g. scope.p5 + scope.hydra), the
+      // bare mode name belongs to the p5 default renderer — register the
+      // hydra one as "<name>:hydra" so inline `.viz("scope")` deterministically
+      // resolves to the p5 preset instead of last-write-wins (#181). This
+      // also keeps inline `.viz("scope")` in lockstep with the `.scope()`
+      // backdrop, which always prefers the p5 file.
+      const baseOf = (p: string) =>
+        p.split("/").pop()!.replace(/\.[^.]+$/, "");
+      const p5Basenames = new Set(
+        vizFiles.filter((f) => f.language === "p5js").map((f) => baseOf(f.path)),
+      );
+      for (const f of vizFiles) {
         let presetId = getPresetIdForFile(f);
         if (!presetId) {
           const baseName = f.path.replace(/\.[^.]+$/, "");
@@ -192,7 +216,13 @@ export default function StrudelEditorClient({
         }
         await flushToPreset(f.id, presetId);
         const preset = await VizPresetStore.get(presetId);
-        if (preset) registerPresetAsNamedViz(preset);
+        if (!preset) continue;
+        const base = baseOf(f.path);
+        const name =
+          f.language === "hydra" && p5Basenames.has(base)
+            ? `${base}:hydra`
+            : preset.name;
+        registerPresetAsNamedViz(preset, name);
       }
     }
     registerAllVizFiles();
@@ -263,6 +293,12 @@ export default function StrudelEditorClient({
   // runtime state (isPlaying/error/bpm/autoRefresh) mirrors runtime events
   // into React state so chromeForTab can read it cheaply.
   const runtimesRef = useRef<Map<string, LiveCodingRuntime>>(new Map());
+  // Latest-value ref: each runtime's onEvaluateSuccess handler is registered
+  // ONCE (runtimes are cached in runtimesRef), so reading the prop directly in
+  // that closure would capture the first-render value. The ref keeps the call
+  // fresh across re-renders without re-creating runtimes.
+  const onCodeBackdropChangeRef = useRef(onCodeBackdropChange);
+  onCodeBackdropChangeRef.current = onCodeBackdropChange;
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
   }>>(new Map());
@@ -422,6 +458,14 @@ export default function StrudelEditorClient({
           // collect is total. Anything thrown here is unexpected — keep
           // the eval-success path quiet.
         }
+
+        // Code-driven backdrop — a non-underscore viz method (`.scope()`,
+        // `.pianoroll()`, …) maps to Stave's backdrop; its absence clears it.
+        // Code is the source of truth, so we forward on EVERY eval (null
+        // included) — removing the method un-pins the backdrop on next eval.
+        // StaveApp resolves the id to a viz file (or clears) and the "set bg"
+        // UI auto-updates. Idempotent on StaveApp's side (no churn in live mode).
+        onCodeBackdropChangeRef.current?.(runtime.getBackdropVizRequest());
       }
     });
     runtime.onAutoRefreshChanged((enabled: boolean) => {

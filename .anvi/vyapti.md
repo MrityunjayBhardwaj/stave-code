@@ -2370,3 +2370,91 @@ optional-arg threading + bounded fixpoint), PV52 (the `'literal' in via`
 discriminated-union guard the primitive's single new `bindings.get()`
 reader honors), hetvabhasa P70/PK18 (cascade discipline — the F2 fence
 was anticipated, not rediscovered through failure).
+
+---
+
+## PV54 addendum (20-22 deploy, 2026-05-27) — the additive-tag FLOOR span reaches APP-SIDE exhaustive `Record<PatternIR["tag"], T>` consumers, not just editor-package switches
+
+**ORIGIN:** The first production `next build` (#169) failed: `TAG_COLOR:
+Record<PatternIR["tag"], string>` in `packages/app/src/components/
+IRInspectorPanel.tsx` was missing `Signal`/`Builder` — the tags 20-18
+added. 20-18's FLOOR-grep audit covered the 11 editor-package exhaustive
+`switch(.tag)` sites but NOT this app-side exhaustive `Record` keyed on
+the tag union.
+
+**WHY:** PV54's obligation ("every new top-level PatternIR `tag` requires
+updating every exhaustive consumer of the tag union") had a span gap — it
+was scoped to the EDITOR package. A `Record<PatternIR["tag"], T>` in the
+APP is equally exhaustive over the union and equally breaks when the union
+grows, but `tsc` only catches it at `next build` (vitest is transform-only
+— see hetvabhasa P72). So the break stayed latent ~7 days until deploy.
+
+**HOW — the widened FLOOR-grep obligation:** when adding a top-level
+PatternIR tag, grep BOTH packages for exhaustive consumers of the union:
+- editor: `switch` over `.tag` (the original 11 sites), AND
+- app: `Record<PatternIR["tag"], …>` / `{ [K in PatternIR["tag"]]: … }` /
+  any object literal keyed by the full tag set (e.g. `TAG_COLOR`).
+The cheap gate is `pnpm --filter @stave/app build` (full `tsc`) — a green
+vitest run does NOT exercise these. Cross-package exhaustiveness over a
+shared union is the span; the editor-only audit was too narrow.
+
+**REF:** PV54 (the base obligation), hetvabhasa P72 (transform-only tests
+skip tsc), #169 / PR #170, `packages/app/src/components/IRInspectorPanel.tsx:89`.
+
+## PV56 — One viz concept = one implementation, shared by every render surface
+
+**Claim:** each visualization concept (`"pianoroll"`, `"scope"`, …) must
+have EXACTLY ONE implementation, resolved the SAME way by every surface
+that renders it — inline `.viz()` / `._name()` zones, the code-driven
+`.name()` backdrop, and the manual backdrop picker. No surface may carry
+its own private renderer for a concept another surface also renders. The
+moment a concept has two implementations (a built-in sketch AND an
+editable preset), the surfaces drift and the user sees inconsistency
+(P73).
+
+**Why:** divergent renderers for the same name are indistinguishable to
+the user but produce different pixels; consistency can't be enforced by
+patching resolution per-surface (whack-a-mole). A single source of truth
+makes consistency structural, not policed.
+
+**Span:** the viz-resolution boundary — `DEFAULT_VIZ_DESCRIPTORS` (built-in
+sketches, `packages/editor/src/visualizers/defaultDescriptors.ts`), the
+named-viz registry (preset files), `resolveDescriptor` (inline), and the
+backdrop file-mapping (`StaveApp.handleCodeBackdropChange` + the preview
+provider). Currently MISALIGNED: built-ins and presets coexist; inline and
+backdrop resolve differently.
+
+**Target state — Model B (decided 2026-05-28, NOT YET IMPLEMENTED):** the
+editable preset files ARE the implementation; built-in sketches retired or
+demoted to seed content; inline zones provide a populated `stave.scheduler`
+so scheduler-driven preset code (e.g. `PIANOROLL_P5_CODE`) renders inline;
+`resolveDescriptor` and the backdrop both resolve a viz name to the same
+preset. End-user impact: standard viz are editable like any viz file —
+edit `Piano Roll.p5`, it changes everywhere it appears.
+
+**Maintained by:** (NOT YET) retirement of the `DEFAULT_VIZ_DESCRIPTORS`
+sketch duplicates + inline scheduler wiring. Until then scope is
+consistent (both use the `scope.p5` preset — PR #178 commit 5) but
+pianoroll is not (inline = built-in, bg = preset).
+
+**STATUS UPDATE 2026-05-28 (PR #178 / #183):** SATISFIED at the
+resolution + render layer. `resolveDescriptor` now does exact-then-normalized
+named-registry lookup (commit 03ec8ea); `PIANOROLL_P5_CODE` was upgraded to
+the rich single source (fold lanes + classified colors + active highlight +
+note-name parse, commit 37a0d3d). Inline `.viz("pianoroll")` and the
+`.pianoroll()` backdrop render the identical preset — verified by direct
+screenshot comparison for both melodic and `stack(note, drums)` patterns.
+All 7 standard p5 viz are now structurally single-source through the
+named-viz registry. The built-in `DEFAULT_VIZ_DESCRIPTORS` p5 entries are
+dead code in the app (presets always win) but PHYSICALLY REMAIN for picker /
+demo / standalone embedders; physical retirement (move bundled code into
+the editor package, delete TS sketch classes) is tracked as #184 — that
+closes the duality everywhere, not just where it was previously visible.
+Until #184 lands, the invariant relies on the app's seed-and-register
+sequence (`StrudelEditorClient.registerAllVizFiles` + bundled-preset
+useEffect) running before inline resolution — which is the case today.
+
+**Catalogue cross-ref:** see P73 (the trap framing was partly
+misattributed; observation revealed the true cause) and P74 (the
+consolidation-downgrade trap surfaced HERE — solving P73 silently broke
+note-name patterns until porting the rich logic).

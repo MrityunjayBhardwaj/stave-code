@@ -65,29 +65,123 @@ live_loop :melody do
 end`;
 
 export const PIANOROLL_P5_CODE = `// Stave p5 viz — Piano Roll
-// stave.scheduler, stave.analyser, stave.hapStream are injected globals
+// stave.scheduler, stave.analyser, stave.hapStream are injected globals.
+// Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets its own
+// horizontal lane, sorted low→high, so notes never overlap and the melodic
+// contour reads as a staircase. Notes scroll right→left across a 4-cycle
+// window; the playhead sits at the half mark.
+
+const CYCLES = 4      // cycles visible across the canvas width
+const PLAYHEAD = 0.5  // 0..1 — where "now" sits horizontally
+// Drum/percussion sound-name prefixes for color classification.
+const DRUM_PREFIXES = ['bd', 'sd', 'hh', 'rim', 'cp', 'cy', 'lt', 'mt', 'ht', 'oh', 'cl']
+
+function isDrum(s) {
+  return DRUM_PREFIXES.some(p => s === p || (s.startsWith(p) && /\\d/.test(s[p.length] || '')))
+}
+
+// Note NAME → MIDI. Returns null for unparseable names (octaveless or
+// sample names) — the caller folds those onto string lanes instead.
+function noteToMidi(n) {
+  if (typeof n === 'number') return Math.round(n)
+  if (typeof n !== 'string') return null
+  const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+  if (!m) return null
+  const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+  const acc = m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0
+  return (parseInt(m[3]) + 1) * 12 + base + acc
+}
+
+// Fold-grouping key: a MIDI number for pitched haps, a "_sound" string for
+// unpitched ones. Priority mirrors how Strudel fills a hap (freq is
+// pre-computed from note, so note("c e g") resolves via freq, never NaN).
+function valueOf(h) {
+  if (typeof h.freq === 'number') return Math.round(12 * Math.log2(h.freq / 440) + 69)
+  if (typeof h.note === 'number') return h.note
+  if (typeof h.note === 'string') {
+    const mi = noteToMidi(h.note)
+    return mi !== null ? mi : '_' + h.note
+  }
+  if (h.s) return '_' + h.s
+  return 0
+}
+
+function parseHex(hex) {
+  const s = String(hex).replace('#', '')
+  if (s.length === 6) return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)]
+  if (s.length === 3) return [parseInt(s[0] + s[0], 16), parseInt(s[1] + s[1], 16), parseInt(s[2] + s[2], 16)]
+  return null
+}
+
+// Explicit hap color wins; else classify by sound family.
+function colorOf(h) {
+  if (h.color) { const c = parseHex(h.color); if (c) return c }
+  const s = h.s || ''
+  if (isDrum(s)) return [249, 115, 22]        // drums  — orange
+  if (s.startsWith('bass')) return [6, 182, 212]   // bass  — cyan
+  if (s.startsWith('pad')) return [16, 185, 129]   // pad   — green
+  return [139, 92, 246]                        // melody — purple
+}
 
 function setup() {
   createCanvas(stave.width, stave.height)
-  colorMode(HSB, 360, 100, 100, 1)
   noStroke()
 }
 
 function draw() {
-  background(230, 30, 8, 0.25)
-  if (stave.scheduler) {
-    const now = stave.scheduler.now()
-    const haps = stave.scheduler.query(now - 3, now + 1)
-    for (const h of haps) {
-      const x = ((h.begin - now + 3) / 4) * width
-      const w = max(4, ((h.duration ?? h.end - h.begin) / 4) * width)
-      const y = (1 - (h.note ?? 60) / 127) * height
-      const playing = h.begin <= now && (h.begin + (h.duration ?? 0.25)) > now
-      const hue = (((h.note ?? 60) * 7) % 12) * 30
-      fill(hue, playing ? 80 : 55, playing ? 100 : 70, playing ? 1 : 0.85)
-      rect(x, y - 3, w, 6, 2)
+  const W = width, H = height
+  background(9, 9, 18)
+  const sched = stave.scheduler
+  if (!sched) return
+  let now
+  try { now = sched.now() } catch (e) { return }
+
+  const from = now - CYCLES * PLAYHEAD
+  const to = now + CYCLES * (1 - PLAYHEAD)
+  const ext = to - from
+  let haps
+  try { haps = sched.query(from, to) } catch (e) { haps = [] }
+
+  // Fold: collect distinct pitch/sound values, sort ascending → lanes.
+  const seen = new Set(), vals = []
+  for (const h of haps) { const v = valueOf(h); if (!seen.has(v)) { seen.add(v); vals.push(v) } }
+  vals.sort((a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') return a - b
+    if (typeof a === 'number') return -1
+    if (typeof b === 'number') return 1
+    return String(a).localeCompare(String(b))
+  })
+  const fold = Math.max(1, vals.length)
+  const barH = H / fold
+
+  noStroke()
+  for (const h of haps) {
+    const lane = vals.indexOf(valueOf(h))
+    if (lane < 0) continue
+    const x = ((h.begin - now + CYCLES * PLAYHEAD) / ext) * W
+    const w = Math.max(2, ((h.end - h.begin) / ext) * W)
+    const y = ((fold - 1 - lane) / fold) * H   // higher pitch → higher up
+    const endC = h.endClipped != null ? h.endClipped : h.end
+    const active = h.begin <= now && endC > now
+    const gain = Math.min(1, Math.max(0.1, h.gain == null ? 1 : h.gain))
+    const vel = Math.min(1, Math.max(0.1, h.velocity == null ? 1 : h.velocity))
+    const alpha = gain * vel
+    const [r, g, b] = colorOf(h)
+    if (active) {
+      // Brightened toward white + a crisp outline so the playing note pops.
+      fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)
+      rect(x, y + 1, w - 2, barH - 2)
+      noFill(); stroke(255, 255, 255, 220); strokeWeight(1)
+      rect(x, y + 1, w - 2, barH - 2); noStroke()
+    } else {
+      fill(r, g, b, alpha * 180)
+      rect(x, y + 1, w - 2, barH - 2)
     }
   }
+
+  // Playhead line.
+  stroke(255, 255, 255, 128); strokeWeight(1)
+  line(PLAYHEAD * W, 0, PLAYHEAD * W, H); noStroke()
 }`;
 
 export const PIANOROLL_HYDRA_CODE = `// Hydra Piano Roll — shader-based frequency bands

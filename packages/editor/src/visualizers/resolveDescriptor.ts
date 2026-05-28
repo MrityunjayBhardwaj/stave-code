@@ -1,15 +1,20 @@
 import type { VizDescriptor } from './types'
 import { getVizConfig } from './vizConfig'
-import { getNamedViz } from './namedVizRegistry'
+import { getNamedViz, getNamedVizByNormalized } from './namedVizRegistry'
 
 /**
  * Resolves a viz ID to a VizDescriptor using the "mode:renderer" convention.
  *
  * Resolution order:
- *   1. User-named viz registry — exact name match in the runtime
- *      `namedVizRegistry` (populated by saved viz presets). User intent
- *      wins over built-ins, so a user-saved preset named `"pianoroll"`
- *      shadows the built-in `"pianoroll:hydra"` for their inline usage.
+ *   1. User-named viz registry — exact name match first, then a
+ *      NORMALIZED match (case/space/hyphen/underscore insensitive) in the
+ *      runtime `namedVizRegistry` (populated by saved viz presets). User
+ *      intent wins over built-ins, so a user-saved preset named
+ *      `"pianoroll"` shadows the built-in `"pianoroll:hydra"`. The
+ *      normalized hop is what lets inline `.viz("pianoroll")` reach the
+ *      bundled `"Piano Roll"` preset — the SAME preset the `.pianoroll()`
+ *      backdrop renders — instead of falling through to the built-in
+ *      sketch (P73 / PV56).
  *   2. Exact match on `descriptor.id`
  *      e.g. "pianoroll:hydra" → "pianoroll:hydra"
  *   3. Default renderer — append `":${defaultRenderer}"` from config and retry
@@ -25,8 +30,9 @@ export function resolveDescriptor(
 ): VizDescriptor | undefined {
   // 1. Named viz registry — user-chosen preset names take priority.
   //    Populated by `vizPresetBridge` on seed/save; empty until the
-  //    user opens their first viz file in this session.
-  const named = getNamedViz(vizId)
+  //    user opens their first viz file in this session. Exact name first,
+  //    then a normalized match so `.viz("pianoroll")` finds `"Piano Roll"`.
+  const named = getNamedViz(vizId) ?? getNamedVizByNormalized(vizId)
   if (named) return named
 
   // 2. Exact match (handles both "pianoroll" and "pianoroll:hydra")

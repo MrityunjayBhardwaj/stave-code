@@ -3580,6 +3580,17 @@ function extractVizName(rawArg) {
   return out === "" ? void 0 : out;
 }
 __name(extractVizName, "extractVizName");
+var STRUDEL_VIZ_METHODS = {
+  pianoroll: "pianoroll",
+  punchcard: "pianoroll",
+  wordfall: "wordfall",
+  scope: "scope",
+  tscope: "scope",
+  fscope: "fscope",
+  spectrum: "spectrum",
+  spiral: "spiral",
+  pitchwheel: "pitchwheel"
+};
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3598,6 +3609,12 @@ var _StrudelEngine = class _StrudelEngine {
     this.trackSchedulers = /* @__PURE__ */ new Map();
     // Per-track viz requests captured during the last evaluate() call
     this.vizRequests = /* @__PURE__ */ new Map();
+    // Backdrop viz requested by a non-underscore Strudel viz method (e.g.
+    // `.scope()`, `.pianoroll()`) during the last evaluate(). Strudel's
+    // non-underscore viz methods are its "big"/fullscreen form — we map them
+    // to Stave's backdrop instead of drawing strudel's own fullscreen canvas.
+    // Resolved renderer id (e.g. 'scope', 'pianoroll'); null when none called.
+    this.backdropVizRequest = null;
     // Reference to superdough audio controller (set during init)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.audioController = null;
@@ -3906,6 +3923,7 @@ var _StrudelEngine = class _StrudelEngine {
     this.lastAliasResolutions = [];
     const capturedPatterns = /* @__PURE__ */ new Map();
     const capturedVizRequests = /* @__PURE__ */ new Map();
+    let capturedBackdropViz = null;
     let anonIndex = 0;
     let autoOrbitNext = 100;
     const probeExplicitOrbit = /* @__PURE__ */ __name((pat) => {
@@ -3925,7 +3943,6 @@ var _StrudelEngine = class _StrudelEngine {
     const { Pattern: Pattern2 } = await import('@strudel/core');
     const savedDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "p");
     const savedVizDescriptor = Object.getOwnPropertyDescriptor(Pattern2.prototype, "viz");
-    const legacyVizNames = ["pianoroll", "punchcard", "wordfall", "scope", "fscope", "spectrum", "spiral", "pitchwheel", "markCSS"];
     const savedLegacyDescriptors = /* @__PURE__ */ new Map();
     Object.defineProperty(Pattern2.prototype, "p", {
       configurable: true,
@@ -3944,17 +3961,24 @@ var _StrudelEngine = class _StrudelEngine {
             return result;
           }, "value")
         });
-        for (const name of legacyVizNames) {
-          const methodName = `_${name}`;
-          savedLegacyDescriptors.set(methodName, Object.getOwnPropertyDescriptor(Pattern2.prototype, methodName));
-          const strudelLegacy = Pattern2.prototype[methodName];
-          Object.defineProperty(Pattern2.prototype, methodName, {
+        for (const [name, renderer] of Object.entries(STRUDEL_VIZ_METHODS)) {
+          const underscore = `_${name}`;
+          savedLegacyDescriptors.set(underscore, Object.getOwnPropertyDescriptor(Pattern2.prototype, underscore));
+          Object.defineProperty(Pattern2.prototype, underscore, {
             configurable: true,
             writable: true,
-            value: /* @__PURE__ */ __name(function(...args) {
-              const result = strudelLegacy ? strudelLegacy.apply(this, args) : this;
-              result._pendingViz = name;
-              return result;
+            value: /* @__PURE__ */ __name(function() {
+              this._pendingViz = renderer;
+              return this;
+            }, "value")
+          });
+          savedLegacyDescriptors.set(name, Object.getOwnPropertyDescriptor(Pattern2.prototype, name));
+          Object.defineProperty(Pattern2.prototype, name, {
+            configurable: true,
+            writable: true,
+            value: /* @__PURE__ */ __name(function() {
+              capturedBackdropViz = renderer;
+              return this;
             }, "value")
           });
         }
@@ -4019,6 +4043,7 @@ var _StrudelEngine = class _StrudelEngine {
           });
         }
         this.vizRequests = capturedVizRequests;
+        this.backdropVizRequest = capturedBackdropViz;
         this.rebuildTrackAnalysers(capturedPatterns);
         const irBag = propagate(
           { strudelCode: code },
@@ -4040,6 +4065,7 @@ var _StrudelEngine = class _StrudelEngine {
         this.lastPatternIR = null;
         this.lastIREvents = [];
         this.lastIRNodeLocLookup = null;
+        this.backdropVizRequest = null;
       }
       return result;
     } finally {
@@ -4077,9 +4103,11 @@ var _StrudelEngine = class _StrudelEngine {
       scheduler: this.getPatternScheduler(),
       trackSchedulers: this.trackSchedulers
     };
-    if (this.vizRequests.size > 0 && this.lastEvaluatedCode) {
+    const hasInlineViz = this.vizRequests.size > 0 && this.lastEvaluatedCode;
+    if (hasInlineViz || this.backdropVizRequest) {
       bag.inlineViz = {
-        vizRequests: this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode)
+        vizRequests: hasInlineViz ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode) : /* @__PURE__ */ new Map(),
+        backdropRequest: this.backdropVizRequest ? { vizId: this.backdropVizRequest } : void 0
       };
     }
     if (this.lastPatternIR) {
@@ -15624,17 +15652,25 @@ __name(applyPersistedTheme, "applyPersistedTheme");
 
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
+var normIndex = /* @__PURE__ */ new Map();
 var listeners4 = /* @__PURE__ */ new Set();
+function normalizeVizName(name) {
+  return name.toLowerCase().replace(/[\s\-_]/g, "");
+}
+__name(normalizeVizName, "normalizeVizName");
 function registerNamedViz(name, descriptor) {
   const existing = registry.get(name);
   if (existing === descriptor) return;
   registry.set(name, descriptor);
+  normIndex.set(normalizeVizName(name), name);
   notifyListeners();
 }
 __name(registerNamedViz, "registerNamedViz");
 function unregisterNamedViz(name) {
   if (!registry.has(name)) return;
   registry.delete(name);
+  const norm = normalizeVizName(name);
+  if (normIndex.get(norm) === name) normIndex.delete(norm);
   notifyListeners();
 }
 __name(unregisterNamedViz, "unregisterNamedViz");
@@ -15642,6 +15678,11 @@ function getNamedViz(name) {
   return registry.get(name);
 }
 __name(getNamedViz, "getNamedViz");
+function getNamedVizByNormalized(name) {
+  const exactName = normIndex.get(normalizeVizName(name));
+  return exactName ? registry.get(exactName) : void 0;
+}
+__name(getNamedVizByNormalized, "getNamedVizByNormalized");
 function listNamedVizNames() {
   return Array.from(registry.keys());
 }
@@ -15674,7 +15715,7 @@ __name(notifyListeners, "notifyListeners");
 
 // src/visualizers/resolveDescriptor.ts
 function resolveDescriptor(vizId, descriptors) {
-  const named = getNamedViz(vizId);
+  const named = getNamedViz(vizId) ?? getNamedVizByNormalized(vizId);
   if (named) return named;
   const exact = descriptors.find((d) => d.id === vizId);
   if (exact) return exact;
@@ -20226,6 +20267,17 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   getHapStream() {
     return this.engine.components.streaming?.hapStream ?? null;
   }
+  /**
+   * Backdrop viz requested by a non-underscore Strudel viz method
+   * (e.g. `.scope()`, `.pianoroll()`) during the last evaluate, or `null`.
+   * Read-through accessor over the engine's components, mirroring
+   * `getHapStream`. Consumed by StrudelEditorClient → StaveApp, which maps
+   * the resolved renderer id to a project viz file and pins it as the
+   * backdrop (the "set bg" UI then auto-updates from `backgroundFileId`).
+   */
+  getBackdropVizRequest() {
+    return this.engine.components.inlineViz?.backdropRequest?.vizId ?? null;
+  }
   // -------------------------------------------------------------------------
   // Phase 20-07 — debugger pause/resume + BreakpointStore accessor.
   //
@@ -22987,13 +23039,13 @@ var P5_VIZ = createCompiledVizProvider({
 });
 
 // src/workspace/preview/namedVizBridge.ts
-function registerPresetAsNamedViz(preset) {
+function registerPresetAsNamedViz(preset, name = preset.name) {
   try {
     const descriptor = compilePreset(preset);
-    registerNamedViz(preset.name, descriptor);
+    registerNamedViz(name, descriptor);
     return true;
   } catch {
-    unregisterNamedViz(preset.name);
+    unregisterNamedViz(name);
     return false;
   }
 }
