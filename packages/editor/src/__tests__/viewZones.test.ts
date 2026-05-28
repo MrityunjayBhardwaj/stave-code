@@ -13,11 +13,6 @@ vi.mock('p5', () => {
   }
 })
 
-// Mock PianorollSketch to return a no-op factory
-vi.mock('../visualizers/sketches/PianorollSketch', () => ({
-  PianorollSketch: vi.fn(() => vi.fn()),
-}))
-
 // Mock mountVizRenderer to avoid DOM/canvas side-effects
 vi.mock('../visualizers/mountVizRenderer', () => ({
   mountVizRenderer: vi.fn(() => ({
