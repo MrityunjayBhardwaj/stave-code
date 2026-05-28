@@ -50,6 +50,11 @@ import {
   type PreviewProvider,
   type HapStream,
   type BreakpointStore,
+  loadShellState,
+  saveShellState,
+  buildDefaultSnapshot,
+  hydrateSnapshot,
+  type ShellSnapshot,
 } from "@stave/editor";
 import { PIANOROLL_P5_CODE, PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -88,6 +93,14 @@ function ensureProviders() {
 // ---------------------------------------------------------------------------
 
 interface StrudelEditorClientProps {
+  /**
+   * Active project id — used to scope the workspace-shell state
+   * persistence (issue #175). StaveApp already keys this component by
+   * `activeProject.id`, so within a single mount the id is stable; on
+   * project switch the component remounts and reads the new project's
+   * persisted tabs.
+   */
+  projectId: string;
   shellRef?: React.RefObject<WorkspaceShellHandle | null>;
   onActiveFileChange?: (fileId: string | null) => void;
   /**
@@ -151,6 +164,7 @@ interface StrudelEditorClientProps {
 }
 
 export default function StrudelEditorClient({
+  projectId,
   shellRef,
   onActiveFileChange,
   onActiveRuntimeStateChange,
@@ -160,7 +174,7 @@ export default function StrudelEditorClient({
   onBackgroundFileChange,
   backgroundCrop,
   onCodeBackdropChange,
-}: StrudelEditorClientProps = {}) {
+}: StrudelEditorClientProps) {
   // Register providers once
   ensureProviders();
 
@@ -630,26 +644,47 @@ export default function StrudelEditorClient({
     }
   }, []);
 
-  // Seed initial tabs from the current file list — one editor tab per
-  // file. The shell reads `initialTabs` once on mount; after that we
-  // drive add/remove imperatively so create/delete in the sidebar
-  // doesn't blow away the whole tab layout.
-  const initialTabs: WorkspaceTab[] = React.useMemo(() => {
-    const files = listWorkspaceFiles();
-    return files.map((f) => ({
-      kind: "editor" as const,
-      id: `tab-${f.id}`,
-      fileId: f.id,
-    }));
-    // initialTabs is consumed once on mount — intentionally empty deps
-    // so the memo is stable and we don't rebuild tabs for the shell.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Seed the shell's initial state from persistence (issue #175). The
+  // shell reads these props exactly once on mount; after that we drive
+  // add/remove imperatively so create/delete in the sidebar doesn't blow
+  // away the whole tab layout.
+  //
+  // Strategy:
+  //   1. Read the project's persisted shell state, validated against
+  //      the live workspace files. Stale fileIds are pruned; if
+  //      nothing usable remains, the loader returns null.
+  //   2. On null, build a SANE DEFAULT — one group with a single tab
+  //      pointing at the project's Strudel file (if any), else an
+  //      empty group. This replaces the previous "open ALL 11 files"
+  //      behavior that overwhelmed new visitors.
+  //
+  // Reading happens inside a `useRef` initializer so it runs exactly
+  // once per mount and survives every re-render without re-seeding.
+  const initialSnapshot = useRef<ShellSnapshot>(
+    (() => {
+      const files = listWorkspaceFiles();
+      const validIds = new Set(files.map((f) => f.id));
+      const persisted = loadShellState(projectId, validIds);
+      if (persisted) return hydrateSnapshot(persisted);
+      // First load (or wiped persistence) → single Strudel tab.
+      const strudelFile = files.find((f) => f.language === "strudel") ?? files[0];
+      return buildDefaultSnapshot("g-main", strudelFile?.id ?? null);
+    })(),
+  ).current;
 
   // Incremental sync: watch the file list and route adds to
   // openOrFocusFile, deletes to closeTabsForFile. The shell mounts once
   // and mutates in place — no flash, no tab-set churn.
-  const prevFileIdsRef = useRef<Set<string>>(new Set(initialTabs.map((t) => t.fileId!)));
+  //
+  // Critical: seed prevFileIdsRef from the LIVE workspace, NOT from the
+  // initial tab set. If we seeded from tabs, the very first subscribe
+  // fire would see every workspace file that isn't yet a tab as "added"
+  // and auto-open them all — re-creating the 11-tab problem under a
+  // different code path. Files added AFTER mount (user-created in the
+  // sidebar) still flow through openOrFocusFile as intended.
+  const prevFileIdsRef = useRef<Set<string>>(
+    new Set(listWorkspaceFiles().map((f) => f.id)),
+  );
   useEffect(() => {
     return subscribeToFileList(() => {
       const current = new Set(listWorkspaceFiles().map((f) => f.id));
@@ -713,10 +748,23 @@ export default function StrudelEditorClient({
     });
   }, [runtimeStates, onActiveRuntimeStateChange]);
 
+  // Persist on every shell mutation (#175). Fires reactively from the
+  // shell's single onGroupsChange sink; no debounce — localStorage
+  // writes are O(1) and the snapshot is small.
+  const handleGroupsChange = useCallback(
+    (snapshot: ShellSnapshot) => {
+      saveShellState(projectId, snapshot);
+    },
+    [projectId],
+  );
+
   return (
     <WorkspaceShell
       ref={shellRef}
-      initialTabs={initialTabs}
+      initialGroups={initialSnapshot.groups}
+      initialLayout={initialSnapshot.layout}
+      initialActiveGroupId={initialSnapshot.activeGroupId}
+      onGroupsChange={handleGroupsChange}
       theme={resolvedTheme}
       height="100%"
       chromeForTab={chromeForTab}
