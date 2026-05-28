@@ -2027,6 +2027,68 @@ declare function SpiralSketch(_hapStreamRef: RefObject<HapStream | null>, _analy
 declare function PitchwheelSketch(_hapStreamRef: RefObject<HapStream | null>, _analyserRef: RefObject<AnalyserNode | null>, schedulerRef: RefObject<PatternScheduler | null>): (p: p5__default) => void;
 
 /**
+ * groupLayout — pure functions for the 2D workspace group layout.
+ *
+ * The workspace shell arranges editor/preview groups into a two-level
+ * grid: an outer horizontal row of **columns**, and each column is a
+ * vertical stack of **cells** (groups). This shape gives the user four
+ * drop targets per group (N/S/E/W) while staying simple enough to
+ * render as a top-level horizontal `SplitPane` whose children are
+ * either a leaf group or a nested vertical `SplitPane`.
+ *
+ * @remarks
+ * ## Why a 2-level grid and not a full tree
+ *
+ * VS Code's layout engine is a full recursive tree — each node can be
+ * a horizontal split OR vertical split OR leaf, nested arbitrarily
+ * deep. That supports layouts like "split left, then split the left
+ * column vertically, then split the top of that horizontally again."
+ *
+ * For Phase 10.2 we need N/S/E/W drops from any group but not the
+ * arbitrary nesting. The 2-level model (columns of cells) covers the
+ * common case:
+ *
+ *     ┌──────┬──────┬──────┐
+ *     │      │  B   │      │
+ *     │  A   ├──────┤  D   │
+ *     │      │  C   │      │
+ *     └──────┴──────┴──────┘
+ *
+ * Column 0 = [A], column 1 = [B, C], column 2 = [D].
+ *
+ * If a future phase needs recursive nesting, this module's external
+ * API (insertGroup, removeGroup, findGroupCoords) stays mostly the
+ * same — only the internal representation changes.
+ *
+ * ## Why pure functions in a separate module
+ *
+ * The shell's React reducer is already crowded with state updaters.
+ * Keeping the layout arithmetic pure and module-level:
+ *
+ *   1. Lets tests exercise every transition without a React harness.
+ *   2. Avoids stale-closure bugs inside setState callbacks — every
+ *      function takes the full layout and returns a new one.
+ *   3. Makes the invariant "no group id appears twice in the layout"
+ *      checkable in one place.
+ *
+ * Every function returns a NEW array (never mutates input). The shell
+ * passes the result straight to `setLayout`.
+ */
+/**
+ * One column is a vertical stack of group ids. `[g1]` is a column with
+ * one cell; `[g1, g2]` stacks g1 on top of g2. Empty columns are not
+ * allowed — `removeGroup` collapses them away.
+ */
+type LayoutColumn = readonly string[];
+/**
+ * The shell's full 2-D layout: an ordered list of columns arranged
+ * left-to-right at the horizontal level. An empty root layout (`[]`)
+ * means "no groups at all" and the shell renders a drop-target
+ * placeholder.
+ */
+type GroupLayout = readonly LayoutColumn[];
+
+/**
  * Reload policy per CONTEXT D-07. Encoded as a string literal rather than
  * a boolean so the three states stay distinguishable at call sites:
  *
@@ -2985,6 +3047,37 @@ interface WorkspaceShellProps {
      * is empty). Fires once on mount with the initial active tab (or
      * `null`) so late subscribers see the initial state.
      */
+    /**
+     * Persistence-friendly initial state. When provided, takes precedence
+     * over `initialTabs` and seeds the shell's groups + 2-D pane layout +
+     * active group id in one shot. Like `initialTabs` it is read exactly
+     * once on mount.
+     *
+     * Issue #175 — lets the consumer hydrate from `tabPersistence` so the
+     * user's pane splits + per-group tabs survive a refresh. If absent,
+     * the shell falls back to the legacy single-group seed from
+     * `initialTabs`.
+     */
+    readonly initialGroups?: ReadonlyMap<string, WorkspaceGroupState>;
+    readonly initialLayout?: GroupLayout;
+    readonly initialActiveGroupId?: string;
+    /**
+     * Fires reactively whenever the shell's groups / layout / activeGroupId
+     * change — i.e. on tab open / close / reorder, group split / collapse,
+     * active-tab change, active-group change, and `backgroundFileId`
+     * transitions. The callback receives the full state snapshot in the
+     * shape `tabPersistence.serializeShellState` expects, so the consumer
+     * can pipe it straight through to localStorage / Yjs.
+     *
+     * Issue #175 — single sink for persistence. Does NOT fire on initial
+     * mount (no-op write of just-hydrated state); only on subsequent
+     * mutations.
+     */
+    readonly onGroupsChange?: (snapshot: {
+        groups: ReadonlyMap<string, WorkspaceGroupState>;
+        layout: GroupLayout;
+        activeGroupId: string;
+    }) => void;
     readonly onActiveTabChange?: (tab: WorkspaceTab | null) => void;
     /**
      * Fires when any group's `backgroundFileId` changes — either set
@@ -5240,6 +5333,185 @@ declare function readPersistedOpen(): boolean;
 declare function readPersistedActiveTabId(): string | null;
 
 /**
+ * tabPersistence — SSR-safe localStorage helpers for the WorkspaceShell's
+ * full layout snapshot (groups + tabs + per-group active + 2-D pane
+ * layout + active group).
+ *
+ * Mirrors the shape and discipline of `bottomPanel/persistence.ts`:
+ *   - Readers MUST be safe to call from a `useState` initializer (no DOM
+ *     access without the `typeof window !== 'undefined'` guard, no throws
+ *     on Safari private mode where `localStorage.getItem` raises).
+ *   - Constants are exported so Playwright assertions can reference the
+ *     canonical key names.
+ *   - Pure helpers for everything not localStorage-bound, so the shell
+ *     and tests can exercise validation without a real storage layer.
+ *
+ * @remarks
+ * ## Scope (issue #175)
+ *
+ * Persist the full shell state per project — every group's tab set +
+ * order, each group's active tab id, the 2-D pane layout (split groups),
+ * the active group id, and per-group `backgroundFileId`. On reload, the
+ * shell hydrates from this snapshot; on every shell-state change, the
+ * snapshot is rewritten.
+ *
+ * **What's NOT persisted (deliberate):**
+ *   - **Preview tabs.** Preview tabs are transient by design (VSCode
+ *     parity — open another file in preview mode and the preview slot
+ *     replaces). Persisting them would resurrect "stale ghosts" the user
+ *     never explicitly pinned. They're filtered out at serialize-time;
+ *     editor tabs go through verbatim.
+ *   - **Drag/hover/scroll UI state.** Per-frame state isn't a preference.
+ *
+ * ## Validation on read
+ *
+ * Persisted state can drift from reality between sessions: a tab's
+ * `fileId` may have been deleted in the file tree; a group id in the
+ * layout may have been removed; the schema may have changed. The reader
+ * validates against the current workspace file list and returns
+ * `null` when nothing usable remains (caller falls back to
+ * `buildDefaultSnapshot`). This keeps the "if persistence is bad, give
+ * the user a sane fresh state" path obvious instead of crashing the
+ * shell on a stale fileId.
+ *
+ * ## Versioning
+ *
+ * Persisted blobs carry a `version` field so future schema changes can
+ * either migrate or fall back without throwing. v1 is the current shape.
+ * Mismatched versions return `null` — the user loses tab state once, the
+ * shell rebuilds the default, and forward writes use the new version.
+ *
+ * ## Key shape
+ *
+ *     stave:workspace:${projectId}:state
+ *
+ * Project-scoped via `projectId`. The active project is the unit of
+ * persistence — switching projects remounts the editor (StaveApp keys by
+ * `activeProject.id`) so the shell sees a fresh hydration each time.
+ */
+
+/**
+ * Canonical localStorage key prefix. Per-project keys append `:${projectId}:state`.
+ * Exported so Playwright/integration tests can clear or inspect persisted
+ * state without hard-coding the format.
+ */
+declare const SHELL_STATE_KEY_PREFIX = "stave:workspace:";
+/** Schema version of the persisted snapshot. Bump on breaking changes. */
+declare const SHELL_STATE_VERSION = 1;
+/** Build the full localStorage key for a project. */
+declare function shellStateKeyFor(projectId: string): string;
+/**
+ * The shape stored in localStorage. JSON-friendly — readonly markers
+ * from the source types are dropped because JSON has no concept of
+ * "mutable vs not."
+ */
+interface PersistedShellState {
+    readonly version: typeof SHELL_STATE_VERSION;
+    readonly groups: Record<string, PersistedGroup>;
+    /** 2-D pane layout: columns × cells, each cell is a group id. */
+    readonly layout: readonly (readonly string[])[];
+    readonly activeGroupId: string;
+}
+interface PersistedGroup {
+    readonly id: string;
+    /** Editor tabs only. Preview tabs are dropped at write-time. */
+    readonly tabs: readonly PersistedEditorTab[];
+    readonly activeTabId: string | null;
+    readonly backgroundFileId?: string;
+}
+interface PersistedEditorTab {
+    readonly kind: 'editor';
+    readonly id: string;
+    readonly fileId: string;
+    /** Optional in V1 — preview-state-for-an-editor-tab survives across reloads
+     *  because it's part of the user's working set, not the transient preview slot. */
+    readonly preview?: boolean;
+}
+/**
+ * Snapshot the shell hands to `saveShellState` — same shape the shell's
+ * internal state holds. Slimmer than `PersistedShellState` because it
+ * uses `Map` and the source `WorkspaceTab` union (with preview tabs the
+ * serializer filters out).
+ */
+interface ShellSnapshot {
+    readonly groups: ReadonlyMap<string, WorkspaceGroupState>;
+    readonly layout: GroupLayout;
+    readonly activeGroupId: string;
+}
+/**
+ * Read the persisted shell state for this project, validate it against
+ * the live workspace file list, and return the cleaned snapshot — or
+ * `null` if there is no usable state (no key, malformed JSON, schema
+ * mismatch, or no live tabs remained after validation).
+ *
+ * `validFileIds` is consulted at validation time to prune tabs whose
+ * underlying file no longer exists.
+ *
+ * Safe to call from a `useState` initializer (no DOM, no throws).
+ */
+declare function loadShellState(projectId: string, validFileIds: ReadonlySet<string>): PersistedShellState | null;
+/**
+ * Pure validator — exported so unit tests can drive arbitrary inputs
+ * without touching localStorage.
+ *
+ * Validation rules:
+ *   - Schema version must match.
+ *   - Tabs whose `fileId` is not in `validFileIds` are dropped.
+ *   - A group's `activeTabId` is reassigned to the first remaining tab
+ *     (or null) if the persisted active was pruned.
+ *   - A group's `backgroundFileId` is dropped if no longer valid.
+ *   - Layout cells referencing groups that no longer exist are removed;
+ *     columns that become empty are collapsed.
+ *   - If `activeGroupId` is not in the cleaned layout, falls back to the
+ *     first group in reading order.
+ *   - Returns `null` if the cleaned layout has no groups left — the
+ *     caller should rebuild the default in that case.
+ *
+ * Empty groups (group exists, all tabs pruned) are KEPT — the shell
+ * treats empty groups as legal and renders a drop-target placeholder.
+ */
+declare function validatePersistedState(input: unknown, validFileIds: ReadonlySet<string>): PersistedShellState | null;
+/**
+ * Serialize the shell's live state into the persisted form, dropping
+ * preview tabs (they're transient by design — see header).
+ *
+ * Pure — exported so tests can exercise the round-trip without
+ * localStorage.
+ */
+declare function serializeShellState(snapshot: ShellSnapshot): PersistedShellState;
+/**
+ * Write the snapshot to localStorage for this project. SSR-safe and
+ * swallows quota/private-mode errors — a failed write degrades to "no
+ * persistence this session," not a crash.
+ */
+declare function saveShellState(projectId: string, snapshot: ShellSnapshot): void;
+/**
+ * Remove the persisted entry for a project. Used by tests and by
+ * "Reset workspace" flows.
+ */
+declare function clearShellState(projectId: string): void;
+/**
+ * Build a sane default snapshot for first-launch: a single group with at
+ * most one tab — the Strudel pattern file when it exists in the workspace
+ * (the natural starting point), otherwise an empty group with a drop-
+ * target placeholder.
+ *
+ * Pure — exported so the caller can use it as the fallback when
+ * `loadShellState` returns `null`.
+ *
+ * Why ONE tab and not zero: the user lands inside an editable Strudel
+ * file out of the gate. Zero tabs would force a sidebar click before
+ * anything is editable.
+ */
+declare function buildDefaultSnapshot(newGroupId: string, defaultFileId: string | null): ShellSnapshot;
+/**
+ * Inverse of `serializeShellState` — used by callers that load a
+ * persisted snapshot and want to feed it back into the shell's
+ * state shape (Map + GroupLayout + activeGroupId).
+ */
+declare function hydrateSnapshot(persisted: PersistedShellState): ShellSnapshot;
+
+/**
  * timelineCapture — fixed-size FIFO ring buffer of IRSnapshot captures.
  *
  * Fed by publishIRSnapshot's capture fan-out (irInspector.ts) on every
@@ -5587,4 +5859,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BreakpointMeta, BreakpointStore, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type Pass, type PatternIR, type PatternScheduler, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, collect, collectCycles, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveAlias, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BreakpointMeta, BreakpointStore, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianorollSketch, PitchwheelSketch, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, type ShellSnapshot, type SnapshotMeta, SonicPiEngine, type SourceLocation, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveAlias, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };

@@ -26,6 +26,7 @@ async function gotoApp(page: import('@playwright/test').Page) {
 }
 
 async function clickHydraTab(page: import('@playwright/test').Page) {
+  // Try existing tabs first (persistence may have restored one).
   const allTabs = page.locator('[data-workspace-tab]')
   const count = await allTabs.count()
   for (let i = 0; i < count; i++) {
@@ -36,7 +37,18 @@ async function clickHydraTab(page: import('@playwright/test').Page) {
       return
     }
   }
-  throw new Error('no hydra tab in default project')
+  // Issue #175 — the default workspace now opens a single Strudel tab,
+  // not the 11-tab wall. Open a hydra preset via the file tree. File-tree
+  // items expose the fileId on `data-file-tree-item` and the visible name
+  // on the row; bundled hydra fileIds contain "hydra" — match on that.
+  const hydraItem = page
+    .locator('[data-file-tree-item*="hydra"]')
+    .first()
+  if ((await hydraItem.count()) === 0) {
+    throw new Error('no hydra preset file in default project')
+  }
+  await hydraItem.dblclick()
+  await page.waitForTimeout(500)
 }
 
 test.describe('Backdrop viz-chrome toggle', () => {

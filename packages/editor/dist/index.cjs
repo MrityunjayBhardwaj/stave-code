@@ -18397,6 +18397,10 @@ function tabFileName(tab) {
 __name(tabFileName, "tabFileName");
 var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
+  initialGroups,
+  initialLayout,
+  initialActiveGroupId,
+  onGroupsChange,
   theme = "dark",
   height = "100%",
   onActiveTabChange,
@@ -18412,7 +18416,13 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
   onCropViz
 }, forwardedRef) {
   const shellRootRef = React6.useRef(null);
-  const initialState = React6.useRef(createInitialGroupState(initialTabs));
+  const initialState = React6.useRef(
+    initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
+      groups: new Map(initialGroups),
+      layout: initialLayout,
+      activeGroupId: initialActiveGroupId
+    } : createInitialGroupState(initialTabs)
+  );
   const [groups, setGroups] = React6.useState(
     () => initialState.current.groups
   );
@@ -18422,6 +18432,14 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
   const [activeGroupId, setActiveGroupId] = React6.useState(
     () => initialState.current.activeGroupId
   );
+  const didMountRef = React6.useRef(false);
+  React6.useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    onGroupsChange?.({ groups, layout, activeGroupId });
+  }, [groups, layout, activeGroupId, onGroupsChange]);
   const [dragOverTarget, setDragOverTarget] = React6.useState(null);
   const [dragOverEdge, setDragOverEdge] = React6.useState(
     null
@@ -23210,6 +23228,184 @@ function emitFromGlobal(err, _kind) {
 }
 __name(emitFromGlobal, "emitFromGlobal");
 
+// src/workspace/tabPersistence.ts
+var SHELL_STATE_KEY_PREFIX = "stave:workspace:";
+var SHELL_STATE_VERSION = 1;
+function shellStateKeyFor(projectId) {
+  return `${SHELL_STATE_KEY_PREFIX}${projectId}:state`;
+}
+__name(shellStateKeyFor, "shellStateKeyFor");
+function loadShellState(projectId, validFileIds) {
+  if (typeof window === "undefined") return null;
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(shellStateKeyFor(projectId));
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  return validatePersistedState(parsed, validFileIds);
+}
+__name(loadShellState, "loadShellState");
+function validatePersistedState(input, validFileIds) {
+  if (!input || typeof input !== "object") return null;
+  const s = input;
+  if (s.version !== SHELL_STATE_VERSION) return null;
+  if (!s.groups || typeof s.groups !== "object") return null;
+  if (!Array.isArray(s.layout)) return null;
+  if (typeof s.activeGroupId !== "string") return null;
+  const cleanedGroups = {};
+  for (const [gid, rawGroup] of Object.entries(s.groups)) {
+    const g = rawGroup;
+    if (!g || typeof g !== "object" || g.id !== gid) continue;
+    const inTabs = Array.isArray(g.tabs) ? g.tabs : [];
+    const cleanedTabs = [];
+    for (const t of inTabs) {
+      if (!t || typeof t !== "object") continue;
+      if (t.kind !== "editor") continue;
+      const tt = t;
+      if (typeof tt.id !== "string" || typeof tt.fileId !== "string") continue;
+      if (!validFileIds.has(tt.fileId)) continue;
+      cleanedTabs.push({
+        kind: "editor",
+        id: tt.id,
+        fileId: tt.fileId,
+        ...tt.preview === true ? { preview: true } : {}
+      });
+    }
+    let activeTabId = typeof g.activeTabId === "string" ? g.activeTabId : null;
+    if (activeTabId !== null && !cleanedTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = cleanedTabs.length > 0 ? cleanedTabs[0].id : null;
+    }
+    const bg = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
+    cleanedGroups[gid] = {
+      id: gid,
+      tabs: cleanedTabs,
+      activeTabId,
+      ...bg !== void 0 ? { backgroundFileId: bg } : {}
+    };
+  }
+  const cleanedLayout = [];
+  for (const col of s.layout) {
+    if (!Array.isArray(col)) continue;
+    const cleanedCol = [];
+    for (const gid of col) {
+      if (typeof gid === "string" && cleanedGroups[gid]) cleanedCol.push(gid);
+    }
+    if (cleanedCol.length > 0) cleanedLayout.push(cleanedCol);
+  }
+  if (cleanedLayout.length === 0) return null;
+  const liveIds = /* @__PURE__ */ new Set();
+  for (const col of cleanedLayout) for (const gid of col) liveIds.add(gid);
+  const activeGroupId = liveIds.has(s.activeGroupId) ? s.activeGroupId : cleanedLayout[0][0];
+  const finalGroups = {};
+  for (const gid of liveIds) finalGroups[gid] = cleanedGroups[gid];
+  return {
+    version: SHELL_STATE_VERSION,
+    groups: finalGroups,
+    layout: cleanedLayout,
+    activeGroupId
+  };
+}
+__name(validatePersistedState, "validatePersistedState");
+function serializeShellState(snapshot) {
+  const groups = {};
+  for (const [gid, g] of snapshot.groups.entries()) {
+    const editorTabs = [];
+    for (const t of g.tabs) {
+      if (!isPersistableTab(t)) continue;
+      editorTabs.push({
+        kind: "editor",
+        id: t.id,
+        fileId: t.fileId,
+        ...t.preview === true ? { preview: true } : {}
+      });
+    }
+    let activeTabId = g.activeTabId;
+    if (activeTabId !== null && !editorTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = editorTabs.length > 0 ? editorTabs[0].id : null;
+    }
+    groups[gid] = {
+      id: gid,
+      tabs: editorTabs,
+      activeTabId,
+      ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {}
+    };
+  }
+  return {
+    version: SHELL_STATE_VERSION,
+    groups,
+    layout: snapshot.layout.map((col) => [...col]),
+    activeGroupId: snapshot.activeGroupId
+  };
+}
+__name(serializeShellState, "serializeShellState");
+function saveShellState(projectId, snapshot) {
+  if (typeof window === "undefined") return;
+  try {
+    const payload = JSON.stringify(serializeShellState(snapshot));
+    window.localStorage.setItem(shellStateKeyFor(projectId), payload);
+  } catch {
+  }
+}
+__name(saveShellState, "saveShellState");
+function clearShellState(projectId) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(shellStateKeyFor(projectId));
+  } catch {
+  }
+}
+__name(clearShellState, "clearShellState");
+function buildDefaultSnapshot(newGroupId, defaultFileId) {
+  const tabs2 = defaultFileId ? [{ kind: "editor", id: `tab-${defaultFileId}`, fileId: defaultFileId }] : [];
+  const group = {
+    id: newGroupId,
+    tabs: tabs2,
+    activeTabId: tabs2.length > 0 ? tabs2[0].id : null
+  };
+  const groups = /* @__PURE__ */ new Map();
+  groups.set(newGroupId, group);
+  return {
+    groups,
+    layout: [[newGroupId]],
+    activeGroupId: newGroupId
+  };
+}
+__name(buildDefaultSnapshot, "buildDefaultSnapshot");
+function hydrateSnapshot(persisted) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const [gid, pg] of Object.entries(persisted.groups)) {
+    groups.set(gid, {
+      id: pg.id,
+      tabs: pg.tabs.map((t) => ({
+        kind: "editor",
+        id: t.id,
+        fileId: t.fileId,
+        ...t.preview === true ? { preview: true } : {}
+      })),
+      activeTabId: pg.activeTabId,
+      ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {}
+    });
+  }
+  return {
+    groups,
+    layout: persisted.layout.map((col) => [...col]),
+    activeGroupId: persisted.activeGroupId
+  };
+}
+__name(hydrateSnapshot, "hydrateSnapshot");
+function isPersistableTab(t) {
+  return t.kind === "editor";
+}
+__name(isPersistableTab, "isPersistableTab");
+
 exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
 exports.BACKDROP_BLUR_VAR = BACKDROP_BLUR_VAR;
 exports.BOTTOM_PANEL_ACTIVE_TAB_KEY = BOTTOM_PANEL_ACTIVE_TAB_KEY;
@@ -23249,6 +23445,8 @@ exports.PitchwheelSketch = PitchwheelSketch;
 exports.PreviewView = PreviewView;
 exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
 exports.SAMPLE_SOUND_SOURCE_ID = SAMPLE_SOUND_SOURCE_ID;
+exports.SHELL_STATE_KEY_PREFIX = SHELL_STATE_KEY_PREFIX;
+exports.SHELL_STATE_VERSION = SHELL_STATE_VERSION;
 exports.SONICPI_DOCS_INDEX = SONICPI_DOCS_INDEX;
 exports.SONICPI_RUNTIME = SONICPI_RUNTIME;
 exports.SOUND_ALIASES = SOUND_ALIASES;
@@ -23277,6 +23475,7 @@ exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyTheme = applyTheme;
 exports.backdropQualityFactor = backdropQualityFactor;
 exports.buildAliasSuffix = buildAliasSuffix;
+exports.buildDefaultSnapshot = buildDefaultSnapshot;
 exports.bumpEditorFontSize = bumpEditorFontSize;
 exports.bundledPresetId = bundledPresetId;
 exports.canRedo = canRedo;
@@ -23286,6 +23485,7 @@ exports.classifyLiteralRhs = classifyLiteralRhs;
 exports.clearCapture = clearCapture;
 exports.clearIRSnapshot = clearIRSnapshot;
 exports.clearLog = clearLog;
+exports.clearShellState = clearShellState;
 exports.collect = collect;
 exports.collectCycles = collectCycles;
 exports.compilePreset = compilePreset;
@@ -23342,6 +23542,7 @@ exports.getZoneHeightOverride = getZoneHeightOverride;
 exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;
+exports.hydrateSnapshot = hydrateSnapshot;
 exports.initProjectDoc = initProjectDoc;
 exports.initProjectDocSync = initProjectDocSync;
 exports.installEngineLogMarkers = installEngineLogMarkers;
@@ -23358,6 +23559,7 @@ exports.listSnapshots = listSnapshots;
 exports.listTiers = listTiers;
 exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
+exports.loadShellState = loadShellState;
 exports.makeFixedKey = makeFixedKey;
 exports.merge = merge;
 exports.mountVizRenderer = mountVizRenderer;
@@ -23401,11 +23603,13 @@ exports.runMiniExpandedStage = runMiniExpandedStage;
 exports.runPasses = runPasses;
 exports.runRawStage = runRawStage;
 exports.sanitizePresetName = sanitizePresetName;
+exports.saveShellState = saveShellState;
 exports.saveSnapshot = saveSnapshot;
 exports.scaleGain = scaleGain;
 exports.seedFromPreset = seedFromPreset;
 exports.seedFromPresetId = seedFromPresetId;
 exports.seedWorkspaceFile = seedWorkspaceFile;
+exports.serializeShellState = serializeShellState;
 exports.setBackdropOpacity = setBackdropOpacity;
 exports.setBackdropQuality = setBackdropQuality;
 exports.setCaptureCapacity = setCaptureCapacity;
@@ -23426,6 +23630,7 @@ exports.setTrackMeta = setTrackMeta;
 exports.setVizConfig = setVizConfig;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
+exports.shellStateKeyFor = shellStateKeyFor;
 exports.startSampleSound = startSampleSound;
 exports.stopSampleSound = stopSampleSound;
 exports.subscribeCapture = subscribeCapture;
@@ -23451,6 +23656,7 @@ exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
 exports.useTrackMeta = useTrackMeta;
 exports.useWorkspaceFile = useWorkspaceFile;
+exports.validatePersistedState = validatePersistedState;
 exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
 exports.workspaceFileIdForPreset = workspaceFileIdForPreset;

@@ -85,16 +85,20 @@ test.describe('Stave — Tab Switching', () => {
 })
 
 test.describe('Stave — Viz Tabs', () => {
-  test('viz file tabs are visible in the tab bar', async ({ page }) => {
+  test('viz file tabs are visible in the tab bar after opening one', async ({ page }) => {
     await page.goto('/')
     await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 10000 })
-
-    // Look for tabs with viz-related file ids
-    const allTabs = page.locator('[data-workspace-tab]')
-    const tabTexts = await allTabs.allTextContents()
-    const hasP5 = tabTexts.some(t => /p5/i.test(t))
-    const hasHydra = tabTexts.some(t => /hydra/i.test(t))
-    expect(hasP5 || hasHydra).toBe(true)
+    // Issue #175 — the default workspace now opens a single Strudel tab,
+    // not the 11-tab wall. Open a viz preset via the file tree to verify
+    // viz files can become tabs. Double-click pins the tab.
+    const vizItem = page
+      .locator('[data-file-tree-item*="hydra"], [data-file-tree-item*="p5"]')
+      .first()
+    await vizItem.dblclick()
+    await page.waitForTimeout(300)
+    const tabTexts = await page.locator('[data-workspace-tab]').allTextContents()
+    const hasViz = tabTexts.some((t) => /p5|hydra/i.test(t))
+    expect(hasViz).toBe(true)
   })
 
   test('clicking hydra tab shows hydra code', async ({ page }) => {

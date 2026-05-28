@@ -1107,6 +1107,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             ) : (
               <StrudelEditorClient
                 key={activeProject.id}
+                projectId={activeProject.id}
                 shellRef={shellRef}
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}

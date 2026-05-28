@@ -31,7 +31,7 @@ export const StrudelEditorDynamic = dynamic(
     ]).then(async ([staveAppMod, editor, templates]) => {
       const { getLastOpenedProject, createProject, initProjectDoc, touchProject } = editor;
       const { StaveApp } = staveAppMod;
-      const { seedProjectFromTemplate } = templates;
+      const { seedProjectFromTemplate, seedMissingPresetFiles } = templates;
 
       // First-run bootstrap: if no projects exist, create "Untitled" and
       // seed it with the Starter template (so the user sees the default
@@ -51,6 +51,14 @@ export const StrudelEditorDynamic = dynamic(
       if (isFirstRun) {
         seedProjectFromTemplate("starter");
       }
+
+      // Ensure bundled viz preset files exist in EVERY session, not just
+      // first-run — the shell's tab persistence (#175) may hydrate tabs
+      // pointing at these viz fileIds, so they must be in the workspace
+      // store BEFORE StaveApp mounts and StrudelEditorClient reads the
+      // file list to validate the persisted snapshot. Idempotent via
+      // `seedWorkspaceFile`'s create-or-load semantics.
+      seedMissingPresetFiles();
 
       const initialProject = project;
 
