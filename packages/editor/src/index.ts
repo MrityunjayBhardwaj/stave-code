@@ -92,12 +92,17 @@ export { SplitPane } from './visualizers/editor/SplitPane'
 // EditorGroup deleted in Phase 10.2 Task 09 — replaced by WorkspaceShell.
 // VizTab, PreviewMode, EditorGroupState removed — replaced by WorkspaceTab / WorkspaceGroupState.
 
-// Visualizers — individual sketches (for advanced use: manual P5VizRenderer wrapping)
-export { PianorollSketch } from './visualizers/sketches/PianorollSketch'
-export { ScopeSketch } from './visualizers/sketches/ScopeSketch'
-export { SpectrumSketch } from './visualizers/sketches/SpectrumSketch'
-export { SpiralSketch } from './visualizers/sketches/SpiralSketch'
-export { PitchwheelSketch } from './visualizers/sketches/PitchwheelSketch'
+// Bundled p5 viz source — single source of truth for the picker AND the
+// `preset/viz/*.p5` workspace files. See `builtinP5Code.ts` for context.
+export {
+  PIANOROLL_P5_CODE,
+  WORDFALL_P5_CODE,
+  SCOPE_P5_CODE,
+  FSCOPE_P5_CODE,
+  SPECTRUM_P5_CODE,
+  SPIRAL_P5_CODE,
+  PITCHWHEEL_P5_CODE,
+} from './visualizers/builtinP5Code'
 
 // ---------------------------------------------------------------------------
 // Phase 10.2 — Workspace primitives (Tasks 01–08)

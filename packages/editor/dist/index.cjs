@@ -4939,1627 +4939,283 @@ var hydraKaleidoscope = /* @__PURE__ */ __name((s) => {
   ).rotate(() => s.a.fft[3] * 3.14).modulate(s.noise(3), () => s.a.fft[0] * 0.05).out();
 }, "hydraKaleidoscope");
 
-// src/visualizers/sketches/PianorollSketch.ts
-var CYCLES = 4;
-var PLAYHEAD = 0.5;
-var BG = "#090912";
-var INACTIVE_COLOR = "#75baff";
-var ACTIVE_COLOR = "#FFCA28";
-var PLAYHEAD_COLOR = "rgba(255,255,255,0.5)";
-function getValue(hap) {
-  if (hap.freq !== null) return Math.round(12 * Math.log2(hap.freq / 440) + 69);
-  if (typeof hap.note === "string") return noteToMidi(hap.note) ?? "_" + hap.note;
-  if (typeof hap.note === "number") return hap.note;
-  if (hap.s !== null) return "_" + hap.s;
-  return 0;
-}
-__name(getValue, "getValue");
-function parseHex(hex) {
-  const s = hex.replace("#", "");
-  if (s.length === 6) {
-    return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
-  }
-  if (s.length === 3) {
-    return [parseInt(s[0] + s[0], 16), parseInt(s[1] + s[1], 16), parseInt(s[2] + s[2], 16)];
-  }
+// src/engine/friendlyErrors.ts
+function parseStackLocation(err) {
+  const stack = typeof err === "object" && err !== null && "stack" in err ? String(err.stack ?? "") : "";
+  if (!stack) return null;
+  const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
+  if (v8Eval)
+    return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) };
+  const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/);
+  if (v8Named)
+    return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) };
+  const v8Anon = stack.match(/^\s*at\s+<anonymous>:(\d+):(\d+)/m);
+  if (v8Anon)
+    return { line: parseInt(v8Anon[1], 10), column: parseInt(v8Anon[2], 10) };
+  const ff = stack.match(
+    /@(?:<anonymous>|debugger eval|eval):(\d+):(\d+)/
+  );
+  if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) };
   return null;
 }
-__name(parseHex, "parseHex");
-function PianorollSketch(_hapStreamRef, _analyserRef, schedulerRef) {
-  return (p) => {
-    p.setup = () => {
-      p.createCanvas(window.innerWidth, 200);
-      p.pixelDensity(window.devicePixelRatio || 1);
-      p.noSmooth();
-    };
-    p.draw = () => {
-      const W = p.width;
-      const H = p.height;
-      const scheduler = schedulerRef.current;
-      if (!scheduler) {
-        p.background(BG);
-        return;
-      }
-      let now;
-      try {
-        now = scheduler.now();
-      } catch {
-        p.background(BG);
-        return;
-      }
-      const from = now - CYCLES * PLAYHEAD;
-      const to = now + CYCLES * (1 - PLAYHEAD);
-      const timeExtent = to - from;
-      let haps;
-      try {
-        haps = scheduler.query(from, to);
-      } catch {
-        haps = [];
-      }
-      const valueSet = /* @__PURE__ */ new Set();
-      for (const h of haps) valueSet.add(getValue(h));
-      const foldValues = Array.from(valueSet).sort((a, b) => {
-        if (typeof a === "number" && typeof b === "number") return a - b;
-        if (typeof a === "number") return -1;
-        if (typeof b === "number") return 1;
-        return String(a).localeCompare(String(b));
-      });
-      const foldCount = Math.max(1, foldValues.length);
-      const barH = H / foldCount;
-      p.background(BG);
-      p.noStroke();
-      for (const hap of haps) {
-        const value = getValue(hap);
-        const laneIdx = foldValues.indexOf(value);
-        if (laneIdx < 0) continue;
-        const duration = hap.end - hap.begin;
-        const x = (hap.begin - now + CYCLES * PLAYHEAD) / timeExtent * W;
-        const noteW = Math.max(2, duration / timeExtent * W);
-        const y = (foldCount - 1 - laneIdx) / foldCount * H;
-        const isActive = hap.begin <= now && hap.endClipped > now;
-        const gain = Math.min(1, Math.max(0.1, hap.gain));
-        const velocity = Math.min(1, Math.max(0.1, hap.velocity));
-        const alpha = gain * velocity;
-        const rgb = hap.color ? parseHex(String(hap.color)) : null;
-        if (isActive) {
-          const [r, g, b] = rgb ?? parseHex(ACTIVE_COLOR);
-          p.fill(r, g, b, alpha * 255);
-          p.rect(x, y + 1, noteW - 2, barH - 2);
-          p.noFill();
-          p.stroke(r, g, b, 255);
-          p.strokeWeight(1);
-          p.rect(x, y + 1, noteW - 2, barH - 2);
-          p.noStroke();
-        } else {
-          const [r, g, b] = rgb ?? parseHex(INACTIVE_COLOR);
-          p.fill(r, g, b, alpha * 180);
-          p.rect(x, y + 1, noteW - 2, barH - 2);
-        }
-      }
-      const phX = PLAYHEAD * W;
-      p.stroke(PLAYHEAD_COLOR);
-      p.strokeWeight(1);
-      p.line(phX, 0, phX, H);
-      p.noStroke();
-    };
-  };
-}
-__name(PianorollSketch, "PianorollSketch");
-
-// src/visualizers/sketches/WordfallSketch.ts
-var BG2 = "#090912";
-var INACTIVE_COLOR2 = "#75baff";
-var ACTIVE_COLOR2 = "#ffffff";
-var PLAYHEAD_COLOR2 = "rgba(255,255,255,0.5)";
-var CYCLES2 = 4;
-var PLAYHEAD2 = 0.5;
-function getValue2(hap) {
-  if (hap.freq !== null) return hap.freq;
-  if (hap.note !== null) return hap.note;
-  if (hap.s !== null) return "_" + hap.s;
-  return 0;
-}
-__name(getValue2, "getValue");
-function getLabel(hap) {
-  if (hap.note !== null && hap.s !== null) return `${hap.s}:${hap.note}`;
-  if (hap.note !== null) return String(hap.note);
-  if (hap.s !== null) return String(hap.s);
-  return "";
-}
-__name(getLabel, "getLabel");
-function WordfallSketch(_hapStreamRef, _analyserRef, schedulerRef) {
-  return (p) => {
-    p.setup = () => {
-      p.createCanvas(window.innerWidth, 200);
-      p.pixelDensity(window.devicePixelRatio || 1);
-    };
-    p.draw = () => {
-      const W = p.width;
-      const H = p.height;
-      p.background(BG2);
-      const scheduler = schedulerRef.current;
-      if (!scheduler) return;
-      let now;
-      try {
-        now = scheduler.now();
-      } catch {
-        return;
-      }
-      let haps;
-      try {
-        haps = scheduler.query(now - CYCLES2 * PLAYHEAD2, now + CYCLES2 * (1 - PLAYHEAD2));
-      } catch {
-        return;
-      }
-      const allValues = haps.map((h) => getValue2(h));
-      const foldValues = [...new Set(allValues)].sort(
-        (a, b) => typeof a === "number" && typeof b === "number" ? a - b : typeof a === "number" ? 1 : String(a).localeCompare(String(b))
+__name(parseStackLocation, "parseStackLocation");
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const la = a.length;
+  const lb = b.length;
+  if (la === 0) return lb;
+  if (lb === 0) return la;
+  let prev = new Array(lb + 1);
+  let curr = new Array(lb + 1);
+  for (let j = 0; j <= lb; j++) prev[j] = j;
+  for (let i = 1; i <= la; i++) {
+    curr[0] = i;
+    const ac = a.charCodeAt(i - 1);
+    for (let j = 1; j <= lb; j++) {
+      const cost = ac === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        // insert
+        prev[j] + 1,
+        // delete
+        prev[j - 1] + cost
+        // substitute
       );
-      if (foldValues.length === 0) return;
-      const barW = W / foldValues.length;
-      for (const hap of haps) {
-        const hapDuration = hap.endClipped - hap.begin;
-        const isActive = hap.begin <= now && hap.endClipped > now;
-        const timeToHap = hap.begin - now;
-        const playheadY = H * PLAYHEAD2;
-        const y = playheadY - timeToHap / CYCLES2 * H;
-        const durationH = hapDuration / CYCLES2 * H;
-        const value = getValue2(hap);
-        const foldIdx = foldValues.indexOf(value);
-        const x = foldIdx * barW;
-        const color = hap.color ?? INACTIVE_COLOR2;
-        p.noStroke();
-        if (isActive) {
-          p.fill(ACTIVE_COLOR2);
-        } else {
-          try {
-            const c = p.color(color);
-            c.setAlpha(160);
-            p.fill(c);
-          } catch {
-            p.fill(INACTIVE_COLOR2);
-          }
-        }
-        p.rect(x + 1, y + 1, barW - 2, durationH - 2);
-        if (durationH > 10 && barW > 16) {
-          const label = getLabel(hap);
-          if (label) {
-            const fontSize = Math.min(barW * 0.55, durationH * 0.7, 11);
-            p.textSize(fontSize);
-            p.textAlign(p.LEFT, p.TOP);
-            p.fill(isActive ? 0 : 255);
-            p.noStroke();
-            p.text(label, x + 3, y + 3);
-          }
-        }
-      }
-      p.stroke(PLAYHEAD_COLOR2);
-      p.strokeWeight(1);
-      p.line(0, H * PLAYHEAD2, W, H * PLAYHEAD2);
-    };
-  };
-}
-__name(WordfallSketch, "WordfallSketch");
-
-// src/visualizers/sketches/ScopeSketch.ts
-var BG3 = "#090912";
-var LINE_COLOR = "#75baff";
-var PULSE_COLOR = "#75baff";
-var POS = 0.75;
-var SCALE = 0.25;
-function ScopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
-  return (p) => {
-    p.setup = () => {
-      p.createCanvas(window.innerWidth, 200);
-      p.pixelDensity(window.devicePixelRatio || 1);
-      p.noFill();
-    };
-    p.draw = () => {
-      const W = p.width;
-      const H = p.height;
-      p.background(BG3);
-      p.stroke(40, 50, 70);
-      p.strokeWeight(0.5);
-      p.line(0, POS * H, W, POS * H);
-      const analyser = analyserRef.current;
-      if (analyser) {
-        const bufferSize = analyser.frequencyBinCount;
-        const data = new Float32Array(bufferSize);
-        analyser.getFloatTimeDomainData(data);
-        let triggerIndex = 0;
-        for (let i = 1; i < bufferSize; i++) {
-          if (data[i - 1] > 0 && data[i] <= 0) {
-            triggerIndex = i;
-            break;
-          }
-        }
-        const sliceWidth = W / (bufferSize - triggerIndex);
-        p.stroke(LINE_COLOR);
-        p.strokeWeight(2);
-        p.strokeCap("round");
-        p.beginShape();
-        for (let i = triggerIndex; i < bufferSize; i++) {
-          const x = (i - triggerIndex) * sliceWidth;
-          const y = (POS - SCALE * data[i]) * H;
-          p.vertex(x, y);
-        }
-        p.endShape();
-        return;
-      }
-      const scheduler = schedulerRef.current;
-      if (!scheduler) return;
-      let now;
-      try {
-        now = scheduler.now();
-      } catch {
-        return;
-      }
-      const WINDOW = 4;
-      const from = now - WINDOW;
-      let haps;
-      try {
-        haps = scheduler.query(from, now + 0.1);
-      } catch {
-        return;
-      }
-      p.noStroke();
-      for (const hap of haps) {
-        const age = now - hap.begin;
-        const decay = Math.max(0, 1 - age / WINDOW);
-        const x = (hap.begin - from) / WINDOW * W;
-        const pulseW = Math.max(3, (hap.end - hap.begin) / WINDOW * W);
-        const pulseH = H * 0.6 * decay * hap.gain;
-        const col = p.color(hap.color ?? PULSE_COLOR);
-        col.setAlpha(decay * 200);
-        p.fill(col);
-        p.rect(x, POS * H - pulseH / 2, pulseW, pulseH, 2);
-      }
-      p.stroke(255, 255, 255, 80);
-      p.strokeWeight(1);
-      p.line(W - 2, 0, W - 2, H);
-    };
-  };
-}
-__name(ScopeSketch, "ScopeSketch");
-
-// src/visualizers/sketches/FscopeSketch.ts
-var BG4 = "#090912";
-var COLOR = "#75baff";
-var SCALE2 = 0.25;
-var POS2 = 0.75;
-var LEAN = 0.5;
-var MIN_DB = -100;
-var MAX_DB = 0;
-function clamp(v, lo, hi) {
-  return Math.max(lo, Math.min(hi, v));
-}
-__name(clamp, "clamp");
-function midiToFreq2(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-__name(midiToFreq2, "midiToFreq");
-function resolveFreq(hap) {
-  if (hap.freq !== null) return hap.freq;
-  if (typeof hap.note === "number") return midiToFreq2(hap.note);
-  if (typeof hap.note === "string") {
-    const midi = noteToMidi(hap.note);
-    return midi !== null ? midiToFreq2(midi) : null;
+    }
+    [prev, curr] = [curr, prev];
   }
-  return null;
+  return prev[lb];
 }
-__name(resolveFreq, "resolveFreq");
-function FscopeSketch(_hapStreamRef, analyserRef, schedulerRef) {
-  return (p) => {
-    p.setup = () => {
-      p.createCanvas(window.innerWidth, 200);
-      p.pixelDensity(window.devicePixelRatio || 1);
-      p.noStroke();
-    };
-    p.draw = () => {
-      const W = p.width;
-      const H = p.height;
-      p.background(BG4);
-      p.stroke(40, 50, 70);
-      p.strokeWeight(0.5);
-      p.noFill();
-      p.line(0, POS2 * H, W, POS2 * H);
-      p.noStroke();
-      const analyser = analyserRef.current;
-      if (analyser) {
-        const bufferSize = analyser.frequencyBinCount;
-        const data = new Float32Array(bufferSize);
-        analyser.getFloatFrequencyData(data);
-        const sliceWidth2 = W / bufferSize;
-        p.fill(COLOR);
-        for (let i = 0; i < bufferSize; i++) {
-          const normalized = clamp((data[i] - MIN_DB) / (MAX_DB - MIN_DB), 0, 1);
-          const v = normalized * SCALE2;
-          const barH = v * H;
-          const barY = (POS2 - v * LEAN) * H;
-          p.rect(i * sliceWidth2, barY, Math.max(sliceWidth2, 1), barH);
-        }
-        return;
-      }
-      const scheduler = schedulerRef.current;
-      if (!scheduler) return;
-      let now;
-      try {
-        now = scheduler.now();
-      } catch {
-        return;
-      }
-      let haps;
-      try {
-        haps = scheduler.query(now - 0.2, now + 0.05);
-      } catch {
-        return;
-      }
-      const MIN_FREQ = 30;
-      const MAX_FREQ = 4e3;
-      const NUM_BINS = 64;
-      const bins = new Float32Array(NUM_BINS);
-      for (const hap of haps) {
-        const freq = resolveFreq(hap);
-        if (freq === null || freq < MIN_FREQ) continue;
-        const logPos = Math.log(freq / MIN_FREQ) / Math.log(MAX_FREQ / MIN_FREQ);
-        const binIdx = clamp(Math.floor(logPos * NUM_BINS), 0, NUM_BINS - 1);
-        const age = now - hap.begin;
-        const decay = Math.max(0, 1 - age / 0.5);
-        bins[binIdx] = Math.max(bins[binIdx], decay * hap.gain);
-      }
-      const sliceWidth = W / NUM_BINS;
-      for (let i = 0; i < NUM_BINS; i++) {
-        if (bins[i] <= 0) continue;
-        const v = bins[i] * SCALE2;
-        const barH = v * H;
-        const barY = (POS2 - v * LEAN) * H;
-        const col = p.color(COLOR);
-        col.setAlpha(bins[i] * 220);
-        p.fill(col);
-        p.rect(i * sliceWidth, barY, Math.max(sliceWidth - 1, 1), barH);
-      }
-    };
-  };
-}
-__name(FscopeSketch, "FscopeSketch");
-
-// src/visualizers/sketches/SpectrumSketch.ts
-var BG5 = "#090912";
-var COLOR2 = "#75baff";
-var MIN_DB2 = -80;
-var MAX_DB2 = 0;
-var SPEED = 2;
-function midiToFreq3(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-__name(midiToFreq3, "midiToFreq");
-function resolveFreq2(hap) {
-  if (hap.freq !== null) return hap.freq;
-  if (typeof hap.note === "number") return midiToFreq3(hap.note);
-  if (typeof hap.note === "string") {
-    const midi = noteToMidi(hap.note);
-    return midi !== null ? midiToFreq3(midi) : null;
+__name(levenshtein, "levenshtein");
+function fuzzyMatch(word, corpus, options = {}) {
+  if (!word) return [];
+  const lower = word.toLowerCase();
+  const threshold = options.maxDistance ?? Math.max(2, Math.ceil(word.length / 3));
+  const limit = options.limit ?? 5;
+  const hits = [];
+  for (const candidate of corpus) {
+    const d = levenshtein(lower, candidate.toLowerCase());
+    if (d <= threshold) hits.push({ name: candidate, distance: d });
   }
-  return null;
+  hits.sort(
+    (a, b) => a.distance - b.distance || // Prefer case-matching names on ties (e.g. PI over Pi).
+    (a.name === word ? -1 : b.name === word ? 1 : 0) || a.name.localeCompare(b.name)
+  );
+  return hits.slice(0, limit);
 }
-__name(resolveFreq2, "resolveFreq");
-function SpectrumSketch(_hapStreamRef, analyserRef, schedulerRef) {
-  return (p) => {
-    p.setup = () => {
-      p.createCanvas(window.innerWidth, 200);
-      p.pixelDensity(1);
-      p.noStroke();
-    };
-    p.draw = () => {
-      const W = p.width;
-      const H = p.height;
-      const ctx = p.drawingContext;
-      const analyser = analyserRef.current;
-      if (analyser) {
-        const bufferSize = analyser.frequencyBinCount;
-        const data = new Float32Array(bufferSize);
-        analyser.getFloatFrequencyData(data);
-        const imageData2 = ctx.getImageData(0, 0, W, H);
-        ctx.clearRect(0, 0, W, H);
-        ctx.putImageData(imageData2, -SPEED, 0);
-        const q2 = W - SPEED;
-        ctx.fillStyle = COLOR2;
-        for (let i = 0; i < bufferSize; i++) {
-          const normalized = Math.max(0, Math.min(1, (data[i] - MIN_DB2) / (MAX_DB2 - MIN_DB2)));
-          if (normalized <= 0) continue;
-          ctx.globalAlpha = normalized;
-          const yEnd = Math.log(i + 1) / Math.log(bufferSize) * H;
-          const yStart = i > 0 ? Math.log(i) / Math.log(bufferSize) * H : 0;
-          const barH = Math.max(2, yEnd - yStart);
-          ctx.fillRect(q2, H - yEnd, SPEED, barH);
-        }
-        ctx.globalAlpha = 1;
-        return;
-      }
-      const scheduler = schedulerRef.current;
-      if (!scheduler) {
-        p.background(BG5);
-        return;
-      }
-      let now;
-      try {
-        now = scheduler.now();
-      } catch {
-        p.background(BG5);
-        return;
-      }
-      const imageData = ctx.getImageData(0, 0, W, H);
-      ctx.clearRect(0, 0, W, H);
-      ctx.putImageData(imageData, -SPEED, 0);
-      let haps;
-      try {
-        haps = scheduler.query(now - 0.3, now + 0.05);
-      } catch {
-        return;
-      }
-      const q = W - SPEED;
-      const MIN_FREQ = 20;
-      const MAX_FREQ = 4e3;
-      for (const hap of haps) {
-        const freq = resolveFreq2(hap);
-        if (freq === null || freq < MIN_FREQ) continue;
-        const logPos = Math.log(freq / MIN_FREQ) / Math.log(MAX_FREQ / MIN_FREQ);
-        const y = H - logPos * H;
-        const barH = Math.max(4, H * 0.03);
-        const age = now - hap.begin;
-        const alpha = Math.max(0.1, 1 - age / 0.5) * hap.gain;
-        const col = p.color(hap.color ?? COLOR2);
-        col.setAlpha(alpha * 220);
-        ctx.fillStyle = col.toString();
-        ctx.globalAlpha = 1;
-        ctx.fillRect(q, y - barH / 2, SPEED, barH);
-      }
-      ctx.globalAlpha = 1;
-    };
-  };
-}
-__name(SpectrumSketch, "SpectrumSketch");
-
-// src/visualizers/sketches/SpiralSketch.ts
-var BG6 = "#090912";
-var ACTIVE_COLOR3 = "#75baff";
-var INACTIVE_COLOR3 = "#8a919966";
-var PLAYHEAD_COLOR3 = "#ffffff";
-function xyOnSpiral(rotations, margin, cx, cy, rotate2) {
-  const angle = ((rotations + rotate2) * 360 - 90) * (Math.PI / 180);
-  return [cx + Math.cos(angle) * margin * rotations, cy + Math.sin(angle) * margin * rotations];
-}
-__name(xyOnSpiral, "xyOnSpiral");
-function SpiralSketch(_hapStreamRef, _analyserRef, schedulerRef) {
-  return (p) => {
-    p.setup = () => {
-      p.createCanvas(300, 200);
-      p.pixelDensity(window.devicePixelRatio || 1);
-      p.noFill();
-    };
-    p.draw = () => {
-      const W = p.width;
-      const H = p.height;
-      p.background(BG6);
-      const scheduler = schedulerRef.current;
-      if (!scheduler) return;
-      let now;
-      try {
-        now = scheduler.now();
-      } catch {
-        return;
-      }
-      const lookbehind = 2;
-      const lookahead = 1;
-      let haps;
-      try {
-        haps = scheduler.query(now - lookbehind, now + lookahead);
-      } catch {
-        return;
-      }
-      const cx = W / 2;
-      const cy = H / 2;
-      const size = Math.min(W, H) * 0.38;
-      const margin = size / 3;
-      const inset = 3;
-      const rotate2 = now;
-      for (const hap of haps) {
-        const isActive = hap.begin <= now && hap.endClipped > now;
-        const from = hap.begin - now + inset;
-        const to = hap.endClipped - now + inset - 5e-3;
-        const opacity = Math.max(0, 1 - Math.abs((hap.begin - now) / lookbehind));
-        const hapColor = hap.color ?? (isActive ? ACTIVE_COLOR3 : INACTIVE_COLOR3);
-        const col = p.color(hapColor);
-        col.setAlpha(opacity * 255);
-        p.stroke(col);
-        p.strokeWeight(margin / 2);
-        p.strokeCap("round");
-        p.beginShape();
-        const inc = 1 / 60;
-        let angle2 = from;
-        while (angle2 <= to) {
-          const [x, y] = xyOnSpiral(angle2, margin, cx, cy, rotate2);
-          p.vertex(x, y);
-          angle2 += inc;
-        }
-        p.endShape();
-      }
-      p.stroke(PLAYHEAD_COLOR3);
-      p.strokeWeight(margin / 2);
-      p.strokeCap("round");
-      p.beginShape();
-      let angle = inset - 0.02;
-      while (angle <= inset) {
-        const [x, y] = xyOnSpiral(angle, margin, cx, cy, rotate2);
-        p.vertex(x, y);
-        angle += 1 / 60;
-      }
-      p.endShape();
-    };
-  };
-}
-__name(SpiralSketch, "SpiralSketch");
-
-// src/visualizers/sketches/PitchwheelSketch.ts
-var BG7 = "#090912";
-var BASE_COLOR = "#75baff";
-var ROOT_FREQ = 440 * Math.pow(2, (36 - 69) / 12);
-var EDO = 12;
-function midiToFreq4(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-__name(midiToFreq4, "midiToFreq");
-function getFreq(hap) {
-  if (hap.freq !== null) return hap.freq;
-  const midi = typeof hap.note === "number" ? hap.note : noteToMidi(String(hap.note ?? ""));
-  return midi !== null ? midiToFreq4(midi) : null;
-}
-__name(getFreq, "getFreq");
-function freq2angle(freq, root) {
-  return 0.5 - Math.log2(freq / root) % 1;
-}
-__name(freq2angle, "freq2angle");
-function circlePos(cx, cy, radius, angle) {
-  const a = angle * Math.PI * 2;
-  return [Math.sin(a) * radius + cx, Math.cos(a) * radius + cy];
-}
-__name(circlePos, "circlePos");
-function PitchwheelSketch(_hapStreamRef, _analyserRef, schedulerRef) {
-  return (p) => {
-    p.setup = () => {
-      p.createCanvas(300, 200);
-      p.pixelDensity(window.devicePixelRatio || 1);
-    };
-    p.draw = () => {
-      const W = p.width;
-      const H = p.height;
-      p.background(BG7);
-      const scheduler = schedulerRef.current;
-      if (!scheduler) return;
-      let now;
-      try {
-        now = scheduler.now();
-      } catch {
-        return;
-      }
-      let haps;
-      try {
-        haps = scheduler.query(now - 0.01, now + 0.01);
-      } catch {
-        return;
-      }
-      haps = haps.filter((h) => h.begin <= now && h.endClipped > now);
-      const size = Math.min(W, H);
-      const hapRadius = 6;
-      const thickness = 2;
-      const margin = 12;
-      const radius = size / 2 - thickness / 2 - hapRadius - margin;
-      const cx = W / 2;
-      const cy = H / 2;
-      p.noStroke();
-      p.fill(BASE_COLOR + "40");
-      for (let i = 0; i < EDO; i++) {
-        const angle = freq2angle(ROOT_FREQ * Math.pow(2, i / EDO), ROOT_FREQ);
-        const [x, y] = circlePos(cx, cy, radius, angle);
-        p.circle(x, y, hapRadius * 1.2);
-      }
-      p.noFill();
-      p.stroke(BASE_COLOR + "30");
-      p.strokeWeight(1);
-      p.circle(cx, cy, radius * 2);
-      for (const hap of haps) {
-        const freq = getFreq(hap);
-        if (freq === null) continue;
-        const angle = freq2angle(freq, ROOT_FREQ);
-        const [x, y] = circlePos(cx, cy, radius, angle);
-        const color = hap.color ?? BASE_COLOR;
-        const alpha = Math.min(1, hap.gain * hap.velocity);
-        p.stroke(color);
-        p.strokeWeight(thickness);
-        p.drawingContext.globalAlpha = alpha;
-        p.line(cx, cy, x, y);
-        p.fill(color);
-        p.noStroke();
-        p.circle(x, y, hapRadius * 2);
-      }
-      p.drawingContext.globalAlpha = 1;
-    };
-  };
-}
-__name(PitchwheelSketch, "PitchwheelSketch");
-
-// src/visualizers/defaultDescriptors.ts
-var DEFAULT_VIZ_DESCRIPTORS = [
-  // p5 renderers (default for each mode)
-  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(PianorollSketch), "factory") },
-  { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(WordfallSketch), "factory") },
-  { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(ScopeSketch), "factory") },
-  { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(FscopeSketch), "factory") },
-  { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(SpectrumSketch), "factory") },
-  { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(SpiralSketch), "factory") },
-  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(PitchwheelSketch), "factory") },
-  // Hydra renderers (WebGL shader-based)
-  { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(), "factory") },
-  { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraPianoroll), "factory") },
-  { id: "scope:hydra", label: "Scope (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraScope), "factory") },
-  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraKaleidoscope), "factory") }
+__name(fuzzyMatch, "fuzzyMatch");
+var REFERENCE_ERROR_PATTERNS = [
+  // Chrome / Edge / Node: "foo is not defined"
+  /^(\w+) is not defined$/,
+  // Firefox: "foo is not defined"
+  /^ReferenceError: (\w+) is not defined$/,
+  // Safari: "Can't find variable: foo"
+  /^Can't find variable: (\w+)$/
 ];
-function SplitPane({
-  direction,
-  children,
-  initialSizes,
-  minSize = 100
-}) {
-  const count = React6__namespace.default.Children.count(children);
-  const childArray = React6__namespace.default.Children.toArray(children);
-  const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React6.useState(defaultSizes);
-  const containerRef = React6.useRef(null);
-  const draggingRef = React6.useRef(null);
-  const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React6.useCallback((dividerIndex, e) => {
-    e.preventDefault();
-    draggingRef.current = dividerIndex;
-    const startPos = isHorizontal ? e.clientX : e.clientY;
-    const startSizes = [...sizes];
-    const container = containerRef.current;
-    if (!container) return;
-    const containerSize = isHorizontal ? container.offsetWidth : container.offsetHeight;
-    const minPct = minSize / containerSize * 100;
-    const onMouseMove = /* @__PURE__ */ __name((ev) => {
-      if (draggingRef.current === null) return;
-      const delta = isHorizontal ? ev.clientX - startPos : ev.clientY - startPos;
-      const deltaPct = delta / containerSize * 100;
-      const newSizes = [...startSizes];
-      const i = dividerIndex;
-      newSizes[i] = Math.max(minPct, startSizes[i] + deltaPct);
-      newSizes[i + 1] = Math.max(minPct, startSizes[i + 1] - deltaPct);
-      if (newSizes[i] < minPct) {
-        newSizes[i] = minPct;
-        newSizes[i + 1] = startSizes[i] + startSizes[i + 1] - minPct;
-      }
-      if (newSizes[i + 1] < minPct) {
-        newSizes[i + 1] = minPct;
-        newSizes[i] = startSizes[i] + startSizes[i + 1] - minPct;
-      }
-      setSizes(newSizes);
-    }, "onMouseMove");
-    const onMouseUp = /* @__PURE__ */ __name(() => {
-      draggingRef.current = null;
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    }, "onMouseUp");
-    document.body.style.cursor = isHorizontal ? "col-resize" : "row-resize";
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  }, [sizes, isHorizontal, minSize]);
-  React6__namespace.default.useEffect(() => {
-    if (sizes.length !== count) {
-      setSizes(Array(count).fill(100 / count));
+function extractReferenceIdentifier(err) {
+  const message = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
+  if (!message) return null;
+  const trimmed = message.replace(/^Uncaught\s+/, "").trim();
+  for (const re of REFERENCE_ERROR_PATTERNS) {
+    const m = re.exec(trimmed);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+__name(extractReferenceIdentifier, "extractReferenceIdentifier");
+var SOUND_NOT_FOUND_PATTERNS = [
+  /sound\s+["']?([\w.-]+)["']?\s+not\s+found/i
+];
+function extractMissingSoundName(rawMessage) {
+  for (const re of SOUND_NOT_FOUND_PATTERNS) {
+    const m = re.exec(rawMessage);
+    if (m && m[1]) return m[1];
+  }
+  return null;
+}
+__name(extractMissingSoundName, "extractMissingSoundName");
+function buildAliasSuffix(missingName, ctx) {
+  if (!ctx) return "";
+  const parts = [];
+  if (ctx.resolutions && ctx.resolutions.length > 0) {
+    const seen = /* @__PURE__ */ new Set();
+    const lines = [];
+    for (const r of ctx.resolutions) {
+      const key = `${r.from}\u2192${r.to}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
     }
-  }, [count]);
-  return /* @__PURE__ */ jsxRuntime.jsx(
-    "div",
-    {
-      ref: containerRef,
-      style: {
-        display: "flex",
-        flexDirection: isHorizontal ? "row" : "column",
-        width: "100%",
-        height: "100%",
-        overflow: "hidden"
-      },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React6__namespace.default.Fragment, { children: [
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "div",
-          {
-            style: {
-              [isHorizontal ? "width" : "height"]: `${sizes[i]}%`,
-              [isHorizontal ? "height" : "width"]: "100%",
-              overflow: "hidden",
-              position: "relative",
-              minWidth: isHorizontal ? minSize : void 0,
-              minHeight: !isHorizontal ? minSize : void 0
-            },
-            children: child
-          }
+    parts.push(`tried alias ${lines.join(", ")}`);
+  }
+  if (missingName && ctx.lookupAlias) {
+    const target = ctx.lookupAlias(missingName);
+    if (target) {
+      parts.push(`alias map: \`${missingName}\` \u2192 \`${target}\` (but \`${target}\` is not loaded)`);
+    } else {
+      parts.push(`alias map: no entry for \`${missingName}\``);
+    }
+  }
+  return parts.length > 0 ? ` (${parts.join("; ")})` : "";
+}
+__name(buildAliasSuffix, "buildAliasSuffix");
+function asRegExp(match) {
+  return match instanceof RegExp ? match : new RegExp(match, "i");
+}
+__name(asRegExp, "asRegExp");
+function evalMistake(mistake, ctx) {
+  const { detect } = mistake;
+  if (detect.kind === "message") {
+    return asRegExp(detect.match).test(ctx.rawMessage);
+  }
+  if (detect.kind === "code") {
+    if (!ctx.codeContext) return false;
+    return asRegExp(detect.match).test(ctx.codeContext);
+  }
+  return ctx.identifier !== null && ctx.identifier === detect.alias;
+}
+__name(evalMistake, "evalMistake");
+var SPECIFICITY = {
+  message: 3,
+  code: 2,
+  identifier: 1
+};
+function rankHits(hits) {
+  if (hits.length === 0) return null;
+  hits.sort((a, b) => {
+    const wa = a.mistake.weight ?? 1;
+    const wb = b.mistake.weight ?? 1;
+    if (wa !== wb) return wb - wa;
+    if (a.specificity !== b.specificity) return b.specificity - a.specificity;
+    return a.order - b.order;
+  });
+  return hits[0];
+}
+__name(rankHits, "rankHits");
+function collectMistakes(index, ctx) {
+  const hits = [];
+  let order = 0;
+  if (ctx.identifier && index.docs[ctx.identifier]) {
+    const doc = index.docs[ctx.identifier];
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name: ctx.identifier, doc }
+        });
+      }
+    }
+  }
+  for (const [name, doc] of Object.entries(index.docs)) {
+    if (name === ctx.identifier) continue;
+    for (const m of doc.commonMistakes ?? []) {
+      if (evalMistake(m, ctx)) {
+        hits.push({
+          mistake: m,
+          specificity: SPECIFICITY[m.detect.kind],
+          order: order++,
+          symbol: { name, doc }
+        });
+      }
+    }
+  }
+  for (const m of index.globalMistakes ?? []) {
+    if (evalMistake(m, ctx)) {
+      hits.push({
+        mistake: m,
+        specificity: SPECIFICITY[m.detect.kind],
+        order: order++
+      });
+    }
+  }
+  return rankHits(hits);
+}
+__name(collectMistakes, "collectMistakes");
+function defaultDocsUrl(runtime, name) {
+  return `/docs/reference/${runtime}/#${name.toLowerCase()}`;
+}
+__name(defaultDocsUrl, "defaultDocsUrl");
+function formatFriendlyError(err, runtime, options = {}) {
+  const rawMessage = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
+  const stack = typeof err === "object" && err !== null && "stack" in err && typeof err.stack === "string" ? err.stack : void 0;
+  const loc = parseStackLocation(err);
+  const identifier = extractReferenceIdentifier(err);
+  const missingName = extractMissingSoundName(rawMessage);
+  const aliasSuffix = buildAliasSuffix(missingName, options.aliasContext);
+  const appendAlias = /* @__PURE__ */ __name((msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg, "appendAlias");
+  if (options.index) {
+    const hit = collectMistakes(options.index, {
+      rawMessage,
+      identifier,
+      codeContext: options.codeContext
+    });
+    if (hit) {
+      const suggestion = hit.symbol ? {
+        name: hit.symbol.name,
+        docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(
+          runtime,
+          hit.symbol.name
         ),
-        i < childArray.length - 1 && /* @__PURE__ */ jsxRuntime.jsx(
-          "div",
-          {
-            onMouseDown: (e) => handleMouseDown(i, e),
-            style: {
-              [isHorizontal ? "width" : "height"]: 4,
-              [isHorizontal ? "height" : "width"]: "100%",
-              background: "var(--border, rgba(255,255,255,0.1))",
-              cursor: isHorizontal ? "col-resize" : "row-resize",
-              flexShrink: 0,
-              transition: "background 0.15s"
-            },
-            onMouseEnter: (e) => {
-              e.currentTarget.style.background = "var(--accent, #75baff)";
-            },
-            onMouseLeave: (e) => {
-              e.currentTarget.style.background = "var(--border, rgba(255,255,255,0.1))";
-            }
-          }
-        )
-      ] }, i))
+        example: hit.mistake.example ?? hit.symbol.doc.example,
+        description: hit.symbol.doc.description
+      } : hit.mistake.example ? {
+        // Global mistake without a symbol — synthesise a minimal
+        // suggestion so downstream UI still surfaces the example.
+        name: "",
+        docsUrl: "",
+        example: hit.mistake.example
+      } : void 0;
+      return {
+        message: appendAlias(hit.mistake.hint),
+        suggestion,
+        stack,
+        line: loc?.line,
+        column: loc?.column
+      };
     }
-  );
-}
-__name(SplitPane, "SplitPane");
-
-// src/theme/tokens.ts
-var DARK_THEME_TOKENS = {
-  "--accent-rgb": "106, 106, 200",
-  "--stem-drums": "#f97316",
-  "--stem-bass": "#06b6d4",
-  "--stem-melody": "#a78bfa",
-  "--stem-pad": "#10b981",
-  "--code-bg": "#090912",
-  "--code-foreground": "#c4b5fd",
-  "--code-caret": "#7c7cff",
-  "--code-selection": "rgba(124,124,255,0.25)",
-  "--code-line-highlight": "rgba(124,124,255,0.05)",
-  "--code-note": "#86efac",
-  "--code-function": "#93c5fd",
-  "--code-string": "#fcd34d",
-  "--code-number": "#fb923c",
-  "--code-comment": "rgba(255,255,255,0.25)",
-  "--code-active-hap": "rgba(124,124,255,0.3)",
-  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
-};
-var LIGHT_THEME_TOKENS = {
-  "--accent-rgb": "85, 85, 184",
-  "--stem-drums": "#ea580c",
-  "--stem-bass": "#0891b2",
-  "--stem-melody": "#5555b8",
-  "--stem-pad": "#059669",
-  "--code-bg": "#f0f0f6",
-  "--code-foreground": "#1e1b4b",
-  "--code-caret": "#4a4ae0",
-  "--code-selection": "rgba(74,74,224,0.2)",
-  "--code-line-highlight": "rgba(74,74,224,0.04)",
-  "--code-note": "#15803d",
-  "--code-function": "#1d4ed8",
-  "--code-string": "#92400e",
-  "--code-number": "#c2410c",
-  "--code-comment": "rgba(0,0,0,0.3)",
-  "--code-active-hap": "rgba(74,74,224,0.25)",
-  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
-};
-function applyTheme(el, theme) {
-  const tokens = theme === "dark" ? DARK_THEME_TOKENS : theme === "light" ? LIGHT_THEME_TOKENS : theme.tokens;
-  for (const [key, value] of Object.entries(tokens)) {
-    el.style.setProperty(key, value);
   }
-}
-__name(applyTheme, "applyTheme");
-
-// src/theme/monacoTheme.ts
-function defineStrudelMonacoTheme(monaco) {
-  monaco.editor.defineTheme("stave-dark", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "strudel.pattern-start", foreground: "7c7cff", fontStyle: "bold" },
-      { token: "strudel.tempo", foreground: "a78bfa" },
-      { token: "strudel.function", foreground: "93c5fd" },
-      { token: "strudel.note", foreground: "86efac" },
-      { token: "strudel.mini.note", foreground: "86efac" },
-      { token: "strudel.mini.operator", foreground: "f472b6" },
-      { token: "strudel.mini.number", foreground: "fb923c" },
-      { token: "string", foreground: "fcd34d" },
-      { token: "string.escape", foreground: "fde68a" },
-      { token: "string.quote", foreground: "fcd34d" },
-      { token: "number", foreground: "fb923c" },
-      { token: "number.hex", foreground: "fb923c" },
-      { token: "number.binary", foreground: "fb923c" },
-      { token: "number.float", foreground: "fb923c" },
-      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-      { token: "keyword", foreground: "c4b5fd" },
-      { token: "keyword.operator", foreground: "f472b6" },
-      { token: "variable.predefined", foreground: "fde68a" },
-      { token: "constant", foreground: "fb923c" },
-      { token: "type", foreground: "7dd3fc" },
-      { token: "identifier", foreground: "e2e8f0" },
-      { token: "identifier.property", foreground: "93c5fd" },
-      { token: "delimiter", foreground: "94a3b8" },
-      { token: "delimiter.parenthesis", foreground: "94a3b8" },
-      { token: "delimiter.curly", foreground: "94a3b8" },
-      { token: "delimiter.square", foreground: "94a3b8" },
-      { token: "delimiter.bracket", foreground: "94a3b8" },
-      // Sonic Pi tokens
-      { token: "sonicpi.function", foreground: "93c5fd", fontStyle: "bold" },
-      { token: "sonicpi.music", foreground: "a78bfa" },
-      { token: "sonicpi.symbol", foreground: "f472b6" },
-      { token: "sonicpi.note", foreground: "86efac" },
-      { token: "sonicpi.kwarg", foreground: "6ee7b7" }
-    ],
-    colors: {
-      "editor.background": "#090912",
-      "editor.foreground": "#c4b5fd",
-      "editorLineNumber.foreground": "#3d3d5c",
-      "editorCursor.foreground": "#7c7cff",
-      "editor.selectionBackground": "#6a6ac840",
-      "editor.lineHighlightBackground": "#6a6ac80d",
-      "editorIndentGuide.background": "#ffffff10",
-      "editorWidget.background": "#0f0f1e",
-      "editorSuggestWidget.background": "#0f0f1e",
-      "editorSuggestWidget.border": "#6a6ac840",
-      "minimap.background": "#00000000"
+  if (identifier && options.index) {
+    const matches = fuzzyMatch(
+      identifier,
+      Object.keys(options.index.docs)
+    );
+    if (matches.length > 0) {
+      const hit = options.index.docs[matches[0].name];
+      const docsUrl = (options.docsUrlFor ?? defaultDocsUrl)(
+        runtime,
+        matches[0].name
+      );
+      const suggestion = {
+        name: matches[0].name,
+        docsUrl,
+        example: hit?.example,
+        description: hit?.description
+      };
+      return {
+        message: appendAlias(`\`${identifier}\` is not defined. Did you mean \`${matches[0].name}\`?`),
+        suggestion,
+        stack,
+        line: loc?.line,
+        column: loc?.column
+      };
     }
-  });
-  monaco.editor.defineTheme("stave-light", {
-    base: "vs",
-    inherit: true,
-    rules: [
-      { token: "strudel.pattern-start", foreground: "4a4ae0", fontStyle: "bold" },
-      { token: "strudel.tempo", foreground: "5555b8" },
-      { token: "strudel.function", foreground: "1d4ed8" },
-      { token: "strudel.note", foreground: "15803d" },
-      { token: "strudel.mini.note", foreground: "15803d" },
-      { token: "strudel.mini.operator", foreground: "be185d" },
-      { token: "strudel.mini.number", foreground: "c2410c" },
-      { token: "string", foreground: "92400e" },
-      { token: "string.escape", foreground: "a16207" },
-      { token: "string.quote", foreground: "92400e" },
-      { token: "number", foreground: "c2410c" },
-      { token: "number.hex", foreground: "c2410c" },
-      { token: "number.binary", foreground: "c2410c" },
-      { token: "number.float", foreground: "c2410c" },
-      { token: "comment", foreground: "9ca3af", fontStyle: "italic" },
-      { token: "keyword", foreground: "6d28d9" },
-      { token: "keyword.operator", foreground: "be185d" },
-      { token: "variable.predefined", foreground: "92400e" },
-      { token: "constant", foreground: "c2410c" },
-      { token: "type", foreground: "0369a1" },
-      { token: "identifier", foreground: "1e1b4b" },
-      { token: "identifier.property", foreground: "1d4ed8" },
-      { token: "delimiter", foreground: "64748b" },
-      { token: "delimiter.parenthesis", foreground: "64748b" },
-      { token: "delimiter.curly", foreground: "64748b" },
-      { token: "delimiter.square", foreground: "64748b" },
-      { token: "delimiter.bracket", foreground: "64748b" }
-    ],
-    colors: {
-      "editor.background": "#f0f0f6",
-      "editor.foreground": "#1e1b4b",
-      "editorLineNumber.foreground": "#a0a0b4",
-      "editorCursor.foreground": "#4a4ae0",
-      "editor.selectionBackground": "#5555b830",
-      "editor.lineHighlightBackground": "#5555b808",
-      "minimap.background": "#00000000"
-    }
-  });
-}
-__name(defineStrudelMonacoTheme, "defineStrudelMonacoTheme");
-var activeDoc = null;
-var activeProvider = null;
-var activeProjectId = null;
-var docReady = false;
-async function initProjectDoc(projectId) {
-  if (activeProvider) {
-    activeProvider.destroy();
-    activeProvider = null;
+    return {
+      message: appendAlias(`\`${identifier}\` is not defined.`),
+      stack,
+      line: loc?.line,
+      column: loc?.column
+    };
   }
-  if (activeDoc) {
-    activeDoc.destroy();
-  }
-  activeDoc = new Y3__namespace.Doc();
-  docReady = false;
-  const { IndexeddbPersistence } = await import('y-indexeddb');
-  activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
-  await activeProvider.whenSynced;
-  activeProjectId = projectId;
-  docReady = true;
-}
-__name(initProjectDoc, "initProjectDoc");
-function initProjectDocSync() {
-  if (activeProvider) {
-    activeProvider.destroy();
-    activeProvider = null;
-  }
-  if (activeDoc) {
-    activeDoc.destroy();
-  }
-  activeDoc = new Y3__namespace.Doc();
-  docReady = true;
-}
-__name(initProjectDocSync, "initProjectDocSync");
-function ensureDoc() {
-  if (!activeDoc) {
-    initProjectDocSync();
-  }
-  return activeDoc;
-}
-__name(ensureDoc, "ensureDoc");
-function getActiveDoc() {
-  return ensureDoc();
-}
-__name(getActiveDoc, "getActiveDoc");
-function getFilesMap() {
-  return ensureDoc().getMap("files");
-}
-__name(getFilesMap, "getFilesMap");
-function isDocReady() {
-  return docReady;
-}
-__name(isDocReady, "isDocReady");
-function getActiveProjectId() {
-  return activeProjectId;
-}
-__name(getActiveProjectId, "getActiveProjectId");
-async function switchProject(projectId) {
-  await initProjectDoc(projectId);
-}
-__name(switchProject, "switchProject");
-function subscribeToDocUpdate(cb, options) {
-  const doc = ensureDoc();
-  const localOnly = options?.localOnly ?? false;
-  const handler = /* @__PURE__ */ __name((_update, _origin, _doc, tr) => {
-    if (localOnly && !tr.local) return;
-    cb();
-  }, "handler");
-  doc.on("update", handler);
-  return () => {
-    doc.off("update", handler);
+  return {
+    message: appendAlias(rawMessage || "Unknown error"),
+    stack,
+    line: loc?.line,
+    column: loc?.column
   };
 }
-__name(subscribeToDocUpdate, "subscribeToDocUpdate");
-var STRUCT_ORIGIN = /* @__PURE__ */ Symbol.for("stave:struct");
-function withStructBatch(fn) {
-  const doc = getActiveDoc();
-  let out;
-  doc.transact(() => {
-    out = fn();
-  }, STRUCT_ORIGIN);
-  return out;
-}
-__name(withStructBatch, "withStructBatch");
-var active = null;
-function ensureUndoManager() {
-  if (active) return active.um;
-  const doc = getActiveDoc();
-  const files = doc.getMap("files");
-  const fileOrder = doc.getMap("fileOrder");
-  const subfolderOrder = doc.getMap("subfolderOrder");
-  const um = new Y3__namespace.UndoManager([files, fileOrder, subfolderOrder], {
-    trackedOrigins: /* @__PURE__ */ new Set([STRUCT_ORIGIN]),
-    captureTimeout: 300
-  });
-  for (const inner of files.values()) {
-    if (inner instanceof Y3__namespace.Map) um.addToScope(inner);
-  }
-  const filesObserver = /* @__PURE__ */ __name((event) => {
-    for (const [key, change] of event.changes.keys) {
-      if (change.action === "add" || change.action === "update") {
-        const val = files.get(key);
-        if (val instanceof Y3__namespace.Map) um.addToScope(val);
-      }
-    }
-  }, "filesObserver");
-  files.observe(filesObserver);
-  const listeners7 = /* @__PURE__ */ new Set();
-  const notify3 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners7) l();
-  }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify3(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify3(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify3(), "onStackCleared");
-  um.on("stack-item-added", onStackItemAdded);
-  um.on("stack-item-popped", onStackItemPopped);
-  um.on("stack-cleared", onStackCleared);
-  active = {
-    um,
-    listeners: listeners7,
-    cleanup: /* @__PURE__ */ __name(() => {
-      um.off("stack-item-added", onStackItemAdded);
-      um.off("stack-item-popped", onStackItemPopped);
-      um.off("stack-cleared", onStackCleared);
-      files.unobserve(filesObserver);
-      um.destroy();
-    }, "cleanup")
-  };
-  return um;
-}
-__name(ensureUndoManager, "ensureUndoManager");
-function resetUndoManager() {
-  if (active) {
-    active.cleanup();
-    active = null;
-  }
-}
-__name(resetUndoManager, "resetUndoManager");
-function undo() {
-  const um = ensureUndoManager();
-  const result = um.undo();
-  return result !== null;
-}
-__name(undo, "undo");
-function redo() {
-  const um = ensureUndoManager();
-  const result = um.redo();
-  return result !== null;
-}
-__name(redo, "redo");
-function canUndo() {
-  const um = ensureUndoManager();
-  return um.undoStack.length > 0;
-}
-__name(canUndo, "canUndo");
-function canRedo() {
-  const um = ensureUndoManager();
-  return um.redoStack.length > 0;
-}
-__name(canRedo, "canRedo");
-function subscribeToUndoState(cb) {
-  ensureUndoManager();
-  const listeners7 = active.listeners;
-  listeners7.add(cb);
-  return () => {
-    listeners7.delete(cb);
-  };
-}
-__name(subscribeToUndoState, "subscribeToUndoState");
-
-// src/workspace/WorkspaceFile.ts
-var cachedSnapshots = /* @__PURE__ */ new Map();
-var subscribersByFile = /* @__PURE__ */ new Map();
-var textObservers = /* @__PURE__ */ new Map();
-function rebuildSnapshot(id) {
-  const filesMap = getFilesMap();
-  const fileMap = filesMap.get(id);
-  if (!fileMap) {
-    cachedSnapshots.delete(id);
-    return;
-  }
-  const ytext = fileMap.get("content");
-  cachedSnapshots.set(id, {
-    id: fileMap.get("id"),
-    path: fileMap.get("path"),
-    content: ytext.toString(),
-    language: fileMap.get("language"),
-    meta: fileMap.get("meta")
-  });
-}
-__name(rebuildSnapshot, "rebuildSnapshot");
-function wireTextObserver(id, ytext) {
-  unwireTextObserver(id);
-  const handler = /* @__PURE__ */ __name(() => {
-    rebuildSnapshot(id);
-    notify(id);
-  }, "handler");
-  ytext.observe(handler);
-  textObservers.set(id, { ytext, handler });
-}
-__name(wireTextObserver, "wireTextObserver");
-function unwireTextObserver(id) {
-  const entry = textObservers.get(id);
-  if (entry) {
-    entry.ytext.unobserve(entry.handler);
-    textObservers.delete(id);
-  }
-}
-__name(unwireTextObserver, "unwireTextObserver");
-var folderOrderObserverWired = false;
-var folderOrderSubscribers = /* @__PURE__ */ new Set();
-function notifyFolderOrder() {
-  const snapshot = Array.from(folderOrderSubscribers);
-  for (const cb of snapshot) cb();
-}
-__name(notifyFolderOrder, "notifyFolderOrder");
-function getFolderOrderMap() {
-  return ensureDoc().getMap("fileOrder");
-}
-__name(getFolderOrderMap, "getFolderOrderMap");
-function getSubfolderOrderMap() {
-  return ensureDoc().getMap("subfolderOrder");
-}
-__name(getSubfolderOrderMap, "getSubfolderOrderMap");
-function getChildOrderMap() {
-  return ensureDoc().getMap("childOrder");
-}
-__name(getChildOrderMap, "getChildOrderMap");
-function ensureFolderOrderObserver() {
-  if (folderOrderObserverWired) return;
-  const map = getFolderOrderMap();
-  const submap = getSubfolderOrderMap();
-  const childmap = getChildOrderMap();
-  map.observeDeep(() => notifyFolderOrder());
-  submap.observeDeep(() => notifyFolderOrder());
-  childmap.observeDeep(() => notifyFolderOrder());
-  folderOrderObserverWired = true;
-}
-__name(ensureFolderOrderObserver, "ensureFolderOrderObserver");
-var wiredFilesMap = null;
-function ensureFilesMapObserver() {
-  const filesMap = getFilesMap();
-  if (wiredFilesMap === filesMap) return;
-  filesMap.observeDeep((events) => {
-    let anyStructuralChange = false;
-    for (const event of events) {
-      if (event.target === filesMap) {
-        const mapEvent = event;
-        for (const [key, change] of mapEvent.changes.keys) {
-          if (change.action === "add" || change.action === "update") {
-            const fileMap = filesMap.get(key);
-            const ytext = fileMap.get("content");
-            rebuildSnapshot(key);
-            wireTextObserver(key, ytext);
-            notify(key);
-            anyStructuralChange = true;
-          } else if (change.action === "delete") {
-            unwireTextObserver(key);
-            cachedSnapshots.delete(key);
-            notify(key);
-            anyStructuralChange = true;
-          }
-        }
-        continue;
-      }
-      if (event.target instanceof Y3__namespace.Text) continue;
-      const path = event.path;
-      const ownerId = path.length > 0 ? String(path[0]) : null;
-      if (!ownerId) continue;
-      if (filesMap.has(ownerId)) {
-        rebuildSnapshot(ownerId);
-        notify(ownerId);
-        anyStructuralChange = true;
-      }
-    }
-    if (anyStructuralChange) notifyFileList();
-  });
-  wiredFilesMap = filesMap;
-}
-__name(ensureFilesMapObserver, "ensureFilesMapObserver");
-function createWorkspaceFile(id, path, content, language, meta) {
-  ensureDoc();
-  ensureFilesMapObserver();
-  const filesMap = getFilesMap();
-  const doc = ensureDoc();
-  doc.transact(() => {
-    const fileMap = new Y3__namespace.Map();
-    fileMap.set("id", id);
-    fileMap.set("path", path);
-    fileMap.set("language", language);
-    if (meta !== void 0) fileMap.set("meta", meta);
-    const ytext = new Y3__namespace.Text();
-    ytext.insert(0, content);
-    fileMap.set("content", ytext);
-    filesMap.set(id, fileMap);
-  }, STRUCT_ORIGIN);
-  return cachedSnapshots.get(id) ?? { id, path, content, language, meta };
-}
-__name(createWorkspaceFile, "createWorkspaceFile");
-function seedWorkspaceFile(id, path, content, language, meta) {
-  ensureDoc();
-  ensureFilesMapObserver();
-  const filesMap = getFilesMap();
-  const existing = filesMap.get(id);
-  if (existing) {
-    if (!cachedSnapshots.has(id)) {
-      rebuildSnapshot(id);
-    }
-    const ytext = existing.get("content");
-    if (!textObservers.has(id)) {
-      wireTextObserver(id, ytext);
-    }
-    return cachedSnapshots.get(id);
-  }
-  return createWorkspaceFile(id, path, content, language, meta);
-}
-__name(seedWorkspaceFile, "seedWorkspaceFile");
-function getFile(id) {
-  return cachedSnapshots.get(id);
-}
-__name(getFile, "getFile");
-function setContent(id, newContent) {
-  const filesMap = getFilesMap();
-  const fileMap = filesMap.get(id);
-  if (!fileMap) return;
-  const ytext = fileMap.get("content");
-  const currentContent = ytext.toString();
-  if (currentContent === newContent) return;
-  const doc = ensureDoc();
-  doc.transact(() => {
-    ytext.delete(0, ytext.length);
-    ytext.insert(0, newContent);
-  });
-}
-__name(setContent, "setContent");
-function subscribe(id, cb) {
-  let set = subscribersByFile.get(id);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    subscribersByFile.set(id, set);
-  }
-  set.add(cb);
-  return () => {
-    const current2 = subscribersByFile.get(id);
-    if (!current2) return;
-    current2.delete(cb);
-    if (current2.size === 0) {
-      subscribersByFile.delete(id);
-    }
-  };
-}
-__name(subscribe, "subscribe");
-var fileListSubscribers = /* @__PURE__ */ new Set();
-function notifyFileList() {
-  const snapshot = Array.from(fileListSubscribers);
-  for (const cb of snapshot) cb();
-}
-__name(notifyFileList, "notifyFileList");
-function subscribeToFileList(cb) {
-  fileListSubscribers.add(cb);
-  return () => {
-    fileListSubscribers.delete(cb);
-  };
-}
-__name(subscribeToFileList, "subscribeToFileList");
-function listWorkspaceFiles() {
-  ensureDoc();
-  ensureFilesMapObserver();
-  const filesMap = getFilesMap();
-  for (const id of filesMap.keys()) {
-    if (!cachedSnapshots.has(id)) {
-      rebuildSnapshot(id);
-      const fileMap = filesMap.get(id);
-      const ytext = fileMap.get("content");
-      if (!textObservers.has(id)) {
-        wireTextObserver(id, ytext);
-      }
-    }
-  }
-  return Array.from(cachedSnapshots.values());
-}
-__name(listWorkspaceFiles, "listWorkspaceFiles");
-function deleteWorkspaceFile(id) {
-  const filesMap = getFilesMap();
-  if (!filesMap.has(id)) return;
-  const doc = ensureDoc();
-  doc.transact(() => {
-    filesMap.delete(id);
-  }, STRUCT_ORIGIN);
-  notifyFileList();
-}
-__name(deleteWorkspaceFile, "deleteWorkspaceFile");
-function renameWorkspaceFile(id, newPath) {
-  const filesMap = getFilesMap();
-  const fileMap = filesMap.get(id);
-  if (!fileMap) return;
-  const currentPath = fileMap.get("path");
-  if (currentPath === newPath) return;
-  const doc = ensureDoc();
-  doc.transact(() => {
-    fileMap.set("path", newPath);
-  }, STRUCT_ORIGIN);
-  rebuildSnapshot(id);
-  notify(id);
-  notifyFileList();
-}
-__name(renameWorkspaceFile, "renameWorkspaceFile");
-function getFolderOrder(folderPath) {
-  ensureDoc();
-  ensureFolderOrderObserver();
-  const map = getFolderOrderMap();
-  const arr = map.get(folderPath);
-  return arr ? arr.toArray() : [];
-}
-__name(getFolderOrder, "getFolderOrder");
-function setFolderOrder(folderPath, orderedIds) {
-  ensureDoc();
-  ensureFolderOrderObserver();
-  const map = getFolderOrderMap();
-  const doc = ensureDoc();
-  doc.transact(() => {
-    const next = new Y3__namespace.Array();
-    next.push(orderedIds);
-    map.set(folderPath, next);
-  }, STRUCT_ORIGIN);
-}
-__name(setFolderOrder, "setFolderOrder");
-function subscribeToFolderOrder(cb) {
-  ensureFolderOrderObserver();
-  folderOrderSubscribers.add(cb);
-  return () => {
-    folderOrderSubscribers.delete(cb);
-  };
-}
-__name(subscribeToFolderOrder, "subscribeToFolderOrder");
-function getSubfolderOrder(parentPath) {
-  ensureDoc();
-  ensureFolderOrderObserver();
-  const map = getSubfolderOrderMap();
-  const arr = map.get(parentPath);
-  return arr ? arr.toArray() : [];
-}
-__name(getSubfolderOrder, "getSubfolderOrder");
-function setSubfolderOrder(parentPath, orderedNames) {
-  ensureDoc();
-  ensureFolderOrderObserver();
-  const map = getSubfolderOrderMap();
-  const doc = ensureDoc();
-  doc.transact(() => {
-    const next = new Y3__namespace.Array();
-    next.push(orderedNames);
-    map.set(parentPath, next);
-  }, STRUCT_ORIGIN);
-}
-__name(setSubfolderOrder, "setSubfolderOrder");
-function getChildOrder(parentPath) {
-  ensureDoc();
-  ensureFolderOrderObserver();
-  const map = getChildOrderMap();
-  const arr = map.get(parentPath);
-  return arr ? arr.toArray() : [];
-}
-__name(getChildOrder, "getChildOrder");
-function setChildOrder(parentPath, entries2) {
-  ensureDoc();
-  ensureFolderOrderObserver();
-  const map = getChildOrderMap();
-  const doc = ensureDoc();
-  doc.transact(() => {
-    const next = new Y3__namespace.Array();
-    next.push(entries2);
-    map.set(parentPath, next);
-  }, STRUCT_ORIGIN);
-}
-__name(setChildOrder, "setChildOrder");
-function notify(id) {
-  const set = subscribersByFile.get(id);
-  if (!set) return;
-  const snapshot = Array.from(set);
-  for (const cb of snapshot) cb();
-}
-__name(notify, "notify");
-var zoneOverrideSubscribers = /* @__PURE__ */ new Map();
-var wiredZoneObservers = /* @__PURE__ */ new Set();
-var PRUNE_ZONE_OVERRIDES_ORIGIN = /* @__PURE__ */ Symbol("prune-zone-overrides");
-var HEIGHT_RESIZE_ORIGIN = /* @__PURE__ */ Symbol("height-resize");
-function ensureZoneOverridesMap(fileId) {
-  const filesMap = getFilesMap();
-  const fileMap = filesMap.get(fileId);
-  if (!fileMap) return null;
-  let overrides = fileMap.get("zoneOverrides");
-  if (!overrides) {
-    overrides = new Y3__namespace.Map();
-    fileMap.set("zoneOverrides", overrides);
-  }
-  if (!wiredZoneObservers.has(fileId)) {
-    overrides.observeDeep((events) => {
-      const origin = events[0]?.transaction.origin;
-      if (origin === PRUNE_ZONE_OVERRIDES_ORIGIN || origin === HEIGHT_RESIZE_ORIGIN) return;
-      const subs = zoneOverrideSubscribers.get(fileId);
-      if (subs) for (const cb of subs) cb();
-    });
-    wiredZoneObservers.add(fileId);
-  }
-  return overrides;
-}
-__name(ensureZoneOverridesMap, "ensureZoneOverridesMap");
-function getZoneCropOverride(fileId, trackKey) {
-  ensureDoc();
-  const overrides = ensureZoneOverridesMap(fileId);
-  if (!overrides) return void 0;
-  const entry = overrides.get(trackKey);
-  return entry?.cropRegion;
-}
-__name(getZoneCropOverride, "getZoneCropOverride");
-function setZoneCropOverride(fileId, trackKey, cropRegion, vizId, contentHash) {
-  ensureDoc();
-  const overrides = ensureZoneOverridesMap(fileId);
-  if (!overrides) return;
-  const doc = ensureDoc();
-  doc.transact(() => {
-    if (cropRegion === null) {
-      overrides.delete(trackKey);
-    } else {
-      const existing = overrides.get(trackKey) ?? {};
-      overrides.set(trackKey, { ...existing, cropRegion, vizId, contentHash });
-    }
-  }, STRUCT_ORIGIN);
-}
-__name(setZoneCropOverride, "setZoneCropOverride");
-function getZoneHeightOverride(fileId, trackKey) {
-  ensureDoc();
-  const overrides = ensureZoneOverridesMap(fileId);
-  if (!overrides) return void 0;
-  const entry = overrides.get(trackKey);
-  return entry?.heightPx;
-}
-__name(getZoneHeightOverride, "getZoneHeightOverride");
-function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
-  ensureDoc();
-  const overrides = ensureZoneOverridesMap(fileId);
-  if (!overrides) return;
-  const doc = ensureDoc();
-  doc.transact(() => {
-    const existing = overrides.get(trackKey) ?? {};
-    if (heightPx === null) {
-      const { heightPx: _, ...rest } = existing;
-      if (Object.keys(rest).length === 0) overrides.delete(trackKey);
-      else overrides.set(trackKey, rest);
-    } else {
-      overrides.set(trackKey, { ...existing, heightPx, ...contentHash ? { contentHash } : {} });
-    }
-  }, HEIGHT_RESIZE_ORIGIN);
-}
-__name(setZoneHeightOverride, "setZoneHeightOverride");
-function pruneZoneOverrides(fileId, currentViz) {
-  ensureDoc();
-  const overrides = ensureZoneOverridesMap(fileId);
-  if (!overrides) return;
-  const doc = ensureDoc();
-  const stale = [];
-  for (const [trackKey, value] of overrides.entries()) {
-    const entry = value;
-    const current2 = currentViz.get(trackKey);
-    if (!current2) {
-      stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current2.vizId) {
-      stale.push(trackKey);
-    } else if (entry.contentHash && current2.contentHash && entry.contentHash !== current2.contentHash) {
-      stale.push(trackKey);
-    }
-  }
-  if (stale.length === 0) return;
-  doc.transact(() => {
-    for (const key of stale) overrides.delete(key);
-  }, PRUNE_ZONE_OVERRIDES_ORIGIN);
-}
-__name(pruneZoneOverrides, "pruneZoneOverrides");
-function subscribeToZoneOverrides(fileId, cb) {
-  ensureDoc();
-  ensureZoneOverridesMap(fileId);
-  let set = zoneOverrideSubscribers.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    zoneOverrideSubscribers.set(fileId, set);
-  }
-  set.add(cb);
-  return () => {
-    set.delete(cb);
-    if (set.size === 0) zoneOverrideSubscribers.delete(fileId);
-  };
-}
-__name(subscribeToZoneOverrides, "subscribeToZoneOverrides");
-var EMPTY_TRACK_META = Object.freeze({});
-var trackMetaSubscribers = /* @__PURE__ */ new Map();
-var wiredTrackMetaObservers = /* @__PURE__ */ new Set();
-function getTrackMetaMap(fileId) {
-  const filesMap = getFilesMap();
-  const fileMap = filesMap.get(fileId);
-  if (!fileMap) return null;
-  const meta = fileMap.get("trackMeta");
-  if (!meta) return null;
-  if (!wiredTrackMetaObservers.has(fileId)) {
-    meta.observeDeep(() => {
-      const subs = trackMetaSubscribers.get(fileId);
-      if (subs) for (const cb of subs) cb();
-    });
-    wiredTrackMetaObservers.add(fileId);
-  }
-  return meta;
-}
-__name(getTrackMetaMap, "getTrackMetaMap");
-function ensureTrackMetaMap(fileId) {
-  const filesMap = getFilesMap();
-  const fileMap = filesMap.get(fileId);
-  if (!fileMap) return null;
-  let meta = fileMap.get("trackMeta");
-  if (!meta) {
-    meta = new Y3__namespace.Map();
-    fileMap.set("trackMeta", meta);
-  }
-  if (!wiredTrackMetaObservers.has(fileId)) {
-    meta.observeDeep(() => {
-      const subs = trackMetaSubscribers.get(fileId);
-      if (subs) for (const cb of subs) cb();
-    });
-    wiredTrackMetaObservers.add(fileId);
-  }
-  return meta;
-}
-__name(ensureTrackMetaMap, "ensureTrackMetaMap");
-function getTrackMeta(fileId, trackId) {
-  ensureDoc();
-  const meta = getTrackMetaMap(fileId);
-  if (!meta) return EMPTY_TRACK_META;
-  return meta.get(trackId) ?? EMPTY_TRACK_META;
-}
-__name(getTrackMeta, "getTrackMeta");
-function setTrackMeta(fileId, trackId, partial) {
-  ensureDoc();
-  const meta = ensureTrackMetaMap(fileId);
-  if (!meta) return;
-  const doc = ensureDoc();
-  doc.transact(() => {
-    const existing = meta.get(trackId) ?? {};
-    const merged = { ...existing, ...partial };
-    if (merged.color === void 0 && merged.collapsed === void 0) {
-      meta.delete(trackId);
-    } else {
-      meta.set(trackId, merged);
-    }
-  }, STRUCT_ORIGIN);
-}
-__name(setTrackMeta, "setTrackMeta");
-function subscribeToTrackMeta(fileId, cb) {
-  ensureDoc();
-  getTrackMetaMap(fileId);
-  let set = trackMetaSubscribers.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    trackMetaSubscribers.set(fileId, set);
-  }
-  set.add(cb);
-  return () => {
-    set.delete(cb);
-    if (set.size === 0) trackMetaSubscribers.delete(fileId);
-  };
-}
-__name(subscribeToTrackMeta, "subscribeToTrackMeta");
-function resetFileStore() {
-  for (const [id] of textObservers) {
-    unwireTextObserver(id);
-  }
-  textObservers.clear();
-  cachedSnapshots.clear();
-  subscribersByFile.clear();
-  wiredFilesMap = null;
-  folderOrderObserverWired = false;
-  zoneOverrideSubscribers.clear();
-  wiredZoneObservers.clear();
-  trackMetaSubscribers.clear();
-  wiredTrackMetaObservers.clear();
-  resetUndoManager();
-  notifyFileList();
-  notifyFolderOrder();
-}
-__name(resetFileStore, "resetFileStore");
-
-// src/workspace/useWorkspaceFile.ts
-function useWorkspaceFile(id) {
-  const subscribe3 = React6.useCallback(
-    (onStoreChange) => subscribe(id, onStoreChange),
-    [id]
-  );
-  const getSnapshot = React6.useCallback(() => getFile(id), [id]);
-  const file = React6.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const setContent2 = React6.useCallback(
-    (content) => setContent(id, content),
-    [id]
-  );
-  return { file, setContent: setContent2 };
-}
-__name(useWorkspaceFile, "useWorkspaceFile");
+__name(formatFriendlyError, "formatFriendlyError");
 
 // src/monaco/docs/types.ts
 function resolveDoc(index, word) {
@@ -6772,3261 +5428,6 @@ function registerRuntimeProviders(monaco, index, toggle = {
   return disposables;
 }
 __name(registerRuntimeProviders, "registerRuntimeProviders");
-
-// src/monaco/docs/data/sonicpi.json
-var sonicpi_default = {
-  runtime: "sonicpi",
-  docs: {
-    set: {
-      signature: "set(time_state_key: default, value: anything)",
-      description: "Store information in the Time State for the current time for either the current or any other thread.",
-      example: "set :foo, 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    cue: {
-      signature: "cue(cue_id: symbol)",
-      description: "Send a heartbeat synchronisation message containing the (virtual) timestamp of the current thread.",
-      example: "cue :foo",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    get: {
-      signature: "get(time_state_key: default)",
-      description: "Retrieve information from Time State set prior to the current time from either the current or any other thread.",
-      example: "get :foo",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_swing: {
-      signature: "with_swing(shift: beats, pulse: number, tick: symbol, offset: number)",
-      description: "Runs block within a `time_warp` except for once every `pulse` consecutive runs (defaulting to 4).",
-      example: "with_swing 0.1 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    tuplets: {
-      signature: "tuplets(tuplet_list: list)",
-      description: "Runs the block with tuplet timing and optional swing.",
-      example: "tuplets [70, [72, 72], 70, [82, 82, 82]] do |n|",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    run_file: {
-      signature: "run_file(filename: path)",
-      description: "Reads the full contents of the file with `path` and executes it in a new Run.",
-      example: 'run_file "~/path/to/sonic-pi-code.rb"',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    run_code: {
-      signature: "run_code(code: string)",
-      description: "Executes the code passed as a string in a new Run.",
-      example: 'run_code "sample :ambi_lunar_land"',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    eval_file: {
-      signature: "eval_file(filename: path)",
-      description: "Reads the full contents of the file with `path` and executes within the current thread like a function call.",
-      example: 'eval_file "~/path/to/sonic-pi-code.rb"',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_osc_logging: {
-      signature: "use_osc_logging(true_or_false: boolean)",
-      description: "Enable or disable log messages created on OSC functions.",
-      example: "use_osc_logging true",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_osc_logging: {
-      signature: "with_osc_logging(true_or_false: boolean)",
-      description: "Similar to use_osc_logging except only applies to code within supplied `do`/`end` block.",
-      example: "with_osc_logging false do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_osc: {
-      signature: "use_osc(hostname: string, port: number)",
-      description: "Sets the destination host and port that `osc` will send messages to.",
-      example: 'use_osc "localhost", 7000',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_osc: {
-      signature: "with_osc(hostname: string, port: number)",
-      description: "Sets the destination host and port that `osc` will send messages to for the given do/end block.",
-      example: 'with_osc "localhost", 7010 do',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    osc_send: {
-      signature: "osc_send(hostname: string, port: number, path: osc_path, args: list)",
-      description: "Similar to `osc` except ignores any `use_osc` settings and sends the OSC message directly to the specified `hostname` and `port`.",
-      example: 'osc_send "localhost", 7000, "/foo/baz"',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    osc: {
-      signature: "osc(path: arguments)",
-      description: "Sends an OSC message to the current host and port specified by `use_osc` or `with_osc`.",
-      example: 'osc "/foo/bar"',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    reset: {
-      signature: "reset",
-      description: "All settings such as the current synth, BPM, random stream and tick values will be reset to the values inherited from the parent thread.",
-      example: "reset",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    clear: {
-      signature: "clear",
-      description: "All settings such as the current synth, BPM, random stream and tick values will be reset to their defaults.",
-      example: "clear",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    time_warp: {
-      signature: "time_warp(delta_time: number)",
-      description: "The code within the given block is executed with the specified delta time shift specified in beats.",
-      example: "time_warp 0.1 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    tick_set: {
-      signature: "tick_set(value: number)",
-      description: "Set the default tick to the specified `value`.",
-      example: "tick_set 40",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    tick_reset: {
-      signature: "tick_reset",
-      description: "Reset default tick to 0.",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    tick_reset_all: {
-      signature: "tick_reset_all",
-      description: "Reset all ticks - default and keyed",
-      example: "tick_reset_all",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    tick: {
-      signature: "tick(key: symbol)",
-      description: "Increment the default tick by 1 and return value.",
-      example: "puts tick",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    look: {
-      signature: "look",
-      description: "Read and return value of default tick.",
-      example: "puts look",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    stop: {
-      signature: "stop",
-      description: "Stops the current thread or if not in a thread, stops the current run.",
-      example: "stop",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    on: {
-      signature: "on(condition: truthy)",
-      description: "Optionally evaluate the block depending on the truthiness of the supplied condition.",
-      example: "on true do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    bools: {
-      signature: "bools(list: array)",
-      description: "Create a new ring of booleans values from 1s and 0s, which can be easier to write and manipulate in a live setting.",
-      example: "(bools 1, 0)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    stretch: {
-      signature: "stretch(list: anything, count: number)",
-      description: "Stretches a list of values each value repeated count times.",
-      example: "(stretch [1,2], 3)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    knit: {
-      signature: "knit(value: anything, count: number)",
-      description: "Knits a series of value, count pairs to create a ring buffer where each value is repeated count times.",
-      example: "(knit 1, 5)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    spread: {
-      signature: "spread(num_accents: number, size: number)",
-      description: "Creates a new ring of boolean values which space a given number of accents as evenly as possible throughout a bar.",
-      example: "(spread 3, 8)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    range: {
-      signature: "range(start: number, finish: number, step_size: number)",
-      description: "Create a new ring buffer from the range arguments (start, finish and step size).",
-      example: "(range 1, 5)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    line: {
-      signature: "line(start: number, finish: number)",
-      description: "Create a ring buffer representing a straight line between start and finish of steps elements.",
-      example: "(line 0, 4, steps: 4)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    halves: {
-      signature: "halves(start: number, num_halves: int)",
-      description: "Create a ring containing the results of successive halving of the `start` value.",
-      example: "(halves 60, 2)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    doubles: {
-      signature: "doubles(start: number, num_doubles: int)",
-      description: "Create a ring containing the results of successive doubling of the `start` value.",
-      example: "(doubles 60, 2)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    vector: {
-      signature: "vector(list: array)",
-      description: "Create a new immutable vector from args.",
-      example: "(vector 1, 2, 3)[0]",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    ring: {
-      signature: "ring(list: array)",
-      description: "Create a new immutable ring buffer from args.",
-      example: "(ring 1, 2, 3)[0]",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    map: {
-      signature: "map(list: array)",
-      description: "Create a new immutable key/value map from args.",
-      example: "(map foo: 1, bar: 2)[:foo]",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    ramp: {
-      signature: "ramp(list: array)",
-      description: "Create a new immutable ramp vector from args.",
-      example: "(ramp 1, 2, 3)[0]",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    choose: {
-      signature: "choose(list: array)",
-      description: "Choose an element at random from a list (array).",
-      example: "play choose([60, 64, 67])",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    pick: {
-      signature: "pick(list: array, n: number_or_nil)",
-      description: "Pick n elements from list or ring.",
-      example: "sample :loop_amen, onset: pick",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    inc: {
-      signature: "inc(n: number)",
-      description: "Increment a number by `1`.",
-      example: "inc 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    dec: {
-      signature: "dec(n: number)",
-      description: "Decrement a number by `1`.",
-      example: "dec 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    loop: {
-      signature: "loop",
-      description: "Given a do/end block, repeats it forever.",
-      example: "loop do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    live_loop: {
-      signature: "live_loop(name: symbol)",
-      description: "Loop the do/end block forever.",
-      example: "live_loop :ping do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    block_duration: {
-      signature: "block_duration",
-      description: "Given a block, runs it and returns the amount of time that has passed.",
-      example: "dur = block_duration do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    block_slept: {
-      signature: "block_slept",
-      description: "Given a block, runs it and returns whether or not the block contained sleeps or syncs",
-      example: "slept = block_slept? do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    at: {
-      signature: "at(times: list, params: list)",
-      description: "Given a list of times, run the block once after waiting each given time.",
-      example: "at 4 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    version: {
-      signature: "version",
-      description: "Return information representing the current version of Sonic Pi.",
-      example: "puts version",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    spark_graph: {
-      signature: "spark_graph",
-      description: "Given a list of numeric values, this method turns them into a string of bar heights.",
-      example: "puts (spark_graph (range 1, 5))",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    spark: {
-      signature: "spark",
-      description: "Given a list of numeric values, this method turns them into a string of bar heights and prints them out.",
-      example: "spark (range 1, 5)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    defonce: {
-      signature: "defonce(name: symbol)",
-      description: "Allows you to assign the result of some code to a name, with the property that the code will only execute once - therefore stopping re-definitions.",
-      example: "defonce :foo do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    ndefine: {
-      signature: "ndefine(name: symbol)",
-      description: "Does nothing.",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    define: {
-      signature: "define(name: symbol)",
-      description: "Allows you to group a bunch of code and give it your own name for future re-use.",
-      example: "define :foo do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    comment: {
-      signature: "comment",
-      description: "Does not evaluate any of the code within the block.",
-      example: "comment do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    uncomment: {
-      signature: "uncomment",
-      description: "Evaluates all of the code within the block.",
-      example: "uncomment do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    print: {
-      signature: "print(output: anything)",
-      description: "Displays the information you specify as a string inside the output pane.",
-      example: 'print "hello there"',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    puts: {
-      signature: "puts(output: anything)",
-      description: "Displays the information you specify as a string inside the output pane.",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    vt: {
-      signature: "vt",
-      description: "Get the virtual time of the current thread.",
-      example: "puts vt",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    factor: {
-      signature: "factor(val: number, factor: number)",
-      description: "Test to see if factor is indeed a factor of `val`.",
-      example: "factor?(10, 2)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    quantise: {
-      signature: "quantise(n: number, step: positive_number)",
-      description: "Round value to the nearest multiple of step resolution.",
-      example: "quantise(10, 1)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    dice: {
-      signature: "dice(num_sides: number)",
-      description: "Throws a dice with the specified num_sides (defaults to `6`) and returns the score as a number between `1` and `num_sides`.",
-      example: "dice",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    one_in: {
-      signature: "one_in(num: number)",
-      description: "Returns `true` or `false` with a specified probability - it will return true every one in num times where num is the param you specify",
-      example: "one_in 2",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rdist: {
-      signature: "rdist(width: number, centre: number)",
-      description: "Returns a random number within the range with width around centre.",
-      example: "print rdist(1, 0)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rrand: {
-      signature: "rrand(min: number, max: number)",
-      description: "Given two numbers, this produces a float between the supplied min and max values exclusively.",
-      example: "print rrand(0, 10)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rrand_i: {
-      signature: "rrand_i(min: number, max: number)",
-      description: "Given two numbers, this produces a whole number between the min and max you supplied inclusively.",
-      example: "print rrand_i(0, 10)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rand: {
-      signature: "rand(max: number_or_range)",
-      description: "Given a max number, produces a float between `0` and the supplied max value.",
-      example: "print rand(0.5)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rand_i: {
-      signature: "rand_i(max: number_or_range)",
-      description: "Given a max number, produces a whole number between `0` and the supplied max value exclusively.",
-      example: "print rand_i(5)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rand_look: {
-      signature: "rand_look(max: number_or_range)",
-      description: "Given a max number, produces a number between `0` and the supplied max value exclusively.",
-      example: "print rand_look(0.5)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rand_i_look: {
-      signature: "rand_i_look(max: number_or_range)",
-      description: "Given a max number, produces a whole number between `0` and the supplied max value exclusively.",
-      example: "print rand_i_look(5)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rand_back: {
-      signature: "rand_back(amount: number)",
-      description: "Roll the random generator back essentially 'undoing' the last call to `rand`.",
-      example: "rand_back",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rand_skip: {
-      signature: "rand_skip(amount: number)",
-      description: "Jump the random generator forward essentially skipping the next call to `rand`.",
-      example: "rand_skip",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rand_reset: {
-      signature: "rand_reset",
-      description: "Resets the random stream to the last specified seed.",
-      example: "rand_reset",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    shuffle: {
-      signature: "shuffle(list: array)",
-      description: "Returns a new list with the same elements as the original but with their order shuffled.",
-      example: "shuffle [1, 2, 3, 4]",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_random_seed: {
-      signature: "use_random_seed(seed: number)",
-      description: "Resets the random number generator to the specified seed.",
-      example: "use_random_seed 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_random_seed: {
-      signature: "with_random_seed(seed: number)",
-      description: "Resets the random number generator to the specified seed for the specified code block.",
-      example: "with_random_seed 1 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_random_source: {
-      signature: "use_random_source(noise_type: symbol)",
-      description: "Sets the random number source to be one of `:white`, `:pink`, `:light_pink`, `:dark_pink` or `:perlin`.",
-      example: "use_random_source :white",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_random_source: {
-      signature: "with_random_source(noise_type: symbol)",
-      description: "Resets the random number generator to the specified noise type for the specified code block.",
-      example: "with_random_source :white do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_cue_logging: {
-      signature: "use_cue_logging(true_or_false: boolean)",
-      description: "Enable or disable log messages created on cues.",
-      example: "use_cue_logging true",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_cue_logging: {
-      signature: "with_cue_logging(true_or_false: boolean)",
-      description: "Similar to use_cue_logging except only applies to code within supplied `do`/`end` block.",
-      example: "with_cue_logging false do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    link_sync: {
-      signature: "link_sync(quantum: number, phase: number)",
-      description: "Similar to link except it also waits for the link session to be playing.",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    link: {
-      signature: "link(quantum: number, phase: number)",
-      description: "By default link waits for the start of the next bar of the shared network metronome link.",
-      example: "link",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_link_bpm: {
-      signature: "set_link_bpm(bpm: number)",
-      description: "Set the tempo for the link metronome in BPM.",
-      example: "set_link_bpm! 30",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_bpm: {
-      signature: "use_bpm(bpm: number)",
-      description: "Sets the tempo in bpm (beats per minute) for everything afterwards.",
-      example: "use_bpm 120",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_bpm: {
-      signature: "with_bpm(bpm: number)",
-      description: "Sets the tempo in bpm (beats per minute) for everything in the given block.",
-      example: "with_bpm 120 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_bpm_mul: {
-      signature: "with_bpm_mul(mul: number)",
-      description: "Sets the tempo in bpm (beats per minute) for everything in the given block as a multiplication of the current tempo.",
-      example: "with_bpm_mul 0.5 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_bpm_mul: {
-      signature: "use_bpm_mul(mul: number)",
-      description: "Sets the tempo in bpm (beats per minute) as a multiplication of the current tempo.",
-      example: "use_bpm_mul 0.5",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    density: {
-      signature: "density(d: density)",
-      description: "Runs the block `d` times with the bpm for the block also multiplied by `d`.",
-      example: "density 2 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_time: {
-      signature: "current_time",
-      description: "Returns the current logical time.",
-      example: "puts current_time",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_random_seed: {
-      signature: "current_random_seed",
-      description: "Returns the current random seed.",
-      example: "puts current_random_seed",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_random_source: {
-      signature: "current_random_source",
-      description: "Returns the source of the current random number generator (what kind of noise is generating the random numbers).",
-      example: "puts current_random_source",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_bpm_mode: {
-      signature: "current_bpm_mode",
-      description: "Returns the current tempo mode - either a bpm value or :link.",
-      example: "puts current_bpm_mode",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_bpm: {
-      signature: "current_bpm",
-      description: "Returns the current tempo as a bpm value.",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_beat_duration: {
-      signature: "current_beat_duration",
-      description: "Get the duration of the current beat in seconds.",
-      example: "puts current_beat_duration",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    beat: {
-      signature: "beat",
-      description: "Returns the beat value for the current thread/live_loop.",
-      example: "puts beat",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rt: {
-      signature: "rt(seconds: number)",
-      description: "Real time representation.",
-      example: "sleep rt(1)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    bt: {
-      signature: "bt(seconds: number)",
-      description: "Beat time representation.",
-      example: "puts bt(1)",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_sched_ahead_time: {
-      signature: "set_sched_ahead_time(time: number)",
-      description: "Specify how many seconds ahead of time the synths should be triggered.",
-      example: "set_sched_ahead_time! 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_sched_ahead_time: {
-      signature: "use_sched_ahead_time(time: number)",
-      description: "Specify how many seconds ahead of time the synths should be triggered.",
-      example: "use_sched_ahead_time 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_real_time: {
-      signature: "use_real_time",
-      description: "Set sched ahead time to 0 for the current thread.",
-      example: "use_real_time",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_real_time: {
-      signature: "with_real_time",
-      description: "Sets sched ahead time to 0 within the block for the current thread.",
-      example: "with_real_time do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_sched_ahead_time: {
-      signature: "with_sched_ahead_time(time: number)",
-      description: "Specify how many seconds ahead of time the synths should be triggered for the block.",
-      example: "with_sched_ahead_time 1 do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_sched_ahead_time: {
-      signature: "current_sched_ahead_time",
-      description: "Returns the current schedule ahead time.",
-      example: "puts current_sched_ahead_time",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sleep: {
-      signature: "sleep(beats: number)",
-      description: "Wait for a number of beats before triggering the next command.",
-      example: "sleep 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    wait: {
-      signature: "wait(beats: number)",
-      description: "Synonym for `sleep` - see `sleep`",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sync_bpm: {
-      signature: "sync_bpm(cue_id: symbol)",
-      description: "An alias for `sync` with the `bpm_sync:` opt set to true.",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sync: {
-      signature: "sync(cue_id: symbol)",
-      description: "Pause/block the current thread until a `cue` heartbeat with a matching `cue_id` is received.",
-      example: "sync :foo",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    in_thread: {
-      signature: "in_thread",
-      description: "Execute a given block (between `do` .",
-      example: "in_thread do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    assert_error: {
-      signature: "assert_error(class: Exception)",
-      description: "Runs the block and ensures that it raises the correct Exception.",
-      example: "assert_error do",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    assert_not: {
-      signature: "assert_not(arg: anything)",
-      description: "Raises an exception if the argument is not either nil or false.",
-      example: "assert_not false",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    assert: {
-      signature: "assert(arg: anything)",
-      description: "Raises an exception if the argument is either nil or false.",
-      example: "assert true",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    assert_not_equal: {
-      signature: "assert_not_equal(arg1: anything, arg2: anything)",
-      description: "Raises an exception if both arguments are qual.",
-      example: "assert_not_equal 1, 3",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    assert_equal: {
-      signature: "assert_equal(arg1: anything, arg2: anything)",
-      description: "Raises an exception if both arguments aren't equal.",
-      example: "assert_equal 1, 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    assert_similar: {
-      signature: "assert_similar(arg1: anything, arg2: anything)",
-      description: "Raises an exception if both arguments aren't similar.",
-      example: "assert_similar 1, 1",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    load_buffer: {
-      signature: "load_buffer(path: string)",
-      description: "Given a path to a file, will read the contents and load it into the current buffer.",
-      example: 'load_buffer "~/sonic-pi-tracks/phat-beats.rb"',
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    load_example: {
-      signature: "load_example(path: string)",
-      description: "Given a keyword representing an example, will load it into the current buffer.",
-      example: "load_example :rerezzed",
-      kind: "function",
-      category: "core",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    live_audio: {
-      signature: "live_audio(name: symbol)",
-      description: "A named audio stream live from your soundcard",
-      example: "live_audio :foo",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    scsynth_info: {
-      signature: "scsynth_info",
-      description: "Create a map of information about the running audio synthesiser SuperCollider.",
-      example: "puts scsynth_info",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_free: {
-      signature: "sample_free(path: string)",
-      description: "Frees the memory and resources consumed by loading the sample on the server.",
-      example: "sample_free :loop_amen",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    buffer: {
-      signature: "buffer(symbol: name, number: duration)",
-      description: "Initialise or return a named buffer with a specific duration (defaults to 8 beats).",
-      example: "buffer(:foo)",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_free_all: {
-      signature: "sample_free_all",
-      description: "Unloads all samples therefore freeing the memory and resources consumed.",
-      example: "sample_free_all",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_timing_guarantees: {
-      signature: "use_timing_guarantees(bool: true_or_false)",
-      description: "If set to true, synths will not trigger if it is too late.",
-      example: "use_timing_guarantees true",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_timing_guarantees: {
-      signature: "with_timing_guarantees(bool: true_or_false)",
-      description: "For the given block, if set to true, synths will not trigger if it is too late.",
-      example: "with_timing_guarantees true do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_sample_bpm: {
-      signature: "use_sample_bpm(string_or_number: sample_name_or_duration)",
-      description: "Modify bpm so that sleeping for 1 will sleep for the duration of the sample.",
-      example: "use_sample_bpm :loop_amen",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_sample_bpm: {
-      signature: "with_sample_bpm(string_or_number: sample_name_or_duration)",
-      description: "Block-scoped modification of bpm so that sleeping for 1 will sleep for the duration of the sample.",
-      example: "with_sample_bpm :loop_amen do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_arg_bpm_scaling: {
-      signature: "use_arg_bpm_scaling(bool: boolean)",
-      description: "Turn synth argument bpm scaling on or off for the current thread.",
-      example: "use_arg_bpm_scaling false",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_arg_bpm_scaling: {
-      signature: "with_arg_bpm_scaling",
-      description: "Turn synth argument bpm scaling on or off for the supplied block.",
-      example: "with_arg_bpm_scaling false do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_audio_latency: {
-      signature: "set_audio_latency(milliseconds: number)",
-      description: "On some systems with certain configurations (such as wireless speakers, and even a typical Windows environment with the default audio drivers) the audio latency can be large.",
-      example: "set_audio_latency! 100",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_recording_bit_depth: {
-      signature: "set_recording_bit_depth(bit_depth: number)",
-      description: "When you hit the record button, Sonic Pi saves all the audio you can hear into a wav file.",
-      example: "set_recording_bit_depth! 24",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_control_delta: {
-      signature: "set_control_delta(time: number)",
-      description: "Specify how many seconds between successive modifications (i.",
-      example: "set_control_delta! 0.1",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_debug: {
-      signature: "use_debug(true_or_false: boolean)",
-      description: "Enable or disable messages created on synth triggers.",
-      example: "use_debug true",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_debug: {
-      signature: "with_debug(true_or_false: boolean)",
-      description: "Similar to use_debug except only applies to code within supplied `do`/`end` block.",
-      example: "with_debug false do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_arg_checks: {
-      signature: "use_arg_checks(true_or_false: boolean)",
-      description: "When triggering synths, each argument is checked to see if it is sensible.",
-      example: "use_arg_checks false",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_arg_checks: {
-      signature: "with_arg_checks(true_or_false: boolean)",
-      description: "Similar to `use_arg_checks` except only applies to code within supplied `do`/`end` block.",
-      example: "with_arg_checks false do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_synth: {
-      signature: "use_synth(synth_name: symbol)",
-      description: "Switch the current synth to `synth_name`.",
-      example: "use_synth :mod_sine",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_synth: {
-      signature: "with_synth(synth_name: symbol)",
-      description: "Switch the current synth to `synth_name` but only for the duration of the `do`/`end` block.",
-      example: "with_synth :saw_beep do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    recording_start: {
-      signature: "recording_start",
-      description: "Start recording all sound to a `.",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    recording_stop: {
-      signature: "recording_stop",
-      description: "Stop current recording.",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    recording_save: {
-      signature: "recording_save(path: string)",
-      description: "Save previous recording to the specified location",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    recording_delete: {
-      signature: "recording_delete",
-      description: "After using `recording_start` and `recording_stop`, a temporary file is created until you decide to use `recording_save`.",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    reset_mixer: {
-      signature: "reset_mixer",
-      description: "The main mixer is the final mixer that all sound passes through.",
-      example: "reset_mixer!",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_mixer_control: {
-      signature: "set_mixer_control",
-      description: "The main mixer is the final mixer that all sound passes through.",
-      example: "set_mixer_control! lpf: 30, lpf_slide: 16",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    synth: {
-      signature: "synth(synth_name: symbol)",
-      description: "Trigger specified synth with given opts.",
-      example: "synth :dsaw, note: 60",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    play: {
-      signature: "play(note: symbol_or_number)",
-      description: "Play note with current synth.",
-      example: "play 50",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    play_pattern: {
-      signature: "play_pattern(notes: list)",
-      description: "Play list of notes with the current synth one after another with a sleep of 1 Accepts optional args for modification of the synth being played.",
-      example: "play_pattern [40, 41, 42]",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    play_pattern_timed: {
-      signature: "play_pattern_timed(notes: list, times: list_or_number)",
-      description: "Play each note in a list of notes one after another with specified durations.",
-      example: "play_pattern_timed [40, 42, 44], [1, 2, 3]",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    play_chord: {
-      signature: "play_chord(notes: list)",
-      description: "Play a list of notes at the same time.",
-      example: "play_chord [40, 45, 47]",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_merged_synth_defaults: {
-      signature: "use_merged_synth_defaults",
-      description: "Specify synth arg values to be used by any following call to play.",
-      example: "use_merged_synth_defaults amp: 0.5",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_merged_synth_defaults: {
-      signature: "with_merged_synth_defaults",
-      description: "Specify synth arg values to be used by any following call to play within the specified `do`/`end` block.",
-      example: "with_merged_synth_defaults amp: 0.5, pan: 1 do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_synth_defaults: {
-      signature: "use_synth_defaults",
-      description: "Specify new default values to be used by all subsequent calls to `play`.",
-      example: "use_synth_defaults amp: 0.5, cutoff: 70",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_sample_defaults: {
-      signature: "use_sample_defaults",
-      description: "Specify new default values to be used by all subsequent calls to `sample`.",
-      example: "use_sample_defaults amp: 0.5, cutoff: 70",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_merged_sample_defaults: {
-      signature: "use_merged_sample_defaults",
-      description: "Specify new default values to be used by all subsequent calls to `sample`.",
-      example: "use_merged_sample_defaults amp: 0.5, cutoff: 70",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_sample_defaults: {
-      signature: "with_sample_defaults",
-      description: "Specify new default values to be used by all subsequent calls to `sample` within the `do`/`end` block.",
-      example: "with_sample_defaults cutoff: 90 do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_merged_sample_defaults: {
-      signature: "with_merged_sample_defaults",
-      description: "Specify new default values to be used by all subsequent calls to `sample` within the `do`/`end` block.",
-      example: "with_merged_sample_defaults cutoff: 90 do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_synth_defaults: {
-      signature: "with_synth_defaults",
-      description: "Specify new default values to be used by all calls to `play` within the `do`/`end` block.",
-      example: "with_synth_defaults amp: 0.6, cutoff: 80 do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_fx: {
-      signature: "with_fx(fx_name: symbol)",
-      description: "This applies the named effect (FX) to everything within a given `do`/`end` block.",
-      example: "with_fx :distortion do",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_synth: {
-      signature: "current_synth",
-      description: "Returns the current synth name.",
-      example: "puts current_synth",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_synth_defaults: {
-      signature: "current_synth_defaults",
-      description: "Returns the current synth defaults.",
-      example: "puts current_synth_defaults",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_sample_defaults: {
-      signature: "current_sample_defaults",
-      description: "Returns the current sample defaults.",
-      example: "puts current_sample_defaults",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_volume: {
-      signature: "current_volume",
-      description: "Returns the current volume.",
-      example: "puts current_volume",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_debug: {
-      signature: "current_debug",
-      description: "Returns the current debug setting (`true` or `false`).",
-      example: "puts current_debug",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_arg_checks: {
-      signature: "current_arg_checks",
-      description: "Returns the current arg checking setting (`true` or `false`).",
-      example: "puts current_arg_checks",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_volume: {
-      signature: "set_volume(vol: number)",
-      description: "Set the main system volume to `vol`.",
-      example: "set_volume! 2",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_loaded: {
-      signature: "sample_loaded(path: string)",
-      description: "Given a path to a `.",
-      example: "puts sample_loaded? :elec_blip",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    load_sample: {
-      signature: "load_sample(path: string)",
-      description: "Given a path to a `.",
-      example: "load_sample :elec_blip",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    load_samples: {
-      signature: "load_samples(paths: list)",
-      description: "Given a directory containing multiple `.",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_info: {
-      signature: "sample_info(path: string)",
-      description: "Alias for the `load_sample` method.",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_buffer: {
-      signature: "sample_buffer(path: string)",
-      description: "Alias for the `load_sample` method.",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_duration: {
-      signature: "sample_duration(path: string)",
-      description: "Given the name of a loaded sample, or a path to a `.",
-      example: "puts sample_duration(:loop_garzul)",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_paths: {
-      signature: "sample_paths(pre_args: source_and_filter_types)",
-      description: "Accepts the same pre-args and opts as `sample` and returns a ring of matched sample paths.",
-      example: 'sample_paths "/path/to/samples/"',
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample: {
-      signature: "sample(name_or_path: symbol_or_string)",
-      description: "Play back a recorded sound file (sample).",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    status: {
-      signature: "status",
-      description: "This returns a Hash of information about the synthesis environment.",
-      example: "puts status",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    control: {
-      signature: "control(node: synth_node)",
-      description: "Control a running synth node by passing new parameters to it.",
-      example: "control my_node, cutoff: 70",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    kill: {
-      signature: "kill(node: synth_node)",
-      description: "Kill a running synth sound or sample.",
-      example: "kill foo",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_names: {
-      signature: "sample_names(group: symbol)",
-      description: "Return a ring of sample names for the specified group",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    all_sample_names: {
-      signature: "all_sample_names",
-      description: "Return a list of all the sample names available",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    sample_groups: {
-      signature: "sample_groups",
-      description: "Return a list of all the sample groups available",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    synth_names: {
-      signature: "synth_names",
-      description: "Return a list of all the synths available",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    fx_names: {
-      signature: "fx_names",
-      description: "Return a list of all the FX available",
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    load_synthdef: {
-      signature: "load_synthdef(path: string)",
-      description: "Load a pre-compiled synth design from the specified file.",
-      example: 'load_synthdef "~/Desktop/my_noises/whoosh.scsyndef"',
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    load_synthdefs: {
-      signature: "load_synthdefs(path: string)",
-      description: "Load all pre-compiled synth designs in the specified directory.",
-      example: 'load_synthdefs "~/Desktop/my_noises"',
-      kind: "function",
-      category: "sound",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    math_scale: {
-      signature: "math_scale",
-      description: "Scales a given input value within the specified input range to a corresponding value in the specified output range using the formula: (out_max - out_min) (val - in_min) f (x) = -------------------------------- + out_min ",
-      example: "math_scale 0.5, 0, 1, 10, 20",
-      kind: "function",
-      category: "maths",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    octs: {
-      signature: "octs(start: note, num_octaves: pos_int)",
-      description: "Create a ring of successive octaves starting at `start` for `num_octaves`.",
-      example: "(octs 60, 2)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_notes: {
-      signature: "midi_notes(list: array)",
-      description: "Create a new immutable ring buffer of notes from args.",
-      example: "(midi_notes :d3, :d4, :d5)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    rest: {
-      signature: "rest(note_or_args: number_symbol_or_map)",
-      description: "Given a note or an args map, returns true if it represents a rest and false if otherwise",
-      example: "puts rest? nil",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    pitch_to_ratio: {
-      signature: "pitch_to_ratio(pitch: midi_number)",
-      description: "Convert a midi note to a ratio which when applied to a frequency will scale the frequency by the number of semitones.",
-      example: "pitch_to_ratio 12",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    ratio_to_pitch: {
-      signature: "ratio_to_pitch(ratio: number)",
-      description: "Convert a frequency ratio to a midi note which when added to a note will transpose the note to match the frequency ratio.",
-      example: "ratio_to_pitch 2",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_to_hz: {
-      signature: "midi_to_hz(note: symbol_or_number)",
-      description: "Convert a midi note to hz",
-      example: "midi_to_hz(60)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    hz_to_midi: {
-      signature: "hz_to_midi(freq: number)",
-      description: "Convert a frequency in hz to a midi note.",
-      example: "hz_to_midi(261.63)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    set_cent_tuning: {
-      signature: "set_cent_tuning(cent_shift: number)",
-      description: "Globally tune Sonic Pi to play with another external instrument.",
-      example: "set_cent_tuning! 1",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_cent_tuning: {
-      signature: "use_cent_tuning(cent_shift: number)",
-      description: "Uniformly tunes your music by shifting all notes played by the specified number of cents.",
-      example: "use_cent_tuning 1",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_cent_tuning: {
-      signature: "with_cent_tuning(cent_shift: number)",
-      description: "Similar to `use_cent_tuning` except only applies cent shift to code within supplied `do`/`end` block.",
-      example: "with_cent_tuning 2 do",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_octave: {
-      signature: "use_octave(octave_shift: number)",
-      description: "Transposes your music by shifting all notes played by the specified number of octaves.",
-      example: "use_octave 1",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_octave: {
-      signature: "with_octave(octave_shift: number)",
-      description: "Transposes your music by shifting all notes played by the specified number of octaves within the specified block.",
-      example: "with_octave 1 do",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_transpose: {
-      signature: "use_transpose(note_shift: number)",
-      description: "Transposes your music by shifting all notes played by the specified amount.",
-      example: "use_transpose 1",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_transpose: {
-      signature: "with_transpose(note_shift: number)",
-      description: "Similar to use_transpose except only applies to code within supplied `do`/`end` block.",
-      example: "with_transpose 12 do",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_tuning: {
-      signature: "use_tuning(tuning: symbol, fundamental_note: symbol_or_number)",
-      description: "In most music we make semitones by dividing the octave into 12 equal parts, which is known as equal temperament.",
-      example: "use_tuning :just, :c",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_tuning: {
-      signature: "with_tuning(tuning: symbol, fundamental_note: symbol_or_number)",
-      description: "Similar to use_tuning except only applies to code within supplied `do`/`end` block.",
-      example: "with_tuning :just, :c do",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_transpose: {
-      signature: "current_transpose",
-      description: "Returns the current transpose value.",
-      example: "puts current_transpose",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_cent_tuning: {
-      signature: "current_cent_tuning",
-      description: "Returns the cent shift value.",
-      example: "puts current_cent_tuning",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_octave: {
-      signature: "current_octave",
-      description: "Returns the octave shift value.",
-      example: "puts current_octave",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    note: {
-      signature: "note(note: symbol_or_number)",
-      description: "Takes a midi note, a symbol (e.",
-      example: "puts note(60)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    note_range: {
-      signature: "note_range(start_note: note, end_note: note)",
-      description: "Produces a ring of all the notes between a start note and an end note.",
-      example: "(note_range :c4, :c5)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    note_info: {
-      signature: "note_info(note: symbol_or_number)",
-      description: "Returns an instance of `SonicPi::Note`.",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    degree: {
-      signature: "degree(degree: symbol_or_number, tonic: symbol, scale: symbol)",
-      description: "For a given scale and tonic it takes a symbol/string/number and resolves it to a midi note.",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    scale: {
-      signature: "scale(tonic: symbol, name: symbol)",
-      description: "Creates a ring of MIDI note numbers when given a tonic note and a scale name.",
-      example: "puts (scale :C, :major)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    chord_degree: {
-      signature: "chord_degree(degree: symbol_or_number, tonic: symbol, scale: symbol, number_of_notes: number)",
-      description: "In music we build chords from scales.",
-      example: "puts (chord_degree :i, :A3, :major)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    chord: {
-      signature: "chord(tonic: symbol, name: symbol)",
-      description: "Creates an immutable ring of Midi note numbers when given a tonic note and a chord type.",
-      example: "puts (chord :e, :minor)",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    chord_invert: {
-      signature: "chord_invert(notes: list, shift: number)",
-      description: "Given a set of notes, apply a number of inversions indicated by the `shift` parameter.",
-      example: 'play (chord_invert (chord :A3, "M"), 0)',
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    scale_names: {
-      signature: "scale_names",
-      description: "Returns a ring containing all scale names known to Sonic Pi",
-      example: "puts scale_names",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    chord_names: {
-      signature: "chord_names",
-      description: "Returns a ring containing all chord names known to Sonic Pi",
-      example: "puts chord_names",
-      kind: "function",
-      category: "western_theory",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_midi_logging: {
-      signature: "use_midi_logging(true_or_false: boolean)",
-      description: "Enable or disable log messages created on MIDI functions.",
-      example: "use_midi_logging true",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_midi_logging: {
-      signature: "with_midi_logging(true_or_false: boolean)",
-      description: "Similar to use_midi_logging except only applies to code within supplied `do`/`end` block.",
-      example: "with_midi_logging false do",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_midi_defaults: {
-      signature: "use_midi_defaults",
-      description: "Specify new default values to be used by all subsequent calls to `midi_*` fns.",
-      example: 'use_midi_defaults channel: 3, port: "foo"',
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_midi_defaults: {
-      signature: "with_midi_defaults",
-      description: "Specify new default values to be used by all calls to `midi_*` fns within the `do`/`end` block.",
-      example: 'with_midi_defaults channel: 3, port: "foo" do',
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    use_merged_midi_defaults: {
-      signature: "use_merged_midi_defaults",
-      description: "Specify new default values to be used by all subsequent calls to `midi_*` fns.",
-      example: "use_merged_midi_defaults channel: 1",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    with_merged_midi_defaults: {
-      signature: "with_merged_midi_defaults",
-      description: "Specify opt values to be used by any following call to the `midi_*` fns within the specified `do`/`end` block.",
-      example: "with_merged_midi_defaults channel: 1 do",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    current_midi_defaults: {
-      signature: "current_midi_defaults",
-      description: "Returns the current MIDI defaults.",
-      example: "current_midi_defaults",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_note_on: {
-      signature: "midi_note_on(note: midi, velocity: midi)",
-      description: "Sends a MIDI Note On Event to *all* connected devices on *all* channels.",
-      example: "midi_note_on :e3",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_note_off: {
-      signature: "midi_note_off(note: midi, release_velocity: midi)",
-      description: "Sends the MIDI note off message to *all* connected devices on *all* channels.",
-      example: "midi_note_off :e3",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_poly_pressure: {
-      signature: "midi_poly_pressure(note: midi, value: midi)",
-      description: "Sends a MIDI polyphonic key pressure message to *all* connected devices on *all* channels.",
-      example: "midi_poly_pressure 100, 32",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_cc: {
-      signature: "midi_cc(control_num: midi, value: midi)",
-      description: "Sends a MIDI control change message to *all* connected devices on *all* channels.",
-      example: "midi_cc 100, 32",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_channel_pressure: {
-      signature: "midi_channel_pressure(val: midi)",
-      description: "Sends a MIDI channel pressure (aftertouch) message to *all* connected devices on *all* channels.",
-      example: "midi_channel_pressure 50",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_pitch_bend: {
-      signature: "midi_pitch_bend(delta: float01)",
-      description: "Sends a MIDI pitch bend message to *all* connected devices on *all* channels.",
-      example: "midi_pitch_bend 0",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_pc: {
-      signature: "midi_pc(program_num: midi)",
-      description: "Sends a MIDI program change message to *all* connected devices on *all* channels.",
-      example: "midi_pc 100",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_raw: {
-      signature: "midi_raw",
-      description: "Send raw MIDI message",
-      example: "midi_raw 176, 121, 0",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_sysex: {
-      signature: "midi_sysex",
-      description: "Sends the MIDI SysEx message to *all* connected MIDI devices.",
-      example: "midi_sysex 0xf0, 0x00, 0x20, 0x6b, 0x7f, 0x42, 0x02, 0x00, 0x10, 0x77, 0x11, 0xf7",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_sound_off: {
-      signature: "midi_sound_off",
-      description: "Sends a MIDI sound off message to *all* connected devices on *all* channels.",
-      example: "midi_sound_off",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_reset: {
-      signature: "midi_reset(value: number)",
-      description: "Sends a MIDI reset all controllers message to *all* connected devices on *all* channels.",
-      example: "midi_reset",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_local_control_off: {
-      signature: "midi_local_control_off",
-      description: "Sends a MIDI local control off message to *all* connected devices on *all* channels.",
-      example: "midi_local_control_off",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_local_control_on: {
-      signature: "midi_local_control_on",
-      description: "Sends a MIDI local control on message to *all* connected devices on *all* channels.",
-      example: "midi_local_control_on",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_mode: {
-      signature: "midi_mode(mode: mode_keyword)",
-      description: "Sends the Omni/Mono/Poly MIDI mode message to *all* connected MIDI devices on *all* channels.",
-      example: "midi_mode :omni_on",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_all_notes_off: {
-      signature: "midi_all_notes_off",
-      description: "Sends a MIDI all notes off message to *all* connected MIDI devices.",
-      example: "midi_all_notes_off",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_clock_tick: {
-      signature: "midi_clock_tick",
-      description: "Sends a MIDI clock tick message to *all* connected devices on *all* channels.",
-      example: "midi_clock_tick",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_start: {
-      signature: "midi_start",
-      description: "Sends the MIDI start system message to *all* connected MIDI devices on *all* ports.",
-      example: "midi_start",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_stop: {
-      signature: "midi_stop",
-      description: "Sends the MIDI stop system message to *all* connected MIDI devices on *all* ports.",
-      example: "midi_stop",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_continue: {
-      signature: "midi_continue",
-      description: "Sends the MIDI continue system message to *all* connected MIDI devices on *all* ports.",
-      example: "midi_continue",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi_clock_beat: {
-      signature: "midi_clock_beat(duration: beats)",
-      description: "Sends enough MIDI clock ticks for one beat to *all* connected MIDI devices.",
-      example: "midi_clock_beat",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    midi: {
-      signature: "midi(note: number)",
-      description: "Sends a MIDI note on event to *all* connected MIDI devices and *all* channels and then after sustain beats sends a MIDI note off event.",
-      example: "midi :e1, sustain: 0.3, vel_f: 0.5, channel: 3",
-      kind: "function",
-      category: "midi",
-      sourceUrl: "https://sonic-pi.net/tutorial.html"
-    },
-    dull_bell: {
-      signature: ":dull_bell",
-      description: "A simple dull discordant bell sound.",
-      example: "synth :dull_bell, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    pretty_bell: {
-      signature: ":pretty_bell",
-      description: "A pretty bell sound. Works well with short attacks and long decays.",
-      example: "synth :pretty_bell, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    beep: {
-      signature: ":beep",
-      description: "A simple pure sine wave. The sine wave is the simplest, purest sound there is and is the fundamental building block of all noise. The mathematician Fourier demonstrated that any sound could be built out of a number of sine waves (the more complex the sound, the more sine waves ne",
-      example: "synth :beep, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    sine: {
-      signature: ":sine",
-      description: "A simple pure sine wave. The sine wave is the simplest, purest sound there is and is the fundamental building block of all noise. The mathematician Fourier demonstrated that any sound could be built out of a number of sine waves (the more complex the sound, the more sine waves ne",
-      example: "synth :sine, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    saw: {
-      signature: ":saw",
-      description: "A saw wave with a low pass filter. Great for using with FX such as the built in low pass filter (available via the cutoff arg) due to the complexity and thickness of the sound.",
-      example: "synth :saw, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    pulse: {
-      signature: ":pulse",
-      description: "A simple pulse wave with a low pass filter. This defaults to a square wave, but the timbre can be changed dramatically by adjusting the pulse_width arg between 0 and 1. The pulse wave is thick and heavy with lower notes and is a great ingredient for bass sounds.",
-      example: "synth :pulse, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    subpulse: {
-      signature: ":subpulse",
-      description: "A pulse wave with a sub sine wave passed through a low pass filter. The pulse wave is thick and heavy with lower notes and is a great ingredient for bass sounds - especially with the sub wave.",
-      example: "synth :subpulse, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    square: {
-      signature: ":square",
-      description: "A simple square wave with a low pass filter. The square wave is thick and heavy with lower notes and is a great ingredient for bass sounds. If you wish to modulate the width of the square wave see the synth pulse.",
-      example: "synth :square, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    tri: {
-      signature: ":tri",
-      description: "A simple triangle wave with a low pass filter.",
-      example: "synth :tri, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    dsaw: {
-      signature: ":dsaw",
-      description: "A pair of detuned saw waves passed through a low pass filter. Two saw waves with slightly different frequencies generates a nice thick sound which is the basis for a lot of famous synth sounds. Thicken the sound by increasing the detune value, or create an octave-playing synth by",
-      example: "synth :dsaw, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    dpulse: {
-      signature: ":dpulse",
-      description: "A pair of detuned pulse waves passed through a low pass filter. Two pulse waves with slightly different frequencies generates a nice thick sound which can be used as a basis for some nice bass sounds. Thicken the sound by increasing the detune value, or create an octave-playing s",
-      example: "synth :dpulse, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    dtri: {
-      signature: ":dtri",
-      description: "A pair of detuned triangle waves passed through a low pass filter. Two pulse waves with slightly different frequencies generates a nice thick sound which can be used as a basis for some nice bass sounds. Thicken the sound by increasing the detune value, or create an octave-playin",
-      example: "synth :dtri, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    fm: {
-      signature: ":fm",
-      description: "A sine wave with a fundamental frequency which is modulated at audio rate by another sine wave with a specific modulation, division and depth. Useful for generating a wide range of sounds by playing with the divisor and depth params. Great for deep powerful bass and crazy 70s sci",
-      example: "synth :fm, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mod_fm: {
-      signature: ":mod_fm",
-      description: "The FM synth modulating between two notes - the duration of the modulation can be modified using the mod_phase arg, the range (number of notes jumped between) by the mod_range arg and the width of the jumps by the mod_width param. The FM synth is a sine wave with a fundamental fr",
-      example: "synth :mod_fm, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mod_saw: {
-      signature: ":mod_saw",
-      description: "A saw wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
-      example: "synth :mod_saw, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mod_dsaw: {
-      signature: ":mod_dsaw",
-      description: "A pair of detuned saw waves (see the dsaw synth) which are modulated between two fixed notes at a given rate.",
-      example: "synth :mod_dsaw, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mod_sine: {
-      signature: ":mod_sine",
-      description: "A sine wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
-      example: "synth :mod_sine, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mod_beep: {
-      signature: ":mod_beep",
-      description: "A sine wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
-      example: "synth :mod_beep, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mod_tri: {
-      signature: ":mod_tri",
-      description: "A triangle wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
-      example: "synth :mod_tri, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mod_pulse: {
-      signature: ":mod_pulse",
-      description: "A pulse wave with a low pass filter modulating between two notes via a variety of control waves (see mod_wave: arg). The pulse wave defaults to a square wave, but the timbre can be changed dramatically by adjusting the pulse_width arg between 0 and 1.",
-      example: "synth :mod_pulse, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    tb303: {
-      signature: ":tb303",
-      description: "Emulation of the classic Roland TB-303 Bass Line synthesiser. Overdrive the res (i.e. use very large values) for that classic late 80s acid sound.",
-      example: "synth :tb303, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    supersaw: {
-      signature: ":supersaw",
-      description: "Thick swirly saw waves sparkling and moving about to create a rich trancy sound.",
-      example: "synth :supersaw, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    hoover: {
-      signature: ":hoover",
-      description: "Classic early 90's rave synth - 'a sort of slurry chorussy synth line like the classic Dominator by Human Resource'. Based on Dan Stowell's implementation in SuperCollider and Daniel Turczanski's port to Overtone. Works really well with portamento (see docs for the 'control' meth",
-      example: "synth :hoover, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    prophet: {
-      signature: ":prophet",
-      description: "Dark and swirly, this synth uses Pulse Width Modulation (PWM) to create a timbre which continually moves around. This effect is created using the pulse ugen which produces a variable width square wave. We then control the width of the pulses using a variety of LFOs - sin-osc and ",
-      example: "synth :prophet, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    zawa: {
-      signature: ":zawa",
-      description: "Saw wave with oscillating timbre. Produces moving saw waves with a unique character controllable with the control oscillator (usage similar to mod synths).",
-      example: "synth :zawa, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    dark_ambience: {
-      signature: ":dark_ambience",
-      description: "A slow rolling bass with a sparkle of light trying to escape the darkness. Great for an ambient sound.",
-      example: "synth :dark_ambience, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    growl: {
-      signature: ":growl",
-      description: "A deep rumbling growl with a bright sine shining through at higher notes.",
-      example: "synth :growl, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    hollow: {
-      signature: ":hollow",
-      description: "A hollow breathy sound constructed from random noise",
-      example: "synth :hollow, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    mono_player: {
-      signature: ":mono_player",
-      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
-      example: "synth :mono_player, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    stereo_player: {
-      signature: ":stereo_player",
-      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
-      example: "synth :stereo_player, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    blade: {
-      signature: ":blade",
-      description: "Straight from the 70s, evoking the mists of Blade Runner, this simple electro-style string synth is based on filtered saw waves and a variable vibrato.",
-      example: "synth :blade, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    piano: {
-      signature: ":piano",
-      description: "A basic piano synthesiser. Note that due to the plucked nature of this synth the envelope opts such as `attack:`, `sustain:` and `release:` do not work as expected. They can only shorten the natural length of the note, not prolong it. Also, the `note:` opt will only honour whole ",
-      example: "synth :piano, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    pluck: {
-      signature: ":pluck",
-      description: "A basic plucked string synthesiser that uses Karplus-Strong synthesis. Note that due to the plucked nature of this synth the envelope opts such as `attack:`, `sustain:` and `release:` do not work as expected. They can only shorten the natural length of the note, not prolong it. A",
-      example: "synth :pluck, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    sound_in: {
-      signature: ":sound_in",
-      description: "Please write documentation!",
-      example: "synth :sound_in, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    noise: {
-      signature: ":noise",
-      description: "Noise that contains equal amounts of energy at every frequency - comparable to radio static. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
-      example: "synth :noise, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    pnoise: {
-      signature: ":pnoise",
-      description: "Noise whose spectrum falls off in power by 3 dB per octave. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
-      example: "synth :pnoise, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    bnoise: {
-      signature: ":bnoise",
-      description: "Noise whose spectrum falls off in power by 6 dB per octave. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
-      example: "synth :bnoise, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    gnoise: {
-      signature: ":gnoise",
-      description: "Generates noise which results from flipping random bits in a word. The spectrum is emphasised towards lower frequencies. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
-      example: "synth :gnoise, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    cnoise: {
-      signature: ":cnoise",
-      description: "Generates noise whose values are either -1 or 1. This produces the maximum energy for the least peak to peak amplitude. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
-      example: "synth :cnoise, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    basic_mono_player: {
-      signature: ":basic_mono_player",
-      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
-      example: "synth :basic_mono_player, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    basic_stereo_player: {
-      signature: ":basic_stereo_player",
-      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
-      example: "synth :basic_stereo_player, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    basic_mixer: {
-      signature: ":basic_mixer",
-      description: "Please write documentation!",
-      example: "synth :basic_mixer, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    main_mixer: {
-      signature: ":main_mixer",
-      description: "Please write documentation!",
-      example: "synth :main_mixer, note: :c4",
-      kind: "synth",
-      category: "synth",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
-    },
-    bitcrusher: {
-      signature: ":bitcrusher",
-      description: "Creates lo-fi output by decimating and deconstructing the incoming audio by lowering both the sample rate and bit depth. The default sample rate for CD audio is 44100, so use values less than that for that crunchy chip-tune sound full of artefacts and bitty distortion. Similarly,",
-      example: "with_fx :bitcrusher do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    krush: {
-      signature: ":krush",
-      description: "Krush that sound!",
-      example: "with_fx :krush do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    reverb: {
-      signature: ":reverb",
-      description: "Make the incoming signal sound more spacious or distant as if it were played in a large room or cave. Signal may also be dampened by reducing the amplitude of the higher frequencies.",
-      example: "with_fx :reverb do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    gverb: {
-      signature: ":gverb",
-      description: "Make the incoming signal sound more spacious or distant as if it were played in a large room or cave. Similar to reverb but with a more spacious feel.",
-      example: "with_fx :gverb do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    level: {
-      signature: ":level",
-      description: "Amplitude modifier. All FX have their own amp built in, so it may be the case that you don't specifically need an isolated amp FX. However, it is useful to be able to control the overall amplitude of a number of running synths. All sounds created in the FX block will have their a",
-      example: "with_fx :level do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    echo: {
-      signature: ":echo",
-      description: "Standard echo with variable phase duration (time between echoes) and decay (length of echo fade out). If you wish to have a phase duration longer than 2s, you need to specify the longest phase duration you'd like with the arg max_phase. Be warned, echo FX with very long phases ca",
-      example: "with_fx :echo do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    slicer: {
-      signature: ":slicer",
-      description: "Modulates the amplitude of the input signal with a specific control wave and phase duration. With the default pulse wave, slices the signal in and out, with the triangle wave, fades the signal in and out and with the saw wave, phases the signal in and then dramatically out. Contr",
-      example: "with_fx :slicer do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    panslicer: {
-      signature: ":panslicer",
-      description: "Slice the pan automatically from left to right. Behaves similarly to slicer and wobble FX but modifies stereo panning of sound in left and right speakers. Default slice wave form is square (hard slicing between left and right) however other wave forms can be set with the `wave:` ",
-      example: "with_fx :panslicer do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    wobble: {
-      signature: ":wobble",
-      description: "Versatile wobble FX. Will repeatedly modulate a range of filters (rlpf, rhpf) between two cutoff values using a range of control wave forms (saw, pulse, tri, sine). You may alter the phase duration of the wobble, and the resonance of the filter. Combines well with the dsaw synth ",
-      example: "with_fx :wobble do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    ixi_techno: {
-      signature: ":ixi_techno",
-      description: "Moving resonant low pass filter between min and max cutoffs. Great for sweeping effects across long synths or samples.",
-      example: "with_fx :ixi_techno do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    compressor: {
-      signature: ":compressor",
-      description: "Compresses the dynamic range of the incoming signal. Equivalent to automatically turning the amp down when the signal gets too loud and then back up again when it's quiet. Useful for ensuring the containing signal doesn't overwhelm other aspects of the sound. Also a general purpo",
-      example: "with_fx :compressor do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    whammy: {
-      signature: ":whammy",
-      description: "A cheap sounding transposition effect, with a slightly robotic edge. Good for adding alien sounds and harmonies to everything from beeps to guitar samples. It's similar to pitch shift although not as smooth sounding.",
-      example: "with_fx :whammy do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    rlpf: {
-      signature: ":rlpf",
-      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). The resonant part of the resonant low pass filter emphasises/resonates the frequencies around th",
-      example: "with_fx :rlpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    nrlpf: {
-      signature: ":nrlpf",
-      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). The resonant part of the resonant low pass filter emphasises/resonates the frequencies around th",
-      example: "with_fx :nrlpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    rhpf: {
-      signature: ":rhpf",
-      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). The resonant part of the resonant high pass filter emphasises/resonates the frequencies around the c",
-      example: "with_fx :rhpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    nrhpf: {
-      signature: ":nrhpf",
-      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). The resonant part of the resonant high pass filter emphasises/resonates the frequencies around the c",
-      example: "with_fx :nrhpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    hpf: {
-      signature: ":hpf",
-      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make the sound more light ",
-      example: "with_fx :hpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    nhpf: {
-      signature: ":nhpf",
-      description: "A high pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard high pass filter and then normalised to ensure the amplitude of the final output is constant. A high pass filter will reduce the amplitude of the resulting signal (as some of the so",
-      example: "with_fx :nhpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    lpf: {
-      signature: ":lpf",
-      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). Choose a higher cutoff to keep more of the high frequences/treble of the sound and a lower cutof",
-      example: "with_fx :lpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    nlpf: {
-      signature: ":nlpf",
-      description: "A low pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard low pass filter and then normalised to ensure the amplitude of the final output is constant. A low pass filter will reduce the amplitude of the resulting signal (as some of the sound",
-      example: "with_fx :nlpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    normaliser: {
-      signature: ":normaliser",
-      description: "Raise or lower amplitude of sound to a specified level. Evens out the amplitude of incoming sound across the frequency spectrum by flattening all dynamics.",
-      example: "with_fx :normaliser do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    distortion: {
-      signature: ":distortion",
-      description: "Distorts the signal reducing clarity in favour of raw crunchy noise.",
-      example: "with_fx :distortion do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    pan: {
-      signature: ":pan",
-      description: "Specify where in the stereo field the sound should be heard. A value of -1 for pan will put the sound in the left speaker, a value of 1 will put the sound in the right speaker and values in between will shift the sound accordingly.",
-      example: "with_fx :pan do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    bpf: {
-      signature: ":bpf",
-      description: "Combines low pass and high pass filters to only allow a 'band' of frequencies through. If the band is very narrow (a low res value like 0.0001) then the BPF will reduce the original sound, almost down to a single frequency (controlled by the centre opt). With higher values for re",
-      example: "with_fx :bpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    nbpf: {
-      signature: ":nbpf",
-      description: "Like the Band Pass Filter but normalised. The normaliser is useful here as some volume is lost when filtering the original signal.",
-      example: "with_fx :nbpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    rbpf: {
-      signature: ":rbpf",
-      description: "Like the Band Pass Filter but with a resonance (slight volume boost) around the target frequency. This can produce an interesting whistling effect, especially when used with larger values for the res opt.",
-      example: "with_fx :rbpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    nrbpf: {
-      signature: ":nrbpf",
-      description: "Like the Band Pass Filter but normalised, with a resonance (slight volume boost) around the target frequency. This can produce an interesting whistling effect, especially when used with larger values for the res opt. The normaliser is useful here as some volume is lost when filte",
-      example: "with_fx :nrbpf do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    band_eq: {
-      signature: ":band_eq",
-      description: "Attenuate or Boost a frequency band",
-      example: "with_fx :band_eq do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    tanh: {
-      signature: ":tanh",
-      description: "Please write documentation!",
-      example: "with_fx :tanh do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    pitch_shift: {
-      signature: ":pitch_shift",
-      description: "Changes the pitch of a signal without affecting tempo. Does this mainly through the pitch parameter which takes a midi number to transpose by. You can also play with the other params to produce some interesting textures and sounds.",
-      example: "with_fx :pitch_shift do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    ring_mod: {
-      signature: ":ring_mod",
-      description: "Attack of the Daleks! Ring mod is a classic effect often used on soundtracks to evoke robots or aliens as it sounds hollow or metallic. We take a 'carrier' signal (a sine wave controlled by the freq opt) and modulate its amplitude using the signal given inside the fx block. This ",
-      example: "with_fx :ring_mod do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    octaver: {
-      signature: ":octaver",
-      description: "This effect adds three pitches based on the input sound. The first is the original sound transposed up an octave (super_amp), the second is the original sound transposed down an octave (sub_amp) and the third is the original sound transposed down two octaves (subsub_amp). The way",
-      example: "with_fx :octaver do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    vowel: {
-      signature: ":vowel",
-      description: "This effect filters the input to match a human voice singing a certain vowel sound. Human singing voice sounds are easily achieved with a source of a saw wave with a little vibrato.",
-      example: "with_fx :vowel do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    },
-    flanger: {
-      signature: ":flanger",
-      description: "Mix the incoming signal with a copy of itself which has a rate modulating faster and slower than the original. Creates a swirling/whooshing effect.",
-      example: "with_fx :flanger do\n  play :c4\nend",
-      kind: "fx",
-      category: "fx",
-      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
-    }
-  },
-  meta: {
-    fetchedAt: "2026-04-18",
-    source: "https://raw.githubusercontent.com/sonic-pi-net/sonic-pi/stable"
-  }
-};
-
-// src/monaco/docs/sonicpi.ts
-validateDocsIndex("sonicpi.json", sonicpi_default);
-var SONICPI_DOCS_INDEX = sonicpi_default;
-function registerSonicPiProviders(monaco) {
-  return registerRuntimeProviders(monaco, SONICPI_DOCS_INDEX, {
-    hover: true,
-    dotCompletion: false,
-    identifierCompletion: true
-  });
-}
-__name(registerSonicPiProviders, "registerSonicPiProviders");
-
-// src/monaco/strudelDocs.ts
-var STRUDEL_DOCS = {
-  note: {
-    signature: "note(pattern: string)",
-    description: "Play notes from a mini-notation pattern. Accepts note names (c4, eb3) or MIDI numbers.",
-    example: 'note("c4 e4 g4 b4")'
-  },
-  s: {
-    signature: "s(pattern: string)",
-    description: "Select a sound or synth. Accepts sample names or synth identifiers.",
-    example: 's("bd sd hh sd")'
-  },
-  stack: {
-    signature: "stack(...patterns)",
-    description: "Play multiple patterns simultaneously (vertical stack).",
-    example: 'stack(note("c3 e3"), s("bd sd"))'
-  },
-  cat: {
-    signature: "cat(...patterns)",
-    description: "Concatenate patterns sequentially \u2014 each plays for one cycle then moves to the next.",
-    example: 'cat(note("c4 e4"), note("g4 b4"))'
-  },
-  fast: {
-    signature: ".fast(n)",
-    description: "Speed up the pattern by factor n.",
-    example: 'note("c4 e4").fast(2)'
-  },
-  slow: {
-    signature: ".slow(n)",
-    description: "Slow down the pattern by factor n.",
-    example: 'note("c4 e4 g4").slow(2)'
-  },
-  rev: {
-    signature: ".rev()",
-    description: "Reverse the pattern.",
-    example: 'note("c4 d4 e4 f4").rev()'
-  },
-  every: {
-    signature: ".every(n, fn)",
-    description: "Apply fn to the pattern every n cycles.",
-    example: 'note("c4 e4 g4").every(4, x => x.rev())',
-    commonMistakes: [
-      {
-        // Calling `every(n, fn)` as a free function instead of chaining
-        // it on a Pattern. The Strudel autoplay path then dereferences
-        // `.p` on the partial application to get a Pattern, surfacing
-        // as `every(...).p is not a function`. The plainer
-        // `every is not a function` shape fires when `every` is
-        // shadowed; both are caught by the same loose-matched word.
-        detect: { kind: "message", match: /\bevery\b[^\n]*\bis not a function\b/ },
-        hint: "`.every(n, fn)` is a method on a Pattern \u2014 chain it after `note(...)` or `s(...)`.",
-        weight: 2
-      }
-    ]
-  },
-  sometimes: {
-    signature: ".sometimes(fn)",
-    description: "Apply fn to events 50% of the time at random.",
-    example: 'note("c4 e4 g4").sometimes(x => x.fast(2))'
-  },
-  degradeBy: {
-    signature: ".degradeBy(amount)",
-    description: "Randomly remove events. amount is 0\u20131 (0 = keep all, 1 = remove all).",
-    example: 'note("c4 d4 e4 f4").degradeBy(0.3)'
-  },
-  gain: {
-    signature: ".gain(amount)",
-    description: "Set the volume. 1 is unity gain; values above 1 amplify.",
-    example: 'note("c4 e4").gain(0.7)'
-  },
-  pan: {
-    signature: ".pan(value)",
-    description: "Set stereo panning. -1 is hard left, 0 is center, 1 is hard right.",
-    example: 'note("c4 e4 g4").pan(sine)'
-  },
-  room: {
-    signature: ".room(amount)",
-    description: "Add reverb. 0 is dry, 1 is fully wet.",
-    example: 'note("c4 e4").room(0.4)'
-  },
-  delay: {
-    signature: ".delay(amount)",
-    description: "Add delay/echo effect.",
-    example: 'note("c4 e4").delay(0.3)'
-  },
-  jux: {
-    signature: ".jux(fn)",
-    description: "Apply fn to a copy of the pattern playing in the right channel, original in left.",
-    example: 'note("c4 e4 g4").jux(rev)'
-  },
-  off: {
-    signature: ".off(timeOffset, fn)",
-    description: "Play an offset copy of the pattern with fn applied, layered over the original.",
-    example: 'note("c4 e4 g4").off(0.25, x => x.gain(0.5))'
-  },
-  layer: {
-    signature: ".layer(...fns)",
-    description: "Apply multiple functions to copies of the pattern and stack all results.",
-    example: 'note("c4 e4 g4").layer(x => x.fast(2), rev)'
-  },
-  struct: {
-    signature: ".struct(pattern)",
-    description: "Impose a rhythmic structure on the pattern from a boolean/euclid pattern.",
-    example: 'note("c4").struct("t f t t f t t f")'
-  },
-  mask: {
-    signature: ".mask(pattern)",
-    description: "Filter events by a boolean pattern \u2014 only play where the mask is true.",
-    example: 'note("c4 d4 e4 f4").mask("t t f t")'
-  },
-  euclid: {
-    signature: ".euclid(steps, total)",
-    description: "Euclidean rhythm: distribute steps evenly across total slots.",
-    example: 's("bd").euclid(3, 8)'
-  },
-  iter: {
-    signature: ".iter(n)",
-    description: "Iterate through n rotations of the pattern over n cycles.",
-    example: 'note("c4 d4 e4 f4").iter(4)'
-  },
-  chunk: {
-    signature: ".chunk(n, fn)",
-    description: "Divide pattern into n chunks, applying fn to one chunk per cycle in rotation.",
-    example: 'note("c4 d4 e4 f4").chunk(4, x => x.fast(2))'
-  },
-  cutoff: {
-    signature: ".cutoff(freq)",
-    description: "Low-pass filter cutoff frequency in Hz.",
-    example: 'note("c4 e4").s("sawtooth").cutoff(800)'
-  },
-  resonance: {
-    signature: ".resonance(amount)",
-    description: "Filter resonance (Q). Higher values create a more pronounced peak.",
-    example: 'note("c4 e4").s("sawtooth").cutoff(sine.range(200,2000)).resonance(8)'
-  },
-  hpf: {
-    signature: ".hpf(freq)",
-    description: "High-pass filter \u2014 removes frequencies below the cutoff.",
-    example: 's("amen").hpf(400)'
-  },
-  lpf: {
-    signature: ".lpf(freq)",
-    description: "Low-pass filter \u2014 alias for cutoff.",
-    example: 'note("c4 e4").lpf(1200)'
-  },
-  release: {
-    signature: ".release(seconds)",
-    description: "Envelope release time in seconds.",
-    example: 'note("c4 e4 g4").release(0.5)'
-  },
-  sustain: {
-    signature: ".sustain(seconds)",
-    description: "Envelope sustain duration in seconds.",
-    example: 'note("c4").sustain(0.1).release(0.3)'
-  },
-  speed: {
-    signature: ".speed(rate)",
-    description: "Sample playback rate. 1 is normal, 2 is double speed (up one octave), -1 is reversed.",
-    example: 's("amen").speed(0.5)'
-  },
-  vowel: {
-    signature: ".vowel(v)",
-    description: 'Vowel formant filter. Accepts "a", "e", "i", "o", "u".',
-    example: 'note("c4 d4 e4").vowel("<a e i o>")'
-  },
-  orbit: {
-    signature: ".orbit(n)",
-    description: "Route to audio effect bus n. Patterns on the same orbit share effects.",
-    example: 'note("c4 e4").room(0.5).orbit(1)'
-  }
-};
-var STRUDEL_DOCS_INDEX = {
-  runtime: "strudel",
-  docs: STRUDEL_DOCS,
-  // Catch-all friendly-error hints that aren't tied to a single symbol.
-  // The two cases below are the highest-frequency Strudel papercut:
-  // bare note / drum names outside a string. JS evaluates them as
-  // identifiers and throws ReferenceError — without these hints the
-  // user sees "c4 is not defined" with a Levenshtein neighbour
-  // ("cat"?) that doesn't help.
-  globalMistakes: [
-    {
-      detect: {
-        kind: "message",
-        // Note names: c, d, e, f, g, a, b — optional sharp/flat,
-        // optional octave digit. Anchored to start so we don't match
-        // mid-message references.
-        match: /^[a-g][s#b]?\d? is not defined$/i
-      },
-      hint: 'Looks like a note name \u2014 wrap it in a string: `note("c4")`.',
-      example: 'note("c4 e4 g4")'
-    },
-    {
-      detect: {
-        kind: "message",
-        // Drum / sample shorthands. Curated list; expand as we
-        // observe new ones in the wild.
-        match: /^(bd|sd|hh|oh|cp|cb|rim|tom|cy|kick|snare|hat|clap|crash|ride) is not defined$/i
-      },
-      hint: 'Looks like a drum name \u2014 wrap it in a string: `s("bd")`.',
-      example: 's("bd sd hh sd")'
-    }
-  ],
-  meta: {
-    source: "hand-curated",
-    // Strudel's jsdoc isn't published with per-function permalinks, so
-    // hovers fall back to the main function reference page — the user
-    // lands inside the searchable function browser.
-    docsBaseUrl: "https://strudel.cc/functions/"
-  }
-};
-function registerStrudelHover(monaco) {
-  return createHoverProvider(monaco, STRUDEL_DOCS_INDEX);
-}
-__name(registerStrudelHover, "registerStrudelHover");
-
-// src/monaco/docs/tokenizer-utils.ts
-function buildIdentifierAlternation(index, opts = {}) {
-  const { includeKinds, excludeKinds, filter: filter2, extra = [] } = opts;
-  const names = /* @__PURE__ */ new Set();
-  for (const [name, doc] of Object.entries(index.docs)) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
-    if (includeKinds && (!doc.kind || !includeKinds.includes(doc.kind))) continue;
-    if (excludeKinds && doc.kind && excludeKinds.includes(doc.kind)) continue;
-    if (filter2 && !filter2(name, doc)) continue;
-    names.add(name);
-  }
-  for (const n of extra) if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) names.add(n);
-  return [...names].sort((a, b) => b.length - a.length || a.localeCompare(b)).map(escapeForRegex).join("|");
-}
-__name(buildIdentifierAlternation, "buildIdentifierAlternation");
-function escapeForRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-__name(escapeForRegex, "escapeForRegex");
-function keywordRule(alternation, token) {
-  if (!alternation) return [];
-  return [[new RegExp(`\\b(${alternation})\\b`), token]];
-}
-__name(keywordRule, "keywordRule");
-function methodRule(alternation, token) {
-  if (!alternation) return [];
-  return [[new RegExp(`\\.(${alternation})\\b`), token]];
-}
-__name(methodRule, "methodRule");
-
-// src/monaco/language.ts
-function registerSonicPiLanguage(monaco) {
-  const langs = monaco.languages.getLanguages();
-  if (langs.some((l) => l.id === "sonicpi")) return;
-  monaco.languages.register({ id: "sonicpi" });
-  const MUSIC_HELPER_NAMES = /* @__PURE__ */ new Set([
-    "choose",
-    "rrand",
-    "rrand_i",
-    "rand",
-    "rand_i",
-    "dice",
-    "one_in",
-    "ring",
-    "knit",
-    "range",
-    "line",
-    "spread",
-    "tick",
-    "look",
-    "shuffle",
-    "sort_by",
-    "reflect",
-    "stretch",
-    "repeat",
-    "mirror"
-  ]);
-  const musicFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
-    excludeKinds: ["synth", "fx", "sample"],
-    filter: /* @__PURE__ */ __name((name, doc) => doc.category === "western_theory" || doc.category === "maths" || MUSIC_HELPER_NAMES.has(name), "filter")
-  });
-  const dslFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
-    excludeKinds: ["synth", "fx", "sample"],
-    filter: /* @__PURE__ */ __name((name, doc) => doc.category !== "western_theory" && doc.category !== "maths" && !MUSIC_HELPER_NAMES.has(name), "filter"),
-    extra: ["puts", "print"]
-  });
-  monaco.languages.setMonarchTokensProvider("sonicpi", {
-    defaultToken: "",
-    tokenPostfix: ".sonicpi",
-    keywords: [
-      "do",
-      "end",
-      "if",
-      "else",
-      "elsif",
-      "unless",
-      "loop",
-      "while",
-      "until",
-      "for",
-      "in",
-      "begin",
-      "rescue",
-      "ensure",
-      "true",
-      "false",
-      "nil",
-      "and",
-      "or",
-      "not"
-    ],
-    tokenizer: {
-      root: [
-        // Ruby comment
-        [/#.*$/, "comment"],
-        // Ruby symbols :name
-        [/:\w+/, "sonicpi.symbol"],
-        // Keyword args (release:, amp:, rate:) — BEFORE the fn rule so
-        // `amp:` doesn't get classified as the `amp` function.
-        [/\b[a-z_]\w*:/, "sonicpi.kwarg"],
-        // Keywords first — `end` / `do` would otherwise match the function
-        // list (Sonic Pi has many fns named alike, but these are lexical).
-        [/\b(do|end|if|else|elsif|unless|loop|while|until|for|in|true|false|nil|and|or|not|begin|rescue|ensure|return|yield|then|when|case|break|next|redo|retry|module|class|def|lambda|proc|self)\b/, "keyword"],
-        // Music helpers (mathy / pitch / randomness) — pink-tinted class.
-        [new RegExp(`\\b(${musicFns})\\b`), "sonicpi.music"],
-        // DSL / sound / MIDI functions — blue-tinted class.
-        [new RegExp(`\\b(${dslFns})\\b`), "sonicpi.function"],
-        // Note names: c3, eb4, f#2
-        [/\b[a-gA-G][bs#]?\d\b/, "sonicpi.note"],
-        // Identifier fallthrough — user variables, iterator names, etc.
-        [/[a-zA-Z_][\w]*/, "identifier"],
-        // Numbers
-        [/0x[\da-fA-F]+/, "number.hex"],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
-        // Strings
-        [/"/, { token: "string.quote", next: "@string_double" }],
-        [/'/, { token: "string.quote", next: "@string_single" }],
-        // Operators + delimiters
-        [/=>|<=>|==|!=|<=|>=|&&|\|\||\.\.\.?/, "keyword.operator"],
-        [/[=!<>]=?/, "keyword.operator"],
-        [/[+\-*/%&|^~]=?/, "keyword.operator"],
-        [/[{}()[\]]/, "@brackets"],
-        [/[;,.]/, "delimiter"]
-      ],
-      string_double: [
-        [/#\{/, { token: "string.interpolation", next: "@interpolation" }],
-        [/\\./, "string.escape"],
-        [/[^"#\\]+/, "string"],
-        [/#/, "string"],
-        [/"/, { token: "string.quote", next: "@pop" }]
-      ],
-      string_single: [
-        [/\\./, "string.escape"],
-        [/[^'\\]+/, "string"],
-        [/'/, { token: "string.quote", next: "@pop" }]
-      ],
-      interpolation: [
-        [/\}/, { token: "string.interpolation", next: "@pop" }],
-        { include: "root" }
-      ]
-    }
-  });
-  monaco.languages.setLanguageConfiguration("sonicpi", {
-    comments: {
-      lineComment: "#"
-    },
-    brackets: [
-      ["{", "}"],
-      ["[", "]"],
-      ["(", ")"]
-    ],
-    autoClosingPairs: [
-      { open: "{", close: "}" },
-      { open: "[", close: "]" },
-      { open: "(", close: ")" },
-      { open: '"', close: '"' },
-      { open: "'", close: "'" }
-    ]
-  });
-}
-__name(registerSonicPiLanguage, "registerSonicPiLanguage");
-function registerStrudelLanguage(monaco) {
-  const langs = monaco.languages.getLanguages();
-  if (langs.some((l) => l.id === "strudel")) return;
-  monaco.languages.register({ id: "strudel" });
-  const strudelFns = buildIdentifierAlternation(STRUDEL_DOCS_INDEX, {
-    extra: [
-      "sub",
-      "add",
-      "mul",
-      "div",
-      "mod",
-      "abs",
-      "sine",
-      "saw",
-      "square",
-      "tri",
-      "setcps",
-      "setCps",
-      "cpm",
-      "loopBegin",
-      "loopEnd",
-      "n",
-      "ftype",
-      "fanchor"
-    ]
-  });
-  monaco.languages.setMonarchTokensProvider("strudel", {
-    defaultToken: "",
-    tokenPostfix: ".strudel",
-    keywords: [
-      "const",
-      "let",
-      "var",
-      "await",
-      "async",
-      "return",
-      "if",
-      "else",
-      "for",
-      "while",
-      "function",
-      "class",
-      "import",
-      "export",
-      "from"
-    ],
-    tokenizer: {
-      root: [
-        // $: pattern-start marker
-        [/\$\s*:/, "strudel.pattern-start"],
-        // setcps / setCps tempo
-        [/\bsetcps\b|\bsetCps\b/, "strudel.tempo"],
-        // Note names: c3, eb4, f#2, C#5
-        [/\b[a-gA-G][b#]?\d\b/, "strudel.note"],
-        // Strudel function names (must come before keywords check)
-        [new RegExp(`\\b(${strudelFns})\\b`), "strudel.function"],
-        // JS keywords
-        [
-          /\b(const|let|var|await|async|return|if|else|for|while|function|class|import|export|from)\b/,
-          "keyword"
-        ],
-        // Line comment
-        [/\/\/.*$/, "comment"],
-        // Block comment
-        [/\/\*/, "comment", "@block_comment"],
-        // Strings (mini-notation)
-        [/"/, "string", "@mini_string_double"],
-        [/'/, "string", "@mini_string_single"],
-        [/`/, "string", "@template_string"],
-        // Numbers
-        [/\b\d+(\.\d+)?\b/, "number"]
-      ],
-      block_comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"]
-      ],
-      mini_string_double: [
-        [/[~*!%?@<>\[\]{}|,_]/, "strudel.mini.operator"],
-        [/[a-gA-G][b#]?\d?/, "strudel.mini.note"],
-        [/\d+(\.\d+)?/, "strudel.mini.number"],
-        [/"/, "string", "@pop"],
-        [/[^"]+/, "string"]
-      ],
-      mini_string_single: [
-        [/[~*!%?@<>\[\]{}|,_]/, "strudel.mini.operator"],
-        [/[a-gA-G][b#]?\d?/, "strudel.mini.note"],
-        [/\d+(\.\d+)?/, "strudel.mini.number"],
-        [/'/, "string", "@pop"],
-        [/[^']+/, "string"]
-      ],
-      template_string: [
-        [/`/, "string", "@pop"],
-        [/[^`]+/, "string"]
-      ]
-    }
-  });
-  monaco.languages.setLanguageConfiguration("strudel", {
-    comments: {
-      lineComment: "//",
-      blockComment: ["/*", "*/"]
-    },
-    brackets: [
-      ["{", "}"],
-      ["[", "]"],
-      ["(", ")"]
-    ],
-    autoClosingPairs: [
-      { open: "{", close: "}" },
-      { open: "[", close: "]" },
-      { open: "(", close: ")" },
-      { open: '"', close: '"' },
-      { open: "'", close: "'" },
-      { open: "`", close: "`" }
-    ],
-    surroundingPairs: [
-      { open: "{", close: "}" },
-      { open: "[", close: "]" },
-      { open: "(", close: ")" },
-      { open: '"', close: '"' },
-      { open: "'", close: "'" }
-    ]
-  });
-}
-__name(registerStrudelLanguage, "registerStrudelLanguage");
-
-// src/monaco/strudelCompletions.ts
-var NOTE_ROOTS = ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"];
-var SHARP_ROOTS = ["c#", "d#", "f#", "g#", "a#"];
-function generateNoteNames() {
-  const names = [];
-  for (let oct = 0; oct <= 7; oct++) {
-    for (const root of NOTE_ROOTS) names.push(`${root}${oct}`);
-    for (const root of SHARP_ROOTS) names.push(`${root}${oct}`);
-  }
-  return names;
-}
-__name(generateNoteNames, "generateNoteNames");
-var NOTE_NAMES = generateNoteNames();
-function registerStrudelDotCompletions(monaco) {
-  return monaco.languages.registerCompletionItemProvider("strudel", {
-    triggerCharacters: ["."],
-    provideCompletionItems(model, position) {
-      const textBefore = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
-      if (!/[)\]"'`\w]\.$/.test(textBefore)) {
-        return { suggestions: [] };
-      }
-      const word = model.getWordUntilPosition(position);
-      const range = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: word.startColumn,
-        endColumn: word.endColumn
-      };
-      return {
-        suggestions: Object.entries(STRUDEL_DOCS).map(([name, doc]) => ({
-          label: name,
-          kind: monaco.languages.CompletionItemKind.Method,
-          insertText: name,
-          detail: doc.signature,
-          documentation: { value: `${doc.description}
-
-**Example:** \`${doc.example}\`` },
-          range
-        }))
-      };
-    }
-  });
-}
-__name(registerStrudelDotCompletions, "registerStrudelDotCompletions");
-function registerStrudelNoteCompletions(monaco) {
-  return monaco.languages.registerCompletionItemProvider("strudel", {
-    triggerCharacters: ['"', "'", " "],
-    provideCompletionItems(model, position) {
-      const lineContent = model.getLineContent(position.lineNumber);
-      const textBefore = lineContent.substring(0, position.column - 1);
-      if (!/(?:^|[\s,(.])note\(["']([^"']*)$/.test(textBefore)) {
-        return { suggestions: [] };
-      }
-      const word = model.getWordUntilPosition(position);
-      const range = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: word.startColumn,
-        endColumn: word.endColumn
-      };
-      return {
-        suggestions: NOTE_NAMES.map((name) => ({
-          label: name,
-          kind: monaco.languages.CompletionItemKind.Value,
-          insertText: name,
-          range
-        }))
-      };
-    }
-  });
-}
-__name(registerStrudelNoteCompletions, "registerStrudelNoteCompletions");
-
-// src/monaco/diagnostics.ts
-var MARKER_OWNER = "stave";
-function parseErrorLocation(error) {
-  const stack = error.stack ?? "";
-  const match = stack.match(/at eval[^(]*\(.*?:(\d+):(\d+)\)/);
-  if (match) {
-    return { line: parseInt(match[1], 10), col: parseInt(match[2], 10) };
-  }
-  return null;
-}
-__name(parseErrorLocation, "parseErrorLocation");
-function setEvalError(monaco, model, error) {
-  try {
-    const loc = parseErrorLocation(error);
-    const lineCount = model.getLineCount();
-    const validLine = loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount ? loc.line : null;
-    const validCol = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
-    const lineNumber = validLine ?? 1;
-    const startColumn = validLine ? validCol : 1;
-    const endLineNumber = validLine ?? lineCount;
-    const endColumn = model.getLineMaxColumn(endLineNumber);
-    monaco.editor.setModelMarkers(model, MARKER_OWNER, [
-      {
-        severity: monaco.MarkerSeverity.Error,
-        message: error.message,
-        startLineNumber: lineNumber,
-        startColumn,
-        endLineNumber,
-        endColumn
-      }
-    ]);
-  } catch (markerError) {
-    console.warn("[stave] setEvalError failed, marker skipped:", markerError);
-  }
-}
-__name(setEvalError, "setEvalError");
-function clearEvalErrors(monaco, model) {
-  try {
-    monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
-  } catch (markerError) {
-    console.warn("[stave] clearEvalErrors failed:", markerError);
-  }
-}
-__name(clearEvalErrors, "clearEvalErrors");
-function setLineMarker(monaco, model, opts) {
-  try {
-    const lineCount = model.getLineCount();
-    const line = opts.line != null && Number.isFinite(opts.line) && opts.line >= 1 && opts.line <= lineCount ? opts.line : null;
-    const col = opts.column != null && Number.isFinite(opts.column) && opts.column >= 1 ? opts.column : 1;
-    const severityMap = {
-      error: monaco.MarkerSeverity.Error,
-      warn: monaco.MarkerSeverity.Warning,
-      info: monaco.MarkerSeverity.Info
-    };
-    const severity = severityMap[opts.severity ?? "error"];
-    const startLine = line ?? 1;
-    const endLine = line ?? lineCount;
-    const startColumn = line ? col : 1;
-    const endColumn = model.getLineMaxColumn(endLine);
-    monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
-      {
-        severity,
-        message: opts.message,
-        startLineNumber: startLine,
-        startColumn,
-        endLineNumber: endLine,
-        endColumn
-      }
-    ]);
-  } catch (markerError) {
-    console.warn("[stave] setLineMarker failed, skipped:", markerError);
-  }
-}
-__name(setLineMarker, "setLineMarker");
-function clearLineMarkers(monaco, model, owner) {
-  try {
-    monaco.editor.setModelMarkers(model, owner, []);
-  } catch (markerError) {
-    console.warn("[stave] clearLineMarkers failed:", markerError);
-  }
-}
-__name(clearLineMarkers, "clearLineMarkers");
-var STRUDEL_LINT_OWNER = "stave-strudel-lint";
-var STRUDEL_DOUBLE_QUOTED_P_RE = /\.p\(\s*"([^"\n\r]*)"\s*\)/g;
-function refreshStrudelLintMarkers(monaco, model) {
-  try {
-    const text = model.getValue();
-    const markers = [];
-    STRUDEL_DOUBLE_QUOTED_P_RE.lastIndex = 0;
-    let m;
-    while (m = STRUDEL_DOUBLE_QUOTED_P_RE.exec(text)) {
-      const matchStart = m.index;
-      const matchEnd = matchStart + m[0].length;
-      const startPos = model.getPositionAt(matchStart);
-      const endPos = model.getPositionAt(matchEnd);
-      const inner = m[1];
-      markers.push({
-        severity: monaco.MarkerSeverity.Warning,
-        message: `Strudel's transpiler converts double-quoted strings to mini-notation, so .p("${inner}") becomes .p(<Pattern>) at runtime \u2014 the track-id registration silently no-ops. Use single quotes: .p('${inner}').`,
-        startLineNumber: startPos.lineNumber,
-        startColumn: startPos.column,
-        endLineNumber: endPos.lineNumber,
-        endColumn: endPos.column,
-        source: "stave",
-        code: "strudel/p-double-quoted"
-      });
-    }
-    monaco.editor.setModelMarkers(model, STRUDEL_LINT_OWNER, markers);
-  } catch (lintError) {
-    console.warn("[stave] refreshStrudelLintMarkers failed:", lintError);
-  }
-}
-__name(refreshStrudelLintMarkers, "refreshStrudelLintMarkers");
-function clearStrudelLintMarkers(monaco, model) {
-  try {
-    monaco.editor.setModelMarkers(model, STRUDEL_LINT_OWNER, []);
-  } catch {
-  }
-}
-__name(clearStrudelLintMarkers, "clearStrudelLintMarkers");
-var strudelLintProviderDisposable = null;
-function ensureStrudelLintCodeActionProvider(monaco, languageId) {
-  if (strudelLintProviderDisposable) return strudelLintProviderDisposable;
-  strudelLintProviderDisposable = monaco.languages.registerCodeActionProvider(
-    languageId,
-    {
-      provideCodeActions(model, _range, context) {
-        const fixes = [];
-        for (const marker of context.markers) {
-          if (marker.code !== "strudel/p-double-quoted") continue;
-          const slice = model.getValueInRange({
-            startLineNumber: marker.startLineNumber,
-            startColumn: marker.startColumn,
-            endLineNumber: marker.endLineNumber,
-            endColumn: marker.endColumn
-          });
-          const rewritten = slice.replace(
-            /\.p\(\s*"([^"\n\r]*)"\s*\)/,
-            ".p('$1')"
-          );
-          if (rewritten === slice) continue;
-          fixes.push({
-            title: `Rewrite .p("...") to .p('...') (single quotes)`,
-            kind: "quickfix",
-            isPreferred: true,
-            diagnostics: [marker],
-            edit: {
-              edits: [
-                {
-                  resource: model.uri,
-                  textEdit: {
-                    range: {
-                      startLineNumber: marker.startLineNumber,
-                      startColumn: marker.startColumn,
-                      endLineNumber: marker.endLineNumber,
-                      endColumn: marker.endColumn
-                    },
-                    text: rewritten
-                  },
-                  versionId: model.getVersionId()
-                }
-              ]
-            }
-          });
-        }
-        return { actions: fixes, dispose() {
-        } };
-      }
-    }
-  );
-  return strudelLintProviderDisposable;
-}
-__name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 
 // src/monaco/docs/data/p5.json
 var p5_default = {
@@ -13908,6 +9309,4737 @@ function registerP5Providers(monaco) {
   });
 }
 __name(registerP5Providers, "registerP5Providers");
+
+// src/visualizers/p5Compiler.ts
+function isFullLifecycleSketch(code) {
+  return /\bfunction\s+(?:draw|setup|preload)\s*\(/.test(code);
+}
+__name(isFullLifecycleSketch, "isFullLifecycleSketch");
+var NEW_FUNCTION_HEADER_LINES = 2;
+function getP5LineOffset(code) {
+  return isFullLifecycleSketch(code) ? FULL_LIFECYCLE_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES : LEGACY_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES;
+}
+__name(getP5LineOffset, "getP5LineOffset");
+function compileP5Code(code, source) {
+  const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
+  const lineOffset = getP5LineOffset(code);
+  new Function("p", "stave", body);
+  return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
+    current: { w: 400, h: 300 }
+  }) => {
+    return (p) => {
+      const stave = {
+        get scheduler() {
+          return schedulerRef.current;
+        },
+        get analyser() {
+          return analyserRef.current;
+        },
+        get hapStream() {
+          return hapStreamRef.current;
+        },
+        get width() {
+          return containerSizeRef.current?.w ?? 400;
+        },
+        get height() {
+          return containerSizeRef.current?.h ?? 300;
+        }
+      };
+      let lifecycle;
+      try {
+        const compile = new Function("p", "stave", body);
+        lifecycle = compile(p, stave);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        installErrorSketch(p, error.message);
+        const parts = formatFriendlyError(error, "p5", {
+          index: P5_DOCS_INDEX
+        });
+        const loc = parseStackLocation(error);
+        const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
+        emitLog({
+          level: "error",
+          runtime: "p5",
+          source,
+          message: parts.message,
+          suggestion: parts.suggestion,
+          stack: parts.stack,
+          line: userLine,
+          column: loc?.column
+        });
+        return;
+      }
+      installLifecycle(p, lifecycle, source, lineOffset);
+    };
+  };
+}
+__name(compileP5Code, "compileP5Code");
+var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  ";
+var FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || []).length;
+function buildFullLifecycleBody(userCode) {
+  return `${FULL_LIFECYCLE_PREFIX}${userCode}
+  return {
+    setup: typeof setup === 'function' ? setup : undefined,
+    draw: typeof draw === 'function' ? draw : undefined,
+    preload: typeof preload === 'function' ? preload : undefined,
+  }
+}
+  `;
+}
+__name(buildFullLifecycleBody, "buildFullLifecycleBody");
+var LEGACY_PREFIX = `
+with (p) {
+  return {
+    setup: function () {
+      createCanvas(p.windowWidth, p.windowHeight)
+      colorMode(RGB)
+    },
+    draw: function () {
+      const scheduler = stave.scheduler
+      const analyser = stave.analyser
+      const hapStream = stave.hapStream
+      `;
+var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
+function buildLegacyBody(userCode) {
+  return `${LEGACY_PREFIX}${userCode}
+    },
+    preload: undefined,
+  }
+}
+  `;
+}
+__name(buildLegacyBody, "buildLegacyBody");
+function installLifecycle(p, lifecycle, source, lineOffset) {
+  const pi = p;
+  const reportLifecycleError = /* @__PURE__ */ __name((hook, err) => {
+    const error = err instanceof Error ? err : new Error(String(err));
+    const parts = formatFriendlyError(error, "p5", { index: P5_DOCS_INDEX });
+    const loc = parseStackLocation(error);
+    const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
+    emitLog({
+      level: "error",
+      runtime: "p5",
+      source,
+      message: `${hook}(): ${parts.message}`,
+      suggestion: parts.suggestion,
+      stack: parts.stack,
+      line: userLine,
+      column: loc?.column
+    });
+  }, "reportLifecycleError");
+  const wrap4 = /* @__PURE__ */ __name((hook, fn) => {
+    if (!fn) return void 0;
+    return function(...args) {
+      try {
+        return fn.apply(this, args);
+      } catch (err) {
+        reportLifecycleError(hook, err);
+      }
+    };
+  }, "wrap");
+  if (lifecycle.preload) pi.preload = wrap4("preload", lifecycle.preload);
+  pi.setup = wrap4("setup", lifecycle.setup) ?? function() {
+    pi.createCanvas(pi.windowWidth, pi.windowHeight);
+  };
+  if (lifecycle.draw) pi.draw = wrap4("draw", lifecycle.draw);
+}
+__name(installLifecycle, "installLifecycle");
+function installErrorSketch(p, message) {
+  const pi = p;
+  pi.setup = function() {
+    pi.createCanvas(pi.windowWidth || 400, 160);
+  };
+  pi.draw = function() {
+    pi.background(20, 20, 24);
+    pi.noStroke();
+    pi.fill(255, 120, 120);
+    pi.textFont("monospace");
+    pi.textSize(12);
+    pi.text("p5 viz compile error:", 12, 24);
+    pi.fill(230);
+    pi.textSize(11);
+    pi.text(message, 12, 48, pi.width - 24, pi.height - 60);
+  };
+}
+__name(installErrorSketch, "installErrorSketch");
+
+// src/visualizers/builtinP5Code.ts
+var PIANOROLL_P5_CODE = `// Stave p5 viz \u2014 Piano Roll
+// stave.scheduler, stave.analyser, stave.hapStream are injected globals.
+// Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets its own
+// horizontal lane, sorted low\u2192high, so notes never overlap and the melodic
+// contour reads as a staircase. Notes scroll right\u2192left across a 4-cycle
+// window; the playhead sits at the half mark.
+
+const CYCLES = 4      // cycles visible across the canvas width
+const PLAYHEAD = 0.5  // 0..1 \u2014 where "now" sits horizontally
+// Drum/percussion sound-name prefixes for color classification.
+const DRUM_PREFIXES = ['bd', 'sd', 'hh', 'rim', 'cp', 'cy', 'lt', 'mt', 'ht', 'oh', 'cl']
+
+function isDrum(s) {
+  return DRUM_PREFIXES.some(p => s === p || (s.startsWith(p) && /\\d/.test(s[p.length] || '')))
+}
+
+// Note NAME \u2192 MIDI. Returns null for unparseable names (octaveless or
+// sample names) \u2014 the caller folds those onto string lanes instead.
+function noteToMidi(n) {
+  if (typeof n === 'number') return Math.round(n)
+  if (typeof n !== 'string') return null
+  const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+  if (!m) return null
+  const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+  const acc = m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0
+  return (parseInt(m[3]) + 1) * 12 + base + acc
+}
+
+// Fold-grouping key: a MIDI number for pitched haps, a "_sound" string for
+// unpitched ones. Priority mirrors how Strudel fills a hap (freq is
+// pre-computed from note, so note("c e g") resolves via freq, never NaN).
+function valueOf(h) {
+  if (typeof h.freq === 'number') return Math.round(12 * Math.log2(h.freq / 440) + 69)
+  if (typeof h.note === 'number') return h.note
+  if (typeof h.note === 'string') {
+    const mi = noteToMidi(h.note)
+    return mi !== null ? mi : '_' + h.note
+  }
+  if (h.s) return '_' + h.s
+  return 0
+}
+
+function parseHex(hex) {
+  const s = String(hex).replace('#', '')
+  if (s.length === 6) return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)]
+  if (s.length === 3) return [parseInt(s[0] + s[0], 16), parseInt(s[1] + s[1], 16), parseInt(s[2] + s[2], 16)]
+  return null
+}
+
+// Explicit hap color wins; else classify by sound family.
+function colorOf(h) {
+  if (h.color) { const c = parseHex(h.color); if (c) return c }
+  const s = h.s || ''
+  if (isDrum(s)) return [249, 115, 22]        // drums  \u2014 orange
+  if (s.startsWith('bass')) return [6, 182, 212]   // bass  \u2014 cyan
+  if (s.startsWith('pad')) return [16, 185, 129]   // pad   \u2014 green
+  return [139, 92, 246]                        // melody \u2014 purple
+}
+
+function setup() {
+  createCanvas(stave.width, stave.height)
+  noStroke()
+}
+
+function draw() {
+  const W = width, H = height
+  background(9, 9, 18)
+  const sched = stave.scheduler
+  if (!sched) return
+  let now
+  try { now = sched.now() } catch (e) { return }
+
+  const from = now - CYCLES * PLAYHEAD
+  const to = now + CYCLES * (1 - PLAYHEAD)
+  const ext = to - from
+  let haps
+  try { haps = sched.query(from, to) } catch (e) { haps = [] }
+
+  // Fold: collect distinct pitch/sound values, sort ascending \u2192 lanes.
+  const seen = new Set(), vals = []
+  for (const h of haps) { const v = valueOf(h); if (!seen.has(v)) { seen.add(v); vals.push(v) } }
+  vals.sort((a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') return a - b
+    if (typeof a === 'number') return -1
+    if (typeof b === 'number') return 1
+    return String(a).localeCompare(String(b))
+  })
+  const fold = Math.max(1, vals.length)
+  const barH = H / fold
+
+  noStroke()
+  for (const h of haps) {
+    const lane = vals.indexOf(valueOf(h))
+    if (lane < 0) continue
+    const x = ((h.begin - now + CYCLES * PLAYHEAD) / ext) * W
+    const w = Math.max(2, ((h.end - h.begin) / ext) * W)
+    const y = ((fold - 1 - lane) / fold) * H   // higher pitch \u2192 higher up
+    const endC = h.endClipped != null ? h.endClipped : h.end
+    const active = h.begin <= now && endC > now
+    const gain = Math.min(1, Math.max(0.1, h.gain == null ? 1 : h.gain))
+    const vel = Math.min(1, Math.max(0.1, h.velocity == null ? 1 : h.velocity))
+    const alpha = gain * vel
+    const [r, g, b] = colorOf(h)
+    if (active) {
+      // Brightened toward white + a crisp outline so the playing note pops.
+      fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)
+      rect(x, y + 1, w - 2, barH - 2)
+      noFill(); stroke(255, 255, 255, 220); strokeWeight(1)
+      rect(x, y + 1, w - 2, barH - 2); noStroke()
+    } else {
+      fill(r, g, b, alpha * 180)
+      rect(x, y + 1, w - 2, barH - 2)
+    }
+  }
+
+  // Playhead line.
+  stroke(255, 255, 255, 128); strokeWeight(1)
+  line(PLAYHEAD * W, 0, PLAYHEAD * W, H); noStroke()
+}`;
+var SCOPE_P5_CODE = `// Stave p5 viz \u2014 Scope (oscilloscope / event pulses)
+function setup() {
+  createCanvas(stave.width, stave.height)
+  noFill()
+}
+function draw() {
+  background(9, 9, 18)
+  stroke(40, 50, 70); strokeWeight(0.5)
+  line(0, height * 0.75, width, height * 0.75)
+  if (stave.analyser) {
+    const buf = stave.analyser.frequencyBinCount
+    const data = new Float32Array(buf)
+    stave.analyser.getFloatTimeDomainData(data)
+    let trig = 0
+    for (let i = 1; i < buf; i++) { if (data[i-1] > 0 && data[i] <= 0) { trig = i; break } }
+    stroke('#75baff'); strokeWeight(2); beginShape()
+    for (let i = trig; i < buf; i++) vertex((i - trig) * width / (buf - trig), (0.75 - 0.25 * data[i]) * height)
+    endShape()
+  } else if (stave.scheduler) {
+    const now = stave.scheduler.now()
+    const haps = stave.scheduler.query(now - 4, now + 0.1)
+    noStroke()
+    for (const h of haps) {
+      const age = now - h.begin, decay = max(0, 1 - age / 4)
+      const x = ((h.begin - now + 4) / 4) * width
+      const w = max(3, ((h.end - h.begin) / 4) * width)
+      const pH = height * 0.6 * decay * (h.gain ?? 1)
+      fill(117, 186, 255, decay * 200)
+      rect(x, height * 0.75 - pH / 2, w, pH, 2)
+    }
+  }
+}`;
+var FSCOPE_P5_CODE = `// Stave p5 viz \u2014 Frequency Scope (FFT bars / note bars)
+function setup() {
+  createCanvas(stave.width, stave.height)
+  noStroke()
+}
+function draw() {
+  background(9, 9, 18)
+  stroke(40, 50, 70); strokeWeight(0.5); noFill()
+  line(0, height * 0.75, width, height * 0.75); noStroke()
+  if (stave.analyser) {
+    const buf = stave.analyser.frequencyBinCount
+    const data = new Float32Array(buf)
+    stave.analyser.getFloatFrequencyData(data)
+    fill('#75baff')
+    const sw = width / buf
+    for (let i = 0; i < buf; i++) {
+      const n = constrain((data[i] + 100) / 100, 0, 1), v = n * 0.25
+      rect(i * sw, (0.75 - v * 0.5) * height, max(sw, 1), v * height)
+    }
+  } else if (stave.scheduler) {
+    const now = stave.scheduler.now()
+    const haps = stave.scheduler.query(now - 0.2, now + 0.05)
+    const bins = new Float32Array(64)
+    for (const h of haps) {
+      const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
+      const freq = 440 * pow(2, (note - 69) / 12)
+      if (freq < 30) continue
+      const idx = constrain(floor(log(freq / 30) / log(4000 / 30) * 64), 0, 63)
+      bins[idx] = max(bins[idx], max(0, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1))
+    }
+    const sw = width / 64
+    for (let i = 0; i < 64; i++) {
+      if (bins[i] <= 0) continue
+      const v = bins[i] * 0.25
+      fill(117, 186, 255, bins[i] * 220)
+      rect(i * sw, (0.75 - v * 0.5) * height, max(sw - 1, 1), v * height)
+    }
+  }
+}`;
+var SPECTRUM_P5_CODE = `// Stave p5 viz \u2014 Spectrum (scrolling waterfall)
+function setup() {
+  createCanvas(stave.width, stave.height)
+  pixelDensity(1); noStroke()
+}
+function draw() {
+  const ctx = drawingContext
+  if (stave.analyser) {
+    const buf = stave.analyser.frequencyBinCount
+    const data = new Float32Array(buf)
+    stave.analyser.getFloatFrequencyData(data)
+    const img = ctx.getImageData(0, 0, width, height)
+    ctx.clearRect(0, 0, width, height)
+    ctx.putImageData(img, -2, 0)
+    ctx.fillStyle = '#75baff'
+    for (let i = 0; i < buf; i++) {
+      const n = constrain((data[i] + 80) / 80, 0, 1)
+      if (n <= 0) continue
+      ctx.globalAlpha = n
+      const yEnd = (log(i + 1) / log(buf)) * height
+      const yStart = i > 0 ? (log(i) / log(buf)) * height : 0
+      ctx.fillRect(width - 2, height - yEnd, 2, max(2, yEnd - yStart))
+    }
+    ctx.globalAlpha = 1
+  } else if (stave.scheduler) {
+    const now = stave.scheduler.now()
+    const img = ctx.getImageData(0, 0, width, height)
+    ctx.clearRect(0, 0, width, height)
+    ctx.putImageData(img, -2, 0)
+    const haps = stave.scheduler.query(now - 0.3, now + 0.05)
+    for (const h of haps) {
+      const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
+      const freq = 440 * pow(2, (note - 69) / 12)
+      if (freq < 20) continue
+      const logPos = log(freq / 20) / log(4000 / 20)
+      const y = height - logPos * height
+      const alpha = max(0.1, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1)
+      ctx.fillStyle = h.color ?? '#75baff'
+      ctx.globalAlpha = alpha
+      ctx.fillRect(width - 2, y - 2, 2, max(4, height * 0.03))
+    }
+    ctx.globalAlpha = 1
+  } else { background(9, 9, 18) }
+}`;
+var SPIRAL_P5_CODE = `// Stave p5 viz \u2014 Spiral
+function setup() {
+  createCanvas(300, 200)
+  pixelDensity(window.devicePixelRatio || 1)
+  noFill()
+}
+function xySpiral(rot, margin, cx, cy, rotate) {
+  const a = ((rot + rotate) * 360 - 90) * PI / 180
+  return [cx + cos(a) * margin * rot, cy + sin(a) * margin * rot]
+}
+function draw() {
+  background(9, 9, 18)
+  if (!stave.scheduler) return
+  const now = stave.scheduler.now()
+  const haps = stave.scheduler.query(now - 2, now + 1)
+  const cx = width / 2, cy = height / 2
+  const sz = min(width, height) * 0.38, mg = sz / 3
+  for (const h of haps) {
+    const active = h.begin <= now && h.end > now
+    const from = h.begin - now + 3, to = h.end - now + 3 - 0.005
+    const op = max(0, 1 - abs((h.begin - now) / 2))
+    const c = color(h.color ?? (active ? '#75baff' : '#8a919966'))
+    c.setAlpha(op * 255)
+    stroke(c); strokeWeight(mg / 2); strokeCap(ROUND)
+    beginShape()
+    for (let a = from; a <= to; a += 1/60) {
+      const [x, y] = xySpiral(a, mg, cx, cy, now)
+      vertex(x, y)
+    }
+    endShape()
+  }
+  stroke(255); strokeWeight(mg / 2)
+  beginShape()
+  for (let a = 2.98; a <= 3; a += 1/60) {
+    const [x, y] = xySpiral(a, mg, cx, cy, now)
+    vertex(x, y)
+  }
+  endShape()
+}`;
+var PITCHWHEEL_P5_CODE = `// Stave p5 viz \u2014 Pitchwheel
+const ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)
+function setup() {
+  createCanvas(300, 200)
+  pixelDensity(window.devicePixelRatio || 1)
+}
+function freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }
+function circPos(cx, cy, r, a) {
+  const rad = a * TWO_PI
+  return [sin(rad) * r + cx, cos(rad) * r + cy]
+}
+function draw() {
+  background(9, 9, 18)
+  if (!stave.scheduler) return
+  const now = stave.scheduler.now()
+  let haps = stave.scheduler.query(now - 0.01, now + 0.01)
+  haps = haps.filter(h => h.begin <= now && h.end > now)
+  const sz = min(width, height), r = sz / 2 - 12
+  const cx = width / 2, cy = height / 2
+  noStroke(); fill(117, 186, 255, 64)
+  for (let i = 0; i < 12; i++) {
+    const a = freq2angle(ROOT_FREQ * pow(2, i / 12))
+    const [x, y] = circPos(cx, cy, r, a)
+    circle(x, y, 7)
+  }
+  noFill(); stroke(117, 186, 255, 48); strokeWeight(1)
+  circle(cx, cy, r * 2)
+  for (const h of haps) {
+    const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
+    const freq = 440 * pow(2, (note - 69) / 12)
+    const a = freq2angle(freq)
+    const [x, y] = circPos(cx, cy, r, a)
+    const c = h.color ?? '#75baff'
+    stroke(c); strokeWeight(2)
+    line(cx, cy, x, y)
+    fill(c); noStroke()
+    circle(x, y, 12)
+  }
+}`;
+var WORDFALL_P5_CODE = `// Stave p5 viz \u2014 Wordfall (vertical pianoroll with labels)
+function setup() {
+  createCanvas(stave.width, stave.height)
+  pixelDensity(window.devicePixelRatio || 1)
+}
+function draw() {
+  background(9, 9, 18)
+  if (!stave.scheduler) return
+  const now = stave.scheduler.now()
+  const CYCLES = 4, PH = 0.5
+  const haps = stave.scheduler.query(now - CYCLES * PH, now + CYCLES * (1 - PH))
+  const vals = [...new Set(haps.map(h => h.note ?? h.s ?? 0))].sort()
+  if (!vals.length) return
+  const bw = width / vals.length
+  for (const h of haps) {
+    const active = h.begin <= now && h.end > now
+    const dur = h.end - h.begin
+    const yOff = h.begin - now
+    const y = height * PH - (yOff / CYCLES) * height
+    const dH = (dur / CYCLES) * height
+    const v = h.note ?? h.s ?? 0
+    const x = vals.indexOf(v) * bw
+    noStroke()
+    if (active) fill(255)
+    else { const c = color(h.color ?? '#75baff'); c.setAlpha(160); fill(c) }
+    rect(x + 1, y + 1, bw - 2, dH - 2)
+    if (dH > 10 && bw > 16) {
+      const label = h.note != null ? String(h.note) : (h.s ?? '')
+      textSize(min(bw * 0.55, dH * 0.7, 11))
+      textAlign(LEFT, TOP); fill(active ? 0 : 255); noStroke()
+      text(label, x + 3, y + 3)
+    }
+  }
+  stroke(255, 255, 255, 128); strokeWeight(1)
+  line(0, height * PH, width, height * PH)
+}`;
+
+// src/visualizers/defaultDescriptors.ts
+var DEFAULT_VIZ_DESCRIPTORS = [
+  // p5 renderers (default for each mode) — compiled from bundled source.
+  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, "pianoroll")), "factory") },
+  { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(WORDFALL_P5_CODE, "wordfall")), "factory") },
+  { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SCOPE_P5_CODE, "scope")), "factory") },
+  { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(FSCOPE_P5_CODE, "fscope")), "factory") },
+  { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SPECTRUM_P5_CODE, "spectrum")), "factory") },
+  { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SPIRAL_P5_CODE, "spiral")), "factory") },
+  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PITCHWHEEL_P5_CODE, "pitchwheel")), "factory") },
+  // Hydra renderers (WebGL shader-based)
+  { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(), "factory") },
+  { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraPianoroll), "factory") },
+  { id: "scope:hydra", label: "Scope (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraScope), "factory") },
+  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraKaleidoscope), "factory") }
+];
+function SplitPane({
+  direction,
+  children,
+  initialSizes,
+  minSize = 100
+}) {
+  const count = React6__namespace.default.Children.count(children);
+  const childArray = React6__namespace.default.Children.toArray(children);
+  const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
+  const [sizes, setSizes] = React6.useState(defaultSizes);
+  const containerRef = React6.useRef(null);
+  const draggingRef = React6.useRef(null);
+  const isHorizontal = direction === "horizontal";
+  const handleMouseDown = React6.useCallback((dividerIndex, e) => {
+    e.preventDefault();
+    draggingRef.current = dividerIndex;
+    const startPos = isHorizontal ? e.clientX : e.clientY;
+    const startSizes = [...sizes];
+    const container = containerRef.current;
+    if (!container) return;
+    const containerSize = isHorizontal ? container.offsetWidth : container.offsetHeight;
+    const minPct = minSize / containerSize * 100;
+    const onMouseMove = /* @__PURE__ */ __name((ev) => {
+      if (draggingRef.current === null) return;
+      const delta = isHorizontal ? ev.clientX - startPos : ev.clientY - startPos;
+      const deltaPct = delta / containerSize * 100;
+      const newSizes = [...startSizes];
+      const i = dividerIndex;
+      newSizes[i] = Math.max(minPct, startSizes[i] + deltaPct);
+      newSizes[i + 1] = Math.max(minPct, startSizes[i + 1] - deltaPct);
+      if (newSizes[i] < minPct) {
+        newSizes[i] = minPct;
+        newSizes[i + 1] = startSizes[i] + startSizes[i + 1] - minPct;
+      }
+      if (newSizes[i + 1] < minPct) {
+        newSizes[i + 1] = minPct;
+        newSizes[i] = startSizes[i] + startSizes[i + 1] - minPct;
+      }
+      setSizes(newSizes);
+    }, "onMouseMove");
+    const onMouseUp = /* @__PURE__ */ __name(() => {
+      draggingRef.current = null;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }, "onMouseUp");
+    document.body.style.cursor = isHorizontal ? "col-resize" : "row-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [sizes, isHorizontal, minSize]);
+  React6__namespace.default.useEffect(() => {
+    if (sizes.length !== count) {
+      setSizes(Array(count).fill(100 / count));
+    }
+  }, [count]);
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      ref: containerRef,
+      style: {
+        display: "flex",
+        flexDirection: isHorizontal ? "row" : "column",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden"
+      },
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React6__namespace.default.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            style: {
+              [isHorizontal ? "width" : "height"]: `${sizes[i]}%`,
+              [isHorizontal ? "height" : "width"]: "100%",
+              overflow: "hidden",
+              position: "relative",
+              minWidth: isHorizontal ? minSize : void 0,
+              minHeight: !isHorizontal ? minSize : void 0
+            },
+            children: child
+          }
+        ),
+        i < childArray.length - 1 && /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            onMouseDown: (e) => handleMouseDown(i, e),
+            style: {
+              [isHorizontal ? "width" : "height"]: 4,
+              [isHorizontal ? "height" : "width"]: "100%",
+              background: "var(--border, rgba(255,255,255,0.1))",
+              cursor: isHorizontal ? "col-resize" : "row-resize",
+              flexShrink: 0,
+              transition: "background 0.15s"
+            },
+            onMouseEnter: (e) => {
+              e.currentTarget.style.background = "var(--accent, #75baff)";
+            },
+            onMouseLeave: (e) => {
+              e.currentTarget.style.background = "var(--border, rgba(255,255,255,0.1))";
+            }
+          }
+        )
+      ] }, i))
+    }
+  );
+}
+__name(SplitPane, "SplitPane");
+
+// src/theme/tokens.ts
+var DARK_THEME_TOKENS = {
+  "--accent-rgb": "106, 106, 200",
+  "--stem-drums": "#f97316",
+  "--stem-bass": "#06b6d4",
+  "--stem-melody": "#a78bfa",
+  "--stem-pad": "#10b981",
+  "--code-bg": "#090912",
+  "--code-foreground": "#c4b5fd",
+  "--code-caret": "#7c7cff",
+  "--code-selection": "rgba(124,124,255,0.25)",
+  "--code-line-highlight": "rgba(124,124,255,0.05)",
+  "--code-note": "#86efac",
+  "--code-function": "#93c5fd",
+  "--code-string": "#fcd34d",
+  "--code-number": "#fb923c",
+  "--code-comment": "rgba(255,255,255,0.25)",
+  "--code-active-hap": "rgba(124,124,255,0.3)",
+  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
+};
+var LIGHT_THEME_TOKENS = {
+  "--accent-rgb": "85, 85, 184",
+  "--stem-drums": "#ea580c",
+  "--stem-bass": "#0891b2",
+  "--stem-melody": "#5555b8",
+  "--stem-pad": "#059669",
+  "--code-bg": "#f0f0f6",
+  "--code-foreground": "#1e1b4b",
+  "--code-caret": "#4a4ae0",
+  "--code-selection": "rgba(74,74,224,0.2)",
+  "--code-line-highlight": "rgba(74,74,224,0.04)",
+  "--code-note": "#15803d",
+  "--code-function": "#1d4ed8",
+  "--code-string": "#92400e",
+  "--code-number": "#c2410c",
+  "--code-comment": "rgba(0,0,0,0.3)",
+  "--code-active-hap": "rgba(74,74,224,0.25)",
+  "--font-mono": '"JetBrains Mono", "Fira Code", "Cascadia Code", "Menlo", monospace'
+};
+function applyTheme(el, theme) {
+  const tokens = theme === "dark" ? DARK_THEME_TOKENS : theme === "light" ? LIGHT_THEME_TOKENS : theme.tokens;
+  for (const [key, value] of Object.entries(tokens)) {
+    el.style.setProperty(key, value);
+  }
+}
+__name(applyTheme, "applyTheme");
+
+// src/theme/monacoTheme.ts
+function defineStrudelMonacoTheme(monaco) {
+  monaco.editor.defineTheme("stave-dark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "strudel.pattern-start", foreground: "7c7cff", fontStyle: "bold" },
+      { token: "strudel.tempo", foreground: "a78bfa" },
+      { token: "strudel.function", foreground: "93c5fd" },
+      { token: "strudel.note", foreground: "86efac" },
+      { token: "strudel.mini.note", foreground: "86efac" },
+      { token: "strudel.mini.operator", foreground: "f472b6" },
+      { token: "strudel.mini.number", foreground: "fb923c" },
+      { token: "string", foreground: "fcd34d" },
+      { token: "string.escape", foreground: "fde68a" },
+      { token: "string.quote", foreground: "fcd34d" },
+      { token: "number", foreground: "fb923c" },
+      { token: "number.hex", foreground: "fb923c" },
+      { token: "number.binary", foreground: "fb923c" },
+      { token: "number.float", foreground: "fb923c" },
+      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
+      { token: "keyword", foreground: "c4b5fd" },
+      { token: "keyword.operator", foreground: "f472b6" },
+      { token: "variable.predefined", foreground: "fde68a" },
+      { token: "constant", foreground: "fb923c" },
+      { token: "type", foreground: "7dd3fc" },
+      { token: "identifier", foreground: "e2e8f0" },
+      { token: "identifier.property", foreground: "93c5fd" },
+      { token: "delimiter", foreground: "94a3b8" },
+      { token: "delimiter.parenthesis", foreground: "94a3b8" },
+      { token: "delimiter.curly", foreground: "94a3b8" },
+      { token: "delimiter.square", foreground: "94a3b8" },
+      { token: "delimiter.bracket", foreground: "94a3b8" },
+      // Sonic Pi tokens
+      { token: "sonicpi.function", foreground: "93c5fd", fontStyle: "bold" },
+      { token: "sonicpi.music", foreground: "a78bfa" },
+      { token: "sonicpi.symbol", foreground: "f472b6" },
+      { token: "sonicpi.note", foreground: "86efac" },
+      { token: "sonicpi.kwarg", foreground: "6ee7b7" }
+    ],
+    colors: {
+      "editor.background": "#090912",
+      "editor.foreground": "#c4b5fd",
+      "editorLineNumber.foreground": "#3d3d5c",
+      "editorCursor.foreground": "#7c7cff",
+      "editor.selectionBackground": "#6a6ac840",
+      "editor.lineHighlightBackground": "#6a6ac80d",
+      "editorIndentGuide.background": "#ffffff10",
+      "editorWidget.background": "#0f0f1e",
+      "editorSuggestWidget.background": "#0f0f1e",
+      "editorSuggestWidget.border": "#6a6ac840",
+      "minimap.background": "#00000000"
+    }
+  });
+  monaco.editor.defineTheme("stave-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "strudel.pattern-start", foreground: "4a4ae0", fontStyle: "bold" },
+      { token: "strudel.tempo", foreground: "5555b8" },
+      { token: "strudel.function", foreground: "1d4ed8" },
+      { token: "strudel.note", foreground: "15803d" },
+      { token: "strudel.mini.note", foreground: "15803d" },
+      { token: "strudel.mini.operator", foreground: "be185d" },
+      { token: "strudel.mini.number", foreground: "c2410c" },
+      { token: "string", foreground: "92400e" },
+      { token: "string.escape", foreground: "a16207" },
+      { token: "string.quote", foreground: "92400e" },
+      { token: "number", foreground: "c2410c" },
+      { token: "number.hex", foreground: "c2410c" },
+      { token: "number.binary", foreground: "c2410c" },
+      { token: "number.float", foreground: "c2410c" },
+      { token: "comment", foreground: "9ca3af", fontStyle: "italic" },
+      { token: "keyword", foreground: "6d28d9" },
+      { token: "keyword.operator", foreground: "be185d" },
+      { token: "variable.predefined", foreground: "92400e" },
+      { token: "constant", foreground: "c2410c" },
+      { token: "type", foreground: "0369a1" },
+      { token: "identifier", foreground: "1e1b4b" },
+      { token: "identifier.property", foreground: "1d4ed8" },
+      { token: "delimiter", foreground: "64748b" },
+      { token: "delimiter.parenthesis", foreground: "64748b" },
+      { token: "delimiter.curly", foreground: "64748b" },
+      { token: "delimiter.square", foreground: "64748b" },
+      { token: "delimiter.bracket", foreground: "64748b" }
+    ],
+    colors: {
+      "editor.background": "#f0f0f6",
+      "editor.foreground": "#1e1b4b",
+      "editorLineNumber.foreground": "#a0a0b4",
+      "editorCursor.foreground": "#4a4ae0",
+      "editor.selectionBackground": "#5555b830",
+      "editor.lineHighlightBackground": "#5555b808",
+      "minimap.background": "#00000000"
+    }
+  });
+}
+__name(defineStrudelMonacoTheme, "defineStrudelMonacoTheme");
+var activeDoc = null;
+var activeProvider = null;
+var activeProjectId = null;
+var docReady = false;
+async function initProjectDoc(projectId) {
+  if (activeProvider) {
+    activeProvider.destroy();
+    activeProvider = null;
+  }
+  if (activeDoc) {
+    activeDoc.destroy();
+  }
+  activeDoc = new Y3__namespace.Doc();
+  docReady = false;
+  const { IndexeddbPersistence } = await import('y-indexeddb');
+  activeProvider = new IndexeddbPersistence(`stave-${projectId}`, activeDoc);
+  await activeProvider.whenSynced;
+  activeProjectId = projectId;
+  docReady = true;
+}
+__name(initProjectDoc, "initProjectDoc");
+function initProjectDocSync() {
+  if (activeProvider) {
+    activeProvider.destroy();
+    activeProvider = null;
+  }
+  if (activeDoc) {
+    activeDoc.destroy();
+  }
+  activeDoc = new Y3__namespace.Doc();
+  docReady = true;
+}
+__name(initProjectDocSync, "initProjectDocSync");
+function ensureDoc() {
+  if (!activeDoc) {
+    initProjectDocSync();
+  }
+  return activeDoc;
+}
+__name(ensureDoc, "ensureDoc");
+function getActiveDoc() {
+  return ensureDoc();
+}
+__name(getActiveDoc, "getActiveDoc");
+function getFilesMap() {
+  return ensureDoc().getMap("files");
+}
+__name(getFilesMap, "getFilesMap");
+function isDocReady() {
+  return docReady;
+}
+__name(isDocReady, "isDocReady");
+function getActiveProjectId() {
+  return activeProjectId;
+}
+__name(getActiveProjectId, "getActiveProjectId");
+async function switchProject(projectId) {
+  await initProjectDoc(projectId);
+}
+__name(switchProject, "switchProject");
+function subscribeToDocUpdate(cb, options) {
+  const doc = ensureDoc();
+  const localOnly = options?.localOnly ?? false;
+  const handler = /* @__PURE__ */ __name((_update, _origin, _doc, tr) => {
+    if (localOnly && !tr.local) return;
+    cb();
+  }, "handler");
+  doc.on("update", handler);
+  return () => {
+    doc.off("update", handler);
+  };
+}
+__name(subscribeToDocUpdate, "subscribeToDocUpdate");
+var STRUCT_ORIGIN = /* @__PURE__ */ Symbol.for("stave:struct");
+function withStructBatch(fn) {
+  const doc = getActiveDoc();
+  let out;
+  doc.transact(() => {
+    out = fn();
+  }, STRUCT_ORIGIN);
+  return out;
+}
+__name(withStructBatch, "withStructBatch");
+var active = null;
+function ensureUndoManager() {
+  if (active) return active.um;
+  const doc = getActiveDoc();
+  const files = doc.getMap("files");
+  const fileOrder = doc.getMap("fileOrder");
+  const subfolderOrder = doc.getMap("subfolderOrder");
+  const um = new Y3__namespace.UndoManager([files, fileOrder, subfolderOrder], {
+    trackedOrigins: /* @__PURE__ */ new Set([STRUCT_ORIGIN]),
+    captureTimeout: 300
+  });
+  for (const inner of files.values()) {
+    if (inner instanceof Y3__namespace.Map) um.addToScope(inner);
+  }
+  const filesObserver = /* @__PURE__ */ __name((event) => {
+    for (const [key, change] of event.changes.keys) {
+      if (change.action === "add" || change.action === "update") {
+        const val = files.get(key);
+        if (val instanceof Y3__namespace.Map) um.addToScope(val);
+      }
+    }
+  }, "filesObserver");
+  files.observe(filesObserver);
+  const listeners7 = /* @__PURE__ */ new Set();
+  const notify3 = /* @__PURE__ */ __name(() => {
+    for (const l of listeners7) l();
+  }, "notify");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify3(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify3(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify3(), "onStackCleared");
+  um.on("stack-item-added", onStackItemAdded);
+  um.on("stack-item-popped", onStackItemPopped);
+  um.on("stack-cleared", onStackCleared);
+  active = {
+    um,
+    listeners: listeners7,
+    cleanup: /* @__PURE__ */ __name(() => {
+      um.off("stack-item-added", onStackItemAdded);
+      um.off("stack-item-popped", onStackItemPopped);
+      um.off("stack-cleared", onStackCleared);
+      files.unobserve(filesObserver);
+      um.destroy();
+    }, "cleanup")
+  };
+  return um;
+}
+__name(ensureUndoManager, "ensureUndoManager");
+function resetUndoManager() {
+  if (active) {
+    active.cleanup();
+    active = null;
+  }
+}
+__name(resetUndoManager, "resetUndoManager");
+function undo() {
+  const um = ensureUndoManager();
+  const result = um.undo();
+  return result !== null;
+}
+__name(undo, "undo");
+function redo() {
+  const um = ensureUndoManager();
+  const result = um.redo();
+  return result !== null;
+}
+__name(redo, "redo");
+function canUndo() {
+  const um = ensureUndoManager();
+  return um.undoStack.length > 0;
+}
+__name(canUndo, "canUndo");
+function canRedo() {
+  const um = ensureUndoManager();
+  return um.redoStack.length > 0;
+}
+__name(canRedo, "canRedo");
+function subscribeToUndoState(cb) {
+  ensureUndoManager();
+  const listeners7 = active.listeners;
+  listeners7.add(cb);
+  return () => {
+    listeners7.delete(cb);
+  };
+}
+__name(subscribeToUndoState, "subscribeToUndoState");
+
+// src/workspace/WorkspaceFile.ts
+var cachedSnapshots = /* @__PURE__ */ new Map();
+var subscribersByFile = /* @__PURE__ */ new Map();
+var textObservers = /* @__PURE__ */ new Map();
+function rebuildSnapshot(id) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(id);
+  if (!fileMap) {
+    cachedSnapshots.delete(id);
+    return;
+  }
+  const ytext = fileMap.get("content");
+  cachedSnapshots.set(id, {
+    id: fileMap.get("id"),
+    path: fileMap.get("path"),
+    content: ytext.toString(),
+    language: fileMap.get("language"),
+    meta: fileMap.get("meta")
+  });
+}
+__name(rebuildSnapshot, "rebuildSnapshot");
+function wireTextObserver(id, ytext) {
+  unwireTextObserver(id);
+  const handler = /* @__PURE__ */ __name(() => {
+    rebuildSnapshot(id);
+    notify(id);
+  }, "handler");
+  ytext.observe(handler);
+  textObservers.set(id, { ytext, handler });
+}
+__name(wireTextObserver, "wireTextObserver");
+function unwireTextObserver(id) {
+  const entry = textObservers.get(id);
+  if (entry) {
+    entry.ytext.unobserve(entry.handler);
+    textObservers.delete(id);
+  }
+}
+__name(unwireTextObserver, "unwireTextObserver");
+var folderOrderObserverWired = false;
+var folderOrderSubscribers = /* @__PURE__ */ new Set();
+function notifyFolderOrder() {
+  const snapshot = Array.from(folderOrderSubscribers);
+  for (const cb of snapshot) cb();
+}
+__name(notifyFolderOrder, "notifyFolderOrder");
+function getFolderOrderMap() {
+  return ensureDoc().getMap("fileOrder");
+}
+__name(getFolderOrderMap, "getFolderOrderMap");
+function getSubfolderOrderMap() {
+  return ensureDoc().getMap("subfolderOrder");
+}
+__name(getSubfolderOrderMap, "getSubfolderOrderMap");
+function getChildOrderMap() {
+  return ensureDoc().getMap("childOrder");
+}
+__name(getChildOrderMap, "getChildOrderMap");
+function ensureFolderOrderObserver() {
+  if (folderOrderObserverWired) return;
+  const map = getFolderOrderMap();
+  const submap = getSubfolderOrderMap();
+  const childmap = getChildOrderMap();
+  map.observeDeep(() => notifyFolderOrder());
+  submap.observeDeep(() => notifyFolderOrder());
+  childmap.observeDeep(() => notifyFolderOrder());
+  folderOrderObserverWired = true;
+}
+__name(ensureFolderOrderObserver, "ensureFolderOrderObserver");
+var wiredFilesMap = null;
+function ensureFilesMapObserver() {
+  const filesMap = getFilesMap();
+  if (wiredFilesMap === filesMap) return;
+  filesMap.observeDeep((events) => {
+    let anyStructuralChange = false;
+    for (const event of events) {
+      if (event.target === filesMap) {
+        const mapEvent = event;
+        for (const [key, change] of mapEvent.changes.keys) {
+          if (change.action === "add" || change.action === "update") {
+            const fileMap = filesMap.get(key);
+            const ytext = fileMap.get("content");
+            rebuildSnapshot(key);
+            wireTextObserver(key, ytext);
+            notify(key);
+            anyStructuralChange = true;
+          } else if (change.action === "delete") {
+            unwireTextObserver(key);
+            cachedSnapshots.delete(key);
+            notify(key);
+            anyStructuralChange = true;
+          }
+        }
+        continue;
+      }
+      if (event.target instanceof Y3__namespace.Text) continue;
+      const path = event.path;
+      const ownerId = path.length > 0 ? String(path[0]) : null;
+      if (!ownerId) continue;
+      if (filesMap.has(ownerId)) {
+        rebuildSnapshot(ownerId);
+        notify(ownerId);
+        anyStructuralChange = true;
+      }
+    }
+    if (anyStructuralChange) notifyFileList();
+  });
+  wiredFilesMap = filesMap;
+}
+__name(ensureFilesMapObserver, "ensureFilesMapObserver");
+function createWorkspaceFile(id, path, content, language, meta) {
+  ensureDoc();
+  ensureFilesMapObserver();
+  const filesMap = getFilesMap();
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const fileMap = new Y3__namespace.Map();
+    fileMap.set("id", id);
+    fileMap.set("path", path);
+    fileMap.set("language", language);
+    if (meta !== void 0) fileMap.set("meta", meta);
+    const ytext = new Y3__namespace.Text();
+    ytext.insert(0, content);
+    fileMap.set("content", ytext);
+    filesMap.set(id, fileMap);
+  }, STRUCT_ORIGIN);
+  return cachedSnapshots.get(id) ?? { id, path, content, language, meta };
+}
+__name(createWorkspaceFile, "createWorkspaceFile");
+function seedWorkspaceFile(id, path, content, language, meta) {
+  ensureDoc();
+  ensureFilesMapObserver();
+  const filesMap = getFilesMap();
+  const existing = filesMap.get(id);
+  if (existing) {
+    if (!cachedSnapshots.has(id)) {
+      rebuildSnapshot(id);
+    }
+    const ytext = existing.get("content");
+    if (!textObservers.has(id)) {
+      wireTextObserver(id, ytext);
+    }
+    return cachedSnapshots.get(id);
+  }
+  return createWorkspaceFile(id, path, content, language, meta);
+}
+__name(seedWorkspaceFile, "seedWorkspaceFile");
+function getFile(id) {
+  return cachedSnapshots.get(id);
+}
+__name(getFile, "getFile");
+function setContent(id, newContent) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(id);
+  if (!fileMap) return;
+  const ytext = fileMap.get("content");
+  const currentContent = ytext.toString();
+  if (currentContent === newContent) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    ytext.delete(0, ytext.length);
+    ytext.insert(0, newContent);
+  });
+}
+__name(setContent, "setContent");
+function subscribe(id, cb) {
+  let set = subscribersByFile.get(id);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    subscribersByFile.set(id, set);
+  }
+  set.add(cb);
+  return () => {
+    const current2 = subscribersByFile.get(id);
+    if (!current2) return;
+    current2.delete(cb);
+    if (current2.size === 0) {
+      subscribersByFile.delete(id);
+    }
+  };
+}
+__name(subscribe, "subscribe");
+var fileListSubscribers = /* @__PURE__ */ new Set();
+function notifyFileList() {
+  const snapshot = Array.from(fileListSubscribers);
+  for (const cb of snapshot) cb();
+}
+__name(notifyFileList, "notifyFileList");
+function subscribeToFileList(cb) {
+  fileListSubscribers.add(cb);
+  return () => {
+    fileListSubscribers.delete(cb);
+  };
+}
+__name(subscribeToFileList, "subscribeToFileList");
+function listWorkspaceFiles() {
+  ensureDoc();
+  ensureFilesMapObserver();
+  const filesMap = getFilesMap();
+  for (const id of filesMap.keys()) {
+    if (!cachedSnapshots.has(id)) {
+      rebuildSnapshot(id);
+      const fileMap = filesMap.get(id);
+      const ytext = fileMap.get("content");
+      if (!textObservers.has(id)) {
+        wireTextObserver(id, ytext);
+      }
+    }
+  }
+  return Array.from(cachedSnapshots.values());
+}
+__name(listWorkspaceFiles, "listWorkspaceFiles");
+function deleteWorkspaceFile(id) {
+  const filesMap = getFilesMap();
+  if (!filesMap.has(id)) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    filesMap.delete(id);
+  }, STRUCT_ORIGIN);
+  notifyFileList();
+}
+__name(deleteWorkspaceFile, "deleteWorkspaceFile");
+function renameWorkspaceFile(id, newPath) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(id);
+  if (!fileMap) return;
+  const currentPath = fileMap.get("path");
+  if (currentPath === newPath) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    fileMap.set("path", newPath);
+  }, STRUCT_ORIGIN);
+  rebuildSnapshot(id);
+  notify(id);
+  notifyFileList();
+}
+__name(renameWorkspaceFile, "renameWorkspaceFile");
+function getFolderOrder(folderPath) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getFolderOrderMap();
+  const arr = map.get(folderPath);
+  return arr ? arr.toArray() : [];
+}
+__name(getFolderOrder, "getFolderOrder");
+function setFolderOrder(folderPath, orderedIds) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getFolderOrderMap();
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const next = new Y3__namespace.Array();
+    next.push(orderedIds);
+    map.set(folderPath, next);
+  }, STRUCT_ORIGIN);
+}
+__name(setFolderOrder, "setFolderOrder");
+function subscribeToFolderOrder(cb) {
+  ensureFolderOrderObserver();
+  folderOrderSubscribers.add(cb);
+  return () => {
+    folderOrderSubscribers.delete(cb);
+  };
+}
+__name(subscribeToFolderOrder, "subscribeToFolderOrder");
+function getSubfolderOrder(parentPath) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getSubfolderOrderMap();
+  const arr = map.get(parentPath);
+  return arr ? arr.toArray() : [];
+}
+__name(getSubfolderOrder, "getSubfolderOrder");
+function setSubfolderOrder(parentPath, orderedNames) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getSubfolderOrderMap();
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const next = new Y3__namespace.Array();
+    next.push(orderedNames);
+    map.set(parentPath, next);
+  }, STRUCT_ORIGIN);
+}
+__name(setSubfolderOrder, "setSubfolderOrder");
+function getChildOrder(parentPath) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getChildOrderMap();
+  const arr = map.get(parentPath);
+  return arr ? arr.toArray() : [];
+}
+__name(getChildOrder, "getChildOrder");
+function setChildOrder(parentPath, entries2) {
+  ensureDoc();
+  ensureFolderOrderObserver();
+  const map = getChildOrderMap();
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const next = new Y3__namespace.Array();
+    next.push(entries2);
+    map.set(parentPath, next);
+  }, STRUCT_ORIGIN);
+}
+__name(setChildOrder, "setChildOrder");
+function notify(id) {
+  const set = subscribersByFile.get(id);
+  if (!set) return;
+  const snapshot = Array.from(set);
+  for (const cb of snapshot) cb();
+}
+__name(notify, "notify");
+var zoneOverrideSubscribers = /* @__PURE__ */ new Map();
+var wiredZoneObservers = /* @__PURE__ */ new Set();
+var PRUNE_ZONE_OVERRIDES_ORIGIN = /* @__PURE__ */ Symbol("prune-zone-overrides");
+var HEIGHT_RESIZE_ORIGIN = /* @__PURE__ */ Symbol("height-resize");
+function ensureZoneOverridesMap(fileId) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(fileId);
+  if (!fileMap) return null;
+  let overrides = fileMap.get("zoneOverrides");
+  if (!overrides) {
+    overrides = new Y3__namespace.Map();
+    fileMap.set("zoneOverrides", overrides);
+  }
+  if (!wiredZoneObservers.has(fileId)) {
+    overrides.observeDeep((events) => {
+      const origin = events[0]?.transaction.origin;
+      if (origin === PRUNE_ZONE_OVERRIDES_ORIGIN || origin === HEIGHT_RESIZE_ORIGIN) return;
+      const subs = zoneOverrideSubscribers.get(fileId);
+      if (subs) for (const cb of subs) cb();
+    });
+    wiredZoneObservers.add(fileId);
+  }
+  return overrides;
+}
+__name(ensureZoneOverridesMap, "ensureZoneOverridesMap");
+function getZoneCropOverride(fileId, trackKey) {
+  ensureDoc();
+  const overrides = ensureZoneOverridesMap(fileId);
+  if (!overrides) return void 0;
+  const entry = overrides.get(trackKey);
+  return entry?.cropRegion;
+}
+__name(getZoneCropOverride, "getZoneCropOverride");
+function setZoneCropOverride(fileId, trackKey, cropRegion, vizId, contentHash) {
+  ensureDoc();
+  const overrides = ensureZoneOverridesMap(fileId);
+  if (!overrides) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    if (cropRegion === null) {
+      overrides.delete(trackKey);
+    } else {
+      const existing = overrides.get(trackKey) ?? {};
+      overrides.set(trackKey, { ...existing, cropRegion, vizId, contentHash });
+    }
+  }, STRUCT_ORIGIN);
+}
+__name(setZoneCropOverride, "setZoneCropOverride");
+function getZoneHeightOverride(fileId, trackKey) {
+  ensureDoc();
+  const overrides = ensureZoneOverridesMap(fileId);
+  if (!overrides) return void 0;
+  const entry = overrides.get(trackKey);
+  return entry?.heightPx;
+}
+__name(getZoneHeightOverride, "getZoneHeightOverride");
+function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
+  ensureDoc();
+  const overrides = ensureZoneOverridesMap(fileId);
+  if (!overrides) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const existing = overrides.get(trackKey) ?? {};
+    if (heightPx === null) {
+      const { heightPx: _, ...rest } = existing;
+      if (Object.keys(rest).length === 0) overrides.delete(trackKey);
+      else overrides.set(trackKey, rest);
+    } else {
+      overrides.set(trackKey, { ...existing, heightPx, ...contentHash ? { contentHash } : {} });
+    }
+  }, HEIGHT_RESIZE_ORIGIN);
+}
+__name(setZoneHeightOverride, "setZoneHeightOverride");
+function pruneZoneOverrides(fileId, currentViz) {
+  ensureDoc();
+  const overrides = ensureZoneOverridesMap(fileId);
+  if (!overrides) return;
+  const doc = ensureDoc();
+  const stale = [];
+  for (const [trackKey, value] of overrides.entries()) {
+    const entry = value;
+    const current2 = currentViz.get(trackKey);
+    if (!current2) {
+      stale.push(trackKey);
+    } else if (entry.vizId && entry.vizId !== current2.vizId) {
+      stale.push(trackKey);
+    } else if (entry.contentHash && current2.contentHash && entry.contentHash !== current2.contentHash) {
+      stale.push(trackKey);
+    }
+  }
+  if (stale.length === 0) return;
+  doc.transact(() => {
+    for (const key of stale) overrides.delete(key);
+  }, PRUNE_ZONE_OVERRIDES_ORIGIN);
+}
+__name(pruneZoneOverrides, "pruneZoneOverrides");
+function subscribeToZoneOverrides(fileId, cb) {
+  ensureDoc();
+  ensureZoneOverridesMap(fileId);
+  let set = zoneOverrideSubscribers.get(fileId);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    zoneOverrideSubscribers.set(fileId, set);
+  }
+  set.add(cb);
+  return () => {
+    set.delete(cb);
+    if (set.size === 0) zoneOverrideSubscribers.delete(fileId);
+  };
+}
+__name(subscribeToZoneOverrides, "subscribeToZoneOverrides");
+var EMPTY_TRACK_META = Object.freeze({});
+var trackMetaSubscribers = /* @__PURE__ */ new Map();
+var wiredTrackMetaObservers = /* @__PURE__ */ new Set();
+function getTrackMetaMap(fileId) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(fileId);
+  if (!fileMap) return null;
+  const meta = fileMap.get("trackMeta");
+  if (!meta) return null;
+  if (!wiredTrackMetaObservers.has(fileId)) {
+    meta.observeDeep(() => {
+      const subs = trackMetaSubscribers.get(fileId);
+      if (subs) for (const cb of subs) cb();
+    });
+    wiredTrackMetaObservers.add(fileId);
+  }
+  return meta;
+}
+__name(getTrackMetaMap, "getTrackMetaMap");
+function ensureTrackMetaMap(fileId) {
+  const filesMap = getFilesMap();
+  const fileMap = filesMap.get(fileId);
+  if (!fileMap) return null;
+  let meta = fileMap.get("trackMeta");
+  if (!meta) {
+    meta = new Y3__namespace.Map();
+    fileMap.set("trackMeta", meta);
+  }
+  if (!wiredTrackMetaObservers.has(fileId)) {
+    meta.observeDeep(() => {
+      const subs = trackMetaSubscribers.get(fileId);
+      if (subs) for (const cb of subs) cb();
+    });
+    wiredTrackMetaObservers.add(fileId);
+  }
+  return meta;
+}
+__name(ensureTrackMetaMap, "ensureTrackMetaMap");
+function getTrackMeta(fileId, trackId) {
+  ensureDoc();
+  const meta = getTrackMetaMap(fileId);
+  if (!meta) return EMPTY_TRACK_META;
+  return meta.get(trackId) ?? EMPTY_TRACK_META;
+}
+__name(getTrackMeta, "getTrackMeta");
+function setTrackMeta(fileId, trackId, partial) {
+  ensureDoc();
+  const meta = ensureTrackMetaMap(fileId);
+  if (!meta) return;
+  const doc = ensureDoc();
+  doc.transact(() => {
+    const existing = meta.get(trackId) ?? {};
+    const merged = { ...existing, ...partial };
+    if (merged.color === void 0 && merged.collapsed === void 0) {
+      meta.delete(trackId);
+    } else {
+      meta.set(trackId, merged);
+    }
+  }, STRUCT_ORIGIN);
+}
+__name(setTrackMeta, "setTrackMeta");
+function subscribeToTrackMeta(fileId, cb) {
+  ensureDoc();
+  getTrackMetaMap(fileId);
+  let set = trackMetaSubscribers.get(fileId);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    trackMetaSubscribers.set(fileId, set);
+  }
+  set.add(cb);
+  return () => {
+    set.delete(cb);
+    if (set.size === 0) trackMetaSubscribers.delete(fileId);
+  };
+}
+__name(subscribeToTrackMeta, "subscribeToTrackMeta");
+function resetFileStore() {
+  for (const [id] of textObservers) {
+    unwireTextObserver(id);
+  }
+  textObservers.clear();
+  cachedSnapshots.clear();
+  subscribersByFile.clear();
+  wiredFilesMap = null;
+  folderOrderObserverWired = false;
+  zoneOverrideSubscribers.clear();
+  wiredZoneObservers.clear();
+  trackMetaSubscribers.clear();
+  wiredTrackMetaObservers.clear();
+  resetUndoManager();
+  notifyFileList();
+  notifyFolderOrder();
+}
+__name(resetFileStore, "resetFileStore");
+
+// src/workspace/useWorkspaceFile.ts
+function useWorkspaceFile(id) {
+  const subscribe3 = React6.useCallback(
+    (onStoreChange) => subscribe(id, onStoreChange),
+    [id]
+  );
+  const getSnapshot = React6.useCallback(() => getFile(id), [id]);
+  const file = React6.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const setContent2 = React6.useCallback(
+    (content) => setContent(id, content),
+    [id]
+  );
+  return { file, setContent: setContent2 };
+}
+__name(useWorkspaceFile, "useWorkspaceFile");
+
+// src/monaco/docs/data/sonicpi.json
+var sonicpi_default = {
+  runtime: "sonicpi",
+  docs: {
+    set: {
+      signature: "set(time_state_key: default, value: anything)",
+      description: "Store information in the Time State for the current time for either the current or any other thread.",
+      example: "set :foo, 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    cue: {
+      signature: "cue(cue_id: symbol)",
+      description: "Send a heartbeat synchronisation message containing the (virtual) timestamp of the current thread.",
+      example: "cue :foo",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    get: {
+      signature: "get(time_state_key: default)",
+      description: "Retrieve information from Time State set prior to the current time from either the current or any other thread.",
+      example: "get :foo",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_swing: {
+      signature: "with_swing(shift: beats, pulse: number, tick: symbol, offset: number)",
+      description: "Runs block within a `time_warp` except for once every `pulse` consecutive runs (defaulting to 4).",
+      example: "with_swing 0.1 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tuplets: {
+      signature: "tuplets(tuplet_list: list)",
+      description: "Runs the block with tuplet timing and optional swing.",
+      example: "tuplets [70, [72, 72], 70, [82, 82, 82]] do |n|",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    run_file: {
+      signature: "run_file(filename: path)",
+      description: "Reads the full contents of the file with `path` and executes it in a new Run.",
+      example: 'run_file "~/path/to/sonic-pi-code.rb"',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    run_code: {
+      signature: "run_code(code: string)",
+      description: "Executes the code passed as a string in a new Run.",
+      example: 'run_code "sample :ambi_lunar_land"',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    eval_file: {
+      signature: "eval_file(filename: path)",
+      description: "Reads the full contents of the file with `path` and executes within the current thread like a function call.",
+      example: 'eval_file "~/path/to/sonic-pi-code.rb"',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_osc_logging: {
+      signature: "use_osc_logging(true_or_false: boolean)",
+      description: "Enable or disable log messages created on OSC functions.",
+      example: "use_osc_logging true",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_osc_logging: {
+      signature: "with_osc_logging(true_or_false: boolean)",
+      description: "Similar to use_osc_logging except only applies to code within supplied `do`/`end` block.",
+      example: "with_osc_logging false do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_osc: {
+      signature: "use_osc(hostname: string, port: number)",
+      description: "Sets the destination host and port that `osc` will send messages to.",
+      example: 'use_osc "localhost", 7000',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_osc: {
+      signature: "with_osc(hostname: string, port: number)",
+      description: "Sets the destination host and port that `osc` will send messages to for the given do/end block.",
+      example: 'with_osc "localhost", 7010 do',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    osc_send: {
+      signature: "osc_send(hostname: string, port: number, path: osc_path, args: list)",
+      description: "Similar to `osc` except ignores any `use_osc` settings and sends the OSC message directly to the specified `hostname` and `port`.",
+      example: 'osc_send "localhost", 7000, "/foo/baz"',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    osc: {
+      signature: "osc(path: arguments)",
+      description: "Sends an OSC message to the current host and port specified by `use_osc` or `with_osc`.",
+      example: 'osc "/foo/bar"',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    reset: {
+      signature: "reset",
+      description: "All settings such as the current synth, BPM, random stream and tick values will be reset to the values inherited from the parent thread.",
+      example: "reset",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    clear: {
+      signature: "clear",
+      description: "All settings such as the current synth, BPM, random stream and tick values will be reset to their defaults.",
+      example: "clear",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    time_warp: {
+      signature: "time_warp(delta_time: number)",
+      description: "The code within the given block is executed with the specified delta time shift specified in beats.",
+      example: "time_warp 0.1 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick_set: {
+      signature: "tick_set(value: number)",
+      description: "Set the default tick to the specified `value`.",
+      example: "tick_set 40",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick_reset: {
+      signature: "tick_reset",
+      description: "Reset default tick to 0.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick_reset_all: {
+      signature: "tick_reset_all",
+      description: "Reset all ticks - default and keyed",
+      example: "tick_reset_all",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    tick: {
+      signature: "tick(key: symbol)",
+      description: "Increment the default tick by 1 and return value.",
+      example: "puts tick",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    look: {
+      signature: "look",
+      description: "Read and return value of default tick.",
+      example: "puts look",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    stop: {
+      signature: "stop",
+      description: "Stops the current thread or if not in a thread, stops the current run.",
+      example: "stop",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    on: {
+      signature: "on(condition: truthy)",
+      description: "Optionally evaluate the block depending on the truthiness of the supplied condition.",
+      example: "on true do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    bools: {
+      signature: "bools(list: array)",
+      description: "Create a new ring of booleans values from 1s and 0s, which can be easier to write and manipulate in a live setting.",
+      example: "(bools 1, 0)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    stretch: {
+      signature: "stretch(list: anything, count: number)",
+      description: "Stretches a list of values each value repeated count times.",
+      example: "(stretch [1,2], 3)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    knit: {
+      signature: "knit(value: anything, count: number)",
+      description: "Knits a series of value, count pairs to create a ring buffer where each value is repeated count times.",
+      example: "(knit 1, 5)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    spread: {
+      signature: "spread(num_accents: number, size: number)",
+      description: "Creates a new ring of boolean values which space a given number of accents as evenly as possible throughout a bar.",
+      example: "(spread 3, 8)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    range: {
+      signature: "range(start: number, finish: number, step_size: number)",
+      description: "Create a new ring buffer from the range arguments (start, finish and step size).",
+      example: "(range 1, 5)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    line: {
+      signature: "line(start: number, finish: number)",
+      description: "Create a ring buffer representing a straight line between start and finish of steps elements.",
+      example: "(line 0, 4, steps: 4)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    halves: {
+      signature: "halves(start: number, num_halves: int)",
+      description: "Create a ring containing the results of successive halving of the `start` value.",
+      example: "(halves 60, 2)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    doubles: {
+      signature: "doubles(start: number, num_doubles: int)",
+      description: "Create a ring containing the results of successive doubling of the `start` value.",
+      example: "(doubles 60, 2)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    vector: {
+      signature: "vector(list: array)",
+      description: "Create a new immutable vector from args.",
+      example: "(vector 1, 2, 3)[0]",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ring: {
+      signature: "ring(list: array)",
+      description: "Create a new immutable ring buffer from args.",
+      example: "(ring 1, 2, 3)[0]",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    map: {
+      signature: "map(list: array)",
+      description: "Create a new immutable key/value map from args.",
+      example: "(map foo: 1, bar: 2)[:foo]",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ramp: {
+      signature: "ramp(list: array)",
+      description: "Create a new immutable ramp vector from args.",
+      example: "(ramp 1, 2, 3)[0]",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    choose: {
+      signature: "choose(list: array)",
+      description: "Choose an element at random from a list (array).",
+      example: "play choose([60, 64, 67])",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    pick: {
+      signature: "pick(list: array, n: number_or_nil)",
+      description: "Pick n elements from list or ring.",
+      example: "sample :loop_amen, onset: pick",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    inc: {
+      signature: "inc(n: number)",
+      description: "Increment a number by `1`.",
+      example: "inc 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    dec: {
+      signature: "dec(n: number)",
+      description: "Decrement a number by `1`.",
+      example: "dec 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    loop: {
+      signature: "loop",
+      description: "Given a do/end block, repeats it forever.",
+      example: "loop do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    live_loop: {
+      signature: "live_loop(name: symbol)",
+      description: "Loop the do/end block forever.",
+      example: "live_loop :ping do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    block_duration: {
+      signature: "block_duration",
+      description: "Given a block, runs it and returns the amount of time that has passed.",
+      example: "dur = block_duration do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    block_slept: {
+      signature: "block_slept",
+      description: "Given a block, runs it and returns whether or not the block contained sleeps or syncs",
+      example: "slept = block_slept? do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    at: {
+      signature: "at(times: list, params: list)",
+      description: "Given a list of times, run the block once after waiting each given time.",
+      example: "at 4 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    version: {
+      signature: "version",
+      description: "Return information representing the current version of Sonic Pi.",
+      example: "puts version",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    spark_graph: {
+      signature: "spark_graph",
+      description: "Given a list of numeric values, this method turns them into a string of bar heights.",
+      example: "puts (spark_graph (range 1, 5))",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    spark: {
+      signature: "spark",
+      description: "Given a list of numeric values, this method turns them into a string of bar heights and prints them out.",
+      example: "spark (range 1, 5)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    defonce: {
+      signature: "defonce(name: symbol)",
+      description: "Allows you to assign the result of some code to a name, with the property that the code will only execute once - therefore stopping re-definitions.",
+      example: "defonce :foo do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ndefine: {
+      signature: "ndefine(name: symbol)",
+      description: "Does nothing.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    define: {
+      signature: "define(name: symbol)",
+      description: "Allows you to group a bunch of code and give it your own name for future re-use.",
+      example: "define :foo do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    comment: {
+      signature: "comment",
+      description: "Does not evaluate any of the code within the block.",
+      example: "comment do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    uncomment: {
+      signature: "uncomment",
+      description: "Evaluates all of the code within the block.",
+      example: "uncomment do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    print: {
+      signature: "print(output: anything)",
+      description: "Displays the information you specify as a string inside the output pane.",
+      example: 'print "hello there"',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    puts: {
+      signature: "puts(output: anything)",
+      description: "Displays the information you specify as a string inside the output pane.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    vt: {
+      signature: "vt",
+      description: "Get the virtual time of the current thread.",
+      example: "puts vt",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    factor: {
+      signature: "factor(val: number, factor: number)",
+      description: "Test to see if factor is indeed a factor of `val`.",
+      example: "factor?(10, 2)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    quantise: {
+      signature: "quantise(n: number, step: positive_number)",
+      description: "Round value to the nearest multiple of step resolution.",
+      example: "quantise(10, 1)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    dice: {
+      signature: "dice(num_sides: number)",
+      description: "Throws a dice with the specified num_sides (defaults to `6`) and returns the score as a number between `1` and `num_sides`.",
+      example: "dice",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    one_in: {
+      signature: "one_in(num: number)",
+      description: "Returns `true` or `false` with a specified probability - it will return true every one in num times where num is the param you specify",
+      example: "one_in 2",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rdist: {
+      signature: "rdist(width: number, centre: number)",
+      description: "Returns a random number within the range with width around centre.",
+      example: "print rdist(1, 0)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rrand: {
+      signature: "rrand(min: number, max: number)",
+      description: "Given two numbers, this produces a float between the supplied min and max values exclusively.",
+      example: "print rrand(0, 10)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rrand_i: {
+      signature: "rrand_i(min: number, max: number)",
+      description: "Given two numbers, this produces a whole number between the min and max you supplied inclusively.",
+      example: "print rrand_i(0, 10)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand: {
+      signature: "rand(max: number_or_range)",
+      description: "Given a max number, produces a float between `0` and the supplied max value.",
+      example: "print rand(0.5)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_i: {
+      signature: "rand_i(max: number_or_range)",
+      description: "Given a max number, produces a whole number between `0` and the supplied max value exclusively.",
+      example: "print rand_i(5)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_look: {
+      signature: "rand_look(max: number_or_range)",
+      description: "Given a max number, produces a number between `0` and the supplied max value exclusively.",
+      example: "print rand_look(0.5)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_i_look: {
+      signature: "rand_i_look(max: number_or_range)",
+      description: "Given a max number, produces a whole number between `0` and the supplied max value exclusively.",
+      example: "print rand_i_look(5)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_back: {
+      signature: "rand_back(amount: number)",
+      description: "Roll the random generator back essentially 'undoing' the last call to `rand`.",
+      example: "rand_back",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_skip: {
+      signature: "rand_skip(amount: number)",
+      description: "Jump the random generator forward essentially skipping the next call to `rand`.",
+      example: "rand_skip",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rand_reset: {
+      signature: "rand_reset",
+      description: "Resets the random stream to the last specified seed.",
+      example: "rand_reset",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    shuffle: {
+      signature: "shuffle(list: array)",
+      description: "Returns a new list with the same elements as the original but with their order shuffled.",
+      example: "shuffle [1, 2, 3, 4]",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_random_seed: {
+      signature: "use_random_seed(seed: number)",
+      description: "Resets the random number generator to the specified seed.",
+      example: "use_random_seed 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_random_seed: {
+      signature: "with_random_seed(seed: number)",
+      description: "Resets the random number generator to the specified seed for the specified code block.",
+      example: "with_random_seed 1 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_random_source: {
+      signature: "use_random_source(noise_type: symbol)",
+      description: "Sets the random number source to be one of `:white`, `:pink`, `:light_pink`, `:dark_pink` or `:perlin`.",
+      example: "use_random_source :white",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_random_source: {
+      signature: "with_random_source(noise_type: symbol)",
+      description: "Resets the random number generator to the specified noise type for the specified code block.",
+      example: "with_random_source :white do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_cue_logging: {
+      signature: "use_cue_logging(true_or_false: boolean)",
+      description: "Enable or disable log messages created on cues.",
+      example: "use_cue_logging true",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_cue_logging: {
+      signature: "with_cue_logging(true_or_false: boolean)",
+      description: "Similar to use_cue_logging except only applies to code within supplied `do`/`end` block.",
+      example: "with_cue_logging false do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    link_sync: {
+      signature: "link_sync(quantum: number, phase: number)",
+      description: "Similar to link except it also waits for the link session to be playing.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    link: {
+      signature: "link(quantum: number, phase: number)",
+      description: "By default link waits for the start of the next bar of the shared network metronome link.",
+      example: "link",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_link_bpm: {
+      signature: "set_link_bpm(bpm: number)",
+      description: "Set the tempo for the link metronome in BPM.",
+      example: "set_link_bpm! 30",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_bpm: {
+      signature: "use_bpm(bpm: number)",
+      description: "Sets the tempo in bpm (beats per minute) for everything afterwards.",
+      example: "use_bpm 120",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_bpm: {
+      signature: "with_bpm(bpm: number)",
+      description: "Sets the tempo in bpm (beats per minute) for everything in the given block.",
+      example: "with_bpm 120 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_bpm_mul: {
+      signature: "with_bpm_mul(mul: number)",
+      description: "Sets the tempo in bpm (beats per minute) for everything in the given block as a multiplication of the current tempo.",
+      example: "with_bpm_mul 0.5 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_bpm_mul: {
+      signature: "use_bpm_mul(mul: number)",
+      description: "Sets the tempo in bpm (beats per minute) as a multiplication of the current tempo.",
+      example: "use_bpm_mul 0.5",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    density: {
+      signature: "density(d: density)",
+      description: "Runs the block `d` times with the bpm for the block also multiplied by `d`.",
+      example: "density 2 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_time: {
+      signature: "current_time",
+      description: "Returns the current logical time.",
+      example: "puts current_time",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_random_seed: {
+      signature: "current_random_seed",
+      description: "Returns the current random seed.",
+      example: "puts current_random_seed",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_random_source: {
+      signature: "current_random_source",
+      description: "Returns the source of the current random number generator (what kind of noise is generating the random numbers).",
+      example: "puts current_random_source",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_bpm_mode: {
+      signature: "current_bpm_mode",
+      description: "Returns the current tempo mode - either a bpm value or :link.",
+      example: "puts current_bpm_mode",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_bpm: {
+      signature: "current_bpm",
+      description: "Returns the current tempo as a bpm value.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_beat_duration: {
+      signature: "current_beat_duration",
+      description: "Get the duration of the current beat in seconds.",
+      example: "puts current_beat_duration",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    beat: {
+      signature: "beat",
+      description: "Returns the beat value for the current thread/live_loop.",
+      example: "puts beat",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rt: {
+      signature: "rt(seconds: number)",
+      description: "Real time representation.",
+      example: "sleep rt(1)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    bt: {
+      signature: "bt(seconds: number)",
+      description: "Beat time representation.",
+      example: "puts bt(1)",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_sched_ahead_time: {
+      signature: "set_sched_ahead_time(time: number)",
+      description: "Specify how many seconds ahead of time the synths should be triggered.",
+      example: "set_sched_ahead_time! 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_sched_ahead_time: {
+      signature: "use_sched_ahead_time(time: number)",
+      description: "Specify how many seconds ahead of time the synths should be triggered.",
+      example: "use_sched_ahead_time 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_real_time: {
+      signature: "use_real_time",
+      description: "Set sched ahead time to 0 for the current thread.",
+      example: "use_real_time",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_real_time: {
+      signature: "with_real_time",
+      description: "Sets sched ahead time to 0 within the block for the current thread.",
+      example: "with_real_time do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_sched_ahead_time: {
+      signature: "with_sched_ahead_time(time: number)",
+      description: "Specify how many seconds ahead of time the synths should be triggered for the block.",
+      example: "with_sched_ahead_time 1 do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_sched_ahead_time: {
+      signature: "current_sched_ahead_time",
+      description: "Returns the current schedule ahead time.",
+      example: "puts current_sched_ahead_time",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sleep: {
+      signature: "sleep(beats: number)",
+      description: "Wait for a number of beats before triggering the next command.",
+      example: "sleep 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    wait: {
+      signature: "wait(beats: number)",
+      description: "Synonym for `sleep` - see `sleep`",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sync_bpm: {
+      signature: "sync_bpm(cue_id: symbol)",
+      description: "An alias for `sync` with the `bpm_sync:` opt set to true.",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sync: {
+      signature: "sync(cue_id: symbol)",
+      description: "Pause/block the current thread until a `cue` heartbeat with a matching `cue_id` is received.",
+      example: "sync :foo",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    in_thread: {
+      signature: "in_thread",
+      description: "Execute a given block (between `do` .",
+      example: "in_thread do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_error: {
+      signature: "assert_error(class: Exception)",
+      description: "Runs the block and ensures that it raises the correct Exception.",
+      example: "assert_error do",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_not: {
+      signature: "assert_not(arg: anything)",
+      description: "Raises an exception if the argument is not either nil or false.",
+      example: "assert_not false",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert: {
+      signature: "assert(arg: anything)",
+      description: "Raises an exception if the argument is either nil or false.",
+      example: "assert true",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_not_equal: {
+      signature: "assert_not_equal(arg1: anything, arg2: anything)",
+      description: "Raises an exception if both arguments are qual.",
+      example: "assert_not_equal 1, 3",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_equal: {
+      signature: "assert_equal(arg1: anything, arg2: anything)",
+      description: "Raises an exception if both arguments aren't equal.",
+      example: "assert_equal 1, 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    assert_similar: {
+      signature: "assert_similar(arg1: anything, arg2: anything)",
+      description: "Raises an exception if both arguments aren't similar.",
+      example: "assert_similar 1, 1",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_buffer: {
+      signature: "load_buffer(path: string)",
+      description: "Given a path to a file, will read the contents and load it into the current buffer.",
+      example: 'load_buffer "~/sonic-pi-tracks/phat-beats.rb"',
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_example: {
+      signature: "load_example(path: string)",
+      description: "Given a keyword representing an example, will load it into the current buffer.",
+      example: "load_example :rerezzed",
+      kind: "function",
+      category: "core",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    live_audio: {
+      signature: "live_audio(name: symbol)",
+      description: "A named audio stream live from your soundcard",
+      example: "live_audio :foo",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    scsynth_info: {
+      signature: "scsynth_info",
+      description: "Create a map of information about the running audio synthesiser SuperCollider.",
+      example: "puts scsynth_info",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_free: {
+      signature: "sample_free(path: string)",
+      description: "Frees the memory and resources consumed by loading the sample on the server.",
+      example: "sample_free :loop_amen",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    buffer: {
+      signature: "buffer(symbol: name, number: duration)",
+      description: "Initialise or return a named buffer with a specific duration (defaults to 8 beats).",
+      example: "buffer(:foo)",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_free_all: {
+      signature: "sample_free_all",
+      description: "Unloads all samples therefore freeing the memory and resources consumed.",
+      example: "sample_free_all",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_timing_guarantees: {
+      signature: "use_timing_guarantees(bool: true_or_false)",
+      description: "If set to true, synths will not trigger if it is too late.",
+      example: "use_timing_guarantees true",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_timing_guarantees: {
+      signature: "with_timing_guarantees(bool: true_or_false)",
+      description: "For the given block, if set to true, synths will not trigger if it is too late.",
+      example: "with_timing_guarantees true do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_sample_bpm: {
+      signature: "use_sample_bpm(string_or_number: sample_name_or_duration)",
+      description: "Modify bpm so that sleeping for 1 will sleep for the duration of the sample.",
+      example: "use_sample_bpm :loop_amen",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_sample_bpm: {
+      signature: "with_sample_bpm(string_or_number: sample_name_or_duration)",
+      description: "Block-scoped modification of bpm so that sleeping for 1 will sleep for the duration of the sample.",
+      example: "with_sample_bpm :loop_amen do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_arg_bpm_scaling: {
+      signature: "use_arg_bpm_scaling(bool: boolean)",
+      description: "Turn synth argument bpm scaling on or off for the current thread.",
+      example: "use_arg_bpm_scaling false",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_arg_bpm_scaling: {
+      signature: "with_arg_bpm_scaling",
+      description: "Turn synth argument bpm scaling on or off for the supplied block.",
+      example: "with_arg_bpm_scaling false do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_audio_latency: {
+      signature: "set_audio_latency(milliseconds: number)",
+      description: "On some systems with certain configurations (such as wireless speakers, and even a typical Windows environment with the default audio drivers) the audio latency can be large.",
+      example: "set_audio_latency! 100",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_recording_bit_depth: {
+      signature: "set_recording_bit_depth(bit_depth: number)",
+      description: "When you hit the record button, Sonic Pi saves all the audio you can hear into a wav file.",
+      example: "set_recording_bit_depth! 24",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_control_delta: {
+      signature: "set_control_delta(time: number)",
+      description: "Specify how many seconds between successive modifications (i.",
+      example: "set_control_delta! 0.1",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_debug: {
+      signature: "use_debug(true_or_false: boolean)",
+      description: "Enable or disable messages created on synth triggers.",
+      example: "use_debug true",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_debug: {
+      signature: "with_debug(true_or_false: boolean)",
+      description: "Similar to use_debug except only applies to code within supplied `do`/`end` block.",
+      example: "with_debug false do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_arg_checks: {
+      signature: "use_arg_checks(true_or_false: boolean)",
+      description: "When triggering synths, each argument is checked to see if it is sensible.",
+      example: "use_arg_checks false",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_arg_checks: {
+      signature: "with_arg_checks(true_or_false: boolean)",
+      description: "Similar to `use_arg_checks` except only applies to code within supplied `do`/`end` block.",
+      example: "with_arg_checks false do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_synth: {
+      signature: "use_synth(synth_name: symbol)",
+      description: "Switch the current synth to `synth_name`.",
+      example: "use_synth :mod_sine",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_synth: {
+      signature: "with_synth(synth_name: symbol)",
+      description: "Switch the current synth to `synth_name` but only for the duration of the `do`/`end` block.",
+      example: "with_synth :saw_beep do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_start: {
+      signature: "recording_start",
+      description: "Start recording all sound to a `.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_stop: {
+      signature: "recording_stop",
+      description: "Stop current recording.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_save: {
+      signature: "recording_save(path: string)",
+      description: "Save previous recording to the specified location",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    recording_delete: {
+      signature: "recording_delete",
+      description: "After using `recording_start` and `recording_stop`, a temporary file is created until you decide to use `recording_save`.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    reset_mixer: {
+      signature: "reset_mixer",
+      description: "The main mixer is the final mixer that all sound passes through.",
+      example: "reset_mixer!",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_mixer_control: {
+      signature: "set_mixer_control",
+      description: "The main mixer is the final mixer that all sound passes through.",
+      example: "set_mixer_control! lpf: 30, lpf_slide: 16",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    synth: {
+      signature: "synth(synth_name: symbol)",
+      description: "Trigger specified synth with given opts.",
+      example: "synth :dsaw, note: 60",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play: {
+      signature: "play(note: symbol_or_number)",
+      description: "Play note with current synth.",
+      example: "play 50",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play_pattern: {
+      signature: "play_pattern(notes: list)",
+      description: "Play list of notes with the current synth one after another with a sleep of 1 Accepts optional args for modification of the synth being played.",
+      example: "play_pattern [40, 41, 42]",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play_pattern_timed: {
+      signature: "play_pattern_timed(notes: list, times: list_or_number)",
+      description: "Play each note in a list of notes one after another with specified durations.",
+      example: "play_pattern_timed [40, 42, 44], [1, 2, 3]",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    play_chord: {
+      signature: "play_chord(notes: list)",
+      description: "Play a list of notes at the same time.",
+      example: "play_chord [40, 45, 47]",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_merged_synth_defaults: {
+      signature: "use_merged_synth_defaults",
+      description: "Specify synth arg values to be used by any following call to play.",
+      example: "use_merged_synth_defaults amp: 0.5",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_merged_synth_defaults: {
+      signature: "with_merged_synth_defaults",
+      description: "Specify synth arg values to be used by any following call to play within the specified `do`/`end` block.",
+      example: "with_merged_synth_defaults amp: 0.5, pan: 1 do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_synth_defaults: {
+      signature: "use_synth_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `play`.",
+      example: "use_synth_defaults amp: 0.5, cutoff: 70",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_sample_defaults: {
+      signature: "use_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample`.",
+      example: "use_sample_defaults amp: 0.5, cutoff: 70",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_merged_sample_defaults: {
+      signature: "use_merged_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample`.",
+      example: "use_merged_sample_defaults amp: 0.5, cutoff: 70",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_sample_defaults: {
+      signature: "with_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample` within the `do`/`end` block.",
+      example: "with_sample_defaults cutoff: 90 do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_merged_sample_defaults: {
+      signature: "with_merged_sample_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `sample` within the `do`/`end` block.",
+      example: "with_merged_sample_defaults cutoff: 90 do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_synth_defaults: {
+      signature: "with_synth_defaults",
+      description: "Specify new default values to be used by all calls to `play` within the `do`/`end` block.",
+      example: "with_synth_defaults amp: 0.6, cutoff: 80 do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_fx: {
+      signature: "with_fx(fx_name: symbol)",
+      description: "This applies the named effect (FX) to everything within a given `do`/`end` block.",
+      example: "with_fx :distortion do",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_synth: {
+      signature: "current_synth",
+      description: "Returns the current synth name.",
+      example: "puts current_synth",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_synth_defaults: {
+      signature: "current_synth_defaults",
+      description: "Returns the current synth defaults.",
+      example: "puts current_synth_defaults",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_sample_defaults: {
+      signature: "current_sample_defaults",
+      description: "Returns the current sample defaults.",
+      example: "puts current_sample_defaults",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_volume: {
+      signature: "current_volume",
+      description: "Returns the current volume.",
+      example: "puts current_volume",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_debug: {
+      signature: "current_debug",
+      description: "Returns the current debug setting (`true` or `false`).",
+      example: "puts current_debug",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_arg_checks: {
+      signature: "current_arg_checks",
+      description: "Returns the current arg checking setting (`true` or `false`).",
+      example: "puts current_arg_checks",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_volume: {
+      signature: "set_volume(vol: number)",
+      description: "Set the main system volume to `vol`.",
+      example: "set_volume! 2",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_loaded: {
+      signature: "sample_loaded(path: string)",
+      description: "Given a path to a `.",
+      example: "puts sample_loaded? :elec_blip",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_sample: {
+      signature: "load_sample(path: string)",
+      description: "Given a path to a `.",
+      example: "load_sample :elec_blip",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_samples: {
+      signature: "load_samples(paths: list)",
+      description: "Given a directory containing multiple `.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_info: {
+      signature: "sample_info(path: string)",
+      description: "Alias for the `load_sample` method.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_buffer: {
+      signature: "sample_buffer(path: string)",
+      description: "Alias for the `load_sample` method.",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_duration: {
+      signature: "sample_duration(path: string)",
+      description: "Given the name of a loaded sample, or a path to a `.",
+      example: "puts sample_duration(:loop_garzul)",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_paths: {
+      signature: "sample_paths(pre_args: source_and_filter_types)",
+      description: "Accepts the same pre-args and opts as `sample` and returns a ring of matched sample paths.",
+      example: 'sample_paths "/path/to/samples/"',
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample: {
+      signature: "sample(name_or_path: symbol_or_string)",
+      description: "Play back a recorded sound file (sample).",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    status: {
+      signature: "status",
+      description: "This returns a Hash of information about the synthesis environment.",
+      example: "puts status",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    control: {
+      signature: "control(node: synth_node)",
+      description: "Control a running synth node by passing new parameters to it.",
+      example: "control my_node, cutoff: 70",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    kill: {
+      signature: "kill(node: synth_node)",
+      description: "Kill a running synth sound or sample.",
+      example: "kill foo",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_names: {
+      signature: "sample_names(group: symbol)",
+      description: "Return a ring of sample names for the specified group",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    all_sample_names: {
+      signature: "all_sample_names",
+      description: "Return a list of all the sample names available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    sample_groups: {
+      signature: "sample_groups",
+      description: "Return a list of all the sample groups available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    synth_names: {
+      signature: "synth_names",
+      description: "Return a list of all the synths available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    fx_names: {
+      signature: "fx_names",
+      description: "Return a list of all the FX available",
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_synthdef: {
+      signature: "load_synthdef(path: string)",
+      description: "Load a pre-compiled synth design from the specified file.",
+      example: 'load_synthdef "~/Desktop/my_noises/whoosh.scsyndef"',
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    load_synthdefs: {
+      signature: "load_synthdefs(path: string)",
+      description: "Load all pre-compiled synth designs in the specified directory.",
+      example: 'load_synthdefs "~/Desktop/my_noises"',
+      kind: "function",
+      category: "sound",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    math_scale: {
+      signature: "math_scale",
+      description: "Scales a given input value within the specified input range to a corresponding value in the specified output range using the formula: (out_max - out_min) (val - in_min) f (x) = -------------------------------- + out_min ",
+      example: "math_scale 0.5, 0, 1, 10, 20",
+      kind: "function",
+      category: "maths",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    octs: {
+      signature: "octs(start: note, num_octaves: pos_int)",
+      description: "Create a ring of successive octaves starting at `start` for `num_octaves`.",
+      example: "(octs 60, 2)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_notes: {
+      signature: "midi_notes(list: array)",
+      description: "Create a new immutable ring buffer of notes from args.",
+      example: "(midi_notes :d3, :d4, :d5)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    rest: {
+      signature: "rest(note_or_args: number_symbol_or_map)",
+      description: "Given a note or an args map, returns true if it represents a rest and false if otherwise",
+      example: "puts rest? nil",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    pitch_to_ratio: {
+      signature: "pitch_to_ratio(pitch: midi_number)",
+      description: "Convert a midi note to a ratio which when applied to a frequency will scale the frequency by the number of semitones.",
+      example: "pitch_to_ratio 12",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    ratio_to_pitch: {
+      signature: "ratio_to_pitch(ratio: number)",
+      description: "Convert a frequency ratio to a midi note which when added to a note will transpose the note to match the frequency ratio.",
+      example: "ratio_to_pitch 2",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_to_hz: {
+      signature: "midi_to_hz(note: symbol_or_number)",
+      description: "Convert a midi note to hz",
+      example: "midi_to_hz(60)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    hz_to_midi: {
+      signature: "hz_to_midi(freq: number)",
+      description: "Convert a frequency in hz to a midi note.",
+      example: "hz_to_midi(261.63)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    set_cent_tuning: {
+      signature: "set_cent_tuning(cent_shift: number)",
+      description: "Globally tune Sonic Pi to play with another external instrument.",
+      example: "set_cent_tuning! 1",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_cent_tuning: {
+      signature: "use_cent_tuning(cent_shift: number)",
+      description: "Uniformly tunes your music by shifting all notes played by the specified number of cents.",
+      example: "use_cent_tuning 1",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_cent_tuning: {
+      signature: "with_cent_tuning(cent_shift: number)",
+      description: "Similar to `use_cent_tuning` except only applies cent shift to code within supplied `do`/`end` block.",
+      example: "with_cent_tuning 2 do",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_octave: {
+      signature: "use_octave(octave_shift: number)",
+      description: "Transposes your music by shifting all notes played by the specified number of octaves.",
+      example: "use_octave 1",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_octave: {
+      signature: "with_octave(octave_shift: number)",
+      description: "Transposes your music by shifting all notes played by the specified number of octaves within the specified block.",
+      example: "with_octave 1 do",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_transpose: {
+      signature: "use_transpose(note_shift: number)",
+      description: "Transposes your music by shifting all notes played by the specified amount.",
+      example: "use_transpose 1",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_transpose: {
+      signature: "with_transpose(note_shift: number)",
+      description: "Similar to use_transpose except only applies to code within supplied `do`/`end` block.",
+      example: "with_transpose 12 do",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_tuning: {
+      signature: "use_tuning(tuning: symbol, fundamental_note: symbol_or_number)",
+      description: "In most music we make semitones by dividing the octave into 12 equal parts, which is known as equal temperament.",
+      example: "use_tuning :just, :c",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_tuning: {
+      signature: "with_tuning(tuning: symbol, fundamental_note: symbol_or_number)",
+      description: "Similar to use_tuning except only applies to code within supplied `do`/`end` block.",
+      example: "with_tuning :just, :c do",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_transpose: {
+      signature: "current_transpose",
+      description: "Returns the current transpose value.",
+      example: "puts current_transpose",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_cent_tuning: {
+      signature: "current_cent_tuning",
+      description: "Returns the cent shift value.",
+      example: "puts current_cent_tuning",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_octave: {
+      signature: "current_octave",
+      description: "Returns the octave shift value.",
+      example: "puts current_octave",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    note: {
+      signature: "note(note: symbol_or_number)",
+      description: "Takes a midi note, a symbol (e.",
+      example: "puts note(60)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    note_range: {
+      signature: "note_range(start_note: note, end_note: note)",
+      description: "Produces a ring of all the notes between a start note and an end note.",
+      example: "(note_range :c4, :c5)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    note_info: {
+      signature: "note_info(note: symbol_or_number)",
+      description: "Returns an instance of `SonicPi::Note`.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    degree: {
+      signature: "degree(degree: symbol_or_number, tonic: symbol, scale: symbol)",
+      description: "For a given scale and tonic it takes a symbol/string/number and resolves it to a midi note.",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    scale: {
+      signature: "scale(tonic: symbol, name: symbol)",
+      description: "Creates a ring of MIDI note numbers when given a tonic note and a scale name.",
+      example: "puts (scale :C, :major)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord_degree: {
+      signature: "chord_degree(degree: symbol_or_number, tonic: symbol, scale: symbol, number_of_notes: number)",
+      description: "In music we build chords from scales.",
+      example: "puts (chord_degree :i, :A3, :major)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord: {
+      signature: "chord(tonic: symbol, name: symbol)",
+      description: "Creates an immutable ring of Midi note numbers when given a tonic note and a chord type.",
+      example: "puts (chord :e, :minor)",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord_invert: {
+      signature: "chord_invert(notes: list, shift: number)",
+      description: "Given a set of notes, apply a number of inversions indicated by the `shift` parameter.",
+      example: 'play (chord_invert (chord :A3, "M"), 0)',
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    scale_names: {
+      signature: "scale_names",
+      description: "Returns a ring containing all scale names known to Sonic Pi",
+      example: "puts scale_names",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    chord_names: {
+      signature: "chord_names",
+      description: "Returns a ring containing all chord names known to Sonic Pi",
+      example: "puts chord_names",
+      kind: "function",
+      category: "western_theory",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_midi_logging: {
+      signature: "use_midi_logging(true_or_false: boolean)",
+      description: "Enable or disable log messages created on MIDI functions.",
+      example: "use_midi_logging true",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_midi_logging: {
+      signature: "with_midi_logging(true_or_false: boolean)",
+      description: "Similar to use_midi_logging except only applies to code within supplied `do`/`end` block.",
+      example: "with_midi_logging false do",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_midi_defaults: {
+      signature: "use_midi_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `midi_*` fns.",
+      example: 'use_midi_defaults channel: 3, port: "foo"',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_midi_defaults: {
+      signature: "with_midi_defaults",
+      description: "Specify new default values to be used by all calls to `midi_*` fns within the `do`/`end` block.",
+      example: 'with_midi_defaults channel: 3, port: "foo" do',
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    use_merged_midi_defaults: {
+      signature: "use_merged_midi_defaults",
+      description: "Specify new default values to be used by all subsequent calls to `midi_*` fns.",
+      example: "use_merged_midi_defaults channel: 1",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    with_merged_midi_defaults: {
+      signature: "with_merged_midi_defaults",
+      description: "Specify opt values to be used by any following call to the `midi_*` fns within the specified `do`/`end` block.",
+      example: "with_merged_midi_defaults channel: 1 do",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    current_midi_defaults: {
+      signature: "current_midi_defaults",
+      description: "Returns the current MIDI defaults.",
+      example: "current_midi_defaults",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_note_on: {
+      signature: "midi_note_on(note: midi, velocity: midi)",
+      description: "Sends a MIDI Note On Event to *all* connected devices on *all* channels.",
+      example: "midi_note_on :e3",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_note_off: {
+      signature: "midi_note_off(note: midi, release_velocity: midi)",
+      description: "Sends the MIDI note off message to *all* connected devices on *all* channels.",
+      example: "midi_note_off :e3",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_poly_pressure: {
+      signature: "midi_poly_pressure(note: midi, value: midi)",
+      description: "Sends a MIDI polyphonic key pressure message to *all* connected devices on *all* channels.",
+      example: "midi_poly_pressure 100, 32",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_cc: {
+      signature: "midi_cc(control_num: midi, value: midi)",
+      description: "Sends a MIDI control change message to *all* connected devices on *all* channels.",
+      example: "midi_cc 100, 32",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_channel_pressure: {
+      signature: "midi_channel_pressure(val: midi)",
+      description: "Sends a MIDI channel pressure (aftertouch) message to *all* connected devices on *all* channels.",
+      example: "midi_channel_pressure 50",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_pitch_bend: {
+      signature: "midi_pitch_bend(delta: float01)",
+      description: "Sends a MIDI pitch bend message to *all* connected devices on *all* channels.",
+      example: "midi_pitch_bend 0",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_pc: {
+      signature: "midi_pc(program_num: midi)",
+      description: "Sends a MIDI program change message to *all* connected devices on *all* channels.",
+      example: "midi_pc 100",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_raw: {
+      signature: "midi_raw",
+      description: "Send raw MIDI message",
+      example: "midi_raw 176, 121, 0",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_sysex: {
+      signature: "midi_sysex",
+      description: "Sends the MIDI SysEx message to *all* connected MIDI devices.",
+      example: "midi_sysex 0xf0, 0x00, 0x20, 0x6b, 0x7f, 0x42, 0x02, 0x00, 0x10, 0x77, 0x11, 0xf7",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_sound_off: {
+      signature: "midi_sound_off",
+      description: "Sends a MIDI sound off message to *all* connected devices on *all* channels.",
+      example: "midi_sound_off",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_reset: {
+      signature: "midi_reset(value: number)",
+      description: "Sends a MIDI reset all controllers message to *all* connected devices on *all* channels.",
+      example: "midi_reset",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_local_control_off: {
+      signature: "midi_local_control_off",
+      description: "Sends a MIDI local control off message to *all* connected devices on *all* channels.",
+      example: "midi_local_control_off",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_local_control_on: {
+      signature: "midi_local_control_on",
+      description: "Sends a MIDI local control on message to *all* connected devices on *all* channels.",
+      example: "midi_local_control_on",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_mode: {
+      signature: "midi_mode(mode: mode_keyword)",
+      description: "Sends the Omni/Mono/Poly MIDI mode message to *all* connected MIDI devices on *all* channels.",
+      example: "midi_mode :omni_on",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_all_notes_off: {
+      signature: "midi_all_notes_off",
+      description: "Sends a MIDI all notes off message to *all* connected MIDI devices.",
+      example: "midi_all_notes_off",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_clock_tick: {
+      signature: "midi_clock_tick",
+      description: "Sends a MIDI clock tick message to *all* connected devices on *all* channels.",
+      example: "midi_clock_tick",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_start: {
+      signature: "midi_start",
+      description: "Sends the MIDI start system message to *all* connected MIDI devices on *all* ports.",
+      example: "midi_start",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_stop: {
+      signature: "midi_stop",
+      description: "Sends the MIDI stop system message to *all* connected MIDI devices on *all* ports.",
+      example: "midi_stop",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_continue: {
+      signature: "midi_continue",
+      description: "Sends the MIDI continue system message to *all* connected MIDI devices on *all* ports.",
+      example: "midi_continue",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi_clock_beat: {
+      signature: "midi_clock_beat(duration: beats)",
+      description: "Sends enough MIDI clock ticks for one beat to *all* connected MIDI devices.",
+      example: "midi_clock_beat",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    midi: {
+      signature: "midi(note: number)",
+      description: "Sends a MIDI note on event to *all* connected MIDI devices and *all* channels and then after sustain beats sends a MIDI note off event.",
+      example: "midi :e1, sustain: 0.3, vel_f: 0.5, channel: 3",
+      kind: "function",
+      category: "midi",
+      sourceUrl: "https://sonic-pi.net/tutorial.html"
+    },
+    dull_bell: {
+      signature: ":dull_bell",
+      description: "A simple dull discordant bell sound.",
+      example: "synth :dull_bell, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pretty_bell: {
+      signature: ":pretty_bell",
+      description: "A pretty bell sound. Works well with short attacks and long decays.",
+      example: "synth :pretty_bell, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    beep: {
+      signature: ":beep",
+      description: "A simple pure sine wave. The sine wave is the simplest, purest sound there is and is the fundamental building block of all noise. The mathematician Fourier demonstrated that any sound could be built out of a number of sine waves (the more complex the sound, the more sine waves ne",
+      example: "synth :beep, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    sine: {
+      signature: ":sine",
+      description: "A simple pure sine wave. The sine wave is the simplest, purest sound there is and is the fundamental building block of all noise. The mathematician Fourier demonstrated that any sound could be built out of a number of sine waves (the more complex the sound, the more sine waves ne",
+      example: "synth :sine, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    saw: {
+      signature: ":saw",
+      description: "A saw wave with a low pass filter. Great for using with FX such as the built in low pass filter (available via the cutoff arg) due to the complexity and thickness of the sound.",
+      example: "synth :saw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pulse: {
+      signature: ":pulse",
+      description: "A simple pulse wave with a low pass filter. This defaults to a square wave, but the timbre can be changed dramatically by adjusting the pulse_width arg between 0 and 1. The pulse wave is thick and heavy with lower notes and is a great ingredient for bass sounds.",
+      example: "synth :pulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    subpulse: {
+      signature: ":subpulse",
+      description: "A pulse wave with a sub sine wave passed through a low pass filter. The pulse wave is thick and heavy with lower notes and is a great ingredient for bass sounds - especially with the sub wave.",
+      example: "synth :subpulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    square: {
+      signature: ":square",
+      description: "A simple square wave with a low pass filter. The square wave is thick and heavy with lower notes and is a great ingredient for bass sounds. If you wish to modulate the width of the square wave see the synth pulse.",
+      example: "synth :square, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    tri: {
+      signature: ":tri",
+      description: "A simple triangle wave with a low pass filter.",
+      example: "synth :tri, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dsaw: {
+      signature: ":dsaw",
+      description: "A pair of detuned saw waves passed through a low pass filter. Two saw waves with slightly different frequencies generates a nice thick sound which is the basis for a lot of famous synth sounds. Thicken the sound by increasing the detune value, or create an octave-playing synth by",
+      example: "synth :dsaw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dpulse: {
+      signature: ":dpulse",
+      description: "A pair of detuned pulse waves passed through a low pass filter. Two pulse waves with slightly different frequencies generates a nice thick sound which can be used as a basis for some nice bass sounds. Thicken the sound by increasing the detune value, or create an octave-playing s",
+      example: "synth :dpulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dtri: {
+      signature: ":dtri",
+      description: "A pair of detuned triangle waves passed through a low pass filter. Two pulse waves with slightly different frequencies generates a nice thick sound which can be used as a basis for some nice bass sounds. Thicken the sound by increasing the detune value, or create an octave-playin",
+      example: "synth :dtri, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    fm: {
+      signature: ":fm",
+      description: "A sine wave with a fundamental frequency which is modulated at audio rate by another sine wave with a specific modulation, division and depth. Useful for generating a wide range of sounds by playing with the divisor and depth params. Great for deep powerful bass and crazy 70s sci",
+      example: "synth :fm, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_fm: {
+      signature: ":mod_fm",
+      description: "The FM synth modulating between two notes - the duration of the modulation can be modified using the mod_phase arg, the range (number of notes jumped between) by the mod_range arg and the width of the jumps by the mod_width param. The FM synth is a sine wave with a fundamental fr",
+      example: "synth :mod_fm, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_saw: {
+      signature: ":mod_saw",
+      description: "A saw wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_saw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_dsaw: {
+      signature: ":mod_dsaw",
+      description: "A pair of detuned saw waves (see the dsaw synth) which are modulated between two fixed notes at a given rate.",
+      example: "synth :mod_dsaw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_sine: {
+      signature: ":mod_sine",
+      description: "A sine wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_sine, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_beep: {
+      signature: ":mod_beep",
+      description: "A sine wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_beep, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_tri: {
+      signature: ":mod_tri",
+      description: "A triangle wave passed through a low pass filter which modulates between two separate notes via a variety of control waves.",
+      example: "synth :mod_tri, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mod_pulse: {
+      signature: ":mod_pulse",
+      description: "A pulse wave with a low pass filter modulating between two notes via a variety of control waves (see mod_wave: arg). The pulse wave defaults to a square wave, but the timbre can be changed dramatically by adjusting the pulse_width arg between 0 and 1.",
+      example: "synth :mod_pulse, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    tb303: {
+      signature: ":tb303",
+      description: "Emulation of the classic Roland TB-303 Bass Line synthesiser. Overdrive the res (i.e. use very large values) for that classic late 80s acid sound.",
+      example: "synth :tb303, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    supersaw: {
+      signature: ":supersaw",
+      description: "Thick swirly saw waves sparkling and moving about to create a rich trancy sound.",
+      example: "synth :supersaw, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    hoover: {
+      signature: ":hoover",
+      description: "Classic early 90's rave synth - 'a sort of slurry chorussy synth line like the classic Dominator by Human Resource'. Based on Dan Stowell's implementation in SuperCollider and Daniel Turczanski's port to Overtone. Works really well with portamento (see docs for the 'control' meth",
+      example: "synth :hoover, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    prophet: {
+      signature: ":prophet",
+      description: "Dark and swirly, this synth uses Pulse Width Modulation (PWM) to create a timbre which continually moves around. This effect is created using the pulse ugen which produces a variable width square wave. We then control the width of the pulses using a variety of LFOs - sin-osc and ",
+      example: "synth :prophet, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    zawa: {
+      signature: ":zawa",
+      description: "Saw wave with oscillating timbre. Produces moving saw waves with a unique character controllable with the control oscillator (usage similar to mod synths).",
+      example: "synth :zawa, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    dark_ambience: {
+      signature: ":dark_ambience",
+      description: "A slow rolling bass with a sparkle of light trying to escape the darkness. Great for an ambient sound.",
+      example: "synth :dark_ambience, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    growl: {
+      signature: ":growl",
+      description: "A deep rumbling growl with a bright sine shining through at higher notes.",
+      example: "synth :growl, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    hollow: {
+      signature: ":hollow",
+      description: "A hollow breathy sound constructed from random noise",
+      example: "synth :hollow, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    mono_player: {
+      signature: ":mono_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :mono_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    stereo_player: {
+      signature: ":stereo_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :stereo_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    blade: {
+      signature: ":blade",
+      description: "Straight from the 70s, evoking the mists of Blade Runner, this simple electro-style string synth is based on filtered saw waves and a variable vibrato.",
+      example: "synth :blade, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    piano: {
+      signature: ":piano",
+      description: "A basic piano synthesiser. Note that due to the plucked nature of this synth the envelope opts such as `attack:`, `sustain:` and `release:` do not work as expected. They can only shorten the natural length of the note, not prolong it. Also, the `note:` opt will only honour whole ",
+      example: "synth :piano, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pluck: {
+      signature: ":pluck",
+      description: "A basic plucked string synthesiser that uses Karplus-Strong synthesis. Note that due to the plucked nature of this synth the envelope opts such as `attack:`, `sustain:` and `release:` do not work as expected. They can only shorten the natural length of the note, not prolong it. A",
+      example: "synth :pluck, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    sound_in: {
+      signature: ":sound_in",
+      description: "Please write documentation!",
+      example: "synth :sound_in, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    noise: {
+      signature: ":noise",
+      description: "Noise that contains equal amounts of energy at every frequency - comparable to radio static. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :noise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    pnoise: {
+      signature: ":pnoise",
+      description: "Noise whose spectrum falls off in power by 3 dB per octave. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :pnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    bnoise: {
+      signature: ":bnoise",
+      description: "Noise whose spectrum falls off in power by 6 dB per octave. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :bnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    gnoise: {
+      signature: ":gnoise",
+      description: "Generates noise which results from flipping random bits in a word. The spectrum is emphasised towards lower frequencies. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :gnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    cnoise: {
+      signature: ":cnoise",
+      description: "Generates noise whose values are either -1 or 1. This produces the maximum energy for the least peak to peak amplitude. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects.",
+      example: "synth :cnoise, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    basic_mono_player: {
+      signature: ":basic_mono_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :basic_mono_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    basic_stereo_player: {
+      signature: ":basic_stereo_player",
+      description: "### Opts: * amp: - doc: The amplitude of the sound. Typically a value between 0 and 1. Higher amplitudes may be used, but won't make the sound louder, they will just reduce the quality of all the sounds currently being played (due to compression.) - default: 1 - constraints: must",
+      example: "synth :basic_stereo_player, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    basic_mixer: {
+      signature: ":basic_mixer",
+      description: "Please write documentation!",
+      example: "synth :basic_mixer, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    main_mixer: {
+      signature: ":main_mixer",
+      description: "Please write documentation!",
+      example: "synth :main_mixer, note: :c4",
+      kind: "synth",
+      category: "synth",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-6.1"
+    },
+    bitcrusher: {
+      signature: ":bitcrusher",
+      description: "Creates lo-fi output by decimating and deconstructing the incoming audio by lowering both the sample rate and bit depth. The default sample rate for CD audio is 44100, so use values less than that for that crunchy chip-tune sound full of artefacts and bitty distortion. Similarly,",
+      example: "with_fx :bitcrusher do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    krush: {
+      signature: ":krush",
+      description: "Krush that sound!",
+      example: "with_fx :krush do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    reverb: {
+      signature: ":reverb",
+      description: "Make the incoming signal sound more spacious or distant as if it were played in a large room or cave. Signal may also be dampened by reducing the amplitude of the higher frequencies.",
+      example: "with_fx :reverb do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    gverb: {
+      signature: ":gverb",
+      description: "Make the incoming signal sound more spacious or distant as if it were played in a large room or cave. Similar to reverb but with a more spacious feel.",
+      example: "with_fx :gverb do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    level: {
+      signature: ":level",
+      description: "Amplitude modifier. All FX have their own amp built in, so it may be the case that you don't specifically need an isolated amp FX. However, it is useful to be able to control the overall amplitude of a number of running synths. All sounds created in the FX block will have their a",
+      example: "with_fx :level do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    echo: {
+      signature: ":echo",
+      description: "Standard echo with variable phase duration (time between echoes) and decay (length of echo fade out). If you wish to have a phase duration longer than 2s, you need to specify the longest phase duration you'd like with the arg max_phase. Be warned, echo FX with very long phases ca",
+      example: "with_fx :echo do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    slicer: {
+      signature: ":slicer",
+      description: "Modulates the amplitude of the input signal with a specific control wave and phase duration. With the default pulse wave, slices the signal in and out, with the triangle wave, fades the signal in and out and with the saw wave, phases the signal in and then dramatically out. Contr",
+      example: "with_fx :slicer do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    panslicer: {
+      signature: ":panslicer",
+      description: "Slice the pan automatically from left to right. Behaves similarly to slicer and wobble FX but modifies stereo panning of sound in left and right speakers. Default slice wave form is square (hard slicing between left and right) however other wave forms can be set with the `wave:` ",
+      example: "with_fx :panslicer do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    wobble: {
+      signature: ":wobble",
+      description: "Versatile wobble FX. Will repeatedly modulate a range of filters (rlpf, rhpf) between two cutoff values using a range of control wave forms (saw, pulse, tri, sine). You may alter the phase duration of the wobble, and the resonance of the filter. Combines well with the dsaw synth ",
+      example: "with_fx :wobble do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    ixi_techno: {
+      signature: ":ixi_techno",
+      description: "Moving resonant low pass filter between min and max cutoffs. Great for sweeping effects across long synths or samples.",
+      example: "with_fx :ixi_techno do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    compressor: {
+      signature: ":compressor",
+      description: "Compresses the dynamic range of the incoming signal. Equivalent to automatically turning the amp down when the signal gets too loud and then back up again when it's quiet. Useful for ensuring the containing signal doesn't overwhelm other aspects of the sound. Also a general purpo",
+      example: "with_fx :compressor do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    whammy: {
+      signature: ":whammy",
+      description: "A cheap sounding transposition effect, with a slightly robotic edge. Good for adding alien sounds and harmonies to everything from beeps to guitar samples. It's similar to pitch shift although not as smooth sounding.",
+      example: "with_fx :whammy do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    rlpf: {
+      signature: ":rlpf",
+      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). The resonant part of the resonant low pass filter emphasises/resonates the frequencies around th",
+      example: "with_fx :rlpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nrlpf: {
+      signature: ":nrlpf",
+      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). The resonant part of the resonant low pass filter emphasises/resonates the frequencies around th",
+      example: "with_fx :nrlpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    rhpf: {
+      signature: ":rhpf",
+      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). The resonant part of the resonant high pass filter emphasises/resonates the frequencies around the c",
+      example: "with_fx :rhpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nrhpf: {
+      signature: ":nrhpf",
+      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). The resonant part of the resonant high pass filter emphasises/resonates the frequencies around the c",
+      example: "with_fx :nrhpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    hpf: {
+      signature: ":hpf",
+      description: "Dampens the parts of the signal that are lower than the cutoff point (typically the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make the sound more light ",
+      example: "with_fx :hpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nhpf: {
+      signature: ":nhpf",
+      description: "A high pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard high pass filter and then normalised to ensure the amplitude of the final output is constant. A high pass filter will reduce the amplitude of the resulting signal (as some of the so",
+      example: "with_fx :nhpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    lpf: {
+      signature: ":lpf",
+      description: "Dampens the parts of the signal that are higher than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typically the bass/mid of the sound). Choose a higher cutoff to keep more of the high frequences/treble of the sound and a lower cutof",
+      example: "with_fx :lpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nlpf: {
+      signature: ":nlpf",
+      description: "A low pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard low pass filter and then normalised to ensure the amplitude of the final output is constant. A low pass filter will reduce the amplitude of the resulting signal (as some of the sound",
+      example: "with_fx :nlpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    normaliser: {
+      signature: ":normaliser",
+      description: "Raise or lower amplitude of sound to a specified level. Evens out the amplitude of incoming sound across the frequency spectrum by flattening all dynamics.",
+      example: "with_fx :normaliser do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    distortion: {
+      signature: ":distortion",
+      description: "Distorts the signal reducing clarity in favour of raw crunchy noise.",
+      example: "with_fx :distortion do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    pan: {
+      signature: ":pan",
+      description: "Specify where in the stereo field the sound should be heard. A value of -1 for pan will put the sound in the left speaker, a value of 1 will put the sound in the right speaker and values in between will shift the sound accordingly.",
+      example: "with_fx :pan do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    bpf: {
+      signature: ":bpf",
+      description: "Combines low pass and high pass filters to only allow a 'band' of frequencies through. If the band is very narrow (a low res value like 0.0001) then the BPF will reduce the original sound, almost down to a single frequency (controlled by the centre opt). With higher values for re",
+      example: "with_fx :bpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nbpf: {
+      signature: ":nbpf",
+      description: "Like the Band Pass Filter but normalised. The normaliser is useful here as some volume is lost when filtering the original signal.",
+      example: "with_fx :nbpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    rbpf: {
+      signature: ":rbpf",
+      description: "Like the Band Pass Filter but with a resonance (slight volume boost) around the target frequency. This can produce an interesting whistling effect, especially when used with larger values for the res opt.",
+      example: "with_fx :rbpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    nrbpf: {
+      signature: ":nrbpf",
+      description: "Like the Band Pass Filter but normalised, with a resonance (slight volume boost) around the target frequency. This can produce an interesting whistling effect, especially when used with larger values for the res opt. The normaliser is useful here as some volume is lost when filte",
+      example: "with_fx :nrbpf do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    band_eq: {
+      signature: ":band_eq",
+      description: "Attenuate or Boost a frequency band",
+      example: "with_fx :band_eq do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    tanh: {
+      signature: ":tanh",
+      description: "Please write documentation!",
+      example: "with_fx :tanh do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    pitch_shift: {
+      signature: ":pitch_shift",
+      description: "Changes the pitch of a signal without affecting tempo. Does this mainly through the pitch parameter which takes a midi number to transpose by. You can also play with the other params to produce some interesting textures and sounds.",
+      example: "with_fx :pitch_shift do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    ring_mod: {
+      signature: ":ring_mod",
+      description: "Attack of the Daleks! Ring mod is a classic effect often used on soundtracks to evoke robots or aliens as it sounds hollow or metallic. We take a 'carrier' signal (a sine wave controlled by the freq opt) and modulate its amplitude using the signal given inside the fx block. This ",
+      example: "with_fx :ring_mod do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    octaver: {
+      signature: ":octaver",
+      description: "This effect adds three pitches based on the input sound. The first is the original sound transposed up an octave (super_amp), the second is the original sound transposed down an octave (sub_amp) and the third is the original sound transposed down two octaves (subsub_amp). The way",
+      example: "with_fx :octaver do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    vowel: {
+      signature: ":vowel",
+      description: "This effect filters the input to match a human voice singing a certain vowel sound. Human singing voice sounds are easily achieved with a source of a saw wave with a little vibrato.",
+      example: "with_fx :vowel do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    },
+    flanger: {
+      signature: ":flanger",
+      description: "Mix the incoming signal with a copy of itself which has a rate modulating faster and slower than the original. Creates a swirling/whooshing effect.",
+      example: "with_fx :flanger do\n  play :c4\nend",
+      kind: "fx",
+      category: "fx",
+      sourceUrl: "https://sonic-pi.net/tutorial.html#section-7"
+    }
+  },
+  meta: {
+    fetchedAt: "2026-04-18",
+    source: "https://raw.githubusercontent.com/sonic-pi-net/sonic-pi/stable"
+  }
+};
+
+// src/monaco/docs/sonicpi.ts
+validateDocsIndex("sonicpi.json", sonicpi_default);
+var SONICPI_DOCS_INDEX = sonicpi_default;
+function registerSonicPiProviders(monaco) {
+  return registerRuntimeProviders(monaco, SONICPI_DOCS_INDEX, {
+    hover: true,
+    dotCompletion: false,
+    identifierCompletion: true
+  });
+}
+__name(registerSonicPiProviders, "registerSonicPiProviders");
+
+// src/monaco/strudelDocs.ts
+var STRUDEL_DOCS = {
+  note: {
+    signature: "note(pattern: string)",
+    description: "Play notes from a mini-notation pattern. Accepts note names (c4, eb3) or MIDI numbers.",
+    example: 'note("c4 e4 g4 b4")'
+  },
+  s: {
+    signature: "s(pattern: string)",
+    description: "Select a sound or synth. Accepts sample names or synth identifiers.",
+    example: 's("bd sd hh sd")'
+  },
+  stack: {
+    signature: "stack(...patterns)",
+    description: "Play multiple patterns simultaneously (vertical stack).",
+    example: 'stack(note("c3 e3"), s("bd sd"))'
+  },
+  cat: {
+    signature: "cat(...patterns)",
+    description: "Concatenate patterns sequentially \u2014 each plays for one cycle then moves to the next.",
+    example: 'cat(note("c4 e4"), note("g4 b4"))'
+  },
+  fast: {
+    signature: ".fast(n)",
+    description: "Speed up the pattern by factor n.",
+    example: 'note("c4 e4").fast(2)'
+  },
+  slow: {
+    signature: ".slow(n)",
+    description: "Slow down the pattern by factor n.",
+    example: 'note("c4 e4 g4").slow(2)'
+  },
+  rev: {
+    signature: ".rev()",
+    description: "Reverse the pattern.",
+    example: 'note("c4 d4 e4 f4").rev()'
+  },
+  every: {
+    signature: ".every(n, fn)",
+    description: "Apply fn to the pattern every n cycles.",
+    example: 'note("c4 e4 g4").every(4, x => x.rev())',
+    commonMistakes: [
+      {
+        // Calling `every(n, fn)` as a free function instead of chaining
+        // it on a Pattern. The Strudel autoplay path then dereferences
+        // `.p` on the partial application to get a Pattern, surfacing
+        // as `every(...).p is not a function`. The plainer
+        // `every is not a function` shape fires when `every` is
+        // shadowed; both are caught by the same loose-matched word.
+        detect: { kind: "message", match: /\bevery\b[^\n]*\bis not a function\b/ },
+        hint: "`.every(n, fn)` is a method on a Pattern \u2014 chain it after `note(...)` or `s(...)`.",
+        weight: 2
+      }
+    ]
+  },
+  sometimes: {
+    signature: ".sometimes(fn)",
+    description: "Apply fn to events 50% of the time at random.",
+    example: 'note("c4 e4 g4").sometimes(x => x.fast(2))'
+  },
+  degradeBy: {
+    signature: ".degradeBy(amount)",
+    description: "Randomly remove events. amount is 0\u20131 (0 = keep all, 1 = remove all).",
+    example: 'note("c4 d4 e4 f4").degradeBy(0.3)'
+  },
+  gain: {
+    signature: ".gain(amount)",
+    description: "Set the volume. 1 is unity gain; values above 1 amplify.",
+    example: 'note("c4 e4").gain(0.7)'
+  },
+  pan: {
+    signature: ".pan(value)",
+    description: "Set stereo panning. -1 is hard left, 0 is center, 1 is hard right.",
+    example: 'note("c4 e4 g4").pan(sine)'
+  },
+  room: {
+    signature: ".room(amount)",
+    description: "Add reverb. 0 is dry, 1 is fully wet.",
+    example: 'note("c4 e4").room(0.4)'
+  },
+  delay: {
+    signature: ".delay(amount)",
+    description: "Add delay/echo effect.",
+    example: 'note("c4 e4").delay(0.3)'
+  },
+  jux: {
+    signature: ".jux(fn)",
+    description: "Apply fn to a copy of the pattern playing in the right channel, original in left.",
+    example: 'note("c4 e4 g4").jux(rev)'
+  },
+  off: {
+    signature: ".off(timeOffset, fn)",
+    description: "Play an offset copy of the pattern with fn applied, layered over the original.",
+    example: 'note("c4 e4 g4").off(0.25, x => x.gain(0.5))'
+  },
+  layer: {
+    signature: ".layer(...fns)",
+    description: "Apply multiple functions to copies of the pattern and stack all results.",
+    example: 'note("c4 e4 g4").layer(x => x.fast(2), rev)'
+  },
+  struct: {
+    signature: ".struct(pattern)",
+    description: "Impose a rhythmic structure on the pattern from a boolean/euclid pattern.",
+    example: 'note("c4").struct("t f t t f t t f")'
+  },
+  mask: {
+    signature: ".mask(pattern)",
+    description: "Filter events by a boolean pattern \u2014 only play where the mask is true.",
+    example: 'note("c4 d4 e4 f4").mask("t t f t")'
+  },
+  euclid: {
+    signature: ".euclid(steps, total)",
+    description: "Euclidean rhythm: distribute steps evenly across total slots.",
+    example: 's("bd").euclid(3, 8)'
+  },
+  iter: {
+    signature: ".iter(n)",
+    description: "Iterate through n rotations of the pattern over n cycles.",
+    example: 'note("c4 d4 e4 f4").iter(4)'
+  },
+  chunk: {
+    signature: ".chunk(n, fn)",
+    description: "Divide pattern into n chunks, applying fn to one chunk per cycle in rotation.",
+    example: 'note("c4 d4 e4 f4").chunk(4, x => x.fast(2))'
+  },
+  cutoff: {
+    signature: ".cutoff(freq)",
+    description: "Low-pass filter cutoff frequency in Hz.",
+    example: 'note("c4 e4").s("sawtooth").cutoff(800)'
+  },
+  resonance: {
+    signature: ".resonance(amount)",
+    description: "Filter resonance (Q). Higher values create a more pronounced peak.",
+    example: 'note("c4 e4").s("sawtooth").cutoff(sine.range(200,2000)).resonance(8)'
+  },
+  hpf: {
+    signature: ".hpf(freq)",
+    description: "High-pass filter \u2014 removes frequencies below the cutoff.",
+    example: 's("amen").hpf(400)'
+  },
+  lpf: {
+    signature: ".lpf(freq)",
+    description: "Low-pass filter \u2014 alias for cutoff.",
+    example: 'note("c4 e4").lpf(1200)'
+  },
+  release: {
+    signature: ".release(seconds)",
+    description: "Envelope release time in seconds.",
+    example: 'note("c4 e4 g4").release(0.5)'
+  },
+  sustain: {
+    signature: ".sustain(seconds)",
+    description: "Envelope sustain duration in seconds.",
+    example: 'note("c4").sustain(0.1).release(0.3)'
+  },
+  speed: {
+    signature: ".speed(rate)",
+    description: "Sample playback rate. 1 is normal, 2 is double speed (up one octave), -1 is reversed.",
+    example: 's("amen").speed(0.5)'
+  },
+  vowel: {
+    signature: ".vowel(v)",
+    description: 'Vowel formant filter. Accepts "a", "e", "i", "o", "u".',
+    example: 'note("c4 d4 e4").vowel("<a e i o>")'
+  },
+  orbit: {
+    signature: ".orbit(n)",
+    description: "Route to audio effect bus n. Patterns on the same orbit share effects.",
+    example: 'note("c4 e4").room(0.5).orbit(1)'
+  }
+};
+var STRUDEL_DOCS_INDEX = {
+  runtime: "strudel",
+  docs: STRUDEL_DOCS,
+  // Catch-all friendly-error hints that aren't tied to a single symbol.
+  // The two cases below are the highest-frequency Strudel papercut:
+  // bare note / drum names outside a string. JS evaluates them as
+  // identifiers and throws ReferenceError — without these hints the
+  // user sees "c4 is not defined" with a Levenshtein neighbour
+  // ("cat"?) that doesn't help.
+  globalMistakes: [
+    {
+      detect: {
+        kind: "message",
+        // Note names: c, d, e, f, g, a, b — optional sharp/flat,
+        // optional octave digit. Anchored to start so we don't match
+        // mid-message references.
+        match: /^[a-g][s#b]?\d? is not defined$/i
+      },
+      hint: 'Looks like a note name \u2014 wrap it in a string: `note("c4")`.',
+      example: 'note("c4 e4 g4")'
+    },
+    {
+      detect: {
+        kind: "message",
+        // Drum / sample shorthands. Curated list; expand as we
+        // observe new ones in the wild.
+        match: /^(bd|sd|hh|oh|cp|cb|rim|tom|cy|kick|snare|hat|clap|crash|ride) is not defined$/i
+      },
+      hint: 'Looks like a drum name \u2014 wrap it in a string: `s("bd")`.',
+      example: 's("bd sd hh sd")'
+    }
+  ],
+  meta: {
+    source: "hand-curated",
+    // Strudel's jsdoc isn't published with per-function permalinks, so
+    // hovers fall back to the main function reference page — the user
+    // lands inside the searchable function browser.
+    docsBaseUrl: "https://strudel.cc/functions/"
+  }
+};
+function registerStrudelHover(monaco) {
+  return createHoverProvider(monaco, STRUDEL_DOCS_INDEX);
+}
+__name(registerStrudelHover, "registerStrudelHover");
+
+// src/monaco/docs/tokenizer-utils.ts
+function buildIdentifierAlternation(index, opts = {}) {
+  const { includeKinds, excludeKinds, filter: filter2, extra = [] } = opts;
+  const names = /* @__PURE__ */ new Set();
+  for (const [name, doc] of Object.entries(index.docs)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
+    if (includeKinds && (!doc.kind || !includeKinds.includes(doc.kind))) continue;
+    if (excludeKinds && doc.kind && excludeKinds.includes(doc.kind)) continue;
+    if (filter2 && !filter2(name, doc)) continue;
+    names.add(name);
+  }
+  for (const n of extra) if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) names.add(n);
+  return [...names].sort((a, b) => b.length - a.length || a.localeCompare(b)).map(escapeForRegex).join("|");
+}
+__name(buildIdentifierAlternation, "buildIdentifierAlternation");
+function escapeForRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+__name(escapeForRegex, "escapeForRegex");
+function keywordRule(alternation, token) {
+  if (!alternation) return [];
+  return [[new RegExp(`\\b(${alternation})\\b`), token]];
+}
+__name(keywordRule, "keywordRule");
+function methodRule(alternation, token) {
+  if (!alternation) return [];
+  return [[new RegExp(`\\.(${alternation})\\b`), token]];
+}
+__name(methodRule, "methodRule");
+
+// src/monaco/language.ts
+function registerSonicPiLanguage(monaco) {
+  const langs = monaco.languages.getLanguages();
+  if (langs.some((l) => l.id === "sonicpi")) return;
+  monaco.languages.register({ id: "sonicpi" });
+  const MUSIC_HELPER_NAMES = /* @__PURE__ */ new Set([
+    "choose",
+    "rrand",
+    "rrand_i",
+    "rand",
+    "rand_i",
+    "dice",
+    "one_in",
+    "ring",
+    "knit",
+    "range",
+    "line",
+    "spread",
+    "tick",
+    "look",
+    "shuffle",
+    "sort_by",
+    "reflect",
+    "stretch",
+    "repeat",
+    "mirror"
+  ]);
+  const musicFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
+    excludeKinds: ["synth", "fx", "sample"],
+    filter: /* @__PURE__ */ __name((name, doc) => doc.category === "western_theory" || doc.category === "maths" || MUSIC_HELPER_NAMES.has(name), "filter")
+  });
+  const dslFns = buildIdentifierAlternation(SONICPI_DOCS_INDEX, {
+    excludeKinds: ["synth", "fx", "sample"],
+    filter: /* @__PURE__ */ __name((name, doc) => doc.category !== "western_theory" && doc.category !== "maths" && !MUSIC_HELPER_NAMES.has(name), "filter"),
+    extra: ["puts", "print"]
+  });
+  monaco.languages.setMonarchTokensProvider("sonicpi", {
+    defaultToken: "",
+    tokenPostfix: ".sonicpi",
+    keywords: [
+      "do",
+      "end",
+      "if",
+      "else",
+      "elsif",
+      "unless",
+      "loop",
+      "while",
+      "until",
+      "for",
+      "in",
+      "begin",
+      "rescue",
+      "ensure",
+      "true",
+      "false",
+      "nil",
+      "and",
+      "or",
+      "not"
+    ],
+    tokenizer: {
+      root: [
+        // Ruby comment
+        [/#.*$/, "comment"],
+        // Ruby symbols :name
+        [/:\w+/, "sonicpi.symbol"],
+        // Keyword args (release:, amp:, rate:) — BEFORE the fn rule so
+        // `amp:` doesn't get classified as the `amp` function.
+        [/\b[a-z_]\w*:/, "sonicpi.kwarg"],
+        // Keywords first — `end` / `do` would otherwise match the function
+        // list (Sonic Pi has many fns named alike, but these are lexical).
+        [/\b(do|end|if|else|elsif|unless|loop|while|until|for|in|true|false|nil|and|or|not|begin|rescue|ensure|return|yield|then|when|case|break|next|redo|retry|module|class|def|lambda|proc|self)\b/, "keyword"],
+        // Music helpers (mathy / pitch / randomness) — pink-tinted class.
+        [new RegExp(`\\b(${musicFns})\\b`), "sonicpi.music"],
+        // DSL / sound / MIDI functions — blue-tinted class.
+        [new RegExp(`\\b(${dslFns})\\b`), "sonicpi.function"],
+        // Note names: c3, eb4, f#2
+        [/\b[a-gA-G][bs#]?\d\b/, "sonicpi.note"],
+        // Identifier fallthrough — user variables, iterator names, etc.
+        [/[a-zA-Z_][\w]*/, "identifier"],
+        // Numbers
+        [/0x[\da-fA-F]+/, "number.hex"],
+        [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
+        // Strings
+        [/"/, { token: "string.quote", next: "@string_double" }],
+        [/'/, { token: "string.quote", next: "@string_single" }],
+        // Operators + delimiters
+        [/=>|<=>|==|!=|<=|>=|&&|\|\||\.\.\.?/, "keyword.operator"],
+        [/[=!<>]=?/, "keyword.operator"],
+        [/[+\-*/%&|^~]=?/, "keyword.operator"],
+        [/[{}()[\]]/, "@brackets"],
+        [/[;,.]/, "delimiter"]
+      ],
+      string_double: [
+        [/#\{/, { token: "string.interpolation", next: "@interpolation" }],
+        [/\\./, "string.escape"],
+        [/[^"#\\]+/, "string"],
+        [/#/, "string"],
+        [/"/, { token: "string.quote", next: "@pop" }]
+      ],
+      string_single: [
+        [/\\./, "string.escape"],
+        [/[^'\\]+/, "string"],
+        [/'/, { token: "string.quote", next: "@pop" }]
+      ],
+      interpolation: [
+        [/\}/, { token: "string.interpolation", next: "@pop" }],
+        { include: "root" }
+      ]
+    }
+  });
+  monaco.languages.setLanguageConfiguration("sonicpi", {
+    comments: {
+      lineComment: "#"
+    },
+    brackets: [
+      ["{", "}"],
+      ["[", "]"],
+      ["(", ")"]
+    ],
+    autoClosingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" }
+    ]
+  });
+}
+__name(registerSonicPiLanguage, "registerSonicPiLanguage");
+function registerStrudelLanguage(monaco) {
+  const langs = monaco.languages.getLanguages();
+  if (langs.some((l) => l.id === "strudel")) return;
+  monaco.languages.register({ id: "strudel" });
+  const strudelFns = buildIdentifierAlternation(STRUDEL_DOCS_INDEX, {
+    extra: [
+      "sub",
+      "add",
+      "mul",
+      "div",
+      "mod",
+      "abs",
+      "sine",
+      "saw",
+      "square",
+      "tri",
+      "setcps",
+      "setCps",
+      "cpm",
+      "loopBegin",
+      "loopEnd",
+      "n",
+      "ftype",
+      "fanchor"
+    ]
+  });
+  monaco.languages.setMonarchTokensProvider("strudel", {
+    defaultToken: "",
+    tokenPostfix: ".strudel",
+    keywords: [
+      "const",
+      "let",
+      "var",
+      "await",
+      "async",
+      "return",
+      "if",
+      "else",
+      "for",
+      "while",
+      "function",
+      "class",
+      "import",
+      "export",
+      "from"
+    ],
+    tokenizer: {
+      root: [
+        // $: pattern-start marker
+        [/\$\s*:/, "strudel.pattern-start"],
+        // setcps / setCps tempo
+        [/\bsetcps\b|\bsetCps\b/, "strudel.tempo"],
+        // Note names: c3, eb4, f#2, C#5
+        [/\b[a-gA-G][b#]?\d\b/, "strudel.note"],
+        // Strudel function names (must come before keywords check)
+        [new RegExp(`\\b(${strudelFns})\\b`), "strudel.function"],
+        // JS keywords
+        [
+          /\b(const|let|var|await|async|return|if|else|for|while|function|class|import|export|from)\b/,
+          "keyword"
+        ],
+        // Line comment
+        [/\/\/.*$/, "comment"],
+        // Block comment
+        [/\/\*/, "comment", "@block_comment"],
+        // Strings (mini-notation)
+        [/"/, "string", "@mini_string_double"],
+        [/'/, "string", "@mini_string_single"],
+        [/`/, "string", "@template_string"],
+        // Numbers
+        [/\b\d+(\.\d+)?\b/, "number"]
+      ],
+      block_comment: [
+        [/[^/*]+/, "comment"],
+        [/\*\//, "comment", "@pop"],
+        [/[/*]/, "comment"]
+      ],
+      mini_string_double: [
+        [/[~*!%?@<>\[\]{}|,_]/, "strudel.mini.operator"],
+        [/[a-gA-G][b#]?\d?/, "strudel.mini.note"],
+        [/\d+(\.\d+)?/, "strudel.mini.number"],
+        [/"/, "string", "@pop"],
+        [/[^"]+/, "string"]
+      ],
+      mini_string_single: [
+        [/[~*!%?@<>\[\]{}|,_]/, "strudel.mini.operator"],
+        [/[a-gA-G][b#]?\d?/, "strudel.mini.note"],
+        [/\d+(\.\d+)?/, "strudel.mini.number"],
+        [/'/, "string", "@pop"],
+        [/[^']+/, "string"]
+      ],
+      template_string: [
+        [/`/, "string", "@pop"],
+        [/[^`]+/, "string"]
+      ]
+    }
+  });
+  monaco.languages.setLanguageConfiguration("strudel", {
+    comments: {
+      lineComment: "//",
+      blockComment: ["/*", "*/"]
+    },
+    brackets: [
+      ["{", "}"],
+      ["[", "]"],
+      ["(", ")"]
+    ],
+    autoClosingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+      { open: "`", close: "`" }
+    ],
+    surroundingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" }
+    ]
+  });
+}
+__name(registerStrudelLanguage, "registerStrudelLanguage");
+
+// src/monaco/strudelCompletions.ts
+var NOTE_ROOTS = ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"];
+var SHARP_ROOTS = ["c#", "d#", "f#", "g#", "a#"];
+function generateNoteNames() {
+  const names = [];
+  for (let oct = 0; oct <= 7; oct++) {
+    for (const root of NOTE_ROOTS) names.push(`${root}${oct}`);
+    for (const root of SHARP_ROOTS) names.push(`${root}${oct}`);
+  }
+  return names;
+}
+__name(generateNoteNames, "generateNoteNames");
+var NOTE_NAMES = generateNoteNames();
+function registerStrudelDotCompletions(monaco) {
+  return monaco.languages.registerCompletionItemProvider("strudel", {
+    triggerCharacters: ["."],
+    provideCompletionItems(model, position) {
+      const textBefore = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
+      if (!/[)\]"'`\w]\.$/.test(textBefore)) {
+        return { suggestions: [] };
+      }
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      };
+      return {
+        suggestions: Object.entries(STRUDEL_DOCS).map(([name, doc]) => ({
+          label: name,
+          kind: monaco.languages.CompletionItemKind.Method,
+          insertText: name,
+          detail: doc.signature,
+          documentation: { value: `${doc.description}
+
+**Example:** \`${doc.example}\`` },
+          range
+        }))
+      };
+    }
+  });
+}
+__name(registerStrudelDotCompletions, "registerStrudelDotCompletions");
+function registerStrudelNoteCompletions(monaco) {
+  return monaco.languages.registerCompletionItemProvider("strudel", {
+    triggerCharacters: ['"', "'", " "],
+    provideCompletionItems(model, position) {
+      const lineContent = model.getLineContent(position.lineNumber);
+      const textBefore = lineContent.substring(0, position.column - 1);
+      if (!/(?:^|[\s,(.])note\(["']([^"']*)$/.test(textBefore)) {
+        return { suggestions: [] };
+      }
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      };
+      return {
+        suggestions: NOTE_NAMES.map((name) => ({
+          label: name,
+          kind: monaco.languages.CompletionItemKind.Value,
+          insertText: name,
+          range
+        }))
+      };
+    }
+  });
+}
+__name(registerStrudelNoteCompletions, "registerStrudelNoteCompletions");
+
+// src/monaco/diagnostics.ts
+var MARKER_OWNER = "stave";
+function parseErrorLocation(error) {
+  const stack = error.stack ?? "";
+  const match = stack.match(/at eval[^(]*\(.*?:(\d+):(\d+)\)/);
+  if (match) {
+    return { line: parseInt(match[1], 10), col: parseInt(match[2], 10) };
+  }
+  return null;
+}
+__name(parseErrorLocation, "parseErrorLocation");
+function setEvalError(monaco, model, error) {
+  try {
+    const loc = parseErrorLocation(error);
+    const lineCount = model.getLineCount();
+    const validLine = loc && Number.isFinite(loc.line) && loc.line >= 1 && loc.line <= lineCount ? loc.line : null;
+    const validCol = loc && Number.isFinite(loc.col) && loc.col >= 1 ? loc.col : 1;
+    const lineNumber = validLine ?? 1;
+    const startColumn = validLine ? validCol : 1;
+    const endLineNumber = validLine ?? lineCount;
+    const endColumn = model.getLineMaxColumn(endLineNumber);
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, [
+      {
+        severity: monaco.MarkerSeverity.Error,
+        message: error.message,
+        startLineNumber: lineNumber,
+        startColumn,
+        endLineNumber,
+        endColumn
+      }
+    ]);
+  } catch (markerError) {
+    console.warn("[stave] setEvalError failed, marker skipped:", markerError);
+  }
+}
+__name(setEvalError, "setEvalError");
+function clearEvalErrors(monaco, model) {
+  try {
+    monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
+  } catch (markerError) {
+    console.warn("[stave] clearEvalErrors failed:", markerError);
+  }
+}
+__name(clearEvalErrors, "clearEvalErrors");
+function setLineMarker(monaco, model, opts) {
+  try {
+    const lineCount = model.getLineCount();
+    const line = opts.line != null && Number.isFinite(opts.line) && opts.line >= 1 && opts.line <= lineCount ? opts.line : null;
+    const col = opts.column != null && Number.isFinite(opts.column) && opts.column >= 1 ? opts.column : 1;
+    const severityMap = {
+      error: monaco.MarkerSeverity.Error,
+      warn: monaco.MarkerSeverity.Warning,
+      info: monaco.MarkerSeverity.Info
+    };
+    const severity = severityMap[opts.severity ?? "error"];
+    const startLine = line ?? 1;
+    const endLine = line ?? lineCount;
+    const startColumn = line ? col : 1;
+    const endColumn = model.getLineMaxColumn(endLine);
+    monaco.editor.setModelMarkers(model, opts.owner ?? MARKER_OWNER, [
+      {
+        severity,
+        message: opts.message,
+        startLineNumber: startLine,
+        startColumn,
+        endLineNumber: endLine,
+        endColumn
+      }
+    ]);
+  } catch (markerError) {
+    console.warn("[stave] setLineMarker failed, skipped:", markerError);
+  }
+}
+__name(setLineMarker, "setLineMarker");
+function clearLineMarkers(monaco, model, owner) {
+  try {
+    monaco.editor.setModelMarkers(model, owner, []);
+  } catch (markerError) {
+    console.warn("[stave] clearLineMarkers failed:", markerError);
+  }
+}
+__name(clearLineMarkers, "clearLineMarkers");
+var STRUDEL_LINT_OWNER = "stave-strudel-lint";
+var STRUDEL_DOUBLE_QUOTED_P_RE = /\.p\(\s*"([^"\n\r]*)"\s*\)/g;
+function refreshStrudelLintMarkers(monaco, model) {
+  try {
+    const text = model.getValue();
+    const markers = [];
+    STRUDEL_DOUBLE_QUOTED_P_RE.lastIndex = 0;
+    let m;
+    while (m = STRUDEL_DOUBLE_QUOTED_P_RE.exec(text)) {
+      const matchStart = m.index;
+      const matchEnd = matchStart + m[0].length;
+      const startPos = model.getPositionAt(matchStart);
+      const endPos = model.getPositionAt(matchEnd);
+      const inner = m[1];
+      markers.push({
+        severity: monaco.MarkerSeverity.Warning,
+        message: `Strudel's transpiler converts double-quoted strings to mini-notation, so .p("${inner}") becomes .p(<Pattern>) at runtime \u2014 the track-id registration silently no-ops. Use single quotes: .p('${inner}').`,
+        startLineNumber: startPos.lineNumber,
+        startColumn: startPos.column,
+        endLineNumber: endPos.lineNumber,
+        endColumn: endPos.column,
+        source: "stave",
+        code: "strudel/p-double-quoted"
+      });
+    }
+    monaco.editor.setModelMarkers(model, STRUDEL_LINT_OWNER, markers);
+  } catch (lintError) {
+    console.warn("[stave] refreshStrudelLintMarkers failed:", lintError);
+  }
+}
+__name(refreshStrudelLintMarkers, "refreshStrudelLintMarkers");
+function clearStrudelLintMarkers(monaco, model) {
+  try {
+    monaco.editor.setModelMarkers(model, STRUDEL_LINT_OWNER, []);
+  } catch {
+  }
+}
+__name(clearStrudelLintMarkers, "clearStrudelLintMarkers");
+var strudelLintProviderDisposable = null;
+function ensureStrudelLintCodeActionProvider(monaco, languageId) {
+  if (strudelLintProviderDisposable) return strudelLintProviderDisposable;
+  strudelLintProviderDisposable = monaco.languages.registerCodeActionProvider(
+    languageId,
+    {
+      provideCodeActions(model, _range, context) {
+        const fixes = [];
+        for (const marker of context.markers) {
+          if (marker.code !== "strudel/p-double-quoted") continue;
+          const slice = model.getValueInRange({
+            startLineNumber: marker.startLineNumber,
+            startColumn: marker.startColumn,
+            endLineNumber: marker.endLineNumber,
+            endColumn: marker.endColumn
+          });
+          const rewritten = slice.replace(
+            /\.p\(\s*"([^"\n\r]*)"\s*\)/,
+            ".p('$1')"
+          );
+          if (rewritten === slice) continue;
+          fixes.push({
+            title: `Rewrite .p("...") to .p('...') (single quotes)`,
+            kind: "quickfix",
+            isPreferred: true,
+            diagnostics: [marker],
+            edit: {
+              edits: [
+                {
+                  resource: model.uri,
+                  textEdit: {
+                    range: {
+                      startLineNumber: marker.startLineNumber,
+                      startColumn: marker.startColumn,
+                      endLineNumber: marker.endLineNumber,
+                      endColumn: marker.endColumn
+                    },
+                    text: rewritten
+                  },
+                  versionId: model.getVersionId()
+                }
+              ]
+            }
+          });
+        }
+        return { actions: fixes, dispose() {
+        } };
+      }
+    }
+  );
+  return strudelLintProviderDisposable;
+}
+__name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 
 // src/monaco/docs/data/hydra.json
 var hydra_default = {
@@ -21887,437 +22019,6 @@ function VizEditor({
 }
 __name(VizEditor, "VizEditor");
 
-// src/engine/friendlyErrors.ts
-function parseStackLocation(err) {
-  const stack = typeof err === "object" && err !== null && "stack" in err ? String(err.stack ?? "") : "";
-  if (!stack) return null;
-  const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
-  if (v8Eval)
-    return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) };
-  const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/);
-  if (v8Named)
-    return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) };
-  const v8Anon = stack.match(/^\s*at\s+<anonymous>:(\d+):(\d+)/m);
-  if (v8Anon)
-    return { line: parseInt(v8Anon[1], 10), column: parseInt(v8Anon[2], 10) };
-  const ff = stack.match(
-    /@(?:<anonymous>|debugger eval|eval):(\d+):(\d+)/
-  );
-  if (ff) return { line: parseInt(ff[1], 10), column: parseInt(ff[2], 10) };
-  return null;
-}
-__name(parseStackLocation, "parseStackLocation");
-function levenshtein(a, b) {
-  if (a === b) return 0;
-  const la = a.length;
-  const lb = b.length;
-  if (la === 0) return lb;
-  if (lb === 0) return la;
-  let prev = new Array(lb + 1);
-  let curr = new Array(lb + 1);
-  for (let j = 0; j <= lb; j++) prev[j] = j;
-  for (let i = 1; i <= la; i++) {
-    curr[0] = i;
-    const ac = a.charCodeAt(i - 1);
-    for (let j = 1; j <= lb; j++) {
-      const cost = ac === b.charCodeAt(j - 1) ? 0 : 1;
-      curr[j] = Math.min(
-        curr[j - 1] + 1,
-        // insert
-        prev[j] + 1,
-        // delete
-        prev[j - 1] + cost
-        // substitute
-      );
-    }
-    [prev, curr] = [curr, prev];
-  }
-  return prev[lb];
-}
-__name(levenshtein, "levenshtein");
-function fuzzyMatch(word, corpus, options = {}) {
-  if (!word) return [];
-  const lower = word.toLowerCase();
-  const threshold = options.maxDistance ?? Math.max(2, Math.ceil(word.length / 3));
-  const limit = options.limit ?? 5;
-  const hits = [];
-  for (const candidate of corpus) {
-    const d = levenshtein(lower, candidate.toLowerCase());
-    if (d <= threshold) hits.push({ name: candidate, distance: d });
-  }
-  hits.sort(
-    (a, b) => a.distance - b.distance || // Prefer case-matching names on ties (e.g. PI over Pi).
-    (a.name === word ? -1 : b.name === word ? 1 : 0) || a.name.localeCompare(b.name)
-  );
-  return hits.slice(0, limit);
-}
-__name(fuzzyMatch, "fuzzyMatch");
-var REFERENCE_ERROR_PATTERNS = [
-  // Chrome / Edge / Node: "foo is not defined"
-  /^(\w+) is not defined$/,
-  // Firefox: "foo is not defined"
-  /^ReferenceError: (\w+) is not defined$/,
-  // Safari: "Can't find variable: foo"
-  /^Can't find variable: (\w+)$/
-];
-function extractReferenceIdentifier(err) {
-  const message = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
-  if (!message) return null;
-  const trimmed = message.replace(/^Uncaught\s+/, "").trim();
-  for (const re of REFERENCE_ERROR_PATTERNS) {
-    const m = re.exec(trimmed);
-    if (m && m[1]) return m[1];
-  }
-  return null;
-}
-__name(extractReferenceIdentifier, "extractReferenceIdentifier");
-var SOUND_NOT_FOUND_PATTERNS = [
-  /sound\s+["']?([\w.-]+)["']?\s+not\s+found/i
-];
-function extractMissingSoundName(rawMessage) {
-  for (const re of SOUND_NOT_FOUND_PATTERNS) {
-    const m = re.exec(rawMessage);
-    if (m && m[1]) return m[1];
-  }
-  return null;
-}
-__name(extractMissingSoundName, "extractMissingSoundName");
-function buildAliasSuffix(missingName, ctx) {
-  if (!ctx) return "";
-  const parts = [];
-  if (ctx.resolutions && ctx.resolutions.length > 0) {
-    const seen = /* @__PURE__ */ new Set();
-    const lines = [];
-    for (const r of ctx.resolutions) {
-      const key = `${r.from}\u2192${r.to}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
-    }
-    parts.push(`tried alias ${lines.join(", ")}`);
-  }
-  if (missingName && ctx.lookupAlias) {
-    const target = ctx.lookupAlias(missingName);
-    if (target) {
-      parts.push(`alias map: \`${missingName}\` \u2192 \`${target}\` (but \`${target}\` is not loaded)`);
-    } else {
-      parts.push(`alias map: no entry for \`${missingName}\``);
-    }
-  }
-  return parts.length > 0 ? ` (${parts.join("; ")})` : "";
-}
-__name(buildAliasSuffix, "buildAliasSuffix");
-function asRegExp(match) {
-  return match instanceof RegExp ? match : new RegExp(match, "i");
-}
-__name(asRegExp, "asRegExp");
-function evalMistake(mistake, ctx) {
-  const { detect } = mistake;
-  if (detect.kind === "message") {
-    return asRegExp(detect.match).test(ctx.rawMessage);
-  }
-  if (detect.kind === "code") {
-    if (!ctx.codeContext) return false;
-    return asRegExp(detect.match).test(ctx.codeContext);
-  }
-  return ctx.identifier !== null && ctx.identifier === detect.alias;
-}
-__name(evalMistake, "evalMistake");
-var SPECIFICITY = {
-  message: 3,
-  code: 2,
-  identifier: 1
-};
-function rankHits(hits) {
-  if (hits.length === 0) return null;
-  hits.sort((a, b) => {
-    const wa = a.mistake.weight ?? 1;
-    const wb = b.mistake.weight ?? 1;
-    if (wa !== wb) return wb - wa;
-    if (a.specificity !== b.specificity) return b.specificity - a.specificity;
-    return a.order - b.order;
-  });
-  return hits[0];
-}
-__name(rankHits, "rankHits");
-function collectMistakes(index, ctx) {
-  const hits = [];
-  let order = 0;
-  if (ctx.identifier && index.docs[ctx.identifier]) {
-    const doc = index.docs[ctx.identifier];
-    for (const m of doc.commonMistakes ?? []) {
-      if (evalMistake(m, ctx)) {
-        hits.push({
-          mistake: m,
-          specificity: SPECIFICITY[m.detect.kind],
-          order: order++,
-          symbol: { name: ctx.identifier, doc }
-        });
-      }
-    }
-  }
-  for (const [name, doc] of Object.entries(index.docs)) {
-    if (name === ctx.identifier) continue;
-    for (const m of doc.commonMistakes ?? []) {
-      if (evalMistake(m, ctx)) {
-        hits.push({
-          mistake: m,
-          specificity: SPECIFICITY[m.detect.kind],
-          order: order++,
-          symbol: { name, doc }
-        });
-      }
-    }
-  }
-  for (const m of index.globalMistakes ?? []) {
-    if (evalMistake(m, ctx)) {
-      hits.push({
-        mistake: m,
-        specificity: SPECIFICITY[m.detect.kind],
-        order: order++
-      });
-    }
-  }
-  return rankHits(hits);
-}
-__name(collectMistakes, "collectMistakes");
-function defaultDocsUrl(runtime, name) {
-  return `/docs/reference/${runtime}/#${name.toLowerCase()}`;
-}
-__name(defaultDocsUrl, "defaultDocsUrl");
-function formatFriendlyError(err, runtime, options = {}) {
-  const rawMessage = typeof err === "object" && err !== null && "message" in err ? String(err.message) : String(err);
-  const stack = typeof err === "object" && err !== null && "stack" in err && typeof err.stack === "string" ? err.stack : void 0;
-  const loc = parseStackLocation(err);
-  const identifier = extractReferenceIdentifier(err);
-  const missingName = extractMissingSoundName(rawMessage);
-  const aliasSuffix = buildAliasSuffix(missingName, options.aliasContext);
-  const appendAlias = /* @__PURE__ */ __name((msg) => aliasSuffix ? `${msg}${aliasSuffix}` : msg, "appendAlias");
-  if (options.index) {
-    const hit = collectMistakes(options.index, {
-      rawMessage,
-      identifier,
-      codeContext: options.codeContext
-    });
-    if (hit) {
-      const suggestion = hit.symbol ? {
-        name: hit.symbol.name,
-        docsUrl: (options.docsUrlFor ?? defaultDocsUrl)(
-          runtime,
-          hit.symbol.name
-        ),
-        example: hit.mistake.example ?? hit.symbol.doc.example,
-        description: hit.symbol.doc.description
-      } : hit.mistake.example ? {
-        // Global mistake without a symbol — synthesise a minimal
-        // suggestion so downstream UI still surfaces the example.
-        name: "",
-        docsUrl: "",
-        example: hit.mistake.example
-      } : void 0;
-      return {
-        message: appendAlias(hit.mistake.hint),
-        suggestion,
-        stack,
-        line: loc?.line,
-        column: loc?.column
-      };
-    }
-  }
-  if (identifier && options.index) {
-    const matches = fuzzyMatch(
-      identifier,
-      Object.keys(options.index.docs)
-    );
-    if (matches.length > 0) {
-      const hit = options.index.docs[matches[0].name];
-      const docsUrl = (options.docsUrlFor ?? defaultDocsUrl)(
-        runtime,
-        matches[0].name
-      );
-      const suggestion = {
-        name: matches[0].name,
-        docsUrl,
-        example: hit?.example,
-        description: hit?.description
-      };
-      return {
-        message: appendAlias(`\`${identifier}\` is not defined. Did you mean \`${matches[0].name}\`?`),
-        suggestion,
-        stack,
-        line: loc?.line,
-        column: loc?.column
-      };
-    }
-    return {
-      message: appendAlias(`\`${identifier}\` is not defined.`),
-      stack,
-      line: loc?.line,
-      column: loc?.column
-    };
-  }
-  return {
-    message: appendAlias(rawMessage || "Unknown error"),
-    stack,
-    line: loc?.line,
-    column: loc?.column
-  };
-}
-__name(formatFriendlyError, "formatFriendlyError");
-
-// src/visualizers/p5Compiler.ts
-function isFullLifecycleSketch(code) {
-  return /\bfunction\s+(?:draw|setup|preload)\s*\(/.test(code);
-}
-__name(isFullLifecycleSketch, "isFullLifecycleSketch");
-var NEW_FUNCTION_HEADER_LINES = 2;
-function getP5LineOffset(code) {
-  return isFullLifecycleSketch(code) ? FULL_LIFECYCLE_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES : LEGACY_PREFIX_LINES + NEW_FUNCTION_HEADER_LINES;
-}
-__name(getP5LineOffset, "getP5LineOffset");
-function compileP5Code(code, source) {
-  const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
-  const lineOffset = getP5LineOffset(code);
-  new Function("p", "stave", body);
-  return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
-    current: { w: 400, h: 300 }
-  }) => {
-    return (p) => {
-      const stave = {
-        get scheduler() {
-          return schedulerRef.current;
-        },
-        get analyser() {
-          return analyserRef.current;
-        },
-        get hapStream() {
-          return hapStreamRef.current;
-        },
-        get width() {
-          return containerSizeRef.current?.w ?? 400;
-        },
-        get height() {
-          return containerSizeRef.current?.h ?? 300;
-        }
-      };
-      let lifecycle;
-      try {
-        const compile = new Function("p", "stave", body);
-        lifecycle = compile(p, stave);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        installErrorSketch(p, error.message);
-        const parts = formatFriendlyError(error, "p5", {
-          index: P5_DOCS_INDEX
-        });
-        const loc = parseStackLocation(error);
-        const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
-        emitLog({
-          level: "error",
-          runtime: "p5",
-          source,
-          message: parts.message,
-          suggestion: parts.suggestion,
-          stack: parts.stack,
-          line: userLine,
-          column: loc?.column
-        });
-        return;
-      }
-      installLifecycle(p, lifecycle, source, lineOffset);
-    };
-  };
-}
-__name(compileP5Code, "compileP5Code");
-var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  ";
-var FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || []).length;
-function buildFullLifecycleBody(userCode) {
-  return `${FULL_LIFECYCLE_PREFIX}${userCode}
-  return {
-    setup: typeof setup === 'function' ? setup : undefined,
-    draw: typeof draw === 'function' ? draw : undefined,
-    preload: typeof preload === 'function' ? preload : undefined,
-  }
-}
-  `;
-}
-__name(buildFullLifecycleBody, "buildFullLifecycleBody");
-var LEGACY_PREFIX = `
-with (p) {
-  return {
-    setup: function () {
-      createCanvas(p.windowWidth, p.windowHeight)
-      colorMode(RGB)
-    },
-    draw: function () {
-      const scheduler = stave.scheduler
-      const analyser = stave.analyser
-      const hapStream = stave.hapStream
-      `;
-var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
-function buildLegacyBody(userCode) {
-  return `${LEGACY_PREFIX}${userCode}
-    },
-    preload: undefined,
-  }
-}
-  `;
-}
-__name(buildLegacyBody, "buildLegacyBody");
-function installLifecycle(p, lifecycle, source, lineOffset) {
-  const pi = p;
-  const reportLifecycleError = /* @__PURE__ */ __name((hook, err) => {
-    const error = err instanceof Error ? err : new Error(String(err));
-    const parts = formatFriendlyError(error, "p5", { index: P5_DOCS_INDEX });
-    const loc = parseStackLocation(error);
-    const userLine = loc && lineOffset > 0 ? Math.max(1, loc.line - lineOffset) : loc?.line;
-    emitLog({
-      level: "error",
-      runtime: "p5",
-      source,
-      message: `${hook}(): ${parts.message}`,
-      suggestion: parts.suggestion,
-      stack: parts.stack,
-      line: userLine,
-      column: loc?.column
-    });
-  }, "reportLifecycleError");
-  const wrap4 = /* @__PURE__ */ __name((hook, fn) => {
-    if (!fn) return void 0;
-    return function(...args) {
-      try {
-        return fn.apply(this, args);
-      } catch (err) {
-        reportLifecycleError(hook, err);
-      }
-    };
-  }, "wrap");
-  if (lifecycle.preload) pi.preload = wrap4("preload", lifecycle.preload);
-  pi.setup = wrap4("setup", lifecycle.setup) ?? function() {
-    pi.createCanvas(pi.windowWidth, pi.windowHeight);
-  };
-  if (lifecycle.draw) pi.draw = wrap4("draw", lifecycle.draw);
-}
-__name(installLifecycle, "installLifecycle");
-function installErrorSketch(p, message) {
-  const pi = p;
-  pi.setup = function() {
-    pi.createCanvas(pi.windowWidth || 400, 160);
-  };
-  pi.draw = function() {
-    pi.background(20, 20, 24);
-    pi.noStroke();
-    pi.fill(255, 120, 120);
-    pi.textFont("monospace");
-    pi.textSize(12);
-    pi.text("p5 viz compile error:", 12, 24);
-    pi.fill(230);
-    pi.textSize(11);
-    pi.text(message, 12, 48, pi.width - 24, pi.height - 60);
-  };
-}
-__name(installErrorSketch, "installErrorSketch");
-
 // src/visualizers/hydraCompiler.ts
 function compileHydraCode(code) {
   new Function("s", "stave", code);
@@ -23658,6 +23359,7 @@ exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DemoEngine = DemoEngine;
 exports.EditorView = EditorView;
 exports.ErrorBoundary = ErrorBoundary;
+exports.FSCOPE_P5_CODE = FSCOPE_P5_CODE;
 exports.HYDRA_DOCS_INDEX = HYDRA_DOCS_INDEX;
 exports.HYDRA_VIZ = HYDRA_VIZ;
 exports.HapStream = HapStream;
@@ -23674,22 +23376,22 @@ exports.P5VizRenderer = P5VizRenderer;
 exports.P5_DOCS_INDEX = P5_DOCS_INDEX;
 exports.P5_VIZ = P5_VIZ;
 exports.PATTERN_IR_SCHEMA_VERSION = PATTERN_IR_SCHEMA_VERSION;
-exports.PianorollSketch = PianorollSketch;
-exports.PitchwheelSketch = PitchwheelSketch;
+exports.PIANOROLL_P5_CODE = PIANOROLL_P5_CODE;
+exports.PITCHWHEEL_P5_CODE = PITCHWHEEL_P5_CODE;
 exports.PreviewView = PreviewView;
 exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
 exports.SAMPLE_SOUND_SOURCE_ID = SAMPLE_SOUND_SOURCE_ID;
+exports.SCOPE_P5_CODE = SCOPE_P5_CODE;
 exports.SHELL_STATE_KEY_PREFIX = SHELL_STATE_KEY_PREFIX;
 exports.SHELL_STATE_VERSION = SHELL_STATE_VERSION;
 exports.SONICPI_DOCS_INDEX = SONICPI_DOCS_INDEX;
 exports.SONICPI_RUNTIME = SONICPI_RUNTIME;
 exports.SOUND_ALIASES = SOUND_ALIASES;
+exports.SPECTRUM_P5_CODE = SPECTRUM_P5_CODE;
+exports.SPIRAL_P5_CODE = SPIRAL_P5_CODE;
 exports.STRUDEL_DOCS_INDEX = STRUDEL_DOCS_INDEX;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
-exports.ScopeSketch = ScopeSketch;
 exports.SonicPiEngine = SonicPiEngine;
-exports.SpectrumSketch = SpectrumSketch;
-exports.SpiralSketch = SpiralSketch;
 exports.SplitPane = SplitPane;
 exports.StrudelEditor = StrudelEditor;
 exports.StrudelEngine = StrudelEngine;
@@ -23700,6 +23402,7 @@ exports.VizEditor = VizEditor;
 exports.VizPanel = VizPanel;
 exports.VizPicker = VizPicker;
 exports.VizPresetStore = VizPresetStore;
+exports.WORDFALL_P5_CODE = WORDFALL_P5_CODE;
 exports.WavEncoder = WavEncoder;
 exports.WorkspaceShell = WorkspaceShell;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;

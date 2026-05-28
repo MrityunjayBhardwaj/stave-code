@@ -55,8 +55,9 @@ import {
   buildDefaultSnapshot,
   hydrateSnapshot,
   type ShellSnapshot,
+  PIANOROLL_P5_CODE,
 } from "@stave/editor";
-import { PIANOROLL_P5_CODE, PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
+import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
 
 // Phase 19-07 (#79) — 4-stage parser pipeline. Each stage emits its own
