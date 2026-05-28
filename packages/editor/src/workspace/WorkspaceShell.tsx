@@ -303,6 +303,10 @@ function tabFileName(tab: WorkspaceTab): string {
 
 export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellProps>(function WorkspaceShell({
   initialTabs = [],
+  initialGroups,
+  initialLayout,
+  initialActiveGroupId,
+  onGroupsChange,
   theme = 'dark',
   height = '100%',
   onActiveTabChange,
@@ -319,11 +323,28 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
 }, forwardedRef) {
   const shellRootRef = useRef<HTMLDivElement>(null)
 
-  // One-shot seeding — `initialTabs` is read exactly once on mount. This
-  // mirrors React's uncontrolled-input pattern: the prop is an initial
-  // value, not a source of truth. Re-renders with a new `initialTabs`
-  // reference do NOT re-seed the shell.
-  const initialState = useRef(createInitialGroupState(initialTabs))
+  // One-shot seeding — `initialTabs` / `initialGroups` are read exactly
+  // once on mount. This mirrors React's uncontrolled-input pattern: the
+  // props are initial values, not a source of truth. Re-renders with new
+  // references do NOT re-seed the shell.
+  //
+  // When the consumer hydrates from persistence (issue #175), it passes
+  // the full `initialGroups` + `initialLayout` + `initialActiveGroupId`
+  // triple; in that path the layout must be valid (non-empty, all group
+  // ids covered). Otherwise we fall back to the legacy single-group seed
+  // built from `initialTabs`.
+  const initialState = useRef(
+    initialGroups !== undefined &&
+    initialLayout !== undefined &&
+    initialLayout.length > 0 &&
+    initialActiveGroupId !== undefined
+      ? {
+          groups: new Map(initialGroups),
+          layout: initialLayout,
+          activeGroupId: initialActiveGroupId,
+        }
+      : createInitialGroupState(initialTabs),
+  )
   const [groups, setGroups] = useState<Map<string, WorkspaceGroupState>>(
     () => initialState.current.groups,
   )
@@ -333,6 +354,21 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   const [activeGroupId, setActiveGroupId] = useState<string>(
     () => initialState.current.activeGroupId,
   )
+
+  // Single persistence sink (#175). Fires on every change to groups /
+  // layout / activeGroupId. The first render is suppressed via a
+  // `didMountRef`, so a freshly-hydrated shell doesn't immediately
+  // re-write identical state back. Subsequent changes propagate
+  // synchronously after the React commit; the consumer is responsible
+  // for any debounce/throttle.
+  const didMountRef = useRef(false)
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    onGroupsChange?.({ groups, layout, activeGroupId })
+  }, [groups, layout, activeGroupId, onGroupsChange])
 
   // Quadrant drop zone state — when a tab is being dragged over a
   // specific group, `dragOverTarget` records both the target group id

@@ -18371,6 +18371,10 @@ function tabFileName(tab) {
 __name(tabFileName, "tabFileName");
 var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
+  initialGroups,
+  initialLayout,
+  initialActiveGroupId,
+  onGroupsChange,
   theme = "dark",
   height = "100%",
   onActiveTabChange,
@@ -18386,7 +18390,13 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   onCropViz
 }, forwardedRef) {
   const shellRootRef = useRef(null);
-  const initialState = useRef(createInitialGroupState(initialTabs));
+  const initialState = useRef(
+    initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
+      groups: new Map(initialGroups),
+      layout: initialLayout,
+      activeGroupId: initialActiveGroupId
+    } : createInitialGroupState(initialTabs)
+  );
   const [groups, setGroups] = useState(
     () => initialState.current.groups
   );
@@ -18396,6 +18406,14 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   const [activeGroupId, setActiveGroupId] = useState(
     () => initialState.current.activeGroupId
   );
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    onGroupsChange?.({ groups, layout, activeGroupId });
+  }, [groups, layout, activeGroupId, onGroupsChange]);
   const [dragOverTarget, setDragOverTarget] = useState(null);
   const [dragOverEdge, setDragOverEdge] = useState(
     null
@@ -23184,6 +23202,184 @@ function emitFromGlobal(err, _kind) {
 }
 __name(emitFromGlobal, "emitFromGlobal");
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, collect, collectCycles, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveAlias, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+// src/workspace/tabPersistence.ts
+var SHELL_STATE_KEY_PREFIX = "stave:workspace:";
+var SHELL_STATE_VERSION = 1;
+function shellStateKeyFor(projectId) {
+  return `${SHELL_STATE_KEY_PREFIX}${projectId}:state`;
+}
+__name(shellStateKeyFor, "shellStateKeyFor");
+function loadShellState(projectId, validFileIds) {
+  if (typeof window === "undefined") return null;
+  let raw = null;
+  try {
+    raw = window.localStorage.getItem(shellStateKeyFor(projectId));
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  return validatePersistedState(parsed, validFileIds);
+}
+__name(loadShellState, "loadShellState");
+function validatePersistedState(input, validFileIds) {
+  if (!input || typeof input !== "object") return null;
+  const s = input;
+  if (s.version !== SHELL_STATE_VERSION) return null;
+  if (!s.groups || typeof s.groups !== "object") return null;
+  if (!Array.isArray(s.layout)) return null;
+  if (typeof s.activeGroupId !== "string") return null;
+  const cleanedGroups = {};
+  for (const [gid, rawGroup] of Object.entries(s.groups)) {
+    const g = rawGroup;
+    if (!g || typeof g !== "object" || g.id !== gid) continue;
+    const inTabs = Array.isArray(g.tabs) ? g.tabs : [];
+    const cleanedTabs = [];
+    for (const t of inTabs) {
+      if (!t || typeof t !== "object") continue;
+      if (t.kind !== "editor") continue;
+      const tt = t;
+      if (typeof tt.id !== "string" || typeof tt.fileId !== "string") continue;
+      if (!validFileIds.has(tt.fileId)) continue;
+      cleanedTabs.push({
+        kind: "editor",
+        id: tt.id,
+        fileId: tt.fileId,
+        ...tt.preview === true ? { preview: true } : {}
+      });
+    }
+    let activeTabId = typeof g.activeTabId === "string" ? g.activeTabId : null;
+    if (activeTabId !== null && !cleanedTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = cleanedTabs.length > 0 ? cleanedTabs[0].id : null;
+    }
+    const bg = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
+    cleanedGroups[gid] = {
+      id: gid,
+      tabs: cleanedTabs,
+      activeTabId,
+      ...bg !== void 0 ? { backgroundFileId: bg } : {}
+    };
+  }
+  const cleanedLayout = [];
+  for (const col of s.layout) {
+    if (!Array.isArray(col)) continue;
+    const cleanedCol = [];
+    for (const gid of col) {
+      if (typeof gid === "string" && cleanedGroups[gid]) cleanedCol.push(gid);
+    }
+    if (cleanedCol.length > 0) cleanedLayout.push(cleanedCol);
+  }
+  if (cleanedLayout.length === 0) return null;
+  const liveIds = /* @__PURE__ */ new Set();
+  for (const col of cleanedLayout) for (const gid of col) liveIds.add(gid);
+  const activeGroupId = liveIds.has(s.activeGroupId) ? s.activeGroupId : cleanedLayout[0][0];
+  const finalGroups = {};
+  for (const gid of liveIds) finalGroups[gid] = cleanedGroups[gid];
+  return {
+    version: SHELL_STATE_VERSION,
+    groups: finalGroups,
+    layout: cleanedLayout,
+    activeGroupId
+  };
+}
+__name(validatePersistedState, "validatePersistedState");
+function serializeShellState(snapshot) {
+  const groups = {};
+  for (const [gid, g] of snapshot.groups.entries()) {
+    const editorTabs = [];
+    for (const t of g.tabs) {
+      if (!isPersistableTab(t)) continue;
+      editorTabs.push({
+        kind: "editor",
+        id: t.id,
+        fileId: t.fileId,
+        ...t.preview === true ? { preview: true } : {}
+      });
+    }
+    let activeTabId = g.activeTabId;
+    if (activeTabId !== null && !editorTabs.some((t) => t.id === activeTabId)) {
+      activeTabId = editorTabs.length > 0 ? editorTabs[0].id : null;
+    }
+    groups[gid] = {
+      id: gid,
+      tabs: editorTabs,
+      activeTabId,
+      ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {}
+    };
+  }
+  return {
+    version: SHELL_STATE_VERSION,
+    groups,
+    layout: snapshot.layout.map((col) => [...col]),
+    activeGroupId: snapshot.activeGroupId
+  };
+}
+__name(serializeShellState, "serializeShellState");
+function saveShellState(projectId, snapshot) {
+  if (typeof window === "undefined") return;
+  try {
+    const payload = JSON.stringify(serializeShellState(snapshot));
+    window.localStorage.setItem(shellStateKeyFor(projectId), payload);
+  } catch {
+  }
+}
+__name(saveShellState, "saveShellState");
+function clearShellState(projectId) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(shellStateKeyFor(projectId));
+  } catch {
+  }
+}
+__name(clearShellState, "clearShellState");
+function buildDefaultSnapshot(newGroupId, defaultFileId) {
+  const tabs2 = defaultFileId ? [{ kind: "editor", id: `tab-${defaultFileId}`, fileId: defaultFileId }] : [];
+  const group = {
+    id: newGroupId,
+    tabs: tabs2,
+    activeTabId: tabs2.length > 0 ? tabs2[0].id : null
+  };
+  const groups = /* @__PURE__ */ new Map();
+  groups.set(newGroupId, group);
+  return {
+    groups,
+    layout: [[newGroupId]],
+    activeGroupId: newGroupId
+  };
+}
+__name(buildDefaultSnapshot, "buildDefaultSnapshot");
+function hydrateSnapshot(persisted) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const [gid, pg] of Object.entries(persisted.groups)) {
+    groups.set(gid, {
+      id: pg.id,
+      tabs: pg.tabs.map((t) => ({
+        kind: "editor",
+        id: t.id,
+        fileId: t.fileId,
+        ...t.preview === true ? { preview: true } : {}
+      })),
+      activeTabId: pg.activeTabId,
+      ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {}
+    });
+  }
+  return {
+    groups,
+    layout: persisted.layout.map((col) => [...col]),
+    activeGroupId: persisted.activeGroupId
+  };
+}
+__name(hydrateSnapshot, "hydrateSnapshot");
+function isPersistableTab(t) {
+  return t.kind === "editor";
+}
+__name(isPersistableTab, "isPersistableTab");
+
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PianorollSketch, PitchwheelSketch, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, ScopeSketch, SonicPiEngine, SpectrumSketch, SpiralSketch, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveAlias, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

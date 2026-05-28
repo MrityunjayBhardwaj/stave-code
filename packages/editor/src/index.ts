@@ -336,6 +336,31 @@ export {
   readPersistedActiveTabId,
 } from './workspace/bottomPanel/persistence'
 
+// Issue #175 — full workspace-shell state persistence (groups + tabs +
+// pane layout + active group), per-project, via localStorage. The app
+// hydrates on mount and the shell's `onGroupsChange` sink writes back
+// on every mutation. Pure helpers (serialize/validate/hydrate/default)
+// are exported alongside the storage helpers so the app can compose
+// without round-tripping through localStorage in tests.
+export {
+  SHELL_STATE_KEY_PREFIX,
+  SHELL_STATE_VERSION,
+  shellStateKeyFor,
+  loadShellState,
+  saveShellState,
+  clearShellState,
+  validatePersistedState,
+  serializeShellState,
+  buildDefaultSnapshot,
+  hydrateSnapshot,
+} from './workspace/tabPersistence'
+export type {
+  PersistedShellState,
+  PersistedGroup,
+  PersistedEditorTab,
+  ShellSnapshot,
+} from './workspace/tabPersistence'
+
 // Phase 19-08 — IR Inspector streaming timeline capture buffer.
 // Fed by every publishIRSnapshot fan-out (PK9 step 8); consumed by the
 // app-side IRInspectorTimeline strip (PR-B). __resetCaptureForTest is

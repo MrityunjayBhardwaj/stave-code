@@ -27,6 +27,7 @@
  */
 
 import type { ReactNode } from 'react'
+import type { GroupLayout } from './groupLayout'
 import type {
   AudioComponent,
   EngineComponents,
@@ -832,6 +833,39 @@ export interface WorkspaceShellProps {
    * is empty). Fires once on mount with the initial active tab (or
    * `null`) so late subscribers see the initial state.
    */
+  /**
+   * Persistence-friendly initial state. When provided, takes precedence
+   * over `initialTabs` and seeds the shell's groups + 2-D pane layout +
+   * active group id in one shot. Like `initialTabs` it is read exactly
+   * once on mount.
+   *
+   * Issue #175 — lets the consumer hydrate from `tabPersistence` so the
+   * user's pane splits + per-group tabs survive a refresh. If absent,
+   * the shell falls back to the legacy single-group seed from
+   * `initialTabs`.
+   */
+  readonly initialGroups?: ReadonlyMap<string, WorkspaceGroupState>
+  readonly initialLayout?: GroupLayout
+  readonly initialActiveGroupId?: string
+
+  /**
+   * Fires reactively whenever the shell's groups / layout / activeGroupId
+   * change — i.e. on tab open / close / reorder, group split / collapse,
+   * active-tab change, active-group change, and `backgroundFileId`
+   * transitions. The callback receives the full state snapshot in the
+   * shape `tabPersistence.serializeShellState` expects, so the consumer
+   * can pipe it straight through to localStorage / Yjs.
+   *
+   * Issue #175 — single sink for persistence. Does NOT fire on initial
+   * mount (no-op write of just-hydrated state); only on subsequent
+   * mutations.
+   */
+  readonly onGroupsChange?: (snapshot: {
+    groups: ReadonlyMap<string, WorkspaceGroupState>
+    layout: GroupLayout
+    activeGroupId: string
+  }) => void
+
   readonly onActiveTabChange?: (tab: WorkspaceTab | null) => void
 
   /**
