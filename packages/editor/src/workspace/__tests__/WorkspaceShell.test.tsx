@@ -1214,6 +1214,147 @@ describe('WorkspaceShell', () => {
     })
   })
 
+  describe('tab bar overflow (#177)', () => {
+    it('places pinned group actions OUTSIDE the scrollable tab strip', () => {
+      // Regression for #177 — before this fix, the split / close buttons
+      // lived inside the same overflowX:auto container as the tabs and
+      // scrolled off the right edge once enough tabs were open.
+      const tabs = [editorTab('t-a', 'f-strudel'), editorTab('t-b', 'f-hydra')]
+      const { container } = render(
+        <WorkspaceShell initialTabs={tabs} />,
+      )
+      const groupEl = container.querySelector('[data-workspace-group]')
+      const strip = groupEl?.querySelector('[data-workspace-tab-strip]')
+      const splitBtn = container.querySelector(
+        '[data-testid^="group-split-"]',
+      )
+      expect(strip).not.toBeNull()
+      expect(splitBtn).not.toBeNull()
+      expect(strip?.contains(splitBtn ?? null)).toBe(false)
+    })
+
+    it('hides the overflow menu when no overflow', () => {
+      const tabs = [editorTab('t-a', 'f-strudel')]
+      const { container } = render(
+        <WorkspaceShell initialTabs={tabs} />,
+      )
+      expect(
+        container.querySelector('[data-testid^="tab-overflow-menu-"]'),
+      ).toBeNull()
+    })
+
+    it('renders the overflow ▾ menu when scrollWidth exceeds clientWidth, lists all tabs, and click jumps activation', () => {
+      const tabs = [
+        editorTab('t-a', 'f-strudel'),
+        editorTab('t-b', 'f-hydra'),
+        editorTab('t-c', 'f-p5'),
+      ]
+      const onActiveTabChange = vi.fn()
+      const { container, getByTestId } = render(
+        <WorkspaceShell
+          initialTabs={tabs}
+          onActiveTabChange={onActiveTabChange}
+        />,
+      )
+      const strip = container.querySelector(
+        '[data-workspace-tab-strip]',
+      ) as HTMLElement | null
+      expect(strip).not.toBeNull()
+      // Simulate overflow: tabs would need 1000px but the strip is 200px.
+      // The scroll listener inside GroupTabBar reads scrollWidth/clientWidth
+      // and updates state — triggering it via fireEvent.scroll exercises
+      // the same code path the user does by scrolling the strip.
+      Object.defineProperty(strip!, 'scrollWidth', {
+        value: 1000,
+        configurable: true,
+      })
+      Object.defineProperty(strip!, 'clientWidth', {
+        value: 200,
+        configurable: true,
+      })
+      Object.defineProperty(strip!, 'scrollLeft', {
+        value: 0,
+        configurable: true,
+        writable: true,
+      })
+      act(() => {
+        fireEvent.scroll(strip!)
+      })
+      // Overflow menu button appears.
+      const menuBtn = container.querySelector(
+        '[data-testid^="tab-overflow-menu-"]',
+      ) as HTMLButtonElement | null
+      expect(menuBtn).not.toBeNull()
+      // Open the menu — all three tabs listed.
+      act(() => {
+        fireEvent.click(menuBtn!)
+      })
+      const itemA = container.querySelector(
+        '[data-testid="tab-overflow-item-t-a"]',
+      )
+      const itemB = container.querySelector(
+        '[data-testid="tab-overflow-item-t-b"]',
+      )
+      const itemC = container.querySelector(
+        '[data-testid="tab-overflow-item-t-c"]',
+      )
+      expect(itemA).not.toBeNull()
+      expect(itemB).not.toBeNull()
+      expect(itemC).not.toBeNull()
+      // Reset the activation spy before the jump click so we can assert on it.
+      onActiveTabChange.mockClear()
+      act(() => {
+        fireEvent.click(itemC!)
+      })
+      expect(onActiveTabChange).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 't-c' }),
+      )
+      // Active tab attribute flips to t-c.
+      const tabC = container.querySelector('[data-workspace-tab="t-c"]')
+      expect(tabC?.getAttribute('data-tab-active')).toBe('true')
+      // Menu closes after pick — getByTestId throws if absent, so use query.
+      expect(
+        container.querySelector('[data-testid^="tab-overflow-list-"]'),
+      ).toBeNull()
+      // Silence unused-variable warning for getByTestId.
+      void getByTestId
+    })
+
+    it('scrolls the active tab into view when activation changes', () => {
+      const tabs = [editorTab('t-a', 'f-strudel'), editorTab('t-b', 'f-hydra')]
+      const calls: string[] = []
+      const originalProto = HTMLElement.prototype as unknown as {
+        scrollIntoView?: () => void
+      }
+      const hadOriginal = 'scrollIntoView' in HTMLElement.prototype
+      const original = originalProto.scrollIntoView
+      originalProto.scrollIntoView = function (this: HTMLElement) {
+        calls.push(this.getAttribute('data-workspace-tab') ?? '?')
+      }
+      try {
+        const { getByTestId } = render(
+          <WorkspaceShell initialTabs={tabs} />,
+        )
+        // Initial mount call fires for t-a (the active tab on mount).
+        const initialCount = calls.length
+        // Click t-b → activation changes → effect re-runs.
+        fireEvent.click(getByTestId('mock-monaco-editor'))
+        // Click the t-b tab in the strip to switch activation.
+        fireEvent.click(
+          document.querySelector('[data-workspace-tab="t-b"]') as HTMLElement,
+        )
+        expect(calls.length).toBeGreaterThan(initialCount)
+        expect(calls).toContain('t-b')
+      } finally {
+        if (hadOriginal && original) {
+          originalProto.scrollIntoView = original
+        } else {
+          delete (originalProto as { scrollIntoView?: () => void }).scrollIntoView
+        }
+      }
+    })
+  })
+
   // Silence the unused imports that some branches above don't reach
   // in every test. `act` is imported for future timing tests; kept
   // here to keep the import list stable across plan tasks.
