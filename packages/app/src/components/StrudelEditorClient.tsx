@@ -272,9 +272,13 @@ export default function StrudelEditorClient({
     registerPresetAsNamedViz(hydraPreset);
   }, [seedState.p5PresetId, seedState.hydraPresetId]);
 
-  // Persist bundled presets to IndexedDB (non-blocking, fire-and-forget).
-  // IMPORTANT: merge with existing presets to preserve user-set fields
-  // like cropRegion that aren't part of the bundled code template.
+  // Persist bundled presets to IndexedDB on FIRST seed only — never
+  // overwrite an existing entry. Earlier the bundled `code` was put
+  // back every mount, which silently erased user edits to the bundled
+  // Piano Roll preset on every reload (#189). Workspace files follow
+  // the same seed-when-missing rule via `seedWorkspaceFile`; bringing
+  // VizPresetStore in line removes the "bundled preset is privileged"
+  // duality at the data layer.
   useEffect(() => {
     async function seedPresets() {
       const LEGACY_IDS = ["pianoroll-p5-custom", "pianoroll-hydra-custom"];
@@ -284,21 +288,23 @@ export default function StrudelEditorClient({
       }
       const now = Date.now();
       const existingP5 = await VizPresetStore.get(seedState.p5PresetId);
-      await VizPresetStore.put({
-        ...existingP5,
-        id: seedState.p5PresetId, name: "Piano Roll", renderer: "p5",
-        code: PIANOROLL_P5_CODE, requires: ["streaming"],
-        nativeSize: existingP5?.nativeSize ?? { w: 1400, h: 350 },
-        createdAt: existingP5?.createdAt ?? now, updatedAt: now,
-      });
+      if (!existingP5) {
+        await VizPresetStore.put({
+          id: seedState.p5PresetId, name: "Piano Roll", renderer: "p5",
+          code: PIANOROLL_P5_CODE, requires: ["streaming"],
+          nativeSize: { w: 1400, h: 350 },
+          createdAt: now, updatedAt: now,
+        });
+      }
       const existingHydra = await VizPresetStore.get(seedState.hydraPresetId);
-      await VizPresetStore.put({
-        ...existingHydra,
-        id: seedState.hydraPresetId, name: "Piano Roll (Hydra)", renderer: "hydra",
-        code: PIANOROLL_HYDRA_CODE, requires: ["audio"],
-        nativeSize: existingHydra?.nativeSize ?? { w: 1400, h: 400 },
-        createdAt: existingHydra?.createdAt ?? now, updatedAt: now,
-      });
+      if (!existingHydra) {
+        await VizPresetStore.put({
+          id: seedState.hydraPresetId, name: "Piano Roll (Hydra)", renderer: "hydra",
+          code: PIANOROLL_HYDRA_CODE, requires: ["audio"],
+          nativeSize: { w: 1400, h: 400 },
+          createdAt: now, updatedAt: now,
+        });
+      }
     }
     seedPresets();
   }, [seedState.p5PresetId, seedState.hydraPresetId]);
