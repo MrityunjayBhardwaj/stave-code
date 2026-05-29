@@ -209,6 +209,30 @@ export {
   AUTO_SNAPSHOT_PREFIX,
 } from './workspace/snapshotStore'
 export type { SnapshotMeta } from './workspace/snapshotStore'
+// Project commit store (file-history milestone, Phase F #196)
+export {
+  initHistory,
+  resetHistoryState,
+  commitWorkspace,
+  restoreProject,
+  restoreFileToCommit,
+  createBranchAt,
+  switchToBranch,
+  getCurrentHistory,
+} from './workspace/history/historyService'
+export { startHistoryDriver } from './workspace/history/historyDriver'
+export {
+  listCommits,
+  listBranches,
+  fileHistory,
+  getFileContentAt,
+  getCommit,
+  getCurrentBranch,
+  type Commit,
+  type CommitKind,
+  type BranchRef,
+  type ProjectHistory,
+} from './workspace/history/historyGraph'
 export {
   listProjects,
   getProject,
