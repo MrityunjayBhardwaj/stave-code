@@ -18267,6 +18267,15 @@ function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
   return changed;
 }
 __name(changedFiles, "changedFiles");
+function seedCommitId(h) {
+  for (const c of Object.values(h.commits)) if (c.kind === "seed") return c.id;
+  return null;
+}
+__name(seedCommitId, "seedCommitId");
+function isFileModifiedAt(h, fileId, commitId, liveContent) {
+  return getFileContentAt(h, fileId, commitId) !== liveContent;
+}
+__name(isFileModifiedAt, "isFileModifiedAt");
 function commitOnto(h, changed, opts) {
   if (Object.keys(changed).length === 0 && !opts.allowEmpty) return h;
   const branch = h.currentBranch;
@@ -18679,21 +18688,41 @@ function restoreProject(commitId) {
 }
 __name(restoreProject, "restoreProject");
 function restoreFileToCommit(fileId, commitId) {
-  return withLock(async () => {
-    if (!current2) return null;
-    const content = getFileContentAt(current2, fileId, commitId);
-    const meta = current2.fileMeta[fileId];
-    const live = readWorkspaceFiles();
-    if (content === null) {
-      delete live[fileId];
-    } else {
-      live[fileId] = content;
-    }
-    applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
-    return _commit("auto", { gate: false });
-  });
+  return withLock(() => _restoreFileToCommit(fileId, commitId));
 }
 __name(restoreFileToCommit, "restoreFileToCommit");
+async function _restoreFileToCommit(fileId, commitId) {
+  if (!current2) return null;
+  const content = getFileContentAt(current2, fileId, commitId);
+  const meta = current2.fileMeta[fileId];
+  const live = readWorkspaceFiles();
+  if (content === null) {
+    delete live[fileId];
+  } else {
+    live[fileId] = content;
+  }
+  applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
+  return _commit("auto", { gate: false });
+}
+__name(_restoreFileToCommit, "_restoreFileToCommit");
+function revertFileToSeed(fileId) {
+  return withLock(async () => {
+    if (!current2) return null;
+    const seed = seedCommitId(current2);
+    if (!seed) return null;
+    return _restoreFileToCommit(fileId, seed);
+  });
+}
+__name(revertFileToSeed, "revertFileToSeed");
+function isFileModifiedSinceHead(fileId) {
+  if (!current2) return false;
+  const head = headOf(current2);
+  if (!head) return false;
+  const live = readWorkspaceFiles();
+  const liveContent = Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
+  return isFileModifiedAt(current2, fileId, head, liveContent);
+}
+__name(isFileModifiedSinceHead, "isFileModifiedSinceHead");
 function createBranchAt(name, fromCommit) {
   return withLock(async () => {
     if (!current2) return;
@@ -24345,6 +24374,7 @@ exports.installEngineLogMarkers = installEngineLogMarkers;
 exports.installGlobalErrorCatch = installGlobalErrorCatch;
 exports.isBundledPresetId = isBundledPresetId;
 exports.isDocReady = isDocReady;
+exports.isFileModifiedSinceHead = isFileModifiedSinceHead;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
 exports.levenshtein = levenshtein;
 exports.listBottomPanelTabs = listBottomPanelTabs;
@@ -24398,6 +24428,7 @@ exports.restoreFileToCommit = restoreFileToCommit;
 exports.restoreProject = restoreProject;
 exports.restoreSnapshot = restoreSnapshot;
 exports.revealLineInFile = revealLineInFile;
+exports.revertFileToSeed = revertFileToSeed;
 exports.runChainAppliedStage = runChainAppliedStage;
 exports.runFinalStage = runFinalStage;
 exports.runMiniExpandedStage = runMiniExpandedStage;

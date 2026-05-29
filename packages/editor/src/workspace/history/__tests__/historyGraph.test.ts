@@ -16,6 +16,8 @@ import {
   createBranch,
   switchBranch,
   headOf,
+  seedCommitId,
+  isFileModifiedAt,
   MAIN_BRANCH,
   type ProjectHistory,
 } from '../historyGraph'
@@ -143,6 +145,30 @@ describe('snapshotAt', () => {
     h = switchBranch(h, 'fromAnchor')
     expect(headOf(h)).toBe('anchor')
     expect(snapshotAt(h, headOf(h)!).files).toEqual({ f1: 'a1', f2: 'b0' })
+  })
+})
+
+describe('seedCommitId / isFileModifiedAt (#191 per-file primitives)', () => {
+  it('seedCommitId finds the seed commit, even from a deep branch', () => {
+    let h = seed()
+    h = commitOnto(h, { f1: 'a1' }, { kind: 'auto', id: 'c1', createdAt: 2000 })
+    h = commitOnto(h, { f1: 'a2' }, { kind: 'manual', id: 'c2', createdAt: 3000, label: 'x' })
+    expect(seedCommitId(h)).toBe('c0')
+  })
+  it('isFileModifiedAt is true when live differs from the commit, false when equal', () => {
+    let h = seed()
+    h = commitOnto(h, { f1: 'a1' }, { kind: 'auto', id: 'c1', createdAt: 2000 })
+    // f1 at HEAD (c1) is 'a1'
+    expect(isFileModifiedAt(h, 'f1', 'c1', 'a1')).toBe(false)
+    expect(isFileModifiedAt(h, 'f1', 'c1', 'a1-EDITED')).toBe(true)
+    // vs the seed, f1 was 'a0'
+    expect(isFileModifiedAt(h, 'f1', 'c0', 'a0')).toBe(false)
+    expect(isFileModifiedAt(h, 'f1', 'c1', 'a0')).toBe(true) // a0 ≠ a1 at c1
+  })
+  it('isFileModifiedAt treats live-absent (null) as modified iff the file existed', () => {
+    const h = seed()
+    expect(isFileModifiedAt(h, 'f1', 'c0', null)).toBe(true) // existed at c0, now gone
+    expect(isFileModifiedAt(h, 'ghost', 'c0', null)).toBe(false) // never existed → unchanged
   })
 })
 

@@ -216,6 +216,8 @@ export {
   commitWorkspace,
   restoreProject,
   restoreFileToCommit,
+  revertFileToSeed,
+  isFileModifiedSinceHead,
   createBranchAt,
   switchToBranch,
   getCurrentHistory,

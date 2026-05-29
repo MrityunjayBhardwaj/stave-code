@@ -19,6 +19,8 @@ import {
   getFileContentAt,
   snapshotAt,
   headOf,
+  seedCommitId,
+  isFileModifiedAt,
   createBranch,
   switchBranch,
 } from './historyGraph'
@@ -220,20 +222,58 @@ export function restoreFileToCommit(
   fileId: string,
   commitId: string,
 ): Promise<string | null> {
+  return withLock(() => _restoreFileToCommit(fileId, commitId))
+}
+
+/** Unlocked file-restore body — call only from within `withLock`. */
+async function _restoreFileToCommit(
+  fileId: string,
+  commitId: string,
+): Promise<string | null> {
+  if (!current) return null
+  const content = getFileContentAt(current, fileId, commitId)
+  const meta = current.fileMeta[fileId]
+  // single-file apply: keep all other files at live latest
+  const live = readWorkspaceFiles()
+  if (content === null) {
+    delete live[fileId]
+  } else {
+    live[fileId] = content
+  }
+  applySnapshot(live, meta ? { ...current.fileMeta, [fileId]: meta } : current.fileMeta)
+  return _commit('auto', { gate: false })
+}
+
+/**
+ * Restore a file to its seed (commit 0) content — the universal "reset to
+ * default" (#191): "revert to default" === restore to the seed commit. No-op
+ * (null) if there's no active history or no seed. Computes the seed id INSIDE
+ * the lock so a project switch can't cross the read/restore boundary.
+ */
+export function revertFileToSeed(fileId: string): Promise<string | null> {
   return withLock(async () => {
     if (!current) return null
-    const content = getFileContentAt(current, fileId, commitId)
-    const meta = current.fileMeta[fileId]
-    // single-file apply: keep all other files at live latest
-    const live = readWorkspaceFiles()
-    if (content === null) {
-      delete live[fileId]
-    } else {
-      live[fileId] = content
-    }
-    applySnapshot(live, meta ? { ...current.fileMeta, [fileId]: meta } : current.fileMeta)
-    return _commit('auto', { gate: false })
+    const seed = seedCommitId(current)
+    if (!seed) return null
+    return _restoreFileToCommit(fileId, seed)
   })
+}
+
+/**
+ * True if `fileId`'s live workspace content differs from current-branch HEAD.
+ * A synchronous read (no mutation/persist → no lock needed) for the Phase D
+ * file-tree badge and File-scope restore-button gating (#193). False when
+ * there's no history or no HEAD yet.
+ */
+export function isFileModifiedSinceHead(fileId: string): boolean {
+  if (!current) return false
+  const head = headOf(current)
+  if (!head) return false
+  const live = readWorkspaceFiles()
+  const liveContent = Object.prototype.hasOwnProperty.call(live, fileId)
+    ? live[fileId]
+    : null
+  return isFileModifiedAt(current, fileId, head, liveContent)
 }
 
 /** Create a branch at `fromCommit` (does not switch to it). */
