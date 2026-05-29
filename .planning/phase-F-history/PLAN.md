@@ -277,3 +277,45 @@ Each step = one atomic commit. Steps 1-5 are pure editor-package logic (fast TDD
 - Manual-commit UI + labels → **I (#199)** (F exposes `commit({kind:'manual',label})`; I builds the surface)
 - Per-file restore *UI* → **B (#191)** (F exposes `restoreFileToCommit`)
 - Branch merge → **L (deferred)**
+
+---
+
+## 14. As-built — Tasks 1–5 (pure data layer, committed; checkpoint)
+
+Branch `feat/phase-F-history`. 35 history unit tests; full editor suite 1697 green.
+
+**Module structure (deviation from "evolve snapshotStore in place"):** built a
+new `workspace/history/` set because the project does NOT fake IndexedDB in
+vitest — so the graph logic had to be PURE (plain-object testable) and split
+from IDB I/O. This is layering, not parallel infra: `snapshotStore.ts` is
+untouched and gets superseded/rewired at Task 8 (end state = one system).
+- `historyGraph.ts` — pure model + ops (seed/commit/back-walk/branches/diff). `5787d3b`
+- `significance.ts` — cheap diff-magnitude gate. `bba7b1d`
+- `historyRetention.ts` — tiered prune + keep-if-sole-writer. `bba7b1d`
+- `historyWorkspace.ts` — impure bridge (read workspace / applySnapshot restore). `fbdb5e6`
+
+**Other deviations (all on EVIDENCE):**
+1. **`pinned` display/storage split** (not in the plan's prune sketch): only-
+   changed-files makes deleting a nearest-writer corrupt downstream views, so
+   pruning keeps such commits `pinned` — on the back-walk chain, hidden from
+   `listCommits`/`fileHistory`. → candidate **PV61**.
+2. **`fileMeta` sidecar on ProjectHistory**: commits are content-only, so
+   restore-recreate of a deleted file needs path/language/meta. Stored at
+   history level (latest-wins). Limitation: uses latest meta, not as-of-commit
+   (historical-path restore is a later refinement).
+3. **Restore orchestration deferred to Task 6+**: `restoreProject`/
+   `restoreFileToCommit` (applySnapshot + commitOnto + persist) need IDB +
+   id/timestamp generation, so they live in the driver/service layer. Task 4
+   delivered the testable load-bearing part (`applySnapshot`, the #189/P78
+   write path through `setContent`).
+
+**Remaining (Tasks 6–8, app boundary — observation-gated):**
+- `historyStore.ts` — IDB v2 whole-row load/save + migration (newest legacy
+  snapshot → seed c0, discard older; Q3 ratified discard).
+- `historyDriver.ts` — idle-5s + per-eval(`onEvaluateSuccess`) + unload
+  cadence, significance gate; calls commitOnto → persist → prune.
+- restore orchestration + branch switch re-sync to workspace.
+- `StaveApp` rewire: `startHistoryDriver`, back-compat shims so the existing
+  Version History panel keeps working, retire `MAX_AUTO_SNAPSHOTS` /
+  `AUTO_SNAPSHOT_PREFIX`.
+- PV61 catalogue entry; Playwright observation (S1/S2/S6/S7/S8).
