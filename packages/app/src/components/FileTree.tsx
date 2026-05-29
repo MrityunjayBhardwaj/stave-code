@@ -15,6 +15,10 @@ import {
   getChildOrder,
   setChildOrder,
   withStructBatch,
+  subscribeToHistory,
+  getCurrentHistory,
+  isFileModifiedSinceHead,
+  subscribeToDocUpdate,
   type WorkspaceFile,
 } from "@stave/editor";
 import { showPrompt, showConfirm, showToast } from "../dialogs/host";
@@ -199,7 +203,44 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     return subscribeToFolderOrder(() => setFolderOrderRev((n) => n + 1));
   }, []);
 
+  // History-divergence signals (Phase D, #193): the per-file "uncommitted
+  // since HEAD" dot and the header branch chip. Re-derived on history changes
+  // (commit/branch/restore) AND on live doc edits — a file goes dirty the
+  // moment you type, and clean again when an auto-commit captures it. Doc
+  // updates are debounced so per-keystroke churn doesn't thrash the tree.
+  const [historyRev, setHistoryRev] = useState(0);
+  useEffect(() => {
+    const bump = () => setHistoryRev((n) => n + 1);
+    const offHistory = subscribeToHistory(bump);
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const offDoc = subscribeToDocUpdate(
+      () => {
+        if (t) clearTimeout(t);
+        t = setTimeout(bump, 250);
+      },
+      { localOnly: true },
+    );
+    return () => {
+      offHistory();
+      offDoc();
+      if (t) clearTimeout(t);
+    };
+  }, []);
+
   const files = useMemo(() => listWorkspaceFiles(), [fileListRev]);
+
+  // current branch (header chip when ≠ main) + the set of files dirty vs HEAD.
+  const currentBranch = useMemo(
+    () => getCurrentHistory()?.currentBranch ?? null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [historyRev],
+  );
+  const modifiedFileIds = useMemo(() => {
+    const dirty = new Set<string>();
+    for (const f of files) if (isFileModifiedSinceHead(f.id)) dirty.add(f.id);
+    return dirty;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files, historyRev]);
   const tree = useMemo(() => {
     const t = buildTree(files);
     applyFolderOrder(
@@ -1016,6 +1057,15 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     >
       <div style={styles.header}>
         <span style={styles.title} title={projectName}>{projectName}</span>
+        {currentBranch && currentBranch !== "main" && (
+          <span
+            data-file-tree-branch={currentBranch}
+            title={`On branch "${currentBranch}" (not main)`}
+            style={styles.branchChip}
+          >
+            ⑂ {currentBranch}
+          </span>
+        )}
         <div
           style={{
             ...styles.headerActions,
@@ -1089,6 +1139,7 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
             key={node.path}
             node={node}
             depth={0}
+            modifiedFileIds={modifiedFileIds}
             collapsedFolders={collapsedFolders}
             onToggleFolder={toggleFolder}
             onOpenFile={onOpenFile}
@@ -1208,10 +1259,12 @@ interface TreeItemProps {
   onDropOnFolder: (e: React.DragEvent, targetFolderPath: string) => void;
   onDragOverFile: (e: React.DragEvent, targetFileId: string) => void;
   onDropOnFile: (e: React.DragEvent, targetFileId: string) => void;
+  /** file ids dirty vs current-branch HEAD — drive the per-row badge (#193). */
+  modifiedFileIds: Set<string>;
 }
 
 function TreeItem(props: TreeItemProps) {
-  const { node, depth } = props;
+  const { node, depth, modifiedFileIds } = props;
 
   if (node.kind === "folder") {
     const collapsed = props.collapsedFolders.has(node.path);
@@ -1336,6 +1389,13 @@ function TreeItem(props: TreeItemProps) {
         />
       ) : (
         <span style={styles.itemName}>{node.name}</span>
+      )}
+      {!isEditing && modifiedFileIds.has(file.id) && (
+        <span
+          data-file-modified={file.id}
+          title="Modified since last commit"
+          style={styles.dirtyDot}
+        />
       )}
     </div>
   );
@@ -1664,6 +1724,28 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap" as const,
     flex: 1,
+  },
+  dirtyDot: {
+    flex: "0 0 auto",
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    background: "var(--accent-strong)",
+    marginLeft: 4,
+  },
+  branchChip: {
+    flex: "0 0 auto",
+    fontSize: 10,
+    lineHeight: 1.4,
+    padding: "1px 6px",
+    borderRadius: 10,
+    color: "var(--accent-strong)",
+    border: "1px solid color-mix(in srgb, var(--accent-strong) 45%, transparent)",
+    background: "color-mix(in srgb, var(--accent-strong) 12%, transparent)",
+    maxWidth: 110,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap" as const,
   },
   renameInput: {
     background: "var(--bg-input)",
