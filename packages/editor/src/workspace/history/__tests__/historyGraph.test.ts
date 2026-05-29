@@ -68,6 +68,27 @@ describe('commitOnto', () => {
     const h0 = seed()
     expect(commitOnto(h0, {}, { kind: 'auto', id: 'cX', createdAt: 9 })).toBe(h0)
   })
+  it('makes a label-only anchor when changed is empty + allowEmpty (#199)', () => {
+    const h0 = seed()
+    const h1 = commitOnto(h0, {}, {
+      kind: 'manual',
+      id: 'man',
+      createdAt: 2000,
+      label: 'v1 demo',
+      allowEmpty: true,
+    })
+    expect(h1).not.toBe(h0) // a real commit was made
+    expect(headOf(h1)).toBe('man')
+    expect(h1.commits.man.parent).toBe('c0')
+    expect(h1.commits.man.files).toEqual({}) // anchor holds no content
+    expect(h1.commits.man.label).toBe('v1 demo')
+    expect(listCommits(h1).map((c) => c.id)).toEqual(['man', 'c0'])
+    // the anchor is transparent to back-walk — content resolves past it
+    expect(getFileContentAt(h1, 'f1', 'man')).toBe('a0')
+    expect(getFileContentAt(h1, 'f2', 'man')).toBe('b0')
+    // empty commit writes no file, so fileIndex is unchanged
+    expect(h1.fileIndex).toEqual({ f1: ['c0'], f2: ['c0'] })
+  })
   it('does not mutate the input history (purity)', () => {
     const h0 = seed()
     commitOnto(h0, { f1: 'a1' }, { kind: 'auto', id: 'c1', createdAt: 2000 })
@@ -102,6 +123,26 @@ describe('snapshotAt', () => {
     const snap = snapshotAt(h, 'c1')
     expect(snap.files).toEqual({ f1: 'a1', f2: 'b0' }) // f1 from c1, f2 from seed
     expect(snap.order).toEqual(order)
+  })
+  // #199: restore/fork target an empty manual anchor (files:{}). snapshotAt
+  // MUST reconstruct the full project by walking past the anchor, and pick up
+  // the anchor's own order snapshot. Guards the fork/restore-from-anchor path.
+  it('reconstructs the full file set when the target commit is an empty anchor', () => {
+    let h = seed()
+    h = commitOnto(h, { f1: 'a1' }, { kind: 'auto', id: 'c1', createdAt: 2000 })
+    h = commitOnto(h, {}, { kind: 'manual', id: 'anchor', createdAt: 3000, order, allowEmpty: true })
+    const snap = snapshotAt(h, 'anchor')
+    expect(snap.files).toEqual({ f1: 'a1', f2: 'b0' }) // nearest writers past the anchor
+    expect(snap.order).toEqual(order) // the anchor's own order snapshot
+  })
+  it('fork from an empty anchor reconstructs the full workspace on switch', () => {
+    let h = seed()
+    h = commitOnto(h, { f1: 'a1' }, { kind: 'auto', id: 'c1', createdAt: 2000 })
+    h = commitOnto(h, {}, { kind: 'manual', id: 'anchor', createdAt: 3000, allowEmpty: true })
+    h = createBranch(h, 'fromAnchor', 'anchor', 3500)
+    h = switchBranch(h, 'fromAnchor')
+    expect(headOf(h)).toBe('anchor')
+    expect(snapshotAt(h, headOf(h)!).files).toEqual({ f1: 'a1', f2: 'b0' })
   })
 })
 

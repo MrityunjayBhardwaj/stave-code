@@ -137,6 +137,12 @@ export interface CommitWorkspaceOpts {
   /** apply the significance floor (idle path); false for eval/manual/restore. */
   readonly gate?: boolean
   readonly label?: string
+  /**
+   * Commit even when nothing changed since HEAD (label-only anchor). Used by
+   * manual checkpoints (#199) so a user can name the current exact state; the
+   * auto/eval paths leave this off and keep their no-op-when-unchanged return.
+   */
+  readonly allowEmpty?: boolean
 }
 
 /**
@@ -161,7 +167,7 @@ async function _commit(
   const live = readWorkspaceFiles()
   const changed = changedFiles(current, live)
   const changedKeys = Object.keys(changed)
-  if (changedKeys.length === 0) return null
+  if (changedKeys.length === 0 && !opts.allowEmpty) return null
 
   if (opts.gate) {
     const head = headOf(current)
@@ -185,6 +191,7 @@ async function _commit(
     createdAt: now(),
     order: readWorkspaceOrder(),
     fileMeta: changedMeta,
+    ...(opts.allowEmpty ? { allowEmpty: true } : {}),
   })
   if (kind === 'auto') current = prune(current, now())
   await saveHistory(current)

@@ -4056,6 +4056,12 @@ interface CommitWorkspaceOpts {
     /** apply the significance floor (idle path); false for eval/manual/restore. */
     readonly gate?: boolean;
     readonly label?: string;
+    /**
+     * Commit even when nothing changed since HEAD (label-only anchor). Used by
+     * manual checkpoints (#199) so a user can name the current exact state; the
+     * auto/eval paths leave this off and keep their no-op-when-unchanged return.
+     */
+    readonly allowEmpty?: boolean;
 }
 /**
  * Capture the current workspace state as a commit on the current branch.
