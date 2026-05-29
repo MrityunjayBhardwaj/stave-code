@@ -37,6 +37,23 @@ let current: ProjectHistory | null = null
 const newId = (): string => crypto.randomUUID()
 const now = (): number => Date.now()
 
+/**
+ * Serialize all mutating ops. `current` mutation is synchronous, but the
+ * `await saveHistory` is not — two concurrent triggers (idle debounce +
+ * per-eval) open separate IDB transactions whose completion order isn't
+ * guaranteed, so the shorter chain could land last and drop a commit (#201).
+ * The lock makes each op's read-mutate-persist atomic w.r.t. the others.
+ */
+let opLock: Promise<unknown> = Promise.resolve()
+function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = opLock.then(fn, fn)
+  opLock = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
 /** The in-memory active history (null before init). For UI reads. */
 export function getCurrentHistory(): ProjectHistory | null {
   return current
@@ -47,21 +64,23 @@ export function getCurrentHistory(): ProjectHistory | null {
  * Migration per RESEARCH Q3: legacy byte-snapshots are ignored — the live
  * workspace IS the newest state, so seed commit c0 from it.
  */
-export async function initHistory(projectId: string): Promise<ProjectHistory> {
-  let h = await loadHistory(projectId)
-  if (!h) {
-    h = seedHistory(
-      projectId,
-      readWorkspaceFiles(),
-      readWorkspaceOrder(),
-      newId(),
-      now(),
-      readWorkspaceFileMeta(),
-    )
-    await saveHistory(h)
-  }
-  current = h
-  return h
+export function initHistory(projectId: string): Promise<ProjectHistory> {
+  return withLock(async () => {
+    let h = await loadHistory(projectId)
+    if (!h) {
+      h = seedHistory(
+        projectId,
+        readWorkspaceFiles(),
+        readWorkspaceOrder(),
+        newId(),
+        now(),
+        readWorkspaceFileMeta(),
+      )
+      await saveHistory(h)
+    }
+    current = h
+    return h
+  })
 }
 
 /** Drop the in-memory state (project switch / teardown). */
@@ -80,7 +99,16 @@ export interface CommitWorkspaceOpts {
  * Returns the new commit id, or null if nothing changed (or the change was
  * below the significance floor when gated). Auto-commits trigger pruning.
  */
-export async function commitWorkspace(
+/** Locked: capture the workspace as a commit. See {@link commitWorkspace}. */
+export function commitWorkspace(
+  kind: CommitKind,
+  opts: CommitWorkspaceOpts = {},
+): Promise<string | null> {
+  return withLock(() => _commit(kind, opts))
+}
+
+/** Unlocked commit body — call only from within `withLock`. */
+async function _commit(
   kind: CommitKind,
   opts: CommitWorkspaceOpts = {},
 ): Promise<string | null> {
@@ -123,53 +151,61 @@ export async function commitWorkspace(
  * a new commit on the current branch (non-destructive — the prior state stays
  * in history).
  */
-export async function restoreProject(commitId: string): Promise<void> {
-  if (!current) return
-  const snap = snapshotAt(current, commitId)
-  applySnapshot(snap.files, current.fileMeta, snap.order)
-  await commitWorkspace('auto', { gate: false })
+export function restoreProject(commitId: string): Promise<void> {
+  return withLock(async () => {
+    if (!current) return
+    const snap = snapshotAt(current, commitId)
+    applySnapshot(snap.files, current.fileMeta, snap.order)
+    await _commit('auto', { gate: false })
+  })
 }
 
 /**
  * Restore a single file to its content at `commitId` (or delete it if it did
  * not exist then), then record a new commit. The Phase B (#191) primitive.
  */
-export async function restoreFileToCommit(
+export function restoreFileToCommit(
   fileId: string,
   commitId: string,
 ): Promise<string | null> {
-  if (!current) return null
-  const content = getFileContentAt(current, fileId, commitId)
-  const meta = current.fileMeta[fileId]
-  // single-file apply: keep all other files at live latest
-  const live = readWorkspaceFiles()
-  if (content === null) {
-    delete live[fileId]
-  } else {
-    live[fileId] = content
-  }
-  applySnapshot(live, meta ? { ...current.fileMeta, [fileId]: meta } : current.fileMeta)
-  return commitWorkspace('auto', { gate: false })
+  return withLock(async () => {
+    if (!current) return null
+    const content = getFileContentAt(current, fileId, commitId)
+    const meta = current.fileMeta[fileId]
+    // single-file apply: keep all other files at live latest
+    const live = readWorkspaceFiles()
+    if (content === null) {
+      delete live[fileId]
+    } else {
+      live[fileId] = content
+    }
+    applySnapshot(live, meta ? { ...current.fileMeta, [fileId]: meta } : current.fileMeta)
+    return _commit('auto', { gate: false })
+  })
 }
 
 /** Create a branch at `fromCommit` (does not switch to it). */
-export async function createBranchAt(name: string, fromCommit: string): Promise<void> {
-  if (!current) return
-  current = createBranch(current, name, fromCommit, now())
-  await saveHistory(current)
+export function createBranchAt(name: string, fromCommit: string): Promise<void> {
+  return withLock(async () => {
+    if (!current) return
+    current = createBranch(current, name, fromCommit, now())
+    await saveHistory(current)
+  })
 }
 
 /**
  * Switch the current branch and re-sync the workspace to that branch's HEAD
  * (the new runtime authority).
  */
-export async function switchToBranch(name: string): Promise<void> {
-  if (!current) return
-  current = switchBranch(current, name)
-  const head = headOf(current)
-  if (head) {
-    const snap = snapshotAt(current, head)
-    applySnapshot(snap.files, current.fileMeta, snap.order)
-  }
-  await saveHistory(current)
+export function switchToBranch(name: string): Promise<void> {
+  return withLock(async () => {
+    if (!current) return
+    current = switchBranch(current, name)
+    const head = headOf(current)
+    if (head) {
+      const snap = snapshotAt(current, head)
+      applySnapshot(snap.files, current.fileMeta, snap.order)
+    }
+    await saveHistory(current)
+  })
 }

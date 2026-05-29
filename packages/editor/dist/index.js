@@ -22593,32 +22593,48 @@ __name(applySnapshot, "applySnapshot");
 var current2 = null;
 var newId = /* @__PURE__ */ __name(() => crypto.randomUUID(), "newId");
 var now = /* @__PURE__ */ __name(() => Date.now(), "now");
+var opLock = Promise.resolve();
+function withLock(fn) {
+  const run = opLock.then(fn, fn);
+  opLock = run.then(
+    () => void 0,
+    () => void 0
+  );
+  return run;
+}
+__name(withLock, "withLock");
 function getCurrentHistory() {
   return current2;
 }
 __name(getCurrentHistory, "getCurrentHistory");
-async function initHistory(projectId) {
-  let h = await loadHistory(projectId);
-  if (!h) {
-    h = seedHistory(
-      projectId,
-      readWorkspaceFiles(),
-      readWorkspaceOrder(),
-      newId(),
-      now(),
-      readWorkspaceFileMeta()
-    );
-    await saveHistory(h);
-  }
-  current2 = h;
-  return h;
+function initHistory(projectId) {
+  return withLock(async () => {
+    let h = await loadHistory(projectId);
+    if (!h) {
+      h = seedHistory(
+        projectId,
+        readWorkspaceFiles(),
+        readWorkspaceOrder(),
+        newId(),
+        now(),
+        readWorkspaceFileMeta()
+      );
+      await saveHistory(h);
+    }
+    current2 = h;
+    return h;
+  });
 }
 __name(initHistory, "initHistory");
 function resetHistoryState() {
   current2 = null;
 }
 __name(resetHistoryState, "resetHistoryState");
-async function commitWorkspace(kind, opts = {}) {
+function commitWorkspace(kind, opts = {}) {
+  return withLock(() => _commit(kind, opts));
+}
+__name(commitWorkspace, "commitWorkspace");
+async function _commit(kind, opts = {}) {
   if (!current2) return null;
   const live = readWorkspaceFiles();
   const changed = changedFiles(current2, live);
@@ -22648,43 +22664,51 @@ async function commitWorkspace(kind, opts = {}) {
   await saveHistory(current2);
   return id;
 }
-__name(commitWorkspace, "commitWorkspace");
-async function restoreProject(commitId) {
-  if (!current2) return;
-  const snap = snapshotAt(current2, commitId);
-  applySnapshot(snap.files, current2.fileMeta, snap.order);
-  await commitWorkspace("auto", { gate: false });
+__name(_commit, "_commit");
+function restoreProject(commitId) {
+  return withLock(async () => {
+    if (!current2) return;
+    const snap = snapshotAt(current2, commitId);
+    applySnapshot(snap.files, current2.fileMeta, snap.order);
+    await _commit("auto", { gate: false });
+  });
 }
 __name(restoreProject, "restoreProject");
-async function restoreFileToCommit(fileId, commitId) {
-  if (!current2) return null;
-  const content = getFileContentAt(current2, fileId, commitId);
-  const meta = current2.fileMeta[fileId];
-  const live = readWorkspaceFiles();
-  if (content === null) {
-    delete live[fileId];
-  } else {
-    live[fileId] = content;
-  }
-  applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
-  return commitWorkspace("auto", { gate: false });
+function restoreFileToCommit(fileId, commitId) {
+  return withLock(async () => {
+    if (!current2) return null;
+    const content = getFileContentAt(current2, fileId, commitId);
+    const meta = current2.fileMeta[fileId];
+    const live = readWorkspaceFiles();
+    if (content === null) {
+      delete live[fileId];
+    } else {
+      live[fileId] = content;
+    }
+    applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
+    return _commit("auto", { gate: false });
+  });
 }
 __name(restoreFileToCommit, "restoreFileToCommit");
-async function createBranchAt(name, fromCommit) {
-  if (!current2) return;
-  current2 = createBranch(current2, name, fromCommit, now());
-  await saveHistory(current2);
+function createBranchAt(name, fromCommit) {
+  return withLock(async () => {
+    if (!current2) return;
+    current2 = createBranch(current2, name, fromCommit, now());
+    await saveHistory(current2);
+  });
 }
 __name(createBranchAt, "createBranchAt");
-async function switchToBranch(name) {
-  if (!current2) return;
-  current2 = switchBranch(current2, name);
-  const head = headOf(current2);
-  if (head) {
-    const snap = snapshotAt(current2, head);
-    applySnapshot(snap.files, current2.fileMeta, snap.order);
-  }
-  await saveHistory(current2);
+function switchToBranch(name) {
+  return withLock(async () => {
+    if (!current2) return;
+    current2 = switchBranch(current2, name);
+    const head = headOf(current2);
+    if (head) {
+      const snap = snapshotAt(current2, head);
+      applySnapshot(snap.files, current2.fileMeta, snap.order);
+    }
+    await saveHistory(current2);
+  });
 }
 __name(switchToBranch, "switchToBranch");
 

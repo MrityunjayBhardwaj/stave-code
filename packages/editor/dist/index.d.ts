@@ -4056,6 +4056,7 @@ interface CommitWorkspaceOpts {
  * Returns the new commit id, or null if nothing changed (or the change was
  * below the significance floor when gated). Auto-commits trigger pruning.
  */
+/** Locked: capture the workspace as a commit. See {@link commitWorkspace}. */
 declare function commitWorkspace(kind: CommitKind, opts?: CommitWorkspaceOpts): Promise<string | null>;
 /**
  * Restore the whole project to `commitId`'s state, then record the restore as
