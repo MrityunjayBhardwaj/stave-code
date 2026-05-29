@@ -12,9 +12,9 @@
 
 import * as Y from 'yjs'
 import { getActiveDoc } from './projectDoc'
+import { DB_VERSION, upgradeHistoryDb } from './history/historyStore'
 
 const DB_NAME = 'stave-snapshots'
-const DB_VERSION = 1
 const STORE_NAME = 'snapshots'
 
 export interface SnapshotMeta {
@@ -39,13 +39,9 @@ export interface StoredSnapshot extends SnapshotMeta {
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' })
-        store.createIndex('byProject', 'projectId', { unique: false })
-      }
-    }
+    // Shared DB with the project commit store (history/historyStore). Use the
+    // shared upgrade so whichever store opens first leaves both schemas intact.
+    req.onupgradeneeded = () => upgradeHistoryDb(req.result)
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
   })

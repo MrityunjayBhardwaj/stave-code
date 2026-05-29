@@ -796,7 +796,7 @@ declare class HapStream {
  *
  * Phase 20-07 (PV38, PK13 step 9, P50).
  */
-type Listener$5 = () => void;
+type Listener$6 = () => void;
 /**
  * Phase 20-07 (R-3) — per-id metadata held alongside the irNodeId.
  *
@@ -859,7 +859,7 @@ declare class BreakpointStore {
      * Subscribe to mutate events. Returns a disposer mirroring
      * `LiveCodingRuntime.onPlayingChanged` (RESEARCH Q3 / S3).
      */
-    subscribe(cb: Listener$5): () => void;
+    subscribe(cb: Listener$6): () => void;
     dispose(): void;
     private fireChanged;
 }
@@ -1684,7 +1684,7 @@ declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]):
  * cache when the registry mutates.
  */
 
-type Listener$4 = () => void;
+type Listener$5 = () => void;
 /**
  * Register a descriptor under a user-chosen name. Idempotent — calling
  * twice with the same name + descriptor is a no-op and does not fire
@@ -1721,7 +1721,7 @@ declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
  * fire synchronously on subscription — subscribers receive only
  * future changes.
  */
-declare function onNamedVizChanged(cb: Listener$4): () => void;
+declare function onNamedVizChanged(cb: Listener$5): () => void;
 
 /**
  * Central configuration for the Stave visualization system.
@@ -3798,14 +3798,14 @@ declare function subscribeToDocUpdate(cb: () => void, options?: {
  * existing store functions as usual.
  */
 declare function withStructBatch<T>(fn: () => T): T;
-type Listener$3 = () => void;
+type Listener$4 = () => void;
 /** Call when the active project Y.Doc changes so the undo stack rebuilds. */
 declare function resetUndoManager(): void;
 declare function undo(): boolean;
 declare function redo(): boolean;
 declare function canUndo(): boolean;
 declare function canRedo(): boolean;
-declare function subscribeToUndoState(cb: Listener$3): () => void;
+declare function subscribeToUndoState(cb: Listener$4): () => void;
 
 /**
  * Reveal the given line in the editor for `fileId` and set the cursor
@@ -3920,6 +3920,189 @@ declare function deleteSnapshot(id: string): Promise<void>;
  * returns so cached snapshots re-sync with the new doc contents.
  */
 declare function restoreSnapshot(id: string): Promise<void>;
+
+/**
+ * historyGraph — PURE commit-graph logic for the project file-history store
+ * (Phase F, #196).
+ *
+ * No IndexedDB, no Y.Doc, no Date.now/randomUUID. Every mutating function is
+ * pure: it takes a `ProjectHistory`, plus any externally-generated `id` /
+ * `createdAt`, and returns a NEW `ProjectHistory`. This keeps the graph logic
+ * fully unit-testable with plain objects (the project does not fake IndexedDB
+ * in vitest — IDB I/O lives in `historyStore.ts` and is verified by
+ * observation; the driver that supplies ids/timestamps lives in
+ * `historyDriver.ts`).
+ *
+ * Model: git-style. Commits store ONLY the files that changed vs their parent
+ * (full content per changed file — NOT Yjs deltas, so reconstruction is a
+ * parent back-walk with no replay chain). `fileIndex` maps each file to the
+ * commits that wrote it, for O(1)-ish per-file history. The current branch's
+ * HEAD is the runtime authority.
+ *
+ * See `.planning/phase-F-history/PLAN.md` and RESEARCH.md for the locked
+ * decisions (cadence, retention, commit form).
+ */
+
+type CommitKind = 'seed' | 'auto' | 'manual' | 'fork';
+/**
+ * Per-file structural metadata needed to RECREATE a file on restore (path,
+ * language, opaque meta bag). Stored at the history level (latest-wins) rather
+ * than per-commit: commits carry only changed CONTENT (for clean diffing), but
+ * restoring a deleted file needs its identity. Renames are rare; v1 uses the
+ * latest known meta (historical-path restore is a later refinement).
+ */
+interface FileMeta {
+    readonly path: string;
+    readonly language: WorkspaceLanguage;
+    readonly meta?: Readonly<Record<string, unknown>>;
+}
+interface OrderSnapshot {
+    /** folderPath → ordered child file ids */
+    readonly fileOrder: Record<string, readonly string[]>;
+    /** parentPath → ordered subfolder names */
+    readonly subfolderOrder: Record<string, readonly string[]>;
+}
+interface Commit {
+    readonly id: string;
+    /** null only for a seed commit (a branch root). */
+    readonly parent: string | null;
+    /** the branch this commit was created on. */
+    readonly branch: string;
+    readonly kind: CommitKind;
+    readonly createdAt: number;
+    /** present on manual commits (Phase I) and the seed ('Initial'). */
+    readonly label?: string;
+    /** ONLY files changed vs parent. fileId → full content. */
+    readonly files: Readonly<Record<string, string>>;
+    /** structural order as of this commit (whole-project restore needs it). */
+    readonly order?: OrderSnapshot;
+    /**
+     * Set by retention pruning: this commit fell outside its display tier but
+     * holds the nearest-writer copy of a file some retained commit still reads,
+     * so it is kept on the STORAGE chain (back-walk traverses it) but HIDDEN
+     * from the display lineage (`listCommits`/`fileHistory` skip it). This is
+     * what lets only-changed-files pruning stay correct without a squash pass.
+     * See historyRetention.ts + PV61.
+     */
+    readonly pinned?: boolean;
+}
+interface BranchRef {
+    readonly head: string;
+    readonly createdAt: number;
+    /** commit this branch forked from; null for the root branch. */
+    readonly createdFrom: string | null;
+}
+interface ProjectHistory {
+    readonly projectId: string;
+    readonly commits: Readonly<Record<string, Commit>>;
+    readonly branches: Readonly<Record<string, BranchRef>>;
+    readonly currentBranch: string;
+    /** fileId → commit ids that wrote it, oldest-first. */
+    readonly fileIndex: Readonly<Record<string, readonly string[]>>;
+    /** fileId → latest structural metadata (for restore-recreate). */
+    readonly fileMeta: Readonly<Record<string, FileMeta>>;
+}
+declare function getCommit(h: ProjectHistory, commitId: string): Commit | undefined;
+declare function getCurrentBranch(h: ProjectHistory): string;
+/**
+ * Content of `fileId` as of `commitId` — the nearest writer at-or-before the
+ * commit, found by walking parent links. Returns null if the file did not
+ * exist at/before that commit. No replay chain.
+ */
+declare function getFileContentAt(h: ProjectHistory, fileId: string, commitId: string): string | null;
+/**
+ * Display lineage of a branch (HEAD → root via parent links), newest-first.
+ * Skips `pinned` commits — they exist only to hold content for the back-walk
+ * (see Commit.pinned), not for display.
+ */
+declare function listCommits(h: ProjectHistory, branch?: string): Commit[];
+declare function listBranches(h: ProjectHistory): Array<{
+    name: string;
+} & BranchRef>;
+/**
+ * Commits that wrote `fileId`, newest-first (fileIndex projection). Skips
+ * `pinned` commits for display consistency with `listCommits`.
+ */
+declare function fileHistory(h: ProjectHistory, fileId: string): Commit[];
+
+/**
+ * historyService — stateful orchestration for the project commit store
+ * (Phase F, #196, Task 6). Combines the pure graph, the workspace bridge, and
+ * IDB persistence behind a small imperative API the driver (cadence) and the
+ * app (eval trigger, History panel, branch UI) call.
+ *
+ * Holds the active project's `ProjectHistory` in memory (mirrors projectDoc's
+ * single-active-doc model). All ids/timestamps are generated HERE (crypto /
+ * Date) and handed to the pure graph, keeping the graph deterministic.
+ */
+
+type Listener$3 = () => void;
+/** Subscribe to history changes (commit/restore/branch/switch/active-file). Returns unsubscribe. */
+declare function subscribeToHistory(cb: Listener$3): () => void;
+/** The app sets this on tab focus so File-scope history targets the right file. */
+declare function setActiveHistoryFile(fileId: string | null): void;
+declare function getActiveHistoryFile(): string | null;
+/** The in-memory active history (null before init). For UI reads. */
+declare function getCurrentHistory(): ProjectHistory | null;
+/**
+ * Load (or, on first run, seed from the live workspace) the project's history.
+ * Migration per RESEARCH Q3: legacy byte-snapshots are ignored — the live
+ * workspace IS the newest state, so seed commit c0 from it.
+ */
+declare function initHistory(projectId: string): Promise<ProjectHistory>;
+/** Drop the in-memory state (project switch / teardown) and notify. */
+declare function resetHistoryState(): void;
+interface CommitWorkspaceOpts {
+    /** apply the significance floor (idle path); false for eval/manual/restore. */
+    readonly gate?: boolean;
+    readonly label?: string;
+}
+/**
+ * Capture the current workspace state as a commit on the current branch.
+ * Returns the new commit id, or null if nothing changed (or the change was
+ * below the significance floor when gated). Auto-commits trigger pruning.
+ */
+/** Locked: capture the workspace as a commit. See {@link commitWorkspace}. */
+declare function commitWorkspace(kind: CommitKind, opts?: CommitWorkspaceOpts): Promise<string | null>;
+/**
+ * Restore the whole project to `commitId`'s state, then record the restore as
+ * a new commit on the current branch (non-destructive — the prior state stays
+ * in history).
+ */
+declare function restoreProject(commitId: string): Promise<void>;
+/**
+ * Restore a single file to its content at `commitId` (or delete it if it did
+ * not exist then), then record a new commit. The Phase B (#191) primitive.
+ */
+declare function restoreFileToCommit(fileId: string, commitId: string): Promise<string | null>;
+/** Create a branch at `fromCommit` (does not switch to it). */
+declare function createBranchAt(name: string, fromCommit: string): Promise<void>;
+/**
+ * Switch the current branch and re-sync the workspace to that branch's HEAD
+ * (the new runtime authority).
+ */
+declare function switchToBranch(name: string): Promise<void>;
+
+/**
+ * historyDriver — auto-commit cadence for the project commit store (Phase F,
+ * #196, Task 6). Replaces the 60s full-doc auto-snapshot effect that lived in
+ * StaveApp (StaveApp.tsx:368-400). Extracted into the editor package so the
+ * cadence is wired in one testable place rather than a React effect.
+ *
+ * Triggers (RESEARCH §1):
+ *  - idle: 5s after the last LOCAL doc mutation, significance-gated.
+ *  - unload: visibilitychange→hidden / pagehide, significance-gated (narrows
+ *    the lost-debounce-window on reload).
+ *  - per-eval: NOT here — `onEvaluateSuccess` lives on the runtime instance in
+ *    the app, which calls commitWorkspace('auto', {gate:false}) directly.
+ *
+ * `initHistory(projectId)` must have run before starting the driver.
+ */
+/**
+ * Wire the idle + unload auto-commit triggers. Returns a teardown function.
+ * Each fire is significance-gated (idle/unload commit only meaningful change).
+ */
+declare function startHistoryDriver(): () => void;
 
 /**
  * ProjectRegistry — PM Phase 2.
@@ -5847,4 +6030,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BreakpointMeta, BreakpointStore, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, compilePreset, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetUndoManager, resolveAlias, resolveDescriptor, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
