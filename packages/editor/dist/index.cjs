@@ -22437,6 +22437,7 @@ function prune(h, now2, opts = {}) {
   const dailyMs = opts.dailyMs ?? 30 * DAY_MS;
   const dayBucket = opts.dayBucketMs ?? DAY_MS;
   const monthBucket = opts.monthBucketMs ?? 30 * DAY_MS;
+  const maxAutoCommits = opts.maxAutoCommits ?? 500;
   const all = Object.values(h.commits);
   const heads = new Set(Object.values(h.branches).map((b) => b.head));
   const display = /* @__PURE__ */ new Set();
@@ -22464,6 +22465,10 @@ function prune(h, now2, opts = {}) {
   for (const c of recentAutos) display.add(c.id);
   for (const c of dailyBuckets.values()) display.add(c.id);
   for (const c of monthlyBuckets.values()) display.add(c.id);
+  const displayAutos = [...recentAutos, ...dailyBuckets.values(), ...monthlyBuckets.values()].filter((c) => !heads.has(c.id)).sort((a, b) => b.createdAt - a.createdAt);
+  if (displayAutos.length > maxAutoCommits) {
+    for (const c of displayAutos.slice(maxAutoCommits)) display.delete(c.id);
+  }
   const needed = /* @__PURE__ */ new Set();
   for (const id of display) {
     for (const f of filesAliveAt(h, id)) {

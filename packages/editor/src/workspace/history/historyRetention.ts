@@ -37,6 +37,15 @@ export interface RetentionOpts {
   readonly dayBucketMs?: number
   /** month bucket width (default 30d). */
   readonly monthBucketMs?: number
+  /**
+   * Hard cap on auto-commits kept for display, regardless of tier (default
+   * 500). Bounds the whole-row storage cost (#202): without it the 24h
+   * "keep-all" tier could grow unbounded under heavy editing. When exceeded,
+   * the oldest display autos are dropped (still subject to keep-if-sole-writer
+   * pinning, so no content is lost). Protected kinds + branch heads never
+   * count against / fall to the cap.
+   */
+  readonly maxAutoCommits?: number
 }
 
 /**
@@ -51,6 +60,7 @@ export function prune(
   const dailyMs = opts.dailyMs ?? 30 * DAY_MS
   const dayBucket = opts.dayBucketMs ?? DAY_MS
   const monthBucket = opts.monthBucketMs ?? 30 * DAY_MS
+  const maxAutoCommits = opts.maxAutoCommits ?? 500
 
   const all = Object.values(h.commits)
   const heads = new Set(Object.values(h.branches).map((b) => b.head))
@@ -82,6 +92,17 @@ export function prune(
   for (const c of recentAutos) display.add(c.id)
   for (const c of dailyBuckets.values()) display.add(c.id)
   for (const c of monthlyBuckets.values()) display.add(c.id)
+
+  // Hard cap (#202): if more than maxAutoCommits auto-commits survived the
+  // tiers for display, keep only the newest and drop the oldest from display
+  // (they become deletable, still sole-writer-pinned if load-bearing). Heads
+  // are never dropped (they were added as protected above).
+  const displayAutos = [...recentAutos, ...dailyBuckets.values(), ...monthlyBuckets.values()]
+    .filter((c) => !heads.has(c.id))
+    .sort((a, b) => b.createdAt - a.createdAt)
+  if (displayAutos.length > maxAutoCommits) {
+    for (const c of displayAutos.slice(maxAutoCommits)) display.delete(c.id)
+  }
 
   // ── 2. keep-if-sole-writer: pin nearest-writers of every displayed view ──
   const needed = new Set<string>()

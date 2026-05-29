@@ -127,6 +127,30 @@ describe('prune — keep-if-sole-writer (PV61)', () => {
   })
 })
 
+describe('prune — maxAutoCommits cap (#202)', () => {
+  it('drops the oldest display autos beyond the cap, even within 24h', () => {
+    const now = 100 * DAY
+    // 5 recent autos (all <24h), each rewriting f1 so older ones are shadowed.
+    const h = build({ f1: 'a0' }, 100, now, [
+      { files: { f1: 'a1' }, kind: 'auto', id: 'c1', ageDays: 0.5 },
+      { files: { f1: 'a2' }, kind: 'auto', id: 'c2', ageDays: 0.4 },
+      { files: { f1: 'a3' }, kind: 'auto', id: 'c3', ageDays: 0.3 },
+      { files: { f1: 'a4' }, kind: 'auto', id: 'c4', ageDays: 0.2 },
+      { files: { f1: 'a5' }, kind: 'auto', id: 'c5', ageDays: 0.1 }, // newest = head
+    ])
+    const p = prune(h, now, { maxAutoCommits: 2 })
+    const ids = listCommits(p).map((c) => c.id)
+    // head (c5) always kept; cap keeps the newest 2 non-head display autos.
+    expect(ids).toContain('c5') // head
+    // oldest beyond cap dropped from display
+    expect(ids).not.toContain('c1')
+    expect(ids).not.toContain('c2')
+    // seed always kept; HEAD view still correct (f1 shadowed forward)
+    expect(ids).toContain('c0')
+    expect(getFileContentAt(p, 'f1', 'c5')).toBe('a5')
+  })
+})
+
 describe('prune — no-op', () => {
   it('returns the same history when nothing is prunable', () => {
     const now = 100 * DAY
