@@ -219,6 +219,9 @@ export {
   createBranchAt,
   switchToBranch,
   getCurrentHistory,
+  subscribeToHistory,
+  setActiveHistoryFile,
+  getActiveHistoryFile,
 } from './workspace/history/historyService'
 export { startHistoryDriver } from './workspace/history/historyDriver'
 export {

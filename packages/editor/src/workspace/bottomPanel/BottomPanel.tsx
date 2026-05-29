@@ -45,6 +45,7 @@ import {
 // first bundle load (DA-09 / T-06). PR-B replaces by re-registering the
 // same id (idempotent).
 import './seedTabs'
+import './historyPanelSeed'
 
 const HEADER_HEIGHT = 28
 const RESIZE_HANDLE_HEIGHT = 4

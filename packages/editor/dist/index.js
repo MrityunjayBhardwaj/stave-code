@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React6 from 'react';
-import React6__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React8 from 'react';
+import React8__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw from '@monaco-editor/react';
@@ -9809,8 +9809,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React6__default.Children.count(children);
-  const childArray = React6__default.Children.toArray(children);
+  const count = React8__default.Children.count(children);
+  const childArray = React8__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -9855,7 +9855,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React6__default.useEffect(() => {
+  React8__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -9871,7 +9871,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React6__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React8__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -10163,9 +10163,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners7 = /* @__PURE__ */ new Set();
+  const listeners8 = /* @__PURE__ */ new Set();
   const notify3 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners7) l();
+    for (const l of listeners8) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify3(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify3(), "onStackItemPopped");
@@ -10175,7 +10175,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners7,
+    listeners: listeners8,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -10218,10 +10218,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners7 = active.listeners;
-  listeners7.add(cb);
+  const listeners8 = active.listeners;
+  listeners8.add(cb);
   return () => {
-    listeners7.delete(cb);
+    listeners8.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -16805,7 +16805,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React6__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React8__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -17027,7 +17027,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React6__default.useMemo(() => {
+  const providerNode = React8__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -18094,7 +18094,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React6.createElement(
+  return React8.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -18112,7 +18112,758 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React6.createElement(EmptyTimelineStub)
+  content: React8.createElement(EmptyTimelineStub)
+});
+
+// src/workspace/history/historyGraph.ts
+var MAIN_BRANCH = "main";
+function seedHistory(projectId, files, order, id, createdAt, fileMeta = {}) {
+  const seed = {
+    id,
+    parent: null,
+    branch: MAIN_BRANCH,
+    kind: "seed",
+    createdAt,
+    label: "Initial",
+    files: { ...files },
+    order
+  };
+  const fileIndex = {};
+  for (const f of Object.keys(files)) fileIndex[f] = [id];
+  return {
+    projectId,
+    commits: { [id]: seed },
+    branches: { [MAIN_BRANCH]: { head: id, createdAt, createdFrom: null } },
+    currentBranch: MAIN_BRANCH,
+    fileIndex,
+    fileMeta: { ...fileMeta }
+  };
+}
+__name(seedHistory, "seedHistory");
+function getCommit(h, commitId) {
+  return h.commits[commitId];
+}
+__name(getCommit, "getCommit");
+function getCurrentBranch(h) {
+  return h.currentBranch;
+}
+__name(getCurrentBranch, "getCurrentBranch");
+function headOf(h, branch = h.currentBranch) {
+  return h.branches[branch]?.head ?? null;
+}
+__name(headOf, "headOf");
+function getFileContentAt(h, fileId, commitId) {
+  let walk2 = commitId;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
+      return c.files[fileId];
+    }
+    walk2 = c.parent;
+  }
+  return null;
+}
+__name(getFileContentAt, "getFileContentAt");
+function snapshotAt(h, commitId) {
+  const files = {};
+  let order;
+  let walk2 = commitId;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    for (const f of Object.keys(c.files)) {
+      if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
+    }
+    if (order === void 0 && c.order !== void 0) order = c.order;
+    walk2 = c.parent;
+  }
+  return { files, order };
+}
+__name(snapshotAt, "snapshotAt");
+function listCommits(h, branch = h.currentBranch) {
+  const head = h.branches[branch]?.head;
+  if (!head) return [];
+  const out = [];
+  let walk2 = head;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    if (!c.pinned) out.push(c);
+    walk2 = c.parent;
+  }
+  return out;
+}
+__name(listCommits, "listCommits");
+function listBranches(h) {
+  return Object.entries(h.branches).map(([name, ref]) => ({ name, ...ref }));
+}
+__name(listBranches, "listBranches");
+function fileHistory(h, fileId) {
+  const ids = h.fileIndex[fileId] ?? [];
+  const out = [];
+  for (let i = ids.length - 1; i >= 0; i--) {
+    const c = h.commits[ids[i]];
+    if (c && !c.pinned) out.push(c);
+  }
+  return out;
+}
+__name(fileHistory, "fileHistory");
+function nearestWriter(h, fromCommit, fileId) {
+  let walk2 = fromCommit;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk2;
+    walk2 = c.parent;
+  }
+  return null;
+}
+__name(nearestWriter, "nearestWriter");
+function filesAliveAt(h, commitId) {
+  const alive = /* @__PURE__ */ new Set();
+  let walk2 = commitId;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    for (const f of Object.keys(c.files)) alive.add(f);
+    walk2 = c.parent;
+  }
+  return alive;
+}
+__name(filesAliveAt, "filesAliveAt");
+function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
+  const changed = {};
+  for (const [f, content] of Object.entries(liveFiles)) {
+    const at = baseCommit ? getFileContentAt(h, f, baseCommit) : null;
+    if (at !== content) changed[f] = content;
+  }
+  return changed;
+}
+__name(changedFiles, "changedFiles");
+function commitOnto(h, changed, opts) {
+  if (Object.keys(changed).length === 0) return h;
+  const branch = h.currentBranch;
+  const parent = h.branches[branch]?.head ?? null;
+  const commit = {
+    id: opts.id,
+    parent,
+    branch,
+    kind: opts.kind,
+    createdAt: opts.createdAt,
+    ...opts.label !== void 0 ? { label: opts.label } : {},
+    files: { ...changed },
+    ...opts.order !== void 0 ? { order: opts.order } : {}
+  };
+  const fileIndex = {};
+  for (const [f, ids] of Object.entries(h.fileIndex)) fileIndex[f] = [...ids];
+  for (const f of Object.keys(changed)) {
+    (fileIndex[f] ?? (fileIndex[f] = [])).push(opts.id);
+  }
+  return {
+    ...h,
+    commits: { ...h.commits, [opts.id]: commit },
+    branches: {
+      ...h.branches,
+      [branch]: { ...h.branches[branch], head: opts.id }
+    },
+    fileIndex,
+    fileMeta: opts.fileMeta ? { ...h.fileMeta, ...opts.fileMeta } : h.fileMeta
+  };
+}
+__name(commitOnto, "commitOnto");
+function createBranch(h, name, fromCommit, createdAt) {
+  if (h.branches[name]) throw new Error(`branch '${name}' already exists`);
+  if (!h.commits[fromCommit]) throw new Error(`commit '${fromCommit}' not found`);
+  return {
+    ...h,
+    branches: {
+      ...h.branches,
+      [name]: { head: fromCommit, createdAt, createdFrom: fromCommit }
+    }
+  };
+}
+__name(createBranch, "createBranch");
+function switchBranch(h, name) {
+  if (!h.branches[name]) throw new Error(`branch '${name}' not found`);
+  if (name === h.currentBranch) return h;
+  return { ...h, currentBranch: name };
+}
+__name(switchBranch, "switchBranch");
+
+// src/workspace/history/historyRetention.ts
+var DAY_MS = 864e5;
+function prune(h, now2, opts = {}) {
+  const recentMs = opts.recentMs ?? DAY_MS;
+  const dailyMs = opts.dailyMs ?? 30 * DAY_MS;
+  const dayBucket = opts.dayBucketMs ?? DAY_MS;
+  const monthBucket = opts.monthBucketMs ?? 30 * DAY_MS;
+  const maxAutoCommits = opts.maxAutoCommits ?? 500;
+  const all = Object.values(h.commits);
+  const heads = new Set(Object.values(h.branches).map((b) => b.head));
+  const display = /* @__PURE__ */ new Set();
+  for (const c of all) {
+    if (c.kind !== "auto" || heads.has(c.id)) display.add(c.id);
+  }
+  const recentAutos = [];
+  const dailyBuckets = /* @__PURE__ */ new Map();
+  const monthlyBuckets = /* @__PURE__ */ new Map();
+  for (const c of all) {
+    if (c.kind !== "auto" || heads.has(c.id)) continue;
+    const age = now2 - c.createdAt;
+    if (age <= recentMs) {
+      recentAutos.push(c);
+    } else if (age <= dailyMs) {
+      const k = Math.floor(c.createdAt / dayBucket);
+      const cur = dailyBuckets.get(k);
+      if (!cur || c.createdAt > cur.createdAt) dailyBuckets.set(k, c);
+    } else {
+      const k = Math.floor(c.createdAt / monthBucket);
+      const cur = monthlyBuckets.get(k);
+      if (!cur || c.createdAt > cur.createdAt) monthlyBuckets.set(k, c);
+    }
+  }
+  for (const c of recentAutos) display.add(c.id);
+  for (const c of dailyBuckets.values()) display.add(c.id);
+  for (const c of monthlyBuckets.values()) display.add(c.id);
+  const displayAutos = [...recentAutos, ...dailyBuckets.values(), ...monthlyBuckets.values()].filter((c) => !heads.has(c.id)).sort((a, b) => b.createdAt - a.createdAt);
+  if (displayAutos.length > maxAutoCommits) {
+    for (const c of displayAutos.slice(maxAutoCommits)) display.delete(c.id);
+  }
+  const needed = /* @__PURE__ */ new Set();
+  for (const id of display) {
+    for (const f of filesAliveAt(h, id)) {
+      const w = nearestWriter(h, id, f);
+      if (w) needed.add(w);
+    }
+  }
+  const keep = /* @__PURE__ */ new Set([...display, ...needed]);
+  const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
+    let walk2 = start;
+    while (walk2 !== null && !keep.has(walk2)) walk2 = h.commits[walk2]?.parent ?? null;
+    return walk2;
+  }, "nearestKeptAncestor");
+  let mutated = keep.size !== all.length;
+  const commits = {};
+  for (const c of all) {
+    if (!keep.has(c.id)) continue;
+    const newParent = nearestKeptAncestor(c.parent);
+    const isPinned = !display.has(c.id);
+    if (newParent !== c.parent || isPinned !== !!c.pinned) mutated = true;
+    const next = {
+      ...c,
+      parent: newParent,
+      ...isPinned ? { pinned: true } : {}
+    };
+    if (!isPinned) delete next.pinned;
+    commits[c.id] = next;
+  }
+  if (!mutated) return h;
+  const fileIndex = {};
+  for (const [f, ids] of Object.entries(h.fileIndex)) {
+    const surviving = ids.filter((id) => keep.has(id));
+    if (surviving.length > 0) fileIndex[f] = surviving;
+  }
+  return { ...h, commits, fileIndex };
+}
+__name(prune, "prune");
+
+// src/workspace/history/significance.ts
+function trimmedDelta(a, b) {
+  let start = 0;
+  const min = Math.min(a.length, b.length);
+  while (start < min && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  return Math.max(endA - start, endB - start);
+}
+__name(trimmedDelta, "trimmedDelta");
+function diffMagnitude(prev, next) {
+  if (prev === next) return { lines: 0, chars: 0 };
+  const chars = trimmedDelta(Array.from(prev), Array.from(next));
+  const lines = trimmedDelta(prev.split("\n"), next.split("\n"));
+  return { lines, chars };
+}
+__name(diffMagnitude, "diffMagnitude");
+var DEFAULT_MIN_LINES = 5;
+var DEFAULT_MIN_CHARS = 200;
+function isSignificant(changes, opts = {}) {
+  const minLines = opts.minLines ?? DEFAULT_MIN_LINES;
+  const minChars = opts.minChars ?? DEFAULT_MIN_CHARS;
+  let lines = 0;
+  let chars = 0;
+  for (const { prev, next } of changes) {
+    const d = diffMagnitude(prev, next);
+    lines += d.lines;
+    chars += d.chars;
+  }
+  return lines >= minLines || chars >= minChars;
+}
+__name(isSignificant, "isSignificant");
+
+// src/workspace/history/historyWorkspace.ts
+function readWorkspaceFiles() {
+  const out = {};
+  for (const f of listWorkspaceFiles()) out[f.id] = f.content;
+  return out;
+}
+__name(readWorkspaceFiles, "readWorkspaceFiles");
+function readWorkspaceFileMeta() {
+  const out = {};
+  for (const f of listWorkspaceFiles()) {
+    out[f.id] = {
+      path: f.path,
+      language: f.language,
+      ...f.meta !== void 0 ? { meta: { ...f.meta } } : {}
+    };
+  }
+  return out;
+}
+__name(readWorkspaceFileMeta, "readWorkspaceFileMeta");
+function readWorkspaceOrder() {
+  const folders = /* @__PURE__ */ new Set(["/"]);
+  for (const f of listWorkspaceFiles()) {
+    const slash = f.path.lastIndexOf("/");
+    folders.add(slash <= 0 ? "/" : f.path.slice(0, slash));
+  }
+  const fileOrder = {};
+  const subfolderOrder = {};
+  for (const folder of folders) {
+    const fo = getFolderOrder(folder);
+    if (fo.length > 0) fileOrder[folder] = [...fo];
+    const so = getSubfolderOrder(folder);
+    if (so.length > 0) subfolderOrder[folder] = [...so];
+  }
+  return { fileOrder, subfolderOrder };
+}
+__name(readWorkspaceOrder, "readWorkspaceOrder");
+function applySnapshot(files, fileMeta, order) {
+  const current3 = listWorkspaceFiles();
+  const currentIds = new Set(current3.map((f) => f.id));
+  const wantIds = new Set(Object.keys(files));
+  for (const f of current3) {
+    if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
+  }
+  const recreatedMissing = [];
+  const skippedNoMeta = [];
+  for (const [id, content] of Object.entries(files)) {
+    if (currentIds.has(id)) {
+      setContent(id, content);
+    } else {
+      const m = fileMeta[id];
+      if (m) {
+        createWorkspaceFile(
+          id,
+          m.path,
+          content,
+          m.language,
+          m.meta ? { ...m.meta } : void 0
+        );
+        recreatedMissing.push(id);
+      } else {
+        skippedNoMeta.push(id);
+      }
+    }
+  }
+  if (order) {
+    for (const [folder, ids] of Object.entries(order.fileOrder)) {
+      setFolderOrder(folder, [...ids]);
+    }
+    for (const [parent, names] of Object.entries(order.subfolderOrder)) {
+      setSubfolderOrder(parent, [...names]);
+    }
+  }
+  return { recreatedMissing, skippedNoMeta };
+}
+__name(applySnapshot, "applySnapshot");
+
+// src/workspace/history/historyStore.ts
+var DB_NAME2 = "stave-snapshots";
+var DB_VERSION2 = 2;
+var HISTORY_STORE = "history";
+var LEGACY_STORE = "snapshots";
+function upgradeHistoryDb(db) {
+  if (!db.objectStoreNames.contains(LEGACY_STORE)) {
+    const legacy = db.createObjectStore(LEGACY_STORE, { keyPath: "id" });
+    legacy.createIndex("byProject", "projectId", { unique: false });
+  }
+  if (!db.objectStoreNames.contains(HISTORY_STORE)) {
+    db.createObjectStore(HISTORY_STORE, { keyPath: "projectId" });
+  }
+}
+__name(upgradeHistoryDb, "upgradeHistoryDb");
+function openDb2() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
+    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+__name(openDb2, "openDb");
+function wrap2(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+__name(wrap2, "wrap");
+async function loadHistory(projectId) {
+  const db = await openDb2();
+  const row = await wrap2(
+    db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
+  );
+  db.close();
+  return row ?? null;
+}
+__name(loadHistory, "loadHistory");
+async function saveHistory(h) {
+  const db = await openDb2();
+  await wrap2(
+    db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
+  );
+  db.close();
+}
+__name(saveHistory, "saveHistory");
+
+// src/workspace/history/historyService.ts
+var current2 = null;
+var newId = /* @__PURE__ */ __name(() => crypto.randomUUID(), "newId");
+var now = /* @__PURE__ */ __name(() => Date.now(), "now");
+var opLock = Promise.resolve();
+function withLock(fn) {
+  const run = opLock.then(fn, fn);
+  opLock = run.then(notifyIfChanged, notifyIfChanged);
+  return run;
+}
+__name(withLock, "withLock");
+var listeners7 = /* @__PURE__ */ new Set();
+var lastNotified = null;
+function notifyIfChanged() {
+  if (current2 === lastNotified) return;
+  lastNotified = current2;
+  for (const l of listeners7) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(notifyIfChanged, "notifyIfChanged");
+function subscribeToHistory(cb) {
+  listeners7.add(cb);
+  return () => listeners7.delete(cb);
+}
+__name(subscribeToHistory, "subscribeToHistory");
+function notifyAll() {
+  for (const l of listeners7) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(notifyAll, "notifyAll");
+var activeFileId = null;
+function setActiveHistoryFile(fileId) {
+  if (fileId === activeFileId) return;
+  activeFileId = fileId;
+  notifyAll();
+}
+__name(setActiveHistoryFile, "setActiveHistoryFile");
+function getActiveHistoryFile() {
+  return activeFileId;
+}
+__name(getActiveHistoryFile, "getActiveHistoryFile");
+function getCurrentHistory() {
+  return current2;
+}
+__name(getCurrentHistory, "getCurrentHistory");
+function initHistory(projectId) {
+  return withLock(async () => {
+    let h = await loadHistory(projectId);
+    if (!h) {
+      h = seedHistory(
+        projectId,
+        readWorkspaceFiles(),
+        readWorkspaceOrder(),
+        newId(),
+        now(),
+        readWorkspaceFileMeta()
+      );
+      await saveHistory(h);
+    }
+    current2 = h;
+    return h;
+  });
+}
+__name(initHistory, "initHistory");
+function resetHistoryState() {
+  current2 = null;
+  notifyIfChanged();
+}
+__name(resetHistoryState, "resetHistoryState");
+function commitWorkspace(kind, opts = {}) {
+  return withLock(() => _commit(kind, opts));
+}
+__name(commitWorkspace, "commitWorkspace");
+async function _commit(kind, opts = {}) {
+  if (!current2) return null;
+  const live = readWorkspaceFiles();
+  const changed = changedFiles(current2, live);
+  const changedKeys = Object.keys(changed);
+  if (changedKeys.length === 0) return null;
+  if (opts.gate) {
+    const head = headOf(current2);
+    const pairs = changedKeys.map((f) => ({
+      prev: head && getFileContentAt(current2, f, head) || "",
+      next: changed[f]
+    }));
+    if (!isSignificant(pairs)) return null;
+  }
+  const allMeta = readWorkspaceFileMeta();
+  const changedMeta = {};
+  for (const f of changedKeys) if (allMeta[f]) changedMeta[f] = allMeta[f];
+  const id = newId();
+  current2 = commitOnto(current2, changed, {
+    kind,
+    ...opts.label !== void 0 ? { label: opts.label } : {},
+    id,
+    createdAt: now(),
+    order: readWorkspaceOrder(),
+    fileMeta: changedMeta
+  });
+  if (kind === "auto") current2 = prune(current2, now());
+  await saveHistory(current2);
+  return id;
+}
+__name(_commit, "_commit");
+function restoreProject(commitId) {
+  return withLock(async () => {
+    if (!current2) return;
+    const snap = snapshotAt(current2, commitId);
+    applySnapshot(snap.files, current2.fileMeta, snap.order);
+    await _commit("auto", { gate: false });
+  });
+}
+__name(restoreProject, "restoreProject");
+function restoreFileToCommit(fileId, commitId) {
+  return withLock(async () => {
+    if (!current2) return null;
+    const content = getFileContentAt(current2, fileId, commitId);
+    const meta = current2.fileMeta[fileId];
+    const live = readWorkspaceFiles();
+    if (content === null) {
+      delete live[fileId];
+    } else {
+      live[fileId] = content;
+    }
+    applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
+    return _commit("auto", { gate: false });
+  });
+}
+__name(restoreFileToCommit, "restoreFileToCommit");
+function createBranchAt(name, fromCommit) {
+  return withLock(async () => {
+    if (!current2) return;
+    current2 = createBranch(current2, name, fromCommit, now());
+    await saveHistory(current2);
+  });
+}
+__name(createBranchAt, "createBranchAt");
+function switchToBranch(name) {
+  return withLock(async () => {
+    if (!current2) return;
+    current2 = switchBranch(current2, name);
+    const head = headOf(current2);
+    if (head) {
+      const snap = snapshotAt(current2, head);
+      applySnapshot(snap.files, current2.fileMeta, snap.order);
+    }
+    await saveHistory(current2);
+  });
+}
+__name(switchToBranch, "switchToBranch");
+var KIND_LABEL = {
+  seed: "initial",
+  auto: "auto",
+  manual: "saved",
+  fork: "fork"
+};
+function relTime(ms, now2) {
+  const s = Math.max(0, Math.round((now2 - ms) / 1e3));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+__name(relTime, "relTime");
+var muted = "var(--foreground-muted, #a0a0aa)";
+var fg = "var(--foreground, #e6e6ea)";
+var border = "var(--border, #2a2a32)";
+var accent = "var(--accent, #6ea8fe)";
+function btn(extra) {
+  return {
+    background: "transparent",
+    color: fg,
+    border: `1px solid ${border}`,
+    borderRadius: 4,
+    padding: "2px 8px",
+    fontSize: 11,
+    cursor: "pointer",
+    ...extra
+  };
+}
+__name(btn, "btn");
+function HistoryPanel() {
+  const [, force] = React8.useReducer((x) => x + 1, 0);
+  React8.useEffect(() => subscribeToHistory(force), []);
+  const [scope, setScope] = React8.useState("project");
+  const [forking, setForking] = React8.useState(null);
+  const [forkName, setForkName] = React8.useState("");
+  const [viewing, setViewing] = React8.useState(null);
+  const h = getCurrentHistory();
+  const activeFile = getActiveHistoryFile();
+  const now2 = Date.now();
+  const wrap5 = {
+    padding: 12,
+    fontSize: 12,
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+    color: fg,
+    height: "100%",
+    overflow: "auto"
+  };
+  if (!h) {
+    return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted }, children: "No history yet \u2014 start editing and commits will appear here." });
+  }
+  const branches = listBranches(h);
+  const effectiveScope = scope === "file" && !activeFile ? "project" : scope;
+  const commits = effectiveScope === "file" && activeFile ? fileHistory(h, activeFile) : listCommits(h);
+  const doRestore = /* @__PURE__ */ __name((c) => {
+    if (effectiveScope === "file" && activeFile) {
+      void restoreFileToCommit(activeFile, c.id);
+    } else {
+      void restoreProject(c.id);
+    }
+  }, "doRestore");
+  const confirmFork = /* @__PURE__ */ __name((c) => {
+    const name = forkName.trim();
+    if (!name) return;
+    void createBranchAt(name, c.id).then(() => switchToBranch(name));
+    setForking(null);
+    setForkName("");
+  }, "confirmFork");
+  return /* @__PURE__ */ jsxs("div", { "data-bottom-panel-tab": "history", style: wrap5, children: [
+    /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }, children: [
+      /* @__PURE__ */ jsx(
+        "select",
+        {
+          "aria-label": "branch",
+          value: h.currentBranch,
+          onChange: (e) => void switchToBranch(e.target.value),
+          style: { ...btn(), padding: "2px 6px" },
+          "data-history-branch-select": true,
+          children: branches.map((b) => /* @__PURE__ */ jsx("option", { value: b.name, children: b.name }, b.name))
+        }
+      ),
+      /* @__PURE__ */ jsx("div", { style: { display: "flex", border: `1px solid ${border}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsx(
+        "button",
+        {
+          onClick: () => setScope(s),
+          "data-history-scope": s,
+          style: {
+            ...btn({ border: "none", borderRadius: 0 }),
+            background: effectiveScope === s ? accent : "transparent",
+            color: effectiveScope === s ? "#0b0b0f" : fg
+          },
+          children: s === "project" ? "Project" : "File"
+        },
+        s
+      )) }),
+      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: "open a file for File scope" })
+    ] }),
+    /* @__PURE__ */ jsx("ol", { style: { listStyle: "none", margin: 0, padding: 0 }, "data-history-commit-list": true, children: commits.map((c) => {
+      const changedFileIds = Object.keys(c.files);
+      return /* @__PURE__ */ jsxs(
+        "li",
+        {
+          "data-history-commit": c.id,
+          style: { borderLeft: `2px solid ${border}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
+          children: [
+            /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "baseline", gap: 8 }, children: [
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  style: {
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    color: c.kind === "manual" ? accent : muted,
+                    letterSpacing: 0.5
+                  },
+                  children: KIND_LABEL[c.kind] ?? c.kind
+                }
+              ),
+              /* @__PURE__ */ jsx("span", { style: { flex: 1 }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
+              /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: relTime(c.createdAt, now2) })
+            ] }),
+            /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 4 }, children: [
+              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: "Restore" }),
+              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: "Fork" }),
+              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setViewing(viewing === c.id ? null : c.id), "data-history-view": c.id, children: viewing === c.id ? "Hide" : "View" })
+            ] }),
+            forking === c.id && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
+              /* @__PURE__ */ jsx(
+                "input",
+                {
+                  autoFocus: true,
+                  value: forkName,
+                  placeholder: "branch name",
+                  onChange: (e) => setForkName(e.target.value),
+                  onKeyDown: (e) => e.key === "Enter" && confirmFork(c),
+                  style: { ...btn(), color: fg, background: "var(--background, #16161a)" }
+                }
+              ),
+              /* @__PURE__ */ jsx("button", { style: btn({ borderColor: accent }), onClick: () => confirmFork(c), children: "Create" })
+            ] }),
+            viewing === c.id && /* @__PURE__ */ jsx(
+              "pre",
+              {
+                "data-history-view-body": true,
+                style: {
+                  marginTop: 6,
+                  padding: 8,
+                  background: "var(--background, #16161a)",
+                  border: `1px solid ${border}`,
+                  borderRadius: 4,
+                  fontSize: 11,
+                  maxHeight: 220,
+                  overflow: "auto",
+                  whiteSpace: "pre-wrap"
+                },
+                children: effectiveScope === "file" && activeFile ? getFileContentAt(h, activeFile, c.id) ?? "(file did not exist at this commit)" : changedFileIds.length ? changedFileIds.join("\n") : "(no file changes)"
+              }
+            )
+          ]
+        },
+        c.id
+      );
+    }) })
+  ] });
+}
+__name(HistoryPanel, "HistoryPanel");
+
+// src/workspace/bottomPanel/historyPanelSeed.ts
+registerBottomPanelTab({
+  id: "history",
+  title: "History",
+  icon: "history",
+  content: React8.createElement(HistoryPanel)
 });
 var HEADER_HEIGHT = 28;
 var RESIZE_HANDLE_HEIGHT = 4;
@@ -18122,24 +18873,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React6.useState(opts.initial);
-  const [dragging, setDragging] = React6.useState(false);
-  const startYRef = React6.useRef(0);
-  const startValueRef = React6.useRef(opts.initial);
-  const pointerIdRef = React6.useRef(null);
-  const draggingRef = React6.useRef(false);
-  const minRef = React6.useRef(opts.min);
-  const maxRef = React6.useRef(opts.max);
-  React6.useEffect(() => {
+  const [value, setValueState] = React8.useState(opts.initial);
+  const [dragging, setDragging] = React8.useState(false);
+  const startYRef = React8.useRef(0);
+  const startValueRef = React8.useRef(opts.initial);
+  const pointerIdRef = React8.useRef(null);
+  const draggingRef = React8.useRef(false);
+  const minRef = React8.useRef(opts.min);
+  const maxRef = React8.useRef(opts.max);
+  React8.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React6.useCallback((v) => {
+  const setValue = React8.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React6.useCallback(
+  const onPointerDown = React8.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -18154,7 +18905,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React6.useCallback(
+  const endDrag = React8.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -18169,7 +18920,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React6.useCallback(
+  const onPointerMove = React8.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -18185,13 +18936,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React6.useCallback(
+  const onPointerUp = React8.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React6.useCallback(
+  const onPointerCancel = React8.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -18219,15 +18970,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React6.useState(
+  const [tabs2, setTabs] = React8.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React6.useState(readPersistedOpen);
-  const [height, setHeight] = React6.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React6.useState(
+  const [open, setOpen] = React8.useState(readPersistedOpen);
+  const [height, setHeight] = React8.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React8.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -18237,10 +18988,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -18252,24 +19003,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React6.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React6.useCallback(
+  const tabButtonRefs = React8.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React8.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React6.useCallback((id) => {
+  const focusTab = React8.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React6.useCallback(
+  const onTabsKeyDown = React8.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -20182,7 +20933,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React6__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React8__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -20190,7 +20941,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React6__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React8__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -22062,57 +22813,6 @@ function useTrackMeta(fileId, trackId) {
   return { meta, set };
 }
 __name(useTrackMeta, "useTrackMeta");
-
-// src/workspace/history/historyStore.ts
-var DB_NAME2 = "stave-snapshots";
-var DB_VERSION2 = 2;
-var HISTORY_STORE = "history";
-var LEGACY_STORE = "snapshots";
-function upgradeHistoryDb(db) {
-  if (!db.objectStoreNames.contains(LEGACY_STORE)) {
-    const legacy = db.createObjectStore(LEGACY_STORE, { keyPath: "id" });
-    legacy.createIndex("byProject", "projectId", { unique: false });
-  }
-  if (!db.objectStoreNames.contains(HISTORY_STORE)) {
-    db.createObjectStore(HISTORY_STORE, { keyPath: "projectId" });
-  }
-}
-__name(upgradeHistoryDb, "upgradeHistoryDb");
-function openDb2() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(openDb2, "openDb");
-function wrap2(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap2, "wrap");
-async function loadHistory(projectId) {
-  const db = await openDb2();
-  const row = await wrap2(
-    db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
-  );
-  db.close();
-  return row ?? null;
-}
-__name(loadHistory, "loadHistory");
-async function saveHistory(h) {
-  const db = await openDb2();
-  await wrap2(
-    db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
-  );
-  db.close();
-}
-__name(saveHistory, "saveHistory");
-
-// src/workspace/snapshotStore.ts
 var DB_NAME3 = "stave-snapshots";
 var STORE_NAME2 = "snapshots";
 var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
@@ -22227,495 +22927,6 @@ async function restoreSnapshot(id) {
   snapDoc.destroy();
 }
 __name(restoreSnapshot, "restoreSnapshot");
-
-// src/workspace/history/historyGraph.ts
-var MAIN_BRANCH = "main";
-function seedHistory(projectId, files, order, id, createdAt, fileMeta = {}) {
-  const seed = {
-    id,
-    parent: null,
-    branch: MAIN_BRANCH,
-    kind: "seed",
-    createdAt,
-    label: "Initial",
-    files: { ...files },
-    order
-  };
-  const fileIndex = {};
-  for (const f of Object.keys(files)) fileIndex[f] = [id];
-  return {
-    projectId,
-    commits: { [id]: seed },
-    branches: { [MAIN_BRANCH]: { head: id, createdAt, createdFrom: null } },
-    currentBranch: MAIN_BRANCH,
-    fileIndex,
-    fileMeta: { ...fileMeta }
-  };
-}
-__name(seedHistory, "seedHistory");
-function getCommit(h, commitId) {
-  return h.commits[commitId];
-}
-__name(getCommit, "getCommit");
-function getCurrentBranch(h) {
-  return h.currentBranch;
-}
-__name(getCurrentBranch, "getCurrentBranch");
-function headOf(h, branch = h.currentBranch) {
-  return h.branches[branch]?.head ?? null;
-}
-__name(headOf, "headOf");
-function getFileContentAt(h, fileId, commitId) {
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
-      return c.files[fileId];
-    }
-    walk2 = c.parent;
-  }
-  return null;
-}
-__name(getFileContentAt, "getFileContentAt");
-function snapshotAt(h, commitId) {
-  const files = {};
-  let order;
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    for (const f of Object.keys(c.files)) {
-      if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
-    }
-    if (order === void 0 && c.order !== void 0) order = c.order;
-    walk2 = c.parent;
-  }
-  return { files, order };
-}
-__name(snapshotAt, "snapshotAt");
-function listCommits(h, branch = h.currentBranch) {
-  const head = h.branches[branch]?.head;
-  if (!head) return [];
-  const out = [];
-  let walk2 = head;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    if (!c.pinned) out.push(c);
-    walk2 = c.parent;
-  }
-  return out;
-}
-__name(listCommits, "listCommits");
-function listBranches(h) {
-  return Object.entries(h.branches).map(([name, ref]) => ({ name, ...ref }));
-}
-__name(listBranches, "listBranches");
-function fileHistory(h, fileId) {
-  const ids = h.fileIndex[fileId] ?? [];
-  const out = [];
-  for (let i = ids.length - 1; i >= 0; i--) {
-    const c = h.commits[ids[i]];
-    if (c && !c.pinned) out.push(c);
-  }
-  return out;
-}
-__name(fileHistory, "fileHistory");
-function nearestWriter(h, fromCommit, fileId) {
-  let walk2 = fromCommit;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk2;
-    walk2 = c.parent;
-  }
-  return null;
-}
-__name(nearestWriter, "nearestWriter");
-function filesAliveAt(h, commitId) {
-  const alive = /* @__PURE__ */ new Set();
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    for (const f of Object.keys(c.files)) alive.add(f);
-    walk2 = c.parent;
-  }
-  return alive;
-}
-__name(filesAliveAt, "filesAliveAt");
-function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
-  const changed = {};
-  for (const [f, content] of Object.entries(liveFiles)) {
-    const at = baseCommit ? getFileContentAt(h, f, baseCommit) : null;
-    if (at !== content) changed[f] = content;
-  }
-  return changed;
-}
-__name(changedFiles, "changedFiles");
-function commitOnto(h, changed, opts) {
-  if (Object.keys(changed).length === 0) return h;
-  const branch = h.currentBranch;
-  const parent = h.branches[branch]?.head ?? null;
-  const commit = {
-    id: opts.id,
-    parent,
-    branch,
-    kind: opts.kind,
-    createdAt: opts.createdAt,
-    ...opts.label !== void 0 ? { label: opts.label } : {},
-    files: { ...changed },
-    ...opts.order !== void 0 ? { order: opts.order } : {}
-  };
-  const fileIndex = {};
-  for (const [f, ids] of Object.entries(h.fileIndex)) fileIndex[f] = [...ids];
-  for (const f of Object.keys(changed)) {
-    (fileIndex[f] ?? (fileIndex[f] = [])).push(opts.id);
-  }
-  return {
-    ...h,
-    commits: { ...h.commits, [opts.id]: commit },
-    branches: {
-      ...h.branches,
-      [branch]: { ...h.branches[branch], head: opts.id }
-    },
-    fileIndex,
-    fileMeta: opts.fileMeta ? { ...h.fileMeta, ...opts.fileMeta } : h.fileMeta
-  };
-}
-__name(commitOnto, "commitOnto");
-function createBranch(h, name, fromCommit, createdAt) {
-  if (h.branches[name]) throw new Error(`branch '${name}' already exists`);
-  if (!h.commits[fromCommit]) throw new Error(`commit '${fromCommit}' not found`);
-  return {
-    ...h,
-    branches: {
-      ...h.branches,
-      [name]: { head: fromCommit, createdAt, createdFrom: fromCommit }
-    }
-  };
-}
-__name(createBranch, "createBranch");
-function switchBranch(h, name) {
-  if (!h.branches[name]) throw new Error(`branch '${name}' not found`);
-  if (name === h.currentBranch) return h;
-  return { ...h, currentBranch: name };
-}
-__name(switchBranch, "switchBranch");
-
-// src/workspace/history/historyRetention.ts
-var DAY_MS = 864e5;
-function prune(h, now2, opts = {}) {
-  const recentMs = opts.recentMs ?? DAY_MS;
-  const dailyMs = opts.dailyMs ?? 30 * DAY_MS;
-  const dayBucket = opts.dayBucketMs ?? DAY_MS;
-  const monthBucket = opts.monthBucketMs ?? 30 * DAY_MS;
-  const maxAutoCommits = opts.maxAutoCommits ?? 500;
-  const all = Object.values(h.commits);
-  const heads = new Set(Object.values(h.branches).map((b) => b.head));
-  const display = /* @__PURE__ */ new Set();
-  for (const c of all) {
-    if (c.kind !== "auto" || heads.has(c.id)) display.add(c.id);
-  }
-  const recentAutos = [];
-  const dailyBuckets = /* @__PURE__ */ new Map();
-  const monthlyBuckets = /* @__PURE__ */ new Map();
-  for (const c of all) {
-    if (c.kind !== "auto" || heads.has(c.id)) continue;
-    const age = now2 - c.createdAt;
-    if (age <= recentMs) {
-      recentAutos.push(c);
-    } else if (age <= dailyMs) {
-      const k = Math.floor(c.createdAt / dayBucket);
-      const cur = dailyBuckets.get(k);
-      if (!cur || c.createdAt > cur.createdAt) dailyBuckets.set(k, c);
-    } else {
-      const k = Math.floor(c.createdAt / monthBucket);
-      const cur = monthlyBuckets.get(k);
-      if (!cur || c.createdAt > cur.createdAt) monthlyBuckets.set(k, c);
-    }
-  }
-  for (const c of recentAutos) display.add(c.id);
-  for (const c of dailyBuckets.values()) display.add(c.id);
-  for (const c of monthlyBuckets.values()) display.add(c.id);
-  const displayAutos = [...recentAutos, ...dailyBuckets.values(), ...monthlyBuckets.values()].filter((c) => !heads.has(c.id)).sort((a, b) => b.createdAt - a.createdAt);
-  if (displayAutos.length > maxAutoCommits) {
-    for (const c of displayAutos.slice(maxAutoCommits)) display.delete(c.id);
-  }
-  const needed = /* @__PURE__ */ new Set();
-  for (const id of display) {
-    for (const f of filesAliveAt(h, id)) {
-      const w = nearestWriter(h, id, f);
-      if (w) needed.add(w);
-    }
-  }
-  const keep = /* @__PURE__ */ new Set([...display, ...needed]);
-  const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
-    let walk2 = start;
-    while (walk2 !== null && !keep.has(walk2)) walk2 = h.commits[walk2]?.parent ?? null;
-    return walk2;
-  }, "nearestKeptAncestor");
-  let mutated = keep.size !== all.length;
-  const commits = {};
-  for (const c of all) {
-    if (!keep.has(c.id)) continue;
-    const newParent = nearestKeptAncestor(c.parent);
-    const isPinned = !display.has(c.id);
-    if (newParent !== c.parent || isPinned !== !!c.pinned) mutated = true;
-    const next = {
-      ...c,
-      parent: newParent,
-      ...isPinned ? { pinned: true } : {}
-    };
-    if (!isPinned) delete next.pinned;
-    commits[c.id] = next;
-  }
-  if (!mutated) return h;
-  const fileIndex = {};
-  for (const [f, ids] of Object.entries(h.fileIndex)) {
-    const surviving = ids.filter((id) => keep.has(id));
-    if (surviving.length > 0) fileIndex[f] = surviving;
-  }
-  return { ...h, commits, fileIndex };
-}
-__name(prune, "prune");
-
-// src/workspace/history/significance.ts
-function trimmedDelta(a, b) {
-  let start = 0;
-  const min = Math.min(a.length, b.length);
-  while (start < min && a[start] === b[start]) start++;
-  let endA = a.length;
-  let endB = b.length;
-  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
-    endA--;
-    endB--;
-  }
-  return Math.max(endA - start, endB - start);
-}
-__name(trimmedDelta, "trimmedDelta");
-function diffMagnitude(prev, next) {
-  if (prev === next) return { lines: 0, chars: 0 };
-  const chars = trimmedDelta(Array.from(prev), Array.from(next));
-  const lines = trimmedDelta(prev.split("\n"), next.split("\n"));
-  return { lines, chars };
-}
-__name(diffMagnitude, "diffMagnitude");
-var DEFAULT_MIN_LINES = 5;
-var DEFAULT_MIN_CHARS = 200;
-function isSignificant(changes, opts = {}) {
-  const minLines = opts.minLines ?? DEFAULT_MIN_LINES;
-  const minChars = opts.minChars ?? DEFAULT_MIN_CHARS;
-  let lines = 0;
-  let chars = 0;
-  for (const { prev, next } of changes) {
-    const d = diffMagnitude(prev, next);
-    lines += d.lines;
-    chars += d.chars;
-  }
-  return lines >= minLines || chars >= minChars;
-}
-__name(isSignificant, "isSignificant");
-
-// src/workspace/history/historyWorkspace.ts
-function readWorkspaceFiles() {
-  const out = {};
-  for (const f of listWorkspaceFiles()) out[f.id] = f.content;
-  return out;
-}
-__name(readWorkspaceFiles, "readWorkspaceFiles");
-function readWorkspaceFileMeta() {
-  const out = {};
-  for (const f of listWorkspaceFiles()) {
-    out[f.id] = {
-      path: f.path,
-      language: f.language,
-      ...f.meta !== void 0 ? { meta: { ...f.meta } } : {}
-    };
-  }
-  return out;
-}
-__name(readWorkspaceFileMeta, "readWorkspaceFileMeta");
-function readWorkspaceOrder() {
-  const folders = /* @__PURE__ */ new Set(["/"]);
-  for (const f of listWorkspaceFiles()) {
-    const slash = f.path.lastIndexOf("/");
-    folders.add(slash <= 0 ? "/" : f.path.slice(0, slash));
-  }
-  const fileOrder = {};
-  const subfolderOrder = {};
-  for (const folder of folders) {
-    const fo = getFolderOrder(folder);
-    if (fo.length > 0) fileOrder[folder] = [...fo];
-    const so = getSubfolderOrder(folder);
-    if (so.length > 0) subfolderOrder[folder] = [...so];
-  }
-  return { fileOrder, subfolderOrder };
-}
-__name(readWorkspaceOrder, "readWorkspaceOrder");
-function applySnapshot(files, fileMeta, order) {
-  const current3 = listWorkspaceFiles();
-  const currentIds = new Set(current3.map((f) => f.id));
-  const wantIds = new Set(Object.keys(files));
-  for (const f of current3) {
-    if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
-  }
-  const recreatedMissing = [];
-  const skippedNoMeta = [];
-  for (const [id, content] of Object.entries(files)) {
-    if (currentIds.has(id)) {
-      setContent(id, content);
-    } else {
-      const m = fileMeta[id];
-      if (m) {
-        createWorkspaceFile(
-          id,
-          m.path,
-          content,
-          m.language,
-          m.meta ? { ...m.meta } : void 0
-        );
-        recreatedMissing.push(id);
-      } else {
-        skippedNoMeta.push(id);
-      }
-    }
-  }
-  if (order) {
-    for (const [folder, ids] of Object.entries(order.fileOrder)) {
-      setFolderOrder(folder, [...ids]);
-    }
-    for (const [parent, names] of Object.entries(order.subfolderOrder)) {
-      setSubfolderOrder(parent, [...names]);
-    }
-  }
-  return { recreatedMissing, skippedNoMeta };
-}
-__name(applySnapshot, "applySnapshot");
-
-// src/workspace/history/historyService.ts
-var current2 = null;
-var newId = /* @__PURE__ */ __name(() => crypto.randomUUID(), "newId");
-var now = /* @__PURE__ */ __name(() => Date.now(), "now");
-var opLock = Promise.resolve();
-function withLock(fn) {
-  const run = opLock.then(fn, fn);
-  opLock = run.then(
-    () => void 0,
-    () => void 0
-  );
-  return run;
-}
-__name(withLock, "withLock");
-function getCurrentHistory() {
-  return current2;
-}
-__name(getCurrentHistory, "getCurrentHistory");
-function initHistory(projectId) {
-  return withLock(async () => {
-    let h = await loadHistory(projectId);
-    if (!h) {
-      h = seedHistory(
-        projectId,
-        readWorkspaceFiles(),
-        readWorkspaceOrder(),
-        newId(),
-        now(),
-        readWorkspaceFileMeta()
-      );
-      await saveHistory(h);
-    }
-    current2 = h;
-    return h;
-  });
-}
-__name(initHistory, "initHistory");
-function resetHistoryState() {
-  current2 = null;
-}
-__name(resetHistoryState, "resetHistoryState");
-function commitWorkspace(kind, opts = {}) {
-  return withLock(() => _commit(kind, opts));
-}
-__name(commitWorkspace, "commitWorkspace");
-async function _commit(kind, opts = {}) {
-  if (!current2) return null;
-  const live = readWorkspaceFiles();
-  const changed = changedFiles(current2, live);
-  const changedKeys = Object.keys(changed);
-  if (changedKeys.length === 0) return null;
-  if (opts.gate) {
-    const head = headOf(current2);
-    const pairs = changedKeys.map((f) => ({
-      prev: head && getFileContentAt(current2, f, head) || "",
-      next: changed[f]
-    }));
-    if (!isSignificant(pairs)) return null;
-  }
-  const allMeta = readWorkspaceFileMeta();
-  const changedMeta = {};
-  for (const f of changedKeys) if (allMeta[f]) changedMeta[f] = allMeta[f];
-  const id = newId();
-  current2 = commitOnto(current2, changed, {
-    kind,
-    ...opts.label !== void 0 ? { label: opts.label } : {},
-    id,
-    createdAt: now(),
-    order: readWorkspaceOrder(),
-    fileMeta: changedMeta
-  });
-  if (kind === "auto") current2 = prune(current2, now());
-  await saveHistory(current2);
-  return id;
-}
-__name(_commit, "_commit");
-function restoreProject(commitId) {
-  return withLock(async () => {
-    if (!current2) return;
-    const snap = snapshotAt(current2, commitId);
-    applySnapshot(snap.files, current2.fileMeta, snap.order);
-    await _commit("auto", { gate: false });
-  });
-}
-__name(restoreProject, "restoreProject");
-function restoreFileToCommit(fileId, commitId) {
-  return withLock(async () => {
-    if (!current2) return null;
-    const content = getFileContentAt(current2, fileId, commitId);
-    const meta = current2.fileMeta[fileId];
-    const live = readWorkspaceFiles();
-    if (content === null) {
-      delete live[fileId];
-    } else {
-      live[fileId] = content;
-    }
-    applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
-    return _commit("auto", { gate: false });
-  });
-}
-__name(restoreFileToCommit, "restoreFileToCommit");
-function createBranchAt(name, fromCommit) {
-  return withLock(async () => {
-    if (!current2) return;
-    current2 = createBranch(current2, name, fromCommit, now());
-    await saveHistory(current2);
-  });
-}
-__name(createBranchAt, "createBranchAt");
-function switchToBranch(name) {
-  return withLock(async () => {
-    if (!current2) return;
-    current2 = switchBranch(current2, name);
-    const head = headOf(current2);
-    if (head) {
-      const snap = snapshotAt(current2, head);
-      applySnapshot(snap.files, current2.fileMeta, snap.order);
-    }
-    await saveHistory(current2);
-  });
-}
-__name(switchToBranch, "switchToBranch");
 
 // src/workspace/history/historyDriver.ts
 var DEFAULT_IDLE_MS = 5e3;
@@ -23900,6 +24111,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

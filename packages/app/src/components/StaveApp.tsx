@@ -17,6 +17,7 @@ import {
   restoreSnapshot,
   subscribeToDocUpdate,
   AUTO_SNAPSHOT_PREFIX,
+  setActiveHistoryFile,
   undo,
   redo,
   canUndo,
@@ -410,6 +411,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
+
+  // Tell the history service which file is focused so the History panel's
+  // File scope targets it (Phase G, #197).
+  useEffect(() => {
+    setActiveHistoryFile(activeFileId);
+  }, [activeFileId]);
 
   /**
    * Promote a viz file to the active group's backdrop, or clear with

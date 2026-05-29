@@ -47,11 +47,55 @@ const now = (): number => Date.now()
 let opLock: Promise<unknown> = Promise.resolve()
 function withLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = opLock.then(fn, fn)
-  opLock = run.then(
-    () => undefined,
-    () => undefined,
-  )
+  opLock = run.then(notifyIfChanged, notifyIfChanged)
   return run
+}
+
+// ── reactivity ──────────────────────────────────────────────────────────
+type Listener = () => void
+const listeners = new Set<Listener>()
+let lastNotified: ProjectHistory | null = null
+
+function notifyIfChanged(): void {
+  if (current === lastNotified) return // no-op commit / unchanged → skip
+  lastNotified = current
+  for (const l of listeners) {
+    try {
+      l()
+    } catch {
+      /* a listener error must not break others */
+    }
+  }
+}
+
+/** Subscribe to history changes (commit/restore/branch/switch/active-file). Returns unsubscribe. */
+export function subscribeToHistory(cb: Listener): () => void {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+
+function notifyAll(): void {
+  for (const l of listeners) {
+    try {
+      l()
+    } catch {
+      /* isolate listener errors */
+    }
+  }
+}
+
+// ── active file (for the History panel's File scope) ──────────────────────
+let activeFileId: string | null = null
+
+/** The app sets this on tab focus so File-scope history targets the right file. */
+export function setActiveHistoryFile(fileId: string | null): void {
+  if (fileId === activeFileId) return
+  activeFileId = fileId
+  notifyAll()
+}
+
+export function getActiveHistoryFile(): string | null {
+  return activeFileId
 }
 
 /** The in-memory active history (null before init). For UI reads. */
@@ -83,9 +127,10 @@ export function initHistory(projectId: string): Promise<ProjectHistory> {
   })
 }
 
-/** Drop the in-memory state (project switch / teardown). */
+/** Drop the in-memory state (project switch / teardown) and notify. */
 export function resetHistoryState(): void {
   current = null
+  notifyIfChanged()
 }
 
 export interface CommitWorkspaceOpts {
