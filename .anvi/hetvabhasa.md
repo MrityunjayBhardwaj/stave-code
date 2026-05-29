@@ -2767,3 +2767,98 @@ delta is computed against, not from a subset of it.
 
 **REF:** PR #185 (#175) — `StrudelEditorClient.tsx:prevFileIdsRef` seed
 correction; see PV59.
+
+## P78 — Multi-writer regression test trap: fix verified at the wrong layer / wrong timing because N writers exist
+
+**Pattern:** A store is written by N independent code paths. A bug
+exists at writer-A (e.g. clobber-on-every-mount). The fix removes the
+clobber at writer-A. The regression test attempts to probe the fix by
+either (i) probing a layer ABOVE the store (UI text, editor pane) and
+expecting the store-level fix to show through, or (ii) probing the
+store directly but at a TIMING SLICE where writer-B's legitimate sync
+hasn't run yet — so the "fix's effect" isn't observable.
+
+Result: the test fails post-fix and the engineer spends hours
+debugging the test instead of accepting that the fix was correct at a
+different layer.
+
+**Concrete instance (Stave, #189):** `VizPresetStore.code` for the
+bundled Piano Roll preset is written by THREE paths on every mount:
+
+1. `registerAllVizFiles` (StrudelEditorClient.tsx ~line 226) calls
+   `flushToPreset(fileId, presetId)` for every viz workspace file —
+   reads the WORKSPACE FILE content and writes it to VizPresetStore.
+2. `seedPresets` (line 278) clobbered VizPresetStore.code back to
+   `PIANOROLL_P5_CODE` — this was the bug.
+3. `useVizRefWatcher` fires on Y.Text changes (only when an active
+   strudel/sonicpi file references that viz via `.viz("name")`) and
+   re-runs `flushToPreset`.
+
+First test attempt: probe `monaco.textContent` after Monaco type — failed
+mysteriously (marker visible in received string, `toContain` still false;
+Monaco's textContent traversal doesn't preserve insertion order under
+mid-line inserts). Wrong layer.
+
+Second test attempt: write a marker directly into VizPresetStore, reload,
+assert marker survives. Failed because on reload `registerAllVizFiles`
+flushes the unchanged workspace file (bundled) → VizPresetStore reverts
+to bundled regardless of the seedPresets fix. Wrong timing — the
+load-bearing write isn't probed.
+
+**Real fix path:** make the workspace FILE contain the marker (via Monaco
+model `setValue`, which the Yjs binding picks up and persists), reload,
+assert VizPresetStore.code retains the marker. The post-reload mount runs
+writer-1 (flush from workspace = marker), then writer-2 (post-fix:
+no-op). Marker survives. Pre-fix the same test fails because writer-2
+clobbers.
+
+**General rule (PV60):** When testing a fix to one writer of a
+multi-writer store, the test must let the ENTIRE write choreography play
+out before asserting. Trace every writer; probe at the layer that
+captures their COMBINED post-state, not at a layer that misses one of
+them.
+
+**REF:** PR #194 (#189) — `preset-clobber-regression.spec.ts`;
+`StrudelEditorClient.tsx` `seedPresets` + `registerAllVizFiles` +
+`useVizRefWatcher.ts` for the three writers; see PV60.
+
+## P79 — Regression test that doesn't FAIL pre-fix is vestigial — proves nothing
+
+**Pattern:** Engineer writes a regression test alongside a fix; test
+passes; engineer ships. Months later the bug re-appears under a similar
+condition and the test is still green — because the test was probing
+behavior that's true regardless of the fix.
+
+**Why it slips through:** "test green + fix applied" feels like proof,
+but a test that's GREEN both pre-fix and post-fix is testing some other
+contract, not the fix's contract. The author rarely runs the test against
+the unfixed code to verify the test catches the bug.
+
+**Concrete instance (Stave, #189):** my first regression test attempt
+(asserting workspace file content survives reload) would have been green
+without the fix — because workspace files always persisted correctly
+(seedWorkspaceFile is idempotent). The actual bug was at the
+VizPresetStore layer the runtime renders from. Without the
+stash-and-verify step, this test would have shipped as "regression
+protection" for a bug it can't catch.
+
+**The verification gate (PV60):** before declaring a regression test
+shipped, **stash the fix and re-run the test**. If green, the test is
+vestigial — rewrite it to probe the layer where the fix's effect is
+load-bearing. If red, restore the fix and confirm green. That pre/post
+oscillation is the only objective proof the test exercises the right
+contract.
+
+**Concrete oscillation (#189):**
+```bash
+git stash push <fixed-file>           # remove fix
+playwright test <regression-spec>     # MUST fail
+git stash pop                          # restore fix
+playwright test <regression-spec>     # MUST pass
+```
+
+The discipline costs 30 seconds. The cost of a vestigial regression test
+is the next time this bug re-appears.
+
+**REF:** PR #194 (#189) — explicit stash-verify cycle in the commit body;
+see PV60.

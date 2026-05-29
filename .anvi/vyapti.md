@@ -2580,3 +2580,47 @@ workspace into tab adds / closes; the `prevFileIdsRef` is the baseline.
 
 **REF:** PR #185 — `StrudelEditorClient.tsx` `prevFileIdsRef`
 correction; P77 for the diagnostic shape.
+
+## PV60 — Regression tests must FAIL pre-fix (stash-and-verify gate)
+
+**Claim:** Every regression test paired with a bug fix MUST be verified
+to fail when the fix is removed. If the test is green both pre-fix and
+post-fix, it is testing some other contract — not the fix's — and is
+vestigial.
+
+**Why:** "test green + fix applied" feels like proof, but green-without-
+the-fix means the test will be green NEXT time the bug recurs too. A
+regression test that can't tell the difference is structural cargo —
+catches no regression and adds maintenance overhead. (P79.)
+
+For multi-writer stores, the test must also let the ENTIRE write
+choreography play out before asserting (P78); otherwise the assertion
+slot misses the writer whose absence/presence is what the fix changes.
+
+**Span:** every regression test added in the same PR as a fix. The gate
+applies AT TEST WRITE TIME, not at code review — by code review the
+oscillation is harder to perform without disturbing other in-flight
+changes.
+
+**Maintained by:**
+- **Stash-and-verify cycle:**
+  ```
+  git stash push <fixed-file>
+  pnpm test <regression-spec>     # MUST fail
+  git stash pop
+  pnpm test <regression-spec>     # MUST pass
+  ```
+  Logged in the commit body so a reviewer can re-run it later.
+- **Layer choice:** the test probes the layer where the fix's effect is
+  load-bearing. If the bug is in store-writer-A, probe the store's state
+  AFTER all writers have run. Don't probe a UI layer that reads through
+  the store unless that's the actual user-visible contract.
+- **Timing choice:** for fixes inside multi-writer choreography, assert
+  at the post-choreography state, not mid-choreography. In Stave's #189
+  this meant asserting AFTER reload (when `registerAllVizFiles` flush +
+  `seedPresets` no-op together produce the surviving content), not
+  before.
+
+**REF:** PR #194 (#189) — `preset-clobber-regression.spec.ts` validated
+via stash-and-verify oscillation; commit body documents it. See P78 +
+P79 for the diagnostic shapes.
