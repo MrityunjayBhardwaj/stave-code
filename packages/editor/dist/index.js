@@ -18812,6 +18812,7 @@ function HistoryPanel() {
         "input",
         {
           autoFocus: true,
+          "aria-label": "checkpoint label",
           value: commitLabel,
           placeholder: "checkpoint label (e.g. v1 demo state)",
           onChange: (e) => setCommitLabel(e.target.value),

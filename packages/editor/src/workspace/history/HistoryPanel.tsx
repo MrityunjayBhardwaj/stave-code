@@ -182,6 +182,7 @@ export function HistoryPanel(): React.ReactElement {
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           <input
             autoFocus
+            aria-label="checkpoint label"
             value={commitLabel}
             placeholder="checkpoint label (e.g. v1 demo state)"
             onChange={(e) => setCommitLabel(e.target.value)}
