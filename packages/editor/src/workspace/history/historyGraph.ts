@@ -20,9 +20,24 @@
  * decisions (cadence, retention, commit form).
  */
 
+import type { WorkspaceLanguage } from '../types'
+
 export type CommitKind = 'seed' | 'auto' | 'manual' | 'fork'
 
 export const MAIN_BRANCH = 'main'
+
+/**
+ * Per-file structural metadata needed to RECREATE a file on restore (path,
+ * language, opaque meta bag). Stored at the history level (latest-wins) rather
+ * than per-commit: commits carry only changed CONTENT (for clean diffing), but
+ * restoring a deleted file needs its identity. Renames are rare; v1 uses the
+ * latest known meta (historical-path restore is a later refinement).
+ */
+export interface FileMeta {
+  readonly path: string
+  readonly language: WorkspaceLanguage
+  readonly meta?: Readonly<Record<string, unknown>>
+}
 
 export interface OrderSnapshot {
   /** folderPath → ordered child file ids */
@@ -70,6 +85,8 @@ export interface ProjectHistory {
   readonly currentBranch: string
   /** fileId → commit ids that wrote it, oldest-first. */
   readonly fileIndex: Readonly<Record<string, readonly string[]>>
+  /** fileId → latest structural metadata (for restore-recreate). */
+  readonly fileMeta: Readonly<Record<string, FileMeta>>
 }
 
 // ── construction ──────────────────────────────────────────────────────────
@@ -85,6 +102,7 @@ export function seedHistory(
   order: OrderSnapshot | undefined,
   id: string,
   createdAt: number,
+  fileMeta: Record<string, FileMeta> = {},
 ): ProjectHistory {
   const seed: Commit = {
     id,
@@ -104,6 +122,7 @@ export function seedHistory(
     branches: { [MAIN_BRANCH]: { head: id, createdAt, createdFrom: null } },
     currentBranch: MAIN_BRANCH,
     fileIndex,
+    fileMeta: { ...fileMeta },
   }
 }
 
@@ -261,6 +280,8 @@ export interface CommitOpts {
   readonly id: string
   readonly createdAt: number
   readonly order?: OrderSnapshot
+  /** latest metadata for changed files, merged into history.fileMeta. */
+  readonly fileMeta?: Record<string, FileMeta>
 }
 
 /**
@@ -299,6 +320,9 @@ export function commitOnto(
       [branch]: { ...h.branches[branch], head: opts.id },
     },
     fileIndex,
+    fileMeta: opts.fileMeta
+      ? { ...h.fileMeta, ...opts.fileMeta }
+      : h.fileMeta,
   }
 }
 
