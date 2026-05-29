@@ -45,6 +45,15 @@ export interface Commit {
   readonly files: Readonly<Record<string, string>>
   /** structural order as of this commit (whole-project restore needs it). */
   readonly order?: OrderSnapshot
+  /**
+   * Set by retention pruning: this commit fell outside its display tier but
+   * holds the nearest-writer copy of a file some retained commit still reads,
+   * so it is kept on the STORAGE chain (back-walk traverses it) but HIDDEN
+   * from the display lineage (`listCommits`/`fileHistory` skip it). This is
+   * what lets only-changed-files pruning stay correct without a squash pass.
+   * See historyRetention.ts + PV61.
+   */
+  readonly pinned?: boolean
 }
 
 export interface BranchRef {
@@ -158,7 +167,11 @@ export function snapshotAt(
   return { files, order }
 }
 
-/** Lineage of a branch (HEAD → root via parent links), newest-first. */
+/**
+ * Display lineage of a branch (HEAD → root via parent links), newest-first.
+ * Skips `pinned` commits — they exist only to hold content for the back-walk
+ * (see Commit.pinned), not for display.
+ */
 export function listCommits(h: ProjectHistory, branch = h.currentBranch): Commit[] {
   const head = h.branches[branch]?.head
   if (!head) return []
@@ -167,7 +180,7 @@ export function listCommits(h: ProjectHistory, branch = h.currentBranch): Commit
   while (walk !== null) {
     const c: Commit | undefined = h.commits[walk]
     if (!c) break
-    out.push(c)
+    if (!c.pinned) out.push(c)
     walk = c.parent
   }
   return out
@@ -177,15 +190,47 @@ export function listBranches(h: ProjectHistory): Array<{ name: string } & Branch
   return Object.entries(h.branches).map(([name, ref]) => ({ name, ...ref }))
 }
 
-/** Commits that wrote `fileId`, newest-first (fileIndex projection). */
+/**
+ * Commits that wrote `fileId`, newest-first (fileIndex projection). Skips
+ * `pinned` commits for display consistency with `listCommits`.
+ */
 export function fileHistory(h: ProjectHistory, fileId: string): Commit[] {
   const ids = h.fileIndex[fileId] ?? []
   const out: Commit[] = []
   for (let i = ids.length - 1; i >= 0; i--) {
     const c = h.commits[ids[i]]
-    if (c) out.push(c)
+    if (c && !c.pinned) out.push(c)
   }
   return out
+}
+
+/** Walk from `fromCommit` to the nearest commit (inclusive) that wrote `fileId`. */
+export function nearestWriter(
+  h: ProjectHistory,
+  fromCommit: string,
+  fileId: string,
+): string | null {
+  let walk: string | null = fromCommit
+  while (walk !== null) {
+    const c: Commit | undefined = h.commits[walk]
+    if (!c) break
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk
+    walk = c.parent
+  }
+  return null
+}
+
+/** All files that exist (have a writer) at-or-before `commitId`. */
+export function filesAliveAt(h: ProjectHistory, commitId: string): Set<string> {
+  const alive = new Set<string>()
+  let walk: string | null = commitId
+  while (walk !== null) {
+    const c: Commit | undefined = h.commits[walk]
+    if (!c) break
+    for (const f of Object.keys(c.files)) alive.add(f)
+    walk = c.parent
+  }
+  return alive
 }
 
 // ── diffing ─────────────────────────────────────────────────────────────
