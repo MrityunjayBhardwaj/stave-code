@@ -282,19 +282,27 @@ export interface CommitOpts {
   readonly order?: OrderSnapshot
   /** latest metadata for changed files, merged into history.fileMeta. */
   readonly fileMeta?: Record<string, FileMeta>
+  /**
+   * Permit a commit with no changed files — a label-only anchor pointing at
+   * the same content as its parent (git `commit --allow-empty` semantics).
+   * Used only by manual checkpoints (#199); auto/eval/restore leave this off,
+   * so their no-change short-circuit is unchanged.
+   */
+  readonly allowEmpty?: boolean
 }
 
 /**
  * Append a commit holding `changed` (already the changed-files subset) onto the
  * current branch's HEAD. Advances the branch head and updates fileIndex.
- * Returns the same history unchanged if `changed` is empty (nothing to commit).
+ * Returns the same history unchanged if `changed` is empty (nothing to commit),
+ * unless `opts.allowEmpty` — then an empty (label-only) anchor commit is made.
  */
 export function commitOnto(
   h: ProjectHistory,
   changed: Record<string, string>,
   opts: CommitOpts,
 ): ProjectHistory {
-  if (Object.keys(changed).length === 0) return h
+  if (Object.keys(changed).length === 0 && !opts.allowEmpty) return h
   const branch = h.currentBranch
   const parent = h.branches[branch]?.head ?? null
   const commit: Commit = {

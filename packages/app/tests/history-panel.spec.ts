@@ -52,6 +52,33 @@ test('History panel opens and lists the seed commit', async ({ page }) => {
   await page.screenshot({ path: '/tmp/history-panel.png' })
 })
 
+test('Commit now creates a labelled manual checkpoint (allowEmpty anchor)', async ({ page }) => {
+  await page.locator('[data-tab-id="history"]').click()
+  await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
+
+  const before = await page.locator('[data-history-commit]').count()
+
+  // open the inline label input; Save is disabled until a non-empty label
+  await page.locator('[data-history-commit-now]').click()
+  const label = page.locator('[data-history-commit-label]')
+  await expect(label).toBeVisible()
+  await expect(page.locator('[data-history-commit-save]')).toBeDisabled()
+
+  // no edits made since seed — this exercises the allowEmpty named-anchor path
+  await label.fill('v1 demo state')
+  await page.locator('[data-history-commit-save]').click()
+  await page.waitForTimeout(500)
+
+  // a new commit row appears, rendered as a 'saved' (manual) checkpoint
+  const after = page.locator('[data-history-commit]')
+  expect(await after.count()).toBe(before + 1)
+  const panel = page.locator('[data-bottom-panel-tab="history"]')
+  await expect(panel).toContainText('v1 demo state')
+  await expect(panel).toContainText('saved')
+
+  await page.screenshot({ path: '/tmp/history-manual-commit.png' })
+})
+
 test('Fork from a commit creates a new branch and switches to it', async ({ page }) => {
   await page.locator('[data-tab-id="history"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })

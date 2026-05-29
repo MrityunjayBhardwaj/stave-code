@@ -20,6 +20,7 @@ import {
   getCurrentHistory,
   subscribeToHistory,
   getActiveHistoryFile,
+  commitWorkspace,
   restoreProject,
   restoreFileToCommit,
   createBranchAt,
@@ -78,6 +79,8 @@ export function HistoryPanel(): React.ReactElement {
   const [forking, setForking] = React.useState<string | null>(null)
   const [forkName, setForkName] = React.useState('')
   const [viewing, setViewing] = React.useState<string | null>(null)
+  const [committing, setCommitting] = React.useState(false)
+  const [commitLabel, setCommitLabel] = React.useState('')
 
   const h = getCurrentHistory()
   const activeFile = getActiveHistoryFile()
@@ -119,6 +122,15 @@ export function HistoryPanel(): React.ReactElement {
     setForking(null)
     setForkName('')
   }
+  const confirmCommit = (): void => {
+    const label = commitLabel.trim()
+    if (!label) return // labels are required for manual checkpoints
+    // allowEmpty: a manual commit names the current exact state even with no
+    // diff since HEAD (git --allow-empty); it's an anchor, exempt from pruning.
+    void commitWorkspace('manual', { label, allowEmpty: true })
+    setCommitting(false)
+    setCommitLabel('')
+  }
 
   return (
     <div data-bottom-panel-tab="history" style={wrap}>
@@ -156,7 +168,47 @@ export function HistoryPanel(): React.ReactElement {
         {scope === 'file' && !activeFile && (
           <span style={{ color: muted, fontSize: 11 }}>open a file for File scope</span>
         )}
+        <button
+          onClick={() => setCommitting((v) => !v)}
+          data-history-commit-now
+          style={{ ...btn({ borderColor: accent, color: accent }), marginLeft: 'auto' }}
+        >
+          + Commit
+        </button>
       </div>
+
+      {/* manual commit (named checkpoint) */}
+      {committing && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <input
+            autoFocus
+            value={commitLabel}
+            placeholder="checkpoint label (e.g. v1 demo state)"
+            onChange={(e) => setCommitLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') confirmCommit()
+              else if (e.key === 'Escape') {
+                setCommitting(false)
+                setCommitLabel('')
+              }
+            }}
+            data-history-commit-label
+            style={{ ...btn(), flex: 1, color: fg, background: 'var(--background, #16161a)' }}
+          />
+          <button
+            onClick={confirmCommit}
+            disabled={!commitLabel.trim()}
+            data-history-commit-save
+            style={btn({
+              borderColor: accent,
+              opacity: commitLabel.trim() ? 1 : 0.5,
+              cursor: commitLabel.trim() ? 'pointer' : 'not-allowed',
+            })}
+          >
+            Save
+          </button>
+        </div>
+      )}
 
       {/* commit list */}
       <ol style={{ listStyle: 'none', margin: 0, padding: 0 }} data-history-commit-list>

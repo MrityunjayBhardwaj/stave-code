@@ -18242,7 +18242,7 @@ function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
 }
 __name(changedFiles, "changedFiles");
 function commitOnto(h, changed, opts) {
-  if (Object.keys(changed).length === 0) return h;
+  if (Object.keys(changed).length === 0 && !opts.allowEmpty) return h;
   const branch = h.currentBranch;
   const parent = h.branches[branch]?.head ?? null;
   const commit = {
@@ -18616,7 +18616,7 @@ async function _commit(kind, opts = {}) {
   const live = readWorkspaceFiles();
   const changed = changedFiles(current2, live);
   const changedKeys = Object.keys(changed);
-  if (changedKeys.length === 0) return null;
+  if (changedKeys.length === 0 && !opts.allowEmpty) return null;
   if (opts.gate) {
     const head = headOf(current2);
     const pairs = changedKeys.map((f) => ({
@@ -18635,7 +18635,8 @@ async function _commit(kind, opts = {}) {
     id,
     createdAt: now(),
     order: readWorkspaceOrder(),
-    fileMeta: changedMeta
+    fileMeta: changedMeta,
+    ...opts.allowEmpty ? { allowEmpty: true } : {}
   });
   if (kind === "auto") current2 = prune(current2, now());
   await saveHistory(current2);
@@ -18728,6 +18729,8 @@ function HistoryPanel() {
   const [forking, setForking] = React8.useState(null);
   const [forkName, setForkName] = React8.useState("");
   const [viewing, setViewing] = React8.useState(null);
+  const [committing, setCommitting] = React8.useState(false);
+  const [commitLabel, setCommitLabel] = React8.useState("");
   const h = getCurrentHistory();
   const activeFile = getActiveHistoryFile();
   const now2 = Date.now();
@@ -18759,6 +18762,13 @@ function HistoryPanel() {
     setForking(null);
     setForkName("");
   }, "confirmFork");
+  const confirmCommit = /* @__PURE__ */ __name(() => {
+    const label = commitLabel.trim();
+    if (!label) return;
+    void commitWorkspace("manual", { label, allowEmpty: true });
+    setCommitting(false);
+    setCommitLabel("");
+  }, "confirmCommit");
   return /* @__PURE__ */ jsxs("div", { "data-bottom-panel-tab": "history", style: wrap5, children: [
     /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }, children: [
       /* @__PURE__ */ jsx(
@@ -18786,7 +18796,50 @@ function HistoryPanel() {
         },
         s
       )) }),
-      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: "open a file for File scope" })
+      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: "open a file for File scope" }),
+      /* @__PURE__ */ jsx(
+        "button",
+        {
+          onClick: () => setCommitting((v) => !v),
+          "data-history-commit-now": true,
+          style: { ...btn({ borderColor: accent, color: accent }), marginLeft: "auto" },
+          children: "+ Commit"
+        }
+      )
+    ] }),
+    committing && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginBottom: 10 }, children: [
+      /* @__PURE__ */ jsx(
+        "input",
+        {
+          autoFocus: true,
+          value: commitLabel,
+          placeholder: "checkpoint label (e.g. v1 demo state)",
+          onChange: (e) => setCommitLabel(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") confirmCommit();
+            else if (e.key === "Escape") {
+              setCommitting(false);
+              setCommitLabel("");
+            }
+          },
+          "data-history-commit-label": true,
+          style: { ...btn(), flex: 1, color: fg, background: "var(--background, #16161a)" }
+        }
+      ),
+      /* @__PURE__ */ jsx(
+        "button",
+        {
+          onClick: confirmCommit,
+          disabled: !commitLabel.trim(),
+          "data-history-commit-save": true,
+          style: btn({
+            borderColor: accent,
+            opacity: commitLabel.trim() ? 1 : 0.5,
+            cursor: commitLabel.trim() ? "pointer" : "not-allowed"
+          }),
+          children: "Save"
+        }
+      )
     ] }),
     /* @__PURE__ */ jsx("ol", { style: { listStyle: "none", margin: 0, padding: 0 }, "data-history-commit-list": true, children: commits.map((c) => {
       const changedFileIds = Object.keys(c.files);
