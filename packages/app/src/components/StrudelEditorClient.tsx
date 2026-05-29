@@ -11,6 +11,10 @@ import {
   getFile,
   subscribeToWorkspaceFile,
   listWorkspaceFiles,
+  initHistory,
+  startHistoryDriver,
+  resetHistoryState,
+  commitWorkspace,
   subscribeToFileList,
   registerRuntimeProvider,
   registerPreviewProvider,
@@ -309,6 +313,27 @@ export default function StrudelEditorClient({
     seedPresets();
   }, [seedState.p5PresetId, seedState.hydraPresetId]);
 
+  // Project commit store (file-history Phase F, #196). Seeds commit c0 from
+  // the live workspace on first run (the workspace files are already present
+  // at mount — registerAllVizFiles above relies on the same), then starts the
+  // idle + unload auto-commit driver. Per-eval commits are fired from
+  // onEvaluateSuccess below. Runs alongside the legacy snapshotStore-backed
+  // Version History panel; Phase G (#197) unifies the UI and retires the old.
+  useEffect(() => {
+    let cancelled = false;
+    let teardown = () => {};
+    (async () => {
+      await initHistory(projectId);
+      if (cancelled) return;
+      teardown = startHistoryDriver();
+    })();
+    return () => {
+      cancelled = true;
+      teardown();
+      resetHistoryState();
+    };
+  }, [projectId]);
+
   // ── Runtime management ──────────────────────────────────────────────
   // One LiveCodingRuntime per pattern-file tab, keyed by fileId. Per-file
   // runtime state (isPlaying/error/bpm/autoRefresh) mirrors runtime events
@@ -422,6 +447,13 @@ export default function StrudelEditorClient({
       const fileNow = getFile(fileId);
       const runtimeId: RuntimeId = fileNow?.language === "sonicpi" ? "sonicpi" : "strudel";
       emitFixed({ runtime: runtimeId, source: fileNow?.path ?? fileId });
+      // Per-eval commit (file-history Phase F, #196 / RESEARCH Q1): an eval is
+      // an intentional checkpoint, so capture the state that produced this
+      // sound — bypassing the significance floor. No-op if nothing changed
+      // since HEAD, so frequent live-mode re-evals stay cheap.
+      void commitWorkspace("auto", { gate: false }).catch((err) =>
+        console.warn("[stave] eval commit failed:", err),
+      );
 
       // IR Inspector snapshot — only meaningful for Strudel today.
       // parseStrudel + collect are pure and cheap on the user's source
