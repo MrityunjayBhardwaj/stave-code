@@ -23120,6 +23120,34 @@ var muted2 = "var(--foreground-muted, #a0a0aa)";
 var fg3 = "var(--foreground, #e6e6ea)";
 var border3 = "var(--border, #2a2a32)";
 var accent3 = "var(--accent, #6ea8fe)";
+var bgInput = "var(--background, #16161a)";
+var GUTTER_W = 22;
+var DOT_CY = 13;
+function svg(path, size = 14) {
+  return /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, children: path });
+}
+__name(svg, "svg");
+var IconRestore = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fragment, { children: [
+  /* @__PURE__ */ jsx("path", { d: "M2.5 8a5.5 5.5 0 1 0 1.6-3.9" }),
+  /* @__PURE__ */ jsx("path", { d: "M2.5 2.5V5h2.5" })
+] }), size), "IconRestore");
+var IconFork = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fragment, { children: [
+  /* @__PURE__ */ jsx("circle", { cx: "4.5", cy: "3.5", r: "1.6" }),
+  /* @__PURE__ */ jsx("circle", { cx: "4.5", cy: "12.5", r: "1.6" }),
+  /* @__PURE__ */ jsx("circle", { cx: "11.5", cy: "3.5", r: "1.6" }),
+  /* @__PURE__ */ jsx("path", { d: "M4.5 5.1v6M11.5 5.1c0 3-7 1.5-7 4.4" })
+] }), size), "IconFork");
+var IconView = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fragment, { children: [
+  /* @__PURE__ */ jsx("path", { d: "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" }),
+  /* @__PURE__ */ jsx("circle", { cx: "8", cy: "8", r: "1.8" })
+] }), size), "IconView");
+var IconDiff = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fragment, { children: [
+  /* @__PURE__ */ jsx("path", { d: "M5 2.5v8M11 5.5v8" }),
+  /* @__PURE__ */ jsx("circle", { cx: "5", cy: "12.5", r: "1.5" }),
+  /* @__PURE__ */ jsx("circle", { cx: "11", cy: "3.5", r: "1.5" }),
+  /* @__PURE__ */ jsx("path", { d: "M5 4.5a3 3 0 0 0 3 3h3" })
+] }), size), "IconDiff");
+var IconChevron = /* @__PURE__ */ __name(({ open }) => /* @__PURE__ */ jsx("span", { style: { display: "inline-block", transition: "transform 120ms", transform: open ? "rotate(90deg)" : "none", color: muted2, fontSize: 10 }, children: "\u25B6" }), "IconChevron");
 var MANUAL_NUDGE_DEFAULT = 50;
 function manualNudgeThreshold() {
   if (typeof window === "undefined") return MANUAL_NUDGE_DEFAULT;
@@ -23141,19 +23169,62 @@ function btn(extra) {
   };
 }
 __name(btn, "btn");
+function iconBtn() {
+  return {
+    background: "transparent",
+    border: "none",
+    color: muted2,
+    cursor: "pointer",
+    padding: 2,
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 3
+  };
+}
+__name(iconBtn, "iconBtn");
+function GraphGutter({
+  isNewest,
+  isOldest,
+  isHead,
+  forks
+}) {
+  const x = GUTTER_W / 2;
+  return /* @__PURE__ */ jsxs("div", { style: { position: "relative", width: GUTTER_W, flex: "0 0 auto", alignSelf: "stretch" }, "aria-hidden": true, children: [
+    !isNewest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: 0, height: DOT_CY, width: 2, background: border3 } }),
+    !isOldest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: DOT_CY, bottom: 0, width: 2, background: border3 } }),
+    forks > 0 && /* @__PURE__ */ jsx("svg", { style: { position: "absolute", left: x - 1, top: 0 }, width: GUTTER_W, height: DOT_CY + 2, children: /* @__PURE__ */ jsx("path", { d: `M1 ${DOT_CY} C 1 ${DOT_CY / 2}, ${GUTTER_W - 3} ${DOT_CY / 2}, ${GUTTER_W - 3} 1`, fill: "none", stroke: accent3, strokeWidth: "1.6" }) }),
+    /* @__PURE__ */ jsx(
+      "span",
+      {
+        style: {
+          position: "absolute",
+          left: x - 4,
+          top: DOT_CY - 4,
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: isHead ? accent3 : bgInput,
+          border: `2px solid ${isHead ? accent3 : muted2}`,
+          boxSizing: "border-box"
+        }
+      }
+    )
+  ] });
+}
+__name(GraphGutter, "GraphGutter");
 function HistoryPanel() {
   const [, force] = React6.useReducer((x) => x + 1, 0);
   React6.useEffect(() => subscribeToHistory(force), []);
-  const [scope, setScope] = React6.useState("project");
   const [forking, setForking] = React6.useState(null);
   const [forkName, setForkName] = React6.useState("");
   const [viewingCommit, setViewingCommit] = React6.useState(null);
   const [committing, setCommitting] = React6.useState(false);
   const [commitLabel, setCommitLabel] = React6.useState("");
   const [diffing, setDiffing] = React6.useState(null);
+  const [expanded, setExpanded] = React6.useState(null);
+  const [hovered, setHovered] = React6.useState(null);
   const [nudgeDismissed, setNudgeDismissed] = React6.useState(false);
   const h = getCurrentHistory();
-  const activeFile = getActiveHistoryFile();
   const now2 = Date.now();
   const wrap5 = {
     padding: 12,
@@ -23163,23 +23234,18 @@ function HistoryPanel() {
     height: "100%",
     overflow: "auto",
     position: "relative"
-    // anchors the diff overlay (#198)
   };
   if (!h) {
     return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
   }
   const branches = listBranches(h);
+  const commits = listCommits(h);
   const manualCount = countManualCommits(h);
   const showNudge = !nudgeDismissed && manualCount > manualNudgeThreshold();
-  const effectiveScope = scope === "file" && !activeFile ? "project" : scope;
-  const commits = effectiveScope === "file" && activeFile ? fileHistory(h, activeFile) : listCommits(h);
-  const doRestore = /* @__PURE__ */ __name((c) => {
-    if (effectiveScope === "file" && activeFile) {
-      void restoreFileToCommit(activeFile, c.id);
-    } else {
-      void restoreProject(c.id);
-    }
-  }, "doRestore");
+  const forkCounts = /* @__PURE__ */ new Map();
+  for (const b of branches) {
+    if (b.createdFrom) forkCounts.set(b.createdFrom, (forkCounts.get(b.createdFrom) ?? 0) + 1);
+  }
   const confirmFork = /* @__PURE__ */ __name((c) => {
     const name = forkName.trim();
     if (!name) return;
@@ -23194,6 +23260,7 @@ function HistoryPanel() {
     setCommitting(false);
     setCommitLabel("");
   }, "confirmCommit");
+  const fileLabel = /* @__PURE__ */ __name((fileId) => h.fileMeta[fileId]?.path ?? fileId, "fileLabel");
   return /* @__PURE__ */ jsxs("div", { "data-bottom-panel-tab": "history", style: wrap5, children: [
     /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 10 }, children: [
       /* @__PURE__ */ jsx(
@@ -23207,21 +23274,6 @@ function HistoryPanel() {
           children: branches.map((b) => /* @__PURE__ */ jsx("option", { value: b.name, children: b.name }, b.name))
         }
       ),
-      /* @__PURE__ */ jsx("div", { style: { display: "flex", border: `1px solid ${border3}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsx(
-        "button",
-        {
-          onClick: () => setScope(s),
-          "data-history-scope": s,
-          style: {
-            ...btn({ border: "none", borderRadius: 0 }),
-            background: effectiveScope === s ? accent3 : "transparent",
-            color: effectiveScope === s ? "#0b0b0f" : fg3
-          },
-          children: s === "project" ? "Project" : "File"
-        },
-        s
-      )) }),
-      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted2, fontSize: 11 }, children: "open a file for File scope" }),
       /* @__PURE__ */ jsx(
         "button",
         {
@@ -23249,7 +23301,7 @@ function HistoryPanel() {
             }
           },
           "data-history-commit-label": true,
-          style: { ...btn(), flex: 1, color: fg3, background: "var(--background, #16161a)" }
+          style: { ...btn(), flex: 1, color: fg3, background: bgInput }
         }
       ),
       /* @__PURE__ */ jsx(
@@ -23279,7 +23331,7 @@ function HistoryPanel() {
           padding: "6px 10px",
           fontSize: 11,
           color: fg3,
-          background: "var(--background, #16161a)",
+          background: bgInput,
           border: `1px solid ${border3}`,
           borderRadius: 4
         },
@@ -23288,108 +23340,84 @@ function HistoryPanel() {
             manualCount,
             " saved checkpoints \u2014 kept permanently (never auto-pruned). Restore or Fork from any; auto-commits are still pruned on their own."
           ] }),
-          /* @__PURE__ */ jsx(
-            "button",
-            {
-              onClick: () => setNudgeDismissed(true),
-              "data-history-nudge-dismiss": true,
-              "aria-label": "dismiss checkpoint notice",
-              style: btn({ padding: "1px 7px" }),
-              children: "\u2715"
-            }
-          )
+          /* @__PURE__ */ jsx("button", { onClick: () => setNudgeDismissed(true), "data-history-nudge-dismiss": true, "aria-label": "dismiss checkpoint notice", style: btn({ padding: "1px 7px" }), children: "\u2715" })
         ]
       }
     ),
-    /* @__PURE__ */ jsx("ol", { style: { listStyle: "none", margin: 0, padding: 0 }, "data-history-commit-list": true, children: commits.map((c) => {
+    /* @__PURE__ */ jsx("ol", { style: { listStyle: "none", margin: 0, padding: 0 }, "data-history-commit-list": true, children: commits.map((c, i) => {
       const changedFileIds = Object.keys(c.files);
-      return /* @__PURE__ */ jsxs(
-        "li",
+      const isOpen = expanded === c.id;
+      const isHovered = hovered === c.id;
+      return /* @__PURE__ */ jsx("li", { "data-history-commit": c.id, style: { position: "relative" }, children: /* @__PURE__ */ jsxs(
+        "div",
         {
-          "data-history-commit": c.id,
-          style: { borderLeft: `2px solid ${border3}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
+          onMouseEnter: () => setHovered(c.id),
+          onMouseLeave: () => setHovered((cur) => cur === c.id ? null : cur),
+          style: { display: "flex", alignItems: "flex-start", gap: 6, minHeight: 30 },
           children: [
-            /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "baseline", gap: 8 }, children: [
-              /* @__PURE__ */ jsx(
-                "span",
+            /* @__PURE__ */ jsx(
+              GraphGutter,
+              {
+                isNewest: i === 0,
+                isOldest: i === commits.length - 1,
+                isHead: c.id === h.branches[h.currentBranch]?.head,
+                forks: forkCounts.get(c.id) ?? 0
+              }
+            ),
+            /* @__PURE__ */ jsxs("div", { style: { flex: 1, minWidth: 0, paddingBottom: 8 }, children: [
+              /* @__PURE__ */ jsxs(
+                "div",
                 {
-                  style: {
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    color: c.kind === "manual" ? accent3 : muted2,
-                    letterSpacing: 0.5
-                  },
-                  children: KIND_LABEL[c.kind] ?? c.kind
+                  onClick: () => setExpanded(isOpen ? null : c.id),
+                  "data-history-commit-toggle": c.id,
+                  style: { display: "flex", alignItems: "baseline", gap: 6, cursor: "pointer" },
+                  children: [
+                    /* @__PURE__ */ jsx("span", { style: { alignSelf: "center" }, children: /* @__PURE__ */ jsx(IconChevron, { open: isOpen }) }),
+                    /* @__PURE__ */ jsx("span", { style: { fontSize: 9, textTransform: "uppercase", color: c.kind === "manual" ? accent3 : muted2, letterSpacing: 0.5, flex: "0 0 auto" }, children: KIND_LABEL[c.kind] ?? c.kind }),
+                    /* @__PURE__ */ jsx("span", { style: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
+                    forkCounts.has(c.id) && branches.filter((b) => b.createdFrom === c.id).map((b) => /* @__PURE__ */ jsxs("span", { style: { fontSize: 9, color: accent3, border: `1px solid ${accent3}`, borderRadius: 8, padding: "0 5px" }, children: [
+                      "\u2442 ",
+                      b.name
+                    ] }, b.name)),
+                    /* @__PURE__ */ jsx("span", { style: { color: muted2, fontSize: 10, flex: "0 0 auto" }, children: relTime(c.createdAt, now2) })
+                  ]
                 }
               ),
-              /* @__PURE__ */ jsx("span", { style: { flex: 1 }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
-              /* @__PURE__ */ jsx("span", { style: { color: muted2, fontSize: 11 }, children: relTime(c.createdAt, now2) })
-            ] }),
-            /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 4 }, children: [
-              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: "Restore" }),
-              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: "Fork" }),
-              /* @__PURE__ */ jsx(
+              /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: "opacity 120ms" }, children: [
+                /* @__PURE__ */ jsx("button", { title: "Restore project to this commit", style: iconBtn(), onClick: () => void restoreProject(c.id), "data-history-restore": c.id, children: /* @__PURE__ */ jsx(IconRestore, {}) }),
+                /* @__PURE__ */ jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsx(IconFork, {}) }),
+                /* @__PURE__ */ jsx("button", { title: "View (read-only time-travel)", style: iconBtn(), onClick: () => {
+                  setDiffing(null);
+                  setViewingCommit(c);
+                }, "data-history-view": c.id, children: /* @__PURE__ */ jsx(IconView, {}) })
+              ] }),
+              forking === c.id && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6, marginLeft: 14 }, children: [
+                /* @__PURE__ */ jsx("input", { autoFocus: true, value: forkName, placeholder: "branch name", onChange: (e) => setForkName(e.target.value), onKeyDown: (e) => e.key === "Enter" && confirmFork(c), style: { ...btn(), flex: 1, color: fg3, background: bgInput } }),
+                /* @__PURE__ */ jsx("button", { style: btn({ borderColor: accent3 }), onClick: () => confirmFork(c), children: "Create" })
+              ] }),
+              isOpen && /* @__PURE__ */ jsx("ul", { "data-history-commit-files": true, style: { listStyle: "none", margin: "6px 0 0", padding: 0, marginLeft: 14 }, children: changedFileIds.length === 0 ? /* @__PURE__ */ jsx("li", { style: { color: muted2, fontSize: 11 }, children: "label-only checkpoint (no file changes)" }) : changedFileIds.map((fid) => /* @__PURE__ */ jsx("li", { children: /* @__PURE__ */ jsxs(
                 "button",
                 {
-                  style: btn(),
-                  onClick: () => {
-                    setDiffing(null);
-                    setViewingCommit(c);
-                  },
-                  "data-history-view": c.id,
-                  children: "View"
-                }
-              ),
-              /* @__PURE__ */ jsx(
-                "button",
-                {
-                  style: btn(),
                   onClick: () => {
                     setViewingCommit(null);
-                    setDiffing(c);
+                    setDiffing({ commit: c, fileId: fid });
                   },
-                  "data-history-diff": c.id,
-                  children: "Diff"
+                  "data-history-file-diff": fid,
+                  title: `Diff ${fileLabel(fid)}`,
+                  style: { ...iconBtn(), width: "100%", justifyContent: "flex-start", gap: 6, padding: "2px 4px", color: fg3, fontSize: 11 },
+                  children: [
+                    /* @__PURE__ */ jsx("span", { style: { color: muted2, display: "inline-flex" }, children: /* @__PURE__ */ jsx(IconDiff, { size: 12 }) }),
+                    /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: fileLabel(fid) })
+                  ]
                 }
-              )
-            ] }),
-            forking === c.id && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
-              /* @__PURE__ */ jsx(
-                "input",
-                {
-                  autoFocus: true,
-                  value: forkName,
-                  placeholder: "branch name",
-                  onChange: (e) => setForkName(e.target.value),
-                  onKeyDown: (e) => e.key === "Enter" && confirmFork(c),
-                  style: { ...btn(), color: fg3, background: "var(--background, #16161a)" }
-                }
-              ),
-              /* @__PURE__ */ jsx("button", { style: btn({ borderColor: accent3 }), onClick: () => confirmFork(c), children: "Create" })
+              ) }, fid)) })
             ] })
           ]
-        },
-        c.id
-      );
+        }
+      ) }, c.id);
     }) }),
-    viewingCommit && /* @__PURE__ */ jsx(
-      HistoryViewOverlay,
-      {
-        history: h,
-        commit: viewingCommit,
-        initialFileId: effectiveScope === "file" ? activeFile : null,
-        onClose: () => setViewingCommit(null)
-      }
-    ),
-    diffing && /* @__PURE__ */ jsx(
-      HistoryDiffOverlay,
-      {
-        history: h,
-        commit: diffing,
-        initialFileId: effectiveScope === "file" ? activeFile : null,
-        onClose: () => setDiffing(null)
-      }
-    )
+    viewingCommit && /* @__PURE__ */ jsx(HistoryViewOverlay, { history: h, commit: viewingCommit, onClose: () => setViewingCommit(null) }),
+    diffing && /* @__PURE__ */ jsx(HistoryDiffOverlay, { history: h, commit: diffing.commit, initialFileId: diffing.fileId ?? null, onClose: () => setDiffing(null) })
   ] });
 }
 __name(HistoryPanel, "HistoryPanel");

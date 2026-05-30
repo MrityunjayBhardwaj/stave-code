@@ -4133,18 +4133,13 @@ declare function switchToBranch(name: string): Promise<void>;
 declare function startHistoryDriver(): () => void;
 
 /**
- * HistoryPanel — the project commit store's user surface (Phase G, #197).
+ * HistoryPanel — the project commit graph (Version History side panel).
  *
- * Renders the commit graph as a vertical timeline with a File⟷Project scope
- * toggle, a branch selector, and per-commit actions:
- *   - Restore: revert the project (or just the active file in File scope) to
- *     the commit, recording a new commit (non-destructive — prior state stays
- *     in history).
- *   - Fork: start a new branch at the commit and switch to it.
- *   - View: read-only peek — Project scope lists the files the commit changed;
- *     File scope shows that file's content at the commit. (The β "runtime
- *     follows the view" time-travel is a deferred follow-up; this View is a
- *     non-destructive content peek, not a runtime override.)
+ * A VS Code / GitLens-style source-control graph: PROJECT-level commit history
+ * (no per-file mode — that's a separate "File History" action on a file). Each
+ * commit row has a branch-lane graph gutter, a kind badge + label + time, and
+ * hover-revealed icon actions (Restore / Fork / View). Expanding a commit lists
+ * the files it changed; clicking a file opens its diff.
  *
  * Reads the service singleton + re-renders on subscribeToHistory.
  */
