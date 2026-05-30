@@ -276,6 +276,15 @@ export function isFileModifiedSinceHead(fileId: string): boolean {
   return isFileModifiedAt(current, fileId, head, liveContent)
 }
 
+/**
+ * Live workspace content of `fileId` (null if absent) — the "current" side of
+ * the diff viewer (#198). A plain synchronous read; no lock needed.
+ */
+export function getLiveFileContent(fileId: string): string | null {
+  const live = readWorkspaceFiles()
+  return Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null
+}
+
 /** Create a branch at `fromCommit` (does not switch to it). */
 export function createBranchAt(name: string, fromCommit: string): Promise<void> {
   return withLock(async () => {

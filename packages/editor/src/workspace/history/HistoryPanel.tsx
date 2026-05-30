@@ -33,6 +33,7 @@ import {
   getFileContentAt,
   type Commit,
 } from './historyGraph'
+import { HistoryDiffOverlay } from './HistoryDiffOverlay'
 
 type Scope = 'project' | 'file'
 
@@ -81,6 +82,7 @@ export function HistoryPanel(): React.ReactElement {
   const [viewing, setViewing] = React.useState<string | null>(null)
   const [committing, setCommitting] = React.useState(false)
   const [commitLabel, setCommitLabel] = React.useState('')
+  const [diffing, setDiffing] = React.useState<Commit | null>(null)
 
   const h = getCurrentHistory()
   const activeFile = getActiveHistoryFile()
@@ -93,6 +95,7 @@ export function HistoryPanel(): React.ReactElement {
     color: fg,
     height: '100%',
     overflow: 'auto',
+    position: 'relative', // anchors the diff overlay (#198)
   }
 
   if (!h) {
@@ -245,6 +248,9 @@ export function HistoryPanel(): React.ReactElement {
                 <button style={btn()} onClick={() => setViewing(viewing === c.id ? null : c.id)} data-history-view={c.id}>
                   {viewing === c.id ? 'Hide' : 'View'}
                 </button>
+                <button style={btn()} onClick={() => setDiffing(c)} data-history-diff={c.id}>
+                  Diff
+                </button>
               </div>
 
               {forking === c.id && (
@@ -289,6 +295,15 @@ export function HistoryPanel(): React.ReactElement {
           )
         })}
       </ol>
+
+      {diffing && (
+        <HistoryDiffOverlay
+          history={h}
+          commit={diffing}
+          initialFileId={effectiveScope === 'file' ? activeFile : null}
+          onClose={() => setDiffing(null)}
+        />
+      )}
     </div>
   )
 }

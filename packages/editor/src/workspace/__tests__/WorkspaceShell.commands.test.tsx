@@ -48,6 +48,10 @@ vi.mock('@monaco-editor/react', () => ({
       />
     )
   },
+  // Named export used by HistoryDiffOverlay (#198) — render-only stub.
+  DiffEditor: (props: MonacoEditorProps) => (
+    <div data-testid="mock-diff-editor" data-language={props.language ?? ""} />
+  ),
 }))
 
 vi.mock('../../visualizers/defaultDescriptors', () => ({
