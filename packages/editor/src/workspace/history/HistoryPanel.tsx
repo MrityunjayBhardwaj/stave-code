@@ -30,9 +30,10 @@ import {
   listCommits,
   fileHistory,
   listBranches,
-  getFileContentAt,
   type Commit,
 } from './historyGraph'
+import { HistoryDiffOverlay } from './HistoryDiffOverlay'
+import { HistoryViewOverlay } from './HistoryViewOverlay'
 
 type Scope = 'project' | 'file'
 
@@ -78,9 +79,10 @@ export function HistoryPanel(): React.ReactElement {
   const [scope, setScope] = React.useState<Scope>('project')
   const [forking, setForking] = React.useState<string | null>(null)
   const [forkName, setForkName] = React.useState('')
-  const [viewing, setViewing] = React.useState<string | null>(null)
+  const [viewingCommit, setViewingCommit] = React.useState<Commit | null>(null)
   const [committing, setCommitting] = React.useState(false)
   const [commitLabel, setCommitLabel] = React.useState('')
+  const [diffing, setDiffing] = React.useState<Commit | null>(null)
 
   const h = getCurrentHistory()
   const activeFile = getActiveHistoryFile()
@@ -93,6 +95,7 @@ export function HistoryPanel(): React.ReactElement {
     color: fg,
     height: '100%',
     overflow: 'auto',
+    position: 'relative', // anchors the diff overlay (#198)
   }
 
   if (!h) {
@@ -242,8 +245,25 @@ export function HistoryPanel(): React.ReactElement {
                 <button style={btn()} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}>
                   Fork
                 </button>
-                <button style={btn()} onClick={() => setViewing(viewing === c.id ? null : c.id)} data-history-view={c.id}>
-                  {viewing === c.id ? 'Hide' : 'View'}
+                <button
+                  style={btn()}
+                  onClick={() => {
+                    setDiffing(null) // only one overlay at a time
+                    setViewingCommit(c)
+                  }}
+                  data-history-view={c.id}
+                >
+                  View
+                </button>
+                <button
+                  style={btn()}
+                  onClick={() => {
+                    setViewingCommit(null) // only one overlay at a time
+                    setDiffing(c)
+                  }}
+                  data-history-diff={c.id}
+                >
+                  Diff
                 </button>
               </div>
 
@@ -263,32 +283,28 @@ export function HistoryPanel(): React.ReactElement {
                 </div>
               )}
 
-              {viewing === c.id && (
-                <pre
-                  data-history-view-body
-                  style={{
-                    marginTop: 6,
-                    padding: 8,
-                    background: 'var(--background, #16161a)',
-                    border: `1px solid ${border}`,
-                    borderRadius: 4,
-                    fontSize: 11,
-                    maxHeight: 220,
-                    overflow: 'auto',
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  {effectiveScope === 'file' && activeFile
-                    ? (getFileContentAt(h, activeFile, c.id) ?? '(file did not exist at this commit)')
-                    : changedFileIds.length
-                      ? changedFileIds.join('\n')
-                      : '(no file changes)'}
-                </pre>
-              )}
             </li>
           )
         })}
       </ol>
+
+      {viewingCommit && (
+        <HistoryViewOverlay
+          history={h}
+          commit={viewingCommit}
+          initialFileId={effectiveScope === 'file' ? activeFile : null}
+          onClose={() => setViewingCommit(null)}
+        />
+      )}
+
+      {diffing && (
+        <HistoryDiffOverlay
+          history={h}
+          commit={diffing}
+          initialFileId={effectiveScope === 'file' ? activeFile : null}
+          onClose={() => setDiffing(null)}
+        />
+      )}
     </div>
   )
 }

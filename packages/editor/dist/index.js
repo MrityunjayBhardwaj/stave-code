@@ -1,9 +1,9 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React8 from 'react';
-import React8__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React10 from 'react';
+import React10__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
-import MonacoEditorRaw from '@monaco-editor/react';
+import MonacoEditorRaw, { DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
 import * as Y3 from 'yjs';
 
 var __defProp = Object.defineProperty;
@@ -9809,8 +9809,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React8__default.Children.count(children);
-  const childArray = React8__default.Children.toArray(children);
+  const count = React10__default.Children.count(children);
+  const childArray = React10__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -9855,7 +9855,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React8__default.useEffect(() => {
+  React10__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -9871,7 +9871,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React8__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React10__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -16805,7 +16805,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React8__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React10__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -17027,7 +17027,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React8__default.useMemo(() => {
+  const providerNode = React10__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -18094,7 +18094,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React8.createElement(
+  return React10.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -18112,7 +18112,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React8.createElement(EmptyTimelineStub)
+  content: React10.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/history/historyGraph.ts
@@ -18241,6 +18241,15 @@ function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
   return changed;
 }
 __name(changedFiles, "changedFiles");
+function seedCommitId(h) {
+  for (const c of Object.values(h.commits)) if (c.kind === "seed") return c.id;
+  return null;
+}
+__name(seedCommitId, "seedCommitId");
+function isFileModifiedAt(h, fileId, commitId, liveContent) {
+  return getFileContentAt(h, fileId, commitId) !== liveContent;
+}
+__name(isFileModifiedAt, "isFileModifiedAt");
 function commitOnto(h, changed, opts) {
   if (Object.keys(changed).length === 0 && !opts.allowEmpty) return h;
   const branch = h.currentBranch;
@@ -18653,21 +18662,46 @@ function restoreProject(commitId) {
 }
 __name(restoreProject, "restoreProject");
 function restoreFileToCommit(fileId, commitId) {
-  return withLock(async () => {
-    if (!current2) return null;
-    const content = getFileContentAt(current2, fileId, commitId);
-    const meta = current2.fileMeta[fileId];
-    const live = readWorkspaceFiles();
-    if (content === null) {
-      delete live[fileId];
-    } else {
-      live[fileId] = content;
-    }
-    applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
-    return _commit("auto", { gate: false });
-  });
+  return withLock(() => _restoreFileToCommit(fileId, commitId));
 }
 __name(restoreFileToCommit, "restoreFileToCommit");
+async function _restoreFileToCommit(fileId, commitId) {
+  if (!current2) return null;
+  const content = getFileContentAt(current2, fileId, commitId);
+  const meta = current2.fileMeta[fileId];
+  const live = readWorkspaceFiles();
+  if (content === null) {
+    delete live[fileId];
+  } else {
+    live[fileId] = content;
+  }
+  applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
+  return _commit("auto", { gate: false });
+}
+__name(_restoreFileToCommit, "_restoreFileToCommit");
+function revertFileToSeed(fileId) {
+  return withLock(async () => {
+    if (!current2) return null;
+    const seed = seedCommitId(current2);
+    if (!seed) return null;
+    return _restoreFileToCommit(fileId, seed);
+  });
+}
+__name(revertFileToSeed, "revertFileToSeed");
+function isFileModifiedSinceHead(fileId) {
+  if (!current2) return false;
+  const head = headOf(current2);
+  if (!head) return false;
+  const live = readWorkspaceFiles();
+  const liveContent = Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
+  return isFileModifiedAt(current2, fileId, head, liveContent);
+}
+__name(isFileModifiedSinceHead, "isFileModifiedSinceHead");
+function getLiveFileContent(fileId) {
+  const live = readWorkspaceFiles();
+  return Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
+}
+__name(getLiveFileContent, "getLiveFileContent");
 function createBranchAt(name, fromCommit) {
   return withLock(async () => {
     if (!current2) return;
@@ -18689,6 +18723,251 @@ function switchToBranch(name) {
   });
 }
 __name(switchToBranch, "switchToBranch");
+var DiffEditor = DiffEditor$1;
+var fg = "var(--foreground, #e6e6ea)";
+var border = "var(--border, #2a2a32)";
+var accent = "var(--accent, #6ea8fe)";
+var bg = "var(--background, #16161a)";
+function shortId(id) {
+  return id.slice(0, 7);
+}
+__name(shortId, "shortId");
+function HistoryDiffOverlay({
+  history: history2,
+  commit,
+  initialFileId,
+  onClose
+}) {
+  const changedIds = React10.useMemo(() => Object.keys(commit.files), [commit]);
+  const [mode, setMode] = React10.useState("previous");
+  const [fileId, setFileId] = React10.useState(
+    () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
+  );
+  React10.useEffect(() => {
+    if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
+  }, [changedIds, fileId]);
+  const handleMount = React10.useCallback(
+    (_editor, monaco) => {
+      defineStrudelMonacoTheme(monaco);
+      registerStrudelLanguage(monaco);
+      ensureWorkspaceLanguages(monaco);
+      monaco.editor.setTheme("stave-dark");
+    },
+    []
+  );
+  const wrap5 = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    background: bg,
+    zIndex: 5
+  };
+  const headerRow = {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    padding: "8px 12px",
+    borderBottom: `1px solid ${border}`,
+    fontSize: 12,
+    color: fg,
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+  };
+  const ctl = {
+    background: "transparent",
+    color: fg,
+    border: `1px solid ${border}`,
+    borderRadius: 4,
+    padding: "2px 6px",
+    fontSize: 11,
+    cursor: "pointer"
+  };
+  if (changedIds.length === 0) {
+    return /* @__PURE__ */ jsxs("div", { style: wrap5, "data-history-diff-overlay": true, children: [
+      /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
+        /* @__PURE__ */ jsxs("span", { style: { flex: 1 }, children: [
+          "Diff \xB7 ",
+          shortId(commit.id)
+        ] }),
+        /* @__PURE__ */ jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
+      ] }),
+      /* @__PURE__ */ jsx("div", { style: { padding: 16, color: "var(--foreground-muted, #a0a0aa)", fontSize: 12 }, children: "This commit changed no files (label-only checkpoint)." })
+    ] });
+  }
+  const lang = toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel");
+  const parent = commit.parent;
+  const original = mode === "previous" ? parent ? getFileContentAt(history2, fileId, parent) : null : getFileContentAt(history2, fileId, commit.id);
+  const modified = mode === "current" ? getLiveFileContent(fileId) : getFileContentAt(history2, fileId, commit.id);
+  return /* @__PURE__ */ jsxs("div", { style: wrap5, "data-history-diff-overlay": true, children: [
+    /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
+      /* @__PURE__ */ jsx(
+        "select",
+        {
+          "aria-label": "diff file",
+          value: fileId,
+          onChange: (e) => setFileId(e.target.value),
+          style: ctl,
+          "data-history-diff-file": true,
+          children: changedIds.map((id) => /* @__PURE__ */ jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
+        }
+      ),
+      /* @__PURE__ */ jsx("div", { style: { display: "flex", border: `1px solid ${border}`, borderRadius: 4, overflow: "hidden" }, children: ["previous", "current"].map((m) => /* @__PURE__ */ jsx(
+        "button",
+        {
+          onClick: () => setMode(m),
+          "data-history-diff-mode": m,
+          style: {
+            ...ctl,
+            border: "none",
+            borderRadius: 0,
+            background: mode === m ? accent : "transparent",
+            color: mode === m ? "#0b0b0f" : fg
+          },
+          children: m === "previous" ? "vs previous" : "vs current"
+        },
+        m
+      )) }),
+      /* @__PURE__ */ jsx("span", { style: { flex: 1, color: "var(--foreground-muted, #a0a0aa)" }, children: mode === "previous" ? `${parent ? shortId(parent) : "\u2205"} \u2192 ${shortId(commit.id)}` : `${shortId(commit.id)} \u2192 current` }),
+      /* @__PURE__ */ jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
+    ] }),
+    /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0 }, children: /* @__PURE__ */ jsx(
+      DiffEditor,
+      {
+        height: "100%",
+        language: lang,
+        original: original ?? "",
+        modified: modified ?? "",
+        onMount: handleMount,
+        options: {
+          readOnly: true,
+          renderSideBySide: true,
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 12,
+          scrollBeyondLastLine: false,
+          renderOverviewRuler: false
+        }
+      }
+    ) })
+  ] });
+}
+__name(HistoryDiffOverlay, "HistoryDiffOverlay");
+var Editor = MonacoEditorRaw;
+var fg2 = "var(--foreground, #e6e6ea)";
+var muted = "var(--foreground-muted, #a0a0aa)";
+var border2 = "var(--border, #2a2a32)";
+var accent2 = "var(--accent, #6ea8fe)";
+var bg2 = "var(--background, #16161a)";
+function shortId2(id) {
+  return id.slice(0, 7);
+}
+__name(shortId2, "shortId");
+function HistoryViewOverlay({
+  history: history2,
+  commit,
+  initialFileId,
+  onClose
+}) {
+  const snapshot = React10.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React10.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React10.useState(
+    () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
+  );
+  React10.useEffect(() => {
+    if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
+  }, [fileIds, fileId]);
+  const handleMount = React10.useCallback(
+    (_editor, monaco) => {
+      defineStrudelMonacoTheme(monaco);
+      registerStrudelLanguage(monaco);
+      ensureWorkspaceLanguages(monaco);
+      monaco.editor.setTheme("stave-dark");
+    },
+    []
+  );
+  const wrap5 = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    background: bg2,
+    zIndex: 5
+  };
+  const headerRow = {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    padding: "8px 12px",
+    borderBottom: `1px solid ${border2}`,
+    fontSize: 12,
+    color: fg2,
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+  };
+  const ctl = {
+    background: "transparent",
+    color: fg2,
+    border: `1px solid ${border2}`,
+    borderRadius: 4,
+    padding: "2px 6px",
+    fontSize: 11,
+    cursor: "pointer"
+  };
+  return /* @__PURE__ */ jsxs("div", { style: wrap5, "data-history-view-overlay": commit.id, children: [
+    /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
+      /* @__PURE__ */ jsxs(
+        "span",
+        {
+          style: {
+            fontSize: 10,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            color: accent2,
+            border: `1px solid ${accent2}`,
+            borderRadius: 10,
+            padding: "1px 7px"
+          },
+          children: [
+            "\u23F1 Viewing ",
+            shortId2(commit.id)
+          ]
+        }
+      ),
+      fileIds.length > 0 ? /* @__PURE__ */ jsx(
+        "select",
+        {
+          "aria-label": "view file",
+          value: fileId,
+          onChange: (e) => setFileId(e.target.value),
+          style: ctl,
+          "data-history-view-file": true,
+          children: fileIds.map((id) => /* @__PURE__ */ jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
+        }
+      ) : /* @__PURE__ */ jsx("span", { style: { color: muted }, children: "no files at this commit" }),
+      /* @__PURE__ */ jsx("span", { style: { flex: 1, color: muted }, children: "read-only snapshot" }),
+      /* @__PURE__ */ jsx("button", { style: { ...ctl, borderColor: accent2 }, onClick: onClose, "data-history-view-exit": true, children: "Exit" })
+    ] }),
+    /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0 }, children: fileIds.length > 0 ? /* @__PURE__ */ jsx(
+      Editor,
+      {
+        height: "100%",
+        language: toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel"),
+        value: snapshot.files[fileId] ?? "",
+        path: `history:${commit.id}:${fileId}`,
+        onMount: handleMount,
+        options: {
+          readOnly: true,
+          domReadOnly: true,
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 12,
+          scrollBeyondLastLine: false,
+          renderLineHighlight: "none"
+        }
+      }
+    ) : /* @__PURE__ */ jsx("div", { style: { padding: 16, color: muted, fontSize: 12 }, children: "This commit has no files to view." }) })
+  ] });
+}
+__name(HistoryViewOverlay, "HistoryViewOverlay");
 var KIND_LABEL = {
   seed: "initial",
   auto: "auto",
@@ -18705,15 +18984,15 @@ function relTime(ms, now2) {
   return `${Math.round(h / 24)}d ago`;
 }
 __name(relTime, "relTime");
-var muted = "var(--foreground-muted, #a0a0aa)";
-var fg = "var(--foreground, #e6e6ea)";
-var border = "var(--border, #2a2a32)";
-var accent = "var(--accent, #6ea8fe)";
+var muted2 = "var(--foreground-muted, #a0a0aa)";
+var fg3 = "var(--foreground, #e6e6ea)";
+var border3 = "var(--border, #2a2a32)";
+var accent3 = "var(--accent, #6ea8fe)";
 function btn(extra) {
   return {
     background: "transparent",
-    color: fg,
-    border: `1px solid ${border}`,
+    color: fg3,
+    border: `1px solid ${border3}`,
     borderRadius: 4,
     padding: "2px 8px",
     fontSize: 11,
@@ -18723,14 +19002,15 @@ function btn(extra) {
 }
 __name(btn, "btn");
 function HistoryPanel() {
-  const [, force] = React8.useReducer((x) => x + 1, 0);
-  React8.useEffect(() => subscribeToHistory(force), []);
-  const [scope, setScope] = React8.useState("project");
-  const [forking, setForking] = React8.useState(null);
-  const [forkName, setForkName] = React8.useState("");
-  const [viewing, setViewing] = React8.useState(null);
-  const [committing, setCommitting] = React8.useState(false);
-  const [commitLabel, setCommitLabel] = React8.useState("");
+  const [, force] = React10.useReducer((x) => x + 1, 0);
+  React10.useEffect(() => subscribeToHistory(force), []);
+  const [scope, setScope] = React10.useState("project");
+  const [forking, setForking] = React10.useState(null);
+  const [forkName, setForkName] = React10.useState("");
+  const [viewingCommit, setViewingCommit] = React10.useState(null);
+  const [committing, setCommitting] = React10.useState(false);
+  const [commitLabel, setCommitLabel] = React10.useState("");
+  const [diffing, setDiffing] = React10.useState(null);
   const h = getCurrentHistory();
   const activeFile = getActiveHistoryFile();
   const now2 = Date.now();
@@ -18738,12 +19018,14 @@ function HistoryPanel() {
     padding: 12,
     fontSize: 12,
     fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-    color: fg,
+    color: fg3,
     height: "100%",
-    overflow: "auto"
+    overflow: "auto",
+    position: "relative"
+    // anchors the diff overlay (#198)
   };
   if (!h) {
-    return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted }, children: "No history yet \u2014 start editing and commits will appear here." });
+    return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
   }
   const branches = listBranches(h);
   const effectiveScope = scope === "file" && !activeFile ? "project" : scope;
@@ -18782,27 +19064,27 @@ function HistoryPanel() {
           children: branches.map((b) => /* @__PURE__ */ jsx("option", { value: b.name, children: b.name }, b.name))
         }
       ),
-      /* @__PURE__ */ jsx("div", { style: { display: "flex", border: `1px solid ${border}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsx(
+      /* @__PURE__ */ jsx("div", { style: { display: "flex", border: `1px solid ${border3}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsx(
         "button",
         {
           onClick: () => setScope(s),
           "data-history-scope": s,
           style: {
             ...btn({ border: "none", borderRadius: 0 }),
-            background: effectiveScope === s ? accent : "transparent",
-            color: effectiveScope === s ? "#0b0b0f" : fg
+            background: effectiveScope === s ? accent3 : "transparent",
+            color: effectiveScope === s ? "#0b0b0f" : fg3
           },
           children: s === "project" ? "Project" : "File"
         },
         s
       )) }),
-      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: "open a file for File scope" }),
+      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted2, fontSize: 11 }, children: "open a file for File scope" }),
       /* @__PURE__ */ jsx(
         "button",
         {
           onClick: () => setCommitting((v) => !v),
           "data-history-commit-now": true,
-          style: { ...btn({ borderColor: accent, color: accent }), marginLeft: "auto" },
+          style: { ...btn({ borderColor: accent3, color: accent3 }), marginLeft: "auto" },
           children: "+ Commit"
         }
       )
@@ -18824,7 +19106,7 @@ function HistoryPanel() {
             }
           },
           "data-history-commit-label": true,
-          style: { ...btn(), flex: 1, color: fg, background: "var(--background, #16161a)" }
+          style: { ...btn(), flex: 1, color: fg3, background: "var(--background, #16161a)" }
         }
       ),
       /* @__PURE__ */ jsx(
@@ -18834,7 +19116,7 @@ function HistoryPanel() {
           disabled: !commitLabel.trim(),
           "data-history-commit-save": true,
           style: btn({
-            borderColor: accent,
+            borderColor: accent3,
             opacity: commitLabel.trim() ? 1 : 0.5,
             cursor: commitLabel.trim() ? "pointer" : "not-allowed"
           }),
@@ -18848,7 +19130,7 @@ function HistoryPanel() {
         "li",
         {
           "data-history-commit": c.id,
-          style: { borderLeft: `2px solid ${border}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
+          style: { borderLeft: `2px solid ${border3}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
           children: [
             /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "baseline", gap: 8 }, children: [
               /* @__PURE__ */ jsx(
@@ -18857,19 +19139,42 @@ function HistoryPanel() {
                   style: {
                     fontSize: 10,
                     textTransform: "uppercase",
-                    color: c.kind === "manual" ? accent : muted,
+                    color: c.kind === "manual" ? accent3 : muted2,
                     letterSpacing: 0.5
                   },
                   children: KIND_LABEL[c.kind] ?? c.kind
                 }
               ),
               /* @__PURE__ */ jsx("span", { style: { flex: 1 }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
-              /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: relTime(c.createdAt, now2) })
+              /* @__PURE__ */ jsx("span", { style: { color: muted2, fontSize: 11 }, children: relTime(c.createdAt, now2) })
             ] }),
             /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 4 }, children: [
               /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: "Restore" }),
               /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: "Fork" }),
-              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setViewing(viewing === c.id ? null : c.id), "data-history-view": c.id, children: viewing === c.id ? "Hide" : "View" })
+              /* @__PURE__ */ jsx(
+                "button",
+                {
+                  style: btn(),
+                  onClick: () => {
+                    setDiffing(null);
+                    setViewingCommit(c);
+                  },
+                  "data-history-view": c.id,
+                  children: "View"
+                }
+              ),
+              /* @__PURE__ */ jsx(
+                "button",
+                {
+                  style: btn(),
+                  onClick: () => {
+                    setViewingCommit(null);
+                    setDiffing(c);
+                  },
+                  "data-history-diff": c.id,
+                  children: "Diff"
+                }
+              )
             ] }),
             forking === c.id && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
               /* @__PURE__ */ jsx(
@@ -18880,34 +19185,34 @@ function HistoryPanel() {
                   placeholder: "branch name",
                   onChange: (e) => setForkName(e.target.value),
                   onKeyDown: (e) => e.key === "Enter" && confirmFork(c),
-                  style: { ...btn(), color: fg, background: "var(--background, #16161a)" }
+                  style: { ...btn(), color: fg3, background: "var(--background, #16161a)" }
                 }
               ),
-              /* @__PURE__ */ jsx("button", { style: btn({ borderColor: accent }), onClick: () => confirmFork(c), children: "Create" })
-            ] }),
-            viewing === c.id && /* @__PURE__ */ jsx(
-              "pre",
-              {
-                "data-history-view-body": true,
-                style: {
-                  marginTop: 6,
-                  padding: 8,
-                  background: "var(--background, #16161a)",
-                  border: `1px solid ${border}`,
-                  borderRadius: 4,
-                  fontSize: 11,
-                  maxHeight: 220,
-                  overflow: "auto",
-                  whiteSpace: "pre-wrap"
-                },
-                children: effectiveScope === "file" && activeFile ? getFileContentAt(h, activeFile, c.id) ?? "(file did not exist at this commit)" : changedFileIds.length ? changedFileIds.join("\n") : "(no file changes)"
-              }
-            )
+              /* @__PURE__ */ jsx("button", { style: btn({ borderColor: accent3 }), onClick: () => confirmFork(c), children: "Create" })
+            ] })
           ]
         },
         c.id
       );
-    }) })
+    }) }),
+    viewingCommit && /* @__PURE__ */ jsx(
+      HistoryViewOverlay,
+      {
+        history: h,
+        commit: viewingCommit,
+        initialFileId: effectiveScope === "file" ? activeFile : null,
+        onClose: () => setViewingCommit(null)
+      }
+    ),
+    diffing && /* @__PURE__ */ jsx(
+      HistoryDiffOverlay,
+      {
+        history: h,
+        commit: diffing,
+        initialFileId: effectiveScope === "file" ? activeFile : null,
+        onClose: () => setDiffing(null)
+      }
+    )
   ] });
 }
 __name(HistoryPanel, "HistoryPanel");
@@ -18917,7 +19222,7 @@ registerBottomPanelTab({
   id: "history",
   title: "History",
   icon: "history",
-  content: React8.createElement(HistoryPanel)
+  content: React10.createElement(HistoryPanel)
 });
 var HEADER_HEIGHT = 28;
 var RESIZE_HANDLE_HEIGHT = 4;
@@ -18927,24 +19232,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React8.useState(opts.initial);
-  const [dragging, setDragging] = React8.useState(false);
-  const startYRef = React8.useRef(0);
-  const startValueRef = React8.useRef(opts.initial);
-  const pointerIdRef = React8.useRef(null);
-  const draggingRef = React8.useRef(false);
-  const minRef = React8.useRef(opts.min);
-  const maxRef = React8.useRef(opts.max);
-  React8.useEffect(() => {
+  const [value, setValueState] = React10.useState(opts.initial);
+  const [dragging, setDragging] = React10.useState(false);
+  const startYRef = React10.useRef(0);
+  const startValueRef = React10.useRef(opts.initial);
+  const pointerIdRef = React10.useRef(null);
+  const draggingRef = React10.useRef(false);
+  const minRef = React10.useRef(opts.min);
+  const maxRef = React10.useRef(opts.max);
+  React10.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React8.useCallback((v) => {
+  const setValue = React10.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React8.useCallback(
+  const onPointerDown = React10.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -18959,7 +19264,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React8.useCallback(
+  const endDrag = React10.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -18974,7 +19279,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React8.useCallback(
+  const onPointerMove = React10.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -18990,13 +19295,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React8.useCallback(
+  const onPointerUp = React10.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React8.useCallback(
+  const onPointerCancel = React10.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -19024,15 +19329,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React8.useState(
+  const [tabs2, setTabs] = React10.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React8.useState(readPersistedOpen);
-  const [height, setHeight] = React8.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React8.useState(
+  const [open, setOpen] = React10.useState(readPersistedOpen);
+  const [height, setHeight] = React10.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React10.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React8.useEffect(() => {
+  React10.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -19042,10 +19347,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React8.useEffect(() => {
+  React10.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React8.useEffect(() => {
+  React10.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -19057,24 +19362,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React8.useEffect(() => {
+  React10.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React8.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React8.useCallback(
+  const tabButtonRefs = React10.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React10.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React8.useCallback((id) => {
+  const focusTab = React10.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React8.useCallback(
+  const onTabsKeyDown = React10.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -20987,7 +21292,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React8__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React10__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -20995,7 +21300,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React8__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React10__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -24042,12 +24347,12 @@ function validatePersistedState(input, validFileIds) {
     if (activeTabId !== null && !cleanedTabs.some((t) => t.id === activeTabId)) {
       activeTabId = cleanedTabs.length > 0 ? cleanedTabs[0].id : null;
     }
-    const bg = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
+    const bg3 = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
     cleanedGroups[gid] = {
       id: gid,
       tabs: cleanedTabs,
       activeTabId,
-      ...bg !== void 0 ? { backgroundFileId: bg } : {}
+      ...bg3 !== void 0 ? { backgroundFileId: bg3 } : {}
     };
   }
   const cleanedLayout = [];
@@ -24165,6 +24470,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
