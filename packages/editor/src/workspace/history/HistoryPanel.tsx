@@ -22,7 +22,12 @@ import {
   getFileHistoryTarget,
   setFileHistoryTarget,
 } from './historyService'
-import { listCommits, fileHistory, listBranches, countManualCommits, type Commit } from './historyGraph'
+import { listCommits, fileHistory, listBranches, countManualCommits, snapshotAt, type Commit } from './historyGraph'
+import {
+  enterRuntimeView,
+  getViewedCommit,
+  subscribeToRuntimeView,
+} from './historyViewing'
 
 /** Request to open a read-only history viewer in the main editor area (#210). */
 export interface OpenHistoryTabRequest {
@@ -85,10 +90,6 @@ const IconFork = ({ size }: IconProps) => svg(<>
   <circle cx="11.5" cy="3.5" r="1.6" />
   <path d="M4.5 5.1v6M11.5 5.1c0 3-7 1.5-7 4.4" />
 </>, size)
-const IconView = ({ size }: IconProps) => svg(<>
-  <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
-  <circle cx="8" cy="8" r="1.8" />
-</>, size)
 const IconDiff = ({ size }: IconProps) => svg(<>
   <path d="M5 2.5v8M11 5.5v8" />
   <circle cx="5" cy="12.5" r="1.5" /><circle cx="11" cy="3.5" r="1.5" />
@@ -132,21 +133,44 @@ function iconBtn(): React.CSSProperties {
   }
 }
 
-/** Branch-lane gutter cell for one commit row. */
+/**
+ * Branch-lane gutter cell for one commit row. The whole cell is the
+ * "check out this commit" hit target (GitLens/GitHub mental model) — click
+ * it to time-travel the editor + runtime to that commit (#204). The dot
+ * fills accent when this commit is the one being viewed.
+ */
 function GraphGutter({
   isNewest,
   isOldest,
   isHead,
+  isViewed,
   forks,
+  onCheckout,
+  commitId,
 }: {
   isNewest: boolean
   isOldest: boolean
   isHead: boolean
+  isViewed: boolean
   forks: number
+  onCheckout: () => void
+  commitId: string
 }): React.ReactElement {
   const x = GUTTER_W / 2
+  const dotColor = isViewed ? accent : isHead ? accent : bgInput
+  const ringColor = isViewed ? accent : isHead ? accent : muted
   return (
-    <div style={{ position: 'relative', width: GUTTER_W, flex: '0 0 auto', alignSelf: 'stretch' }} aria-hidden>
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onCheckout() }}
+      data-history-checkout={commitId}
+      title="Check out this commit — time-travel the editor + runtime here"
+      aria-label="Check out this commit"
+      style={{
+        position: 'relative', width: GUTTER_W, flex: '0 0 auto', alignSelf: 'stretch',
+        background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+      }}
+    >
       {/* spine above (to newer commit) */}
       {!isNewest && <span style={{ position: 'absolute', left: x - 1, top: 0, height: DOT_CY, width: 2, background: border }} />}
       {/* spine below (to older commit) */}
@@ -157,6 +181,10 @@ function GraphGutter({
           <path d={`M1 ${DOT_CY} C 1 ${DOT_CY / 2}, ${GUTTER_W - 3} ${DOT_CY / 2}, ${GUTTER_W - 3} 1`} fill="none" stroke={accent} strokeWidth="1.6" />
         </svg>
       )}
+      {/* viewed halo */}
+      {isViewed && (
+        <span style={{ position: 'absolute', left: x - 7, top: DOT_CY - 7, width: 14, height: 14, borderRadius: '50%', border: `1px solid ${accent}`, opacity: 0.5, boxSizing: 'border-box' }} />
+      )}
       {/* commit dot */}
       <span
         style={{
@@ -166,18 +194,21 @@ function GraphGutter({
           width: 8,
           height: 8,
           borderRadius: '50%',
-          background: isHead ? accent : bgInput,
-          border: `2px solid ${isHead ? accent : muted}`,
+          background: dotColor,
+          border: `2px solid ${ringColor}`,
           boxSizing: 'border-box',
         }}
       />
-    </div>
+    </button>
   )
 }
 
 export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): React.ReactElement {
   const [, force] = React.useReducer((x: number) => x + 1, 0)
   React.useEffect(() => subscribeToHistory(force as () => void), [])
+  // re-render on time-travel enter/exit so the checked-out dot highlights (#204)
+  React.useEffect(() => subscribeToRuntimeView(force as () => void), [])
+  const viewedCommit = getViewedCommit()
 
   const [forking, setForking] = React.useState<string | null>(null)
   const [forkName, setForkName] = React.useState('')
@@ -239,6 +270,11 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
   const doRestore = (c: Commit): void => {
     if (fileTarget) void restoreFileToCommit(fileTarget, c.id)
     else void restoreProject(c.id)
+  }
+  // Check out a commit: time-travel the editor + runtime to its whole-project
+  // snapshot, read-only (#204). Y.Text is untouched; Exit restores HEAD.
+  const doCheckout = (c: Commit): void => {
+    enterRuntimeView(c.id, snapshotAt(h, c.id).files)
   }
 
   return (
@@ -357,10 +393,13 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                 style={{ display: 'flex', alignItems: 'flex-start', gap: 6, minHeight: 30 }}
               >
                 <GraphGutter
+                  commitId={c.id}
                   isNewest={i === 0}
                   isOldest={i === commits.length - 1}
                   isHead={c.id === h.branches[h.currentBranch]?.head}
+                  isViewed={c.id === viewedCommit}
                   forks={fileTarget ? 0 : forkCounts.get(c.id) ?? 0}
+                  onCheckout={() => doCheckout(c)}
                 />
                 {/* content */}
                 <div style={{ flex: 1, minWidth: 0, paddingBottom: 8 }}>
@@ -394,7 +433,6 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                   <div style={{ display: 'flex', gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: 'opacity 120ms' }}>
                     <button title={fileTarget ? 'Restore this file to this commit' : 'Restore project to this commit'} style={iconBtn()} onClick={() => doRestore(c)} data-history-restore={c.id}><IconRestore /></button>
                     <button title="Fork a branch here" style={iconBtn()} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}><IconFork /></button>
-                    <button title="View (read-only time-travel)" style={iconBtn()} onClick={() => onOpenHistoryTab?.({ mode: 'view', commitId: c.id, fileId: fileTarget ?? Object.keys(c.files)[0] ?? '' })} data-history-view={c.id}><IconView /></button>
                   </div>
 
                   {forking === c.id && (

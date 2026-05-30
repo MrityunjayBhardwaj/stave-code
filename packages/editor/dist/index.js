@@ -10163,19 +10163,19 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners8 = /* @__PURE__ */ new Set();
-  const notify3 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners8) l();
+  const listeners9 = /* @__PURE__ */ new Set();
+  const notify4 = /* @__PURE__ */ __name(() => {
+    for (const l of listeners9) l();
   }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify3(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify3(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify3(), "onStackCleared");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify4(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify4(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify4(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners8,
+    listeners: listeners9,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -10218,10 +10218,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners8 = active.listeners;
-  listeners8.add(cb);
+  const listeners9 = active.listeners;
+  listeners9.add(cb);
   return () => {
-    listeners8.delete(cb);
+    listeners9.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -15321,7 +15321,7 @@ function useBreakpoints(editor, store, onResume) {
         if (cur !== "active") lineState.set(hint, "orphaned");
       }
       const decorations = [];
-      for (const [line, state4] of lineState) {
+      for (const [line, state5] of lineState) {
         decorations.push({
           range: {
             startLineNumber: line,
@@ -15331,7 +15331,7 @@ function useBreakpoints(editor, store, onResume) {
           },
           options: {
             isWholeLine: false,
-            glyphMarginClassName: state4 === "active" ? "stave-bp-active" : "stave-bp-orphaned",
+            glyphMarginClassName: state5 === "active" ? "stave-bp-active" : "stave-bp-orphaned",
             stickiness: 1
             // NeverGrowsWhenTypingAtEdges
           }
@@ -16572,6 +16572,52 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
   };
 }
 __name(addInlineViewZones, "addInlineViewZones");
+
+// src/workspace/history/historyViewing.ts
+var state = null;
+var listeners5 = /* @__PURE__ */ new Set();
+function notify2() {
+  for (const l of listeners5) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(notify2, "notify");
+function enterRuntimeView(commitId, files) {
+  state = { commitId, files: { ...files } };
+  notify2();
+}
+__name(enterRuntimeView, "enterRuntimeView");
+function exitRuntimeView() {
+  if (state === null) return;
+  state = null;
+  notify2();
+}
+__name(exitRuntimeView, "exitRuntimeView");
+function getViewedContent(fileId) {
+  if (state === null) return null;
+  return Object.prototype.hasOwnProperty.call(state.files, fileId) ? state.files[fileId] : null;
+}
+__name(getViewedContent, "getViewedContent");
+function isViewing() {
+  return state !== null;
+}
+__name(isViewing, "isViewing");
+function getViewedCommit() {
+  return state?.commitId ?? null;
+}
+__name(getViewedCommit, "getViewedCommit");
+function getViewedFileIds() {
+  return state ? Object.keys(state.files) : [];
+}
+__name(getViewedFileIds, "getViewedFileIds");
+function subscribeToRuntimeView(cb) {
+  listeners5.add(cb);
+  return () => listeners5.delete(cb);
+}
+__name(subscribeToRuntimeView, "subscribeToRuntimeView");
 function monacoThemeNameFor(theme) {
   return theme === "light" ? "stave-light" : "stave-dark";
 }
@@ -16613,6 +16659,11 @@ function EditorView({
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
   const containerRef = useRef(null);
+  const [, forceViewTick] = useState(0);
+  useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const viewedContent = getViewedContent(fileId);
+  const viewing = viewedContent !== null;
+  const viewedCommit = getViewedCommit();
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const viewZoneHandleRef = useRef(null);
@@ -16750,6 +16801,7 @@ function EditorView({
   }, "handleMonacoMount");
   const handleChange = /* @__PURE__ */ __name((value) => {
     if (value === void 0) return;
+    if (viewing) return;
     setContent2(value);
   }, "handleChange");
   return /* @__PURE__ */ jsxs(
@@ -16775,31 +16827,80 @@ function EditorView({
             children: chromeSlot
           }
         ) : null,
-        /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: file ? /* @__PURE__ */ jsx(
-          MonacoEditor,
-          {
-            height: "100%",
-            language: toMonacoLanguage(file.language),
-            value: file.content,
-            onChange: handleChange,
-            onMount: handleMonacoMount,
-            options: MONACO_OPTIONS
-          }
-        ) : /* @__PURE__ */ jsx(
-          "div",
-          {
-            "data-workspace-view-state": "loading",
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+        /* @__PURE__ */ jsxs("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: [
+          viewing && /* @__PURE__ */ jsxs(
+            "div",
+            {
+              "data-editor-timetravel-banner": true,
+              style: {
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                zIndex: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "4px 10px",
+                fontSize: 11,
+                background: "color-mix(in srgb, var(--accent, #6ea8fe) 22%, var(--background, #16161a))",
+                color: "var(--foreground, #e6e6ea)",
+                borderBottom: "1px solid var(--accent, #6ea8fe)",
+                fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+              },
+              children: [
+                /* @__PURE__ */ jsxs("span", { style: { flex: 1 }, children: [
+                  "\u23F1 Viewing commit ",
+                  /* @__PURE__ */ jsx("strong", { children: (viewedCommit ?? "").slice(0, 7) }),
+                  " \u2014 read-only time-travel. Fork to edit here."
+                ] }),
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    "data-editor-timetravel-exit": true,
+                    onClick: () => exitRuntimeView(),
+                    style: {
+                      background: "var(--accent, #6ea8fe)",
+                      color: "#0b0b0f",
+                      border: "none",
+                      borderRadius: 4,
+                      padding: "2px 10px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      fontWeight: 600
+                    },
+                    children: "Exit"
+                  }
+                )
+              ]
+            }
+          ),
+          file ? /* @__PURE__ */ jsx(
+            MonacoEditor,
+            {
               height: "100%",
-              color: "var(--foreground-muted)",
-              fontSize: 12
-            },
-            children: "Loading\u2026"
-          }
-        ) })
+              language: toMonacoLanguage(file.language),
+              value: viewing ? viewedContent : file.content,
+              onChange: handleChange,
+              onMount: handleMonacoMount,
+              options: viewing ? { ...MONACO_OPTIONS, readOnly: true } : MONACO_OPTIONS
+            }
+          ) : /* @__PURE__ */ jsx(
+            "div",
+            {
+              "data-workspace-view-state": "loading",
+              style: {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                color: "var(--foreground-muted)",
+                fontSize: 12
+              },
+              children: "Loading\u2026"
+            }
+          )
+        ] })
       ]
     }
   );
@@ -16884,7 +16985,7 @@ function safeLocalStorage3() {
 }
 __name(safeLocalStorage3, "safeLocalStorage");
 var values = /* @__PURE__ */ new Map();
-var listeners5 = /* @__PURE__ */ new Map();
+var listeners6 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
   return `${STORAGE_PREFIX2}${fileId}`;
 }
@@ -16904,7 +17005,7 @@ function setVizLive(fileId, on) {
   if (prev === on) return;
   values.set(fileId, on);
   safeLocalStorage3()?.setItem(keyFor(fileId), on ? "1" : "0");
-  const set = listeners5.get(fileId);
+  const set = listeners6.get(fileId);
   if (set) for (const cb of Array.from(set)) cb(on);
 }
 __name(setVizLive, "setVizLive");
@@ -16913,15 +17014,15 @@ function toggleVizLive(fileId) {
 }
 __name(toggleVizLive, "toggleVizLive");
 function onVizLiveChange(fileId, cb) {
-  let set = listeners5.get(fileId);
+  let set = listeners6.get(fileId);
   if (!set) {
     set = /* @__PURE__ */ new Set();
-    listeners5.set(fileId, set);
+    listeners6.set(fileId, set);
   }
   set.add(cb);
   return () => {
     set.delete(cb);
-    if (set.size === 0) listeners5.delete(fileId);
+    if (set.size === 0) listeners6.delete(fileId);
   };
 }
 __name(onVizLiveChange, "onVizLiveChange");
@@ -17743,12 +17844,12 @@ function withLock(fn) {
   return run;
 }
 __name(withLock, "withLock");
-var listeners6 = /* @__PURE__ */ new Set();
+var listeners7 = /* @__PURE__ */ new Set();
 var lastNotified = null;
 function notifyIfChanged() {
   if (current2 === lastNotified) return;
   lastNotified = current2;
-  for (const l of listeners6) {
+  for (const l of listeners7) {
     try {
       l();
     } catch {
@@ -17757,12 +17858,12 @@ function notifyIfChanged() {
 }
 __name(notifyIfChanged, "notifyIfChanged");
 function subscribeToHistory(cb) {
-  listeners6.add(cb);
-  return () => listeners6.delete(cb);
+  listeners7.add(cb);
+  return () => listeners7.delete(cb);
 }
 __name(subscribeToHistory, "subscribeToHistory");
 function notifyAll() {
-  for (const l of listeners6) {
+  for (const l of listeners7) {
     try {
       l();
     } catch {
@@ -18360,9 +18461,9 @@ var _SampleSoundScheduler = class _SampleSoundScheduler {
 };
 __name(_SampleSoundScheduler, "SampleSoundScheduler");
 var SampleSoundScheduler = _SampleSoundScheduler;
-var state = null;
+var state2 = null;
 function startSampleSound() {
-  if (state) return;
+  if (state2) return;
   const ctx = new AudioContext();
   const osc = ctx.createOscillator();
   osc.type = "sawtooth";
@@ -18386,7 +18487,7 @@ function startSampleSound() {
   lfo.start();
   const scheduler = new SampleSoundScheduler(ctx);
   const hapStream = new HapStream();
-  state = { ctx, osc, lfo, lfoGain, outGain, analyser, scheduler, hapStream };
+  state2 = { ctx, osc, lfo, lfoGain, outGain, analyser, scheduler, hapStream };
   const payload = {
     analyser,
     scheduler,
@@ -18401,32 +18502,32 @@ function startSampleSound() {
 }
 __name(startSampleSound, "startSampleSound");
 function stopSampleSound() {
-  if (!state) return;
+  if (!state2) return;
   try {
-    state.osc.stop();
-    state.lfo.stop();
+    state2.osc.stop();
+    state2.lfo.stop();
   } catch {
   }
   try {
-    state.osc.disconnect();
-    state.lfo.disconnect();
-    state.lfoGain.disconnect();
-    state.outGain.disconnect();
-    state.analyser.disconnect();
+    state2.osc.disconnect();
+    state2.lfo.disconnect();
+    state2.lfoGain.disconnect();
+    state2.outGain.disconnect();
+    state2.analyser.disconnect();
   } catch {
   }
-  state.hapStream.dispose();
+  state2.hapStream.dispose();
   workspaceAudioBus.unpublish(SAMPLE_SOUND_SOURCE_ID);
   try {
-    void state.ctx.close();
+    void state2.ctx.close();
   } catch {
   }
-  state = null;
+  state2 = null;
   notifyPlaybackStopped(SAMPLE_SOUND_SOURCE_ID);
 }
 __name(stopSampleSound, "stopSampleSound");
 function isSampleSoundPlaying() {
-  return state !== null;
+  return state2 !== null;
 }
 __name(isSampleSoundPlaying, "isSampleSoundPlaying");
 registerPlaybackSource(
@@ -18490,7 +18591,7 @@ var _DrumPatternScheduler = class _DrumPatternScheduler {
 };
 __name(_DrumPatternScheduler, "DrumPatternScheduler");
 var DrumPatternScheduler = _DrumPatternScheduler;
-var state2 = null;
+var state3 = null;
 var starting = false;
 async function renderDrumLoopBuffer() {
   const sampleRate = 44100;
@@ -18598,7 +18699,7 @@ async function renderDrumLoopBuffer() {
 }
 __name(renderDrumLoopBuffer, "renderDrumLoopBuffer");
 async function startDrumPattern() {
-  if (state2 || starting) return;
+  if (state3 || starting) return;
   starting = true;
   try {
     const ctx = new AudioContext();
@@ -18617,7 +18718,7 @@ async function startDrumPattern() {
     source.start();
     const scheduler = new DrumPatternScheduler(ctx);
     const hapStream = new HapStream();
-    state2 = { ctx, source, gain, analyser, scheduler, hapStream };
+    state3 = { ctx, source, gain, analyser, scheduler, hapStream };
     const payload = {
       analyser,
       scheduler,
@@ -18632,29 +18733,29 @@ async function startDrumPattern() {
 }
 __name(startDrumPattern, "startDrumPattern");
 function stopDrumPattern() {
-  if (!state2) return;
+  if (!state3) return;
   try {
-    state2.source.stop();
+    state3.source.stop();
   } catch {
   }
   try {
-    state2.source.disconnect();
-    state2.gain.disconnect();
-    state2.analyser.disconnect();
+    state3.source.disconnect();
+    state3.gain.disconnect();
+    state3.analyser.disconnect();
   } catch {
   }
-  state2.hapStream.dispose();
+  state3.hapStream.dispose();
   workspaceAudioBus.unpublish(DRUM_PATTERN_SOURCE_ID);
   try {
-    void state2.ctx.close();
+    void state3.ctx.close();
   } catch {
   }
-  state2 = null;
+  state3 = null;
   notifyPlaybackStopped(DRUM_PATTERN_SOURCE_ID);
 }
 __name(stopDrumPattern, "stopDrumPattern");
 function isDrumPatternPlaying() {
-  return state2 !== null || starting;
+  return state3 !== null || starting;
 }
 __name(isDrumPatternPlaying, "isDrumPatternPlaying");
 registerPlaybackSource(
@@ -18715,7 +18816,7 @@ var _ChordProgressionScheduler = class _ChordProgressionScheduler {
 };
 __name(_ChordProgressionScheduler, "ChordProgressionScheduler");
 var ChordProgressionScheduler = _ChordProgressionScheduler;
-var state3 = null;
+var state4 = null;
 var starting2 = false;
 async function renderChordLoopBuffer() {
   const sampleRate = 44100;
@@ -18752,7 +18853,7 @@ async function renderChordLoopBuffer() {
 }
 __name(renderChordLoopBuffer, "renderChordLoopBuffer");
 async function startChordProgression() {
-  if (state3 || starting2) return;
+  if (state4 || starting2) return;
   starting2 = true;
   try {
     const ctx = new AudioContext();
@@ -18771,7 +18872,7 @@ async function startChordProgression() {
     source.start();
     const scheduler = new ChordProgressionScheduler(ctx);
     const hapStream = new HapStream();
-    state3 = { ctx, source, gain, analyser, scheduler, hapStream };
+    state4 = { ctx, source, gain, analyser, scheduler, hapStream };
     const payload = {
       analyser,
       scheduler,
@@ -18786,29 +18887,29 @@ async function startChordProgression() {
 }
 __name(startChordProgression, "startChordProgression");
 function stopChordProgression() {
-  if (!state3) return;
+  if (!state4) return;
   try {
-    state3.source.stop();
+    state4.source.stop();
   } catch {
   }
   try {
-    state3.source.disconnect();
-    state3.gain.disconnect();
-    state3.analyser.disconnect();
+    state4.source.disconnect();
+    state4.gain.disconnect();
+    state4.analyser.disconnect();
   } catch {
   }
-  state3.hapStream.dispose();
+  state4.hapStream.dispose();
   workspaceAudioBus.unpublish(CHORD_PROGRESSION_SOURCE_ID);
   try {
-    void state3.ctx.close();
+    void state4.ctx.close();
   } catch {
   }
-  state3 = null;
+  state4 = null;
   notifyPlaybackStopped(CHORD_PROGRESSION_SOURCE_ID);
 }
 __name(stopChordProgression, "stopChordProgression");
 function isChordProgressionPlaying() {
-  return state3 !== null || starting2;
+  return state4 !== null || starting2;
 }
 __name(isChordProgressionPlaying, "isChordProgressionPlaying");
 registerPlaybackSource(
@@ -18860,30 +18961,30 @@ __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners7 = /* @__PURE__ */ new Set();
-function notify2() {
-  for (const l of listeners7) {
+var listeners8 = /* @__PURE__ */ new Set();
+function notify3() {
+  for (const l of listeners8) {
     try {
       l();
     } catch {
     }
   }
 }
-__name(notify2, "notify");
+__name(notify3, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
-  notify2();
+  notify3();
   return () => {
     if (tabs.get(tab.id) === tab) {
       tabs.delete(tab.id);
-      notify2();
+      notify3();
     }
   };
 }
 __name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
-    notify2();
+    notify3();
   }
 }
 __name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
@@ -18896,9 +18997,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners7.add(cb);
+  listeners8.add(cb);
   return () => {
-    listeners7.delete(cb);
+    listeners8.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -23262,10 +23363,6 @@ var IconFork = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fra
   /* @__PURE__ */ jsx("circle", { cx: "11.5", cy: "3.5", r: "1.6" }),
   /* @__PURE__ */ jsx("path", { d: "M4.5 5.1v6M11.5 5.1c0 3-7 1.5-7 4.4" })
 ] }), size), "IconFork");
-var IconView = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fragment, { children: [
-  /* @__PURE__ */ jsx("path", { d: "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" }),
-  /* @__PURE__ */ jsx("circle", { cx: "8", cy: "8", r: "1.8" })
-] }), size), "IconView");
 var IconDiff = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fragment, { children: [
   /* @__PURE__ */ jsx("path", { d: "M5 2.5v8M11 5.5v8" }),
   /* @__PURE__ */ jsx("circle", { cx: "5", cy: "12.5", r: "1.5" }),
@@ -23311,35 +23408,66 @@ function GraphGutter({
   isNewest,
   isOldest,
   isHead,
-  forks
+  isViewed,
+  forks,
+  onCheckout,
+  commitId
 }) {
   const x = GUTTER_W / 2;
-  return /* @__PURE__ */ jsxs("div", { style: { position: "relative", width: GUTTER_W, flex: "0 0 auto", alignSelf: "stretch" }, "aria-hidden": true, children: [
-    !isNewest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: 0, height: DOT_CY, width: 2, background: border3 } }),
-    !isOldest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: DOT_CY, bottom: 0, width: 2, background: border3 } }),
-    forks > 0 && /* @__PURE__ */ jsx("svg", { style: { position: "absolute", left: x - 1, top: 0 }, width: GUTTER_W, height: DOT_CY + 2, children: /* @__PURE__ */ jsx("path", { d: `M1 ${DOT_CY} C 1 ${DOT_CY / 2}, ${GUTTER_W - 3} ${DOT_CY / 2}, ${GUTTER_W - 3} 1`, fill: "none", stroke: accent3, strokeWidth: "1.6" }) }),
-    /* @__PURE__ */ jsx(
-      "span",
-      {
-        style: {
-          position: "absolute",
-          left: x - 4,
-          top: DOT_CY - 4,
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: isHead ? accent3 : bgInput,
-          border: `2px solid ${isHead ? accent3 : muted2}`,
-          boxSizing: "border-box"
-        }
-      }
-    )
-  ] });
+  const dotColor = isViewed ? accent3 : isHead ? accent3 : bgInput;
+  const ringColor = isViewed ? accent3 : isHead ? accent3 : muted2;
+  return /* @__PURE__ */ jsxs(
+    "button",
+    {
+      type: "button",
+      onClick: (e) => {
+        e.stopPropagation();
+        onCheckout();
+      },
+      "data-history-checkout": commitId,
+      title: "Check out this commit \u2014 time-travel the editor + runtime here",
+      "aria-label": "Check out this commit",
+      style: {
+        position: "relative",
+        width: GUTTER_W,
+        flex: "0 0 auto",
+        alignSelf: "stretch",
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer"
+      },
+      children: [
+        !isNewest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: 0, height: DOT_CY, width: 2, background: border3 } }),
+        !isOldest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: DOT_CY, bottom: 0, width: 2, background: border3 } }),
+        forks > 0 && /* @__PURE__ */ jsx("svg", { style: { position: "absolute", left: x - 1, top: 0 }, width: GUTTER_W, height: DOT_CY + 2, children: /* @__PURE__ */ jsx("path", { d: `M1 ${DOT_CY} C 1 ${DOT_CY / 2}, ${GUTTER_W - 3} ${DOT_CY / 2}, ${GUTTER_W - 3} 1`, fill: "none", stroke: accent3, strokeWidth: "1.6" }) }),
+        isViewed && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 7, top: DOT_CY - 7, width: 14, height: 14, borderRadius: "50%", border: `1px solid ${accent3}`, opacity: 0.5, boxSizing: "border-box" } }),
+        /* @__PURE__ */ jsx(
+          "span",
+          {
+            style: {
+              position: "absolute",
+              left: x - 4,
+              top: DOT_CY - 4,
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: dotColor,
+              border: `2px solid ${ringColor}`,
+              boxSizing: "border-box"
+            }
+          }
+        )
+      ]
+    }
+  );
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
   const [, force] = React8.useReducer((x) => x + 1, 0);
   React8.useEffect(() => subscribeToHistory(force), []);
+  React8.useEffect(() => subscribeToRuntimeView(force), []);
+  const viewedCommit = getViewedCommit();
   const [forking, setForking] = React8.useState(null);
   const [forkName, setForkName] = React8.useState("");
   const [committing, setCommitting] = React8.useState(false);
@@ -23389,6 +23517,9 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
     if (fileTarget) void restoreFileToCommit(fileTarget, c.id);
     else void restoreProject(c.id);
   }, "doRestore");
+  const doCheckout = /* @__PURE__ */ __name((c) => {
+    enterRuntimeView(c.id, snapshotAt(h, c.id).files);
+  }, "doCheckout");
   return /* @__PURE__ */ jsxs("div", { "data-bottom-panel-tab": "history", style: wrap5, children: [
     fileTarget ? /* @__PURE__ */ jsxs("div", { "data-history-file-mode": true, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }, children: [
       /* @__PURE__ */ jsx(
@@ -23503,10 +23634,13 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
             /* @__PURE__ */ jsx(
               GraphGutter,
               {
+                commitId: c.id,
                 isNewest: i === 0,
                 isOldest: i === commits.length - 1,
                 isHead: c.id === h.branches[h.currentBranch]?.head,
-                forks: fileTarget ? 0 : forkCounts.get(c.id) ?? 0
+                isViewed: c.id === viewedCommit,
+                forks: fileTarget ? 0 : forkCounts.get(c.id) ?? 0,
+                onCheckout: () => doCheckout(c)
               }
             ),
             /* @__PURE__ */ jsxs("div", { style: { flex: 1, minWidth: 0, paddingBottom: 8 }, children: [
@@ -23530,8 +23664,7 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
               ] }, b.name)) }),
               /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: "opacity 120ms" }, children: [
                 /* @__PURE__ */ jsx("button", { title: fileTarget ? "Restore this file to this commit" : "Restore project to this commit", style: iconBtn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: /* @__PURE__ */ jsx(IconRestore, {}) }),
-                /* @__PURE__ */ jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsx(IconFork, {}) }),
-                /* @__PURE__ */ jsx("button", { title: "View (read-only time-travel)", style: iconBtn(), onClick: () => onOpenHistoryTab?.({ mode: "view", commitId: c.id, fileId: fileTarget ?? Object.keys(c.files)[0] ?? "" }), "data-history-view": c.id, children: /* @__PURE__ */ jsx(IconView, {}) })
+                /* @__PURE__ */ jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsx(IconFork, {}) })
               ] }),
               forking === c.id && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6, marginLeft: 14 }, children: [
                 /* @__PURE__ */ jsx("input", { autoFocus: true, value: forkName, placeholder: "branch name", onChange: (e) => setForkName(e.target.value), onKeyDown: (e) => e.key === "Enter" && confirmFork(c), style: { ...btn(), flex: 1, color: fg3, background: bgInput } }),
@@ -24690,6 +24823,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

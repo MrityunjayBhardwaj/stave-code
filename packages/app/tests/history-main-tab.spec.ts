@@ -67,14 +67,14 @@ test('a second file reuses the same slot (swaps) instead of stacking tabs', asyn
   expect(after).not.toBe(before)
 })
 
-test('double-clicking the history tab promotes it (pinned); a View then opens a second tab', async ({ page }) => {
-  await page.locator('[data-history-commit-files] [data-history-file-diff]').first().click()
+test('double-clicking the history tab promotes it (pinned); a new diff then opens a second tab', async ({ page }) => {
+  const files = page.locator('[data-history-commit-files] [data-history-file-diff]')
+  await files.nth(0).click()
   const tab = page.locator(histTab)
   await expect(tab).toHaveAttribute('data-tab-preview', 'true')
   await tab.dblclick()
   await expect(tab).toHaveAttribute('data-tab-preview', 'false')
-  // a View on a commit opens a NEW preview tab — the pinned diff survives
-  await page.locator('[data-history-view]').first().click({ force: true })
+  // a diff of another file opens a NEW preview tab — the pinned diff survives
+  await files.nth(1).click()
   await expect(page.locator(histTab)).toHaveCount(2)
-  await expect(page.locator('[data-history-view-overlay]')).toBeVisible()
 })

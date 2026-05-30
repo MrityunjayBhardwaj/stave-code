@@ -49,6 +49,12 @@ import {
 import { addInlineViewZones } from '../visualizers/viewZones'
 import { onNamedVizChanged } from '../visualizers/namedVizRegistry'
 import { subscribeToZoneOverrides } from './WorkspaceFile'
+import {
+  getViewedContent,
+  getViewedCommit,
+  exitRuntimeView,
+  subscribeToRuntimeView,
+} from './history/historyViewing'
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
 import type { EditorViewProps } from './types'
 import type { AudioPayload } from './types'
@@ -114,6 +120,16 @@ export function EditorView({
 }: EditorViewProps): React.ReactElement {
   const { file, setContent } = useWorkspaceFile(fileId)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // #204 time-travel: when a commit is checked out, this editor shows that
+  // commit's content for the current file (read-only) instead of live Y.Text.
+  // Re-render on enter/exit. Falls back to live content for files absent at
+  // the commit (getViewedContent → null).
+  const [, forceViewTick] = useState(0)
+  useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), [])
+  const viewedContent = getViewedContent(fileId)
+  const viewing = viewedContent !== null
+  const viewedCommit = getViewedCommit()
 
   // Monaco instance refs — captured in onMount, used by bus wiring.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -364,6 +380,7 @@ export function EditorView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleChange = (value: string | undefined): void => {
     if (value === undefined) return
+    if (viewing) return // time-travel is read-only — never write Y.Text (#204)
     setContent(value)
   }
 
@@ -391,14 +408,42 @@ export function EditorView({
       ) : null}
 
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {viewing && (
+          <div
+            data-editor-timetravel-banner
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '4px 10px', fontSize: 11,
+              background: 'color-mix(in srgb, var(--accent, #6ea8fe) 22%, var(--background, #16161a))',
+              color: 'var(--foreground, #e6e6ea)',
+              borderBottom: '1px solid var(--accent, #6ea8fe)',
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+            }}
+          >
+            <span style={{ flex: 1 }}>
+              ⏱ Viewing commit <strong>{(viewedCommit ?? '').slice(0, 7)}</strong> — read-only time-travel. Fork to edit here.
+            </span>
+            <button
+              data-editor-timetravel-exit
+              onClick={() => exitRuntimeView()}
+              style={{
+                background: 'var(--accent, #6ea8fe)', color: '#0b0b0f', border: 'none',
+                borderRadius: 4, padding: '2px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600,
+              }}
+            >
+              Exit
+            </button>
+          </div>
+        )}
         {file ? (
           <MonacoEditor
             height="100%"
             language={toMonacoLanguage(file.language)}
-            value={file.content}
+            value={viewing ? (viewedContent as string) : file.content}
             onChange={handleChange}
             onMount={handleMonacoMount}
-            options={MONACO_OPTIONS}
+            options={viewing ? { ...MONACO_OPTIONS, readOnly: true } : MONACO_OPTIONS}
           />
         ) : (
           <div
