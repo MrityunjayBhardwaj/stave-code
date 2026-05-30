@@ -15,6 +15,9 @@ import {
   startHistoryDriver,
   resetHistoryState,
   commitWorkspace,
+  getViewedContent,
+  isViewing,
+  subscribeToRuntimeView,
   subscribeToFileList,
   registerRuntimeProvider,
   registerPreviewProvider,
@@ -364,7 +367,9 @@ export default function StrudelEditorClient({
     const runtime = new LiveCodingRuntime(
       fileId,
       engine,
-      () => getFile(fileId)?.content ?? "",
+      // #204 time-travel: when a commit is checked out, the runtime evaluates
+      // its snapshot content; falls back to live Y.Text when not viewing.
+      () => getViewedContent(fileId) ?? getFile(fileId)?.content ?? "",
       (cb) => subscribeToWorkspaceFile(fileId, cb),
     );
 
@@ -451,9 +456,14 @@ export default function StrudelEditorClient({
       // an intentional checkpoint, so capture the state that produced this
       // sound — bypassing the significance floor. No-op if nothing changed
       // since HEAD, so frequent live-mode re-evals stay cheap.
-      void commitWorkspace("auto", { gate: false }).catch((err) =>
-        console.warn("[stave] eval commit failed:", err),
-      );
+      // Paused while time-travelling (#204 Decision D): the re-eval that
+      // enters/exits a view fires onEvaluateSuccess, but the view must never
+      // drive a commit (it would just capture live state at a confusing time).
+      if (!isViewing()) {
+        void commitWorkspace("auto", { gate: false }).catch((err) =>
+          console.warn("[stave] eval commit failed:", err),
+        );
+      }
 
       // IR Inspector snapshot — only meaningful for Strudel today.
       // parseStrudel + collect are pure and cheap on the user's source
@@ -539,6 +549,21 @@ export default function StrudelEditorClient({
     runtimesRef.current.forEach(rt => rt.dispose());
     runtimesRef.current.clear();
   }, []);
+
+  // #204 time-travel: on checkout enter/exit/swap, re-evaluate every PLAYING
+  // runtime so audio + inline viz reflect the swapped content. The content
+  // source now reads getViewedContent first, so play() re-evals the snapshot
+  // (or live, on exit). Non-playing runtimes are left alone — checkout must
+  // never auto-start audio.
+  useEffect(
+    () =>
+      subscribeToRuntimeView(() => {
+        runtimesRef.current.forEach((rt) => {
+          if (rt.getIsPlaying()) void rt.play();
+        });
+      }),
+    [],
+  );
 
   // ── Shell callbacks ─────────────────────────────────────────────────
 

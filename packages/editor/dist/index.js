@@ -21550,6 +21550,10 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     this.fireEvaluateSuccess();
     return { error: null };
   }
+  /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
+  getIsPlaying() {
+    return this.isPlayingState;
+  }
   stop() {
     if (this.isDisposed) return;
     if (!this.isPlayingState) {
@@ -23288,6 +23292,7 @@ function startHistoryDriver() {
   const idleMs = resolveIdleMs();
   let timer = null;
   const fire = /* @__PURE__ */ __name(() => {
+    if (isViewing()) return;
     void commitWorkspace("auto", { gate: true }).catch(
       (err) => console.warn("[stave] auto-commit failed:", err)
     );

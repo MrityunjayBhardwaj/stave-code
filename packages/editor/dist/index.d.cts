@@ -4679,6 +4679,8 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     play(): Promise<{
         error: Error | null;
     }>;
+    /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
+    getIsPlaying(): boolean;
     stop(): void;
     dispose(): void;
     /**
