@@ -17,7 +17,7 @@ import {
   withStructBatch,
   subscribeToHistory,
   getCurrentHistory,
-  isFileModifiedSinceHead,
+  getModifiedFileIdsSinceHead,
   subscribeToDocUpdate,
   type WorkspaceFile,
 } from "@stave/editor";
@@ -235,12 +235,12 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [historyRev],
   );
-  const modifiedFileIds = useMemo(() => {
-    const dirty = new Set<string>();
-    for (const f of files) if (isFileModifiedSinceHead(f.id)) dirty.add(f.id);
-    return dirty;
+  const modifiedFileIds = useMemo(
+    // whole dirty set in one pass (one workspace read), not O(N) per-file reads
+    () => getModifiedFileIdsSinceHead(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files, historyRev]);
+    [files, historyRev],
+  );
   const tree = useMemo(() => {
     const t = buildTree(files);
     applyFolderOrder(
@@ -1260,7 +1260,7 @@ interface TreeItemProps {
   onDragOverFile: (e: React.DragEvent, targetFileId: string) => void;
   onDropOnFile: (e: React.DragEvent, targetFileId: string) => void;
   /** file ids dirty vs current-branch HEAD — drive the per-row badge (#193). */
-  modifiedFileIds: Set<string>;
+  modifiedFileIds: ReadonlySet<string>;
 }
 
 function TreeItem(props: TreeItemProps) {
