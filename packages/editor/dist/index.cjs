@@ -1,7 +1,7 @@
 'use strict';
 
 var core = require('@strudel/core');
-var React9 = require('react');
+var React10 = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
@@ -27,7 +27,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React9__namespace = /*#__PURE__*/_interopNamespace(React9);
+var React10__namespace = /*#__PURE__*/_interopNamespace(React10);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -9835,14 +9835,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React9__namespace.default.Children.count(children);
-  const childArray = React9__namespace.default.Children.toArray(children);
+  const count = React10__namespace.default.Children.count(children);
+  const childArray = React10__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React9.useState(defaultSizes);
-  const containerRef = React9.useRef(null);
-  const draggingRef = React9.useRef(null);
+  const [sizes, setSizes] = React10.useState(defaultSizes);
+  const containerRef = React10.useRef(null);
+  const draggingRef = React10.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React9.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React10.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -9881,7 +9881,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React9__namespace.default.useEffect(() => {
+  React10__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -9897,7 +9897,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React9__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React10__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -10772,13 +10772,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe3 = React9.useCallback(
+  const subscribe3 = React10.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React9.useCallback(() => getFile(id), [id]);
-  const file = React9.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const setContent2 = React9.useCallback(
+  const getSnapshot = React10.useCallback(() => getFile(id), [id]);
+  const file = React10.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const setContent2 = React10.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -15077,13 +15077,13 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React9.useRef([]);
-  const hapCollectionsRef = React9.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React9.useRef(0);
-  const clearAll = React9.useCallback(() => {
+  const timeoutIdsRef = React10.useRef([]);
+  const hapCollectionsRef = React10.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React10.useRef(0);
+  const clearAll = React10.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
   }, []);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     const handler = /* @__PURE__ */ __name((event) => {
@@ -15292,12 +15292,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React9.useRef(null);
-  const clearAll = React9.useCallback(() => {
+  const collectionRef = React10.useRef(null);
+  const clearAll = React10.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -15312,7 +15312,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -16638,25 +16638,25 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React9.useRef(null);
-  const editorRef = React9.useRef(null);
-  const monacoRef = React9.useRef(null);
-  const viewZoneHandleRef = React9.useRef(null);
-  const lastPayloadRef = React9.useRef(null);
-  const [hapStream, setHapStream] = React9.useState(null);
-  const [breakpointStore, setBreakpointStore] = React9.useState(null);
-  const [onResume, setOnResume] = React9.useState(null);
-  const [editorReady, setEditorReady] = React9.useState(false);
-  React9.useEffect(() => {
+  const containerRef = React10.useRef(null);
+  const editorRef = React10.useRef(null);
+  const monacoRef = React10.useRef(null);
+  const viewZoneHandleRef = React10.useRef(null);
+  const lastPayloadRef = React10.useRef(null);
+  const [hapStream, setHapStream] = React10.useState(null);
+  const [breakpointStore, setBreakpointStore] = React10.useState(null);
+  const [onResume, setOnResume] = React10.useState(null);
+  const [editorReady, setEditorReady] = React10.useState(false);
+  React10.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -16687,7 +16687,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -16711,12 +16711,12 @@ function EditorView({
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -16728,9 +16728,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React9.useRef(onPlay);
+  const onPlayRef = React10.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React9.useRef(onStop);
+  const onStopRef = React10.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
@@ -16831,7 +16831,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React9__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React10__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -16978,34 +16978,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React9.useRef(null);
-  const [audioPayload, setAudioPayload] = React9.useState(null);
-  const [reloadTick, setReloadTick] = React9.useState(0);
-  const [, forceSourcesRerender] = React9.useState(0);
-  const catchUpNeededRef = React9.useRef(false);
-  const [liveOn, setLiveOn] = React9.useState(() => getVizLive(fileId));
-  React9.useEffect(() => {
+  const containerRef = React10.useRef(null);
+  const [audioPayload, setAudioPayload] = React10.useState(null);
+  const [reloadTick, setReloadTick] = React10.useState(0);
+  const [, forceSourcesRerender] = React10.useState(0);
+  const catchUpNeededRef = React10.useRef(false);
+  const [liveOn, setLiveOn] = React10.useState(() => getVizLive(fileId));
+  React10.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -17035,8 +17035,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React9.useRef(effectivelyHidden);
-  React9.useEffect(() => {
+  const prevEffectivelyHiddenRef = React10.useRef(effectivelyHidden);
+  React10.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -17044,8 +17044,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React9.useRef(liveOn);
-  React9.useEffect(() => {
+  const prevLiveOnRef = React10.useRef(liveOn);
+  React10.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -17053,7 +17053,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React9__namespace.default.useMemo(() => {
+  const providerNode = React10__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -17232,9 +17232,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React9.useRef(opts);
+  const optsRef = React10.useRef(opts);
   optsRef.current = opts;
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -18120,7 +18120,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React9__namespace.createElement(
+  return React10__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -18138,7 +18138,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React9__namespace.createElement(EmptyTimelineStub)
+  content: React10__namespace.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/history/historyGraph.ts
@@ -18764,15 +18764,15 @@ function HistoryDiffOverlay({
   initialFileId,
   onClose
 }) {
-  const changedIds = React9__namespace.useMemo(() => Object.keys(commit.files), [commit]);
-  const [mode, setMode] = React9__namespace.useState("previous");
-  const [fileId, setFileId] = React9__namespace.useState(
+  const changedIds = React10__namespace.useMemo(() => Object.keys(commit.files), [commit]);
+  const [mode, setMode] = React10__namespace.useState("previous");
+  const [fileId, setFileId] = React10__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React9__namespace.useEffect(() => {
+  React10__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  const handleMount = React9__namespace.useCallback(
+  const handleMount = React10__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -18878,6 +18878,122 @@ function HistoryDiffOverlay({
   ] });
 }
 __name(HistoryDiffOverlay, "HistoryDiffOverlay");
+var Editor = MonacoEditorRaw__default.default;
+var fg2 = "var(--foreground, #e6e6ea)";
+var muted = "var(--foreground-muted, #a0a0aa)";
+var border2 = "var(--border, #2a2a32)";
+var accent2 = "var(--accent, #6ea8fe)";
+var bg2 = "var(--background, #16161a)";
+function shortId2(id) {
+  return id.slice(0, 7);
+}
+__name(shortId2, "shortId");
+function HistoryViewOverlay({
+  history: history2,
+  commit,
+  initialFileId,
+  onClose
+}) {
+  const snapshot = React10__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React10__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React10__namespace.useState(
+    () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
+  );
+  React10__namespace.useEffect(() => {
+    if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
+  }, [fileIds, fileId]);
+  const handleMount = React10__namespace.useCallback(
+    (_editor, monaco) => {
+      defineStrudelMonacoTheme(monaco);
+      registerStrudelLanguage(monaco);
+      ensureWorkspaceLanguages(monaco);
+      monaco.editor.setTheme("stave-dark");
+    },
+    []
+  );
+  const wrap5 = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    background: bg2,
+    zIndex: 5
+  };
+  const headerRow = {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    padding: "8px 12px",
+    borderBottom: `1px solid ${border2}`,
+    fontSize: 12,
+    color: fg2,
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+  };
+  const ctl = {
+    background: "transparent",
+    color: fg2,
+    border: `1px solid ${border2}`,
+    borderRadius: 4,
+    padding: "2px 6px",
+    fontSize: 11,
+    cursor: "pointer"
+  };
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap5, "data-history-view-overlay": commit.id, children: [
+    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
+      /* @__PURE__ */ jsxRuntime.jsxs(
+        "span",
+        {
+          style: {
+            fontSize: 10,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            color: accent2,
+            border: `1px solid ${accent2}`,
+            borderRadius: 10,
+            padding: "1px 7px"
+          },
+          children: [
+            "\u23F1 Viewing ",
+            shortId2(commit.id)
+          ]
+        }
+      ),
+      fileIds.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+        "select",
+        {
+          "aria-label": "view file",
+          value: fileId,
+          onChange: (e) => setFileId(e.target.value),
+          style: ctl,
+          "data-history-view-file": true,
+          children: fileIds.map((id) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
+        }
+      ) : /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted }, children: "no files at this commit" }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, color: muted }, children: "read-only snapshot" }),
+      /* @__PURE__ */ jsxRuntime.jsx("button", { style: { ...ctl, borderColor: accent2 }, onClick: onClose, "data-history-view-exit": true, children: "Exit" })
+    ] }),
+    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1, minHeight: 0 }, children: fileIds.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+      Editor,
+      {
+        height: "100%",
+        language: toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel"),
+        value: snapshot.files[fileId] ?? "",
+        path: `history:${commit.id}:${fileId}`,
+        onMount: handleMount,
+        options: {
+          readOnly: true,
+          domReadOnly: true,
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 12,
+          scrollBeyondLastLine: false,
+          renderLineHighlight: "none"
+        }
+      }
+    ) : /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, color: muted, fontSize: 12 }, children: "This commit has no files to view." }) })
+  ] });
+}
+__name(HistoryViewOverlay, "HistoryViewOverlay");
 var KIND_LABEL = {
   seed: "initial",
   auto: "auto",
@@ -18894,15 +19010,15 @@ function relTime(ms, now2) {
   return `${Math.round(h / 24)}d ago`;
 }
 __name(relTime, "relTime");
-var muted = "var(--foreground-muted, #a0a0aa)";
-var fg2 = "var(--foreground, #e6e6ea)";
-var border2 = "var(--border, #2a2a32)";
-var accent2 = "var(--accent, #6ea8fe)";
+var muted2 = "var(--foreground-muted, #a0a0aa)";
+var fg3 = "var(--foreground, #e6e6ea)";
+var border3 = "var(--border, #2a2a32)";
+var accent3 = "var(--accent, #6ea8fe)";
 function btn(extra) {
   return {
     background: "transparent",
-    color: fg2,
-    border: `1px solid ${border2}`,
+    color: fg3,
+    border: `1px solid ${border3}`,
     borderRadius: 4,
     padding: "2px 8px",
     fontSize: 11,
@@ -18912,15 +19028,15 @@ function btn(extra) {
 }
 __name(btn, "btn");
 function HistoryPanel() {
-  const [, force] = React9__namespace.useReducer((x) => x + 1, 0);
-  React9__namespace.useEffect(() => subscribeToHistory(force), []);
-  const [scope, setScope] = React9__namespace.useState("project");
-  const [forking, setForking] = React9__namespace.useState(null);
-  const [forkName, setForkName] = React9__namespace.useState("");
-  const [viewing, setViewing] = React9__namespace.useState(null);
-  const [committing, setCommitting] = React9__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React9__namespace.useState("");
-  const [diffing, setDiffing] = React9__namespace.useState(null);
+  const [, force] = React10__namespace.useReducer((x) => x + 1, 0);
+  React10__namespace.useEffect(() => subscribeToHistory(force), []);
+  const [scope, setScope] = React10__namespace.useState("project");
+  const [forking, setForking] = React10__namespace.useState(null);
+  const [forkName, setForkName] = React10__namespace.useState("");
+  const [viewingCommit, setViewingCommit] = React10__namespace.useState(null);
+  const [committing, setCommitting] = React10__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React10__namespace.useState("");
+  const [diffing, setDiffing] = React10__namespace.useState(null);
   const h = getCurrentHistory();
   const activeFile = getActiveHistoryFile();
   const now2 = Date.now();
@@ -18928,14 +19044,14 @@ function HistoryPanel() {
     padding: 12,
     fontSize: 12,
     fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-    color: fg2,
+    color: fg3,
     height: "100%",
     overflow: "auto",
     position: "relative"
     // anchors the diff overlay (#198)
   };
   if (!h) {
-    return /* @__PURE__ */ jsxRuntime.jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted }, children: "No history yet \u2014 start editing and commits will appear here." });
+    return /* @__PURE__ */ jsxRuntime.jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
   }
   const branches = listBranches(h);
   const effectiveScope = scope === "file" && !activeFile ? "project" : scope;
@@ -18974,27 +19090,27 @@ function HistoryPanel() {
           children: branches.map((b) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: b.name, children: b.name }, b.name))
         }
       ),
-      /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", border: `1px solid ${border2}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsxRuntime.jsx(
+      /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", border: `1px solid ${border3}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsxRuntime.jsx(
         "button",
         {
           onClick: () => setScope(s),
           "data-history-scope": s,
           style: {
             ...btn({ border: "none", borderRadius: 0 }),
-            background: effectiveScope === s ? accent2 : "transparent",
-            color: effectiveScope === s ? "#0b0b0f" : fg2
+            background: effectiveScope === s ? accent3 : "transparent",
+            color: effectiveScope === s ? "#0b0b0f" : fg3
           },
           children: s === "project" ? "Project" : "File"
         },
         s
       )) }),
-      scope === "file" && !activeFile && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted, fontSize: 11 }, children: "open a file for File scope" }),
+      scope === "file" && !activeFile && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted2, fontSize: 11 }, children: "open a file for File scope" }),
       /* @__PURE__ */ jsxRuntime.jsx(
         "button",
         {
           onClick: () => setCommitting((v) => !v),
           "data-history-commit-now": true,
-          style: { ...btn({ borderColor: accent2, color: accent2 }), marginLeft: "auto" },
+          style: { ...btn({ borderColor: accent3, color: accent3 }), marginLeft: "auto" },
           children: "+ Commit"
         }
       )
@@ -19016,7 +19132,7 @@ function HistoryPanel() {
             }
           },
           "data-history-commit-label": true,
-          style: { ...btn(), flex: 1, color: fg2, background: "var(--background, #16161a)" }
+          style: { ...btn(), flex: 1, color: fg3, background: "var(--background, #16161a)" }
         }
       ),
       /* @__PURE__ */ jsxRuntime.jsx(
@@ -19026,7 +19142,7 @@ function HistoryPanel() {
           disabled: !commitLabel.trim(),
           "data-history-commit-save": true,
           style: btn({
-            borderColor: accent2,
+            borderColor: accent3,
             opacity: commitLabel.trim() ? 1 : 0.5,
             cursor: commitLabel.trim() ? "pointer" : "not-allowed"
           }),
@@ -19040,7 +19156,7 @@ function HistoryPanel() {
         "li",
         {
           "data-history-commit": c.id,
-          style: { borderLeft: `2px solid ${border2}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
+          style: { borderLeft: `2px solid ${border3}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
           children: [
             /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "baseline", gap: 8 }, children: [
               /* @__PURE__ */ jsxRuntime.jsx(
@@ -19049,19 +19165,19 @@ function HistoryPanel() {
                   style: {
                     fontSize: 10,
                     textTransform: "uppercase",
-                    color: c.kind === "manual" ? accent2 : muted,
+                    color: c.kind === "manual" ? accent3 : muted2,
                     letterSpacing: 0.5
                   },
                   children: KIND_LABEL[c.kind] ?? c.kind
                 }
               ),
               /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1 }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
-              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted, fontSize: 11 }, children: relTime(c.createdAt, now2) })
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted2, fontSize: 11 }, children: relTime(c.createdAt, now2) })
             ] }),
             /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, marginTop: 4 }, children: [
               /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: "Restore" }),
               /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: "Fork" }),
-              /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => setViewing(viewing === c.id ? null : c.id), "data-history-view": c.id, children: viewing === c.id ? "Hide" : "View" }),
+              /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => setViewingCommit(c), "data-history-view": c.id, children: "View" }),
               /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => setDiffing(c), "data-history-diff": c.id, children: "Diff" })
             ] }),
             forking === c.id && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
@@ -19073,34 +19189,25 @@ function HistoryPanel() {
                   placeholder: "branch name",
                   onChange: (e) => setForkName(e.target.value),
                   onKeyDown: (e) => e.key === "Enter" && confirmFork(c),
-                  style: { ...btn(), color: fg2, background: "var(--background, #16161a)" }
+                  style: { ...btn(), color: fg3, background: "var(--background, #16161a)" }
                 }
               ),
-              /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn({ borderColor: accent2 }), onClick: () => confirmFork(c), children: "Create" })
-            ] }),
-            viewing === c.id && /* @__PURE__ */ jsxRuntime.jsx(
-              "pre",
-              {
-                "data-history-view-body": true,
-                style: {
-                  marginTop: 6,
-                  padding: 8,
-                  background: "var(--background, #16161a)",
-                  border: `1px solid ${border2}`,
-                  borderRadius: 4,
-                  fontSize: 11,
-                  maxHeight: 220,
-                  overflow: "auto",
-                  whiteSpace: "pre-wrap"
-                },
-                children: effectiveScope === "file" && activeFile ? getFileContentAt(h, activeFile, c.id) ?? "(file did not exist at this commit)" : changedFileIds.length ? changedFileIds.join("\n") : "(no file changes)"
-              }
-            )
+              /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn({ borderColor: accent3 }), onClick: () => confirmFork(c), children: "Create" })
+            ] })
           ]
         },
         c.id
       );
     }) }),
+    viewingCommit && /* @__PURE__ */ jsxRuntime.jsx(
+      HistoryViewOverlay,
+      {
+        history: h,
+        commit: viewingCommit,
+        initialFileId: effectiveScope === "file" ? activeFile : null,
+        onClose: () => setViewingCommit(null)
+      }
+    ),
     diffing && /* @__PURE__ */ jsxRuntime.jsx(
       HistoryDiffOverlay,
       {
@@ -19119,7 +19226,7 @@ registerBottomPanelTab({
   id: "history",
   title: "History",
   icon: "history",
-  content: React9__namespace.createElement(HistoryPanel)
+  content: React10__namespace.createElement(HistoryPanel)
 });
 var HEADER_HEIGHT = 28;
 var RESIZE_HANDLE_HEIGHT = 4;
@@ -19129,24 +19236,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React9__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React9__namespace.useState(false);
-  const startYRef = React9__namespace.useRef(0);
-  const startValueRef = React9__namespace.useRef(opts.initial);
-  const pointerIdRef = React9__namespace.useRef(null);
-  const draggingRef = React9__namespace.useRef(false);
-  const minRef = React9__namespace.useRef(opts.min);
-  const maxRef = React9__namespace.useRef(opts.max);
-  React9__namespace.useEffect(() => {
+  const [value, setValueState] = React10__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React10__namespace.useState(false);
+  const startYRef = React10__namespace.useRef(0);
+  const startValueRef = React10__namespace.useRef(opts.initial);
+  const pointerIdRef = React10__namespace.useRef(null);
+  const draggingRef = React10__namespace.useRef(false);
+  const minRef = React10__namespace.useRef(opts.min);
+  const maxRef = React10__namespace.useRef(opts.max);
+  React10__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React9__namespace.useCallback((v) => {
+  const setValue = React10__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React9__namespace.useCallback(
+  const onPointerDown = React10__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -19161,7 +19268,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React9__namespace.useCallback(
+  const endDrag = React10__namespace.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -19176,7 +19283,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React9__namespace.useCallback(
+  const onPointerMove = React10__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -19192,13 +19299,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React9__namespace.useCallback(
+  const onPointerUp = React10__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React9__namespace.useCallback(
+  const onPointerCancel = React10__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -19226,15 +19333,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React9__namespace.useState(
+  const [tabs2, setTabs] = React10__namespace.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React9__namespace.useState(readPersistedOpen);
-  const [height, setHeight] = React9__namespace.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React9__namespace.useState(
+  const [open, setOpen] = React10__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React10__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React10__namespace.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React9__namespace.useEffect(() => {
+  React10__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -19244,10 +19351,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React9__namespace.useEffect(() => {
+  React10__namespace.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React9__namespace.useEffect(() => {
+  React10__namespace.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -19259,24 +19366,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React9__namespace.useEffect(() => {
+  React10__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React9__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React9__namespace.useCallback(
+  const tabButtonRefs = React10__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React10__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React9__namespace.useCallback((id) => {
+  const focusTab = React10__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React9__namespace.useCallback(
+  const onTabsKeyDown = React10__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -19522,16 +19629,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React9.useRef(null);
-  const activeTabElRef = React9.useRef(null);
-  const menuBtnRef = React9.useRef(null);
-  const menuRef = React9.useRef(null);
-  const [overflow, setOverflow] = React9.useState({
+  const scrollRef = React10.useRef(null);
+  const activeTabElRef = React10.useRef(null);
+  const menuBtnRef = React10.useRef(null);
+  const menuRef = React10.useRef(null);
+  const [overflow, setOverflow] = React10.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React9.useState(false);
-  React9.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React10.useState(false);
+  React10.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -19550,12 +19657,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -19852,7 +19959,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -19872,73 +19979,73 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
   onEditViz,
   onCropViz
 }, forwardedRef) {
-  const shellRootRef = React9.useRef(null);
-  const initialState = React9.useRef(
+  const shellRootRef = React10.useRef(null);
+  const initialState = React10.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React9.useState(
+  const [groups, setGroups] = React10.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React9.useState(
+  const [layout, setLayout] = React10.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React9.useState(
+  const [activeGroupId, setActiveGroupId] = React10.useState(
     () => initialState.current.activeGroupId
   );
-  const didMountRef = React9.useRef(false);
-  React9.useEffect(() => {
+  const didMountRef = React10.useRef(false);
+  React10.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React9.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React9.useState(
+  const [dragOverTarget, setDragOverTarget] = React10.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React10.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React9.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React9.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React10.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React10.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React9.useState(
+  const [backdropQuality, setBackdropQualityState] = React10.useState(
     () => getBackdropQuality()
   );
-  React9.useEffect(
+  React10.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React9.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React10.useState(
     () => getBackdropOpacity()
   );
-  React9.useEffect(
+  React10.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React9.useMemo(() => {
+  const activeTab = React10.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React9.useRef(void 0);
-  React9.useEffect(() => {
+  const prevActiveTabRef = React10.useRef(void 0);
+  React10.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React9.useCallback(
+  const updateGroup = React10.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -19950,14 +20057,14 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleTabClick = React9.useCallback(
+  const handleTabClick = React10.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const handleTabClose = React9.useCallback(
+  const handleTabClose = React10.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -20022,7 +20129,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout, onTabClose]
   );
-  const handleSplit = React9.useCallback(
+  const handleSplit = React10.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -20034,7 +20141,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const findNeighborGroupId = React9.useCallback(
+  const findNeighborGroupId = React10.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -20043,7 +20150,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [layout]
   );
-  const handleCloseGroup = React9.useCallback(
+  const handleCloseGroup = React10.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -20070,7 +20177,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React9.useCallback(
+  const splitGroupWithTab = React10.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -20086,7 +20193,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const moveTabToNewQuadrant = React9.useCallback(
+  const moveTabToNewQuadrant = React10.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -20126,7 +20233,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React9.useCallback(
+  const moveTabToNewEdgeGroup = React10.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -20161,7 +20268,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups]
   );
-  const updateGroupBackground = React9.useCallback(
+  const updateGroupBackground = React10.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -20173,7 +20280,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, updateGroup, onBackgroundFileChange]
   );
-  const closeTabById = React9.useCallback(
+  const closeTabById = React10.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -20206,7 +20313,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React9.useCallback(
+  const findTabByFileId = React10.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -20219,14 +20326,14 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React9.useCallback(() => {
+  const findGroupWithAnyPreview = React10.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React9.useRef(null);
-  const shellActions = React9.useMemo(
+  const shellActionsRef = React10.useRef(null);
+  const shellActions = React10.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -20243,12 +20350,12 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React9.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React9.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React9.useCallback(() => {
+  const getActiveTab = React10.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React10.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React10.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React9.useCallback(
+  const getPreviewProviderForCommand = React10.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -20273,7 +20380,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React9.useCallback(
+  const handleEdgeDrop = React10.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -20290,7 +20397,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React9.useCallback(
+  const handleEdgeDragOver = React10.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -20299,12 +20406,12 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React9.useCallback(() => {
+  const handleEdgeDragLeave = React10.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React9.useRef(onSaveFile);
+  const onSaveFileRef = React10.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -20318,7 +20425,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React9.useCallback(
+  const handleTabDragStart = React10.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -20327,7 +20434,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -20340,7 +20447,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React9.useCallback(
+  const computeQuadrant = React10.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -20365,7 +20472,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleTabBarDrop = React9.useCallback(
+  const handleTabBarDrop = React10.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -20437,7 +20544,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleDropOnGroup = React9.useCallback(
+  const handleDropOnGroup = React10.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -20506,7 +20613,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [computeQuadrant, groups, moveTabToNewQuadrant]
   );
-  const renderTabContent = React9.useCallback(
+  const renderTabContent = React10.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -20710,7 +20817,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
       editorExtrasForTab
     ]
   );
-  const renderGroup = React9.useCallback(
+  const renderGroup = React10.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -20918,11 +21025,11 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
       theme
     ]
   );
-  const totalGroupCount = React9.useMemo(
+  const totalGroupCount = React10.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React9.useMemo(() => {
+  const previewTabIds = React10.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -20933,7 +21040,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
     }
     return out;
   }, [groups]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -20956,7 +21063,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React9.useImperativeHandle(
+  React10.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -21189,7 +21296,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
             })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsxRuntime.jsx(React9__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsxRuntime.jsx(React10__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsxRuntime.jsx(
                 SplitPane,
@@ -21197,7 +21304,7 @@ var WorkspaceShell = React9.forwardRef(/* @__PURE__ */ __name(function Workspace
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsxRuntime.jsx(React9__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsxRuntime.jsx(React10__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -21803,14 +21910,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React9.useRef(null);
-  const [isPlaying, setIsPlaying] = React9.useState(false);
-  const [error, setError] = React9.useState(null);
-  const [bpm, setBpm] = React9.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React9.useState(false);
-  const fileIdRef = React9.useRef(FILE_ID);
-  const [seeded, setSeeded] = React9.useState(false);
-  React9.useEffect(() => {
+  const runtimeRef = React10.useRef(null);
+  const [isPlaying, setIsPlaying] = React10.useState(false);
+  const [error, setError] = React10.useState(null);
+  const [bpm, setBpm] = React10.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React10.useState(false);
+  const fileIdRef = React10.useRef(FILE_ID);
+  const [seeded, setSeeded] = React10.useState(false);
+  React10.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -21819,7 +21926,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -21855,41 +21962,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React9.useRef(false);
-  React9.useEffect(() => {
+  const autoPlayedRef = React10.useRef(false);
+  React10.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React9.useRef(onChange);
+  const onChangeRef = React10.useRef(onChange);
   onChangeRef.current = onChange;
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React9.useCallback(() => {
+  const handlePlay = React10.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React9.useCallback(() => {
+  const handleStop = React10.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React9.useCallback(() => {
+  const handleToggleAutoRefresh = React10.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React9.useCallback(
+  const chromeForTab = React10.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -21912,7 +22019,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React9.useCallback(
+  const editorExtrasForTab = React10.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -21960,10 +22067,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React9.useRef(null);
-  const [bpm, setBpm] = React9.useState(120);
-  const [soundNames, setSoundNames] = React9.useState([]);
-  const [isExporting, setIsExporting] = React9.useState(false);
+  const engineRef = React10.useRef(null);
+  const [bpm, setBpm] = React10.useState(120);
+  const [soundNames, setSoundNames] = React10.useState([]);
+  const [isExporting, setIsExporting] = React10.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -21972,19 +22079,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React9.useRef(controlledCode ?? defaultCode);
+  const codeRef = React10.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React9.useCallback((engine2) => {
+  const handlePostEvaluate = React10.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -21997,7 +22104,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React9.useCallback(async () => {
+  const handleExport = React10.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -22482,7 +22589,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React9.useRef(null);
+  const rendererRef = React10.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -22496,7 +22603,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -22519,7 +22626,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React9.useRef(null);
+  const containerRef = React10.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -22677,9 +22784,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React9.useState(false);
-  const ref = React9.useRef(null);
-  React9.useEffect(() => {
+  const [open, setOpen] = React10.useState(false);
+  const ref = React10.useRef(null);
+  React10.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -22925,12 +23032,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React9.useRef(null);
-  const [initialTabs, setInitialTabs] = React9.useState(null);
-  React9.useEffect(() => {
+  const containerRef = React10.useRef(null);
+  const [initialTabs, setInitialTabs] = React10.useState(null);
+  React10.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -22950,7 +23057,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React9.useCallback(
+  const handleSaveFile = React10.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -22964,7 +23071,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React9.useCallback(
+  const previewProviderFor = React10.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -23046,7 +23153,7 @@ function compilePreset(preset) {
 __name(compilePreset, "compilePreset");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe3 = React9.useCallback(
+  const subscribe3 = React10.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -23054,12 +23161,12 @@ function useTrackMeta(fileId, trackId) {
     },
     [fileId]
   );
-  const getSnapshot = React9.useCallback(() => {
+  const getSnapshot = React10.useCallback(() => {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = React9.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const set = React9.useCallback(
+  const meta = React10.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const set = React10.useCallback(
     (partial) => {
       if (!fileId) return;
       setTrackMeta(fileId, trackId, partial);
@@ -23639,21 +23746,21 @@ function VizEditorChrome({
   onToggleBackground,
   isBackground
 }) {
-  const [liveOn, setLiveOn] = React9.useState(() => getVizLive(file.id));
-  React9.useEffect(() => {
+  const [liveOn, setLiveOn] = React10.useState(() => getVizLive(file.id));
+  React10.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React9.useState({
+  const [selectedSource, setSelectedSource] = React10.useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = React9.useState(0);
-  React9.useEffect(() => {
+  const [, forceSourcesRerender] = React10.useState(0);
+  React10.useEffect(() => {
     return workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
   }, []);
-  const handleSourceChange = React9.useCallback(
+  const handleSourceChange = React10.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -23671,7 +23778,7 @@ function VizEditorChrome({
     },
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = React9.useCallback(() => {
+  const handlePrimaryButtonClick = React10.useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
       onTogglePausePreview();
       return;
@@ -23837,7 +23944,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React9.useMemo(() => {
+  const { descriptor, compileError } = React10.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -23873,9 +23980,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React9.useRef(null);
-  const rendererRef = React9.useRef(null);
-  const components = React9.useMemo(() => {
+  const containerRef = React10.useRef(null);
+  const rendererRef = React10.useRef(null);
+  const components = React10.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -23897,7 +24004,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -23951,7 +24058,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -23959,7 +24066,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -23974,7 +24081,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -24244,12 +24351,12 @@ function validatePersistedState(input, validFileIds) {
     if (activeTabId !== null && !cleanedTabs.some((t) => t.id === activeTabId)) {
       activeTabId = cleanedTabs.length > 0 ? cleanedTabs[0].id : null;
     }
-    const bg2 = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
+    const bg3 = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
     cleanedGroups[gid] = {
       id: gid,
       tabs: cleanedTabs,
       activeTabId,
-      ...bg2 !== void 0 ? { backgroundFileId: bg2 } : {}
+      ...bg3 !== void 0 ? { backgroundFileId: bg3 } : {}
     };
   }
   const cleanedLayout = [];

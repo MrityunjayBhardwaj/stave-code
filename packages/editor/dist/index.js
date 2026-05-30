@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React9 from 'react';
-import React9__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React10 from 'react';
+import React10__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
@@ -9809,8 +9809,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React9__default.Children.count(children);
-  const childArray = React9__default.Children.toArray(children);
+  const count = React10__default.Children.count(children);
+  const childArray = React10__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -9855,7 +9855,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React9__default.useEffect(() => {
+  React10__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -9871,7 +9871,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React9__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React10__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -16805,7 +16805,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React9__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React10__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -17027,7 +17027,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React9__default.useMemo(() => {
+  const providerNode = React10__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -18094,7 +18094,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React9.createElement(
+  return React10.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -18112,7 +18112,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React9.createElement(EmptyTimelineStub)
+  content: React10.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/history/historyGraph.ts
@@ -18738,15 +18738,15 @@ function HistoryDiffOverlay({
   initialFileId,
   onClose
 }) {
-  const changedIds = React9.useMemo(() => Object.keys(commit.files), [commit]);
-  const [mode, setMode] = React9.useState("previous");
-  const [fileId, setFileId] = React9.useState(
+  const changedIds = React10.useMemo(() => Object.keys(commit.files), [commit]);
+  const [mode, setMode] = React10.useState("previous");
+  const [fileId, setFileId] = React10.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  const handleMount = React9.useCallback(
+  const handleMount = React10.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -18852,6 +18852,122 @@ function HistoryDiffOverlay({
   ] });
 }
 __name(HistoryDiffOverlay, "HistoryDiffOverlay");
+var Editor = MonacoEditorRaw;
+var fg2 = "var(--foreground, #e6e6ea)";
+var muted = "var(--foreground-muted, #a0a0aa)";
+var border2 = "var(--border, #2a2a32)";
+var accent2 = "var(--accent, #6ea8fe)";
+var bg2 = "var(--background, #16161a)";
+function shortId2(id) {
+  return id.slice(0, 7);
+}
+__name(shortId2, "shortId");
+function HistoryViewOverlay({
+  history: history2,
+  commit,
+  initialFileId,
+  onClose
+}) {
+  const snapshot = React10.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React10.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React10.useState(
+    () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
+  );
+  React10.useEffect(() => {
+    if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
+  }, [fileIds, fileId]);
+  const handleMount = React10.useCallback(
+    (_editor, monaco) => {
+      defineStrudelMonacoTheme(monaco);
+      registerStrudelLanguage(monaco);
+      ensureWorkspaceLanguages(monaco);
+      monaco.editor.setTheme("stave-dark");
+    },
+    []
+  );
+  const wrap5 = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    background: bg2,
+    zIndex: 5
+  };
+  const headerRow = {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    padding: "8px 12px",
+    borderBottom: `1px solid ${border2}`,
+    fontSize: 12,
+    color: fg2,
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+  };
+  const ctl = {
+    background: "transparent",
+    color: fg2,
+    border: `1px solid ${border2}`,
+    borderRadius: 4,
+    padding: "2px 6px",
+    fontSize: 11,
+    cursor: "pointer"
+  };
+  return /* @__PURE__ */ jsxs("div", { style: wrap5, "data-history-view-overlay": commit.id, children: [
+    /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
+      /* @__PURE__ */ jsxs(
+        "span",
+        {
+          style: {
+            fontSize: 10,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            color: accent2,
+            border: `1px solid ${accent2}`,
+            borderRadius: 10,
+            padding: "1px 7px"
+          },
+          children: [
+            "\u23F1 Viewing ",
+            shortId2(commit.id)
+          ]
+        }
+      ),
+      fileIds.length > 0 ? /* @__PURE__ */ jsx(
+        "select",
+        {
+          "aria-label": "view file",
+          value: fileId,
+          onChange: (e) => setFileId(e.target.value),
+          style: ctl,
+          "data-history-view-file": true,
+          children: fileIds.map((id) => /* @__PURE__ */ jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
+        }
+      ) : /* @__PURE__ */ jsx("span", { style: { color: muted }, children: "no files at this commit" }),
+      /* @__PURE__ */ jsx("span", { style: { flex: 1, color: muted }, children: "read-only snapshot" }),
+      /* @__PURE__ */ jsx("button", { style: { ...ctl, borderColor: accent2 }, onClick: onClose, "data-history-view-exit": true, children: "Exit" })
+    ] }),
+    /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0 }, children: fileIds.length > 0 ? /* @__PURE__ */ jsx(
+      Editor,
+      {
+        height: "100%",
+        language: toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel"),
+        value: snapshot.files[fileId] ?? "",
+        path: `history:${commit.id}:${fileId}`,
+        onMount: handleMount,
+        options: {
+          readOnly: true,
+          domReadOnly: true,
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 12,
+          scrollBeyondLastLine: false,
+          renderLineHighlight: "none"
+        }
+      }
+    ) : /* @__PURE__ */ jsx("div", { style: { padding: 16, color: muted, fontSize: 12 }, children: "This commit has no files to view." }) })
+  ] });
+}
+__name(HistoryViewOverlay, "HistoryViewOverlay");
 var KIND_LABEL = {
   seed: "initial",
   auto: "auto",
@@ -18868,15 +18984,15 @@ function relTime(ms, now2) {
   return `${Math.round(h / 24)}d ago`;
 }
 __name(relTime, "relTime");
-var muted = "var(--foreground-muted, #a0a0aa)";
-var fg2 = "var(--foreground, #e6e6ea)";
-var border2 = "var(--border, #2a2a32)";
-var accent2 = "var(--accent, #6ea8fe)";
+var muted2 = "var(--foreground-muted, #a0a0aa)";
+var fg3 = "var(--foreground, #e6e6ea)";
+var border3 = "var(--border, #2a2a32)";
+var accent3 = "var(--accent, #6ea8fe)";
 function btn(extra) {
   return {
     background: "transparent",
-    color: fg2,
-    border: `1px solid ${border2}`,
+    color: fg3,
+    border: `1px solid ${border3}`,
     borderRadius: 4,
     padding: "2px 8px",
     fontSize: 11,
@@ -18886,15 +19002,15 @@ function btn(extra) {
 }
 __name(btn, "btn");
 function HistoryPanel() {
-  const [, force] = React9.useReducer((x) => x + 1, 0);
-  React9.useEffect(() => subscribeToHistory(force), []);
-  const [scope, setScope] = React9.useState("project");
-  const [forking, setForking] = React9.useState(null);
-  const [forkName, setForkName] = React9.useState("");
-  const [viewing, setViewing] = React9.useState(null);
-  const [committing, setCommitting] = React9.useState(false);
-  const [commitLabel, setCommitLabel] = React9.useState("");
-  const [diffing, setDiffing] = React9.useState(null);
+  const [, force] = React10.useReducer((x) => x + 1, 0);
+  React10.useEffect(() => subscribeToHistory(force), []);
+  const [scope, setScope] = React10.useState("project");
+  const [forking, setForking] = React10.useState(null);
+  const [forkName, setForkName] = React10.useState("");
+  const [viewingCommit, setViewingCommit] = React10.useState(null);
+  const [committing, setCommitting] = React10.useState(false);
+  const [commitLabel, setCommitLabel] = React10.useState("");
+  const [diffing, setDiffing] = React10.useState(null);
   const h = getCurrentHistory();
   const activeFile = getActiveHistoryFile();
   const now2 = Date.now();
@@ -18902,14 +19018,14 @@ function HistoryPanel() {
     padding: 12,
     fontSize: 12,
     fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-    color: fg2,
+    color: fg3,
     height: "100%",
     overflow: "auto",
     position: "relative"
     // anchors the diff overlay (#198)
   };
   if (!h) {
-    return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted }, children: "No history yet \u2014 start editing and commits will appear here." });
+    return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
   }
   const branches = listBranches(h);
   const effectiveScope = scope === "file" && !activeFile ? "project" : scope;
@@ -18948,27 +19064,27 @@ function HistoryPanel() {
           children: branches.map((b) => /* @__PURE__ */ jsx("option", { value: b.name, children: b.name }, b.name))
         }
       ),
-      /* @__PURE__ */ jsx("div", { style: { display: "flex", border: `1px solid ${border2}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsx(
+      /* @__PURE__ */ jsx("div", { style: { display: "flex", border: `1px solid ${border3}`, borderRadius: 4, overflow: "hidden" }, children: ["project", "file"].map((s) => /* @__PURE__ */ jsx(
         "button",
         {
           onClick: () => setScope(s),
           "data-history-scope": s,
           style: {
             ...btn({ border: "none", borderRadius: 0 }),
-            background: effectiveScope === s ? accent2 : "transparent",
-            color: effectiveScope === s ? "#0b0b0f" : fg2
+            background: effectiveScope === s ? accent3 : "transparent",
+            color: effectiveScope === s ? "#0b0b0f" : fg3
           },
           children: s === "project" ? "Project" : "File"
         },
         s
       )) }),
-      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: "open a file for File scope" }),
+      scope === "file" && !activeFile && /* @__PURE__ */ jsx("span", { style: { color: muted2, fontSize: 11 }, children: "open a file for File scope" }),
       /* @__PURE__ */ jsx(
         "button",
         {
           onClick: () => setCommitting((v) => !v),
           "data-history-commit-now": true,
-          style: { ...btn({ borderColor: accent2, color: accent2 }), marginLeft: "auto" },
+          style: { ...btn({ borderColor: accent3, color: accent3 }), marginLeft: "auto" },
           children: "+ Commit"
         }
       )
@@ -18990,7 +19106,7 @@ function HistoryPanel() {
             }
           },
           "data-history-commit-label": true,
-          style: { ...btn(), flex: 1, color: fg2, background: "var(--background, #16161a)" }
+          style: { ...btn(), flex: 1, color: fg3, background: "var(--background, #16161a)" }
         }
       ),
       /* @__PURE__ */ jsx(
@@ -19000,7 +19116,7 @@ function HistoryPanel() {
           disabled: !commitLabel.trim(),
           "data-history-commit-save": true,
           style: btn({
-            borderColor: accent2,
+            borderColor: accent3,
             opacity: commitLabel.trim() ? 1 : 0.5,
             cursor: commitLabel.trim() ? "pointer" : "not-allowed"
           }),
@@ -19014,7 +19130,7 @@ function HistoryPanel() {
         "li",
         {
           "data-history-commit": c.id,
-          style: { borderLeft: `2px solid ${border2}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
+          style: { borderLeft: `2px solid ${border3}`, paddingLeft: 10, marginLeft: 4, paddingBottom: 10 },
           children: [
             /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "baseline", gap: 8 }, children: [
               /* @__PURE__ */ jsx(
@@ -19023,19 +19139,19 @@ function HistoryPanel() {
                   style: {
                     fontSize: 10,
                     textTransform: "uppercase",
-                    color: c.kind === "manual" ? accent2 : muted,
+                    color: c.kind === "manual" ? accent3 : muted2,
                     letterSpacing: 0.5
                   },
                   children: KIND_LABEL[c.kind] ?? c.kind
                 }
               ),
               /* @__PURE__ */ jsx("span", { style: { flex: 1 }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
-              /* @__PURE__ */ jsx("span", { style: { color: muted, fontSize: 11 }, children: relTime(c.createdAt, now2) })
+              /* @__PURE__ */ jsx("span", { style: { color: muted2, fontSize: 11 }, children: relTime(c.createdAt, now2) })
             ] }),
             /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 4 }, children: [
               /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: "Restore" }),
               /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: "Fork" }),
-              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setViewing(viewing === c.id ? null : c.id), "data-history-view": c.id, children: viewing === c.id ? "Hide" : "View" }),
+              /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setViewingCommit(c), "data-history-view": c.id, children: "View" }),
               /* @__PURE__ */ jsx("button", { style: btn(), onClick: () => setDiffing(c), "data-history-diff": c.id, children: "Diff" })
             ] }),
             forking === c.id && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
@@ -19047,34 +19163,25 @@ function HistoryPanel() {
                   placeholder: "branch name",
                   onChange: (e) => setForkName(e.target.value),
                   onKeyDown: (e) => e.key === "Enter" && confirmFork(c),
-                  style: { ...btn(), color: fg2, background: "var(--background, #16161a)" }
+                  style: { ...btn(), color: fg3, background: "var(--background, #16161a)" }
                 }
               ),
-              /* @__PURE__ */ jsx("button", { style: btn({ borderColor: accent2 }), onClick: () => confirmFork(c), children: "Create" })
-            ] }),
-            viewing === c.id && /* @__PURE__ */ jsx(
-              "pre",
-              {
-                "data-history-view-body": true,
-                style: {
-                  marginTop: 6,
-                  padding: 8,
-                  background: "var(--background, #16161a)",
-                  border: `1px solid ${border2}`,
-                  borderRadius: 4,
-                  fontSize: 11,
-                  maxHeight: 220,
-                  overflow: "auto",
-                  whiteSpace: "pre-wrap"
-                },
-                children: effectiveScope === "file" && activeFile ? getFileContentAt(h, activeFile, c.id) ?? "(file did not exist at this commit)" : changedFileIds.length ? changedFileIds.join("\n") : "(no file changes)"
-              }
-            )
+              /* @__PURE__ */ jsx("button", { style: btn({ borderColor: accent3 }), onClick: () => confirmFork(c), children: "Create" })
+            ] })
           ]
         },
         c.id
       );
     }) }),
+    viewingCommit && /* @__PURE__ */ jsx(
+      HistoryViewOverlay,
+      {
+        history: h,
+        commit: viewingCommit,
+        initialFileId: effectiveScope === "file" ? activeFile : null,
+        onClose: () => setViewingCommit(null)
+      }
+    ),
     diffing && /* @__PURE__ */ jsx(
       HistoryDiffOverlay,
       {
@@ -19093,7 +19200,7 @@ registerBottomPanelTab({
   id: "history",
   title: "History",
   icon: "history",
-  content: React9.createElement(HistoryPanel)
+  content: React10.createElement(HistoryPanel)
 });
 var HEADER_HEIGHT = 28;
 var RESIZE_HANDLE_HEIGHT = 4;
@@ -19103,24 +19210,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React9.useState(opts.initial);
-  const [dragging, setDragging] = React9.useState(false);
-  const startYRef = React9.useRef(0);
-  const startValueRef = React9.useRef(opts.initial);
-  const pointerIdRef = React9.useRef(null);
-  const draggingRef = React9.useRef(false);
-  const minRef = React9.useRef(opts.min);
-  const maxRef = React9.useRef(opts.max);
-  React9.useEffect(() => {
+  const [value, setValueState] = React10.useState(opts.initial);
+  const [dragging, setDragging] = React10.useState(false);
+  const startYRef = React10.useRef(0);
+  const startValueRef = React10.useRef(opts.initial);
+  const pointerIdRef = React10.useRef(null);
+  const draggingRef = React10.useRef(false);
+  const minRef = React10.useRef(opts.min);
+  const maxRef = React10.useRef(opts.max);
+  React10.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React9.useCallback((v) => {
+  const setValue = React10.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React9.useCallback(
+  const onPointerDown = React10.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -19135,7 +19242,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React9.useCallback(
+  const endDrag = React10.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -19150,7 +19257,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React9.useCallback(
+  const onPointerMove = React10.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -19166,13 +19273,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React9.useCallback(
+  const onPointerUp = React10.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React9.useCallback(
+  const onPointerCancel = React10.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -19200,15 +19307,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React9.useState(
+  const [tabs2, setTabs] = React10.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React9.useState(readPersistedOpen);
-  const [height, setHeight] = React9.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React9.useState(
+  const [open, setOpen] = React10.useState(readPersistedOpen);
+  const [height, setHeight] = React10.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React10.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -19218,10 +19325,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -19233,24 +19340,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React9.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React9.useCallback(
+  const tabButtonRefs = React10.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React10.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React9.useCallback((id) => {
+  const focusTab = React10.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React9.useCallback(
+  const onTabsKeyDown = React10.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -21163,7 +21270,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React9__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React10__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -21171,7 +21278,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React9__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React10__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -24218,12 +24325,12 @@ function validatePersistedState(input, validFileIds) {
     if (activeTabId !== null && !cleanedTabs.some((t) => t.id === activeTabId)) {
       activeTabId = cleanedTabs.length > 0 ? cleanedTabs[0].id : null;
     }
-    const bg2 = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
+    const bg3 = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
     cleanedGroups[gid] = {
       id: gid,
       tabs: cleanedTabs,
       activeTabId,
-      ...bg2 !== void 0 ? { backgroundFileId: bg2 } : {}
+      ...bg3 !== void 0 ? { backgroundFileId: bg3 } : {}
     };
   }
   const cleanedLayout = [];
