@@ -19177,8 +19177,30 @@ function HistoryPanel() {
             /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, marginTop: 4 }, children: [
               /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: "Restore" }),
               /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: "Fork" }),
-              /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => setViewingCommit(c), "data-history-view": c.id, children: "View" }),
-              /* @__PURE__ */ jsxRuntime.jsx("button", { style: btn(), onClick: () => setDiffing(c), "data-history-diff": c.id, children: "Diff" })
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  style: btn(),
+                  onClick: () => {
+                    setDiffing(null);
+                    setViewingCommit(c);
+                  },
+                  "data-history-view": c.id,
+                  children: "View"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  style: btn(),
+                  onClick: () => {
+                    setViewingCommit(null);
+                    setDiffing(c);
+                  },
+                  "data-history-diff": c.id,
+                  children: "Diff"
+                }
+              )
             ] }),
             forking === c.id && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
               /* @__PURE__ */ jsxRuntime.jsx(

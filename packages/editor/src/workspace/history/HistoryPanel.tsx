@@ -245,10 +245,24 @@ export function HistoryPanel(): React.ReactElement {
                 <button style={btn()} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}>
                   Fork
                 </button>
-                <button style={btn()} onClick={() => setViewingCommit(c)} data-history-view={c.id}>
+                <button
+                  style={btn()}
+                  onClick={() => {
+                    setDiffing(null) // only one overlay at a time
+                    setViewingCommit(c)
+                  }}
+                  data-history-view={c.id}
+                >
                   View
                 </button>
-                <button style={btn()} onClick={() => setDiffing(c)} data-history-diff={c.id}>
+                <button
+                  style={btn()}
+                  onClick={() => {
+                    setViewingCommit(null) // only one overlay at a time
+                    setDiffing(c)
+                  }}
+                  data-history-diff={c.id}
+                >
                   Diff
                 </button>
               </div>
