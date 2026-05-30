@@ -285,6 +285,20 @@ export function getLiveFileContent(fileId: string): string | null {
   return Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null
 }
 
+/**
+ * The set of file ids whose live content differs from current-branch HEAD —
+ * the whole dirty set in ONE pass (one workspace read + one `changedFiles`),
+ * for the file-tree badge (#193). Prefer this over calling
+ * `isFileModifiedSinceHead` per file, which re-reads the workspace each call
+ * (O(N²) over the tree). Empty when there's no history or no HEAD.
+ */
+export function getModifiedFileIdsSinceHead(): ReadonlySet<string> {
+  if (!current) return new Set()
+  const head = headOf(current)
+  if (!head) return new Set()
+  return new Set(Object.keys(changedFiles(current, readWorkspaceFiles(), head)))
+}
+
 /** Create a branch at `fromCommit` (does not switch to it). */
 export function createBranchAt(name: string, fromCommit: string): Promise<void> {
   return withLock(async () => {

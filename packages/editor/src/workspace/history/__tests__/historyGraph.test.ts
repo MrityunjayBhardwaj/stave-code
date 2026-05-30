@@ -18,6 +18,7 @@ import {
   headOf,
   seedCommitId,
   isFileModifiedAt,
+  countManualCommits,
   MAIN_BRANCH,
   type ProjectHistory,
 } from '../historyGraph'
@@ -169,6 +170,14 @@ describe('seedCommitId / isFileModifiedAt (#191 per-file primitives)', () => {
     const h = seed()
     expect(isFileModifiedAt(h, 'f1', 'c0', null)).toBe(true) // existed at c0, now gone
     expect(isFileModifiedAt(h, 'ghost', 'c0', null)).toBe(false) // never existed → unchanged
+  })
+  it('countManualCommits counts only manual checkpoints (#207 nudge)', () => {
+    let h = seed()
+    expect(countManualCommits(h)).toBe(0) // seed is not manual
+    h = commitOnto(h, { f1: 'a1' }, { kind: 'auto', id: 'c1', createdAt: 2000 })
+    h = commitOnto(h, { f1: 'a2' }, { kind: 'manual', id: 'm1', createdAt: 3000, label: 'one' })
+    h = commitOnto(h, {}, { kind: 'manual', id: 'm2', createdAt: 4000, label: 'two', allowEmpty: true })
+    expect(countManualCommits(h)).toBe(2) // m1 + m2; auto + seed excluded
   })
 })
 

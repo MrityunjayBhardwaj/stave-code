@@ -18272,6 +18272,12 @@ function seedCommitId(h) {
   return null;
 }
 __name(seedCommitId, "seedCommitId");
+function countManualCommits(h) {
+  let n = 0;
+  for (const c of Object.values(h.commits)) if (c.kind === "manual") n++;
+  return n;
+}
+__name(countManualCommits, "countManualCommits");
 function isFileModifiedAt(h, fileId, commitId, liveContent) {
   return getFileContentAt(h, fileId, commitId) !== liveContent;
 }
@@ -18728,6 +18734,13 @@ function getLiveFileContent(fileId) {
   return Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
 }
 __name(getLiveFileContent, "getLiveFileContent");
+function getModifiedFileIdsSinceHead() {
+  if (!current2) return /* @__PURE__ */ new Set();
+  const head = headOf(current2);
+  if (!head) return /* @__PURE__ */ new Set();
+  return new Set(Object.keys(changedFiles(current2, readWorkspaceFiles(), head)));
+}
+__name(getModifiedFileIdsSinceHead, "getModifiedFileIdsSinceHead");
 function createBranchAt(name, fromCommit) {
   return withLock(async () => {
     if (!current2) return;
@@ -19014,6 +19027,14 @@ var muted2 = "var(--foreground-muted, #a0a0aa)";
 var fg3 = "var(--foreground, #e6e6ea)";
 var border3 = "var(--border, #2a2a32)";
 var accent3 = "var(--accent, #6ea8fe)";
+var MANUAL_NUDGE_DEFAULT = 50;
+function manualNudgeThreshold() {
+  if (typeof window === "undefined") return MANUAL_NUDGE_DEFAULT;
+  const raw = window.localStorage.getItem("stave:manualNudgeThreshold");
+  const n = raw !== null ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : MANUAL_NUDGE_DEFAULT;
+}
+__name(manualNudgeThreshold, "manualNudgeThreshold");
 function btn(extra) {
   return {
     background: "transparent",
@@ -19037,6 +19058,7 @@ function HistoryPanel() {
   const [committing, setCommitting] = React10__namespace.useState(false);
   const [commitLabel, setCommitLabel] = React10__namespace.useState("");
   const [diffing, setDiffing] = React10__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React10__namespace.useState(false);
   const h = getCurrentHistory();
   const activeFile = getActiveHistoryFile();
   const now2 = Date.now();
@@ -19054,6 +19076,8 @@ function HistoryPanel() {
     return /* @__PURE__ */ jsxRuntime.jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
   }
   const branches = listBranches(h);
+  const manualCount = countManualCommits(h);
+  const showNudge = !nudgeDismissed && manualCount > manualNudgeThreshold();
   const effectiveScope = scope === "file" && !activeFile ? "project" : scope;
   const commits = effectiveScope === "file" && activeFile ? fileHistory(h, activeFile) : listCommits(h);
   const doRestore = /* @__PURE__ */ __name((c) => {
@@ -19150,6 +19174,40 @@ function HistoryPanel() {
         }
       )
     ] }),
+    showNudge && /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-history-manual-nudge": true,
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 10,
+          padding: "6px 10px",
+          fontSize: 11,
+          color: fg3,
+          background: "var(--background, #16161a)",
+          border: `1px solid ${border3}`,
+          borderRadius: 4
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { flex: 1, color: muted2 }, children: [
+            manualCount,
+            " saved checkpoints \u2014 kept permanently (never auto-pruned). Restore or Fork from any; auto-commits are still pruned on their own."
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              onClick: () => setNudgeDismissed(true),
+              "data-history-nudge-dismiss": true,
+              "aria-label": "dismiss checkpoint notice",
+              style: btn({ padding: "1px 7px" }),
+              children: "\u2715"
+            }
+          )
+        ]
+      }
+    ),
     /* @__PURE__ */ jsxRuntime.jsx("ol", { style: { listStyle: "none", margin: 0, padding: 0 }, "data-history-commit-list": true, children: commits.map((c) => {
       const changedFileIds = Object.keys(c.files);
       return /* @__PURE__ */ jsxRuntime.jsxs(
@@ -24624,6 +24682,7 @@ exports.getIRSnapshot = getIRSnapshot;
 exports.getInlineVizActionSize = getInlineVizActionSize;
 exports.getLastOpenedProject = getLastOpenedProject;
 exports.getLogHistory = getLogHistory;
+exports.getModifiedFileIdsSinceHead = getModifiedFileIdsSinceHead;
 exports.getMusicalTimelineSubRowHeight = getMusicalTimelineSubRowHeight;
 exports.getNamedViz = getNamedViz;
 exports.getPresetIdForFile = getPresetIdForFile;

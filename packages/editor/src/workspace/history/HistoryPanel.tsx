@@ -30,6 +30,7 @@ import {
   listCommits,
   fileHistory,
   listBranches,
+  countManualCommits,
   type Commit,
 } from './historyGraph'
 import { HistoryDiffOverlay } from './HistoryDiffOverlay'
@@ -59,6 +60,17 @@ const fg = 'var(--foreground, #e6e6ea)'
 const border = 'var(--border, #2a2a32)'
 const accent = 'var(--accent, #6ea8fe)'
 
+// #207 — soft nudge once manual checkpoints (never auto-pruned) pile up. The
+// threshold is overridable via localStorage so it's testable without creating
+// dozens of commits. No eviction — named anchors are permanent by design.
+const MANUAL_NUDGE_DEFAULT = 50
+function manualNudgeThreshold(): number {
+  if (typeof window === 'undefined') return MANUAL_NUDGE_DEFAULT
+  const raw = window.localStorage.getItem('stave:manualNudgeThreshold')
+  const n = raw !== null ? parseInt(raw, 10) : NaN
+  return Number.isFinite(n) && n > 0 ? n : MANUAL_NUDGE_DEFAULT
+}
+
 function btn(extra?: React.CSSProperties): React.CSSProperties {
   return {
     background: 'transparent',
@@ -83,6 +95,7 @@ export function HistoryPanel(): React.ReactElement {
   const [committing, setCommitting] = React.useState(false)
   const [commitLabel, setCommitLabel] = React.useState('')
   const [diffing, setDiffing] = React.useState<Commit | null>(null)
+  const [nudgeDismissed, setNudgeDismissed] = React.useState(false)
 
   const h = getCurrentHistory()
   const activeFile = getActiveHistoryFile()
@@ -107,6 +120,8 @@ export function HistoryPanel(): React.ReactElement {
   }
 
   const branches = listBranches(h)
+  const manualCount = countManualCommits(h)
+  const showNudge = !nudgeDismissed && manualCount > manualNudgeThreshold()
   const effectiveScope: Scope = scope === 'file' && !activeFile ? 'project' : scope
   const commits: Commit[] =
     effectiveScope === 'file' && activeFile ? fileHistory(h, activeFile) : listCommits(h)
@@ -210,6 +225,38 @@ export function HistoryPanel(): React.ReactElement {
             })}
           >
             Save
+          </button>
+        </div>
+      )}
+
+      {/* #207 — soft nudge: many permanent checkpoints, nothing destructive */}
+      {showNudge && (
+        <div
+          data-history-manual-nudge
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 10,
+            padding: '6px 10px',
+            fontSize: 11,
+            color: fg,
+            background: 'var(--background, #16161a)',
+            border: `1px solid ${border}`,
+            borderRadius: 4,
+          }}
+        >
+          <span style={{ flex: 1, color: muted }}>
+            {manualCount} saved checkpoints — kept permanently (never auto-pruned). Restore
+            or Fork from any; auto-commits are still pruned on their own.
+          </span>
+          <button
+            onClick={() => setNudgeDismissed(true)}
+            data-history-nudge-dismiss
+            aria-label="dismiss checkpoint notice"
+            style={btn({ padding: '1px 7px' })}
+          >
+            ✕
           </button>
         </div>
       )}

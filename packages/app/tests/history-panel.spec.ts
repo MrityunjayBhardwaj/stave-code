@@ -79,6 +79,35 @@ test('Commit now creates a labelled manual checkpoint (allowEmpty anchor)', asyn
   await page.screenshot({ path: '/tmp/history-manual-commit.png' })
 })
 
+test('manual-checkpoint nudge appears past the threshold and dismisses (#207)', async ({ page }) => {
+  // lower the soft-nudge threshold to 1 so two checkpoints trip it
+  await page.evaluate(() => localStorage.setItem('stave:manualNudgeThreshold', '1'))
+
+  await page.locator('[data-tab-id="history"]').click()
+  await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('[data-history-manual-nudge]')).toHaveCount(0)
+
+  // create two manual checkpoints (allowEmpty anchors — no edits needed)
+  for (const label of ['checkpoint a', 'checkpoint b']) {
+    await page.locator('[data-history-commit-now]').click()
+    await page.locator('[data-history-commit-label]').fill(label)
+    await page.locator('[data-history-commit-save]').click()
+    await page.waitForTimeout(300)
+  }
+
+  // count (2) > threshold (1) → the no-evict nudge surfaces
+  const nudge = page.locator('[data-history-manual-nudge]')
+  await expect(nudge).toBeVisible({ timeout: 5000 })
+  await expect(nudge).toContainText('2 saved checkpoints')
+  await expect(nudge).toContainText('never auto-pruned')
+  await page.screenshot({ path: '/tmp/history-manual-nudge.png' })
+
+  // dismiss is non-destructive — banner gone, commits remain
+  await page.locator('[data-history-nudge-dismiss]').click()
+  await expect(nudge).toHaveCount(0)
+  expect(await page.locator('[data-history-commit]').count()).toBeGreaterThanOrEqual(3) // seed + 2
+})
+
 test('Fork from a commit creates a new branch and switches to it', async ({ page }) => {
   await page.locator('[data-tab-id="history"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })

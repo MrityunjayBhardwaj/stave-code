@@ -218,6 +218,7 @@ export {
   restoreFileToCommit,
   revertFileToSeed,
   isFileModifiedSinceHead,
+  getModifiedFileIdsSinceHead,
   createBranchAt,
   switchToBranch,
   getCurrentHistory,

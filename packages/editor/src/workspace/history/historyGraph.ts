@@ -283,6 +283,18 @@ export function seedCommitId(h: ProjectHistory): string | null {
 }
 
 /**
+ * Number of manual checkpoints in the store. Manual commits are exempt from
+ * retention pruning (kept permanently), so this count only grows — it drives
+ * the Phase I/#207 soft nudge that surfaces unbounded checkpoint growth to the
+ * user WITHOUT evicting their named anchors.
+ */
+export function countManualCommits(h: ProjectHistory): number {
+  let n = 0
+  for (const c of Object.values(h.commits)) if (c.kind === 'manual') n++
+  return n
+}
+
+/**
  * True if `liveContent` differs from `fileId`'s content as of `commitId` —
  * the per-file projection of `changedFiles`. `liveContent` of `null` means the
  * file is absent live (deleted); modified iff it existed at the commit.
