@@ -153,7 +153,7 @@ export function HistoryPanel(): React.ReactElement {
   return (
     <div data-bottom-panel-tab="history" style={wrap}>
       {/* controls */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 10 }}>
         <select
           aria-label="branch"
           value={h.currentBranch}
@@ -189,7 +189,7 @@ export function HistoryPanel(): React.ReactElement {
         <button
           onClick={() => setCommitting((v) => !v)}
           data-history-commit-now
-          style={{ ...btn({ borderColor: accent, color: accent }), marginLeft: 'auto' }}
+          style={{ ...btn({ borderColor: accent, color: accent }), marginLeft: 'auto', whiteSpace: 'nowrap' }}
         >
           + Commit
         </button>

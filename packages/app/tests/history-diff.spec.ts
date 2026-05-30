@@ -48,7 +48,7 @@ test('Diff overlay shows the changed line for a commit', async ({ page }) => {
   await page.keyboard.type('// DIFFMARKER_XYZ')
 
   // capture it as a manual commit
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
   await page.locator('[data-history-commit-now]').click()
   await page.locator('[data-history-commit-label]').fill('after marker edit')

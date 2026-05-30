@@ -40,7 +40,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('View opens a read-only time-travel reader and Exit closes it', async ({ page }) => {
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
 
   // View the seed (Initial) commit — shows the project at commit 0

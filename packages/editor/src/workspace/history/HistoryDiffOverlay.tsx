@@ -86,7 +86,8 @@ export function HistoryDiffOverlay({
   }
   const headerRow: React.CSSProperties = {
     display: 'flex',
-    gap: 8,
+    flexWrap: 'wrap', // narrow side panel — controls wrap instead of overflowing
+    gap: 6,
     alignItems: 'center',
     padding: '8px 12px',
     borderBottom: `1px solid ${border}`,
@@ -183,7 +184,7 @@ export function HistoryDiffOverlay({
           onMount={handleMount}
           options={{
             readOnly: true,
-            renderSideBySide: true,
+            renderSideBySide: false, // unified diff fits the narrow side panel
             automaticLayout: true,
             minimap: { enabled: false },
             fontSize: 12,
