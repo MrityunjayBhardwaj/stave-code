@@ -369,12 +369,18 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? '' : 's'}`}
                     </span>
-                    {forkCounts.has(c.id) &&
-                      branches.filter((b) => b.createdFrom === c.id).map((b) => (
-                        <span key={b.name} style={{ fontSize: 9, color: accent, border: `1px solid ${accent}`, borderRadius: 8, padding: '0 5px' }}>⑂ {b.name}</span>
-                      ))}
                     <span style={{ color: muted, fontSize: 10, flex: '0 0 auto' }}>{relTime(c.createdAt, now)}</span>
                   </div>
+
+                  {/* branch refs — on their own wrapping row so they never
+                      squeeze the commit label in the narrow panel (#3). */}
+                  {forkCounts.has(c.id) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3, marginLeft: 20 }}>
+                      {branches.filter((b) => b.createdFrom === c.id).map((b) => (
+                        <span key={b.name} data-history-branch-chip={b.name} style={{ fontSize: 9, color: accent, border: `1px solid ${accent}`, borderRadius: 8, padding: '0 6px', whiteSpace: 'nowrap' }}>⑂ {b.name}</span>
+                      ))}
+                    </div>
+                  )}
 
                   {/* hover icon actions */}
                   <div style={{ display: 'flex', gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: 'opacity 120ms' }}>

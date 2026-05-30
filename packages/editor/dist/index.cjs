@@ -23543,14 +23543,14 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
                     /* @__PURE__ */ jsxRuntime.jsx("span", { style: { alignSelf: "center" }, children: /* @__PURE__ */ jsxRuntime.jsx(IconChevron, { open: isOpen }) }),
                     /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 9, textTransform: "uppercase", color: c.kind === "manual" ? accent3 : muted2, letterSpacing: 0.5, flex: "0 0 auto" }, children: KIND_LABEL[c.kind] ?? c.kind }),
                     /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
-                    forkCounts.has(c.id) && branches.filter((b) => b.createdFrom === c.id).map((b) => /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { fontSize: 9, color: accent3, border: `1px solid ${accent3}`, borderRadius: 8, padding: "0 5px" }, children: [
-                      "\u2442 ",
-                      b.name
-                    ] }, b.name)),
                     /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted2, fontSize: 10, flex: "0 0 auto" }, children: relTime(c.createdAt, now2) })
                   ]
                 }
               ),
+              forkCounts.has(c.id) && /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3, marginLeft: 20 }, children: branches.filter((b) => b.createdFrom === c.id).map((b) => /* @__PURE__ */ jsxRuntime.jsxs("span", { "data-history-branch-chip": b.name, style: { fontSize: 9, color: accent3, border: `1px solid ${accent3}`, borderRadius: 8, padding: "0 6px", whiteSpace: "nowrap" }, children: [
+                "\u2442 ",
+                b.name
+              ] }, b.name)) }),
               /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: "opacity 120ms" }, children: [
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: fileTarget ? "Restore this file to this commit" : "Restore project to this commit", style: iconBtn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconRestore, {}) }),
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconFork, {}) }),
