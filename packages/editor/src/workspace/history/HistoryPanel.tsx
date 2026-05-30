@@ -23,8 +23,22 @@ import {
   setFileHistoryTarget,
 } from './historyService'
 import { listCommits, fileHistory, listBranches, countManualCommits, type Commit } from './historyGraph'
-import { HistoryDiffOverlay } from './HistoryDiffOverlay'
-import { HistoryViewOverlay } from './HistoryViewOverlay'
+
+/** Request to open a read-only history viewer in the main editor area (#210). */
+export interface OpenHistoryTabRequest {
+  readonly mode: 'diff' | 'view'
+  readonly commitId: string
+  readonly fileId: string
+}
+
+export interface HistoryPanelProps {
+  /**
+   * Open a Diff / time-travel View as a tab in the main editor area
+   * (wired by the app to `shellRef.openHistoryTab`). Diff/View no longer
+   * render as a cramped in-panel overlay (#210).
+   */
+  readonly onOpenHistoryTab?: (req: OpenHistoryTabRequest) => void
+}
 
 const KIND_LABEL: Record<string, string> = {
   seed: 'initial',
@@ -161,16 +175,14 @@ function GraphGutter({
   )
 }
 
-export function HistoryPanel(): React.ReactElement {
+export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): React.ReactElement {
   const [, force] = React.useReducer((x: number) => x + 1, 0)
   React.useEffect(() => subscribeToHistory(force as () => void), [])
 
   const [forking, setForking] = React.useState<string | null>(null)
   const [forkName, setForkName] = React.useState('')
-  const [viewingCommit, setViewingCommit] = React.useState<Commit | null>(null)
   const [committing, setCommitting] = React.useState(false)
   const [commitLabel, setCommitLabel] = React.useState('')
-  const [diffing, setDiffing] = React.useState<{ commit: Commit; fileId?: string } | null>(null)
   const [expanded, setExpanded] = React.useState<string | null>(null)
   const [hovered, setHovered] = React.useState<string | null>(null)
   const [nudgeDismissed, setNudgeDismissed] = React.useState(false)
@@ -368,7 +380,7 @@ export function HistoryPanel(): React.ReactElement {
                   <div style={{ display: 'flex', gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: 'opacity 120ms' }}>
                     <button title={fileTarget ? 'Restore this file to this commit' : 'Restore project to this commit'} style={iconBtn()} onClick={() => doRestore(c)} data-history-restore={c.id}><IconRestore /></button>
                     <button title="Fork a branch here" style={iconBtn()} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}><IconFork /></button>
-                    <button title="View (read-only time-travel)" style={iconBtn()} onClick={() => { setDiffing(null); setViewingCommit(c) }} data-history-view={c.id}><IconView /></button>
+                    <button title="View (read-only time-travel)" style={iconBtn()} onClick={() => onOpenHistoryTab?.({ mode: 'view', commitId: c.id, fileId: fileTarget ?? Object.keys(c.files)[0] ?? '' })} data-history-view={c.id}><IconView /></button>
                   </div>
 
                   {forking === c.id && (
@@ -387,7 +399,7 @@ export function HistoryPanel(): React.ReactElement {
                         changedFileIds.map((fid) => (
                           <li key={fid}>
                             <button
-                              onClick={() => { setViewingCommit(null); setDiffing({ commit: c, fileId: fid }) }}
+                              onClick={() => onOpenHistoryTab?.({ mode: 'diff', commitId: c.id, fileId: fid })}
                               data-history-file-diff={fid}
                               title={`Diff ${fileLabel(fid)}`}
                               style={{ ...iconBtn(), width: '100%', justifyContent: 'flex-start', gap: 6, padding: '2px 4px', color: fg, fontSize: 11 }}
@@ -406,13 +418,6 @@ export function HistoryPanel(): React.ReactElement {
           )
         })}
       </ol>
-
-      {viewingCommit && (
-        <HistoryViewOverlay history={h} commit={viewingCommit} initialFileId={fileTarget} onClose={() => setViewingCommit(null)} />
-      )}
-      {diffing && (
-        <HistoryDiffOverlay history={h} commit={diffing.commit} initialFileId={diffing.fileId ?? null} onClose={() => setDiffing(null)} />
-      )}
     </div>
   )
 }

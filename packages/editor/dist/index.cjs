@@ -1,7 +1,7 @@
 'use strict';
 
 var core = require('@strudel/core');
-var React6 = require('react');
+var React8 = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
@@ -27,7 +27,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React6__namespace = /*#__PURE__*/_interopNamespace(React6);
+var React8__namespace = /*#__PURE__*/_interopNamespace(React8);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -9835,14 +9835,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React6__namespace.default.Children.count(children);
-  const childArray = React6__namespace.default.Children.toArray(children);
+  const count = React8__namespace.default.Children.count(children);
+  const childArray = React8__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React6.useState(defaultSizes);
-  const containerRef = React6.useRef(null);
-  const draggingRef = React6.useRef(null);
+  const [sizes, setSizes] = React8.useState(defaultSizes);
+  const containerRef = React8.useRef(null);
+  const draggingRef = React8.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React6.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React8.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -9881,7 +9881,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React6__namespace.default.useEffect(() => {
+  React8__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -9897,7 +9897,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React6__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React8__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -10772,13 +10772,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe3 = React6.useCallback(
+  const subscribe3 = React8.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React6.useCallback(() => getFile(id), [id]);
-  const file = React6.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const setContent2 = React6.useCallback(
+  const getSnapshot = React8.useCallback(() => getFile(id), [id]);
+  const file = React8.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const setContent2 = React8.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -15077,13 +15077,13 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React6.useRef([]);
-  const hapCollectionsRef = React6.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React6.useRef(0);
-  const clearAll = React6.useCallback(() => {
+  const timeoutIdsRef = React8.useRef([]);
+  const hapCollectionsRef = React8.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React8.useRef(0);
+  const clearAll = React8.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
   }, []);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     const handler = /* @__PURE__ */ __name((event) => {
@@ -15292,12 +15292,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React6.useRef(null);
-  const clearAll = React6.useCallback(() => {
+  const collectionRef = React8.useRef(null);
+  const clearAll = React8.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -15312,7 +15312,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -16638,25 +16638,25 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React6.useRef(null);
-  const editorRef = React6.useRef(null);
-  const monacoRef = React6.useRef(null);
-  const viewZoneHandleRef = React6.useRef(null);
-  const lastPayloadRef = React6.useRef(null);
-  const [hapStream, setHapStream] = React6.useState(null);
-  const [breakpointStore, setBreakpointStore] = React6.useState(null);
-  const [onResume, setOnResume] = React6.useState(null);
-  const [editorReady, setEditorReady] = React6.useState(false);
-  React6.useEffect(() => {
+  const containerRef = React8.useRef(null);
+  const editorRef = React8.useRef(null);
+  const monacoRef = React8.useRef(null);
+  const viewZoneHandleRef = React8.useRef(null);
+  const lastPayloadRef = React8.useRef(null);
+  const [hapStream, setHapStream] = React8.useState(null);
+  const [breakpointStore, setBreakpointStore] = React8.useState(null);
+  const [onResume, setOnResume] = React8.useState(null);
+  const [editorReady, setEditorReady] = React8.useState(false);
+  React8.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -16687,7 +16687,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -16711,12 +16711,12 @@ function EditorView({
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -16728,9 +16728,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React6.useRef(onPlay);
+  const onPlayRef = React8.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React6.useRef(onStop);
+  const onStopRef = React8.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
@@ -16831,7 +16831,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React6__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React8__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -16978,34 +16978,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React6.useRef(null);
-  const [audioPayload, setAudioPayload] = React6.useState(null);
-  const [reloadTick, setReloadTick] = React6.useState(0);
-  const [, forceSourcesRerender] = React6.useState(0);
-  const catchUpNeededRef = React6.useRef(false);
-  const [liveOn, setLiveOn] = React6.useState(() => getVizLive(fileId));
-  React6.useEffect(() => {
+  const containerRef = React8.useRef(null);
+  const [audioPayload, setAudioPayload] = React8.useState(null);
+  const [reloadTick, setReloadTick] = React8.useState(0);
+  const [, forceSourcesRerender] = React8.useState(0);
+  const catchUpNeededRef = React8.useRef(false);
+  const [liveOn, setLiveOn] = React8.useState(() => getVizLive(fileId));
+  React8.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -17035,8 +17035,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React6.useRef(effectivelyHidden);
-  React6.useEffect(() => {
+  const prevEffectivelyHiddenRef = React8.useRef(effectivelyHidden);
+  React8.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -17044,8 +17044,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React6.useRef(liveOn);
-  React6.useEffect(() => {
+  const prevLiveOnRef = React8.useRef(liveOn);
+  React8.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -17053,7 +17053,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React6__namespace.default.useMemo(() => {
+  const providerNode = React8__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -17232,9 +17232,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React6.useRef(opts);
+  const optsRef = React8.useRef(opts);
   optsRef.current = opts;
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -17327,6 +17327,904 @@ function getPreviewProviderForLanguage(language) {
 }
 __name(getPreviewProviderForLanguage, "getPreviewProviderForLanguage");
 var previewProviderRegistry = byExtension;
+
+// src/workspace/history/historyGraph.ts
+var MAIN_BRANCH = "main";
+function seedHistory(projectId, files, order, id, createdAt, fileMeta = {}) {
+  const seed = {
+    id,
+    parent: null,
+    branch: MAIN_BRANCH,
+    kind: "seed",
+    createdAt,
+    label: "Initial",
+    files: { ...files },
+    order
+  };
+  const fileIndex = {};
+  for (const f of Object.keys(files)) fileIndex[f] = [id];
+  return {
+    projectId,
+    commits: { [id]: seed },
+    branches: { [MAIN_BRANCH]: { head: id, createdAt, createdFrom: null } },
+    currentBranch: MAIN_BRANCH,
+    fileIndex,
+    fileMeta: { ...fileMeta }
+  };
+}
+__name(seedHistory, "seedHistory");
+function getCommit(h, commitId) {
+  return h.commits[commitId];
+}
+__name(getCommit, "getCommit");
+function getCurrentBranch(h) {
+  return h.currentBranch;
+}
+__name(getCurrentBranch, "getCurrentBranch");
+function headOf(h, branch = h.currentBranch) {
+  return h.branches[branch]?.head ?? null;
+}
+__name(headOf, "headOf");
+function getFileContentAt(h, fileId, commitId) {
+  let walk2 = commitId;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
+      return c.files[fileId];
+    }
+    walk2 = c.parent;
+  }
+  return null;
+}
+__name(getFileContentAt, "getFileContentAt");
+function snapshotAt(h, commitId) {
+  const files = {};
+  let order;
+  let walk2 = commitId;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    for (const f of Object.keys(c.files)) {
+      if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
+    }
+    if (order === void 0 && c.order !== void 0) order = c.order;
+    walk2 = c.parent;
+  }
+  return { files, order };
+}
+__name(snapshotAt, "snapshotAt");
+function listCommits(h, branch = h.currentBranch) {
+  const head = h.branches[branch]?.head;
+  if (!head) return [];
+  const out = [];
+  let walk2 = head;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    if (!c.pinned) out.push(c);
+    walk2 = c.parent;
+  }
+  return out;
+}
+__name(listCommits, "listCommits");
+function listBranches(h) {
+  return Object.entries(h.branches).map(([name, ref]) => ({ name, ...ref }));
+}
+__name(listBranches, "listBranches");
+function fileHistory(h, fileId) {
+  const ids = h.fileIndex[fileId] ?? [];
+  const out = [];
+  for (let i = ids.length - 1; i >= 0; i--) {
+    const c = h.commits[ids[i]];
+    if (c && !c.pinned) out.push(c);
+  }
+  return out;
+}
+__name(fileHistory, "fileHistory");
+function nearestWriter(h, fromCommit, fileId) {
+  let walk2 = fromCommit;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk2;
+    walk2 = c.parent;
+  }
+  return null;
+}
+__name(nearestWriter, "nearestWriter");
+function filesAliveAt(h, commitId) {
+  const alive = /* @__PURE__ */ new Set();
+  let walk2 = commitId;
+  while (walk2 !== null) {
+    const c = h.commits[walk2];
+    if (!c) break;
+    for (const f of Object.keys(c.files)) alive.add(f);
+    walk2 = c.parent;
+  }
+  return alive;
+}
+__name(filesAliveAt, "filesAliveAt");
+function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
+  const changed = {};
+  for (const [f, content] of Object.entries(liveFiles)) {
+    const at = baseCommit ? getFileContentAt(h, f, baseCommit) : null;
+    if (at !== content) changed[f] = content;
+  }
+  return changed;
+}
+__name(changedFiles, "changedFiles");
+function seedCommitId(h) {
+  for (const c of Object.values(h.commits)) if (c.kind === "seed") return c.id;
+  return null;
+}
+__name(seedCommitId, "seedCommitId");
+function countManualCommits(h) {
+  let n = 0;
+  for (const c of Object.values(h.commits)) if (c.kind === "manual") n++;
+  return n;
+}
+__name(countManualCommits, "countManualCommits");
+function isFileModifiedAt(h, fileId, commitId, liveContent) {
+  return getFileContentAt(h, fileId, commitId) !== liveContent;
+}
+__name(isFileModifiedAt, "isFileModifiedAt");
+function commitOnto(h, changed, opts) {
+  if (Object.keys(changed).length === 0 && !opts.allowEmpty) return h;
+  const branch = h.currentBranch;
+  const parent = h.branches[branch]?.head ?? null;
+  const commit = {
+    id: opts.id,
+    parent,
+    branch,
+    kind: opts.kind,
+    createdAt: opts.createdAt,
+    ...opts.label !== void 0 ? { label: opts.label } : {},
+    files: { ...changed },
+    ...opts.order !== void 0 ? { order: opts.order } : {}
+  };
+  const fileIndex = {};
+  for (const [f, ids] of Object.entries(h.fileIndex)) fileIndex[f] = [...ids];
+  for (const f of Object.keys(changed)) {
+    (fileIndex[f] ?? (fileIndex[f] = [])).push(opts.id);
+  }
+  return {
+    ...h,
+    commits: { ...h.commits, [opts.id]: commit },
+    branches: {
+      ...h.branches,
+      [branch]: { ...h.branches[branch], head: opts.id }
+    },
+    fileIndex,
+    fileMeta: opts.fileMeta ? { ...h.fileMeta, ...opts.fileMeta } : h.fileMeta
+  };
+}
+__name(commitOnto, "commitOnto");
+function createBranch(h, name, fromCommit, createdAt) {
+  if (h.branches[name]) throw new Error(`branch '${name}' already exists`);
+  if (!h.commits[fromCommit]) throw new Error(`commit '${fromCommit}' not found`);
+  return {
+    ...h,
+    branches: {
+      ...h.branches,
+      [name]: { head: fromCommit, createdAt, createdFrom: fromCommit }
+    }
+  };
+}
+__name(createBranch, "createBranch");
+function switchBranch(h, name) {
+  if (!h.branches[name]) throw new Error(`branch '${name}' not found`);
+  if (name === h.currentBranch) return h;
+  return { ...h, currentBranch: name };
+}
+__name(switchBranch, "switchBranch");
+
+// src/workspace/history/historyRetention.ts
+var DAY_MS = 864e5;
+function prune(h, now2, opts = {}) {
+  const recentMs = opts.recentMs ?? DAY_MS;
+  const dailyMs = opts.dailyMs ?? 30 * DAY_MS;
+  const dayBucket = opts.dayBucketMs ?? DAY_MS;
+  const monthBucket = opts.monthBucketMs ?? 30 * DAY_MS;
+  const maxAutoCommits = opts.maxAutoCommits ?? 500;
+  const all = Object.values(h.commits);
+  const heads = new Set(Object.values(h.branches).map((b) => b.head));
+  const display = /* @__PURE__ */ new Set();
+  for (const c of all) {
+    if (c.kind !== "auto" || heads.has(c.id)) display.add(c.id);
+  }
+  const recentAutos = [];
+  const dailyBuckets = /* @__PURE__ */ new Map();
+  const monthlyBuckets = /* @__PURE__ */ new Map();
+  for (const c of all) {
+    if (c.kind !== "auto" || heads.has(c.id)) continue;
+    const age = now2 - c.createdAt;
+    if (age <= recentMs) {
+      recentAutos.push(c);
+    } else if (age <= dailyMs) {
+      const k = Math.floor(c.createdAt / dayBucket);
+      const cur = dailyBuckets.get(k);
+      if (!cur || c.createdAt > cur.createdAt) dailyBuckets.set(k, c);
+    } else {
+      const k = Math.floor(c.createdAt / monthBucket);
+      const cur = monthlyBuckets.get(k);
+      if (!cur || c.createdAt > cur.createdAt) monthlyBuckets.set(k, c);
+    }
+  }
+  for (const c of recentAutos) display.add(c.id);
+  for (const c of dailyBuckets.values()) display.add(c.id);
+  for (const c of monthlyBuckets.values()) display.add(c.id);
+  const displayAutos = [...recentAutos, ...dailyBuckets.values(), ...monthlyBuckets.values()].filter((c) => !heads.has(c.id)).sort((a, b) => b.createdAt - a.createdAt);
+  if (displayAutos.length > maxAutoCommits) {
+    for (const c of displayAutos.slice(maxAutoCommits)) display.delete(c.id);
+  }
+  const needed = /* @__PURE__ */ new Set();
+  for (const id of display) {
+    for (const f of filesAliveAt(h, id)) {
+      const w = nearestWriter(h, id, f);
+      if (w) needed.add(w);
+    }
+  }
+  const keep = /* @__PURE__ */ new Set([...display, ...needed]);
+  const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
+    let walk2 = start;
+    while (walk2 !== null && !keep.has(walk2)) walk2 = h.commits[walk2]?.parent ?? null;
+    return walk2;
+  }, "nearestKeptAncestor");
+  let mutated = keep.size !== all.length;
+  const commits = {};
+  for (const c of all) {
+    if (!keep.has(c.id)) continue;
+    const newParent = nearestKeptAncestor(c.parent);
+    const isPinned = !display.has(c.id);
+    if (newParent !== c.parent || isPinned !== !!c.pinned) mutated = true;
+    const next = {
+      ...c,
+      parent: newParent,
+      ...isPinned ? { pinned: true } : {}
+    };
+    if (!isPinned) delete next.pinned;
+    commits[c.id] = next;
+  }
+  if (!mutated) return h;
+  const fileIndex = {};
+  for (const [f, ids] of Object.entries(h.fileIndex)) {
+    const surviving = ids.filter((id) => keep.has(id));
+    if (surviving.length > 0) fileIndex[f] = surviving;
+  }
+  return { ...h, commits, fileIndex };
+}
+__name(prune, "prune");
+
+// src/workspace/history/significance.ts
+function trimmedDelta(a, b) {
+  let start = 0;
+  const min = Math.min(a.length, b.length);
+  while (start < min && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  return Math.max(endA - start, endB - start);
+}
+__name(trimmedDelta, "trimmedDelta");
+function diffMagnitude(prev, next) {
+  if (prev === next) return { lines: 0, chars: 0 };
+  const chars = trimmedDelta(Array.from(prev), Array.from(next));
+  const lines = trimmedDelta(prev.split("\n"), next.split("\n"));
+  return { lines, chars };
+}
+__name(diffMagnitude, "diffMagnitude");
+var DEFAULT_MIN_LINES = 5;
+var DEFAULT_MIN_CHARS = 200;
+function isSignificant(changes, opts = {}) {
+  const minLines = opts.minLines ?? DEFAULT_MIN_LINES;
+  const minChars = opts.minChars ?? DEFAULT_MIN_CHARS;
+  let lines = 0;
+  let chars = 0;
+  for (const { prev, next } of changes) {
+    const d = diffMagnitude(prev, next);
+    lines += d.lines;
+    chars += d.chars;
+  }
+  return lines >= minLines || chars >= minChars;
+}
+__name(isSignificant, "isSignificant");
+
+// src/workspace/history/historyWorkspace.ts
+function readWorkspaceFiles() {
+  const out = {};
+  for (const f of listWorkspaceFiles()) out[f.id] = f.content;
+  return out;
+}
+__name(readWorkspaceFiles, "readWorkspaceFiles");
+function readWorkspaceFileMeta() {
+  const out = {};
+  for (const f of listWorkspaceFiles()) {
+    out[f.id] = {
+      path: f.path,
+      language: f.language,
+      ...f.meta !== void 0 ? { meta: { ...f.meta } } : {}
+    };
+  }
+  return out;
+}
+__name(readWorkspaceFileMeta, "readWorkspaceFileMeta");
+function readWorkspaceOrder() {
+  const folders = /* @__PURE__ */ new Set(["/"]);
+  for (const f of listWorkspaceFiles()) {
+    const slash = f.path.lastIndexOf("/");
+    folders.add(slash <= 0 ? "/" : f.path.slice(0, slash));
+  }
+  const fileOrder = {};
+  const subfolderOrder = {};
+  for (const folder of folders) {
+    const fo = getFolderOrder(folder);
+    if (fo.length > 0) fileOrder[folder] = [...fo];
+    const so = getSubfolderOrder(folder);
+    if (so.length > 0) subfolderOrder[folder] = [...so];
+  }
+  return { fileOrder, subfolderOrder };
+}
+__name(readWorkspaceOrder, "readWorkspaceOrder");
+function applySnapshot(files, fileMeta, order) {
+  const current3 = listWorkspaceFiles();
+  const currentIds = new Set(current3.map((f) => f.id));
+  const wantIds = new Set(Object.keys(files));
+  for (const f of current3) {
+    if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
+  }
+  const recreatedMissing = [];
+  const skippedNoMeta = [];
+  for (const [id, content] of Object.entries(files)) {
+    if (currentIds.has(id)) {
+      setContent(id, content);
+    } else {
+      const m = fileMeta[id];
+      if (m) {
+        createWorkspaceFile(
+          id,
+          m.path,
+          content,
+          m.language,
+          m.meta ? { ...m.meta } : void 0
+        );
+        recreatedMissing.push(id);
+      } else {
+        skippedNoMeta.push(id);
+      }
+    }
+  }
+  if (order) {
+    for (const [folder, ids] of Object.entries(order.fileOrder)) {
+      setFolderOrder(folder, [...ids]);
+    }
+    for (const [parent, names] of Object.entries(order.subfolderOrder)) {
+      setSubfolderOrder(parent, [...names]);
+    }
+  }
+  return { recreatedMissing, skippedNoMeta };
+}
+__name(applySnapshot, "applySnapshot");
+
+// src/workspace/history/historyStore.ts
+var DB_NAME2 = "stave-snapshots";
+var DB_VERSION2 = 2;
+var HISTORY_STORE = "history";
+var LEGACY_STORE = "snapshots";
+function upgradeHistoryDb(db) {
+  if (!db.objectStoreNames.contains(LEGACY_STORE)) {
+    const legacy = db.createObjectStore(LEGACY_STORE, { keyPath: "id" });
+    legacy.createIndex("byProject", "projectId", { unique: false });
+  }
+  if (!db.objectStoreNames.contains(HISTORY_STORE)) {
+    db.createObjectStore(HISTORY_STORE, { keyPath: "projectId" });
+  }
+}
+__name(upgradeHistoryDb, "upgradeHistoryDb");
+function openDb2() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
+    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+__name(openDb2, "openDb");
+function wrap2(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+__name(wrap2, "wrap");
+async function loadHistory(projectId) {
+  const db = await openDb2();
+  const row = await wrap2(
+    db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
+  );
+  db.close();
+  return row ?? null;
+}
+__name(loadHistory, "loadHistory");
+async function saveHistory(h) {
+  const db = await openDb2();
+  await wrap2(
+    db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
+  );
+  db.close();
+}
+__name(saveHistory, "saveHistory");
+
+// src/workspace/history/historyService.ts
+var current2 = null;
+var newId = /* @__PURE__ */ __name(() => crypto.randomUUID(), "newId");
+var now = /* @__PURE__ */ __name(() => Date.now(), "now");
+var opLock = Promise.resolve();
+function withLock(fn) {
+  const run = opLock.then(fn, fn);
+  opLock = run.then(notifyIfChanged, notifyIfChanged);
+  return run;
+}
+__name(withLock, "withLock");
+var listeners6 = /* @__PURE__ */ new Set();
+var lastNotified = null;
+function notifyIfChanged() {
+  if (current2 === lastNotified) return;
+  lastNotified = current2;
+  for (const l of listeners6) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(notifyIfChanged, "notifyIfChanged");
+function subscribeToHistory(cb) {
+  listeners6.add(cb);
+  return () => listeners6.delete(cb);
+}
+__name(subscribeToHistory, "subscribeToHistory");
+function notifyAll() {
+  for (const l of listeners6) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(notifyAll, "notifyAll");
+var activeFileId = null;
+function setActiveHistoryFile(fileId) {
+  if (fileId === activeFileId) return;
+  activeFileId = fileId;
+  notifyAll();
+}
+__name(setActiveHistoryFile, "setActiveHistoryFile");
+function getActiveHistoryFile() {
+  return activeFileId;
+}
+__name(getActiveHistoryFile, "getActiveHistoryFile");
+var fileHistoryTarget = null;
+function setFileHistoryTarget(fileId) {
+  if (fileId === fileHistoryTarget) return;
+  fileHistoryTarget = fileId;
+  notifyAll();
+}
+__name(setFileHistoryTarget, "setFileHistoryTarget");
+function getFileHistoryTarget() {
+  return fileHistoryTarget;
+}
+__name(getFileHistoryTarget, "getFileHistoryTarget");
+function getCurrentHistory() {
+  return current2;
+}
+__name(getCurrentHistory, "getCurrentHistory");
+function initHistory(projectId) {
+  return withLock(async () => {
+    let h = await loadHistory(projectId);
+    if (!h) {
+      h = seedHistory(
+        projectId,
+        readWorkspaceFiles(),
+        readWorkspaceOrder(),
+        newId(),
+        now(),
+        readWorkspaceFileMeta()
+      );
+      await saveHistory(h);
+    }
+    current2 = h;
+    return h;
+  });
+}
+__name(initHistory, "initHistory");
+function resetHistoryState() {
+  current2 = null;
+  notifyIfChanged();
+}
+__name(resetHistoryState, "resetHistoryState");
+function commitWorkspace(kind, opts = {}) {
+  return withLock(() => _commit(kind, opts));
+}
+__name(commitWorkspace, "commitWorkspace");
+async function _commit(kind, opts = {}) {
+  if (!current2) return null;
+  const live = readWorkspaceFiles();
+  const changed = changedFiles(current2, live);
+  const changedKeys = Object.keys(changed);
+  if (changedKeys.length === 0 && !opts.allowEmpty) return null;
+  if (opts.gate) {
+    const head = headOf(current2);
+    const pairs = changedKeys.map((f) => ({
+      prev: head && getFileContentAt(current2, f, head) || "",
+      next: changed[f]
+    }));
+    if (!isSignificant(pairs)) return null;
+  }
+  const allMeta = readWorkspaceFileMeta();
+  const changedMeta = {};
+  for (const f of changedKeys) if (allMeta[f]) changedMeta[f] = allMeta[f];
+  const id = newId();
+  current2 = commitOnto(current2, changed, {
+    kind,
+    ...opts.label !== void 0 ? { label: opts.label } : {},
+    id,
+    createdAt: now(),
+    order: readWorkspaceOrder(),
+    fileMeta: changedMeta,
+    ...opts.allowEmpty ? { allowEmpty: true } : {}
+  });
+  if (kind === "auto") current2 = prune(current2, now());
+  await saveHistory(current2);
+  return id;
+}
+__name(_commit, "_commit");
+function restoreProject(commitId) {
+  return withLock(async () => {
+    if (!current2) return;
+    const snap = snapshotAt(current2, commitId);
+    applySnapshot(snap.files, current2.fileMeta, snap.order);
+    await _commit("auto", { gate: false });
+  });
+}
+__name(restoreProject, "restoreProject");
+function restoreFileToCommit(fileId, commitId) {
+  return withLock(() => _restoreFileToCommit(fileId, commitId));
+}
+__name(restoreFileToCommit, "restoreFileToCommit");
+async function _restoreFileToCommit(fileId, commitId) {
+  if (!current2) return null;
+  const content = getFileContentAt(current2, fileId, commitId);
+  const meta = current2.fileMeta[fileId];
+  const live = readWorkspaceFiles();
+  if (content === null) {
+    delete live[fileId];
+  } else {
+    live[fileId] = content;
+  }
+  applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
+  return _commit("auto", { gate: false });
+}
+__name(_restoreFileToCommit, "_restoreFileToCommit");
+function revertFileToSeed(fileId) {
+  return withLock(async () => {
+    if (!current2) return null;
+    const seed = seedCommitId(current2);
+    if (!seed) return null;
+    return _restoreFileToCommit(fileId, seed);
+  });
+}
+__name(revertFileToSeed, "revertFileToSeed");
+function isFileModifiedSinceHead(fileId) {
+  if (!current2) return false;
+  const head = headOf(current2);
+  if (!head) return false;
+  const live = readWorkspaceFiles();
+  const liveContent = Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
+  return isFileModifiedAt(current2, fileId, head, liveContent);
+}
+__name(isFileModifiedSinceHead, "isFileModifiedSinceHead");
+function getLiveFileContent(fileId) {
+  const live = readWorkspaceFiles();
+  return Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
+}
+__name(getLiveFileContent, "getLiveFileContent");
+function getModifiedFileIdsSinceHead() {
+  if (!current2) return /* @__PURE__ */ new Set();
+  const head = headOf(current2);
+  if (!head) return /* @__PURE__ */ new Set();
+  return new Set(Object.keys(changedFiles(current2, readWorkspaceFiles(), head)));
+}
+__name(getModifiedFileIdsSinceHead, "getModifiedFileIdsSinceHead");
+function createBranchAt(name, fromCommit) {
+  return withLock(async () => {
+    if (!current2) return;
+    current2 = createBranch(current2, name, fromCommit, now());
+    await saveHistory(current2);
+  });
+}
+__name(createBranchAt, "createBranchAt");
+function switchToBranch(name) {
+  return withLock(async () => {
+    if (!current2) return;
+    current2 = switchBranch(current2, name);
+    const head = headOf(current2);
+    if (head) {
+      const snap = snapshotAt(current2, head);
+      applySnapshot(snap.files, current2.fileMeta, snap.order);
+    }
+    await saveHistory(current2);
+  });
+}
+__name(switchToBranch, "switchToBranch");
+var DiffEditor = MonacoEditorRaw.DiffEditor;
+var fg = "var(--foreground, #e6e6ea)";
+var border = "var(--border, #2a2a32)";
+var accent = "var(--accent, #6ea8fe)";
+var bg = "var(--background, #16161a)";
+function shortId(id) {
+  return id.slice(0, 7);
+}
+__name(shortId, "shortId");
+function HistoryDiffOverlay({
+  history: history2,
+  commit,
+  initialFileId,
+  onClose
+}) {
+  const changedIds = React8__namespace.useMemo(() => Object.keys(commit.files), [commit]);
+  const [mode, setMode] = React8__namespace.useState("previous");
+  const [fileId, setFileId] = React8__namespace.useState(
+    () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
+  );
+  React8__namespace.useEffect(() => {
+    if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
+  }, [changedIds, fileId]);
+  React8__namespace.useEffect(() => {
+    if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
+  }, [initialFileId, changedIds]);
+  const diffEditorRef = React8__namespace.useRef(null);
+  const handleMount = React8__namespace.useCallback(
+    (editor, monaco) => {
+      diffEditorRef.current = editor;
+      defineStrudelMonacoTheme(monaco);
+      registerStrudelLanguage(monaco);
+      ensureWorkspaceLanguages(monaco);
+      monaco.editor.setTheme("stave-dark");
+    },
+    []
+  );
+  React8__namespace.useEffect(() => {
+    return () => {
+      try {
+        diffEditorRef.current?.setModel(null);
+      } catch {
+      }
+    };
+  }, []);
+  const wrap5 = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    background: bg,
+    zIndex: 5
+  };
+  const headerRow = {
+    display: "flex",
+    flexWrap: "wrap",
+    // narrow side panel — controls wrap instead of overflowing
+    gap: 6,
+    alignItems: "center",
+    padding: "8px 12px",
+    borderBottom: `1px solid ${border}`,
+    fontSize: 12,
+    color: fg,
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+  };
+  const ctl = {
+    background: "transparent",
+    color: fg,
+    border: `1px solid ${border}`,
+    borderRadius: 4,
+    padding: "2px 6px",
+    fontSize: 11,
+    cursor: "pointer"
+  };
+  if (changedIds.length === 0) {
+    return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap5, "data-history-diff-overlay": true, children: [
+      /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
+        /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { flex: 1 }, children: [
+          "Diff \xB7 ",
+          shortId(commit.id)
+        ] }),
+        /* @__PURE__ */ jsxRuntime.jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
+      ] }),
+      /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, color: "var(--foreground-muted, #a0a0aa)", fontSize: 12 }, children: "This commit changed no files (label-only checkpoint)." })
+    ] });
+  }
+  const lang = toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel");
+  const parent = commit.parent;
+  const original = mode === "previous" ? parent ? getFileContentAt(history2, fileId, parent) : null : getFileContentAt(history2, fileId, commit.id);
+  const modified = mode === "current" ? getLiveFileContent(fileId) : getFileContentAt(history2, fileId, commit.id);
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap5, "data-history-diff-overlay": true, children: [
+    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
+      /* @__PURE__ */ jsxRuntime.jsx(
+        "select",
+        {
+          "aria-label": "diff file",
+          value: fileId,
+          onChange: (e) => setFileId(e.target.value),
+          style: ctl,
+          "data-history-diff-file": true,
+          children: changedIds.map((id) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
+        }
+      ),
+      /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", border: `1px solid ${border}`, borderRadius: 4, overflow: "hidden" }, children: ["previous", "current"].map((m) => /* @__PURE__ */ jsxRuntime.jsx(
+        "button",
+        {
+          onClick: () => setMode(m),
+          "data-history-diff-mode": m,
+          style: {
+            ...ctl,
+            border: "none",
+            borderRadius: 0,
+            background: mode === m ? accent : "transparent",
+            color: mode === m ? "#0b0b0f" : fg
+          },
+          children: m === "previous" ? "vs previous" : "vs current"
+        },
+        m
+      )) }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, color: "var(--foreground-muted, #a0a0aa)" }, children: mode === "previous" ? `${parent ? shortId(parent) : "\u2205"} \u2192 ${shortId(commit.id)}` : `${shortId(commit.id)} \u2192 current` }),
+      /* @__PURE__ */ jsxRuntime.jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
+    ] }),
+    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1, minHeight: 0 }, children: /* @__PURE__ */ jsxRuntime.jsx(
+      DiffEditor,
+      {
+        height: "100%",
+        language: lang,
+        original: original ?? "",
+        modified: modified ?? "",
+        onMount: handleMount,
+        options: {
+          readOnly: true,
+          // Hosted full-width in the main editor area now (#210) — there's
+          // room for a proper side-by-side diff.
+          renderSideBySide: true,
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 12,
+          scrollBeyondLastLine: false,
+          renderOverviewRuler: false
+        }
+      }
+    ) })
+  ] });
+}
+__name(HistoryDiffOverlay, "HistoryDiffOverlay");
+var Editor = MonacoEditorRaw__default.default;
+var fg2 = "var(--foreground, #e6e6ea)";
+var muted = "var(--foreground-muted, #a0a0aa)";
+var border2 = "var(--border, #2a2a32)";
+var accent2 = "var(--accent, #6ea8fe)";
+var bg2 = "var(--background, #16161a)";
+function shortId2(id) {
+  return id.slice(0, 7);
+}
+__name(shortId2, "shortId");
+function HistoryViewOverlay({
+  history: history2,
+  commit,
+  initialFileId,
+  onClose
+}) {
+  const snapshot = React8__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React8__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React8__namespace.useState(
+    () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
+  );
+  React8__namespace.useEffect(() => {
+    if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
+  }, [fileIds, fileId]);
+  React8__namespace.useEffect(() => {
+    if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
+  }, [initialFileId, fileIds]);
+  const handleMount = React8__namespace.useCallback(
+    (_editor, monaco) => {
+      defineStrudelMonacoTheme(monaco);
+      registerStrudelLanguage(monaco);
+      ensureWorkspaceLanguages(monaco);
+      monaco.editor.setTheme("stave-dark");
+    },
+    []
+  );
+  const wrap5 = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    background: bg2,
+    zIndex: 5
+  };
+  const headerRow = {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    padding: "8px 12px",
+    borderBottom: `1px solid ${border2}`,
+    fontSize: 12,
+    color: fg2,
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+  };
+  const ctl = {
+    background: "transparent",
+    color: fg2,
+    border: `1px solid ${border2}`,
+    borderRadius: 4,
+    padding: "2px 6px",
+    fontSize: 11,
+    cursor: "pointer"
+  };
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap5, "data-history-view-overlay": commit.id, children: [
+    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
+      /* @__PURE__ */ jsxRuntime.jsxs(
+        "span",
+        {
+          style: {
+            fontSize: 10,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            color: accent2,
+            border: `1px solid ${accent2}`,
+            borderRadius: 10,
+            padding: "1px 7px"
+          },
+          children: [
+            "\u23F1 Viewing ",
+            shortId2(commit.id)
+          ]
+        }
+      ),
+      fileIds.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+        "select",
+        {
+          "aria-label": "view file",
+          value: fileId,
+          onChange: (e) => setFileId(e.target.value),
+          style: ctl,
+          "data-history-view-file": true,
+          children: fileIds.map((id) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
+        }
+      ) : /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted }, children: "no files at this commit" }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, color: muted }, children: "read-only snapshot" }),
+      /* @__PURE__ */ jsxRuntime.jsx("button", { style: { ...ctl, borderColor: accent2 }, onClick: onClose, "data-history-view-exit": true, children: "Exit" })
+    ] }),
+    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1, minHeight: 0 }, children: fileIds.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx(
+      Editor,
+      {
+        height: "100%",
+        language: toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel"),
+        value: snapshot.files[fileId] ?? "",
+        path: `history:${commit.id}:${fileId}`,
+        onMount: handleMount,
+        options: {
+          readOnly: true,
+          domReadOnly: true,
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 12,
+          scrollBeyondLastLine: false,
+          renderLineHighlight: "none"
+        }
+      }
+    ) : /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, color: muted, fontSize: 12 }, children: "This commit has no files to view." }) })
+  ] });
+}
+__name(HistoryViewOverlay, "HistoryViewOverlay");
 
 // src/workspace/groupLayout.ts
 function findGroupCoords(layout, groupId) {
@@ -17988,9 +18886,9 @@ __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners6 = /* @__PURE__ */ new Set();
+var listeners7 = /* @__PURE__ */ new Set();
 function notify2() {
-  for (const l of listeners6) {
+  for (const l of listeners7) {
     try {
       l();
     } catch {
@@ -18024,9 +18922,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners6.add(cb);
+  listeners7.add(cb);
   return () => {
-    listeners6.delete(cb);
+    listeners7.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -18120,7 +19018,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React6__namespace.createElement(
+  return React8__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -18138,7 +19036,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React6__namespace.createElement(EmptyTimelineStub)
+  content: React8__namespace.createElement(EmptyTimelineStub)
 });
 var HEADER_HEIGHT = 28;
 var RESIZE_HANDLE_HEIGHT = 4;
@@ -18148,24 +19046,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React6__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React6__namespace.useState(false);
-  const startYRef = React6__namespace.useRef(0);
-  const startValueRef = React6__namespace.useRef(opts.initial);
-  const pointerIdRef = React6__namespace.useRef(null);
-  const draggingRef = React6__namespace.useRef(false);
-  const minRef = React6__namespace.useRef(opts.min);
-  const maxRef = React6__namespace.useRef(opts.max);
-  React6__namespace.useEffect(() => {
+  const [value, setValueState] = React8__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React8__namespace.useState(false);
+  const startYRef = React8__namespace.useRef(0);
+  const startValueRef = React8__namespace.useRef(opts.initial);
+  const pointerIdRef = React8__namespace.useRef(null);
+  const draggingRef = React8__namespace.useRef(false);
+  const minRef = React8__namespace.useRef(opts.min);
+  const maxRef = React8__namespace.useRef(opts.max);
+  React8__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React6__namespace.useCallback((v) => {
+  const setValue = React8__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React6__namespace.useCallback(
+  const onPointerDown = React8__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -18180,7 +19078,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React6__namespace.useCallback(
+  const endDrag = React8__namespace.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -18195,7 +19093,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React6__namespace.useCallback(
+  const onPointerMove = React8__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -18211,13 +19109,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React6__namespace.useCallback(
+  const onPointerUp = React8__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React6__namespace.useCallback(
+  const onPointerCancel = React8__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -18245,15 +19143,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React6__namespace.useState(
+  const [tabs2, setTabs] = React8__namespace.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React6__namespace.useState(readPersistedOpen);
-  const [height, setHeight] = React6__namespace.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React6__namespace.useState(
+  const [open, setOpen] = React8__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React8__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React8__namespace.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React6__namespace.useEffect(() => {
+  React8__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -18263,10 +19161,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React6__namespace.useEffect(() => {
+  React8__namespace.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React6__namespace.useEffect(() => {
+  React8__namespace.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -18278,24 +19176,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React6__namespace.useEffect(() => {
+  React8__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React6__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React6__namespace.useCallback(
+  const tabButtonRefs = React8__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React8__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React6__namespace.useCallback((id) => {
+  const focusTab = React8__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React6__namespace.useCallback(
+  const onTabsKeyDown = React8__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -18541,16 +19439,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React6.useRef(null);
-  const activeTabElRef = React6.useRef(null);
-  const menuBtnRef = React6.useRef(null);
-  const menuRef = React6.useRef(null);
-  const [overflow, setOverflow] = React6.useState({
+  const scrollRef = React8.useRef(null);
+  const activeTabElRef = React8.useRef(null);
+  const menuBtnRef = React8.useRef(null);
+  const menuRef = React8.useRef(null);
+  const [overflow, setOverflow] = React8.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React6.useState(false);
-  React6.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React8.useState(false);
+  React8.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -18569,12 +19467,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -18634,7 +19532,7 @@ function GroupTabBar({
                   },
                   children: group.tabs.map((tab) => {
                     const isActive = tab.id === group.activeTabId;
-                    const isPreview = tab.kind === "editor" && tab.preview === true;
+                    const isPreview = (tab.kind === "editor" || tab.kind === "history") && tab.preview === true;
                     return /* @__PURE__ */ jsxRuntime.jsxs(
                       "div",
                       {
@@ -18672,8 +19570,23 @@ function GroupTabBar({
                           flexShrink: 0
                         },
                         children: [
-                          /* @__PURE__ */ jsxRuntime.jsxs("span", { children: [
-                            tab.kind === "preview" ? "\u{1F3A5} " : "",
+                          /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { display: "inline-flex", alignItems: "center" }, children: [
+                            tab.kind === "history" ? /* @__PURE__ */ jsxRuntime.jsx(
+                              "span",
+                              {
+                                style: {
+                                  fontSize: 8,
+                                  fontStyle: "normal",
+                                  opacity: 0.65,
+                                  letterSpacing: 0.5,
+                                  marginRight: 4,
+                                  border: "1px solid currentColor",
+                                  borderRadius: 3,
+                                  padding: "0 2px"
+                                },
+                                children: tab.mode === "view" ? "VIEW" : "DIFF"
+                              }
+                            ) : tab.kind === "preview" ? "\u{1F3A5} " : null,
                             tabFileName(tab)
                           ] }),
                           /* @__PURE__ */ jsxRuntime.jsx(
@@ -18871,7 +19784,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -18891,73 +19804,73 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
   onEditViz,
   onCropViz
 }, forwardedRef) {
-  const shellRootRef = React6.useRef(null);
-  const initialState = React6.useRef(
+  const shellRootRef = React8.useRef(null);
+  const initialState = React8.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React6.useState(
+  const [groups, setGroups] = React8.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React6.useState(
+  const [layout, setLayout] = React8.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React6.useState(
+  const [activeGroupId, setActiveGroupId] = React8.useState(
     () => initialState.current.activeGroupId
   );
-  const didMountRef = React6.useRef(false);
-  React6.useEffect(() => {
+  const didMountRef = React8.useRef(false);
+  React8.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React6.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React6.useState(
+  const [dragOverTarget, setDragOverTarget] = React8.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React8.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React6.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React6.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React8.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React8.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React6.useState(
+  const [backdropQuality, setBackdropQualityState] = React8.useState(
     () => getBackdropQuality()
   );
-  React6.useEffect(
+  React8.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React6.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React8.useState(
     () => getBackdropOpacity()
   );
-  React6.useEffect(
+  React8.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React6.useMemo(() => {
+  const activeTab = React8.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React6.useRef(void 0);
-  React6.useEffect(() => {
+  const prevActiveTabRef = React8.useRef(void 0);
+  React8.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React6.useCallback(
+  const updateGroup = React8.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -18969,14 +19882,14 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleTabClick = React6.useCallback(
+  const handleTabClick = React8.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const handleTabClose = React6.useCallback(
+  const handleTabClose = React8.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -19041,7 +19954,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout, onTabClose]
   );
-  const handleSplit = React6.useCallback(
+  const handleSplit = React8.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -19053,7 +19966,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const findNeighborGroupId = React6.useCallback(
+  const findNeighborGroupId = React8.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -19062,7 +19975,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [layout]
   );
-  const handleCloseGroup = React6.useCallback(
+  const handleCloseGroup = React8.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -19089,7 +20002,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React6.useCallback(
+  const splitGroupWithTab = React8.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -19105,7 +20018,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const moveTabToNewQuadrant = React6.useCallback(
+  const moveTabToNewQuadrant = React8.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -19145,7 +20058,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React6.useCallback(
+  const moveTabToNewEdgeGroup = React8.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -19180,7 +20093,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups]
   );
-  const updateGroupBackground = React6.useCallback(
+  const updateGroupBackground = React8.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -19192,7 +20105,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, updateGroup, onBackgroundFileChange]
   );
-  const closeTabById = React6.useCallback(
+  const closeTabById = React8.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -19225,7 +20138,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React6.useCallback(
+  const findTabByFileId = React8.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -19238,14 +20151,14 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React6.useCallback(() => {
+  const findGroupWithAnyPreview = React8.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React6.useRef(null);
-  const shellActions = React6.useMemo(
+  const shellActionsRef = React8.useRef(null);
+  const shellActions = React8.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -19262,12 +20175,12 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React6.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React6.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React6.useCallback(() => {
+  const getActiveTab = React8.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React8.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React8.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React6.useCallback(
+  const getPreviewProviderForCommand = React8.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -19292,7 +20205,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React6.useCallback(
+  const handleEdgeDrop = React8.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -19309,7 +20222,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React6.useCallback(
+  const handleEdgeDragOver = React8.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -19318,12 +20231,12 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React6.useCallback(() => {
+  const handleEdgeDragLeave = React8.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React6.useRef(onSaveFile);
+  const onSaveFileRef = React8.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -19337,7 +20250,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React6.useCallback(
+  const handleTabDragStart = React8.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -19346,7 +20259,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -19359,7 +20272,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React6.useCallback(
+  const computeQuadrant = React8.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -19384,7 +20297,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleTabBarDrop = React6.useCallback(
+  const handleTabBarDrop = React8.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -19456,7 +20369,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleDropOnGroup = React6.useCallback(
+  const handleDropOnGroup = React8.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -19525,7 +20438,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [computeQuadrant, groups, moveTabToNewQuadrant]
   );
-  const renderTabContent = React6.useCallback(
+  const renderTabContent = React8.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -19696,6 +20609,46 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
             tab.id
           );
         }
+        case "history": {
+          const history2 = getCurrentHistory();
+          const commit = history2 ? getCommit(history2, tab.commitId) : void 0;
+          if (!history2 || !commit) {
+            return /* @__PURE__ */ jsxRuntime.jsx(
+              "div",
+              {
+                "data-testid": `history-tab-missing-${tab.id}`,
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                  color: "var(--foreground-muted)",
+                  fontSize: 12
+                },
+                children: "This commit is no longer available."
+              }
+            );
+          }
+          return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { position: "relative", height: "100%", width: "100%" }, children: tab.mode === "view" ? /* @__PURE__ */ jsxRuntime.jsx(
+            HistoryViewOverlay,
+            {
+              history: history2,
+              commit,
+              initialFileId: tab.fileId,
+              onClose: () => closeTabById(tab.id)
+            },
+            `${tab.id}:view`
+          ) : /* @__PURE__ */ jsxRuntime.jsx(
+            HistoryDiffOverlay,
+            {
+              history: history2,
+              commit,
+              initialFileId: tab.fileId,
+              onClose: () => closeTabById(tab.id)
+            },
+            `${tab.id}:diff`
+          ) });
+        }
         default:
           return assertNever(tab);
       }
@@ -19726,10 +20679,11 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
       pausedPreviews,
       findTabByFileId,
       findGroupWithAnyPreview,
-      editorExtrasForTab
+      editorExtrasForTab,
+      closeTabById
     ]
   );
-  const renderGroup = React6.useCallback(
+  const renderGroup = React8.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -19794,7 +20748,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
                     const g = prev.get(group.id);
                     if (!g) return prev;
                     const nextTabs = g.tabs.map(
-                      (t) => t.id === tabId && t.kind === "editor" ? { ...t, preview: false } : t
+                      (t) => t.id === tabId && (t.kind === "editor" || t.kind === "history") ? { ...t, preview: false } : t
                     );
                     const nx = new Map(prev);
                     nx.set(group.id, { ...g, tabs: nextTabs });
@@ -19937,11 +20891,11 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
       theme
     ]
   );
-  const totalGroupCount = React6.useMemo(
+  const totalGroupCount = React8.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React6.useMemo(() => {
+  const previewTabIds = React8.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -19952,7 +20906,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
     }
     return out;
   }, [groups]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -19975,7 +20929,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React6.useImperativeHandle(
+  React8.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -20053,6 +21007,48 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
           return next;
         });
       }, "openOrFocusFile"),
+      openHistoryTab: /* @__PURE__ */ __name((req) => {
+        const { mode, commitId, fileId } = req;
+        const existing = groups.get(activeGroupId);
+        const slot = existing?.tabs.find(
+          (t) => t.kind === "history" && t.preview === true
+        );
+        if (existing && slot) {
+          const slotId = slot.id;
+          setGroups((prev) => {
+            const g = prev.get(activeGroupId);
+            if (!g) return prev;
+            const nextTabs = g.tabs.map(
+              (t) => t.id === slotId && t.kind === "history" ? { ...t, mode, commitId, fileId, preview: true } : t
+            );
+            const nx = new Map(prev);
+            nx.set(activeGroupId, { ...g, tabs: nextTabs, activeTabId: slotId });
+            return nx;
+          });
+          setActiveGroupId(activeGroupId);
+          return;
+        }
+        const newTab = {
+          kind: "history",
+          id: `hist-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          fileId,
+          mode,
+          commitId,
+          preview: true
+        };
+        setGroups((prev) => {
+          const g = prev.get(activeGroupId);
+          if (!g) return prev;
+          const next = new Map(prev);
+          next.set(activeGroupId, {
+            ...g,
+            tabs: [...g.tabs, newTab],
+            activeTabId: newTab.id
+          });
+          return next;
+        });
+        setActiveGroupId(activeGroupId);
+      }, "openHistoryTab"),
       promoteTab: /* @__PURE__ */ __name((tabId) => {
         setGroups((prev) => {
           let changed = false;
@@ -20060,7 +21056,8 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
           for (const [gid, g] of prev) {
             const nextTabs = g.tabs.map((t) => {
               if (t.id !== tabId) return t;
-              if (t.kind !== "editor" || !t.preview) return t;
+              if (t.kind !== "editor" && t.kind !== "history" || !t.preview)
+                return t;
               changed = true;
               return { ...t, preview: false };
             });
@@ -20073,7 +21070,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
         const targets = [];
         for (const g of groups.values()) {
           for (const t of g.tabs) {
-            if ((t.kind === "editor" || t.kind === "preview") && t.fileId === fileId) {
+            if ((t.kind === "editor" || t.kind === "preview" || t.kind === "history") && t.fileId === fileId) {
               targets.push(t.id);
             }
           }
@@ -20208,7 +21205,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
             })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsxRuntime.jsx(React6__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsxRuntime.jsx(React8__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsxRuntime.jsx(
                 SplitPane,
@@ -20216,7 +21213,7 @@ var WorkspaceShell = React6.forwardRef(/* @__PURE__ */ __name(function Workspace
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsxRuntime.jsx(React6__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsxRuntime.jsx(React8__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -20822,14 +21819,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React6.useRef(null);
-  const [isPlaying, setIsPlaying] = React6.useState(false);
-  const [error, setError] = React6.useState(null);
-  const [bpm, setBpm] = React6.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React6.useState(false);
-  const fileIdRef = React6.useRef(FILE_ID);
-  const [seeded, setSeeded] = React6.useState(false);
-  React6.useEffect(() => {
+  const runtimeRef = React8.useRef(null);
+  const [isPlaying, setIsPlaying] = React8.useState(false);
+  const [error, setError] = React8.useState(null);
+  const [bpm, setBpm] = React8.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React8.useState(false);
+  const fileIdRef = React8.useRef(FILE_ID);
+  const [seeded, setSeeded] = React8.useState(false);
+  React8.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -20838,7 +21835,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -20874,41 +21871,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React6.useRef(false);
-  React6.useEffect(() => {
+  const autoPlayedRef = React8.useRef(false);
+  React8.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React6.useRef(onChange);
+  const onChangeRef = React8.useRef(onChange);
   onChangeRef.current = onChange;
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React6.useCallback(() => {
+  const handlePlay = React8.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React6.useCallback(() => {
+  const handleStop = React8.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React6.useCallback(() => {
+  const handleToggleAutoRefresh = React8.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React6.useCallback(
+  const chromeForTab = React8.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -20931,7 +21928,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React6.useCallback(
+  const editorExtrasForTab = React8.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -20979,10 +21976,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React6.useRef(null);
-  const [bpm, setBpm] = React6.useState(120);
-  const [soundNames, setSoundNames] = React6.useState([]);
-  const [isExporting, setIsExporting] = React6.useState(false);
+  const engineRef = React8.useRef(null);
+  const [bpm, setBpm] = React8.useState(120);
+  const [soundNames, setSoundNames] = React8.useState([]);
+  const [isExporting, setIsExporting] = React8.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -20991,19 +21988,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React6.useRef(controlledCode ?? defaultCode);
+  const codeRef = React8.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React6.useCallback((engine2) => {
+  const handlePostEvaluate = React8.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -21016,7 +22013,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React6.useCallback(async () => {
+  const handleExport = React8.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -21501,7 +22498,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React6.useRef(null);
+  const rendererRef = React8.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -21515,7 +22512,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -21538,7 +22535,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React6.useRef(null);
+  const containerRef = React8.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -21696,9 +22693,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React6.useState(false);
-  const ref = React6.useRef(null);
-  React6.useEffect(() => {
+  const [open, setOpen] = React8.useState(false);
+  const ref = React8.useRef(null);
+  React8.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -21944,12 +22941,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React6.useRef(null);
-  const [initialTabs, setInitialTabs] = React6.useState(null);
-  React6.useEffect(() => {
+  const containerRef = React8.useRef(null);
+  const [initialTabs, setInitialTabs] = React8.useState(null);
+  React8.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -21969,7 +22966,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React6.useCallback(
+  const handleSaveFile = React8.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -21983,7 +22980,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React6.useCallback(
+  const previewProviderFor = React8.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -22065,7 +23062,7 @@ function compilePreset(preset) {
 __name(compilePreset, "compilePreset");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe3 = React6.useCallback(
+  const subscribe3 = React8.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -22073,12 +23070,12 @@ function useTrackMeta(fileId, trackId) {
     },
     [fileId]
   );
-  const getSnapshot = React6.useCallback(() => {
+  const getSnapshot = React8.useCallback(() => {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = React6.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const set = React6.useCallback(
+  const meta = React8.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const set = React8.useCallback(
     (partial) => {
       if (!fileId) return;
       setTrackMeta(fileId, trackId, partial);
@@ -22088,57 +23085,6 @@ function useTrackMeta(fileId, trackId) {
   return { meta, set };
 }
 __name(useTrackMeta, "useTrackMeta");
-
-// src/workspace/history/historyStore.ts
-var DB_NAME2 = "stave-snapshots";
-var DB_VERSION2 = 2;
-var HISTORY_STORE = "history";
-var LEGACY_STORE = "snapshots";
-function upgradeHistoryDb(db) {
-  if (!db.objectStoreNames.contains(LEGACY_STORE)) {
-    const legacy = db.createObjectStore(LEGACY_STORE, { keyPath: "id" });
-    legacy.createIndex("byProject", "projectId", { unique: false });
-  }
-  if (!db.objectStoreNames.contains(HISTORY_STORE)) {
-    db.createObjectStore(HISTORY_STORE, { keyPath: "projectId" });
-  }
-}
-__name(upgradeHistoryDb, "upgradeHistoryDb");
-function openDb2() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME2, DB_VERSION2);
-    req.onupgradeneeded = () => upgradeHistoryDb(req.result);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(openDb2, "openDb");
-function wrap2(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap2, "wrap");
-async function loadHistory(projectId) {
-  const db = await openDb2();
-  const row = await wrap2(
-    db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
-  );
-  db.close();
-  return row ?? null;
-}
-__name(loadHistory, "loadHistory");
-async function saveHistory(h) {
-  const db = await openDb2();
-  await wrap2(
-    db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
-  );
-  db.close();
-}
-__name(saveHistory, "saveHistory");
-
-// src/workspace/snapshotStore.ts
 var DB_NAME3 = "stave-snapshots";
 var STORE_NAME2 = "snapshots";
 var AUTO_SNAPSHOT_PREFIX = "Auto \u2014 ";
@@ -22254,590 +23200,6 @@ async function restoreSnapshot(id) {
 }
 __name(restoreSnapshot, "restoreSnapshot");
 
-// src/workspace/history/historyGraph.ts
-var MAIN_BRANCH = "main";
-function seedHistory(projectId, files, order, id, createdAt, fileMeta = {}) {
-  const seed = {
-    id,
-    parent: null,
-    branch: MAIN_BRANCH,
-    kind: "seed",
-    createdAt,
-    label: "Initial",
-    files: { ...files },
-    order
-  };
-  const fileIndex = {};
-  for (const f of Object.keys(files)) fileIndex[f] = [id];
-  return {
-    projectId,
-    commits: { [id]: seed },
-    branches: { [MAIN_BRANCH]: { head: id, createdAt, createdFrom: null } },
-    currentBranch: MAIN_BRANCH,
-    fileIndex,
-    fileMeta: { ...fileMeta }
-  };
-}
-__name(seedHistory, "seedHistory");
-function getCommit(h, commitId) {
-  return h.commits[commitId];
-}
-__name(getCommit, "getCommit");
-function getCurrentBranch(h) {
-  return h.currentBranch;
-}
-__name(getCurrentBranch, "getCurrentBranch");
-function headOf(h, branch = h.currentBranch) {
-  return h.branches[branch]?.head ?? null;
-}
-__name(headOf, "headOf");
-function getFileContentAt(h, fileId, commitId) {
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
-      return c.files[fileId];
-    }
-    walk2 = c.parent;
-  }
-  return null;
-}
-__name(getFileContentAt, "getFileContentAt");
-function snapshotAt(h, commitId) {
-  const files = {};
-  let order;
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    for (const f of Object.keys(c.files)) {
-      if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
-    }
-    if (order === void 0 && c.order !== void 0) order = c.order;
-    walk2 = c.parent;
-  }
-  return { files, order };
-}
-__name(snapshotAt, "snapshotAt");
-function listCommits(h, branch = h.currentBranch) {
-  const head = h.branches[branch]?.head;
-  if (!head) return [];
-  const out = [];
-  let walk2 = head;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    if (!c.pinned) out.push(c);
-    walk2 = c.parent;
-  }
-  return out;
-}
-__name(listCommits, "listCommits");
-function listBranches(h) {
-  return Object.entries(h.branches).map(([name, ref]) => ({ name, ...ref }));
-}
-__name(listBranches, "listBranches");
-function fileHistory(h, fileId) {
-  const ids = h.fileIndex[fileId] ?? [];
-  const out = [];
-  for (let i = ids.length - 1; i >= 0; i--) {
-    const c = h.commits[ids[i]];
-    if (c && !c.pinned) out.push(c);
-  }
-  return out;
-}
-__name(fileHistory, "fileHistory");
-function nearestWriter(h, fromCommit, fileId) {
-  let walk2 = fromCommit;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk2;
-    walk2 = c.parent;
-  }
-  return null;
-}
-__name(nearestWriter, "nearestWriter");
-function filesAliveAt(h, commitId) {
-  const alive = /* @__PURE__ */ new Set();
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
-    if (!c) break;
-    for (const f of Object.keys(c.files)) alive.add(f);
-    walk2 = c.parent;
-  }
-  return alive;
-}
-__name(filesAliveAt, "filesAliveAt");
-function changedFiles(h, liveFiles, baseCommit = headOf(h)) {
-  const changed = {};
-  for (const [f, content] of Object.entries(liveFiles)) {
-    const at = baseCommit ? getFileContentAt(h, f, baseCommit) : null;
-    if (at !== content) changed[f] = content;
-  }
-  return changed;
-}
-__name(changedFiles, "changedFiles");
-function seedCommitId(h) {
-  for (const c of Object.values(h.commits)) if (c.kind === "seed") return c.id;
-  return null;
-}
-__name(seedCommitId, "seedCommitId");
-function countManualCommits(h) {
-  let n = 0;
-  for (const c of Object.values(h.commits)) if (c.kind === "manual") n++;
-  return n;
-}
-__name(countManualCommits, "countManualCommits");
-function isFileModifiedAt(h, fileId, commitId, liveContent) {
-  return getFileContentAt(h, fileId, commitId) !== liveContent;
-}
-__name(isFileModifiedAt, "isFileModifiedAt");
-function commitOnto(h, changed, opts) {
-  if (Object.keys(changed).length === 0 && !opts.allowEmpty) return h;
-  const branch = h.currentBranch;
-  const parent = h.branches[branch]?.head ?? null;
-  const commit = {
-    id: opts.id,
-    parent,
-    branch,
-    kind: opts.kind,
-    createdAt: opts.createdAt,
-    ...opts.label !== void 0 ? { label: opts.label } : {},
-    files: { ...changed },
-    ...opts.order !== void 0 ? { order: opts.order } : {}
-  };
-  const fileIndex = {};
-  for (const [f, ids] of Object.entries(h.fileIndex)) fileIndex[f] = [...ids];
-  for (const f of Object.keys(changed)) {
-    (fileIndex[f] ?? (fileIndex[f] = [])).push(opts.id);
-  }
-  return {
-    ...h,
-    commits: { ...h.commits, [opts.id]: commit },
-    branches: {
-      ...h.branches,
-      [branch]: { ...h.branches[branch], head: opts.id }
-    },
-    fileIndex,
-    fileMeta: opts.fileMeta ? { ...h.fileMeta, ...opts.fileMeta } : h.fileMeta
-  };
-}
-__name(commitOnto, "commitOnto");
-function createBranch(h, name, fromCommit, createdAt) {
-  if (h.branches[name]) throw new Error(`branch '${name}' already exists`);
-  if (!h.commits[fromCommit]) throw new Error(`commit '${fromCommit}' not found`);
-  return {
-    ...h,
-    branches: {
-      ...h.branches,
-      [name]: { head: fromCommit, createdAt, createdFrom: fromCommit }
-    }
-  };
-}
-__name(createBranch, "createBranch");
-function switchBranch(h, name) {
-  if (!h.branches[name]) throw new Error(`branch '${name}' not found`);
-  if (name === h.currentBranch) return h;
-  return { ...h, currentBranch: name };
-}
-__name(switchBranch, "switchBranch");
-
-// src/workspace/history/historyRetention.ts
-var DAY_MS = 864e5;
-function prune(h, now2, opts = {}) {
-  const recentMs = opts.recentMs ?? DAY_MS;
-  const dailyMs = opts.dailyMs ?? 30 * DAY_MS;
-  const dayBucket = opts.dayBucketMs ?? DAY_MS;
-  const monthBucket = opts.monthBucketMs ?? 30 * DAY_MS;
-  const maxAutoCommits = opts.maxAutoCommits ?? 500;
-  const all = Object.values(h.commits);
-  const heads = new Set(Object.values(h.branches).map((b) => b.head));
-  const display = /* @__PURE__ */ new Set();
-  for (const c of all) {
-    if (c.kind !== "auto" || heads.has(c.id)) display.add(c.id);
-  }
-  const recentAutos = [];
-  const dailyBuckets = /* @__PURE__ */ new Map();
-  const monthlyBuckets = /* @__PURE__ */ new Map();
-  for (const c of all) {
-    if (c.kind !== "auto" || heads.has(c.id)) continue;
-    const age = now2 - c.createdAt;
-    if (age <= recentMs) {
-      recentAutos.push(c);
-    } else if (age <= dailyMs) {
-      const k = Math.floor(c.createdAt / dayBucket);
-      const cur = dailyBuckets.get(k);
-      if (!cur || c.createdAt > cur.createdAt) dailyBuckets.set(k, c);
-    } else {
-      const k = Math.floor(c.createdAt / monthBucket);
-      const cur = monthlyBuckets.get(k);
-      if (!cur || c.createdAt > cur.createdAt) monthlyBuckets.set(k, c);
-    }
-  }
-  for (const c of recentAutos) display.add(c.id);
-  for (const c of dailyBuckets.values()) display.add(c.id);
-  for (const c of monthlyBuckets.values()) display.add(c.id);
-  const displayAutos = [...recentAutos, ...dailyBuckets.values(), ...monthlyBuckets.values()].filter((c) => !heads.has(c.id)).sort((a, b) => b.createdAt - a.createdAt);
-  if (displayAutos.length > maxAutoCommits) {
-    for (const c of displayAutos.slice(maxAutoCommits)) display.delete(c.id);
-  }
-  const needed = /* @__PURE__ */ new Set();
-  for (const id of display) {
-    for (const f of filesAliveAt(h, id)) {
-      const w = nearestWriter(h, id, f);
-      if (w) needed.add(w);
-    }
-  }
-  const keep = /* @__PURE__ */ new Set([...display, ...needed]);
-  const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
-    let walk2 = start;
-    while (walk2 !== null && !keep.has(walk2)) walk2 = h.commits[walk2]?.parent ?? null;
-    return walk2;
-  }, "nearestKeptAncestor");
-  let mutated = keep.size !== all.length;
-  const commits = {};
-  for (const c of all) {
-    if (!keep.has(c.id)) continue;
-    const newParent = nearestKeptAncestor(c.parent);
-    const isPinned = !display.has(c.id);
-    if (newParent !== c.parent || isPinned !== !!c.pinned) mutated = true;
-    const next = {
-      ...c,
-      parent: newParent,
-      ...isPinned ? { pinned: true } : {}
-    };
-    if (!isPinned) delete next.pinned;
-    commits[c.id] = next;
-  }
-  if (!mutated) return h;
-  const fileIndex = {};
-  for (const [f, ids] of Object.entries(h.fileIndex)) {
-    const surviving = ids.filter((id) => keep.has(id));
-    if (surviving.length > 0) fileIndex[f] = surviving;
-  }
-  return { ...h, commits, fileIndex };
-}
-__name(prune, "prune");
-
-// src/workspace/history/significance.ts
-function trimmedDelta(a, b) {
-  let start = 0;
-  const min = Math.min(a.length, b.length);
-  while (start < min && a[start] === b[start]) start++;
-  let endA = a.length;
-  let endB = b.length;
-  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
-    endA--;
-    endB--;
-  }
-  return Math.max(endA - start, endB - start);
-}
-__name(trimmedDelta, "trimmedDelta");
-function diffMagnitude(prev, next) {
-  if (prev === next) return { lines: 0, chars: 0 };
-  const chars = trimmedDelta(Array.from(prev), Array.from(next));
-  const lines = trimmedDelta(prev.split("\n"), next.split("\n"));
-  return { lines, chars };
-}
-__name(diffMagnitude, "diffMagnitude");
-var DEFAULT_MIN_LINES = 5;
-var DEFAULT_MIN_CHARS = 200;
-function isSignificant(changes, opts = {}) {
-  const minLines = opts.minLines ?? DEFAULT_MIN_LINES;
-  const minChars = opts.minChars ?? DEFAULT_MIN_CHARS;
-  let lines = 0;
-  let chars = 0;
-  for (const { prev, next } of changes) {
-    const d = diffMagnitude(prev, next);
-    lines += d.lines;
-    chars += d.chars;
-  }
-  return lines >= minLines || chars >= minChars;
-}
-__name(isSignificant, "isSignificant");
-
-// src/workspace/history/historyWorkspace.ts
-function readWorkspaceFiles() {
-  const out = {};
-  for (const f of listWorkspaceFiles()) out[f.id] = f.content;
-  return out;
-}
-__name(readWorkspaceFiles, "readWorkspaceFiles");
-function readWorkspaceFileMeta() {
-  const out = {};
-  for (const f of listWorkspaceFiles()) {
-    out[f.id] = {
-      path: f.path,
-      language: f.language,
-      ...f.meta !== void 0 ? { meta: { ...f.meta } } : {}
-    };
-  }
-  return out;
-}
-__name(readWorkspaceFileMeta, "readWorkspaceFileMeta");
-function readWorkspaceOrder() {
-  const folders = /* @__PURE__ */ new Set(["/"]);
-  for (const f of listWorkspaceFiles()) {
-    const slash = f.path.lastIndexOf("/");
-    folders.add(slash <= 0 ? "/" : f.path.slice(0, slash));
-  }
-  const fileOrder = {};
-  const subfolderOrder = {};
-  for (const folder of folders) {
-    const fo = getFolderOrder(folder);
-    if (fo.length > 0) fileOrder[folder] = [...fo];
-    const so = getSubfolderOrder(folder);
-    if (so.length > 0) subfolderOrder[folder] = [...so];
-  }
-  return { fileOrder, subfolderOrder };
-}
-__name(readWorkspaceOrder, "readWorkspaceOrder");
-function applySnapshot(files, fileMeta, order) {
-  const current3 = listWorkspaceFiles();
-  const currentIds = new Set(current3.map((f) => f.id));
-  const wantIds = new Set(Object.keys(files));
-  for (const f of current3) {
-    if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
-  }
-  const recreatedMissing = [];
-  const skippedNoMeta = [];
-  for (const [id, content] of Object.entries(files)) {
-    if (currentIds.has(id)) {
-      setContent(id, content);
-    } else {
-      const m = fileMeta[id];
-      if (m) {
-        createWorkspaceFile(
-          id,
-          m.path,
-          content,
-          m.language,
-          m.meta ? { ...m.meta } : void 0
-        );
-        recreatedMissing.push(id);
-      } else {
-        skippedNoMeta.push(id);
-      }
-    }
-  }
-  if (order) {
-    for (const [folder, ids] of Object.entries(order.fileOrder)) {
-      setFolderOrder(folder, [...ids]);
-    }
-    for (const [parent, names] of Object.entries(order.subfolderOrder)) {
-      setSubfolderOrder(parent, [...names]);
-    }
-  }
-  return { recreatedMissing, skippedNoMeta };
-}
-__name(applySnapshot, "applySnapshot");
-
-// src/workspace/history/historyService.ts
-var current2 = null;
-var newId = /* @__PURE__ */ __name(() => crypto.randomUUID(), "newId");
-var now = /* @__PURE__ */ __name(() => Date.now(), "now");
-var opLock = Promise.resolve();
-function withLock(fn) {
-  const run = opLock.then(fn, fn);
-  opLock = run.then(notifyIfChanged, notifyIfChanged);
-  return run;
-}
-__name(withLock, "withLock");
-var listeners7 = /* @__PURE__ */ new Set();
-var lastNotified = null;
-function notifyIfChanged() {
-  if (current2 === lastNotified) return;
-  lastNotified = current2;
-  for (const l of listeners7) {
-    try {
-      l();
-    } catch {
-    }
-  }
-}
-__name(notifyIfChanged, "notifyIfChanged");
-function subscribeToHistory(cb) {
-  listeners7.add(cb);
-  return () => listeners7.delete(cb);
-}
-__name(subscribeToHistory, "subscribeToHistory");
-function notifyAll() {
-  for (const l of listeners7) {
-    try {
-      l();
-    } catch {
-    }
-  }
-}
-__name(notifyAll, "notifyAll");
-var activeFileId = null;
-function setActiveHistoryFile(fileId) {
-  if (fileId === activeFileId) return;
-  activeFileId = fileId;
-  notifyAll();
-}
-__name(setActiveHistoryFile, "setActiveHistoryFile");
-function getActiveHistoryFile() {
-  return activeFileId;
-}
-__name(getActiveHistoryFile, "getActiveHistoryFile");
-var fileHistoryTarget = null;
-function setFileHistoryTarget(fileId) {
-  if (fileId === fileHistoryTarget) return;
-  fileHistoryTarget = fileId;
-  notifyAll();
-}
-__name(setFileHistoryTarget, "setFileHistoryTarget");
-function getFileHistoryTarget() {
-  return fileHistoryTarget;
-}
-__name(getFileHistoryTarget, "getFileHistoryTarget");
-function getCurrentHistory() {
-  return current2;
-}
-__name(getCurrentHistory, "getCurrentHistory");
-function initHistory(projectId) {
-  return withLock(async () => {
-    let h = await loadHistory(projectId);
-    if (!h) {
-      h = seedHistory(
-        projectId,
-        readWorkspaceFiles(),
-        readWorkspaceOrder(),
-        newId(),
-        now(),
-        readWorkspaceFileMeta()
-      );
-      await saveHistory(h);
-    }
-    current2 = h;
-    return h;
-  });
-}
-__name(initHistory, "initHistory");
-function resetHistoryState() {
-  current2 = null;
-  notifyIfChanged();
-}
-__name(resetHistoryState, "resetHistoryState");
-function commitWorkspace(kind, opts = {}) {
-  return withLock(() => _commit(kind, opts));
-}
-__name(commitWorkspace, "commitWorkspace");
-async function _commit(kind, opts = {}) {
-  if (!current2) return null;
-  const live = readWorkspaceFiles();
-  const changed = changedFiles(current2, live);
-  const changedKeys = Object.keys(changed);
-  if (changedKeys.length === 0 && !opts.allowEmpty) return null;
-  if (opts.gate) {
-    const head = headOf(current2);
-    const pairs = changedKeys.map((f) => ({
-      prev: head && getFileContentAt(current2, f, head) || "",
-      next: changed[f]
-    }));
-    if (!isSignificant(pairs)) return null;
-  }
-  const allMeta = readWorkspaceFileMeta();
-  const changedMeta = {};
-  for (const f of changedKeys) if (allMeta[f]) changedMeta[f] = allMeta[f];
-  const id = newId();
-  current2 = commitOnto(current2, changed, {
-    kind,
-    ...opts.label !== void 0 ? { label: opts.label } : {},
-    id,
-    createdAt: now(),
-    order: readWorkspaceOrder(),
-    fileMeta: changedMeta,
-    ...opts.allowEmpty ? { allowEmpty: true } : {}
-  });
-  if (kind === "auto") current2 = prune(current2, now());
-  await saveHistory(current2);
-  return id;
-}
-__name(_commit, "_commit");
-function restoreProject(commitId) {
-  return withLock(async () => {
-    if (!current2) return;
-    const snap = snapshotAt(current2, commitId);
-    applySnapshot(snap.files, current2.fileMeta, snap.order);
-    await _commit("auto", { gate: false });
-  });
-}
-__name(restoreProject, "restoreProject");
-function restoreFileToCommit(fileId, commitId) {
-  return withLock(() => _restoreFileToCommit(fileId, commitId));
-}
-__name(restoreFileToCommit, "restoreFileToCommit");
-async function _restoreFileToCommit(fileId, commitId) {
-  if (!current2) return null;
-  const content = getFileContentAt(current2, fileId, commitId);
-  const meta = current2.fileMeta[fileId];
-  const live = readWorkspaceFiles();
-  if (content === null) {
-    delete live[fileId];
-  } else {
-    live[fileId] = content;
-  }
-  applySnapshot(live, meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta);
-  return _commit("auto", { gate: false });
-}
-__name(_restoreFileToCommit, "_restoreFileToCommit");
-function revertFileToSeed(fileId) {
-  return withLock(async () => {
-    if (!current2) return null;
-    const seed = seedCommitId(current2);
-    if (!seed) return null;
-    return _restoreFileToCommit(fileId, seed);
-  });
-}
-__name(revertFileToSeed, "revertFileToSeed");
-function isFileModifiedSinceHead(fileId) {
-  if (!current2) return false;
-  const head = headOf(current2);
-  if (!head) return false;
-  const live = readWorkspaceFiles();
-  const liveContent = Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
-  return isFileModifiedAt(current2, fileId, head, liveContent);
-}
-__name(isFileModifiedSinceHead, "isFileModifiedSinceHead");
-function getLiveFileContent(fileId) {
-  const live = readWorkspaceFiles();
-  return Object.prototype.hasOwnProperty.call(live, fileId) ? live[fileId] : null;
-}
-__name(getLiveFileContent, "getLiveFileContent");
-function getModifiedFileIdsSinceHead() {
-  if (!current2) return /* @__PURE__ */ new Set();
-  const head = headOf(current2);
-  if (!head) return /* @__PURE__ */ new Set();
-  return new Set(Object.keys(changedFiles(current2, readWorkspaceFiles(), head)));
-}
-__name(getModifiedFileIdsSinceHead, "getModifiedFileIdsSinceHead");
-function createBranchAt(name, fromCommit) {
-  return withLock(async () => {
-    if (!current2) return;
-    current2 = createBranch(current2, name, fromCommit, now());
-    await saveHistory(current2);
-  });
-}
-__name(createBranchAt, "createBranchAt");
-function switchToBranch(name) {
-  return withLock(async () => {
-    if (!current2) return;
-    current2 = switchBranch(current2, name);
-    const head = headOf(current2);
-    if (head) {
-      const snap = snapshotAt(current2, head);
-      applySnapshot(snap.files, current2.fileMeta, snap.order);
-    }
-    await saveHistory(current2);
-  });
-}
-__name(switchToBranch, "switchToBranch");
-
 // src/workspace/history/historyDriver.ts
 var DEFAULT_IDLE_MS = 5e3;
 function resolveIdleMs() {
@@ -22889,254 +23251,6 @@ function startHistoryDriver() {
   };
 }
 __name(startHistoryDriver, "startHistoryDriver");
-var DiffEditor = MonacoEditorRaw.DiffEditor;
-var fg = "var(--foreground, #e6e6ea)";
-var border = "var(--border, #2a2a32)";
-var accent = "var(--accent, #6ea8fe)";
-var bg = "var(--background, #16161a)";
-function shortId(id) {
-  return id.slice(0, 7);
-}
-__name(shortId, "shortId");
-function HistoryDiffOverlay({
-  history: history2,
-  commit,
-  initialFileId,
-  onClose
-}) {
-  const changedIds = React6__namespace.useMemo(() => Object.keys(commit.files), [commit]);
-  const [mode, setMode] = React6__namespace.useState("previous");
-  const [fileId, setFileId] = React6__namespace.useState(
-    () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
-  );
-  React6__namespace.useEffect(() => {
-    if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
-  }, [changedIds, fileId]);
-  const handleMount = React6__namespace.useCallback(
-    (_editor, monaco) => {
-      defineStrudelMonacoTheme(monaco);
-      registerStrudelLanguage(monaco);
-      ensureWorkspaceLanguages(monaco);
-      monaco.editor.setTheme("stave-dark");
-    },
-    []
-  );
-  const wrap5 = {
-    position: "absolute",
-    inset: 0,
-    display: "flex",
-    flexDirection: "column",
-    background: bg,
-    zIndex: 5
-  };
-  const headerRow = {
-    display: "flex",
-    flexWrap: "wrap",
-    // narrow side panel — controls wrap instead of overflowing
-    gap: 6,
-    alignItems: "center",
-    padding: "8px 12px",
-    borderBottom: `1px solid ${border}`,
-    fontSize: 12,
-    color: fg,
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-  };
-  const ctl = {
-    background: "transparent",
-    color: fg,
-    border: `1px solid ${border}`,
-    borderRadius: 4,
-    padding: "2px 6px",
-    fontSize: 11,
-    cursor: "pointer"
-  };
-  if (changedIds.length === 0) {
-    return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap5, "data-history-diff-overlay": true, children: [
-      /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
-        /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { flex: 1 }, children: [
-          "Diff \xB7 ",
-          shortId(commit.id)
-        ] }),
-        /* @__PURE__ */ jsxRuntime.jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
-      ] }),
-      /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, color: "var(--foreground-muted, #a0a0aa)", fontSize: 12 }, children: "This commit changed no files (label-only checkpoint)." })
-    ] });
-  }
-  const lang = toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel");
-  const parent = commit.parent;
-  const original = mode === "previous" ? parent ? getFileContentAt(history2, fileId, parent) : null : getFileContentAt(history2, fileId, commit.id);
-  const modified = mode === "current" ? getLiveFileContent(fileId) : getFileContentAt(history2, fileId, commit.id);
-  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap5, "data-history-diff-overlay": true, children: [
-    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
-      /* @__PURE__ */ jsxRuntime.jsx(
-        "select",
-        {
-          "aria-label": "diff file",
-          value: fileId,
-          onChange: (e) => setFileId(e.target.value),
-          style: ctl,
-          "data-history-diff-file": true,
-          children: changedIds.map((id) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
-        }
-      ),
-      /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", border: `1px solid ${border}`, borderRadius: 4, overflow: "hidden" }, children: ["previous", "current"].map((m) => /* @__PURE__ */ jsxRuntime.jsx(
-        "button",
-        {
-          onClick: () => setMode(m),
-          "data-history-diff-mode": m,
-          style: {
-            ...ctl,
-            border: "none",
-            borderRadius: 0,
-            background: mode === m ? accent : "transparent",
-            color: mode === m ? "#0b0b0f" : fg
-          },
-          children: m === "previous" ? "vs previous" : "vs current"
-        },
-        m
-      )) }),
-      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, color: "var(--foreground-muted, #a0a0aa)" }, children: mode === "previous" ? `${parent ? shortId(parent) : "\u2205"} \u2192 ${shortId(commit.id)}` : `${shortId(commit.id)} \u2192 current` }),
-      /* @__PURE__ */ jsxRuntime.jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
-    ] }),
-    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1, minHeight: 0 }, children: /* @__PURE__ */ jsxRuntime.jsx(
-      DiffEditor,
-      {
-        height: "100%",
-        language: lang,
-        original: original ?? "",
-        modified: modified ?? "",
-        onMount: handleMount,
-        options: {
-          readOnly: true,
-          renderSideBySide: false,
-          // unified diff fits the narrow side panel
-          automaticLayout: true,
-          minimap: { enabled: false },
-          fontSize: 12,
-          scrollBeyondLastLine: false,
-          renderOverviewRuler: false
-        }
-      }
-    ) })
-  ] });
-}
-__name(HistoryDiffOverlay, "HistoryDiffOverlay");
-var Editor = MonacoEditorRaw__default.default;
-var fg2 = "var(--foreground, #e6e6ea)";
-var muted = "var(--foreground-muted, #a0a0aa)";
-var border2 = "var(--border, #2a2a32)";
-var accent2 = "var(--accent, #6ea8fe)";
-var bg2 = "var(--background, #16161a)";
-function shortId2(id) {
-  return id.slice(0, 7);
-}
-__name(shortId2, "shortId");
-function HistoryViewOverlay({
-  history: history2,
-  commit,
-  initialFileId,
-  onClose
-}) {
-  const snapshot = React6__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React6__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React6__namespace.useState(
-    () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
-  );
-  React6__namespace.useEffect(() => {
-    if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
-  }, [fileIds, fileId]);
-  const handleMount = React6__namespace.useCallback(
-    (_editor, monaco) => {
-      defineStrudelMonacoTheme(monaco);
-      registerStrudelLanguage(monaco);
-      ensureWorkspaceLanguages(monaco);
-      monaco.editor.setTheme("stave-dark");
-    },
-    []
-  );
-  const wrap5 = {
-    position: "absolute",
-    inset: 0,
-    display: "flex",
-    flexDirection: "column",
-    background: bg2,
-    zIndex: 5
-  };
-  const headerRow = {
-    display: "flex",
-    gap: 8,
-    alignItems: "center",
-    padding: "8px 12px",
-    borderBottom: `1px solid ${border2}`,
-    fontSize: 12,
-    color: fg2,
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-  };
-  const ctl = {
-    background: "transparent",
-    color: fg2,
-    border: `1px solid ${border2}`,
-    borderRadius: 4,
-    padding: "2px 6px",
-    fontSize: 11,
-    cursor: "pointer"
-  };
-  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap5, "data-history-view-overlay": commit.id, children: [
-    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
-      /* @__PURE__ */ jsxRuntime.jsxs(
-        "span",
-        {
-          style: {
-            fontSize: 10,
-            textTransform: "uppercase",
-            letterSpacing: 0.5,
-            color: accent2,
-            border: `1px solid ${accent2}`,
-            borderRadius: 10,
-            padding: "1px 7px"
-          },
-          children: [
-            "\u23F1 Viewing ",
-            shortId2(commit.id)
-          ]
-        }
-      ),
-      fileIds.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx(
-        "select",
-        {
-          "aria-label": "view file",
-          value: fileId,
-          onChange: (e) => setFileId(e.target.value),
-          style: ctl,
-          "data-history-view-file": true,
-          children: fileIds.map((id) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: id, children: history2.fileMeta[id]?.path ?? id }, id))
-        }
-      ) : /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted }, children: "no files at this commit" }),
-      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, color: muted }, children: "read-only snapshot" }),
-      /* @__PURE__ */ jsxRuntime.jsx("button", { style: { ...ctl, borderColor: accent2 }, onClick: onClose, "data-history-view-exit": true, children: "Exit" })
-    ] }),
-    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1, minHeight: 0 }, children: fileIds.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx(
-      Editor,
-      {
-        height: "100%",
-        language: toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel"),
-        value: snapshot.files[fileId] ?? "",
-        path: `history:${commit.id}:${fileId}`,
-        onMount: handleMount,
-        options: {
-          readOnly: true,
-          domReadOnly: true,
-          automaticLayout: true,
-          minimap: { enabled: false },
-          fontSize: 12,
-          scrollBeyondLastLine: false,
-          renderLineHighlight: "none"
-        }
-      }
-    ) : /* @__PURE__ */ jsxRuntime.jsx("div", { style: { padding: 16, color: muted, fontSize: 12 }, children: "This commit has no files to view." }) })
-  ] });
-}
-__name(HistoryViewOverlay, "HistoryViewOverlay");
 var KIND_LABEL = {
   seed: "initial",
   auto: "auto",
@@ -23249,18 +23363,16 @@ function GraphGutter({
   ] });
 }
 __name(GraphGutter, "GraphGutter");
-function HistoryPanel() {
-  const [, force] = React6__namespace.useReducer((x) => x + 1, 0);
-  React6__namespace.useEffect(() => subscribeToHistory(force), []);
-  const [forking, setForking] = React6__namespace.useState(null);
-  const [forkName, setForkName] = React6__namespace.useState("");
-  const [viewingCommit, setViewingCommit] = React6__namespace.useState(null);
-  const [committing, setCommitting] = React6__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React6__namespace.useState("");
-  const [diffing, setDiffing] = React6__namespace.useState(null);
-  const [expanded, setExpanded] = React6__namespace.useState(null);
-  const [hovered, setHovered] = React6__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React6__namespace.useState(false);
+function HistoryPanel({ onOpenHistoryTab } = {}) {
+  const [, force] = React8__namespace.useReducer((x) => x + 1, 0);
+  React8__namespace.useEffect(() => subscribeToHistory(force), []);
+  const [forking, setForking] = React8__namespace.useState(null);
+  const [forkName, setForkName] = React8__namespace.useState("");
+  const [committing, setCommitting] = React8__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React8__namespace.useState("");
+  const [expanded, setExpanded] = React8__namespace.useState(null);
+  const [hovered, setHovered] = React8__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React8__namespace.useState(false);
   const h = getCurrentHistory();
   const now2 = Date.now();
   const wrap5 = {
@@ -23442,10 +23554,7 @@ function HistoryPanel() {
               /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: "opacity 120ms" }, children: [
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: fileTarget ? "Restore this file to this commit" : "Restore project to this commit", style: iconBtn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconRestore, {}) }),
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconFork, {}) }),
-                /* @__PURE__ */ jsxRuntime.jsx("button", { title: "View (read-only time-travel)", style: iconBtn(), onClick: () => {
-                  setDiffing(null);
-                  setViewingCommit(c);
-                }, "data-history-view": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconView, {}) })
+                /* @__PURE__ */ jsxRuntime.jsx("button", { title: "View (read-only time-travel)", style: iconBtn(), onClick: () => onOpenHistoryTab?.({ mode: "view", commitId: c.id, fileId: fileTarget ?? Object.keys(c.files)[0] ?? "" }), "data-history-view": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconView, {}) })
               ] }),
               forking === c.id && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6, marginLeft: 14 }, children: [
                 /* @__PURE__ */ jsxRuntime.jsx("input", { autoFocus: true, value: forkName, placeholder: "branch name", onChange: (e) => setForkName(e.target.value), onKeyDown: (e) => e.key === "Enter" && confirmFork(c), style: { ...btn(), flex: 1, color: fg3, background: bgInput } }),
@@ -23454,10 +23563,7 @@ function HistoryPanel() {
               isOpen && /* @__PURE__ */ jsxRuntime.jsx("ul", { "data-history-commit-files": true, style: { listStyle: "none", margin: "6px 0 0", padding: 0, marginLeft: 14 }, children: changedFileIds.length === 0 ? /* @__PURE__ */ jsxRuntime.jsx("li", { style: { color: muted2, fontSize: 11 }, children: "label-only checkpoint (no file changes)" }) : changedFileIds.map((fid) => /* @__PURE__ */ jsxRuntime.jsx("li", { children: /* @__PURE__ */ jsxRuntime.jsxs(
                 "button",
                 {
-                  onClick: () => {
-                    setViewingCommit(null);
-                    setDiffing({ commit: c, fileId: fid });
-                  },
+                  onClick: () => onOpenHistoryTab?.({ mode: "diff", commitId: c.id, fileId: fid }),
                   "data-history-file-diff": fid,
                   title: `Diff ${fileLabel(fid)}`,
                   style: { ...iconBtn(), width: "100%", justifyContent: "flex-start", gap: 6, padding: "2px 4px", color: fg3, fontSize: 11 },
@@ -23471,9 +23577,7 @@ function HistoryPanel() {
           ]
         }
       ) }, c.id);
-    }) }),
-    viewingCommit && /* @__PURE__ */ jsxRuntime.jsx(HistoryViewOverlay, { history: h, commit: viewingCommit, initialFileId: fileTarget, onClose: () => setViewingCommit(null) }),
-    diffing && /* @__PURE__ */ jsxRuntime.jsx(HistoryDiffOverlay, { history: h, commit: diffing.commit, initialFileId: diffing.fileId ?? null, onClose: () => setDiffing(null) })
+    }) })
   ] });
 }
 __name(HistoryPanel, "HistoryPanel");
@@ -23881,21 +23985,21 @@ function VizEditorChrome({
   onToggleBackground,
   isBackground
 }) {
-  const [liveOn, setLiveOn] = React6.useState(() => getVizLive(file.id));
-  React6.useEffect(() => {
+  const [liveOn, setLiveOn] = React8.useState(() => getVizLive(file.id));
+  React8.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React6.useState({
+  const [selectedSource, setSelectedSource] = React8.useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = React6.useState(0);
-  React6.useEffect(() => {
+  const [, forceSourcesRerender] = React8.useState(0);
+  React8.useEffect(() => {
     return workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
   }, []);
-  const handleSourceChange = React6.useCallback(
+  const handleSourceChange = React8.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -23913,7 +24017,7 @@ function VizEditorChrome({
     },
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = React6.useCallback(() => {
+  const handlePrimaryButtonClick = React8.useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
       onTogglePausePreview();
       return;
@@ -24079,7 +24183,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React6.useMemo(() => {
+  const { descriptor, compileError } = React8.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -24115,9 +24219,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React6.useRef(null);
-  const rendererRef = React6.useRef(null);
-  const components = React6.useMemo(() => {
+  const containerRef = React8.useRef(null);
+  const rendererRef = React8.useRef(null);
+  const components = React8.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -24139,7 +24243,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -24193,7 +24297,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -24201,7 +24305,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -24216,7 +24320,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React6.useEffect(() => {
+  React8.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {

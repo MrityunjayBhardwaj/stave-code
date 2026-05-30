@@ -1015,7 +1015,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           <div style={styles.panelRoot} data-sidebar>
             <div style={styles.panelHeader}>VERSION HISTORY</div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <HistoryPanel />
+              <HistoryPanel
+                onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+              />
             </div>
           </div>
         )}

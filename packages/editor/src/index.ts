@@ -230,6 +230,7 @@ export {
 } from './workspace/history/historyService'
 export { startHistoryDriver } from './workspace/history/historyDriver'
 export { HistoryPanel } from './workspace/history/HistoryPanel'
+export type { HistoryPanelProps, OpenHistoryTabRequest } from './workspace/history/HistoryPanel'
 export {
   listCommits,
   listBranches,

@@ -64,6 +64,11 @@ export function HistoryViewOverlay({
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? '')
   }, [fileIds, fileId])
 
+  // Follow an external file selection when hosted in a reused tab (#210).
+  React.useEffect(() => {
+    if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId)
+  }, [initialFileId, fileIds])
+
   const handleMount = React.useCallback(
     (_editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco): void => {
       defineStrudelMonacoTheme(monaco)

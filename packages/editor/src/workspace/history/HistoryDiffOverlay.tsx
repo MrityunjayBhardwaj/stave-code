@@ -66,8 +66,18 @@ export function HistoryDiffOverlay({
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? '')
   }, [changedIds, fileId])
 
+  // Follow an external file selection — when this viewer is hosted in a
+  // reused tab/slot (#210), a new drill-down changes `initialFileId` while
+  // the component stays mounted; sync the picker to it. (No-op for the
+  // user's own dropdown picks since `initialFileId` doesn't change then.)
+  React.useEffect(() => {
+    if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId)
+  }, [initialFileId, changedIds])
+
+  const diffEditorRef = React.useRef<Monaco.editor.IStandaloneDiffEditor | null>(null)
   const handleMount = React.useCallback(
-    (_editor: Monaco.editor.IStandaloneDiffEditor, monaco: typeof Monaco): void => {
+    (editor: Monaco.editor.IStandaloneDiffEditor, monaco: typeof Monaco): void => {
+      diffEditorRef.current = editor
       defineStrudelMonacoTheme(monaco)
       registerStrudelLanguage(monaco)
       ensureWorkspaceLanguages(monaco)
@@ -75,6 +85,20 @@ export function HistoryDiffOverlay({
     },
     [],
   )
+
+  // Reset the widget's model BEFORE Monaco disposes the text models on
+  // unmount — otherwise the DiffEditorWidget tears down in the wrong order
+  // ("TextModel got disposed before DiffEditorWidget model got reset") when
+  // the host tab is closed or switched away (#210).
+  React.useEffect(() => {
+    return () => {
+      try {
+        diffEditorRef.current?.setModel(null)
+      } catch {
+        /* already disposed — nothing to reset */
+      }
+    }
+  }, [])
 
   const wrap: React.CSSProperties = {
     position: 'absolute',
@@ -184,7 +208,9 @@ export function HistoryDiffOverlay({
           onMount={handleMount}
           options={{
             readOnly: true,
-            renderSideBySide: false, // unified diff fits the narrow side panel
+            // Hosted full-width in the main editor area now (#210) — there's
+            // room for a proper side-by-side diff.
+            renderSideBySide: true,
             automaticLayout: true,
             minimap: { enabled: false },
             fontSize: 12,
