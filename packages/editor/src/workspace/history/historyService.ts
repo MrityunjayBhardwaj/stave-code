@@ -100,6 +100,22 @@ export function getActiveHistoryFile(): string | null {
   return activeFileId
 }
 
+// ── File History focus (the "File History" action, not a panel toggle) ─────
+// When set, the History panel shows just this file's commit history with a
+// "back to project" affordance. Set by the file-tree context menu action.
+let fileHistoryTarget: string | null = null
+
+/** Focus the History panel on one file's history (null = project graph). */
+export function setFileHistoryTarget(fileId: string | null): void {
+  if (fileId === fileHistoryTarget) return
+  fileHistoryTarget = fileId
+  notifyAll()
+}
+
+export function getFileHistoryTarget(): string | null {
+  return fileHistoryTarget
+}
+
 /** The in-memory active history (null before init). For UI reads. */
 export function getCurrentHistory(): ProjectHistory | null {
   return current

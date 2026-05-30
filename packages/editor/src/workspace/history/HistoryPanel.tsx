@@ -16,10 +16,13 @@ import {
   subscribeToHistory,
   commitWorkspace,
   restoreProject,
+  restoreFileToCommit,
   createBranchAt,
   switchToBranch,
+  getFileHistoryTarget,
+  setFileHistoryTarget,
 } from './historyService'
-import { listCommits, listBranches, countManualCommits, type Commit } from './historyGraph'
+import { listCommits, fileHistory, listBranches, countManualCommits, type Commit } from './historyGraph'
 import { HistoryDiffOverlay } from './HistoryDiffOverlay'
 import { HistoryViewOverlay } from './HistoryViewOverlay'
 
@@ -194,7 +197,8 @@ export function HistoryPanel(): React.ReactElement {
   }
 
   const branches = listBranches(h)
-  const commits = listCommits(h)
+  const fileTarget = getFileHistoryTarget()
+  const commits = fileTarget ? fileHistory(h, fileTarget) : listCommits(h)
   const manualCount = countManualCommits(h)
   const showNudge = !nudgeDismissed && manualCount > manualNudgeThreshold()
 
@@ -219,34 +223,58 @@ export function HistoryPanel(): React.ReactElement {
     setCommitLabel('')
   }
   const fileLabel = (fileId: string): string => h.fileMeta[fileId]?.path ?? fileId
+  // In File History mode, Restore reverts just that file; otherwise the project.
+  const doRestore = (c: Commit): void => {
+    if (fileTarget) void restoreFileToCommit(fileTarget, c.id)
+    else void restoreProject(c.id)
+  }
 
   return (
     <div data-bottom-panel-tab="history" style={wrap}>
-      {/* controls */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 10 }}>
-        <select
-          aria-label="branch"
-          value={h.currentBranch}
-          onChange={(e) => void switchToBranch(e.target.value)}
-          style={{ ...btn(), padding: '2px 6px' }}
-          data-history-branch-select
-        >
-          {branches.map((b) => (
-            <option key={b.name} value={b.name}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => setCommitting((v) => !v)}
-          data-history-commit-now
-          style={{ ...btn({ borderColor: accent, color: accent }), marginLeft: 'auto', whiteSpace: 'nowrap' }}
-        >
-          + Commit
-        </button>
-      </div>
+      {/* controls — File History mode shows a focused header; project mode the
+          branch selector + commit */}
+      {fileTarget ? (
+        <div data-history-file-mode style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <button
+            onClick={() => setFileHistoryTarget(null)}
+            data-history-file-back
+            title="Back to project history"
+            style={iconBtn()}
+          >
+            <span style={{ fontSize: 13 }}>‹</span>
+          </button>
+          <span style={{ color: muted, display: 'inline-flex' }}><IconDiff size={13} /></span>
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
+            {fileLabel(fileTarget)}
+          </span>
+          <span style={{ color: muted, fontSize: 10 }}>file history</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 10 }}>
+          <select
+            aria-label="branch"
+            value={h.currentBranch}
+            onChange={(e) => void switchToBranch(e.target.value)}
+            style={{ ...btn(), padding: '2px 6px' }}
+            data-history-branch-select
+          >
+            {branches.map((b) => (
+              <option key={b.name} value={b.name}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setCommitting((v) => !v)}
+            data-history-commit-now
+            style={{ ...btn({ borderColor: accent, color: accent }), marginLeft: 'auto', whiteSpace: 'nowrap' }}
+          >
+            + Commit
+          </button>
+        </div>
+      )}
 
-      {committing && (
+      {!fileTarget && committing && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           <input
             autoFocus
@@ -279,7 +307,7 @@ export function HistoryPanel(): React.ReactElement {
         </div>
       )}
 
-      {showNudge && (
+      {!fileTarget && showNudge && (
         <div
           data-history-manual-nudge
           style={{
@@ -338,7 +366,7 @@ export function HistoryPanel(): React.ReactElement {
 
                   {/* hover icon actions */}
                   <div style={{ display: 'flex', gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: 'opacity 120ms' }}>
-                    <button title="Restore project to this commit" style={iconBtn()} onClick={() => void restoreProject(c.id)} data-history-restore={c.id}><IconRestore /></button>
+                    <button title={fileTarget ? 'Restore this file to this commit' : 'Restore project to this commit'} style={iconBtn()} onClick={() => doRestore(c)} data-history-restore={c.id}><IconRestore /></button>
                     <button title="Fork a branch here" style={iconBtn()} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}><IconFork /></button>
                     <button title="View (read-only time-travel)" style={iconBtn()} onClick={() => { setDiffing(null); setViewingCommit(c) }} data-history-view={c.id}><IconView /></button>
                   </div>
@@ -380,7 +408,7 @@ export function HistoryPanel(): React.ReactElement {
       </ol>
 
       {viewingCommit && (
-        <HistoryViewOverlay history={h} commit={viewingCommit} onClose={() => setViewingCommit(null)} />
+        <HistoryViewOverlay history={h} commit={viewingCommit} initialFileId={fileTarget} onClose={() => setViewingCommit(null)} />
       )}
       {diffing && (
         <HistoryDiffOverlay history={h} commit={diffing.commit} initialFileId={diffing.fileId ?? null} onClose={() => setDiffing(null)} />

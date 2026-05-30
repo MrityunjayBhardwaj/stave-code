@@ -22684,6 +22684,17 @@ function getActiveHistoryFile() {
   return activeFileId;
 }
 __name(getActiveHistoryFile, "getActiveHistoryFile");
+var fileHistoryTarget = null;
+function setFileHistoryTarget(fileId) {
+  if (fileId === fileHistoryTarget) return;
+  fileHistoryTarget = fileId;
+  notifyAll();
+}
+__name(setFileHistoryTarget, "setFileHistoryTarget");
+function getFileHistoryTarget() {
+  return fileHistoryTarget;
+}
+__name(getFileHistoryTarget, "getFileHistoryTarget");
 function getCurrentHistory() {
   return current2;
 }
@@ -23265,7 +23276,8 @@ function HistoryPanel() {
     return /* @__PURE__ */ jsxRuntime.jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap5, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
   }
   const branches = listBranches(h);
-  const commits = listCommits(h);
+  const fileTarget = getFileHistoryTarget();
+  const commits = fileTarget ? fileHistory(h, fileTarget) : listCommits(h);
   const manualCount = countManualCommits(h);
   const showNudge = !nudgeDismissed && manualCount > manualNudgeThreshold();
   const forkCounts = /* @__PURE__ */ new Map();
@@ -23287,8 +23299,26 @@ function HistoryPanel() {
     setCommitLabel("");
   }, "confirmCommit");
   const fileLabel = /* @__PURE__ */ __name((fileId) => h.fileMeta[fileId]?.path ?? fileId, "fileLabel");
+  const doRestore = /* @__PURE__ */ __name((c) => {
+    if (fileTarget) void restoreFileToCommit(fileTarget, c.id);
+    else void restoreProject(c.id);
+  }, "doRestore");
   return /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-bottom-panel-tab": "history", style: wrap5, children: [
-    /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 10 }, children: [
+    fileTarget ? /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-history-file-mode": true, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }, children: [
+      /* @__PURE__ */ jsxRuntime.jsx(
+        "button",
+        {
+          onClick: () => setFileHistoryTarget(null),
+          "data-history-file-back": true,
+          title: "Back to project history",
+          style: iconBtn(),
+          children: /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 13 }, children: "\u2039" })
+        }
+      ),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted2, display: "inline-flex" }, children: /* @__PURE__ */ jsxRuntime.jsx(IconDiff, { size: 13 }) }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }, children: fileLabel(fileTarget) }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted2, fontSize: 10 }, children: "file history" })
+    ] }) : /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 10 }, children: [
       /* @__PURE__ */ jsxRuntime.jsx(
         "select",
         {
@@ -23310,7 +23340,7 @@ function HistoryPanel() {
         }
       )
     ] }),
-    committing && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, marginBottom: 10 }, children: [
+    !fileTarget && committing && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 6, marginBottom: 10 }, children: [
       /* @__PURE__ */ jsxRuntime.jsx(
         "input",
         {
@@ -23345,7 +23375,7 @@ function HistoryPanel() {
         }
       )
     ] }),
-    showNudge && /* @__PURE__ */ jsxRuntime.jsxs(
+    !fileTarget && showNudge && /* @__PURE__ */ jsxRuntime.jsxs(
       "div",
       {
         "data-history-manual-nudge": true,
@@ -23410,7 +23440,7 @@ function HistoryPanel() {
                 }
               ),
               /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: "opacity 120ms" }, children: [
-                /* @__PURE__ */ jsxRuntime.jsx("button", { title: "Restore project to this commit", style: iconBtn(), onClick: () => void restoreProject(c.id), "data-history-restore": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconRestore, {}) }),
+                /* @__PURE__ */ jsxRuntime.jsx("button", { title: fileTarget ? "Restore this file to this commit" : "Restore project to this commit", style: iconBtn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconRestore, {}) }),
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconFork, {}) }),
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: "View (read-only time-travel)", style: iconBtn(), onClick: () => {
                   setDiffing(null);
@@ -23442,7 +23472,7 @@ function HistoryPanel() {
         }
       ) }, c.id);
     }) }),
-    viewingCommit && /* @__PURE__ */ jsxRuntime.jsx(HistoryViewOverlay, { history: h, commit: viewingCommit, onClose: () => setViewingCommit(null) }),
+    viewingCommit && /* @__PURE__ */ jsxRuntime.jsx(HistoryViewOverlay, { history: h, commit: viewingCommit, initialFileId: fileTarget, onClose: () => setViewingCommit(null) }),
     diffing && /* @__PURE__ */ jsxRuntime.jsx(HistoryDiffOverlay, { history: h, commit: diffing.commit, initialFileId: diffing.fileId ?? null, onClose: () => setDiffing(null) })
   ] });
 }
@@ -24702,6 +24732,7 @@ exports.getEditorTheme = getEditorTheme;
 exports.getEditorUiIconSize = getEditorUiIconSize;
 exports.getFile = getFile;
 exports.getFileContentAt = getFileContentAt;
+exports.getFileHistoryTarget = getFileHistoryTarget;
 exports.getFixedMarkers = getFixedMarkers;
 exports.getFolderOrder = getFolderOrder;
 exports.getIRSnapshot = getIRSnapshot;
@@ -24813,6 +24844,7 @@ exports.setEditorBackdropBlur = setEditorBackdropBlur;
 exports.setEditorFontSize = setEditorFontSize;
 exports.setEditorTheme = setEditorTheme;
 exports.setEditorUiIconSize = setEditorUiIconSize;
+exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
 exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;

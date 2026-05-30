@@ -225,6 +225,8 @@ export {
   subscribeToHistory,
   setActiveHistoryFile,
   getActiveHistoryFile,
+  setFileHistoryTarget,
+  getFileHistoryTarget,
 } from './workspace/history/historyService'
 export { startHistoryDriver } from './workspace/history/historyDriver'
 export { HistoryPanel } from './workspace/history/HistoryPanel'

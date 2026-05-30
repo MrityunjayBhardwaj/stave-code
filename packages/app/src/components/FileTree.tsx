@@ -32,6 +32,8 @@ interface FileTreeProps {
   /** Called when a user drops a single .zip onto the sidebar. If set,
    *  the tree skips the normal file-by-file import and delegates. */
   onImportZipProject?: (file: File) => void;
+  /** Open the Version History panel focused on this file ("File History"). */
+  onFileHistory: (fileId: string) => void;
 }
 
 export interface FileTreeHandle {
@@ -189,7 +191,7 @@ function applyFolderOrder(
 // ── Main component ──────────────────────────────────────────────────
 
 export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({
-  projectName, onOpenFile, activeFileId, onToggleCollapse, onImportZipProject,
+  projectName, onOpenFile, activeFileId, onToggleCollapse, onImportZipProject, onFileHistory,
 }, forwardedRef) {
   // Subscribe to file list changes — re-list whenever a file is added,
   // removed, or renamed. `fileListRev` is the dep that forces the memo
@@ -1185,6 +1187,7 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
           onDeleteFile={handleDelete}
           onDuplicateFile={handleDuplicate}
           onCopyPath={handleCopyPath}
+          onFileHistory={onFileHistory}
           onBulkDelete={handleBulkDelete}
           selectedFileIds={selectedFileIds}
           onNewFile={handleNewFile}
@@ -1416,6 +1419,7 @@ interface ContextMenuProps {
   onDeleteFile: (fileId: string) => void;
   onDuplicateFile: (fileId: string) => void;
   onCopyPath: (fileId: string) => void;
+  onFileHistory: (fileId: string) => void;
   onBulkDelete: () => void;
   selectedFileIds: Set<string>;
   onNewFile: (folderPath?: string) => void;
@@ -1490,6 +1494,7 @@ function ContextMenu(props: ContextMenuProps) {
           }
           return [
             { label: "Open", onClick: () => { props.onOpenFile(fileId); props.onClose(); } },
+            { label: "File History", onClick: () => { props.onFileHistory(fileId); props.onClose(); } },
             null,
             { label: "Duplicate", onClick: () => props.onDuplicateFile(fileId) },
             { label: "Copy Path", onClick: () => props.onCopyPath(fileId) },

@@ -12,6 +12,7 @@ import {
   switchProject,
   resetFileStore,
   setActiveHistoryFile,
+  setFileHistoryTarget,
   HistoryPanel,
   undo,
   redo,
@@ -978,7 +979,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         {!zenMode && (
           <ActivityBar
             activePanelId={activePanelId}
-            onSelect={setActivePanelId}
+            onSelect={(id) => {
+              // Opening Version History from the rail shows the PROJECT graph;
+              // the per-file focus is only entered via the "File History" action.
+              if (id === "snapshots") setFileHistoryTarget(null);
+              setActivePanelId(id);
+            }}
           />
         )}
         {!zenMode && activePanelId === "explorer" && (
@@ -989,6 +995,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             activeFileId={activeFileId}
             onToggleCollapse={() => setActivePanelId(null)}
             onImportZipProject={handleImportZip}
+            onFileHistory={(fileId) => {
+              setFileHistoryTarget(fileId);
+              setActivePanelId("snapshots");
+            }}
           />
         )}
         {!zenMode && activePanelId === "search" && (
