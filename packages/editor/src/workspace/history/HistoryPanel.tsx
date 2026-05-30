@@ -342,6 +342,13 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
           const changedFileIds = Object.keys(c.files)
           const isOpen = expanded === c.id
           const isHovered = hovered === c.id
+          // Drop a label that just echoes the kind badge (the seed's
+          // auto "Initial" under the INITIAL badge, #5) — fall back to the
+          // changed-file count, which is actually informative.
+          const kindWord = KIND_LABEL[c.kind] ?? c.kind
+          const fileCountText = `${changedFileIds.length} file${changedFileIds.length === 1 ? '' : 's'}`
+          const labelText =
+            c.label && c.label.toLowerCase() !== kindWord.toLowerCase() ? c.label : fileCountText
           return (
             <li key={c.id} data-history-commit={c.id} style={{ position: 'relative' }}>
               <div
@@ -353,7 +360,7 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                   isNewest={i === 0}
                   isOldest={i === commits.length - 1}
                   isHead={c.id === h.branches[h.currentBranch]?.head}
-                  forks={forkCounts.get(c.id) ?? 0}
+                  forks={fileTarget ? 0 : forkCounts.get(c.id) ?? 0}
                 />
                 {/* content */}
                 <div style={{ flex: 1, minWidth: 0, paddingBottom: 8 }}>
@@ -367,14 +374,15 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                       {KIND_LABEL[c.kind] ?? c.kind}
                     </span>
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? '' : 's'}`}
+                      {labelText}
                     </span>
                     <span style={{ color: muted, fontSize: 10, flex: '0 0 auto' }}>{relTime(c.createdAt, now)}</span>
                   </div>
 
-                  {/* branch refs — on their own wrapping row so they never
-                      squeeze the commit label in the narrow panel (#3). */}
-                  {forkCounts.has(c.id) && (
+                  {/* branch refs — project-level, hidden in File History mode
+                      (#4). On their own wrapping row so they never squeeze the
+                      commit label in the narrow panel (#3). */}
+                  {!fileTarget && forkCounts.has(c.id) && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3, marginLeft: 20 }}>
                       {branches.filter((b) => b.createdFrom === c.id).map((b) => (
                         <span key={b.name} data-history-branch-chip={b.name} style={{ fontSize: 9, color: accent, border: `1px solid ${accent}`, borderRadius: 8, padding: '0 6px', whiteSpace: 'nowrap' }}>⑂ {b.name}</span>

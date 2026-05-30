@@ -23516,6 +23516,9 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
       const changedFileIds = Object.keys(c.files);
       const isOpen = expanded === c.id;
       const isHovered = hovered === c.id;
+      const kindWord = KIND_LABEL[c.kind] ?? c.kind;
+      const fileCountText = `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}`;
+      const labelText = c.label && c.label.toLowerCase() !== kindWord.toLowerCase() ? c.label : fileCountText;
       return /* @__PURE__ */ jsxRuntime.jsx("li", { "data-history-commit": c.id, style: { position: "relative" }, children: /* @__PURE__ */ jsxRuntime.jsxs(
         "div",
         {
@@ -23529,7 +23532,7 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
                 isNewest: i === 0,
                 isOldest: i === commits.length - 1,
                 isHead: c.id === h.branches[h.currentBranch]?.head,
-                forks: forkCounts.get(c.id) ?? 0
+                forks: fileTarget ? 0 : forkCounts.get(c.id) ?? 0
               }
             ),
             /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { flex: 1, minWidth: 0, paddingBottom: 8 }, children: [
@@ -23542,12 +23545,12 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
                   children: [
                     /* @__PURE__ */ jsxRuntime.jsx("span", { style: { alignSelf: "center" }, children: /* @__PURE__ */ jsxRuntime.jsx(IconChevron, { open: isOpen }) }),
                     /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 9, textTransform: "uppercase", color: c.kind === "manual" ? accent3 : muted2, letterSpacing: 0.5, flex: "0 0 auto" }, children: KIND_LABEL[c.kind] ?? c.kind }),
-                    /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: c.label ?? `${changedFileIds.length} file${changedFileIds.length === 1 ? "" : "s"}` }),
+                    /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: labelText }),
                     /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: muted2, fontSize: 10, flex: "0 0 auto" }, children: relTime(c.createdAt, now2) })
                   ]
                 }
               ),
-              forkCounts.has(c.id) && /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3, marginLeft: 20 }, children: branches.filter((b) => b.createdFrom === c.id).map((b) => /* @__PURE__ */ jsxRuntime.jsxs("span", { "data-history-branch-chip": b.name, style: { fontSize: 9, color: accent3, border: `1px solid ${accent3}`, borderRadius: 8, padding: "0 6px", whiteSpace: "nowrap" }, children: [
+              !fileTarget && forkCounts.has(c.id) && /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3, marginLeft: 20 }, children: branches.filter((b) => b.createdFrom === c.id).map((b) => /* @__PURE__ */ jsxRuntime.jsxs("span", { "data-history-branch-chip": b.name, style: { fontSize: 9, color: accent3, border: `1px solid ${accent3}`, borderRadius: 8, padding: "0 6px", whiteSpace: "nowrap" }, children: [
                 "\u2442 ",
                 b.name
               ] }, b.name)) }),
