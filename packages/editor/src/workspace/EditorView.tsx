@@ -438,6 +438,13 @@ export function EditorView({
         )}
         {file ? (
           <MonacoEditor
+            // Remount on time-travel enter/exit/swap. @monaco-editor/react's
+            // controlled `value` does not reliably re-sync after the model was
+            // swapped to a snapshot + readOnly-toggled, so exit could leave the
+            // editor stuck on historical content. There's no cursor/undo
+            // continuity to preserve across a time-travel boundary, so a clean
+            // remount per (commit | live) is the correct, race-free fix (#204).
+            key={viewing ? `view:${viewedCommit ?? ''}` : 'live'}
             height="100%"
             language={toMonacoLanguage(file.language)}
             value={viewing ? (viewedContent as string) : file.content}

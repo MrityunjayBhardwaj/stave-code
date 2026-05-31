@@ -16910,7 +16910,8 @@ function EditorView({
               onChange: handleChange,
               onMount: handleMonacoMount,
               options: viewing ? { ...MONACO_OPTIONS, readOnly: true } : MONACO_OPTIONS
-            }
+            },
+            viewing ? `view:${viewedCommit ?? ""}` : "live"
           ) : /* @__PURE__ */ jsxRuntime.jsx(
             "div",
             {

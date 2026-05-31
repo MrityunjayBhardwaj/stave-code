@@ -212,43 +212,65 @@ export default function StrudelEditorClient({
 
   // Register ALL .p5/.hydra workspace files as named viz presets so
   // `.viz("name")` works for user-created files, not just bundled ones.
-  useEffect(() => {
-    async function registerAllVizFiles() {
-      const allFiles = listWorkspaceFiles();
-      const vizFiles = allFiles.filter(
-        (f) => f.language === "p5js" || f.language === "hydra",
-      );
-      // Basename (sans extension) of every p5 viz file. When a hydra file
-      // shares a basename with a p5 file (e.g. scope.p5 + scope.hydra), the
-      // bare mode name belongs to the p5 default renderer — register the
-      // hydra one as "<name>:hydra" so inline `.viz("scope")` deterministically
-      // resolves to the p5 preset instead of last-write-wins (#181). This
-      // also keeps inline `.viz("scope")` in lockstep with the `.scope()`
-      // backdrop, which always prefers the p5 file.
-      const baseOf = (p: string) =>
-        p.split("/").pop()!.replace(/\.[^.]+$/, "");
-      const p5Basenames = new Set(
-        vizFiles.filter((f) => f.language === "p5js").map((f) => baseOf(f.path)),
-      );
-      for (const f of vizFiles) {
-        let presetId = getPresetIdForFile(f);
-        if (!presetId) {
-          const baseName = f.path.replace(/\.[^.]+$/, "");
-          presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
-        }
-        await flushToPreset(f.id, presetId);
-        const preset = await VizPresetStore.get(presetId);
-        if (!preset) continue;
-        const base = baseOf(f.path);
-        const name =
-          f.language === "hydra" && p5Basenames.has(base)
-            ? `${base}:hydra`
-            : preset.name;
-        registerPresetAsNamedViz(preset, name);
+  //
+  // #204 time-travel: when a commit is checked out, viz files register from
+  // their SNAPSHOT code (via getViewedContent) so inline `.viz()` shows the
+  // historical viz — but we skip flushToPreset while viewing so the override
+  // never persists historical code to IndexedDB (same non-destructive rule as
+  // Y.Text). Re-run on enter/exit restores live (round-trip is total).
+  const registerAllVizFiles = useCallback(async () => {
+    const viewing = isViewing();
+    const allFiles = listWorkspaceFiles();
+    const vizFiles = allFiles.filter(
+      (f) => f.language === "p5js" || f.language === "hydra",
+    );
+    // Basename (sans extension) of every p5 viz file. When a hydra file
+    // shares a basename with a p5 file (e.g. scope.p5 + scope.hydra), the
+    // bare mode name belongs to the p5 default renderer — register the
+    // hydra one as "<name>:hydra" so inline `.viz("scope")` deterministically
+    // resolves to the p5 preset instead of last-write-wins (#181). This
+    // also keeps inline `.viz("scope")` in lockstep with the `.scope()`
+    // backdrop, which always prefers the p5 file.
+    const baseOf = (p: string) =>
+      p.split("/").pop()!.replace(/\.[^.]+$/, "");
+    const p5Basenames = new Set(
+      vizFiles.filter((f) => f.language === "p5js").map((f) => baseOf(f.path)),
+    );
+    for (const f of vizFiles) {
+      let presetId = getPresetIdForFile(f);
+      if (!presetId) {
+        const baseName = f.path.replace(/\.[^.]+$/, "");
+        presetId = `user_${baseName.replace(/[^a-zA-Z0-9]/g, "_")}`;
       }
+      // Persist live code to the preset store — but NEVER while viewing
+      // (the override is read-only; persisting historical code would corrupt
+      // the live preset, the viz analogue of writing Y.Text).
+      if (!viewing) await flushToPreset(f.id, presetId);
+      const preset = await VizPresetStore.get(presetId);
+      if (!preset) continue;
+      // While viewing, override the registered code with this file's snapshot
+      // content (null = file absent at the commit → fall back to live preset).
+      const viewedCode = getViewedContent(f.id);
+      const effective =
+        viewedCode !== null ? { ...preset, code: viewedCode } : preset;
+      const base = baseOf(f.path);
+      const name =
+        f.language === "hydra" && p5Basenames.has(base)
+          ? `${base}:hydra`
+          : preset.name;
+      registerPresetAsNamedViz(effective, name);
     }
-    registerAllVizFiles();
   }, []);
+
+  useEffect(() => { void registerAllVizFiles(); }, [registerAllVizFiles]);
+
+  // #204 time-travel: re-register viz from the snapshot on checkout
+  // enter/exit/swap so inline `.viz()` follows the viewed commit, then
+  // restores live on exit.
+  useEffect(
+    () => subscribeToRuntimeView(() => { void registerAllVizFiles(); }),
+    [registerAllVizFiles],
+  );
 
   // Register bundled presets as named viz (for `.viz("Piano Roll")` lookup).
   useEffect(() => {
