@@ -25,6 +25,7 @@ import {
 import { listCommits, fileHistory, listBranches, countManualCommits, snapshotAt, type Commit } from './historyGraph'
 import {
   enterRuntimeView,
+  exitRuntimeView,
   getViewedCommit,
   subscribeToRuntimeView,
 } from './historyViewing'
@@ -94,6 +95,18 @@ const IconDiff = ({ size }: IconProps) => svg(<>
   <path d="M5 2.5v8M11 5.5v8" />
   <circle cx="5" cy="12.5" r="1.5" /><circle cx="11" cy="3.5" r="1.5" />
   <path d="M5 4.5a3 3 0 0 0 3 3h3" />
+</>, size)
+// Checkout — arrow entering the commit node (time-travel here).
+const IconCheckout = ({ size }: IconProps) => svg(<>
+  <path d="M2 8h8" />
+  <path d="M7 5l3 3-3 3" />
+  <circle cx="13" cy="8" r="1.6" />
+</>, size)
+// Exit time-travel — arrow leaving back to live (shown on the checked-out commit).
+const IconExit = ({ size }: IconProps) => svg(<>
+  <path d="M14 8H6" />
+  <path d="M9 5L6 8l3 3" />
+  <circle cx="3" cy="8" r="1.6" />
 </>, size)
 const IconChevron = ({ open }: { open: boolean }) => (
   <span style={{ display: 'inline-block', transition: 'transform 120ms', transform: open ? 'rotate(90deg)' : 'none', color: muted, fontSize: 10 }}>▶</span>
@@ -429,8 +442,14 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                     </div>
                   )}
 
-                  {/* hover icon actions */}
-                  <div style={{ display: 'flex', gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: 'opacity 120ms' }}>
+                  {/* hover icon actions — checkout (time-travel) is the first,
+                      so the affordance is visible without hovering the dot (B). */}
+                  <div style={{ display: 'flex', gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen || c.id === viewedCommit ? 1 : 0.18, transition: 'opacity 120ms' }}>
+                    {c.id === viewedCommit ? (
+                      <button title="Exit time-travel — back to live" style={{ ...iconBtn(), color: accent }} onClick={() => exitRuntimeView()} data-history-checkout-exit={c.id}><IconExit /></button>
+                    ) : (
+                      <button title="Check out — time-travel the editor + runtime here" style={iconBtn()} onClick={() => doCheckout(c)} data-history-checkout-btn={c.id}><IconCheckout /></button>
+                    )}
                     <button title={fileTarget ? 'Restore this file to this commit' : 'Restore project to this commit'} style={iconBtn()} onClick={() => doRestore(c)} data-history-restore={c.id}><IconRestore /></button>
                     <button title="Fork a branch here" style={iconBtn()} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}><IconFork /></button>
                   </div>

@@ -84,3 +84,35 @@ test('clicking a commit dot time-travels the editor (read-only) and Exit restore
   // the read-only typing never persisted
   expect(restored).not.toContain('SHOULD_NOT_PERSIST')
 })
+
+test('the checkout hover icon checks out, and the viewed row swaps to an exit icon (B)', async ({ page }) => {
+  // a second commit so there is a non-HEAD target
+  await page.locator('.monaco-editor').first().click()
+  await page.keyboard.press('Meta+ArrowUp'); await page.keyboard.press('Home')
+  await page.keyboard.type('// MARK\n')
+  await page.waitForTimeout(300)
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
+  await page.waitForTimeout(300)
+  await page.locator('[data-history-commit-now]').click()
+  await page.locator('[data-history-commit-label]').fill('cp')
+  await page.locator('[data-history-commit-save]').click()
+  await page.waitForTimeout(500)
+
+  // every row carries a discoverable checkout icon (the fix for B)
+  expect(await page.locator('[data-history-checkout-btn]').count()).toBeGreaterThanOrEqual(2)
+
+  // check out the seed via its hover icon
+  const seed = page.locator('[data-history-commit]').last()
+  await seed.hover()
+  await seed.locator('[data-history-checkout-btn]').click()
+  await page.waitForTimeout(800)
+  await expect(page.locator('[data-editor-timetravel-banner]')).toBeVisible()
+  // the viewed row now offers an EXIT icon, not checkout
+  await expect(page.locator('[data-history-checkout-exit]')).toHaveCount(1)
+
+  // the row's exit icon returns to live
+  await page.locator('[data-history-checkout-exit]').click()
+  await page.waitForTimeout(600)
+  await expect(page.locator('[data-editor-timetravel-banner]')).toHaveCount(0)
+  await expect(page.locator('[data-history-checkout-exit]')).toHaveCount(0)
+})

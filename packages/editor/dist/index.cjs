@@ -23401,6 +23401,16 @@ var IconDiff = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxRunti
   /* @__PURE__ */ jsxRuntime.jsx("circle", { cx: "11", cy: "3.5", r: "1.5" }),
   /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M5 4.5a3 3 0 0 0 3 3h3" })
 ] }), size), "IconDiff");
+var IconCheckout = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+  /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M2 8h8" }),
+  /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M7 5l3 3-3 3" }),
+  /* @__PURE__ */ jsxRuntime.jsx("circle", { cx: "13", cy: "8", r: "1.6" })
+] }), size), "IconCheckout");
+var IconExit = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+  /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M14 8H6" }),
+  /* @__PURE__ */ jsxRuntime.jsx("path", { d: "M9 5L6 8l3 3" }),
+  /* @__PURE__ */ jsxRuntime.jsx("circle", { cx: "3", cy: "8", r: "1.6" })
+] }), size), "IconExit");
 var IconChevron = /* @__PURE__ */ __name(({ open }) => /* @__PURE__ */ jsxRuntime.jsx("span", { style: { display: "inline-block", transition: "transform 120ms", transform: open ? "rotate(90deg)" : "none", color: muted2, fontSize: 10 }, children: "\u25B6" }), "IconChevron");
 var MANUAL_NUDGE_DEFAULT = 50;
 function manualNudgeThreshold() {
@@ -23694,7 +23704,8 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
                 "\u2442 ",
                 b.name
               ] }, b.name)) }),
-              /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen ? 1 : 0.18, transition: "opacity 120ms" }, children: [
+              /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen || c.id === viewedCommit ? 1 : 0.18, transition: "opacity 120ms" }, children: [
+                c.id === viewedCommit ? /* @__PURE__ */ jsxRuntime.jsx("button", { title: "Exit time-travel \u2014 back to live", style: { ...iconBtn(), color: accent3 }, onClick: () => exitRuntimeView(), "data-history-checkout-exit": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconExit, {}) }) : /* @__PURE__ */ jsxRuntime.jsx("button", { title: "Check out \u2014 time-travel the editor + runtime here", style: iconBtn(), onClick: () => doCheckout(c), "data-history-checkout-btn": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconCheckout, {}) }),
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: fileTarget ? "Restore this file to this commit" : "Restore project to this commit", style: iconBtn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconRestore, {}) }),
                 /* @__PURE__ */ jsxRuntime.jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsxRuntime.jsx(IconFork, {}) })
               ] }),
