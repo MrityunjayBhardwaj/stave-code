@@ -260,6 +260,10 @@ export interface WorkspaceShellHandle {
     mode: 'diff' | 'view'
     commitId: string
     fileId: string
+    /** Diff: open in "vs current" (live ↔ commit) by default (#211). */
+    vsCurrent?: boolean
+    /** Diff: file-picker scope override (the dirty set) (#211). */
+    pickerFileIds?: readonly string[]
   }): void
 
   /**
@@ -2092,6 +2096,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   history={history}
                   commit={commit}
                   initialFileId={tab.fileId}
+                  defaultMode={tab.vsCurrent ? 'current' : 'previous'}
+                  pickerFileIds={tab.pickerFileIds}
                   onClose={() => closeTabById(tab.id)}
                 />
               )}
@@ -2530,8 +2536,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         mode: 'diff' | 'view'
         commitId: string
         fileId: string
+        vsCurrent?: boolean
+        pickerFileIds?: readonly string[]
       }) => {
-        const { mode, commitId, fileId } = req
+        const { mode, commitId, fileId, vsCurrent, pickerFileIds } = req
         // Reuse the active group's history preview slot if one exists —
         // the next Diff/View swaps its content instead of stacking tabs.
         const existing = groups.get(activeGroupId)
@@ -2545,7 +2553,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             if (!g) return prev
             const nextTabs = g.tabs.map((t) =>
               t.id === slotId && t.kind === 'history'
-                ? { ...t, mode, commitId, fileId, preview: true }
+                ? { ...t, mode, commitId, fileId, vsCurrent, pickerFileIds, preview: true }
                 : t,
             )
             const nx = new Map(prev)
@@ -2562,6 +2570,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           fileId,
           mode,
           commitId,
+          ...(vsCurrent ? { vsCurrent: true } : {}),
+          ...(pickerFileIds ? { pickerFileIds } : {}),
           preview: true,
         }
         setGroups((prev) => {

@@ -21,8 +21,11 @@ import {
   switchToBranch,
   getFileHistoryTarget,
   setFileHistoryTarget,
+  getModifiedFileIdsSinceHead,
+  discardFileChanges,
 } from './historyService'
 import { listCommits, fileHistory, listBranches, countManualCommits, snapshotAt, type Commit } from './historyGraph'
+import { subscribeToDocUpdate } from '../projectDoc'
 import {
   enterRuntimeView,
   exitRuntimeView,
@@ -35,6 +38,10 @@ export interface OpenHistoryTabRequest {
   readonly mode: 'diff' | 'view'
   readonly commitId: string
   readonly fileId: string
+  /** Diff: open in "vs current" (live ↔ commit) by default — the uncommitted diff (#211). */
+  readonly vsCurrent?: boolean
+  /** Diff: file-picker scope override (the dirty set) so a file HEAD didn't touch is selectable (#211). */
+  readonly pickerFileIds?: readonly string[]
 }
 
 export interface HistoryPanelProps {
@@ -51,6 +58,10 @@ const KIND_LABEL: Record<string, string> = {
   auto: 'auto',
   manual: 'saved',
   fork: 'fork',
+}
+
+function fileLabelFor(h: { fileMeta: Record<string, { path?: string }> }, fileId: string): string {
+  return h.fileMeta[fileId]?.path ?? fileId
 }
 
 function relTime(ms: number, now: number): string {
@@ -107,6 +118,12 @@ const IconExit = ({ size }: IconProps) => svg(<>
   <path d="M14 8H6" />
   <path d="M9 5L6 8l3 3" />
   <circle cx="3" cy="8" r="1.6" />
+</>, size)
+// Discard — revert working changes to HEAD (counter-clockwise undo arrow).
+// Distinct from IconRestore (commit-row restore) so the two don't read alike.
+const IconDiscard = ({ size }: IconProps) => svg(<>
+  <path d="M3.5 8a4.5 4.5 0 1 1 1.3 3.2" />
+  <path d="M3.5 4.8V8h3.2" />
 </>, size)
 const IconChevron = ({ open }: { open: boolean }) => (
   <span style={{ display: 'inline-block', transition: 'transform 120ms', transform: open ? 'rotate(90deg)' : 'none', color: muted, fontSize: 10 }}>▶</span>
@@ -236,6 +253,24 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
   React.useEffect(() => subscribeToHistory(force as () => void), [])
   // re-render on time-travel enter/exit so the checked-out dot highlights (#204)
   React.useEffect(() => subscribeToRuntimeView(force as () => void), [])
+  // The "Uncommitted Changes" section (#211) reflects the live dirty-vs-HEAD
+  // set, which changes the moment you type — not on a history commit. Re-derive
+  // on local doc edits, debounced like FileTree so per-keystroke churn doesn't
+  // thrash the panel.
+  React.useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null
+    const off = subscribeToDocUpdate(
+      () => {
+        if (t) clearTimeout(t)
+        t = setTimeout(force as () => void, 250)
+      },
+      { localOnly: true },
+    )
+    return () => {
+      off()
+      if (t) clearTimeout(t)
+    }
+  }, [])
   const viewedCommit = getViewedCommit()
   // While time-travelling, the panel is read-only: branch switch / +Commit /
   // Restore / Fork all WRITE the workspace, which is confusing mid-view. Gate
@@ -251,6 +286,11 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
   const [expanded, setExpanded] = React.useState<string | null>(null)
   const [hovered, setHovered] = React.useState<string | null>(null)
   const [nudgeDismissed, setNudgeDismissed] = React.useState(false)
+  // "Uncommitted Changes" section (#211): collapse state + the set of files the
+  // user UN-checked (track the exclusions so a newly-dirtied file defaults to
+  // checked without re-seeding state on every render).
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React.useState(false)
+  const [uncheckedFiles, setUncheckedFiles] = React.useState<ReadonlySet<string>>(new Set())
 
   const h = getCurrentHistory()
   const now = Date.now()
@@ -278,6 +318,16 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
   const commits = fileTarget ? fileHistory(h, fileTarget) : listCommits(h)
   const manualCount = countManualCommits(h)
   const showNudge = !nudgeDismissed && manualCount > manualNudgeThreshold()
+  const headCommitId = h.branches[h.currentBranch]?.head ?? null
+
+  // Uncommitted changes (#211): files whose live content differs from HEAD.
+  // Project mode only — File History mode is scoped to one file's commit log.
+  const dirtyIds = fileTarget
+    ? []
+    : [...getModifiedFileIdsSinceHead()].sort((a, b) =>
+        fileLabelFor(h, a).localeCompare(fileLabelFor(h, b)),
+      )
+  const checkedDirty = dirtyIds.filter((id) => !uncheckedFiles.has(id))
 
   // commits that other branches were forked from (for the graph fork stub)
   const forkCounts = new Map<string, number>()
@@ -295,11 +345,35 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
   const confirmCommit = (): void => {
     const label = commitLabel.trim()
     if (!label) return
-    void commitWorkspace('manual', { label, allowEmpty: true })
+    // Selective commit (#211): when there ARE working changes, commit only the
+    // checked subset (the rest stays dirty for a later commit). With no working
+    // changes, keep the label-only anchor behaviour (allowEmpty).
+    const only = dirtyIds.length > 0 ? new Set(checkedDirty) : undefined
+    void commitWorkspace('manual', { label, allowEmpty: true, ...(only ? { only } : {}) })
     setCommitting(false)
     setCommitLabel('')
   }
-  const fileLabel = (fileId: string): string => h.fileMeta[fileId]?.path ?? fileId
+  const fileLabel = (fileId: string): string => fileLabelFor(h, fileId)
+  const toggleChecked = (id: string): void =>
+    setUncheckedFiles((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const doDiscard = (id: string): void => void discardFileChanges(id)
+  // Live ↔ HEAD diff in the main editor (reuses the diff tab, #210/#211): the
+  // file's HEAD content vs its working content. Picker scopes to the dirty set.
+  const openUncommittedDiff = (id: string): void => {
+    if (!headCommitId) return
+    onOpenHistoryTab?.({
+      mode: 'diff',
+      commitId: headCommitId,
+      fileId: id,
+      vsCurrent: true,
+      pickerFileIds: dirtyIds,
+    })
+  }
   // In File History mode, Restore reverts just that file; otherwise the project.
   const doRestore = (c: Commit): void => {
     if (fileTarget) void restoreFileToCommit(fileTarget, c.id)
@@ -407,6 +481,79 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
             Fork from any; auto-commits are still pruned on their own.
           </span>
           <button onClick={() => setNudgeDismissed(true)} data-history-nudge-dismiss aria-label="dismiss checkpoint notice" style={btn({ padding: '1px 7px' })}>✕</button>
+        </div>
+      )}
+
+      {/* Uncommitted Changes (#211) — VS Code "Source Control" working set.
+          Project mode only; collapsible header + count badge; per-row select +
+          live↔HEAD diff + Discard. Lives above the commit graph. */}
+      {!fileTarget && (
+        <div data-history-uncommitted style={{ marginBottom: 12 }}>
+          <div
+            onClick={() => setUncommittedCollapsed((v) => !v)}
+            data-history-uncommitted-header
+            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginBottom: dirtyIds.length && !uncommittedCollapsed ? 6 : 0, userSelect: 'none' }}
+          >
+            <IconChevron open={!uncommittedCollapsed} />
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: muted, fontWeight: 600 }}>
+              Uncommitted Changes
+            </span>
+            {dirtyIds.length > 0 && (
+              <span
+                data-history-uncommitted-count
+                style={{ fontSize: 9, fontWeight: 600, color: bgInput, background: accent, borderRadius: 9, padding: '1px 6px', minWidth: 16, textAlign: 'center' }}
+              >
+                {dirtyIds.length}
+              </span>
+            )}
+          </div>
+
+          {!uncommittedCollapsed && (
+            dirtyIds.length === 0 ? (
+              <div data-history-uncommitted-empty style={{ color: muted, fontSize: 11, marginLeft: 16, padding: '2px 0' }}>
+                No uncommitted changes
+              </div>
+            ) : (
+              <ul data-history-uncommitted-list style={{ listStyle: 'none', margin: 0, padding: 0, marginLeft: 2 }}>
+                {dirtyIds.map((id) => (
+                  <li
+                    key={id}
+                    data-history-uncommitted-file={id}
+                    onMouseEnter={() => setHovered(`u:${id}`)}
+                    onMouseLeave={() => setHovered((cur) => (cur === `u:${id}` ? null : cur))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 24, padding: '1px 0' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!uncheckedFiles.has(id)}
+                      onChange={() => toggleChecked(id)}
+                      data-history-uncommitted-check={id}
+                      aria-label={`stage ${fileLabel(id)} for commit`}
+                      style={{ flex: '0 0 auto', cursor: 'pointer', accentColor: accent }}
+                    />
+                    <button
+                      onClick={() => openUncommittedDiff(id)}
+                      data-history-uncommitted-diff={id}
+                      title={`Diff ${fileLabel(id)} vs HEAD`}
+                      style={{ ...iconBtn(), flex: 1, justifyContent: 'flex-start', gap: 6, padding: '2px 4px', color: fg, fontSize: 11, minWidth: 0 }}
+                    >
+                      <span style={{ color: muted, display: 'inline-flex' }}><IconDiff size={12} /></span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileLabel(id)}</span>
+                    </button>
+                    <button
+                      onClick={() => doDiscard(id)}
+                      disabled={viewing}
+                      data-history-uncommitted-discard={id}
+                      title={viewing ? lockMsg : `Discard changes to ${fileLabel(id)} (revert to HEAD)`}
+                      style={{ ...iconBtn(), flex: '0 0 auto', opacity: viewing ? 0.35 : hovered === `u:${id}` ? 1 : 0.5, cursor: viewing ? 'not-allowed' : 'pointer' }}
+                    >
+                      <IconDiscard />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )
+          )}
         </div>
       )}
 

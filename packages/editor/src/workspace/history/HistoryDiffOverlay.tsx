@@ -46,6 +46,19 @@ export interface HistoryDiffOverlayProps {
   readonly commit: Commit
   /** File-scope default selection (used if it's among the commit's changes). */
   readonly initialFileId?: string | null
+  /**
+   * Initial diff mode. Defaults to `'previous'` (what the commit changed). The
+   * "Uncommitted Changes" section passes `'current'` for a live ↔ HEAD diff
+   * (commit = HEAD) (#211).
+   */
+  readonly defaultMode?: Mode
+  /**
+   * File-picker scope override (#211). When given, the picker lists THESE ids
+   * (the uncommitted dirty set) instead of the commit's own changeset, so a
+   * working file HEAD never touched is still selectable. `getFileContentAt`
+   * back-walks for the original side regardless.
+   */
+  readonly pickerFileIds?: readonly string[]
   readonly onClose: () => void
 }
 
@@ -53,10 +66,21 @@ export function HistoryDiffOverlay({
   history,
   commit,
   initialFileId,
+  defaultMode = 'previous',
+  pickerFileIds,
   onClose,
 }: HistoryDiffOverlayProps): React.ReactElement {
-  const changedIds = React.useMemo(() => Object.keys(commit.files), [commit])
-  const [mode, setMode] = React.useState<Mode>('previous')
+  const changedIds = React.useMemo(
+    () => (pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files)),
+    [commit, pickerFileIds],
+  )
+  const [mode, setMode] = React.useState<Mode>(defaultMode)
+  // Sync the mode when a reused preview slot (#210) gets a new request with a
+  // different default (e.g. commit drill-down 'previous' → uncommitted 'current').
+  // Fires only when `defaultMode` actually changes, so a manual toggle sticks.
+  React.useEffect(() => {
+    setMode(defaultMode)
+  }, [defaultMode])
   const [fileId, setFileId] = React.useState<string>(() =>
     initialFileId && changedIds.includes(initialFileId) ? initialFileId : (changedIds[0] ?? ''),
   )

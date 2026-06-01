@@ -17144,7 +17144,13 @@ __name(commitWorkspace, "commitWorkspace");
 async function _commit(kind, opts = {}) {
   if (!current2) return null;
   const live = readWorkspaceFiles();
-  const changed = changedFiles(current2, live);
+  let changed = changedFiles(current2, live);
+  if (opts.only) {
+    const only = opts.only;
+    const subset = {};
+    for (const f of Object.keys(changed)) if (only.has(f)) subset[f] = changed[f];
+    changed = subset;
+  }
   const changedKeys = Object.keys(changed);
   if (changedKeys.length === 0 && !opts.allowEmpty) return null;
   if (opts.gate) {
@@ -17209,6 +17215,26 @@ function revertFileToSeed(fileId) {
   });
 }
 __name(revertFileToSeed, "revertFileToSeed");
+function discardFileChanges(fileId) {
+  return withLock(async () => {
+    if (!current2) return;
+    const head = headOf(current2);
+    if (!head) return;
+    const content = getFileContentAt(current2, fileId, head);
+    const live = readWorkspaceFiles();
+    if (content === null) {
+      delete live[fileId];
+    } else {
+      live[fileId] = content;
+    }
+    const meta = current2.fileMeta[fileId];
+    applySnapshot(
+      live,
+      meta ? { ...current2.fileMeta, [fileId]: meta } : current2.fileMeta
+    );
+  });
+}
+__name(discardFileChanges, "discardFileChanges");
 function isFileModifiedSinceHead(fileId) {
   if (!current2) return false;
   const head = headOf(current2);
@@ -18092,10 +18118,18 @@ function HistoryDiffOverlay({
   history: history2,
   commit,
   initialFileId,
+  defaultMode = "previous",
+  pickerFileIds,
   onClose
 }) {
-  const changedIds = React8.useMemo(() => Object.keys(commit.files), [commit]);
-  const [mode, setMode] = React8.useState("previous");
+  const changedIds = React8.useMemo(
+    () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
+    [commit, pickerFileIds]
+  );
+  const [mode, setMode] = React8.useState(defaultMode);
+  React8.useEffect(() => {
+    setMode(defaultMode);
+  }, [defaultMode]);
   const [fileId, setFileId] = React8.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
@@ -20763,6 +20797,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
               history: history2,
               commit,
               initialFileId: tab.fileId,
+              defaultMode: tab.vsCurrent ? "current" : "previous",
+              pickerFileIds: tab.pickerFileIds,
               onClose: () => closeTabById(tab.id)
             },
             `${tab.id}:diff`
@@ -21127,7 +21163,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         });
       }, "openOrFocusFile"),
       openHistoryTab: /* @__PURE__ */ __name((req) => {
-        const { mode, commitId, fileId } = req;
+        const { mode, commitId, fileId, vsCurrent, pickerFileIds } = req;
         const existing = groups.get(activeGroupId);
         const slot = existing?.tabs.find(
           (t) => t.kind === "history" && t.preview === true
@@ -21138,7 +21174,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             const g = prev.get(activeGroupId);
             if (!g) return prev;
             const nextTabs = g.tabs.map(
-              (t) => t.id === slotId && t.kind === "history" ? { ...t, mode, commitId, fileId, preview: true } : t
+              (t) => t.id === slotId && t.kind === "history" ? { ...t, mode, commitId, fileId, vsCurrent, pickerFileIds, preview: true } : t
             );
             const nx = new Map(prev);
             nx.set(activeGroupId, { ...g, tabs: nextTabs, activeTabId: slotId });
@@ -21153,6 +21189,8 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
           fileId,
           mode,
           commitId,
+          ...vsCurrent ? { vsCurrent: true } : {},
+          ...pickerFileIds ? { pickerFileIds } : {},
           preview: true
         };
         setGroups((prev) => {
@@ -23381,6 +23419,10 @@ var KIND_LABEL = {
   manual: "saved",
   fork: "fork"
 };
+function fileLabelFor(h, fileId) {
+  return h.fileMeta[fileId]?.path ?? fileId;
+}
+__name(fileLabelFor, "fileLabelFor");
 function relTime(ms, now2) {
   const s = Math.max(0, Math.round((now2 - ms) / 1e3));
   if (s < 60) return `${s}s ago`;
@@ -23428,6 +23470,10 @@ var IconExit = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fra
   /* @__PURE__ */ jsx("path", { d: "M9 5L6 8l3 3" }),
   /* @__PURE__ */ jsx("circle", { cx: "3", cy: "8", r: "1.6" })
 ] }), size), "IconExit");
+var IconDiscard = /* @__PURE__ */ __name(({ size }) => svg(/* @__PURE__ */ jsxs(Fragment, { children: [
+  /* @__PURE__ */ jsx("path", { d: "M3.5 8a4.5 4.5 0 1 1 1.3 3.2" }),
+  /* @__PURE__ */ jsx("path", { d: "M3.5 4.8V8h3.2" })
+] }), size), "IconDiscard");
 var IconChevron = /* @__PURE__ */ __name(({ open }) => /* @__PURE__ */ jsx("span", { style: { display: "inline-block", transition: "transform 120ms", transform: open ? "rotate(90deg)" : "none", color: muted2, fontSize: 10 }, children: "\u25B6" }), "IconChevron");
 var MANUAL_NUDGE_DEFAULT = 50;
 function manualNudgeThreshold() {
@@ -23531,6 +23577,20 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const [, force] = React8.useReducer((x) => x + 1, 0);
   React8.useEffect(() => subscribeToHistory(force), []);
   React8.useEffect(() => subscribeToRuntimeView(force), []);
+  React8.useEffect(() => {
+    let t = null;
+    const off = subscribeToDocUpdate(
+      () => {
+        if (t) clearTimeout(t);
+        t = setTimeout(force, 250);
+      },
+      { localOnly: true }
+    );
+    return () => {
+      off();
+      if (t) clearTimeout(t);
+    };
+  }, []);
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
@@ -23541,6 +23601,8 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const [expanded, setExpanded] = React8.useState(null);
   const [hovered, setHovered] = React8.useState(null);
   const [nudgeDismissed, setNudgeDismissed] = React8.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React8.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React8.useState(/* @__PURE__ */ new Set());
   const h = getCurrentHistory();
   const now2 = Date.now();
   const wrap5 = {
@@ -23560,6 +23622,11 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const commits = fileTarget ? fileHistory(h, fileTarget) : listCommits(h);
   const manualCount = countManualCommits(h);
   const showNudge = !nudgeDismissed && manualCount > manualNudgeThreshold();
+  const headCommitId = h.branches[h.currentBranch]?.head ?? null;
+  const dirtyIds = fileTarget ? [] : [...getModifiedFileIdsSinceHead()].sort(
+    (a, b) => fileLabelFor(h, a).localeCompare(fileLabelFor(h, b))
+  );
+  const checkedDirty = dirtyIds.filter((id) => !uncheckedFiles.has(id));
   const forkCounts = /* @__PURE__ */ new Map();
   for (const b of branches) {
     if (b.createdFrom) forkCounts.set(b.createdFrom, (forkCounts.get(b.createdFrom) ?? 0) + 1);
@@ -23574,11 +23641,29 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const confirmCommit = /* @__PURE__ */ __name(() => {
     const label = commitLabel.trim();
     if (!label) return;
-    void commitWorkspace("manual", { label, allowEmpty: true });
+    const only = dirtyIds.length > 0 ? new Set(checkedDirty) : void 0;
+    void commitWorkspace("manual", { label, allowEmpty: true, ...only ? { only } : {} });
     setCommitting(false);
     setCommitLabel("");
   }, "confirmCommit");
-  const fileLabel = /* @__PURE__ */ __name((fileId) => h.fileMeta[fileId]?.path ?? fileId, "fileLabel");
+  const fileLabel = /* @__PURE__ */ __name((fileId) => fileLabelFor(h, fileId), "fileLabel");
+  const toggleChecked = /* @__PURE__ */ __name((id) => setUncheckedFiles((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  }), "toggleChecked");
+  const doDiscard = /* @__PURE__ */ __name((id) => void discardFileChanges(id), "doDiscard");
+  const openUncommittedDiff = /* @__PURE__ */ __name((id) => {
+    if (!headCommitId) return;
+    onOpenHistoryTab?.({
+      mode: "diff",
+      commitId: headCommitId,
+      fileId: id,
+      vsCurrent: true,
+      pickerFileIds: dirtyIds
+    });
+  }, "openUncommittedDiff");
   const doRestore = /* @__PURE__ */ __name((c) => {
     if (fileTarget) void restoreFileToCommit(fileTarget, c.id);
     else void restoreProject(c.id);
@@ -23687,6 +23772,75 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
         ]
       }
     ),
+    !fileTarget && /* @__PURE__ */ jsxs("div", { "data-history-uncommitted": true, style: { marginBottom: 12 }, children: [
+      /* @__PURE__ */ jsxs(
+        "div",
+        {
+          onClick: () => setUncommittedCollapsed((v) => !v),
+          "data-history-uncommitted-header": true,
+          style: { display: "flex", alignItems: "center", gap: 6, cursor: "pointer", marginBottom: dirtyIds.length && !uncommittedCollapsed ? 6 : 0, userSelect: "none" },
+          children: [
+            /* @__PURE__ */ jsx(IconChevron, { open: !uncommittedCollapsed }),
+            /* @__PURE__ */ jsx("span", { style: { fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: muted2, fontWeight: 600 }, children: "Uncommitted Changes" }),
+            dirtyIds.length > 0 && /* @__PURE__ */ jsx(
+              "span",
+              {
+                "data-history-uncommitted-count": true,
+                style: { fontSize: 9, fontWeight: 600, color: bgInput, background: accent3, borderRadius: 9, padding: "1px 6px", minWidth: 16, textAlign: "center" },
+                children: dirtyIds.length
+              }
+            )
+          ]
+        }
+      ),
+      !uncommittedCollapsed && (dirtyIds.length === 0 ? /* @__PURE__ */ jsx("div", { "data-history-uncommitted-empty": true, style: { color: muted2, fontSize: 11, marginLeft: 16, padding: "2px 0" }, children: "No uncommitted changes" }) : /* @__PURE__ */ jsx("ul", { "data-history-uncommitted-list": true, style: { listStyle: "none", margin: 0, padding: 0, marginLeft: 2 }, children: dirtyIds.map((id) => /* @__PURE__ */ jsxs(
+        "li",
+        {
+          "data-history-uncommitted-file": id,
+          onMouseEnter: () => setHovered(`u:${id}`),
+          onMouseLeave: () => setHovered((cur) => cur === `u:${id}` ? null : cur),
+          style: { display: "flex", alignItems: "center", gap: 6, minHeight: 24, padding: "1px 0" },
+          children: [
+            /* @__PURE__ */ jsx(
+              "input",
+              {
+                type: "checkbox",
+                checked: !uncheckedFiles.has(id),
+                onChange: () => toggleChecked(id),
+                "data-history-uncommitted-check": id,
+                "aria-label": `stage ${fileLabel(id)} for commit`,
+                style: { flex: "0 0 auto", cursor: "pointer", accentColor: accent3 }
+              }
+            ),
+            /* @__PURE__ */ jsxs(
+              "button",
+              {
+                onClick: () => openUncommittedDiff(id),
+                "data-history-uncommitted-diff": id,
+                title: `Diff ${fileLabel(id)} vs HEAD`,
+                style: { ...iconBtn(), flex: 1, justifyContent: "flex-start", gap: 6, padding: "2px 4px", color: fg3, fontSize: 11, minWidth: 0 },
+                children: [
+                  /* @__PURE__ */ jsx("span", { style: { color: muted2, display: "inline-flex" }, children: /* @__PURE__ */ jsx(IconDiff, { size: 12 }) }),
+                  /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: fileLabel(id) })
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsx(
+              "button",
+              {
+                onClick: () => doDiscard(id),
+                disabled: viewing,
+                "data-history-uncommitted-discard": id,
+                title: viewing ? lockMsg : `Discard changes to ${fileLabel(id)} (revert to HEAD)`,
+                style: { ...iconBtn(), flex: "0 0 auto", opacity: viewing ? 0.35 : hovered === `u:${id}` ? 1 : 0.5, cursor: viewing ? "not-allowed" : "pointer" },
+                children: /* @__PURE__ */ jsx(IconDiscard, {})
+              }
+            )
+          ]
+        },
+        id
+      )) }))
+    ] }),
     /* @__PURE__ */ jsx("ol", { style: { listStyle: "none", margin: 0, padding: 0 }, "data-history-commit-list": true, children: commits.map((c, i) => {
       const changedFileIds = Object.keys(c.files);
       const isOpen = expanded === c.id;

@@ -161,6 +161,14 @@ export interface CommitWorkspaceOpts {
    * auto/eval paths leave this off and keep their no-op-when-unchanged return.
    */
   readonly allowEmpty?: boolean
+  /**
+   * Selective-file commit (#211, Tier 1.2 — the index-free analogue of git
+   * staging): commit ONLY these file ids, leaving the rest of the working
+   * changes uncommitted (captured by a later auto/eval commit). Filters the
+   * computed diff to the subset before the empty-check. Absent = today's full
+   * working-tree snapshot (auto/eval/restore stay byte-identical).
+   */
+  readonly only?: ReadonlySet<string>
 }
 
 /**
@@ -183,7 +191,16 @@ async function _commit(
 ): Promise<string | null> {
   if (!current) return null
   const live = readWorkspaceFiles()
-  const changed = changedFiles(current, live)
+  let changed = changedFiles(current, live)
+  if (opts.only) {
+    // selective commit (#211): keep only the chosen subset of the working
+    // diff; the rest stays dirty for a later commit. Empty `only` → empty
+    // diff (still allowed through when allowEmpty, e.g. a label anchor).
+    const only = opts.only
+    const subset: Record<string, string> = {}
+    for (const f of Object.keys(changed)) if (only.has(f)) subset[f] = changed[f]
+    changed = subset
+  }
   const changedKeys = Object.keys(changed)
   if (changedKeys.length === 0 && !opts.allowEmpty) return null
 
@@ -272,6 +289,41 @@ export function revertFileToSeed(fileId: string): Promise<string | null> {
     const seed = seedCommitId(current)
     if (!seed) return null
     return _restoreFileToCommit(fileId, seed)
+  })
+}
+
+/**
+ * Discard a file's uncommitted working changes (#211, Tier 1.1) — write its
+ * live Y.Text back to its current-branch HEAD content (or remove the file if
+ * it did not exist at HEAD). **Creates NO commit** — this is the crucial
+ * distinction from {@link restoreFileToCommit}/{@link revertFileToSeed}, which
+ * record an `auto` commit. Discard just throws away unsaved work, like
+ * `git checkout -- <file>`. No-op when there's no history or no HEAD.
+ *
+ * Gated at the UI by `isViewing()` (PV62) alongside Restore/Fork; the panel is
+ * the sanctioned write-gate while time-travelling.
+ */
+export function discardFileChanges(fileId: string): Promise<void> {
+  return withLock(async () => {
+    if (!current) return
+    const head = headOf(current)
+    if (!head) return
+    const content = getFileContentAt(current, fileId, head)
+    const live = readWorkspaceFiles()
+    if (content === null) {
+      delete live[fileId] // absent at HEAD → discarding means removing it
+    } else {
+      live[fileId] = content
+    }
+    const meta = current.fileMeta[fileId]
+    applySnapshot(
+      live,
+      meta ? { ...current.fileMeta, [fileId]: meta } : current.fileMeta,
+    )
+    // No _commit: discard restores the working tree to HEAD without recording
+    // a new commit (Discard ≠ Restore). `current` is unchanged, so the lock's
+    // notifyIfChanged is a no-op — listeners that need the live-dirty refresh
+    // (the panel's uncommitted section) ride subscribeToDocUpdate instead.
   })
 }
 

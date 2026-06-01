@@ -2743,6 +2743,19 @@ type WorkspaceTab = {
     readonly mode: 'diff' | 'view';
     /** The commit being diffed / viewed. */
     readonly commitId: string;
+    /**
+     * Diff mode only (#211): open the diff in "vs current" (commit ↔ live
+     * working tree) by default, for the "Uncommitted Changes" section's
+     * live ↔ HEAD diff. With `commitId` = HEAD, the original side is the
+     * file's HEAD content and the modified side is its live content.
+     */
+    readonly vsCurrent?: boolean;
+    /**
+     * Diff mode only (#211): scope the file picker to these ids instead of
+     * the commit's own changeset — so an uncommitted file that HEAD didn't
+     * touch is still selectable (the dirty-set snapshot at open time).
+     */
+    readonly pickerFileIds?: readonly string[];
     /** Preview slot (italic, replaced by the next open). Promoted on double-click. */
     readonly preview?: boolean;
 };
@@ -3337,6 +3350,10 @@ interface WorkspaceShellHandle {
         mode: 'diff' | 'view';
         commitId: string;
         fileId: string;
+        /** Diff: open in "vs current" (live ↔ commit) by default (#211). */
+        vsCurrent?: boolean;
+        /** Diff: file-picker scope override (the dirty set) (#211). */
+        pickerFileIds?: readonly string[];
     }): void;
     /**
      * Promote the given tab out of preview mode — it becomes pinned and
@@ -4101,6 +4118,14 @@ interface CommitWorkspaceOpts {
      * auto/eval paths leave this off and keep their no-op-when-unchanged return.
      */
     readonly allowEmpty?: boolean;
+    /**
+     * Selective-file commit (#211, Tier 1.2 — the index-free analogue of git
+     * staging): commit ONLY these file ids, leaving the rest of the working
+     * changes uncommitted (captured by a later auto/eval commit). Filters the
+     * computed diff to the subset before the empty-check. Absent = today's full
+     * working-tree snapshot (auto/eval/restore stay byte-identical).
+     */
+    readonly only?: ReadonlySet<string>;
 }
 /**
  * Capture the current workspace state as a commit on the current branch.
@@ -4188,6 +4213,10 @@ interface OpenHistoryTabRequest {
     readonly mode: 'diff' | 'view';
     readonly commitId: string;
     readonly fileId: string;
+    /** Diff: open in "vs current" (live ↔ commit) by default — the uncommitted diff (#211). */
+    readonly vsCurrent?: boolean;
+    /** Diff: file-picker scope override (the dirty set) so a file HEAD didn't touch is selectable (#211). */
+    readonly pickerFileIds?: readonly string[];
 }
 interface HistoryPanelProps {
     /**
