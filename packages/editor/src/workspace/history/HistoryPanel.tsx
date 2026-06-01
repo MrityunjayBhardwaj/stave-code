@@ -292,6 +292,27 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
   const [uncommittedCollapsed, setUncommittedCollapsed] = React.useState(false)
   const [uncheckedFiles, setUncheckedFiles] = React.useState<ReadonlySet<string>>(new Set())
 
+  // Prune stale exclusions: once a file leaves the dirty set (committed away or
+  // discarded), drop it from `uncheckedFiles` so it doesn't reappear silently
+  // unchecked the next time it's edited. Must run BEFORE the `!h` early return
+  // to keep hook order stable; depends only on the raw dirty-id key (no `h`).
+  const dirtyPruneKey = getFileHistoryTarget()
+    ? ''
+    : [...getModifiedFileIdsSinceHead()].sort().join(',')
+  React.useEffect(() => {
+    setUncheckedFiles((prev) => {
+      if (prev.size === 0) return prev
+      const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(',') : [])
+      let changed = false
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (live.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed ? next : prev
+    })
+  }, [dirtyPruneKey])
+
   const h = getCurrentHistory()
   const now = Date.now()
 

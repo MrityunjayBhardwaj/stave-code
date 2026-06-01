@@ -23603,6 +23603,20 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const [nudgeDismissed, setNudgeDismissed] = React8.useState(false);
   const [uncommittedCollapsed, setUncommittedCollapsed] = React8.useState(false);
   const [uncheckedFiles, setUncheckedFiles] = React8.useState(/* @__PURE__ */ new Set());
+  const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
+  React8.useEffect(() => {
+    setUncheckedFiles((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
+      let changed = false;
+      const next = /* @__PURE__ */ new Set();
+      for (const id of prev) {
+        if (live.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [dirtyPruneKey]);
   const h = getCurrentHistory();
   const now2 = Date.now();
   const wrap5 = {
