@@ -16618,791 +16618,6 @@ function subscribeToRuntimeView(cb) {
   return () => listeners5.delete(cb);
 }
 __name(subscribeToRuntimeView, "subscribeToRuntimeView");
-function monacoThemeNameFor(theme) {
-  return theme === "light" ? "stave-light" : "stave-dark";
-}
-__name(monacoThemeNameFor, "monacoThemeNameFor");
-var MonacoEditor = MonacoEditorRaw;
-var MONACO_OPTIONS = {
-  fontSize: 13,
-  lineHeight: 22,
-  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-  fontLigatures: true,
-  minimap: { enabled: false },
-  scrollBeyondLastLine: false,
-  wordWrap: "on",
-  automaticLayout: true,
-  padding: { top: 8, bottom: 8 },
-  scrollbar: {
-    vertical: "auto",
-    horizontal: "auto",
-    useShadows: false
-  },
-  lineNumbersMinChars: 3,
-  glyphMargin: true,
-  // Phase 20-07 — gutter glyphs render breakpoint markers via useBreakpoints
-  folding: false,
-  renderLineHighlight: "line",
-  cursorBlinking: "smooth",
-  cursorSmoothCaretAnimation: "on"
-};
-function EditorView({
-  fileId,
-  theme = "dark",
-  chromeSlot,
-  onMount,
-  error,
-  onPlay,
-  onStop,
-  onEditViz,
-  onCropViz
-}) {
-  const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = useRef(null);
-  const [, forceViewTick] = useState(0);
-  useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
-  const viewedContent = getViewedContent(fileId);
-  const viewing = viewedContent !== null;
-  const viewedCommit = getViewedCommit();
-  const editorRef = useRef(null);
-  const monacoRef = useRef(null);
-  const viewZoneHandleRef = useRef(null);
-  const lastPayloadRef = useRef(null);
-  const [hapStream, setHapStream] = useState(null);
-  const [breakpointStore, setBreakpointStore] = useState(null);
-  const [onResume, setOnResume] = useState(null);
-  const [editorReady, setEditorReady] = useState(false);
-  useEffect(() => {
-    if (!containerRef.current) return;
-    applyTheme(containerRef.current, theme);
-  }, [theme]);
-  useEffect(() => {
-    const monaco = monacoRef.current;
-    if (!monaco?.editor?.setTheme) return;
-    monaco.editor.setTheme(monacoThemeNameFor(theme));
-  }, [theme]);
-  useEffect(() => {
-    if (!fileId) return;
-    const unsub = workspaceAudioBus.subscribe(
-      { kind: "file", fileId },
-      (payload) => {
-        setHapStream(payload?.hapStream ?? null);
-        setBreakpointStore(payload?.breakpointStore ?? null);
-        setOnResume(() => payload?.onResume ?? null);
-        lastPayloadRef.current = payload;
-        if (payload?.inlineViz?.vizRequests?.size && editorRef.current) {
-          viewZoneHandleRef.current?.cleanup();
-          viewZoneHandleRef.current = addInlineViewZones(
-            editorRef.current,
-            payload.engineComponents ?? payload,
-            DEFAULT_VIZ_DESCRIPTORS,
-            { onEdit: onEditViz, onCrop: onCropViz },
-            fileId
-          );
-          viewZoneHandleRef.current?.resume();
-        } else if (payload === null) {
-          viewZoneHandleRef.current?.pause();
-        }
-      }
-    );
-    return () => {
-      unsub();
-      lastPayloadRef.current = null;
-      viewZoneHandleRef.current?.cleanup();
-      viewZoneHandleRef.current = null;
-    };
-  }, [fileId, editorReady]);
-  useEffect(() => {
-    if (!fileId) return;
-    const remount = /* @__PURE__ */ __name(() => {
-      const payload = lastPayloadRef.current;
-      if (!payload?.inlineViz?.vizRequests?.size || !editorRef.current) return;
-      viewZoneHandleRef.current?.cleanup();
-      viewZoneHandleRef.current = addInlineViewZones(
-        editorRef.current,
-        payload.engineComponents ?? payload,
-        DEFAULT_VIZ_DESCRIPTORS,
-        { onEdit: onEditViz, onCrop: onCropViz },
-        fileId
-      );
-      viewZoneHandleRef.current?.resume();
-    }, "remount");
-    const unsubViz = onNamedVizChanged(remount);
-    const unsubOverrides = subscribeToZoneOverrides(fileId, remount);
-    return () => {
-      unsubViz();
-      unsubOverrides();
-    };
-  }, [fileId]);
-  useHighlighting(editorRef.current, hapStream);
-  useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
-  useEffect(() => {
-    return () => {
-      if (editorRef.current) unregisterEditor(fileId, editorRef.current);
-    };
-  }, [fileId]);
-  useEffect(() => {
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-    if (!editor || !monaco) return;
-    const model = editor.getModel?.();
-    if (!model) return;
-    if (error) {
-      setEvalError(monaco, model, error);
-    } else {
-      clearEvalErrors(monaco, model);
-    }
-  }, [error]);
-  const onPlayRef = useRef(onPlay);
-  onPlayRef.current = onPlay;
-  const onStopRef = useRef(onStop);
-  onStopRef.current = onStop;
-  const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
-    editorRef.current = editor;
-    monacoRef.current = monaco;
-    setEditorReady(true);
-    registerEditor(fileId, editor);
-    registerMonacoNamespace(monaco);
-    applyPersistedEditorOptions(editor);
-    ensureWorkspaceLanguages(monaco);
-    if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
-      defineStrudelMonacoTheme(monaco);
-      monaco.editor.setTheme(monacoThemeNameFor(theme));
-    }
-    if (monaco.KeyMod && monaco.KeyCode && editor.addAction) {
-      editor.addAction({
-        id: "stave.play",
-        label: "Play / Stop",
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-        run: /* @__PURE__ */ __name(() => onPlayRef.current?.(), "run")
-      });
-      editor.addAction({
-        id: "stave.stop",
-        label: "Stop",
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period],
-        run: /* @__PURE__ */ __name(() => onStopRef.current?.(), "run")
-      });
-    }
-    const model = editor.getModel?.();
-    if (model && model.getLanguageId?.() === "strudel") {
-      refreshStrudelLintMarkers(monaco, model);
-      const lintListener = model.onDidChangeContent(() => {
-        refreshStrudelLintMarkers(monaco, model);
-      });
-      model.onWillDispose(() => {
-        try {
-          lintListener?.dispose?.();
-        } catch {
-        }
-        clearStrudelLintMarkers(monaco, model);
-      });
-    }
-    onMount?.(editor, monaco);
-  }, "handleMonacoMount");
-  const handleChange = /* @__PURE__ */ __name((value) => {
-    if (value === void 0) return;
-    if (viewing) return;
-    setContent2(value);
-  }, "handleChange");
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      ref: containerRef,
-      "data-workspace-view": "editor",
-      "data-file-id": fileId,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        width: "100%",
-        background: "var(--background)",
-        color: "var(--foreground)"
-      },
-      children: [
-        chromeSlot ? /* @__PURE__ */ jsx(
-          "div",
-          {
-            "data-workspace-view-slot": "chrome",
-            style: { flexShrink: 0 },
-            children: chromeSlot
-          }
-        ) : null,
-        /* @__PURE__ */ jsxs("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: [
-          viewing && /* @__PURE__ */ jsxs(
-            "div",
-            {
-              "data-editor-timetravel-banner": true,
-              style: {
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                zIndex: 6,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "4px 10px",
-                fontSize: 11,
-                background: "color-mix(in srgb, var(--accent, #6ea8fe) 22%, var(--background, #16161a))",
-                color: "var(--foreground, #e6e6ea)",
-                borderBottom: "1px solid var(--accent, #6ea8fe)",
-                fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-              },
-              children: [
-                /* @__PURE__ */ jsxs("span", { style: { flex: 1 }, children: [
-                  "\u23F1 Viewing commit ",
-                  /* @__PURE__ */ jsx("strong", { children: (viewedCommit ?? "").slice(0, 7) }),
-                  " \u2014 read-only time-travel. Fork to edit here."
-                ] }),
-                /* @__PURE__ */ jsx(
-                  "button",
-                  {
-                    "data-editor-timetravel-exit": true,
-                    onClick: () => exitRuntimeView(),
-                    style: {
-                      background: "var(--accent, #6ea8fe)",
-                      color: "#0b0b0f",
-                      border: "none",
-                      borderRadius: 4,
-                      padding: "2px 10px",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      fontWeight: 600
-                    },
-                    children: "Exit"
-                  }
-                )
-              ]
-            }
-          ),
-          file ? /* @__PURE__ */ jsx(
-            MonacoEditor,
-            {
-              height: "100%",
-              language: toMonacoLanguage(file.language),
-              value: viewing ? viewedContent : file.content,
-              onChange: handleChange,
-              onMount: handleMonacoMount,
-              options: viewing ? { ...MONACO_OPTIONS, readOnly: true } : MONACO_OPTIONS
-            },
-            viewing ? `view:${viewedCommit ?? ""}` : "live"
-          ) : /* @__PURE__ */ jsx(
-            "div",
-            {
-              "data-workspace-view-state": "loading",
-              style: {
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                color: "var(--foreground-muted)",
-                fontSize: 12
-              },
-              children: "Loading\u2026"
-            }
-          )
-        ] })
-      ]
-    }
-  );
-}
-__name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React8__default.Component {
-  constructor() {
-    super(...arguments);
-    this.state = { error: null };
-    this.reset = /* @__PURE__ */ __name(() => {
-      this.setState({ error: null });
-    }, "reset");
-  }
-  static getDerivedStateFromError(error) {
-    return { error };
-  }
-  componentDidCatch(error, info) {
-    console.error("[stave] editor subtree crashed:", error, info.componentStack);
-    this.props.onError?.(error, info);
-  }
-  componentDidUpdate(prev) {
-    if (this.state.error && prev.resetKey !== this.props.resetKey) {
-      this.setState({ error: null });
-    }
-  }
-  render() {
-    const { error } = this.state;
-    if (!error) return this.props.children;
-    if (this.props.fallback) return this.props.fallback(error, this.reset);
-    return /* @__PURE__ */ jsxs(
-      "div",
-      {
-        "data-stave-error-boundary": true,
-        style: {
-          padding: 16,
-          fontFamily: "var(--font-mono, monospace)",
-          fontSize: 12,
-          color: "var(--foreground-muted, #999)",
-          background: "var(--background-subtle, transparent)",
-          height: "100%",
-          boxSizing: "border-box",
-          overflow: "auto"
-        },
-        children: [
-          /* @__PURE__ */ jsx("div", { style: { color: "var(--error, #f48771)", marginBottom: 8 }, children: "Editor crashed" }),
-          /* @__PURE__ */ jsx("pre", { style: { whiteSpace: "pre-wrap", margin: 0 }, children: error.message }),
-          /* @__PURE__ */ jsx(
-            "button",
-            {
-              type: "button",
-              onClick: this.reset,
-              style: {
-                marginTop: 12,
-                padding: "4px 10px",
-                background: "transparent",
-                color: "inherit",
-                border: "1px solid currentColor",
-                borderRadius: 3,
-                cursor: "pointer"
-              },
-              children: "Retry"
-            }
-          )
-        ]
-      }
-    );
-  }
-};
-__name(_ErrorBoundary, "ErrorBoundary");
-var ErrorBoundary = _ErrorBoundary;
-
-// src/workspace/preview/vizLiveToggle.ts
-var STORAGE_PREFIX2 = "stave:vizLive:";
-function safeLocalStorage3() {
-  try {
-    if (typeof window === "undefined") return null;
-    if (typeof window.localStorage?.getItem !== "function") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-__name(safeLocalStorage3, "safeLocalStorage");
-var values = /* @__PURE__ */ new Map();
-var listeners6 = /* @__PURE__ */ new Map();
-function keyFor(fileId) {
-  return `${STORAGE_PREFIX2}${fileId}`;
-}
-__name(keyFor, "keyFor");
-function getVizLive(fileId) {
-  const cached = values.get(fileId);
-  if (cached !== void 0) return cached;
-  const ls = safeLocalStorage3();
-  const raw = ls?.getItem(keyFor(fileId));
-  const on = raw === "0" ? false : true;
-  values.set(fileId, on);
-  return on;
-}
-__name(getVizLive, "getVizLive");
-function setVizLive(fileId, on) {
-  const prev = getVizLive(fileId);
-  if (prev === on) return;
-  values.set(fileId, on);
-  safeLocalStorage3()?.setItem(keyFor(fileId), on ? "1" : "0");
-  const set = listeners6.get(fileId);
-  if (set) for (const cb of Array.from(set)) cb(on);
-}
-__name(setVizLive, "setVizLive");
-function toggleVizLive(fileId) {
-  setVizLive(fileId, !getVizLive(fileId));
-}
-__name(toggleVizLive, "toggleVizLive");
-function onVizLiveChange(fileId, cb) {
-  let set = listeners6.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    listeners6.set(fileId, set);
-  }
-  set.add(cb);
-  return () => {
-    set.delete(cb);
-    if (set.size === 0) listeners6.delete(fileId);
-  };
-}
-__name(onVizLiveChange, "onVizLiveChange");
-function payloadKey(ref, payload) {
-  if (payload === null) return "none";
-  if (ref.kind === "file") return `file:${ref.fileId}`;
-  if (ref.kind === "default") {
-    const sources = workspaceAudioBus.listSources();
-    if (sources.length === 0) return "none";
-    return `default:${sources[sources.length - 1].sourceId}`;
-  }
-  return "none";
-}
-__name(payloadKey, "payloadKey");
-function sourceRefKey(ref) {
-  if (ref.kind === "file") return `ref:file:${ref.fileId}`;
-  if (ref.kind === "none") return "ref:none";
-  return "ref:default";
-}
-__name(sourceRefKey, "sourceRefKey");
-function PreviewView({
-  fileId,
-  provider,
-  sourceRef,
-  onSourceRefChange,
-  theme = "dark",
-  hidden = false,
-  paused = false
-}) {
-  const { file } = useWorkspaceFile(fileId);
-  const containerRef = useRef(null);
-  const [audioPayload, setAudioPayload] = useState(null);
-  const [reloadTick, setReloadTick] = useState(0);
-  const [, forceSourcesRerender] = useState(0);
-  const catchUpNeededRef = useRef(false);
-  const [liveOn, setLiveOn] = useState(() => getVizLive(fileId));
-  useEffect(() => {
-    setLiveOn(getVizLive(fileId));
-    return onVizLiveChange(fileId, setLiveOn);
-  }, [fileId]);
-  useEffect(() => {
-    if (!containerRef.current) return;
-    applyTheme(containerRef.current, theme);
-  }, [theme]);
-  useEffect(() => {
-    const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
-      setAudioPayload(payload);
-    });
-    return unsubscribe;
-  }, [sourceRef]);
-  useEffect(() => {
-    const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
-      forceSourcesRerender((n) => n + 1);
-    });
-    return unsubscribe;
-  }, []);
-  const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  useEffect(() => {
-    if (!file) return;
-    if (provider.reload === "manual") return;
-    if (!liveOn) {
-      catchUpNeededRef.current = true;
-      return;
-    }
-    if (effectivelyHidden) {
-      catchUpNeededRef.current = true;
-      return;
-    }
-    if (provider.reload === "instant") {
-      setReloadTick((n) => n + 1);
-      return;
-    }
-    const ms = provider.debounceMs ?? 0;
-    const handle = setTimeout(() => {
-      setReloadTick((n) => n + 1);
-    }, ms);
-    return () => {
-      clearTimeout(handle);
-    };
-  }, [
-    file?.content,
-    provider.reload,
-    provider.debounceMs,
-    effectivelyHidden,
-    liveOn,
-    file
-  ]);
-  const prevEffectivelyHiddenRef = useRef(effectivelyHidden);
-  useEffect(() => {
-    const wasHidden = prevEffectivelyHiddenRef.current;
-    prevEffectivelyHiddenRef.current = effectivelyHidden;
-    if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
-      catchUpNeededRef.current = false;
-      setReloadTick((n) => n + 1);
-    }
-  }, [effectivelyHidden]);
-  const prevLiveOnRef = useRef(liveOn);
-  useEffect(() => {
-    const wasOff = !prevLiveOnRef.current;
-    prevLiveOnRef.current = liveOn;
-    if (wasOff && liveOn && catchUpNeededRef.current) {
-      catchUpNeededRef.current = false;
-      setReloadTick((n) => n + 1);
-    }
-  }, [liveOn]);
-  const providerNode = React8__default.useMemo(() => {
-    if (!file) return null;
-    return provider.render({
-      file,
-      audioSource: audioPayload,
-      hidden: effectivelyHidden,
-      paused
-    });
-  }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick]);
-  const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
-  return /* @__PURE__ */ jsx(
-    "div",
-    {
-      ref: containerRef,
-      "data-workspace-view": "preview",
-      "data-file-id": fileId,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        width: "100%",
-        background: "var(--background)",
-        color: "var(--foreground)"
-      },
-      children: /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: file ? /* @__PURE__ */ jsx(
-        "div",
-        {
-          "data-testid": `preview-provider-mount-${fileId}`,
-          "data-provider-key": providerKey,
-          style: { width: "100%", height: "100%" },
-          children: providerNode
-        },
-        providerKey
-      ) : /* @__PURE__ */ jsx(
-        "div",
-        {
-          "data-workspace-view-state": "loading",
-          style: {
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "100%",
-            color: "var(--foreground-muted)",
-            fontSize: 12
-          },
-          children: "Loading\u2026"
-        }
-      ) })
-    }
-  );
-}
-__name(PreviewView, "PreviewView");
-
-// src/workspace/commands/CommandRegistry.ts
-var commandRegistry = /* @__PURE__ */ new Map();
-function registerCommand(cmd) {
-  commandRegistry.set(cmd.id, cmd);
-}
-__name(registerCommand, "registerCommand");
-function executeCommand(id, ctx) {
-  const cmd = commandRegistry.get(id);
-  if (!cmd) return;
-  cmd.execute(ctx);
-}
-__name(executeCommand, "executeCommand");
-var warnedCommands = /* @__PURE__ */ new Set();
-function warnOnceDisabled(commandId, language) {
-  if (warnedCommands.has(commandId)) return;
-  warnedCommands.add(commandId);
-  console.warn(
-    `${commandId} not available for .${language} files`
-  );
-}
-__name(warnOnceDisabled, "warnOnceDisabled");
-var __nextTabSeq = 0;
-function generateTabId(prefix) {
-  __nextTabSeq += 1;
-  return `${prefix}-${__nextTabSeq}-${Math.random().toString(36).slice(2, 7)}`;
-}
-__name(generateTabId, "generateTabId");
-function getLanguageFromTab(tab) {
-  const file = getFile(tab.fileId);
-  if (file) return file.language;
-  const dot = tab.fileId.lastIndexOf(".");
-  if (dot === -1) return void 0;
-  const ext = tab.fileId.slice(dot + 1);
-  switch (ext) {
-    case "hydra":
-      return "hydra";
-    case "p5":
-      return "p5js";
-    case "md":
-      return "markdown";
-    case "strudel":
-      return "strudel";
-    case "sonicpi":
-      return "sonicpi";
-    default:
-      return ext;
-  }
-}
-__name(getLanguageFromTab, "getLanguageFromTab");
-function registerBuiltinCommands() {
-  registerCommand({
-    id: "workspace.openPreviewToSide",
-    label: "Open Preview to the Side",
-    keybinding: "Cmd+K V",
-    execute(ctx) {
-      const { activeTab, activeGroupId, shell, getPreviewProvider } = ctx;
-      if (!activeTab || !activeGroupId) return;
-      if (activeTab.kind === "preview") return;
-      const language = getLanguageFromTab(activeTab);
-      if (!language) return;
-      const provider = getPreviewProvider(language);
-      if (!provider) {
-        warnOnceDisabled("workspace.openPreviewToSide", language);
-        return;
-      }
-      const newTab = {
-        kind: "preview",
-        id: generateTabId("preview"),
-        fileId: activeTab.fileId,
-        sourceRef: { kind: "default" }
-      };
-      shell.splitGroupWithTab(activeGroupId, "right", newTab);
-    }
-  });
-  registerCommand({
-    id: "workspace.toggleBackgroundPreview",
-    label: "Toggle Background Preview",
-    keybinding: "Cmd+K B",
-    execute(ctx) {
-      const { activeTab, activeGroupId, activeGroup, shell, getPreviewProvider } = ctx;
-      if (!activeTab || !activeGroupId || !activeGroup) return;
-      if (activeTab.kind !== "editor") return;
-      const language = getLanguageFromTab(activeTab);
-      if (!language) return;
-      const provider = getPreviewProvider(language);
-      if (!provider) {
-        warnOnceDisabled("workspace.toggleBackgroundPreview", language);
-        return;
-      }
-      if (activeGroup.backgroundFileId === activeTab.fileId) {
-        shell.updateGroupBackground(activeGroupId, null);
-      } else {
-        shell.updateGroupBackground(activeGroupId, activeTab.fileId);
-      }
-    }
-  });
-  registerCommand({
-    id: "workspace.openPreviewInWindow",
-    label: "Open Preview in New Window",
-    keybinding: "Cmd+K W",
-    execute(ctx) {
-      const { activeTab, shell, getPreviewProvider } = ctx;
-      if (!activeTab) return;
-      if (activeTab.kind !== "editor") return;
-      const language = getLanguageFromTab(activeTab);
-      if (!language) return;
-      const provider = getPreviewProvider(language);
-      if (!provider) {
-        warnOnceDisabled("workspace.openPreviewInWindow", language);
-        return;
-      }
-      shell.openPopoutPreview?.(activeTab.fileId);
-    }
-  });
-}
-__name(registerBuiltinCommands, "registerBuiltinCommands");
-registerBuiltinCommands();
-
-// src/workspace/commands/useKeyboardCommands.ts
-var CHORD_TIMEOUT_MS = 1e3;
-var CHORD_MAP = {
-  v: "workspace.openPreviewToSide",
-  b: "workspace.toggleBackgroundPreview",
-  w: "workspace.openPreviewInWindow"
-};
-function useKeyboardCommands(opts) {
-  const optsRef = useRef(opts);
-  optsRef.current = opts;
-  useEffect(() => {
-    let chordPending = false;
-    let chordTimer = null;
-    function clearChord() {
-      chordPending = false;
-      if (chordTimer !== null) {
-        clearTimeout(chordTimer);
-        chordTimer = null;
-      }
-    }
-    __name(clearChord, "clearChord");
-    function handler(e) {
-      const isMeta = e.metaKey || e.ctrlKey;
-      if (isMeta && e.key.toLowerCase() === "k" && !chordPending) {
-        e.preventDefault();
-        chordPending = true;
-        chordTimer = setTimeout(() => {
-          chordPending = false;
-          chordTimer = null;
-        }, CHORD_TIMEOUT_MS);
-        return;
-      }
-      if (chordPending) {
-        const secondKey = e.key.toLowerCase();
-        const commandId = CHORD_MAP[secondKey];
-        clearChord();
-        if (commandId) {
-          e.preventDefault();
-          const o = optsRef.current;
-          const ctx = {
-            activeTab: o.getActiveTab(),
-            activeGroupId: o.getActiveGroupId(),
-            activeGroup: o.getActiveGroup(),
-            shell: o.shellActions,
-            getPreviewProvider: o.getPreviewProvider
-          };
-          executeCommand(commandId, ctx);
-        }
-        return;
-      }
-    }
-    __name(handler, "handler");
-    window.addEventListener("keydown", handler);
-    return () => {
-      window.removeEventListener("keydown", handler);
-      clearChord();
-    };
-  }, []);
-}
-__name(useKeyboardCommands, "useKeyboardCommands");
-
-// src/workspace/preview/registry.ts
-var byExtension = /* @__PURE__ */ new Map();
-var byLanguage = /* @__PURE__ */ new Map();
-function normalizeExtension(ext) {
-  if (!ext) return void 0;
-  return ext.startsWith(".") ? ext : `.${ext}`;
-}
-__name(normalizeExtension, "normalizeExtension");
-function extensionToLanguage(ext) {
-  switch (ext) {
-    case ".hydra":
-      return "hydra";
-    case ".p5":
-      return "p5js";
-    case ".md":
-      return "markdown";
-    default:
-      return void 0;
-  }
-}
-__name(extensionToLanguage, "extensionToLanguage");
-function registerPreviewProvider(provider) {
-  for (const rawExt of provider.extensions) {
-    const ext = normalizeExtension(rawExt);
-    if (!ext) continue;
-    byExtension.set(ext, provider);
-    const lang = extensionToLanguage(ext);
-    if (lang) byLanguage.set(lang, provider);
-  }
-}
-__name(registerPreviewProvider, "registerPreviewProvider");
-function getPreviewProviderForExtension(extension) {
-  const key = normalizeExtension(extension);
-  if (!key) return void 0;
-  return byExtension.get(key);
-}
-__name(getPreviewProviderForExtension, "getPreviewProviderForExtension");
-function getPreviewProviderForLanguage(language) {
-  return byLanguage.get(language);
-}
-__name(getPreviewProviderForLanguage, "getPreviewProviderForLanguage");
-var previewProviderRegistry = byExtension;
 
 // src/workspace/history/historyGraph.ts
 var MAIN_BRANCH = "main";
@@ -17845,12 +17060,12 @@ function withLock(fn) {
   return run;
 }
 __name(withLock, "withLock");
-var listeners7 = /* @__PURE__ */ new Set();
+var listeners6 = /* @__PURE__ */ new Set();
 var lastNotified = null;
 function notifyIfChanged() {
   if (current2 === lastNotified) return;
   lastNotified = current2;
-  for (const l of listeners7) {
+  for (const l of listeners6) {
     try {
       l();
     } catch {
@@ -17859,12 +17074,12 @@ function notifyIfChanged() {
 }
 __name(notifyIfChanged, "notifyIfChanged");
 function subscribeToHistory(cb) {
-  listeners7.add(cb);
-  return () => listeners7.delete(cb);
+  listeners6.add(cb);
+  return () => listeners6.delete(cb);
 }
 __name(subscribeToHistory, "subscribeToHistory");
 function notifyAll() {
-  for (const l of listeners7) {
+  for (const l of listeners6) {
     try {
       l();
     } catch {
@@ -18023,6 +17238,26 @@ function createBranchAt(name, fromCommit) {
   });
 }
 __name(createBranchAt, "createBranchAt");
+function forkToEditFromCommit(commitId) {
+  return withLock(async () => {
+    if (!current2) return null;
+    const existing = new Set(Object.keys(current2.branches));
+    const base = `edit-${commitId.slice(0, 6)}`;
+    let name = base;
+    let n = 2;
+    while (existing.has(name)) name = `${base}-${n++}`;
+    current2 = createBranch(current2, name, commitId, now());
+    current2 = switchBranch(current2, name);
+    const head = headOf(current2);
+    if (head) {
+      const snap = snapshotAt(current2, head);
+      applySnapshot(snap.files, current2.fileMeta, snap.order);
+    }
+    await saveHistory(current2);
+    return name;
+  });
+}
+__name(forkToEditFromCommit, "forkToEditFromCommit");
 function switchToBranch(name) {
   return withLock(async () => {
     if (!current2) return;
@@ -18036,6 +17271,814 @@ function switchToBranch(name) {
   });
 }
 __name(switchToBranch, "switchToBranch");
+function monacoThemeNameFor(theme) {
+  return theme === "light" ? "stave-light" : "stave-dark";
+}
+__name(monacoThemeNameFor, "monacoThemeNameFor");
+var MonacoEditor = MonacoEditorRaw;
+var MONACO_OPTIONS = {
+  fontSize: 13,
+  lineHeight: 22,
+  fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+  fontLigatures: true,
+  minimap: { enabled: false },
+  scrollBeyondLastLine: false,
+  wordWrap: "on",
+  automaticLayout: true,
+  padding: { top: 8, bottom: 8 },
+  scrollbar: {
+    vertical: "auto",
+    horizontal: "auto",
+    useShadows: false
+  },
+  lineNumbersMinChars: 3,
+  glyphMargin: true,
+  // Phase 20-07 — gutter glyphs render breakpoint markers via useBreakpoints
+  folding: false,
+  renderLineHighlight: "line",
+  cursorBlinking: "smooth",
+  cursorSmoothCaretAnimation: "on"
+};
+function EditorView({
+  fileId,
+  theme = "dark",
+  chromeSlot,
+  onMount,
+  error,
+  onPlay,
+  onStop,
+  onEditViz,
+  onCropViz
+}) {
+  const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
+  const containerRef = useRef(null);
+  const [, forceViewTick] = useState(0);
+  useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const viewedContent = getViewedContent(fileId);
+  const viewing = viewedContent !== null;
+  const viewedCommit = getViewedCommit();
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const viewZoneHandleRef = useRef(null);
+  const lastPayloadRef = useRef(null);
+  const [hapStream, setHapStream] = useState(null);
+  const [breakpointStore, setBreakpointStore] = useState(null);
+  const [onResume, setOnResume] = useState(null);
+  const [editorReady, setEditorReady] = useState(false);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    applyTheme(containerRef.current, theme);
+  }, [theme]);
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco?.editor?.setTheme) return;
+    monaco.editor.setTheme(monacoThemeNameFor(theme));
+  }, [theme]);
+  useEffect(() => {
+    if (!fileId) return;
+    const unsub = workspaceAudioBus.subscribe(
+      { kind: "file", fileId },
+      (payload) => {
+        setHapStream(payload?.hapStream ?? null);
+        setBreakpointStore(payload?.breakpointStore ?? null);
+        setOnResume(() => payload?.onResume ?? null);
+        lastPayloadRef.current = payload;
+        if (payload?.inlineViz?.vizRequests?.size && editorRef.current) {
+          viewZoneHandleRef.current?.cleanup();
+          viewZoneHandleRef.current = addInlineViewZones(
+            editorRef.current,
+            payload.engineComponents ?? payload,
+            DEFAULT_VIZ_DESCRIPTORS,
+            { onEdit: onEditViz, onCrop: onCropViz },
+            fileId
+          );
+          viewZoneHandleRef.current?.resume();
+        } else if (payload === null) {
+          viewZoneHandleRef.current?.pause();
+        }
+      }
+    );
+    return () => {
+      unsub();
+      lastPayloadRef.current = null;
+      viewZoneHandleRef.current?.cleanup();
+      viewZoneHandleRef.current = null;
+    };
+  }, [fileId, editorReady]);
+  useEffect(() => {
+    if (!fileId) return;
+    const remount = /* @__PURE__ */ __name(() => {
+      const payload = lastPayloadRef.current;
+      if (!payload?.inlineViz?.vizRequests?.size || !editorRef.current) return;
+      viewZoneHandleRef.current?.cleanup();
+      viewZoneHandleRef.current = addInlineViewZones(
+        editorRef.current,
+        payload.engineComponents ?? payload,
+        DEFAULT_VIZ_DESCRIPTORS,
+        { onEdit: onEditViz, onCrop: onCropViz },
+        fileId
+      );
+      viewZoneHandleRef.current?.resume();
+    }, "remount");
+    const unsubViz = onNamedVizChanged(remount);
+    const unsubOverrides = subscribeToZoneOverrides(fileId, remount);
+    return () => {
+      unsubViz();
+      unsubOverrides();
+    };
+  }, [fileId]);
+  useHighlighting(editorRef.current, hapStream);
+  useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
+  useEffect(() => {
+    return () => {
+      if (editorRef.current) unregisterEditor(fileId, editorRef.current);
+    };
+  }, [fileId]);
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const model = editor.getModel?.();
+    if (!model) return;
+    if (error) {
+      setEvalError(monaco, model, error);
+    } else {
+      clearEvalErrors(monaco, model);
+    }
+  }, [error]);
+  const onPlayRef = useRef(onPlay);
+  onPlayRef.current = onPlay;
+  const onStopRef = useRef(onStop);
+  onStopRef.current = onStop;
+  const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+    setEditorReady(true);
+    registerEditor(fileId, editor);
+    registerMonacoNamespace(monaco);
+    applyPersistedEditorOptions(editor);
+    ensureWorkspaceLanguages(monaco);
+    if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
+      defineStrudelMonacoTheme(monaco);
+      monaco.editor.setTheme(monacoThemeNameFor(theme));
+    }
+    if (monaco.KeyMod && monaco.KeyCode && editor.addAction) {
+      editor.addAction({
+        id: "stave.play",
+        label: "Play / Stop",
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: /* @__PURE__ */ __name(() => onPlayRef.current?.(), "run")
+      });
+      editor.addAction({
+        id: "stave.stop",
+        label: "Stop",
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Period],
+        run: /* @__PURE__ */ __name(() => onStopRef.current?.(), "run")
+      });
+    }
+    const model = editor.getModel?.();
+    if (model && model.getLanguageId?.() === "strudel") {
+      refreshStrudelLintMarkers(monaco, model);
+      const lintListener = model.onDidChangeContent(() => {
+        refreshStrudelLintMarkers(monaco, model);
+      });
+      model.onWillDispose(() => {
+        try {
+          lintListener?.dispose?.();
+        } catch {
+        }
+        clearStrudelLintMarkers(monaco, model);
+      });
+    }
+    onMount?.(editor, monaco);
+  }, "handleMonacoMount");
+  const handleChange = /* @__PURE__ */ __name((value) => {
+    if (value === void 0) return;
+    if (viewing) return;
+    setContent2(value);
+  }, "handleChange");
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      ref: containerRef,
+      "data-workspace-view": "editor",
+      "data-file-id": fileId,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        width: "100%",
+        background: "var(--background)",
+        color: "var(--foreground)"
+      },
+      children: [
+        chromeSlot ? /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-workspace-view-slot": "chrome",
+            style: { flexShrink: 0 },
+            children: chromeSlot
+          }
+        ) : null,
+        /* @__PURE__ */ jsxs("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: [
+          viewing && /* @__PURE__ */ jsxs(
+            "div",
+            {
+              "data-editor-timetravel-banner": true,
+              style: {
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                zIndex: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "4px 10px",
+                fontSize: 11,
+                background: "color-mix(in srgb, var(--accent, #6ea8fe) 22%, var(--background, #16161a))",
+                color: "var(--foreground, #e6e6ea)",
+                borderBottom: "1px solid var(--accent, #6ea8fe)",
+                fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+              },
+              children: [
+                /* @__PURE__ */ jsxs("span", { style: { flex: 1 }, children: [
+                  "\u23F1 Viewing commit ",
+                  /* @__PURE__ */ jsx("strong", { children: (viewedCommit ?? "").slice(0, 7) }),
+                  " \u2014 read-only time-travel."
+                ] }),
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    "data-editor-timetravel-fork": true,
+                    title: "Branch from this commit and switch to it \u2014 makes this state live and editable",
+                    onClick: () => {
+                      const c = viewedCommit;
+                      if (!c) return;
+                      void forkToEditFromCommit(c).then(() => exitRuntimeView());
+                    },
+                    style: {
+                      background: "transparent",
+                      color: "var(--foreground, #e6e6ea)",
+                      border: "1px solid var(--accent, #6ea8fe)",
+                      borderRadius: 4,
+                      padding: "2px 10px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      fontWeight: 600
+                    },
+                    children: "Fork to edit"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    "data-editor-timetravel-exit": true,
+                    onClick: () => exitRuntimeView(),
+                    style: {
+                      background: "var(--accent, #6ea8fe)",
+                      color: "#0b0b0f",
+                      border: "none",
+                      borderRadius: 4,
+                      padding: "2px 10px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      fontWeight: 600
+                    },
+                    children: "Exit"
+                  }
+                )
+              ]
+            }
+          ),
+          file ? /* @__PURE__ */ jsx(
+            MonacoEditor,
+            {
+              height: "100%",
+              language: toMonacoLanguage(file.language),
+              value: viewing ? viewedContent : file.content,
+              onChange: handleChange,
+              onMount: handleMonacoMount,
+              options: viewing ? { ...MONACO_OPTIONS, readOnly: true } : MONACO_OPTIONS
+            },
+            viewing ? `view:${viewedCommit ?? ""}` : "live"
+          ) : /* @__PURE__ */ jsx(
+            "div",
+            {
+              "data-workspace-view-state": "loading",
+              style: {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                color: "var(--foreground-muted)",
+                fontSize: 12
+              },
+              children: "Loading\u2026"
+            }
+          )
+        ] })
+      ]
+    }
+  );
+}
+__name(EditorView, "EditorView");
+var _ErrorBoundary = class _ErrorBoundary extends React8__default.Component {
+  constructor() {
+    super(...arguments);
+    this.state = { error: null };
+    this.reset = /* @__PURE__ */ __name(() => {
+      this.setState({ error: null });
+    }, "reset");
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[stave] editor subtree crashed:", error, info.componentStack);
+    this.props.onError?.(error, info);
+  }
+  componentDidUpdate(prev) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    if (this.props.fallback) return this.props.fallback(error, this.reset);
+    return /* @__PURE__ */ jsxs(
+      "div",
+      {
+        "data-stave-error-boundary": true,
+        style: {
+          padding: 16,
+          fontFamily: "var(--font-mono, monospace)",
+          fontSize: 12,
+          color: "var(--foreground-muted, #999)",
+          background: "var(--background-subtle, transparent)",
+          height: "100%",
+          boxSizing: "border-box",
+          overflow: "auto"
+        },
+        children: [
+          /* @__PURE__ */ jsx("div", { style: { color: "var(--error, #f48771)", marginBottom: 8 }, children: "Editor crashed" }),
+          /* @__PURE__ */ jsx("pre", { style: { whiteSpace: "pre-wrap", margin: 0 }, children: error.message }),
+          /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              onClick: this.reset,
+              style: {
+                marginTop: 12,
+                padding: "4px 10px",
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid currentColor",
+                borderRadius: 3,
+                cursor: "pointer"
+              },
+              children: "Retry"
+            }
+          )
+        ]
+      }
+    );
+  }
+};
+__name(_ErrorBoundary, "ErrorBoundary");
+var ErrorBoundary = _ErrorBoundary;
+
+// src/workspace/preview/vizLiveToggle.ts
+var STORAGE_PREFIX2 = "stave:vizLive:";
+function safeLocalStorage3() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage3, "safeLocalStorage");
+var values = /* @__PURE__ */ new Map();
+var listeners7 = /* @__PURE__ */ new Map();
+function keyFor(fileId) {
+  return `${STORAGE_PREFIX2}${fileId}`;
+}
+__name(keyFor, "keyFor");
+function getVizLive(fileId) {
+  const cached = values.get(fileId);
+  if (cached !== void 0) return cached;
+  const ls = safeLocalStorage3();
+  const raw = ls?.getItem(keyFor(fileId));
+  const on = raw === "0" ? false : true;
+  values.set(fileId, on);
+  return on;
+}
+__name(getVizLive, "getVizLive");
+function setVizLive(fileId, on) {
+  const prev = getVizLive(fileId);
+  if (prev === on) return;
+  values.set(fileId, on);
+  safeLocalStorage3()?.setItem(keyFor(fileId), on ? "1" : "0");
+  const set = listeners7.get(fileId);
+  if (set) for (const cb of Array.from(set)) cb(on);
+}
+__name(setVizLive, "setVizLive");
+function toggleVizLive(fileId) {
+  setVizLive(fileId, !getVizLive(fileId));
+}
+__name(toggleVizLive, "toggleVizLive");
+function onVizLiveChange(fileId, cb) {
+  let set = listeners7.get(fileId);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    listeners7.set(fileId, set);
+  }
+  set.add(cb);
+  return () => {
+    set.delete(cb);
+    if (set.size === 0) listeners7.delete(fileId);
+  };
+}
+__name(onVizLiveChange, "onVizLiveChange");
+function payloadKey(ref, payload) {
+  if (payload === null) return "none";
+  if (ref.kind === "file") return `file:${ref.fileId}`;
+  if (ref.kind === "default") {
+    const sources = workspaceAudioBus.listSources();
+    if (sources.length === 0) return "none";
+    return `default:${sources[sources.length - 1].sourceId}`;
+  }
+  return "none";
+}
+__name(payloadKey, "payloadKey");
+function sourceRefKey(ref) {
+  if (ref.kind === "file") return `ref:file:${ref.fileId}`;
+  if (ref.kind === "none") return "ref:none";
+  return "ref:default";
+}
+__name(sourceRefKey, "sourceRefKey");
+function PreviewView({
+  fileId,
+  provider,
+  sourceRef,
+  onSourceRefChange,
+  theme = "dark",
+  hidden = false,
+  paused = false
+}) {
+  const { file } = useWorkspaceFile(fileId);
+  const containerRef = useRef(null);
+  const [audioPayload, setAudioPayload] = useState(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [, forceSourcesRerender] = useState(0);
+  const catchUpNeededRef = useRef(false);
+  const [liveOn, setLiveOn] = useState(() => getVizLive(fileId));
+  useEffect(() => {
+    setLiveOn(getVizLive(fileId));
+    return onVizLiveChange(fileId, setLiveOn);
+  }, [fileId]);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    applyTheme(containerRef.current, theme);
+  }, [theme]);
+  useEffect(() => {
+    const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
+      setAudioPayload(payload);
+    });
+    return unsubscribe;
+  }, [sourceRef]);
+  useEffect(() => {
+    const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
+      forceSourcesRerender((n) => n + 1);
+    });
+    return unsubscribe;
+  }, []);
+  const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
+  useEffect(() => {
+    if (!file) return;
+    if (provider.reload === "manual") return;
+    if (!liveOn) {
+      catchUpNeededRef.current = true;
+      return;
+    }
+    if (effectivelyHidden) {
+      catchUpNeededRef.current = true;
+      return;
+    }
+    if (provider.reload === "instant") {
+      setReloadTick((n) => n + 1);
+      return;
+    }
+    const ms = provider.debounceMs ?? 0;
+    const handle = setTimeout(() => {
+      setReloadTick((n) => n + 1);
+    }, ms);
+    return () => {
+      clearTimeout(handle);
+    };
+  }, [
+    file?.content,
+    provider.reload,
+    provider.debounceMs,
+    effectivelyHidden,
+    liveOn,
+    file
+  ]);
+  const prevEffectivelyHiddenRef = useRef(effectivelyHidden);
+  useEffect(() => {
+    const wasHidden = prevEffectivelyHiddenRef.current;
+    prevEffectivelyHiddenRef.current = effectivelyHidden;
+    if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
+      catchUpNeededRef.current = false;
+      setReloadTick((n) => n + 1);
+    }
+  }, [effectivelyHidden]);
+  const prevLiveOnRef = useRef(liveOn);
+  useEffect(() => {
+    const wasOff = !prevLiveOnRef.current;
+    prevLiveOnRef.current = liveOn;
+    if (wasOff && liveOn && catchUpNeededRef.current) {
+      catchUpNeededRef.current = false;
+      setReloadTick((n) => n + 1);
+    }
+  }, [liveOn]);
+  const providerNode = React8__default.useMemo(() => {
+    if (!file) return null;
+    return provider.render({
+      file,
+      audioSource: audioPayload,
+      hidden: effectivelyHidden,
+      paused
+    });
+  }, [file, provider, audioPayload, effectivelyHidden, paused, reloadTick]);
+  const providerKey = `${sourceRefKey(sourceRef)}:${payloadKey(sourceRef, audioPayload)}:${reloadTick}`;
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      ref: containerRef,
+      "data-workspace-view": "preview",
+      "data-file-id": fileId,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        width: "100%",
+        background: "var(--background)",
+        color: "var(--foreground)"
+      },
+      children: /* @__PURE__ */ jsx("div", { style: { flex: 1, minHeight: 0, position: "relative" }, children: file ? /* @__PURE__ */ jsx(
+        "div",
+        {
+          "data-testid": `preview-provider-mount-${fileId}`,
+          "data-provider-key": providerKey,
+          style: { width: "100%", height: "100%" },
+          children: providerNode
+        },
+        providerKey
+      ) : /* @__PURE__ */ jsx(
+        "div",
+        {
+          "data-workspace-view-state": "loading",
+          style: {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            color: "var(--foreground-muted)",
+            fontSize: 12
+          },
+          children: "Loading\u2026"
+        }
+      ) })
+    }
+  );
+}
+__name(PreviewView, "PreviewView");
+
+// src/workspace/commands/CommandRegistry.ts
+var commandRegistry = /* @__PURE__ */ new Map();
+function registerCommand(cmd) {
+  commandRegistry.set(cmd.id, cmd);
+}
+__name(registerCommand, "registerCommand");
+function executeCommand(id, ctx) {
+  const cmd = commandRegistry.get(id);
+  if (!cmd) return;
+  cmd.execute(ctx);
+}
+__name(executeCommand, "executeCommand");
+var warnedCommands = /* @__PURE__ */ new Set();
+function warnOnceDisabled(commandId, language) {
+  if (warnedCommands.has(commandId)) return;
+  warnedCommands.add(commandId);
+  console.warn(
+    `${commandId} not available for .${language} files`
+  );
+}
+__name(warnOnceDisabled, "warnOnceDisabled");
+var __nextTabSeq = 0;
+function generateTabId(prefix) {
+  __nextTabSeq += 1;
+  return `${prefix}-${__nextTabSeq}-${Math.random().toString(36).slice(2, 7)}`;
+}
+__name(generateTabId, "generateTabId");
+function getLanguageFromTab(tab) {
+  const file = getFile(tab.fileId);
+  if (file) return file.language;
+  const dot = tab.fileId.lastIndexOf(".");
+  if (dot === -1) return void 0;
+  const ext = tab.fileId.slice(dot + 1);
+  switch (ext) {
+    case "hydra":
+      return "hydra";
+    case "p5":
+      return "p5js";
+    case "md":
+      return "markdown";
+    case "strudel":
+      return "strudel";
+    case "sonicpi":
+      return "sonicpi";
+    default:
+      return ext;
+  }
+}
+__name(getLanguageFromTab, "getLanguageFromTab");
+function registerBuiltinCommands() {
+  registerCommand({
+    id: "workspace.openPreviewToSide",
+    label: "Open Preview to the Side",
+    keybinding: "Cmd+K V",
+    execute(ctx) {
+      const { activeTab, activeGroupId, shell, getPreviewProvider } = ctx;
+      if (!activeTab || !activeGroupId) return;
+      if (activeTab.kind === "preview") return;
+      const language = getLanguageFromTab(activeTab);
+      if (!language) return;
+      const provider = getPreviewProvider(language);
+      if (!provider) {
+        warnOnceDisabled("workspace.openPreviewToSide", language);
+        return;
+      }
+      const newTab = {
+        kind: "preview",
+        id: generateTabId("preview"),
+        fileId: activeTab.fileId,
+        sourceRef: { kind: "default" }
+      };
+      shell.splitGroupWithTab(activeGroupId, "right", newTab);
+    }
+  });
+  registerCommand({
+    id: "workspace.toggleBackgroundPreview",
+    label: "Toggle Background Preview",
+    keybinding: "Cmd+K B",
+    execute(ctx) {
+      const { activeTab, activeGroupId, activeGroup, shell, getPreviewProvider } = ctx;
+      if (!activeTab || !activeGroupId || !activeGroup) return;
+      if (activeTab.kind !== "editor") return;
+      const language = getLanguageFromTab(activeTab);
+      if (!language) return;
+      const provider = getPreviewProvider(language);
+      if (!provider) {
+        warnOnceDisabled("workspace.toggleBackgroundPreview", language);
+        return;
+      }
+      if (activeGroup.backgroundFileId === activeTab.fileId) {
+        shell.updateGroupBackground(activeGroupId, null);
+      } else {
+        shell.updateGroupBackground(activeGroupId, activeTab.fileId);
+      }
+    }
+  });
+  registerCommand({
+    id: "workspace.openPreviewInWindow",
+    label: "Open Preview in New Window",
+    keybinding: "Cmd+K W",
+    execute(ctx) {
+      const { activeTab, shell, getPreviewProvider } = ctx;
+      if (!activeTab) return;
+      if (activeTab.kind !== "editor") return;
+      const language = getLanguageFromTab(activeTab);
+      if (!language) return;
+      const provider = getPreviewProvider(language);
+      if (!provider) {
+        warnOnceDisabled("workspace.openPreviewInWindow", language);
+        return;
+      }
+      shell.openPopoutPreview?.(activeTab.fileId);
+    }
+  });
+}
+__name(registerBuiltinCommands, "registerBuiltinCommands");
+registerBuiltinCommands();
+
+// src/workspace/commands/useKeyboardCommands.ts
+var CHORD_TIMEOUT_MS = 1e3;
+var CHORD_MAP = {
+  v: "workspace.openPreviewToSide",
+  b: "workspace.toggleBackgroundPreview",
+  w: "workspace.openPreviewInWindow"
+};
+function useKeyboardCommands(opts) {
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
+  useEffect(() => {
+    let chordPending = false;
+    let chordTimer = null;
+    function clearChord() {
+      chordPending = false;
+      if (chordTimer !== null) {
+        clearTimeout(chordTimer);
+        chordTimer = null;
+      }
+    }
+    __name(clearChord, "clearChord");
+    function handler(e) {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (isMeta && e.key.toLowerCase() === "k" && !chordPending) {
+        e.preventDefault();
+        chordPending = true;
+        chordTimer = setTimeout(() => {
+          chordPending = false;
+          chordTimer = null;
+        }, CHORD_TIMEOUT_MS);
+        return;
+      }
+      if (chordPending) {
+        const secondKey = e.key.toLowerCase();
+        const commandId = CHORD_MAP[secondKey];
+        clearChord();
+        if (commandId) {
+          e.preventDefault();
+          const o = optsRef.current;
+          const ctx = {
+            activeTab: o.getActiveTab(),
+            activeGroupId: o.getActiveGroupId(),
+            activeGroup: o.getActiveGroup(),
+            shell: o.shellActions,
+            getPreviewProvider: o.getPreviewProvider
+          };
+          executeCommand(commandId, ctx);
+        }
+        return;
+      }
+    }
+    __name(handler, "handler");
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      clearChord();
+    };
+  }, []);
+}
+__name(useKeyboardCommands, "useKeyboardCommands");
+
+// src/workspace/preview/registry.ts
+var byExtension = /* @__PURE__ */ new Map();
+var byLanguage = /* @__PURE__ */ new Map();
+function normalizeExtension(ext) {
+  if (!ext) return void 0;
+  return ext.startsWith(".") ? ext : `.${ext}`;
+}
+__name(normalizeExtension, "normalizeExtension");
+function extensionToLanguage(ext) {
+  switch (ext) {
+    case ".hydra":
+      return "hydra";
+    case ".p5":
+      return "p5js";
+    case ".md":
+      return "markdown";
+    default:
+      return void 0;
+  }
+}
+__name(extensionToLanguage, "extensionToLanguage");
+function registerPreviewProvider(provider) {
+  for (const rawExt of provider.extensions) {
+    const ext = normalizeExtension(rawExt);
+    if (!ext) continue;
+    byExtension.set(ext, provider);
+    const lang = extensionToLanguage(ext);
+    if (lang) byLanguage.set(lang, provider);
+  }
+}
+__name(registerPreviewProvider, "registerPreviewProvider");
+function getPreviewProviderForExtension(extension) {
+  const key = normalizeExtension(extension);
+  if (!key) return void 0;
+  return byExtension.get(key);
+}
+__name(getPreviewProviderForExtension, "getPreviewProviderForExtension");
+function getPreviewProviderForLanguage(language) {
+  return byLanguage.get(language);
+}
+__name(getPreviewProviderForLanguage, "getPreviewProviderForLanguage");
+var previewProviderRegistry = byExtension;
 var DiffEditor = DiffEditor$1;
 var fg = "var(--foreground, #e6e6ea)";
 var border = "var(--border, #2a2a32)";
@@ -23427,12 +23470,47 @@ function GraphGutter({
   isViewed,
   forks,
   onCheckout,
-  commitId
+  commitId,
+  clickable
 }) {
   const x = GUTTER_W / 2;
   const dotColor = isViewed ? accent3 : isHead ? accent3 : bgInput;
   const ringColor = isViewed ? accent3 : isHead ? accent3 : muted2;
-  return /* @__PURE__ */ jsxs(
+  const inner = /* @__PURE__ */ jsxs(Fragment, { children: [
+    !isNewest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: 0, height: DOT_CY, width: 2, background: border3 } }),
+    !isOldest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: DOT_CY, bottom: 0, width: 2, background: border3 } }),
+    forks > 0 && /* @__PURE__ */ jsx("svg", { style: { position: "absolute", left: x - 1, top: 0 }, width: GUTTER_W, height: DOT_CY + 2, children: /* @__PURE__ */ jsx("path", { d: `M1 ${DOT_CY} C 1 ${DOT_CY / 2}, ${GUTTER_W - 3} ${DOT_CY / 2}, ${GUTTER_W - 3} 1`, fill: "none", stroke: accent3, strokeWidth: "1.6" }) }),
+    isViewed && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 7, top: DOT_CY - 7, width: 14, height: 14, borderRadius: "50%", border: `1px solid ${accent3}`, opacity: 0.5, boxSizing: "border-box" } }),
+    /* @__PURE__ */ jsx(
+      "span",
+      {
+        style: {
+          position: "absolute",
+          left: x - 4,
+          top: DOT_CY - 4,
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: dotColor,
+          border: `2px solid ${ringColor}`,
+          boxSizing: "border-box"
+        }
+      }
+    )
+  ] });
+  const cell = {
+    position: "relative",
+    width: GUTTER_W,
+    flex: "0 0 auto",
+    alignSelf: "stretch",
+    background: "transparent",
+    border: "none",
+    padding: 0
+  };
+  if (!clickable) {
+    return /* @__PURE__ */ jsx("div", { style: cell, "aria-hidden": true, children: inner });
+  }
+  return /* @__PURE__ */ jsx(
     "button",
     {
       type: "button",
@@ -23443,38 +23521,8 @@ function GraphGutter({
       "data-history-checkout": commitId,
       title: "Check out this commit \u2014 time-travel the editor + runtime here",
       "aria-label": "Check out this commit",
-      style: {
-        position: "relative",
-        width: GUTTER_W,
-        flex: "0 0 auto",
-        alignSelf: "stretch",
-        background: "transparent",
-        border: "none",
-        padding: 0,
-        cursor: "pointer"
-      },
-      children: [
-        !isNewest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: 0, height: DOT_CY, width: 2, background: border3 } }),
-        !isOldest && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 1, top: DOT_CY, bottom: 0, width: 2, background: border3 } }),
-        forks > 0 && /* @__PURE__ */ jsx("svg", { style: { position: "absolute", left: x - 1, top: 0 }, width: GUTTER_W, height: DOT_CY + 2, children: /* @__PURE__ */ jsx("path", { d: `M1 ${DOT_CY} C 1 ${DOT_CY / 2}, ${GUTTER_W - 3} ${DOT_CY / 2}, ${GUTTER_W - 3} 1`, fill: "none", stroke: accent3, strokeWidth: "1.6" }) }),
-        isViewed && /* @__PURE__ */ jsx("span", { style: { position: "absolute", left: x - 7, top: DOT_CY - 7, width: 14, height: 14, borderRadius: "50%", border: `1px solid ${accent3}`, opacity: 0.5, boxSizing: "border-box" } }),
-        /* @__PURE__ */ jsx(
-          "span",
-          {
-            style: {
-              position: "absolute",
-              left: x - 4,
-              top: DOT_CY - 4,
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: dotColor,
-              border: `2px solid ${ringColor}`,
-              boxSizing: "border-box"
-            }
-          }
-        )
-      ]
+      style: { ...cell, cursor: "pointer" },
+      children: inner
     }
   );
 }
@@ -23484,6 +23532,8 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   React8.useEffect(() => subscribeToHistory(force), []);
   React8.useEffect(() => subscribeToRuntimeView(force), []);
   const viewedCommit = getViewedCommit();
+  const viewing = viewedCommit !== null;
+  const lockMsg = "Exit time-travel to edit";
   const [forking, setForking] = React8.useState(null);
   const [forkName, setForkName] = React8.useState("");
   const [committing, setCommitting] = React8.useState(false);
@@ -23558,7 +23608,9 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
           "aria-label": "branch",
           value: h.currentBranch,
           onChange: (e) => void switchToBranch(e.target.value),
-          style: { ...btn(), padding: "2px 6px" },
+          disabled: viewing,
+          title: viewing ? lockMsg : void 0,
+          style: { ...btn(), padding: "2px 6px", opacity: viewing ? 0.5 : 1, cursor: viewing ? "not-allowed" : "pointer" },
           "data-history-branch-select": true,
           children: branches.map((b) => /* @__PURE__ */ jsx("option", { value: b.name, children: b.name }, b.name))
         }
@@ -23567,8 +23619,10 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
         "button",
         {
           onClick: () => setCommitting((v) => !v),
+          disabled: viewing,
+          title: viewing ? lockMsg : void 0,
           "data-history-commit-now": true,
-          style: { ...btn({ borderColor: accent3, color: accent3 }), marginLeft: "auto", whiteSpace: "nowrap" },
+          style: { ...btn({ borderColor: accent3, color: accent3 }), marginLeft: "auto", whiteSpace: "nowrap", opacity: viewing ? 0.5 : 1, cursor: viewing ? "not-allowed" : "pointer" },
           children: "+ Commit"
         }
       )
@@ -23656,7 +23710,8 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
                 isHead: c.id === h.branches[h.currentBranch]?.head,
                 isViewed: c.id === viewedCommit,
                 forks: fileTarget ? 0 : forkCounts.get(c.id) ?? 0,
-                onCheckout: () => doCheckout(c)
+                onCheckout: () => doCheckout(c),
+                clickable: !fileTarget
               }
             ),
             /* @__PURE__ */ jsxs("div", { style: { flex: 1, minWidth: 0, paddingBottom: 8 }, children: [
@@ -23679,9 +23734,9 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
                 b.name
               ] }, b.name)) }),
               /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen || c.id === viewedCommit ? 1 : 0.18, transition: "opacity 120ms" }, children: [
-                c.id === viewedCommit ? /* @__PURE__ */ jsx("button", { title: "Exit time-travel \u2014 back to live", style: { ...iconBtn(), color: accent3 }, onClick: () => exitRuntimeView(), "data-history-checkout-exit": c.id, children: /* @__PURE__ */ jsx(IconExit, {}) }) : /* @__PURE__ */ jsx("button", { title: "Check out \u2014 time-travel the editor + runtime here", style: iconBtn(), onClick: () => doCheckout(c), "data-history-checkout-btn": c.id, children: /* @__PURE__ */ jsx(IconCheckout, {}) }),
-                /* @__PURE__ */ jsx("button", { title: fileTarget ? "Restore this file to this commit" : "Restore project to this commit", style: iconBtn(), onClick: () => doRestore(c), "data-history-restore": c.id, children: /* @__PURE__ */ jsx(IconRestore, {}) }),
-                /* @__PURE__ */ jsx("button", { title: "Fork a branch here", style: iconBtn(), onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsx(IconFork, {}) })
+                c.id === viewedCommit ? /* @__PURE__ */ jsx("button", { title: "Exit time-travel \u2014 back to live", style: { ...iconBtn(), color: accent3 }, onClick: () => exitRuntimeView(), "data-history-checkout-exit": c.id, children: /* @__PURE__ */ jsx(IconExit, {}) }) : !fileTarget ? /* @__PURE__ */ jsx("button", { title: "Check out \u2014 time-travel the editor + runtime here", style: iconBtn(), onClick: () => doCheckout(c), "data-history-checkout-btn": c.id, children: /* @__PURE__ */ jsx(IconCheckout, {}) }) : null,
+                /* @__PURE__ */ jsx("button", { disabled: viewing, title: viewing ? lockMsg : fileTarget ? "Restore this file to this commit" : "Restore project to this commit", style: { ...iconBtn(), opacity: viewing ? 0.35 : 1, cursor: viewing ? "not-allowed" : "pointer" }, onClick: () => doRestore(c), "data-history-restore": c.id, children: /* @__PURE__ */ jsx(IconRestore, {}) }),
+                /* @__PURE__ */ jsx("button", { disabled: viewing, title: viewing ? lockMsg : "Fork a branch here", style: { ...iconBtn(), opacity: viewing ? 0.35 : 1, cursor: viewing ? "not-allowed" : "pointer" }, onClick: () => setForking(forking === c.id ? null : c.id), "data-history-fork": c.id, children: /* @__PURE__ */ jsx(IconFork, {}) })
               ] }),
               forking === c.id && /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6, marginLeft: 14 }, children: [
                 /* @__PURE__ */ jsx("input", { autoFocus: true, value: forkName, placeholder: "branch name", onChange: (e) => setForkName(e.target.value), onKeyDown: (e) => e.key === "Enter" && confirmFork(c), style: { ...btn(), flex: 1, color: fg3, background: bgInput } }),

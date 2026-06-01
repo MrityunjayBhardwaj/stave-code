@@ -116,3 +116,56 @@ test('the checkout hover icon checks out, and the viewed row swaps to an exit ic
   await expect(page.locator('[data-editor-timetravel-banner]')).toHaveCount(0)
   await expect(page.locator('[data-history-checkout-exit]')).toHaveCount(0)
 })
+
+async function commitSecond(page: import('@playwright/test').Page) {
+  await page.locator('.monaco-editor').first().click()
+  await page.keyboard.press('Meta+ArrowUp'); await page.keyboard.press('Home')
+  await page.keyboard.type('// MARK\n')
+  await page.waitForTimeout(300)
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
+  await page.waitForTimeout(300)
+  await page.locator('[data-history-commit-now]').click()
+  await page.locator('[data-history-commit-label]').fill('cp')
+  await page.locator('[data-history-commit-save]').click()
+  await page.waitForTimeout(500)
+}
+
+test('Fork to edit branches from the viewed commit and exits the view (A)', async ({ page }) => {
+  await commitSecond(page)
+  await page.locator('[data-history-commit]').last().locator('[data-history-checkout]').click()
+  await page.waitForTimeout(800)
+  await expect(page.locator('[data-editor-timetravel-fork]')).toBeVisible()
+  await page.locator('[data-editor-timetravel-fork]').click()
+  await page.waitForTimeout(800)
+  // view exited and we are on a fresh edit-* branch
+  await expect(page.locator('[data-editor-timetravel-banner]')).toHaveCount(0)
+  expect(await page.locator('[data-history-branch-select]').inputValue()).toMatch(/^edit-/)
+})
+
+test('checkout is gated in File History mode (C)', async ({ page }) => {
+  await commitSecond(page)
+  await page.locator('[data-activity-bar] [aria-label="Explorer"]').click()
+  await page.waitForTimeout(400)
+  await page.locator('[data-sidebar]').getByText('pattern.strudel', { exact: true }).first().click({ button: 'right' })
+  await page.waitForTimeout(200)
+  await page.getByText('File History', { exact: true }).click()
+  await page.waitForTimeout(500)
+  await expect(page.locator('[data-history-file-mode]')).toBeVisible()
+  await expect(page.locator('[data-history-checkout]')).toHaveCount(0)
+  await expect(page.locator('[data-history-checkout-btn]')).toHaveCount(0)
+  // file-scoped Restore is still offered
+  expect(await page.locator('[data-history-restore]').count()).toBeGreaterThan(0)
+})
+
+test('mutating actions are gated while time-travelling (D)', async ({ page }) => {
+  await commitSecond(page)
+  await page.locator('[data-history-commit]').last().locator('[data-history-checkout]').click()
+  await page.waitForTimeout(800)
+  await expect(page.locator('[data-history-commit-now]')).toBeDisabled()
+  await expect(page.locator('[data-history-branch-select]')).toBeDisabled()
+  await expect(page.locator('[data-history-restore]').first()).toBeDisabled()
+  await expect(page.locator('[data-history-fork]').first()).toBeDisabled()
+  await page.locator('[data-editor-timetravel-exit]').click()
+  await page.waitForTimeout(500)
+  await expect(page.locator('[data-history-commit-now]')).toBeEnabled()
+})

@@ -55,6 +55,7 @@ import {
   exitRuntimeView,
   subscribeToRuntimeView,
 } from './history/historyViewing'
+import { forkToEditFromCommit } from './history/historyService'
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
 import type { EditorViewProps } from './types'
 import type { AudioPayload } from './types'
@@ -422,8 +423,24 @@ export function EditorView({
             }}
           >
             <span style={{ flex: 1 }}>
-              ⏱ Viewing commit <strong>{(viewedCommit ?? '').slice(0, 7)}</strong> — read-only time-travel. Fork to edit here.
+              ⏱ Viewing commit <strong>{(viewedCommit ?? '').slice(0, 7)}</strong> — read-only time-travel.
             </span>
+            <button
+              data-editor-timetravel-fork
+              title="Branch from this commit and switch to it — makes this state live and editable"
+              onClick={() => {
+                const c = viewedCommit
+                if (!c) return
+                void forkToEditFromCommit(c).then(() => exitRuntimeView())
+              }}
+              style={{
+                background: 'transparent', color: 'var(--foreground, #e6e6ea)',
+                border: '1px solid var(--accent, #6ea8fe)', borderRadius: 4,
+                padding: '2px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600,
+              }}
+            >
+              Fork to edit
+            </button>
             <button
               data-editor-timetravel-exit
               onClick={() => exitRuntimeView()}

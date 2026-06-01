@@ -160,6 +160,7 @@ function GraphGutter({
   forks,
   onCheckout,
   commitId,
+  clickable,
 }: {
   isNewest: boolean
   isOldest: boolean
@@ -168,22 +169,15 @@ function GraphGutter({
   forks: number
   onCheckout: () => void
   commitId: string
+  /** Checkout is project-scoped, so the dot is inert in File History mode (#C). */
+  clickable: boolean
 }): React.ReactElement {
   const x = GUTTER_W / 2
   const dotColor = isViewed ? accent : isHead ? accent : bgInput
   const ringColor = isViewed ? accent : isHead ? accent : muted
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onCheckout() }}
-      data-history-checkout={commitId}
-      title="Check out this commit — time-travel the editor + runtime here"
-      aria-label="Check out this commit"
-      style={{
-        position: 'relative', width: GUTTER_W, flex: '0 0 auto', alignSelf: 'stretch',
-        background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-      }}
-    >
+  // Common visual content (spines, fork stub, halo, dot).
+  const inner = (
+    <>
       {/* spine above (to newer commit) */}
       {!isNewest && <span style={{ position: 'absolute', left: x - 1, top: 0, height: DOT_CY, width: 2, background: border }} />}
       {/* spine below (to older commit) */}
@@ -212,6 +206,27 @@ function GraphGutter({
           boxSizing: 'border-box',
         }}
       />
+    </>
+  )
+  const cell: React.CSSProperties = {
+    position: 'relative', width: GUTTER_W, flex: '0 0 auto', alignSelf: 'stretch',
+    background: 'transparent', border: 'none', padding: 0,
+  }
+  // File History mode: checkout is project-scoped, so the dot is a plain
+  // marker (no time-travel from a per-file view).
+  if (!clickable) {
+    return <div style={cell} aria-hidden>{inner}</div>
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onCheckout() }}
+      data-history-checkout={commitId}
+      title="Check out this commit — time-travel the editor + runtime here"
+      aria-label="Check out this commit"
+      style={{ ...cell, cursor: 'pointer' }}
+    >
+      {inner}
     </button>
   )
 }
@@ -222,6 +237,12 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
   // re-render on time-travel enter/exit so the checked-out dot highlights (#204)
   React.useEffect(() => subscribeToRuntimeView(force as () => void), [])
   const viewedCommit = getViewedCommit()
+  // While time-travelling, the panel is read-only: branch switch / +Commit /
+  // Restore / Fork all WRITE the workspace, which is confusing mid-view. Gate
+  // them and let the user navigate via checkout/exit or the banner's "Fork to
+  // edit" (#D). `lockMsg` is the shared tooltip.
+  const viewing = viewedCommit !== null
+  const lockMsg = 'Exit time-travel to edit'
 
   const [forking, setForking] = React.useState<string | null>(null)
   const [forkName, setForkName] = React.useState('')
@@ -316,7 +337,9 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
             aria-label="branch"
             value={h.currentBranch}
             onChange={(e) => void switchToBranch(e.target.value)}
-            style={{ ...btn(), padding: '2px 6px' }}
+            disabled={viewing}
+            title={viewing ? lockMsg : undefined}
+            style={{ ...btn(), padding: '2px 6px', opacity: viewing ? 0.5 : 1, cursor: viewing ? 'not-allowed' : 'pointer' }}
             data-history-branch-select
           >
             {branches.map((b) => (
@@ -327,8 +350,10 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
           </select>
           <button
             onClick={() => setCommitting((v) => !v)}
+            disabled={viewing}
+            title={viewing ? lockMsg : undefined}
             data-history-commit-now
-            style={{ ...btn({ borderColor: accent, color: accent }), marginLeft: 'auto', whiteSpace: 'nowrap' }}
+            style={{ ...btn({ borderColor: accent, color: accent }), marginLeft: 'auto', whiteSpace: 'nowrap', opacity: viewing ? 0.5 : 1, cursor: viewing ? 'not-allowed' : 'pointer' }}
           >
             + Commit
           </button>
@@ -413,6 +438,7 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                   isViewed={c.id === viewedCommit}
                   forks={fileTarget ? 0 : forkCounts.get(c.id) ?? 0}
                   onCheckout={() => doCheckout(c)}
+                  clickable={!fileTarget}
                 />
                 {/* content */}
                 <div style={{ flex: 1, minWidth: 0, paddingBottom: 8 }}>
@@ -443,15 +469,17 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
                   )}
 
                   {/* hover icon actions — checkout (time-travel) is the first,
-                      so the affordance is visible without hovering the dot (B). */}
+                      so the affordance is visible without hovering the dot (B).
+                      Checkout is hidden in File History mode (project-scoped, #C);
+                      mutating actions are gated while time-travelling (#D). */}
                   <div style={{ display: 'flex', gap: 2, marginTop: 2, marginLeft: 14, opacity: isHovered || isOpen || c.id === viewedCommit ? 1 : 0.18, transition: 'opacity 120ms' }}>
                     {c.id === viewedCommit ? (
                       <button title="Exit time-travel — back to live" style={{ ...iconBtn(), color: accent }} onClick={() => exitRuntimeView()} data-history-checkout-exit={c.id}><IconExit /></button>
-                    ) : (
+                    ) : !fileTarget ? (
                       <button title="Check out — time-travel the editor + runtime here" style={iconBtn()} onClick={() => doCheckout(c)} data-history-checkout-btn={c.id}><IconCheckout /></button>
-                    )}
-                    <button title={fileTarget ? 'Restore this file to this commit' : 'Restore project to this commit'} style={iconBtn()} onClick={() => doRestore(c)} data-history-restore={c.id}><IconRestore /></button>
-                    <button title="Fork a branch here" style={iconBtn()} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}><IconFork /></button>
+                    ) : null}
+                    <button disabled={viewing} title={viewing ? lockMsg : fileTarget ? 'Restore this file to this commit' : 'Restore project to this commit'} style={{ ...iconBtn(), opacity: viewing ? 0.35 : 1, cursor: viewing ? 'not-allowed' : 'pointer' }} onClick={() => doRestore(c)} data-history-restore={c.id}><IconRestore /></button>
+                    <button disabled={viewing} title={viewing ? lockMsg : 'Fork a branch here'} style={{ ...iconBtn(), opacity: viewing ? 0.35 : 1, cursor: viewing ? 'not-allowed' : 'pointer' }} onClick={() => setForking(forking === c.id ? null : c.id)} data-history-fork={c.id}><IconFork /></button>
                   </div>
 
                   {forking === c.id && (

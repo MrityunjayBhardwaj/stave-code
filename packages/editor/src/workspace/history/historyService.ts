@@ -325,6 +325,34 @@ export function createBranchAt(name: string, fromCommit: string): Promise<void> 
 }
 
 /**
+ * "Fork to edit here" (#204 Decision E): branch from `commitId` into a fresh,
+ * uniquely-named branch and switch to it, making that commit's snapshot the
+ * live, editable HEAD. The caller exits the read-only time-travel view after
+ * this resolves. Atomic in one lock (unique-name + create + switch + re-sync)
+ * so a concurrent op can't collide on the generated name. Returns the new
+ * branch name (or null if there's no active history).
+ */
+export function forkToEditFromCommit(commitId: string): Promise<string | null> {
+  return withLock(async () => {
+    if (!current) return null
+    const existing = new Set(Object.keys(current.branches))
+    const base = `edit-${commitId.slice(0, 6)}`
+    let name = base
+    let n = 2
+    while (existing.has(name)) name = `${base}-${n++}`
+    current = createBranch(current, name, commitId, now())
+    current = switchBranch(current, name)
+    const head = headOf(current)
+    if (head) {
+      const snap = snapshotAt(current, head)
+      applySnapshot(snap.files, current.fileMeta, snap.order)
+    }
+    await saveHistory(current)
+    return name
+  })
+}
+
+/**
  * Switch the current branch and re-sync the workspace to that branch's HEAD
  * (the new runtime authority).
  */
