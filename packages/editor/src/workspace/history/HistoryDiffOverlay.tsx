@@ -46,6 +46,19 @@ export interface HistoryDiffOverlayProps {
   readonly commit: Commit
   /** File-scope default selection (used if it's among the commit's changes). */
   readonly initialFileId?: string | null
+  /**
+   * Initial diff mode. Defaults to `'previous'` (what the commit changed). The
+   * "Uncommitted Changes" section passes `'current'` for a live ↔ HEAD diff
+   * (commit = HEAD) (#211).
+   */
+  readonly defaultMode?: Mode
+  /**
+   * File-picker scope override (#211). When given, the picker lists THESE ids
+   * (the uncommitted dirty set) instead of the commit's own changeset, so a
+   * working file HEAD never touched is still selectable. `getFileContentAt`
+   * back-walks for the original side regardless.
+   */
+  readonly pickerFileIds?: readonly string[]
   readonly onClose: () => void
 }
 
@@ -53,10 +66,21 @@ export function HistoryDiffOverlay({
   history,
   commit,
   initialFileId,
+  defaultMode = 'previous',
+  pickerFileIds,
   onClose,
 }: HistoryDiffOverlayProps): React.ReactElement {
-  const changedIds = React.useMemo(() => Object.keys(commit.files), [commit])
-  const [mode, setMode] = React.useState<Mode>('previous')
+  const changedIds = React.useMemo(
+    () => (pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files)),
+    [commit, pickerFileIds],
+  )
+  const [mode, setMode] = React.useState<Mode>(defaultMode)
+  // Sync the mode when a reused preview slot (#210) gets a new request with a
+  // different default (e.g. commit drill-down 'previous' → uncommitted 'current').
+  // Fires only when `defaultMode` actually changes, so a manual toggle sticks.
+  React.useEffect(() => {
+    setMode(defaultMode)
+  }, [defaultMode])
   const [fileId, setFileId] = React.useState<string>(() =>
     initialFileId && changedIds.includes(initialFileId) ? initialFileId : (changedIds[0] ?? ''),
   )
@@ -66,8 +90,18 @@ export function HistoryDiffOverlay({
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? '')
   }, [changedIds, fileId])
 
+  // Follow an external file selection — when this viewer is hosted in a
+  // reused tab/slot (#210), a new drill-down changes `initialFileId` while
+  // the component stays mounted; sync the picker to it. (No-op for the
+  // user's own dropdown picks since `initialFileId` doesn't change then.)
+  React.useEffect(() => {
+    if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId)
+  }, [initialFileId, changedIds])
+
+  const diffEditorRef = React.useRef<Monaco.editor.IStandaloneDiffEditor | null>(null)
   const handleMount = React.useCallback(
-    (_editor: Monaco.editor.IStandaloneDiffEditor, monaco: typeof Monaco): void => {
+    (editor: Monaco.editor.IStandaloneDiffEditor, monaco: typeof Monaco): void => {
+      diffEditorRef.current = editor
       defineStrudelMonacoTheme(monaco)
       registerStrudelLanguage(monaco)
       ensureWorkspaceLanguages(monaco)
@@ -75,6 +109,20 @@ export function HistoryDiffOverlay({
     },
     [],
   )
+
+  // Reset the widget's model BEFORE Monaco disposes the text models on
+  // unmount — otherwise the DiffEditorWidget tears down in the wrong order
+  // ("TextModel got disposed before DiffEditorWidget model got reset") when
+  // the host tab is closed or switched away (#210).
+  React.useEffect(() => {
+    return () => {
+      try {
+        diffEditorRef.current?.setModel(null)
+      } catch {
+        /* already disposed — nothing to reset */
+      }
+    }
+  }, [])
 
   const wrap: React.CSSProperties = {
     position: 'absolute',
@@ -86,7 +134,8 @@ export function HistoryDiffOverlay({
   }
   const headerRow: React.CSSProperties = {
     display: 'flex',
-    gap: 8,
+    flexWrap: 'wrap', // narrow side panel — controls wrap instead of overflowing
+    gap: 6,
     alignItems: 'center',
     padding: '8px 12px',
     borderBottom: `1px solid ${border}`,
@@ -183,6 +232,8 @@ export function HistoryDiffOverlay({
           onMount={handleMount}
           options={{
             readOnly: true,
+            // Hosted full-width in the main editor area now (#210) — there's
+            // room for a proper side-by-side diff.
             renderSideBySide: true,
             automaticLayout: true,
             minimap: { enabled: false },

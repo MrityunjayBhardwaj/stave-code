@@ -16,6 +16,7 @@
 
 import { subscribeToDocUpdate } from '../projectDoc'
 import { commitWorkspace } from './historyService'
+import { isViewing } from './historyViewing'
 
 const DEFAULT_IDLE_MS = 5_000
 
@@ -35,6 +36,9 @@ export function startHistoryDriver(): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null
 
   const fire = (): void => {
+    // Pause auto-commit while time-travelling (#204 Decision D). Safe by
+    // construction anyway (Y.Text stays live), but no commits while viewing.
+    if (isViewing()) return
     void commitWorkspace('auto', { gate: true }).catch((err) =>
       console.warn('[stave] auto-commit failed:', err),
     )

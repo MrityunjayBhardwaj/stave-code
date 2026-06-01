@@ -495,6 +495,43 @@ export type WorkspaceTab =
       readonly fileId: string
       readonly sourceRef: AudioSourceRef
     }
+  | {
+      /**
+       * A read-only history viewer hosted in the main editor area — the
+       * project commit store's Diff / time-travel View, moved out of the
+       * cramped Version History side panel (#210). Carries everything the
+       * HistoryDiffOverlay / HistoryViewOverlay components need to render.
+       *
+       * Reuses the preview-tab mechanism: opened as a single italic
+       * `preview` slot that the next Diff/View replaces, promoted to a
+       * pinned tab on double-click (same UX as opening a file in preview).
+       * Never persisted — `tabPersistence` keeps only `editor` tabs, and a
+       * commit can be pruned between sessions, so a stale history tab would
+       * be a ghost.
+       */
+      readonly kind: 'history'
+      readonly id: string
+      /** The file the viewer is focused on (drives the tab label + initial selection). */
+      readonly fileId: string
+      readonly mode: 'diff' | 'view'
+      /** The commit being diffed / viewed. */
+      readonly commitId: string
+      /**
+       * Diff mode only (#211): open the diff in "vs current" (commit ↔ live
+       * working tree) by default, for the "Uncommitted Changes" section's
+       * live ↔ HEAD diff. With `commitId` = HEAD, the original side is the
+       * file's HEAD content and the modified side is its live content.
+       */
+      readonly vsCurrent?: boolean
+      /**
+       * Diff mode only (#211): scope the file picker to these ids instead of
+       * the commit's own changeset — so an uncommitted file that HEAD didn't
+       * touch is still selectable (the dirty-set snapshot at open time).
+       */
+      readonly pickerFileIds?: readonly string[]
+      /** Preview slot (italic, replaced by the next open). Promoted on double-click. */
+      readonly preview?: boolean
+    }
 
 /**
  * A single tab group inside the shell. Groups are the unit the `SplitPane`

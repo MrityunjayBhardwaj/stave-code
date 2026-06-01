@@ -123,6 +123,10 @@ import { useKeyboardCommands } from './commands/useKeyboardCommands'
 import { executeCommand } from './commands/CommandRegistry'
 import { getPreviewProviderForLanguage } from './preview/registry'
 import { getFile, subscribe as subscribeToWorkspaceFile } from './WorkspaceFile'
+import { HistoryDiffOverlay } from './history/HistoryDiffOverlay'
+import { HistoryViewOverlay } from './history/HistoryViewOverlay'
+import { getCurrentHistory } from './history/historyService'
+import { getCommit } from './history/historyGraph'
 import {
   getBackdropQuality,
   onBackdropQualityChange,
@@ -243,6 +247,24 @@ export interface WorkspaceShellHandle {
    * pinned tab happens on double-click or the first content edit.
    */
   openOrFocusFile(fileId: string, options?: { preview?: boolean }): void
+
+  /**
+   * Open a read-only history viewer (Diff or time-travel View) as a tab in
+   * the main editor area (#210). Reuses a single italic preview slot per
+   * the active group: a subsequent call replaces that slot's content
+   * instead of stacking tabs; double-clicking the tab promotes it to a
+   * pinned tab (same UX as opening a file in preview). Replaces the old
+   * cramped sidebar overlay.
+   */
+  openHistoryTab(req: {
+    mode: 'diff' | 'view'
+    commitId: string
+    fileId: string
+    /** Diff: open in "vs current" (live ↔ commit) by default (#211). */
+    vsCurrent?: boolean
+    /** Diff: file-picker scope override (the dirty set) (#211). */
+    pickerFileIds?: readonly string[]
+  }): void
 
   /**
    * Promote the given tab out of preview mode — it becomes pinned and
@@ -436,7 +458,8 @@ function GroupTabBar({
           {group.tabs.map((tab) => {
             const isActive = tab.id === group.activeTabId
             const isPreview =
-              tab.kind === 'editor' && (tab as { preview?: boolean }).preview === true
+              (tab.kind === 'editor' || tab.kind === 'history') &&
+              (tab as { preview?: boolean }).preview === true
             return (
               <div
                 key={tab.id}
@@ -476,8 +499,25 @@ function GroupTabBar({
                   flexShrink: 0,
                 }}
               >
-                <span>
-                  {tab.kind === 'preview' ? '🎥 ' : ''}
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  {tab.kind === 'history' ? (
+                    <span
+                      style={{
+                        fontSize: 8,
+                        fontStyle: 'normal',
+                        opacity: 0.65,
+                        letterSpacing: 0.5,
+                        marginRight: 4,
+                        border: '1px solid currentColor',
+                        borderRadius: 3,
+                        padding: '0 2px',
+                      }}
+                    >
+                      {tab.mode === 'view' ? 'VIEW' : 'DIFF'}
+                    </span>
+                  ) : tab.kind === 'preview' ? (
+                    '🎥 '
+                  ) : null}
                   {tabFileName(tab)}
                 </span>
                 <button
@@ -2012,6 +2052,58 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
             />
           )
         }
+        case 'history': {
+          // Read-only commit Diff / time-travel View, hosted full-size in
+          // the main editor area (#210). The overlay components use
+          // `position:absolute; inset:0`, so a relative full-height wrapper
+          // makes them fill the tab. The commit content is immutable, so a
+          // non-reactive `getCurrentHistory()` read is sufficient.
+          const history = getCurrentHistory()
+          const commit = history ? getCommit(history, tab.commitId) : undefined
+          if (!history || !commit) {
+            return (
+              <div
+                data-testid={`history-tab-missing-${tab.id}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  color: 'var(--foreground-muted)',
+                  fontSize: 12,
+                }}
+              >
+                This commit is no longer available.
+              </div>
+            )
+          }
+          // Keep a stable key per tab so a same-mode file swap updates the
+          // diff models in place (the picker path) rather than remounting
+          // the editor. Diff↔View remount anyway (different components).
+          return (
+            <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+              {tab.mode === 'view' ? (
+                <HistoryViewOverlay
+                  key={`${tab.id}:view`}
+                  history={history}
+                  commit={commit}
+                  initialFileId={tab.fileId}
+                  onClose={() => closeTabById(tab.id)}
+                />
+              ) : (
+                <HistoryDiffOverlay
+                  key={`${tab.id}:diff`}
+                  history={history}
+                  commit={commit}
+                  initialFileId={tab.fileId}
+                  defaultMode={tab.vsCurrent ? 'current' : 'previous'}
+                  pickerFileIds={tab.pickerFileIds}
+                  onClose={() => closeTabById(tab.id)}
+                />
+              )}
+            </div>
+          )
+        }
         default:
           return assertNever(tab)
       }
@@ -2043,6 +2135,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       findTabByFileId,
       findGroupWithAnyPreview,
       editorExtrasForTab,
+      closeTabById,
     ],
   )
 
@@ -2125,7 +2218,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 const g = prev.get(group.id)
                 if (!g) return prev
                 const nextTabs = g.tabs.map((t) =>
-                  t.id === tabId && t.kind === 'editor'
+                  t.id === tabId && (t.kind === 'editor' || t.kind === 'history')
                     ? { ...t, preview: false }
                     : t,
                 )
@@ -2439,6 +2532,61 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           return next
         })
       },
+      openHistoryTab: (req: {
+        mode: 'diff' | 'view'
+        commitId: string
+        fileId: string
+        vsCurrent?: boolean
+        pickerFileIds?: readonly string[]
+      }) => {
+        const { mode, commitId, fileId, vsCurrent, pickerFileIds } = req
+        // Reuse the active group's history preview slot if one exists —
+        // the next Diff/View swaps its content instead of stacking tabs.
+        const existing = groups.get(activeGroupId)
+        const slot = existing?.tabs.find(
+          (t) => t.kind === 'history' && (t as { preview?: boolean }).preview === true,
+        )
+        if (existing && slot) {
+          const slotId = slot.id
+          setGroups((prev) => {
+            const g = prev.get(activeGroupId)
+            if (!g) return prev
+            const nextTabs = g.tabs.map((t) =>
+              t.id === slotId && t.kind === 'history'
+                ? { ...t, mode, commitId, fileId, vsCurrent, pickerFileIds, preview: true }
+                : t,
+            )
+            const nx = new Map(prev)
+            nx.set(activeGroupId, { ...g, tabs: nextTabs, activeTabId: slotId })
+            return nx
+          })
+          setActiveGroupId(activeGroupId)
+          return
+        }
+        // No slot to reuse — create a fresh history preview tab.
+        const newTab: WorkspaceTab = {
+          kind: 'history',
+          id: `hist-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          fileId,
+          mode,
+          commitId,
+          ...(vsCurrent ? { vsCurrent: true } : {}),
+          ...(pickerFileIds ? { pickerFileIds } : {}),
+          preview: true,
+        }
+        setGroups((prev) => {
+          const g = prev.get(activeGroupId)
+          if (!g) return prev
+          const next = new Map(prev)
+          next.set(activeGroupId, {
+            ...g,
+            tabs: [...g.tabs, newTab],
+            activeTabId: newTab.id,
+          })
+          return next
+        })
+        setActiveGroupId(activeGroupId)
+      },
       promoteTab: (tabId: string) => {
         setGroups((prev) => {
           let changed = false
@@ -2446,7 +2594,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
           for (const [gid, g] of prev) {
             const nextTabs = g.tabs.map((t) => {
               if (t.id !== tabId) return t
-              if (t.kind !== 'editor' || !(t as { preview?: boolean }).preview) return t
+              if (
+                (t.kind !== 'editor' && t.kind !== 'history') ||
+                !(t as { preview?: boolean }).preview
+              )
+                return t
               changed = true
               return { ...t, preview: false }
             })
@@ -2460,7 +2612,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         for (const g of groups.values()) {
           for (const t of g.tabs) {
             if (
-              (t.kind === 'editor' || t.kind === 'preview') &&
+              (t.kind === 'editor' || t.kind === 'preview' || t.kind === 'history') &&
               t.fileId === fileId
             ) {
               targets.push(t.id)

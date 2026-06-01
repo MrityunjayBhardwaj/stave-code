@@ -407,6 +407,11 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     return { error: null }
   }
 
+  /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
+  getIsPlaying(): boolean {
+    return this.isPlayingState
+  }
+
   stop(): void {
     if (this.isDisposed) return
     // Stopping is idempotent — calling twice should be a no-op, not throw.

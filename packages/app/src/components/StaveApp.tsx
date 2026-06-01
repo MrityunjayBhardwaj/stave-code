@@ -11,20 +11,15 @@ import {
   touchProject,
   switchProject,
   resetFileStore,
-  saveSnapshot,
-  listSnapshots,
-  deleteSnapshot,
-  restoreSnapshot,
-  subscribeToDocUpdate,
-  AUTO_SNAPSHOT_PREFIX,
   setActiveHistoryFile,
+  setFileHistoryTarget,
+  HistoryPanel,
   undo,
   redo,
   canUndo,
   canRedo,
   subscribeToUndoState,
   type ProjectMeta,
-  type SnapshotMeta,
   type WorkspaceShellHandle,
   type HapStream,
   type BreakpointStore,
@@ -43,7 +38,6 @@ import { MenuBar } from "./MenuBar";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
-import { SnapshotView } from "./SnapshotView";
 import { OutlineView } from "./OutlineView";
 import {
   revealLineInFile,
@@ -121,7 +115,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
-  const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
@@ -328,37 +321,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     return subscribeToUndoState(update);
   }, [activeProject.id]);
 
-  const refreshSnapshots = useCallback(async (projectId: string) => {
-    setSnapshots(await listSnapshots(projectId));
-  }, []);
-
-  const openSnapshotPanel = useCallback(async () => {
+  // Open the Version History side panel — now backed by the project commit
+  // store (HistoryPanel), not the retired legacy snapshotStore.
+  const openSnapshotPanel = useCallback(() => {
     setActivePanelId("snapshots");
-    await refreshSnapshots(activeProject.id);
-  }, [activeProject.id, refreshSnapshots]);
-
-  // Refresh the snapshot list whenever the Version History panel
-  // becomes visible — auto-snapshots could have been added by the
-  // 60s idle debouncer while the user was elsewhere.
-  useEffect(() => {
-    if (activePanelId === "snapshots") {
-      refreshSnapshots(activeProject.id);
-    }
-  }, [activePanelId, activeProject.id, refreshSnapshots]);
-
-  const handleSaveSnapshot = useCallback(async (label: string) => {
-    await saveSnapshot(activeProject.id, label);
-    await refreshSnapshots(activeProject.id);
-  }, [activeProject.id, refreshSnapshots]);
-
-  const handleDeleteSnapshot = useCallback(async (id: string) => {
-    await deleteSnapshot(id);
-    await refreshSnapshots(activeProject.id);
-  }, [activeProject.id, refreshSnapshots]);
-
-  const handleRestoreSnapshot = useCallback(async (id: string) => {
-    await restoreSnapshot(id);
-    resetFileStore();
   }, []);
 
   // Global keybinding dispatcher — matches chords against registered
@@ -366,39 +332,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // exist (some handlers close over state defined below this point).
   useEffect(() => installKeybindingDispatcher(), []);
 
-  // Auto-snapshot: debounce doc updates; after IDLE_MS of inactivity,
-  // capture an auto-labelled snapshot. The snapshotStore prunes older
-  // auto entries down to MAX_AUTO_SNAPSHOTS (10) so this stays bounded.
-  // Tracked per-session only — if the user reloads or switches projects
-  // before the debounce fires, the pending save is dropped.
-  useEffect(() => {
-    // Idle duration can be shortened via localStorage for automated
-    // tests — production default is 60s.
-    const override =
-      typeof window !== "undefined"
-        ? parseInt(window.localStorage.getItem("stave:autosnapIdleMs") ?? "", 10)
-        : NaN;
-    const IDLE_MS = Number.isFinite(override) && override > 0 ? override : 60_000;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const projectId = activeProject.id;
-    const unsubscribe = subscribeToDocUpdate(
-      () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => {
-          const now = new Date();
-          const hh = String(now.getHours()).padStart(2, "0");
-          const mm = String(now.getMinutes()).padStart(2, "0");
-          saveSnapshot(projectId, `${AUTO_SNAPSHOT_PREFIX}${hh}:${mm}`, "auto")
-            .catch((err) => console.warn("[stave] auto-snapshot failed:", err));
-        }, IDLE_MS);
-      },
-      { localOnly: true },
-    );
-    return () => {
-      if (timer) clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [activeProject.id]);
+  // (Legacy 60s auto-snapshot retired — the project commit store + its
+  //  idle/eval/unload driver, wired in StrudelEditorClient, is now the single
+  //  history system. See HistoryPanel in the Version History side panel.)
 
   // Bidirectional sync between FileTree ↔ WorkspaceShell.
   //
@@ -1043,7 +979,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         {!zenMode && (
           <ActivityBar
             activePanelId={activePanelId}
-            onSelect={setActivePanelId}
+            onSelect={(id) => {
+              // Opening Version History from the rail shows the PROJECT graph;
+              // the per-file focus is only entered via the "File History" action.
+              if (id === "snapshots") setFileHistoryTarget(null);
+              setActivePanelId(id);
+            }}
           />
         )}
         {!zenMode && activePanelId === "explorer" && (
@@ -1054,6 +995,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             activeFileId={activeFileId}
             onToggleCollapse={() => setActivePanelId(null)}
             onImportZipProject={handleImportZip}
+            onFileHistory={(fileId) => {
+              setFileHistoryTarget(fileId);
+              setActivePanelId("snapshots");
+            }}
           />
         )}
         {!zenMode && activePanelId === "search" && (
@@ -1069,12 +1014,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         {!zenMode && activePanelId === "snapshots" && (
           <div style={styles.panelRoot} data-sidebar>
             <div style={styles.panelHeader}>VERSION HISTORY</div>
-            <SnapshotView
-              snapshots={snapshots}
-              onSaveNew={handleSaveSnapshot}
-              onRestore={handleRestoreSnapshot}
-              onDelete={handleDeleteSnapshot}
-            />
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <HistoryPanel
+                onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+              />
+            </div>
           </div>
         )}
         {!zenMode && activePanelId === "console" && <ConsolePanel />}

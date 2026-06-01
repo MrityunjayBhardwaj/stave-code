@@ -62,13 +62,16 @@ test('forking to a non-main branch shows the branch chip', async ({ page }) => {
   await expect(page.locator('[data-file-tree-branch]')).toHaveCount(0)
 
   // fork the seed commit → branch "experiment", which switchToBranch activates
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
   await page.locator('[data-history-commit]').first().locator('[data-history-fork]').click()
   await page.locator('input[placeholder="branch name"]').fill('experiment')
   await page.getByRole('button', { name: 'Create' }).click()
   await page.waitForTimeout(600)
 
+  // Explorer + Version History are sibling side panels (mutually exclusive),
+  // so switch back to the file tree to see its header chip.
+  await page.locator('[data-activity-bar] [aria-label="Explorer"]').click()
   const chip = page.locator('[data-file-tree-branch="experiment"]')
   await expect(chip).toBeVisible()
   await expect(chip).toContainText('experiment')

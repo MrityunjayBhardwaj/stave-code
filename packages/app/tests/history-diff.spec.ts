@@ -48,15 +48,18 @@ test('Diff overlay shows the changed line for a commit', async ({ page }) => {
   await page.keyboard.type('// DIFFMARKER_XYZ')
 
   // capture it as a manual commit
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
   await page.locator('[data-history-commit-now]').click()
   await page.locator('[data-history-commit-label]').fill('after marker edit')
   await page.locator('[data-history-commit-save]').click()
   await page.waitForTimeout(500)
 
-  // the newest commit (the manual one) is first; open its Diff
-  await page.locator('[data-history-commit]').first().locator('[data-history-diff]').click()
+  // the newest commit (the manual one) is first; expand it to its changed
+  // files, then click the file to open its diff (commit → files → diff)
+  const firstCommit = page.locator('[data-history-commit]').first()
+  await firstCommit.locator('[data-history-commit-toggle]').click()
+  await firstCommit.locator('[data-history-file-diff]').first().click()
 
   const overlay = page.locator('[data-history-diff-overlay]')
   await expect(overlay).toBeVisible({ timeout: 5000 })

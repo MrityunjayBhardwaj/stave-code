@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 
 // Phase G (#197) observation — the History bottom-panel surface.
-// Clicking the [data-tab-id="history"] tab opens the drawer + selects History.
+// Clicking the [data-activity-bar] [aria-label="Version History"] tab opens the drawer + selects History.
 
 const VIZ_DB = 'stave-viz-presets'
 const SNAP_DB = 'stave-snapshots'
@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('History panel opens and lists the seed commit', async ({ page }) => {
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   const list = page.locator('[data-history-commit-list]')
   await expect(list).toBeVisible({ timeout: 5000 })
   // at least the seed commit (c0) is shown
@@ -53,7 +53,7 @@ test('History panel opens and lists the seed commit', async ({ page }) => {
 })
 
 test('Commit now creates a labelled manual checkpoint (allowEmpty anchor)', async ({ page }) => {
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
 
   const before = await page.locator('[data-history-commit]').count()
@@ -83,7 +83,7 @@ test('manual-checkpoint nudge appears past the threshold and dismisses (#207)', 
   // lower the soft-nudge threshold to 1 so two checkpoints trip it
   await page.evaluate(() => localStorage.setItem('stave:manualNudgeThreshold', '1'))
 
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
   await expect(page.locator('[data-history-manual-nudge]')).toHaveCount(0)
 
@@ -109,7 +109,7 @@ test('manual-checkpoint nudge appears past the threshold and dismisses (#207)', 
 })
 
 test('Fork from a commit creates a new branch and switches to it', async ({ page }) => {
-  await page.locator('[data-tab-id="history"]').click()
+  await page.locator('[data-activity-bar] [aria-label="Version History"]').click()
   await expect(page.locator('[data-history-commit-list]')).toBeVisible({ timeout: 5000 })
 
   // fork the first (seed) commit

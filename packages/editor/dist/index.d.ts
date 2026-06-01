@@ -796,7 +796,7 @@ declare class HapStream {
  *
  * Phase 20-07 (PV38, PK13 step 9, P50).
  */
-type Listener$6 = () => void;
+type Listener$7 = () => void;
 /**
  * Phase 20-07 (R-3) — per-id metadata held alongside the irNodeId.
  *
@@ -859,7 +859,7 @@ declare class BreakpointStore {
      * Subscribe to mutate events. Returns a disposer mirroring
      * `LiveCodingRuntime.onPlayingChanged` (RESEARCH Q3 / S3).
      */
-    subscribe(cb: Listener$6): () => void;
+    subscribe(cb: Listener$7): () => void;
     dispose(): void;
     private fireChanged;
 }
@@ -1684,7 +1684,7 @@ declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]):
  * cache when the registry mutates.
  */
 
-type Listener$5 = () => void;
+type Listener$6 = () => void;
 /**
  * Register a descriptor under a user-chosen name. Idempotent — calling
  * twice with the same name + descriptor is a no-op and does not fire
@@ -1721,7 +1721,7 @@ declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
  * fire synchronously on subscription — subscribers receive only
  * future changes.
  */
-declare function onNamedVizChanged(cb: Listener$5): () => void;
+declare function onNamedVizChanged(cb: Listener$6): () => void;
 
 /**
  * Central configuration for the Stave visualization system.
@@ -2722,6 +2722,42 @@ type WorkspaceTab = {
     readonly id: string;
     readonly fileId: string;
     readonly sourceRef: AudioSourceRef;
+} | {
+    /**
+     * A read-only history viewer hosted in the main editor area — the
+     * project commit store's Diff / time-travel View, moved out of the
+     * cramped Version History side panel (#210). Carries everything the
+     * HistoryDiffOverlay / HistoryViewOverlay components need to render.
+     *
+     * Reuses the preview-tab mechanism: opened as a single italic
+     * `preview` slot that the next Diff/View replaces, promoted to a
+     * pinned tab on double-click (same UX as opening a file in preview).
+     * Never persisted — `tabPersistence` keeps only `editor` tabs, and a
+     * commit can be pruned between sessions, so a stale history tab would
+     * be a ghost.
+     */
+    readonly kind: 'history';
+    readonly id: string;
+    /** The file the viewer is focused on (drives the tab label + initial selection). */
+    readonly fileId: string;
+    readonly mode: 'diff' | 'view';
+    /** The commit being diffed / viewed. */
+    readonly commitId: string;
+    /**
+     * Diff mode only (#211): open the diff in "vs current" (commit ↔ live
+     * working tree) by default, for the "Uncommitted Changes" section's
+     * live ↔ HEAD diff. With `commitId` = HEAD, the original side is the
+     * file's HEAD content and the modified side is its live content.
+     */
+    readonly vsCurrent?: boolean;
+    /**
+     * Diff mode only (#211): scope the file picker to these ids instead of
+     * the commit's own changeset — so an uncommitted file that HEAD didn't
+     * touch is still selectable (the dirty-set snapshot at open time).
+     */
+    readonly pickerFileIds?: readonly string[];
+    /** Preview slot (italic, replaced by the next open). Promoted on double-click. */
+    readonly preview?: boolean;
 };
 /**
  * A single tab group inside the shell. Groups are the unit the `SplitPane`
@@ -3303,6 +3339,23 @@ interface WorkspaceShellHandle {
         preview?: boolean;
     }): void;
     /**
+     * Open a read-only history viewer (Diff or time-travel View) as a tab in
+     * the main editor area (#210). Reuses a single italic preview slot per
+     * the active group: a subsequent call replaces that slot's content
+     * instead of stacking tabs; double-clicking the tab promotes it to a
+     * pinned tab (same UX as opening a file in preview). Replaces the old
+     * cramped sidebar overlay.
+     */
+    openHistoryTab(req: {
+        mode: 'diff' | 'view';
+        commitId: string;
+        fileId: string;
+        /** Diff: open in "vs current" (live ↔ commit) by default (#211). */
+        vsCurrent?: boolean;
+        /** Diff: file-picker scope override (the dirty set) (#211). */
+        pickerFileIds?: readonly string[];
+    }): void;
+    /**
      * Promote the given tab out of preview mode — it becomes pinned and
      * stops being eligible for replacement by the next preview open. No-op
      * if the tab doesn't exist or was already pinned.
@@ -3798,14 +3851,14 @@ declare function subscribeToDocUpdate(cb: () => void, options?: {
  * existing store functions as usual.
  */
 declare function withStructBatch<T>(fn: () => T): T;
-type Listener$4 = () => void;
+type Listener$5 = () => void;
 /** Call when the active project Y.Doc changes so the undo stack rebuilds. */
 declare function resetUndoManager(): void;
 declare function undo(): boolean;
 declare function redo(): boolean;
 declare function canUndo(): boolean;
 declare function canRedo(): boolean;
-declare function subscribeToUndoState(cb: Listener$4): () => void;
+declare function subscribeToUndoState(cb: Listener$5): () => void;
 
 /**
  * Reveal the given line in the editor for `fileId` and set the cursor
@@ -4036,12 +4089,15 @@ declare function fileHistory(h: ProjectHistory, fileId: string): Commit[];
  * Date) and handed to the pure graph, keeping the graph deterministic.
  */
 
-type Listener$3 = () => void;
+type Listener$4 = () => void;
 /** Subscribe to history changes (commit/restore/branch/switch/active-file). Returns unsubscribe. */
-declare function subscribeToHistory(cb: Listener$3): () => void;
+declare function subscribeToHistory(cb: Listener$4): () => void;
 /** The app sets this on tab focus so File-scope history targets the right file. */
 declare function setActiveHistoryFile(fileId: string | null): void;
 declare function getActiveHistoryFile(): string | null;
+/** Focus the History panel on one file's history (null = project graph). */
+declare function setFileHistoryTarget(fileId: string | null): void;
+declare function getFileHistoryTarget(): string | null;
 /** The in-memory active history (null before init). For UI reads. */
 declare function getCurrentHistory(): ProjectHistory | null;
 /**
@@ -4062,6 +4118,14 @@ interface CommitWorkspaceOpts {
      * auto/eval paths leave this off and keep their no-op-when-unchanged return.
      */
     readonly allowEmpty?: boolean;
+    /**
+     * Selective-file commit (#211, Tier 1.2 — the index-free analogue of git
+     * staging): commit ONLY these file ids, leaving the rest of the working
+     * changes uncommitted (captured by a later auto/eval commit). Filters the
+     * computed diff to the subset before the empty-check. Absent = today's full
+     * working-tree snapshot (auto/eval/restore stay byte-identical).
+     */
+    readonly only?: ReadonlySet<string>;
 }
 /**
  * Capture the current workspace state as a commit on the current branch.
@@ -4131,6 +4195,59 @@ declare function switchToBranch(name: string): Promise<void>;
  * Each fire is significance-gated (idle/unload commit only meaningful change).
  */
 declare function startHistoryDriver(): () => void;
+
+/**
+ * HistoryPanel — the project commit graph (Version History side panel).
+ *
+ * A VS Code / GitLens-style source-control graph: PROJECT-level commit history
+ * (no per-file mode — that's a separate "File History" action on a file). Each
+ * commit row has a branch-lane graph gutter, a kind badge + label + time, and
+ * hover-revealed icon actions (Restore / Fork / View). Expanding a commit lists
+ * the files it changed; clicking a file opens its diff.
+ *
+ * Reads the service singleton + re-renders on subscribeToHistory.
+ */
+
+/** Request to open a read-only history viewer in the main editor area (#210). */
+interface OpenHistoryTabRequest {
+    readonly mode: 'diff' | 'view';
+    readonly commitId: string;
+    readonly fileId: string;
+    /** Diff: open in "vs current" (live ↔ commit) by default — the uncommitted diff (#211). */
+    readonly vsCurrent?: boolean;
+    /** Diff: file-picker scope override (the dirty set) so a file HEAD didn't touch is selectable (#211). */
+    readonly pickerFileIds?: readonly string[];
+}
+interface HistoryPanelProps {
+    /**
+     * Open a Diff / time-travel View as a tab in the main editor area
+     * (wired by the app to `shellRef.openHistoryTab`). Diff/View no longer
+     * render as a cramped in-panel overlay (#210).
+     */
+    readonly onOpenHistoryTab?: (req: OpenHistoryTabRequest) => void;
+}
+declare function HistoryPanel({ onOpenHistoryTab }?: HistoryPanelProps): React.ReactElement;
+
+type Listener$3 = () => void;
+/**
+ * Enter time-travel: the runtime reflects `commitId`'s snapshot (read-only).
+ * `files` is the whole-project snapshot at that commit (Decision C). Calling
+ * again with a different commit swaps the view in place.
+ */
+declare function enterRuntimeView(commitId: string, files: Record<string, string>): void;
+/** Exit time-travel: restore HEAD authority. No-op when not viewing. */
+declare function exitRuntimeView(): void;
+/**
+ * Viewed content for a file, or `null` when not viewing OR the file did not
+ * exist at the checked-out commit. Callers fall back to live content on null.
+ */
+declare function getViewedContent(fileId: string): string | null;
+declare function isViewing(): boolean;
+declare function getViewedCommit(): string | null;
+/** All file ids present in the current view (empty array when not viewing). */
+declare function getViewedFileIds(): string[];
+/** Subscribe to enter/exit/swap. Returns an unsubscribe fn. */
+declare function subscribeToRuntimeView(cb: Listener$3): () => void;
 
 /**
  * ProjectRegistry — PM Phase 2.
@@ -4591,6 +4708,8 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     play(): Promise<{
         error: Error | null;
     }>;
+    /** Whether this runtime is currently playing (for the time-travel re-eval, #204). */
+    getIsPlaying(): boolean;
     stop(): void;
     dispose(): void;
     /**
@@ -6058,4 +6177,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };

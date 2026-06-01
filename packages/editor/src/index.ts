@@ -225,8 +225,21 @@ export {
   subscribeToHistory,
   setActiveHistoryFile,
   getActiveHistoryFile,
+  setFileHistoryTarget,
+  getFileHistoryTarget,
 } from './workspace/history/historyService'
 export { startHistoryDriver } from './workspace/history/historyDriver'
+export { HistoryPanel } from './workspace/history/HistoryPanel'
+export type { HistoryPanelProps, OpenHistoryTabRequest } from './workspace/history/HistoryPanel'
+export {
+  enterRuntimeView,
+  exitRuntimeView,
+  getViewedContent,
+  isViewing,
+  getViewedCommit,
+  getViewedFileIds,
+  subscribeToRuntimeView,
+} from './workspace/history/historyViewing'
 export {
   listCommits,
   listBranches,
