@@ -182,6 +182,11 @@ interface ZoneEntry {
   canvas: HTMLCanvasElement | null
   trackKey: string
   vizId: string
+  /** Renderer of the resolved descriptor ('p5' | 'hydra'). Kept so the async
+   *  preset lookup matches by name AND renderer — two presets can share a base
+   *  name across renderers (e.g. scope.p5 + scope.hydra), so a name-only match
+   *  would resolve the crop preview to the wrong viz. */
+  renderer: VizDescriptor['renderer']
   presetId: string | null
   native: { w: number; h: number }
   crop: CropRegion
@@ -289,6 +294,9 @@ export function addInlineViewZones(
         ? { analyser: trackAnalyser, audioCtx, trackAnalysers: components.audio?.trackAnalysers }
         : components.audio
 
+      // Per-render viz options (`.pianoroll({...})` arg) ride alongside the
+      // request and become `stave.options` for this zone's sketch (#214).
+      const zoneOptions = (reqExtra as { options?: Record<string, unknown> }).options
       const zoneComponents: Partial<EngineComponents> = {
         ...components,
         ...(trackStream ? { streaming: { hapStream: trackStream } } : {}),
@@ -297,10 +305,13 @@ export function addInlineViewZones(
           scheduler: trackScheduler,
           trackSchedulers: components.queryable?.trackSchedulers ?? new Map(),
         },
+        options: zoneOptions ?? {},
       }
 
-      // Start with default native + full crop; refined async once preset loads.
-      const native = DEFAULT_NATIVE
+      // Start with the descriptor's intrinsic aspect (pianoroll declares a
+      // taller one so pitch lanes aren't squashed, #214 follow-up) + full crop;
+      // refined async once the preset's measured canvas size lands.
+      const native = descriptor.nativeSize ?? DEFAULT_NATIVE
       const crop = FULL_CROP
       const contentW = editor.getLayoutInfo().contentWidth || 400
       const layout = computeLayout(contentW, native, crop)
@@ -376,7 +387,7 @@ export function addInlineViewZones(
       }
 
       const entry: ZoneEntry = {
-        zoneId, zoneDesc, afterLine, container, canvas, trackKey, vizId, presetId: null, native, crop, vizDecoration,
+        zoneId, zoneDesc, afterLine, container, canvas, trackKey, vizId, renderer: descriptor.renderer, presetId: null, native, crop, vizDecoration,
       }
       zoneEntries.push(entry)
 
@@ -510,7 +521,14 @@ export function addInlineViewZones(
           const override = fileId ? getZoneCropOverride(fileId, entry.trackKey) : undefined
 
           const normViz = normalize(entry.vizId)
-          const preset = presets.find(p => normalize(p.name) === normViz) ?? null
+          // Match name AND renderer — a base name can exist for both renderers
+          // (scope.p5 + scope.hydra); a name-only match would point the crop
+          // preview at the wrong viz. Fall back to name-only if no renderer
+          // match exists (older single-renderer presets).
+          const preset =
+            presets.find(p => normalize(p.name) === normViz && p.renderer === entry.renderer) ??
+            presets.find(p => normalize(p.name) === normViz) ??
+            null
           if (preset) {
             entry.presetId = preset.id
           }

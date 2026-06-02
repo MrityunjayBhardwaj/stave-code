@@ -14,14 +14,18 @@
  */
 
 export const PIANOROLL_P5_CODE = `// Stave p5 viz — Piano Roll
-// stave.scheduler, stave.analyser, stave.hapStream are injected globals.
-// Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets its own
-// horizontal lane, sorted low→high, so notes never overlap and the melodic
-// contour reads as a staircase. Notes scroll right→left across a 4-cycle
-// window; the playhead sits at the half mark.
+// stave.scheduler, stave.analyser, stave.hapStream, stave.options are injected
+// globals. Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets
+// its own lane, sorted low→high, so notes never overlap and the melodic
+// contour reads as a staircase. Notes scroll across a 4-cycle window; the
+// playhead sits at the half mark.
+//
+// Honours a subset of @strudel/draw's .pianoroll(options) vocabulary via
+// stave.options — defaults (no options) reproduce Stave's classic look:
+//   cycles, playhead, vertical, labels, flipTime, flipValues, fold,
+//   minMidi, maxMidi, autorange, fill, fillActive, strokeActive,
+//   active, inactive, background, playheadColor.
 
-const CYCLES = 4      // cycles visible across the canvas width
-const PLAYHEAD = 0.5  // 0..1 — where "now" sits horizontally
 // Drum/percussion sound-name prefixes for color classification.
 const DRUM_PREFIXES = ['bd', 'sd', 'hh', 'rim', 'cp', 'cy', 'lt', 'mt', 'ht', 'oh', 'cl']
 
@@ -55,6 +59,14 @@ function valueOf(h) {
   return 0
 }
 
+// Default label text for a hap (note name, else sound[:n]).
+function labelOf(h) {
+  if (typeof h.note === 'string') return h.note
+  if (typeof h.note === 'number') return String(h.note)
+  if (h.s) return h.s + (h.n != null ? ':' + h.n : '')
+  return ''
+}
+
 function parseHex(hex) {
   const s = String(hex).replace('#', '')
   if (s.length === 6) return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)]
@@ -72,6 +84,8 @@ function colorOf(h) {
   return [139, 92, 246]                        // melody — purple
 }
 
+const num = (v, d) => (typeof v === 'number' && !isNaN(v) ? v : d)
+
 function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
@@ -79,7 +93,32 @@ function setup() {
 
 function draw() {
   const W = width, H = height
-  background(9, 9, 18)
+  const O = (stave.options && typeof stave.options === 'object') ? stave.options : {}
+
+  // ── options (defaults match @strudel/draw's pianoroll). fold defaults ON
+  // (strudel.cc's real default, __pianoroll fold=1): distinct pitches pack into
+  // CONTIGUOUS adjacent lanes — no empty rows between non-adjacent semitones.
+  // The landscape note look comes from the wide/short native surface (#214),
+  // NOT from fold:0. fold:0 (opt-in) spaces notes by absolute MIDI, which shows
+  // gaps at the missing semitones (use with autorange for a tight range). ──
+  const CYCLES = num(O.cycles, 4)
+  const PLAYHEAD = num(O.playhead, 0.5)
+  const vertical = !!O.vertical
+  const labels = !!O.labels
+  const flipTime = !!O.flipTime
+  const flipValues = !!O.flipValues
+  const useFold = O.fold == null ? true : !!O.fold
+  const autorange = !!O.autorange
+  const inactiveFilled = O.fill == null ? true : !!O.fill
+  const activeFilled = O.fillActive == null ? true : !!O.fillActive   // Stave default: filled glow
+  const activeStroked = O.strokeActive == null ? true : !!O.strokeActive
+  const activeOverride = typeof O.active === 'string' ? parseHex(O.active) : null
+  const inactiveOverride = typeof O.inactive === 'string' ? parseHex(O.inactive) : null
+  const bg = typeof O.background === 'string' ? parseHex(O.background) : null
+  const playheadCol = typeof O.playheadColor === 'string' ? parseHex(O.playheadColor) : null
+
+  if (bg) background(bg[0], bg[1], bg[2]); else clear()
+
   const sched = stave.scheduler
   if (!sched) return
   let now
@@ -91,7 +130,7 @@ function draw() {
   let haps
   try { haps = sched.query(from, to) } catch (e) { haps = [] }
 
-  // Fold: collect distinct pitch/sound values, sort ascending → lanes.
+  // Distinct values (for fold lanes / autorange), sorted low→high.
   const seen = new Set(), vals = []
   for (const h of haps) { const v = valueOf(h); if (!seen.has(v)) { seen.add(v); vals.push(v) } }
   vals.sort((a, b) => {
@@ -100,37 +139,88 @@ function draw() {
     if (typeof b === 'number') return 1
     return String(a).localeCompare(String(b))
   })
-  const fold = Math.max(1, vals.length)
-  const barH = H / fold
+
+  // Value-axis slotting: fold (one slot per distinct value) OR absolute MIDI
+  // range (minMidi..maxMidi, optionally autoranged from the numeric values).
+  const numericVals = vals.filter(v => typeof v === 'number')
+  let minMidi = num(O.minMidi, 10), maxMidi = num(O.maxMidi, 90)
+  if (autorange && numericVals.length) { minMidi = Math.min(...numericVals); maxMidi = Math.max(...numericVals) }
+  const foldCount = Math.max(1, vals.length)
+  const absExtent = Math.max(1, maxMidi - minMidi + 1)
+  const slotCount = useFold ? foldCount : absExtent
+
+  // slotFromTop: 0 = top of the value axis (high pitch up).
+  const slotFromTop = (h) => {
+    const v = valueOf(h)
+    let s
+    if (useFold) { const lane = vals.indexOf(v); s = lane < 0 ? -1 : foldCount - 1 - lane }
+    else if (typeof v === 'number') s = maxMidi - v
+    else s = absExtent - 1 // unpitched sounds sit at the bottom in absolute mode
+    if (s < 0 || s >= slotCount) return -1
+    return flipValues ? slotCount - 1 - s : s
+  }
+
+  const timeAxis = vertical ? H : W
+  const valueAxis = vertical ? W : H
+  const barSize = valueAxis / slotCount
 
   noStroke()
   for (const h of haps) {
-    const lane = vals.indexOf(valueOf(h))
-    if (lane < 0) continue
-    const x = ((h.begin - now + CYCLES * PLAYHEAD) / ext) * W
-    const w = Math.max(2, ((h.end - h.begin) / ext) * W)
-    const y = ((fold - 1 - lane) / fold) * H   // higher pitch → higher up
+    const sft = slotFromTop(h)
+    if (sft < 0) continue
+    let tp = (h.begin - from) / ext            // 0..1 along the time axis
+    if (flipTime) tp = 1 - tp
+    const tPx = tp * timeAxis
+    const durPx = Math.max(2, ((h.end - h.begin) / ext) * timeAxis)
+    const vPx = (sft / slotCount) * valueAxis
     const endC = h.endClipped != null ? h.endClipped : h.end
     const active = h.begin <= now && endC > now
     const gain = Math.min(1, Math.max(0.1, h.gain == null ? 1 : h.gain))
     const vel = Math.min(1, Math.max(0.1, h.velocity == null ? 1 : h.velocity))
     const alpha = gain * vel
-    const [r, g, b] = colorOf(h)
+    let col = colorOf(h)
+    if (active && activeOverride) col = activeOverride
+    else if (!active && inactiveOverride) col = inactiveOverride
+    const [r, g, b] = col
+
+    // rect coords — horizontal: time→x, value→y; vertical: time→y, value→x.
+    const rx = vertical ? vPx : tPx - (flipTime ? durPx : 0)
+    const ry = vertical ? tPx - (flipTime ? 0 : durPx) : vPx
+    const rw = vertical ? barSize : durPx
+    const rh = vertical ? durPx : barSize
+
     if (active) {
-      // Brightened toward white + a crisp outline so the playing note pops.
-      fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)
-      rect(x, y + 1, w - 2, barH - 2)
-      noFill(); stroke(255, 255, 255, 220); strokeWeight(1)
-      rect(x, y + 1, w - 2, barH - 2); noStroke()
-    } else {
+      if (activeFilled) {
+        // Brightened toward white unless an explicit active color was given.
+        if (activeOverride) fill(r, g, b, alpha * 255)
+        else fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)
+        rect(rx, ry + 1, rw - 2, rh - 2)
+      }
+      if (activeStroked) {
+        noFill(); stroke(255, 255, 255, 220); strokeWeight(1)
+        rect(rx, ry + 1, rw - 2, rh - 2); noStroke()
+      }
+    } else if (inactiveFilled) {
       fill(r, g, b, alpha * 180)
-      rect(x, y + 1, w - 2, barH - 2)
+      rect(rx, ry + 1, rw - 2, rh - 2)
+    }
+
+    if (labels) {
+      const txt = labelOf(h)
+      if (txt) {
+        const fs = Math.min(14, Math.max(7, rh * 0.7))
+        noStroke(); fill(active ? 255 : 230); textSize(fs); textAlign(LEFT, TOP)
+        text(txt, rx + 2, ry + 1)
+      }
     }
   }
 
-  // Playhead line.
-  stroke(255, 255, 255, 128); strokeWeight(1)
-  line(PLAYHEAD * W, 0, PLAYHEAD * W, H); noStroke()
+  // Playhead line at the PLAYHEAD mark of the time axis.
+  const phc = playheadCol || [255, 255, 255]
+  stroke(phc[0], phc[1], phc[2], 128); strokeWeight(1)
+  if (vertical) line(0, PLAYHEAD * H, W, PLAYHEAD * H)
+  else line(PLAYHEAD * W, 0, PLAYHEAD * W, H)
+  noStroke()
 }`;
 
 export const SCOPE_P5_CODE = `// Stave p5 viz — Scope (oscilloscope / event pulses)
@@ -139,9 +229,9 @@ function setup() {
   noFill()
 }
 function draw() {
-  background(9, 9, 18)
+  clear()
   stroke(40, 50, 70); strokeWeight(0.5)
-  line(0, height * 0.75, width, height * 0.75)
+  line(0, height * 0.5, width, height * 0.5)
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
     const data = new Float32Array(buf)
@@ -149,7 +239,7 @@ function draw() {
     let trig = 0
     for (let i = 1; i < buf; i++) { if (data[i-1] > 0 && data[i] <= 0) { trig = i; break } }
     stroke('#75baff'); strokeWeight(2); beginShape()
-    for (let i = trig; i < buf; i++) vertex((i - trig) * width / (buf - trig), (0.75 - 0.25 * data[i]) * height)
+    for (let i = trig; i < buf; i++) vertex((i - trig) * width / (buf - trig), (0.5 - 0.25 * data[i]) * height)
     endShape()
   } else if (stave.scheduler) {
     const now = stave.scheduler.now()
@@ -161,7 +251,7 @@ function draw() {
       const w = max(3, ((h.end - h.begin) / 4) * width)
       const pH = height * 0.6 * decay * (h.gain ?? 1)
       fill(117, 186, 255, decay * 200)
-      rect(x, height * 0.75 - pH / 2, w, pH, 2)
+      rect(x, height * 0.5 - pH / 2, w, pH, 2)
     }
   }
 }`;
@@ -171,8 +261,22 @@ function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
 }
+// Hz from a hap — Strudel leaves note as a NAME string and freq null until
+// superdough renders, so parse the note name to MIDI ourselves.
+function hapFreq(h) {
+  if (typeof h.freq === 'number') return h.freq
+  let n = h.note
+  if (typeof n === 'string') {
+    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+    if (!m) return null
+    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
+  }
+  if (typeof n !== 'number') return null
+  return 440 * pow(2, (n - 69) / 12)
+}
 function draw() {
-  background(9, 9, 18)
+  clear()
   stroke(40, 50, 70); strokeWeight(0.5); noFill()
   line(0, height * 0.75, width, height * 0.75); noStroke()
   if (stave.analyser) {
@@ -190,8 +294,8 @@ function draw() {
     const haps = stave.scheduler.query(now - 0.2, now + 0.05)
     const bins = new Float32Array(64)
     for (const h of haps) {
-      const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
-      const freq = 440 * pow(2, (note - 69) / 12)
+      const freq = hapFreq(h)
+      if (freq == null) continue
       if (freq < 30) continue
       const idx = constrain(floor(log(freq / 30) / log(4000 / 30) * 64), 0, 63)
       bins[idx] = max(bins[idx], max(0, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1))
@@ -210,6 +314,20 @@ export const SPECTRUM_P5_CODE = `// Stave p5 viz — Spectrum (scrolling waterfa
 function setup() {
   createCanvas(stave.width, stave.height)
   pixelDensity(1); noStroke()
+}
+// Hz from a hap — Strudel leaves note as a NAME string and freq null until
+// superdough renders, so parse the note name to MIDI ourselves.
+function hapFreq(h) {
+  if (typeof h.freq === 'number') return h.freq
+  let n = h.note
+  if (typeof n === 'string') {
+    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+    if (!m) return null
+    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
+  }
+  if (typeof n !== 'number') return null
+  return 440 * pow(2, (n - 69) / 12)
 }
 function draw() {
   const ctx = drawingContext
@@ -237,8 +355,8 @@ function draw() {
     ctx.putImageData(img, -2, 0)
     const haps = stave.scheduler.query(now - 0.3, now + 0.05)
     for (const h of haps) {
-      const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
-      const freq = 440 * pow(2, (note - 69) / 12)
+      const freq = hapFreq(h)
+      if (freq == null) continue
       if (freq < 20) continue
       const logPos = log(freq / 20) / log(4000 / 20)
       const y = height - logPos * height
@@ -248,7 +366,7 @@ function draw() {
       ctx.fillRect(width - 2, y - 2, 2, max(4, height * 0.03))
     }
     ctx.globalAlpha = 1
-  } else { background(9, 9, 18) }
+  } else { clear() }
 }`;
 
 export const SPIRAL_P5_CODE = `// Stave p5 viz — Spiral
@@ -262,7 +380,7 @@ function xySpiral(rot, margin, cx, cy, rotate) {
   return [cx + cos(a) * margin * rot, cy + sin(a) * margin * rot]
 }
 function draw() {
-  background(9, 9, 18)
+  clear()
   if (!stave.scheduler) return
   const now = stave.scheduler.now()
   const haps = stave.scheduler.query(now - 2, now + 1)
@@ -302,8 +420,23 @@ function circPos(cx, cy, r, a) {
   const rad = a * TWO_PI
   return [sin(rad) * r + cx, cos(rad) * r + cy]
 }
+// Hz from a hap. Strudel leaves note as a NAME string and freq null until
+// superdough renders, so parse the note name to MIDI ourselves (h.freq is null
+// here — relying on it leaves every note stuck at the default pitch).
+function hapFreq(h) {
+  if (typeof h.freq === 'number') return h.freq
+  let n = h.note
+  if (typeof n === 'string') {
+    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+    if (!m) return null
+    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
+  }
+  if (typeof n !== 'number') return null
+  return 440 * pow(2, (n - 69) / 12)
+}
 function draw() {
-  background(9, 9, 18)
+  clear()
   if (!stave.scheduler) return
   const now = stave.scheduler.now()
   let haps = stave.scheduler.query(now - 0.01, now + 0.01)
@@ -319,8 +452,8 @@ function draw() {
   noFill(); stroke(117, 186, 255, 48); strokeWeight(1)
   circle(cx, cy, r * 2)
   for (const h of haps) {
-    const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
-    const freq = 440 * pow(2, (note - 69) / 12)
+    const freq = hapFreq(h)
+    if (freq == null) continue
     const a = freq2angle(freq)
     const [x, y] = circPos(cx, cy, r, a)
     const c = h.color ?? '#75baff'
@@ -337,7 +470,7 @@ function setup() {
   pixelDensity(window.devicePixelRatio || 1)
 }
 function draw() {
-  background(9, 9, 18)
+  clear()
   if (!stave.scheduler) return
   const now = stave.scheduler.now()
   const CYCLES = 4, PH = 0.5

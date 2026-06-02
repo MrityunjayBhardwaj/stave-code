@@ -81,6 +81,21 @@ const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
   { name: "Parsed",         run: runFinalStage         },
 ];
 
+/**
+ * Intrinsic drawing aspect for bundled vizzes, keyed by preset name. The single
+ * source of truth: the seed presets AND `registerAllVizFiles` both read it, so
+ * a bundled viz keeps its aspect even though `flushToPreset` rebuilds the IDB
+ * preset from the (metadata-less) workspace file and would otherwise strip
+ * `nativeSize`. The pianoroll uses a wide/short 6:1 to match @strudel/draw's
+ * inline pianoroll (#214): a short value axis keeps fold lanes thin so notes
+ * read as landscape bars, not tall blocks. Without an entry a viz falls back to
+ * the generic 2:1 `DEFAULT_NATIVE`.
+ */
+const BUNDLED_VIZ_NATIVE_SIZE: Record<string, { w: number; h: number }> = {
+  "Piano Roll": { w: 1200, h: 200 },
+  "Piano Roll (Hydra)": { w: 1400, h: 400 },
+};
+
 
 // ---------------------------------------------------------------------------
 // Provider registration (idempotent — safe to call on every mount)
@@ -251,8 +266,18 @@ export default function StrudelEditorClient({
       // While viewing, override the registered code with this file's snapshot
       // content (null = file absent at the commit → fall back to live preset).
       const viewedCode = getViewedContent(f.id);
-      const effective =
+      const effective0 =
         viewedCode !== null ? { ...preset, code: viewedCode } : preset;
+      // Re-apply the bundled native aspect — `flushToPreset` rebuilds the
+      // preset from the metadata-less workspace file and strips `nativeSize`,
+      // so without this the pianoroll registers at the generic 2:1 and its
+      // pitch lanes get squashed (the "stretched" look). For bundled vizzes the
+      // map is authoritative (there's no user-facing nativeSize control), so it
+      // also overrides any stale value persisted before this fix.
+      const bundledNative = BUNDLED_VIZ_NATIVE_SIZE[effective0.name];
+      const effective = bundledNative
+        ? { ...effective0, nativeSize: bundledNative }
+        : effective0;
       const base = baseOf(f.path);
       const name =
         f.language === "hydra" && p5Basenames.has(base)
@@ -280,10 +305,12 @@ export default function StrudelEditorClient({
       renderer: "p5",
       code: PIANOROLL_P5_CODE,
       requires: ["streaming"],
-      // Wide-and-short scrolling-timeline aspect — matches the historical
-      // pianoroll look (pre-WYSIWYG default used createCanvas(stave.width,
-      // stave.height) which resolved to ~1400×200 in practice).
-      nativeSize: { w: 1400, h: 350 },
+      // Wide/short 6:1 aspect to match @strudel/draw's inline pianoroll (#214).
+      // Block aspect = (dur·lanes/CYCLES)·(W/H); fold packs distinct pitches into
+      // contiguous lanes (no gaps), so a short H keeps those lanes thin and notes
+      // render as landscape bars (the strudel.cc look). The earlier 1.6:1 came
+      // from a mis-diagnosis: a taller surface fattens lanes → MORE stretch.
+      nativeSize: BUNDLED_VIZ_NATIVE_SIZE["Piano Roll"],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -293,7 +320,7 @@ export default function StrudelEditorClient({
       renderer: "hydra",
       code: PIANOROLL_HYDRA_CODE,
       requires: ["audio"],
-      nativeSize: { w: 1400, h: 400 },
+      nativeSize: BUNDLED_VIZ_NATIVE_SIZE["Piano Roll (Hydra)"],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -321,7 +348,7 @@ export default function StrudelEditorClient({
         await VizPresetStore.put({
           id: seedState.p5PresetId, name: "Piano Roll", renderer: "p5",
           code: PIANOROLL_P5_CODE, requires: ["streaming"],
-          nativeSize: { w: 1400, h: 350 },
+          nativeSize: BUNDLED_VIZ_NATIVE_SIZE["Piano Roll"],
           createdAt: now, updatedAt: now,
         });
       }
@@ -330,7 +357,7 @@ export default function StrudelEditorClient({
         await VizPresetStore.put({
           id: seedState.hydraPresetId, name: "Piano Roll (Hydra)", renderer: "hydra",
           code: PIANOROLL_HYDRA_CODE, requires: ["audio"],
-          nativeSize: { w: 1400, h: 400 },
+          nativeSize: BUNDLED_VIZ_NATIVE_SIZE["Piano Roll (Hydra)"],
           createdAt: now, updatedAt: now,
         });
       }

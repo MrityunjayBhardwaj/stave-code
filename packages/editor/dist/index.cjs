@@ -3635,6 +3635,11 @@ var _StrudelEngine = class _StrudelEngine {
     this.trackSchedulers = /* @__PURE__ */ new Map();
     // Per-track viz requests captured during the last evaluate() call
     this.vizRequests = /* @__PURE__ */ new Map();
+    // Per-track viz options (the `.pianoroll({...})` argument), keyed by the
+    // same captureId as vizRequests. Empty when no viz call passed an argument.
+    this.vizOptions = /* @__PURE__ */ new Map();
+    // Options for the backdrop viz call (`.pianoroll({...})`), null when none.
+    this.backdropVizOptions = null;
     // Backdrop viz requested by a non-underscore Strudel viz method (e.g.
     // `.scope()`, `.pianoroll()`) during the last evaluate(). Strudel's
     // non-underscore viz methods are its "big"/fullscreen form — we map them
@@ -3949,7 +3954,9 @@ var _StrudelEngine = class _StrudelEngine {
     this.lastAliasResolutions = [];
     const capturedPatterns = /* @__PURE__ */ new Map();
     const capturedVizRequests = /* @__PURE__ */ new Map();
+    const capturedVizOptions = /* @__PURE__ */ new Map();
     let capturedBackdropViz = null;
+    let capturedBackdropVizOptions = null;
     let anonIndex = 0;
     let autoOrbitNext = 100;
     const probeExplicitOrbit = /* @__PURE__ */ __name((pat) => {
@@ -3978,11 +3985,14 @@ var _StrudelEngine = class _StrudelEngine {
         Object.defineProperty(Pattern2.prototype, "viz", {
           configurable: true,
           writable: true,
-          value: /* @__PURE__ */ __name(function(vizName) {
+          value: /* @__PURE__ */ __name(function(vizName, opts) {
             const resolvedName = extractVizName(vizName);
             const result = strudelViz ? strudelViz.call(this, vizName) : this;
             if (resolvedName) {
               result._pendingViz = resolvedName;
+            }
+            if (opts && typeof opts === "object") {
+              result._pendingVizOptions = opts;
             }
             return result;
           }, "value")
@@ -3993,8 +4003,9 @@ var _StrudelEngine = class _StrudelEngine {
           Object.defineProperty(Pattern2.prototype, underscore, {
             configurable: true,
             writable: true,
-            value: /* @__PURE__ */ __name(function() {
+            value: /* @__PURE__ */ __name(function(opts) {
               this._pendingViz = renderer;
+              if (opts && typeof opts === "object") this._pendingVizOptions = opts;
               return this;
             }, "value")
           });
@@ -4002,8 +4013,9 @@ var _StrudelEngine = class _StrudelEngine {
           Object.defineProperty(Pattern2.prototype, name, {
             configurable: true,
             writable: true,
-            value: /* @__PURE__ */ __name(function() {
+            value: /* @__PURE__ */ __name(function(opts) {
               capturedBackdropViz = renderer;
+              capturedBackdropVizOptions = opts && typeof opts === "object" ? opts : null;
               return this;
             }, "value")
           });
@@ -4023,6 +4035,10 @@ var _StrudelEngine = class _StrudelEngine {
                 vizName = this._pendingViz;
                 capturedVizRequests.set(captureId, vizName);
                 delete this._pendingViz;
+              }
+              if (this._pendingVizOptions && typeof this._pendingVizOptions === "object") {
+                capturedVizOptions.set(captureId, this._pendingVizOptions);
+                delete this._pendingVizOptions;
               }
               let effectivePattern = this;
               if (vizName && typeof this.orbit === "function" && !probeExplicitOrbit(this)) {
@@ -4069,7 +4085,9 @@ var _StrudelEngine = class _StrudelEngine {
           });
         }
         this.vizRequests = capturedVizRequests;
+        this.vizOptions = capturedVizOptions;
         this.backdropVizRequest = capturedBackdropViz;
+        this.backdropVizOptions = capturedBackdropVizOptions;
         this.rebuildTrackAnalysers(capturedPatterns);
         const irBag = propagate(
           { strudelCode: code },
@@ -4133,7 +4151,7 @@ var _StrudelEngine = class _StrudelEngine {
     if (hasInlineViz || this.backdropVizRequest) {
       bag.inlineViz = {
         vizRequests: hasInlineViz ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode) : /* @__PURE__ */ new Map(),
-        backdropRequest: this.backdropVizRequest ? { vizId: this.backdropVizRequest } : void 0
+        backdropRequest: this.backdropVizRequest ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? void 0 } : void 0
       };
     }
     if (this.lastPatternIR) {
@@ -4167,7 +4185,8 @@ var _StrudelEngine = class _StrudelEngine {
       }
       const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
       const contentHash = blockLines.slice(0, 120);
-      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash });
+      const options = this.vizOptions.get(key);
+      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
     }
     return result;
   }
@@ -4592,6 +4611,8 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.containerSizeRef = {
       current: { w: 400, h: 300 }
     };
+    // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
+    this.optionsRef = { current: {} };
   }
   mount(container, components, size, onError) {
     installP5FesBridgeWith(p5__default.default);
@@ -4599,12 +4620,14 @@ var _P5VizRenderer = class _P5VizRenderer {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null;
       this.analyserRef.current = components.audio?.analyser ?? null;
       this.schedulerRef.current = components.queryable?.scheduler ?? null;
+      this.optionsRef.current = components.options ?? {};
       this.containerSizeRef.current = { w: size.w, h: size.h };
       const sketchFn = this.sketch(
         this.hapStreamRef,
         this.analyserRef,
         this.schedulerRef,
-        this.containerSizeRef
+        this.containerSizeRef,
+        this.optionsRef
       );
       this.instance = new p5__default.default(sketchFn, container);
       this.instance.resizeCanvas(size.w, size.h);
@@ -4617,6 +4640,7 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.hapStreamRef.current = components.streaming?.hapStream ?? null;
     this.analyserRef.current = components.audio?.analyser ?? null;
     this.schedulerRef.current = components.queryable?.scheduler ?? null;
+    this.optionsRef.current = components.options ?? {};
   }
   resize(w, h) {
     this.containerSizeRef.current = { w, h };
@@ -9326,6 +9350,8 @@ function compileP5Code(code, source) {
   new Function("p", "stave", body);
   return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
     current: { w: 400, h: 300 }
+  }, optionsRef = {
+    current: {}
   }) => {
     return (p) => {
       const stave = {
@@ -9343,6 +9369,9 @@ function compileP5Code(code, source) {
         },
         get height() {
           return containerSizeRef.current?.h ?? 300;
+        },
+        get options() {
+          return optionsRef.current ?? {};
         }
       };
       let lifecycle;
@@ -9465,14 +9494,18 @@ __name(installErrorSketch, "installErrorSketch");
 
 // src/visualizers/builtinP5Code.ts
 var PIANOROLL_P5_CODE = `// Stave p5 viz \u2014 Piano Roll
-// stave.scheduler, stave.analyser, stave.hapStream are injected globals.
-// Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets its own
-// horizontal lane, sorted low\u2192high, so notes never overlap and the melodic
-// contour reads as a staircase. Notes scroll right\u2192left across a 4-cycle
-// window; the playhead sits at the half mark.
+// stave.scheduler, stave.analyser, stave.hapStream, stave.options are injected
+// globals. Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets
+// its own lane, sorted low\u2192high, so notes never overlap and the melodic
+// contour reads as a staircase. Notes scroll across a 4-cycle window; the
+// playhead sits at the half mark.
+//
+// Honours a subset of @strudel/draw's .pianoroll(options) vocabulary via
+// stave.options \u2014 defaults (no options) reproduce Stave's classic look:
+//   cycles, playhead, vertical, labels, flipTime, flipValues, fold,
+//   minMidi, maxMidi, autorange, fill, fillActive, strokeActive,
+//   active, inactive, background, playheadColor.
 
-const CYCLES = 4      // cycles visible across the canvas width
-const PLAYHEAD = 0.5  // 0..1 \u2014 where "now" sits horizontally
 // Drum/percussion sound-name prefixes for color classification.
 const DRUM_PREFIXES = ['bd', 'sd', 'hh', 'rim', 'cp', 'cy', 'lt', 'mt', 'ht', 'oh', 'cl']
 
@@ -9506,6 +9539,14 @@ function valueOf(h) {
   return 0
 }
 
+// Default label text for a hap (note name, else sound[:n]).
+function labelOf(h) {
+  if (typeof h.note === 'string') return h.note
+  if (typeof h.note === 'number') return String(h.note)
+  if (h.s) return h.s + (h.n != null ? ':' + h.n : '')
+  return ''
+}
+
 function parseHex(hex) {
   const s = String(hex).replace('#', '')
   if (s.length === 6) return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)]
@@ -9523,6 +9564,8 @@ function colorOf(h) {
   return [139, 92, 246]                        // melody \u2014 purple
 }
 
+const num = (v, d) => (typeof v === 'number' && !isNaN(v) ? v : d)
+
 function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
@@ -9530,7 +9573,32 @@ function setup() {
 
 function draw() {
   const W = width, H = height
-  background(9, 9, 18)
+  const O = (stave.options && typeof stave.options === 'object') ? stave.options : {}
+
+  // \u2500\u2500 options (defaults match @strudel/draw's pianoroll). fold defaults ON
+  // (strudel.cc's real default, __pianoroll fold=1): distinct pitches pack into
+  // CONTIGUOUS adjacent lanes \u2014 no empty rows between non-adjacent semitones.
+  // The landscape note look comes from the wide/short native surface (#214),
+  // NOT from fold:0. fold:0 (opt-in) spaces notes by absolute MIDI, which shows
+  // gaps at the missing semitones (use with autorange for a tight range). \u2500\u2500
+  const CYCLES = num(O.cycles, 4)
+  const PLAYHEAD = num(O.playhead, 0.5)
+  const vertical = !!O.vertical
+  const labels = !!O.labels
+  const flipTime = !!O.flipTime
+  const flipValues = !!O.flipValues
+  const useFold = O.fold == null ? true : !!O.fold
+  const autorange = !!O.autorange
+  const inactiveFilled = O.fill == null ? true : !!O.fill
+  const activeFilled = O.fillActive == null ? true : !!O.fillActive   // Stave default: filled glow
+  const activeStroked = O.strokeActive == null ? true : !!O.strokeActive
+  const activeOverride = typeof O.active === 'string' ? parseHex(O.active) : null
+  const inactiveOverride = typeof O.inactive === 'string' ? parseHex(O.inactive) : null
+  const bg = typeof O.background === 'string' ? parseHex(O.background) : null
+  const playheadCol = typeof O.playheadColor === 'string' ? parseHex(O.playheadColor) : null
+
+  if (bg) background(bg[0], bg[1], bg[2]); else clear()
+
   const sched = stave.scheduler
   if (!sched) return
   let now
@@ -9542,7 +9610,7 @@ function draw() {
   let haps
   try { haps = sched.query(from, to) } catch (e) { haps = [] }
 
-  // Fold: collect distinct pitch/sound values, sort ascending \u2192 lanes.
+  // Distinct values (for fold lanes / autorange), sorted low\u2192high.
   const seen = new Set(), vals = []
   for (const h of haps) { const v = valueOf(h); if (!seen.has(v)) { seen.add(v); vals.push(v) } }
   vals.sort((a, b) => {
@@ -9551,37 +9619,88 @@ function draw() {
     if (typeof b === 'number') return 1
     return String(a).localeCompare(String(b))
   })
-  const fold = Math.max(1, vals.length)
-  const barH = H / fold
+
+  // Value-axis slotting: fold (one slot per distinct value) OR absolute MIDI
+  // range (minMidi..maxMidi, optionally autoranged from the numeric values).
+  const numericVals = vals.filter(v => typeof v === 'number')
+  let minMidi = num(O.minMidi, 10), maxMidi = num(O.maxMidi, 90)
+  if (autorange && numericVals.length) { minMidi = Math.min(...numericVals); maxMidi = Math.max(...numericVals) }
+  const foldCount = Math.max(1, vals.length)
+  const absExtent = Math.max(1, maxMidi - minMidi + 1)
+  const slotCount = useFold ? foldCount : absExtent
+
+  // slotFromTop: 0 = top of the value axis (high pitch up).
+  const slotFromTop = (h) => {
+    const v = valueOf(h)
+    let s
+    if (useFold) { const lane = vals.indexOf(v); s = lane < 0 ? -1 : foldCount - 1 - lane }
+    else if (typeof v === 'number') s = maxMidi - v
+    else s = absExtent - 1 // unpitched sounds sit at the bottom in absolute mode
+    if (s < 0 || s >= slotCount) return -1
+    return flipValues ? slotCount - 1 - s : s
+  }
+
+  const timeAxis = vertical ? H : W
+  const valueAxis = vertical ? W : H
+  const barSize = valueAxis / slotCount
 
   noStroke()
   for (const h of haps) {
-    const lane = vals.indexOf(valueOf(h))
-    if (lane < 0) continue
-    const x = ((h.begin - now + CYCLES * PLAYHEAD) / ext) * W
-    const w = Math.max(2, ((h.end - h.begin) / ext) * W)
-    const y = ((fold - 1 - lane) / fold) * H   // higher pitch \u2192 higher up
+    const sft = slotFromTop(h)
+    if (sft < 0) continue
+    let tp = (h.begin - from) / ext            // 0..1 along the time axis
+    if (flipTime) tp = 1 - tp
+    const tPx = tp * timeAxis
+    const durPx = Math.max(2, ((h.end - h.begin) / ext) * timeAxis)
+    const vPx = (sft / slotCount) * valueAxis
     const endC = h.endClipped != null ? h.endClipped : h.end
     const active = h.begin <= now && endC > now
     const gain = Math.min(1, Math.max(0.1, h.gain == null ? 1 : h.gain))
     const vel = Math.min(1, Math.max(0.1, h.velocity == null ? 1 : h.velocity))
     const alpha = gain * vel
-    const [r, g, b] = colorOf(h)
+    let col = colorOf(h)
+    if (active && activeOverride) col = activeOverride
+    else if (!active && inactiveOverride) col = inactiveOverride
+    const [r, g, b] = col
+
+    // rect coords \u2014 horizontal: time\u2192x, value\u2192y; vertical: time\u2192y, value\u2192x.
+    const rx = vertical ? vPx : tPx - (flipTime ? durPx : 0)
+    const ry = vertical ? tPx - (flipTime ? 0 : durPx) : vPx
+    const rw = vertical ? barSize : durPx
+    const rh = vertical ? durPx : barSize
+
     if (active) {
-      // Brightened toward white + a crisp outline so the playing note pops.
-      fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)
-      rect(x, y + 1, w - 2, barH - 2)
-      noFill(); stroke(255, 255, 255, 220); strokeWeight(1)
-      rect(x, y + 1, w - 2, barH - 2); noStroke()
-    } else {
+      if (activeFilled) {
+        // Brightened toward white unless an explicit active color was given.
+        if (activeOverride) fill(r, g, b, alpha * 255)
+        else fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)
+        rect(rx, ry + 1, rw - 2, rh - 2)
+      }
+      if (activeStroked) {
+        noFill(); stroke(255, 255, 255, 220); strokeWeight(1)
+        rect(rx, ry + 1, rw - 2, rh - 2); noStroke()
+      }
+    } else if (inactiveFilled) {
       fill(r, g, b, alpha * 180)
-      rect(x, y + 1, w - 2, barH - 2)
+      rect(rx, ry + 1, rw - 2, rh - 2)
+    }
+
+    if (labels) {
+      const txt = labelOf(h)
+      if (txt) {
+        const fs = Math.min(14, Math.max(7, rh * 0.7))
+        noStroke(); fill(active ? 255 : 230); textSize(fs); textAlign(LEFT, TOP)
+        text(txt, rx + 2, ry + 1)
+      }
     }
   }
 
-  // Playhead line.
-  stroke(255, 255, 255, 128); strokeWeight(1)
-  line(PLAYHEAD * W, 0, PLAYHEAD * W, H); noStroke()
+  // Playhead line at the PLAYHEAD mark of the time axis.
+  const phc = playheadCol || [255, 255, 255]
+  stroke(phc[0], phc[1], phc[2], 128); strokeWeight(1)
+  if (vertical) line(0, PLAYHEAD * H, W, PLAYHEAD * H)
+  else line(PLAYHEAD * W, 0, PLAYHEAD * W, H)
+  noStroke()
 }`;
 var SCOPE_P5_CODE = `// Stave p5 viz \u2014 Scope (oscilloscope / event pulses)
 function setup() {
@@ -9589,9 +9708,9 @@ function setup() {
   noFill()
 }
 function draw() {
-  background(9, 9, 18)
+  clear()
   stroke(40, 50, 70); strokeWeight(0.5)
-  line(0, height * 0.75, width, height * 0.75)
+  line(0, height * 0.5, width, height * 0.5)
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
     const data = new Float32Array(buf)
@@ -9599,7 +9718,7 @@ function draw() {
     let trig = 0
     for (let i = 1; i < buf; i++) { if (data[i-1] > 0 && data[i] <= 0) { trig = i; break } }
     stroke('#75baff'); strokeWeight(2); beginShape()
-    for (let i = trig; i < buf; i++) vertex((i - trig) * width / (buf - trig), (0.75 - 0.25 * data[i]) * height)
+    for (let i = trig; i < buf; i++) vertex((i - trig) * width / (buf - trig), (0.5 - 0.25 * data[i]) * height)
     endShape()
   } else if (stave.scheduler) {
     const now = stave.scheduler.now()
@@ -9611,7 +9730,7 @@ function draw() {
       const w = max(3, ((h.end - h.begin) / 4) * width)
       const pH = height * 0.6 * decay * (h.gain ?? 1)
       fill(117, 186, 255, decay * 200)
-      rect(x, height * 0.75 - pH / 2, w, pH, 2)
+      rect(x, height * 0.5 - pH / 2, w, pH, 2)
     }
   }
 }`;
@@ -9620,8 +9739,22 @@ function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
 }
+// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until
+// superdough renders, so parse the note name to MIDI ourselves.
+function hapFreq(h) {
+  if (typeof h.freq === 'number') return h.freq
+  let n = h.note
+  if (typeof n === 'string') {
+    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+    if (!m) return null
+    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
+  }
+  if (typeof n !== 'number') return null
+  return 440 * pow(2, (n - 69) / 12)
+}
 function draw() {
-  background(9, 9, 18)
+  clear()
   stroke(40, 50, 70); strokeWeight(0.5); noFill()
   line(0, height * 0.75, width, height * 0.75); noStroke()
   if (stave.analyser) {
@@ -9639,8 +9772,8 @@ function draw() {
     const haps = stave.scheduler.query(now - 0.2, now + 0.05)
     const bins = new Float32Array(64)
     for (const h of haps) {
-      const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
-      const freq = 440 * pow(2, (note - 69) / 12)
+      const freq = hapFreq(h)
+      if (freq == null) continue
       if (freq < 30) continue
       const idx = constrain(floor(log(freq / 30) / log(4000 / 30) * 64), 0, 63)
       bins[idx] = max(bins[idx], max(0, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1))
@@ -9658,6 +9791,20 @@ var SPECTRUM_P5_CODE = `// Stave p5 viz \u2014 Spectrum (scrolling waterfall)
 function setup() {
   createCanvas(stave.width, stave.height)
   pixelDensity(1); noStroke()
+}
+// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until
+// superdough renders, so parse the note name to MIDI ourselves.
+function hapFreq(h) {
+  if (typeof h.freq === 'number') return h.freq
+  let n = h.note
+  if (typeof n === 'string') {
+    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+    if (!m) return null
+    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
+  }
+  if (typeof n !== 'number') return null
+  return 440 * pow(2, (n - 69) / 12)
 }
 function draw() {
   const ctx = drawingContext
@@ -9685,8 +9832,8 @@ function draw() {
     ctx.putImageData(img, -2, 0)
     const haps = stave.scheduler.query(now - 0.3, now + 0.05)
     for (const h of haps) {
-      const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
-      const freq = 440 * pow(2, (note - 69) / 12)
+      const freq = hapFreq(h)
+      if (freq == null) continue
       if (freq < 20) continue
       const logPos = log(freq / 20) / log(4000 / 20)
       const y = height - logPos * height
@@ -9696,7 +9843,7 @@ function draw() {
       ctx.fillRect(width - 2, y - 2, 2, max(4, height * 0.03))
     }
     ctx.globalAlpha = 1
-  } else { background(9, 9, 18) }
+  } else { clear() }
 }`;
 var SPIRAL_P5_CODE = `// Stave p5 viz \u2014 Spiral
 function setup() {
@@ -9709,7 +9856,7 @@ function xySpiral(rot, margin, cx, cy, rotate) {
   return [cx + cos(a) * margin * rot, cy + sin(a) * margin * rot]
 }
 function draw() {
-  background(9, 9, 18)
+  clear()
   if (!stave.scheduler) return
   const now = stave.scheduler.now()
   const haps = stave.scheduler.query(now - 2, now + 1)
@@ -9748,8 +9895,23 @@ function circPos(cx, cy, r, a) {
   const rad = a * TWO_PI
   return [sin(rad) * r + cx, cos(rad) * r + cy]
 }
+// Hz from a hap. Strudel leaves note as a NAME string and freq null until
+// superdough renders, so parse the note name to MIDI ourselves (h.freq is null
+// here \u2014 relying on it leaves every note stuck at the default pitch).
+function hapFreq(h) {
+  if (typeof h.freq === 'number') return h.freq
+  let n = h.note
+  if (typeof n === 'string') {
+    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
+    if (!m) return null
+    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
+    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
+  }
+  if (typeof n !== 'number') return null
+  return 440 * pow(2, (n - 69) / 12)
+}
 function draw() {
-  background(9, 9, 18)
+  clear()
   if (!stave.scheduler) return
   const now = stave.scheduler.now()
   let haps = stave.scheduler.query(now - 0.01, now + 0.01)
@@ -9765,8 +9927,8 @@ function draw() {
   noFill(); stroke(117, 186, 255, 48); strokeWeight(1)
   circle(cx, cy, r * 2)
   for (const h of haps) {
-    const note = typeof h.note === 'string' ? 60 : (h.note ?? 60)
-    const freq = 440 * pow(2, (note - 69) / 12)
+    const freq = hapFreq(h)
+    if (freq == null) continue
     const a = freq2angle(freq)
     const [x, y] = circPos(cx, cy, r, a)
     const c = h.color ?? '#75baff'
@@ -9782,7 +9944,7 @@ function setup() {
   pixelDensity(window.devicePixelRatio || 1)
 }
 function draw() {
-  background(9, 9, 18)
+  clear()
   if (!stave.scheduler) return
   const now = stave.scheduler.now()
   const CYCLES = 4, PH = 0.5
@@ -9816,7 +9978,7 @@ function draw() {
 // src/visualizers/defaultDescriptors.ts
 var DEFAULT_VIZ_DESCRIPTORS = [
   // p5 renderers (default for each mode) — compiled from bundled source.
-  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, "pianoroll")), "factory") },
+  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], nativeSize: { w: 1200, h: 200 }, factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, "pianoroll")), "factory") },
   { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(WORDFALL_P5_CODE, "wordfall")), "factory") },
   { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SCOPE_P5_CODE, "scope")), "factory") },
   { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(FSCOPE_P5_CODE, "fscope")), "factory") },
@@ -16202,6 +16364,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       }
       const trackAnalyser = components.audio?.trackAnalysers?.get(trackKey);
       const zoneAudio = trackAnalyser && audioCtx ? { analyser: trackAnalyser, audioCtx, trackAnalysers: components.audio?.trackAnalysers } : components.audio;
+      const zoneOptions = reqExtra.options;
       const zoneComponents = {
         ...components,
         ...trackStream ? { streaming: { hapStream: trackStream } } : {},
@@ -16209,9 +16372,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         queryable: {
           scheduler: trackScheduler,
           trackSchedulers: components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map()
-        }
+        },
+        options: zoneOptions ?? {}
       };
-      const native = DEFAULT_NATIVE;
+      const native = descriptor.nativeSize ?? DEFAULT_NATIVE;
       const crop = FULL_CROP;
       const contentW = editor.getLayoutInfo().contentWidth || 400;
       const layout = computeLayout(contentW, native, crop);
@@ -16273,6 +16437,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         canvas,
         trackKey,
         vizId,
+        renderer: descriptor.renderer,
         presetId: null,
         native,
         crop,
@@ -16378,7 +16543,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         for (const entry of zoneEntries) {
           const override = fileId ? getZoneCropOverride(fileId, entry.trackKey) : void 0;
           const normViz = normalize(entry.vizId);
-          const preset = presets.find((p) => normalize(p.name) === normViz) ?? null;
+          const preset = presets.find((p) => normalize(p.name) === normViz && p.renderer === entry.renderer) ?? presets.find((p) => normalize(p.name) === normViz) ?? null;
           if (preset) {
             entry.presetId = preset.id;
           }
@@ -23227,6 +23392,7 @@ function compilePreset(preset) {
       label: name,
       renderer: "hydra",
       requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
       factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(compileHydraCode(code)), "factory")
     };
   }
@@ -23236,6 +23402,7 @@ function compilePreset(preset) {
       label: name,
       renderer: "p5",
       requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
       // Pass `name` (the workspace path) as the source so the factory's
       // runtime-error catch can attribute the engineLog entry back to
       // the file. Without it, a top-level `new Mp()` typo surfaced on

@@ -40,6 +40,7 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       label: name,
       renderer: 'hydra',
       requires,
+      ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
       factory: () => new HydraVizRenderer(compileHydraCode(code)),
     }
   }
@@ -50,6 +51,7 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       label: name,
       renderer: 'p5',
       requires,
+      ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
       // Pass `name` (the workspace path) as the source so the factory's
       // runtime-error catch can attribute the engineLog entry back to
       // the file. Without it, a top-level `new Mp()` typo surfaced on

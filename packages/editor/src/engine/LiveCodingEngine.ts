@@ -26,14 +26,25 @@ export interface AudioComponent {
   trackAnalysers?: Map<string, AnalyserNode>
 }
 
+/**
+ * Free-form per-render viz options bag, sourced from a Strudel viz call's
+ * argument — e.g. `.pianoroll({ labels: 1, vertical: 1 })`. Flows engine →
+ * component bag → renderer → `stave.options` so sketches can honour the
+ * official `@strudel/draw` option vocabulary. Structurally a
+ * `VizOptions` (visualizers/types) — kept as a local record alias here to
+ * avoid an engine→visualizers import cycle.
+ */
+export type VizOptionsBag = Record<string, unknown>
+
 /** Per-track inline visualization requests with line placement info. */
 export interface InlineVizComponent {
   /**
    * Maps track ID (e.g. "$0", "d1") to viz placement info.
    * - vizId: descriptor ID (e.g. "pianoroll", "scope")
    * - afterLine: 1-indexed line number after which to place the view zone
+   * - options: the viz call's argument (e.g. `{ labels: 1 }`), if any
    */
-  vizRequests: Map<string, { vizId: string; afterLine: number }>
+  vizRequests: Map<string, { vizId: string; afterLine: number; options?: VizOptionsBag }>
   /**
    * Optional per-track HapStreams for scoped inline viz.
    * When present, each inline zone subscribes to its track's stream only.
@@ -47,7 +58,7 @@ export interface InlineVizComponent {
    * to the project backdrop. `vizId` is the resolved Stave renderer id
    * (e.g. "scope", "pianoroll"). Absent when no such method was called.
    */
-  backdropRequest?: { vizId: string }
+  backdropRequest?: { vizId: string; options?: VizOptionsBag }
 }
 
 /** Pattern IR derived from the last successful evaluate(). */
@@ -69,6 +80,12 @@ export interface EngineComponents {
   inlineViz: InlineVizComponent
   /** Pattern IR — present after successful evaluate() on engines that support parsing. */
   ir: IRComponent
+  /**
+   * Per-render viz options for THIS zone's renderer — set by `viewZones` from
+   * the inline request's `options` (or the backdrop request's), and read by
+   * `P5VizRenderer` into `stave.options`. Per-zone, not a global engine slot.
+   */
+  options?: VizOptionsBag
 }
 
 // ---------------------------------------------------------------------------

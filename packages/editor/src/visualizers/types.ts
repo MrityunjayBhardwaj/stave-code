@@ -52,6 +52,13 @@ export interface VizDescriptor {
   requires?: (keyof EngineComponents)[]
   /** Renderer technology name (e.g. 'p5', 'hydra', 'canvas2d'). Used for VizPicker grouping. */
   renderer?: string
+  /**
+   * Intrinsic drawing-surface size (the aspect the sketch is authored for).
+   * `viewZones` mounts the renderer at this size, so it sets the inline zone's
+   * aspect ratio. Omitted → the generic `DEFAULT_NATIVE` (2:1). The pianoroll
+   * sets a taller aspect so pitch lanes aren't squashed vs the time axis.
+   */
+  nativeSize?: { w: number; h: number }
   factory: () => VizRenderer
 }
 
@@ -71,12 +78,24 @@ export interface ContainerSize {
 }
 
 /**
+ * Free-form per-render options bag handed to a sketch via `stave.options`.
+ * Populated from a Strudel viz call's argument, e.g. `.pianoroll({ labels: 1,
+ * vertical: 1 })` — so a sketch can honour the official `@strudel/draw`
+ * vocabulary. Empty `{}` when the viz was called with no argument.
+ */
+export type VizOptions = Record<string, unknown>
+
+/**
  * Internal type alias for the existing p5 sketch factory signature.
  * Used only by P5VizRenderer — NOT exported from the package.
+ *
+ * `optionsRef` (5th, optional for back-compat) exposes the live per-render
+ * options bag as `stave.options`; callers that don't wire it get `{}`.
  */
 export type P5SketchFactory = (
   hapStreamRef: RefObject<HapStream | null>,
   analyserRef: RefObject<AnalyserNode | null>,
   schedulerRef: RefObject<PatternScheduler | null>,
-  containerSizeRef: RefObject<ContainerSize>
+  containerSizeRef: RefObject<ContainerSize>,
+  optionsRef?: RefObject<VizOptions>
 ) => (p: import('p5').default) => void

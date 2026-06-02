@@ -38,6 +38,13 @@ interface StaveContext {
   readonly hapStream: HapStream | null
   readonly width: number
   readonly height: number
+  /**
+   * Per-render options bag from the Strudel viz call's argument — e.g.
+   * `.pianoroll({ labels: 1 })` surfaces `{ labels: 1 }` here. `{}` when the
+   * viz was called with no argument. Lets a sketch honour the official
+   * `@strudel/draw` option vocabulary without recompiling.
+   */
+  readonly options: Record<string, unknown>
 }
 
 /**
@@ -168,6 +175,9 @@ export function compileP5Code(code: string, source?: string) {
     containerSizeRef: RefObject<ContainerSize> = {
       current: { w: 400, h: 300 },
     } as RefObject<ContainerSize>,
+    optionsRef: RefObject<Record<string, unknown>> = {
+      current: {},
+    } as RefObject<Record<string, unknown>>,
   ) => {
 
     return (p: unknown) => {
@@ -191,6 +201,9 @@ export function compileP5Code(code: string, source?: string) {
         },
         get height(): number {
           return containerSizeRef.current?.h ?? 300
+        },
+        get options(): Record<string, unknown> {
+          return optionsRef.current ?? {}
         },
       }
 

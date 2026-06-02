@@ -34,6 +34,8 @@ export class P5VizRenderer implements VizRenderer {
   private containerSizeRef: { current: ContainerSize } = {
     current: { w: 400, h: 300 },
   }
+  // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
+  private optionsRef = { current: {} as Record<string, unknown> }
 
   constructor(private sketch: P5SketchFactory) {}
 
@@ -55,6 +57,7 @@ export class P5VizRenderer implements VizRenderer {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null
       this.analyserRef.current = components.audio?.analyser ?? null
       this.schedulerRef.current = components.queryable?.scheduler ?? null
+      this.optionsRef.current = components.options ?? {}
 
       // Seed the container size ref BEFORE invoking the sketch
       // factory so `stave.width` / `stave.height` reads inside user
@@ -69,7 +72,8 @@ export class P5VizRenderer implements VizRenderer {
         this.hapStreamRef as RefObject<HapStream | null>,
         this.analyserRef as RefObject<AnalyserNode | null>,
         this.schedulerRef as RefObject<PatternScheduler | null>,
-        this.containerSizeRef as RefObject<ContainerSize>
+        this.containerSizeRef as RefObject<ContainerSize>,
+        this.optionsRef as RefObject<Record<string, unknown>>
       )
       this.instance = new p5(sketchFn, container)
       // Correct canvas size after p5 setup() which may use
@@ -87,6 +91,7 @@ export class P5VizRenderer implements VizRenderer {
     this.hapStreamRef.current = components.streaming?.hapStream ?? null
     this.analyserRef.current = components.audio?.analyser ?? null
     this.schedulerRef.current = components.queryable?.scheduler ?? null
+    this.optionsRef.current = components.options ?? {}
   }
 
   resize(w: number, h: number): void {
