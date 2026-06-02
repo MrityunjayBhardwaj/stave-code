@@ -85,6 +85,23 @@ test('underscore ._punchcard() and ._tscope() render inline with no error and no
   expect(errors).toEqual([])
 })
 
+test('inline pianoroll mounts at its taller 1.6:1 native, not the generic 2:1 (de-elongation, #214)', async ({ page }) => {
+  // The bundled Piano Roll declares nativeSize 1200×750 (1.6:1) so pitch lanes
+  // aren't squashed against the time axis. Regression guard against the
+  // flushToPreset race that stripped nativeSize → fell back to 2:1.
+  await setCode(page, `$: note("c3 e3 g3 c4").s("sawtooth")._pianoroll()`)
+  await runCode(page)
+  const zone = page.locator('[data-viz-zone-track]').first()
+  await expect(zone).toBeVisible({ timeout: 6000 })
+  const aspect = await zone.evaluate((z) => {
+    const r = z.getBoundingClientRect()
+    return r.width / r.height
+  })
+  // 1.6:1 ≈ 1.6; the old broken value was 2.0. Assert clearly under 1.8.
+  expect(aspect).toBeGreaterThan(1.4)
+  expect(aspect).toBeLessThan(1.8)
+})
+
 test('inline ._pianoroll(options) — the options object reaches the sketch and renders (no error) (#214)', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))
