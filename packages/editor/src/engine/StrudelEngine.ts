@@ -603,7 +603,7 @@ export class StrudelEngine implements LiveCodingEngine {
         Object.defineProperty(Pattern.prototype, 'viz', {
           configurable: true,
           writable: true,
-          value: function(this: any, vizName: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+          value: function(this: any, vizName: any, opts?: unknown) { // eslint-disable-line @typescript-eslint/no-explicit-any
             // Extract viz name — see `extractVizName` for the full
             // explanation of Strudel's reify-induced shapes. Pure
             // helper exported for unit testing.
@@ -613,6 +613,13 @@ export class StrudelEngine implements LiveCodingEngine {
             // Tag the RETURNED pattern with the resolved viz name
             if (resolvedName) {
               result._pendingViz = resolvedName
+            }
+            // Carry the `.viz(name, {...})` options object so the `.p()` wrapper
+            // keys it to this track's captureId → stave.options — the same path
+            // `._pianoroll({...})` uses. Without this, `.viz` options were
+            // silently dropped (#215).
+            if (opts && typeof opts === 'object') {
+              result._pendingVizOptions = opts
             }
             return result
           },
