@@ -1110,16 +1110,24 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                   }
                   // If presetId is null (async preset lookup hasn't completed),
                   // resolve by searching workspace files for a matching viz name.
+                  // A base name can exist for both renderers (scope.p5 +
+                  // scope.hydra), so prefer the renderer the vizId implies
+                  // (bare = p5, ":hydra" suffix = hydra) — a name-only match
+                  // would point the crop at the wrong viz.
                   let resolvedPresetId = presetId;
                   if (!resolvedPresetId) {
-                    const norm = (s: string) => s.toLowerCase().replace(/[\s\-_]/g, "");
-                    const target = norm(vizId);
+                    const norm = (s: string) => s.toLowerCase().replace(/[\s\-_:]/g, "");
+                    const wantHydra = /:hydra$/i.test(vizId);
+                    const target = norm(vizId.replace(/:hydra$/i, ""));
                     const allFiles = listWorkspaceFiles();
-                    const vizFile = allFiles.find(f => {
+                    const matches = allFiles.filter(f => {
                       if (f.language !== "p5js" && f.language !== "hydra") return false;
                       const base = f.path.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
                       return norm(base) === target;
                     });
+                    const vizFile =
+                      matches.find(f => (f.language === "hydra") === wantHydra) ??
+                      matches[0];
                     if (vizFile?.meta?.presetId) {
                       resolvedPresetId = vizFile.meta.presetId as string;
                     }

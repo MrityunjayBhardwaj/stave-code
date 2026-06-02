@@ -86,12 +86,13 @@ const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
  * source of truth: the seed presets AND `registerAllVizFiles` both read it, so
  * a bundled viz keeps its aspect even though `flushToPreset` rebuilds the IDB
  * preset from the (metadata-less) workspace file and would otherwise strip
- * `nativeSize`. The pianoroll uses a balanced 1.6:1 so pitch lanes aren't
- * squashed against the time axis (#214 follow-up); without an entry a viz falls
- * back to the generic 2:1 `DEFAULT_NATIVE`.
+ * `nativeSize`. The pianoroll uses a wide/short 6:1 to match @strudel/draw's
+ * inline pianoroll (#214): a short value axis keeps fold lanes thin so notes
+ * read as landscape bars, not tall blocks. Without an entry a viz falls back to
+ * the generic 2:1 `DEFAULT_NATIVE`.
  */
 const BUNDLED_VIZ_NATIVE_SIZE: Record<string, { w: number; h: number }> = {
-  "Piano Roll": { w: 1200, h: 750 },
+  "Piano Roll": { w: 1200, h: 200 },
   "Piano Roll (Hydra)": { w: 1400, h: 400 },
 };
 
@@ -304,11 +305,11 @@ export default function StrudelEditorClient({
       renderer: "p5",
       code: PIANOROLL_P5_CODE,
       requires: ["streaming"],
-      // Balanced 1.6:1 aspect (#214 follow-up): the old wide-and-short 4:1
-      // (1400×350) squashed pitch lanes into a sliver while time got 4× the
-      // room, so notes read as horizontally stretched. 1200×750 gives pitch
-      // ~2× the vertical room and still fills the zone width without
-      // letterboxing (zoneH stays under the 600px cap at typical widths).
+      // Wide/short 6:1 aspect to match @strudel/draw's inline pianoroll (#214).
+      // Block aspect = (dur·lanes/CYCLES)·(W/H); fold packs distinct pitches into
+      // contiguous lanes (no gaps), so a short H keeps those lanes thin and notes
+      // render as landscape bars (the strudel.cc look). The earlier 1.6:1 came
+      // from a mis-diagnosis: a taller surface fattens lanes → MORE stretch.
       nativeSize: BUNDLED_VIZ_NATIVE_SIZE["Piano Roll"],
       createdAt: Date.now(),
       updatedAt: Date.now(),
