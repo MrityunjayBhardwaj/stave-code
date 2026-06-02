@@ -84,3 +84,22 @@ test('underscore ._punchcard() and ._tscope() render inline with no error and no
   await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false')
   expect(errors).toEqual([])
 })
+
+test('inline ._pianoroll(options) — the options object reaches the sketch and renders (no error) (#214)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', e => errors.push(String(e)))
+
+  // labels / vertical / absolute-axis options all evaluate cleanly and produce
+  // an inline viz-zone canvas. Asserts the engine→bag→stave.options plumbing,
+  // not the pixels (those are observed manually).
+  for (const opts of ['{ labels: 1 }', '{ vertical: 1 }', '{ fold: 0, minMidi: 36, maxMidi: 84 }']) {
+    await setCode(page, `$: note("c3 e3 g3 c4").s("sawtooth")._pianoroll(${opts})`)
+    await runCode(page)
+    await expect(page.locator('[data-viz-zone-track] canvas').first()).toBeVisible({ timeout: 6000 })
+    // options on the inline form must not pin a backdrop
+    await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false')
+    await page.keyboard.press(`${MOD}+.`)
+    await page.waitForTimeout(300)
+  }
+  expect(errors).toEqual([])
+})
