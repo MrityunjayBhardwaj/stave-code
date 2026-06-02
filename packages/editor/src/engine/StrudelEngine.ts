@@ -122,6 +122,11 @@ export class StrudelEngine implements LiveCodingEngine {
   private trackSchedulers: Map<string, PatternScheduler> = new Map()
   // Per-track viz requests captured during the last evaluate() call
   private vizRequests: Map<string, string> = new Map()
+  // Per-track viz options (the `.pianoroll({...})` argument), keyed by the
+  // same captureId as vizRequests. Empty when no viz call passed an argument.
+  private vizOptions: Map<string, Record<string, unknown>> = new Map()
+  // Options for the backdrop viz call (`.pianoroll({...})`), null when none.
+  private backdropVizOptions: Record<string, unknown> | null = null
   // Backdrop viz requested by a non-underscore Strudel viz method (e.g.
   // `.scope()`, `.pianoroll()`) during the last evaluate(). Strudel's
   // non-underscore viz methods are its "big"/fullscreen form — we map them
@@ -537,11 +542,15 @@ export class StrudelEngine implements LiveCodingEngine {
 
     const capturedPatterns = new Map<string, any>() // eslint-disable-line @typescript-eslint/no-explicit-any
     const capturedVizRequests = new Map<string, string>()
+    // Per-track viz options from a `.pianoroll({ ... })` / `._pianoroll({ ... })`
+    // argument, keyed by captureId — flows to the renderer's `stave.options`.
+    const capturedVizOptions = new Map<string, Record<string, unknown>>()
     // Backdrop viz requested via a non-underscore method this evaluate.
     // Singular (last `.scope()`/`.pianoroll()` call wins); set directly by
     // the method wrappers below via this closure, independent of `.p()`
     // capture so a bare top-level `.scope()` still registers.
     let capturedBackdropViz: string | null = null
+    let capturedBackdropVizOptions: Record<string, unknown> | null = null
     let anonIndex = 0
     // Auto-orbit counter: each captured $: block with a .viz() request but no
     // explicit .orbit(N) gets its own unique orbit number starting high enough
@@ -627,8 +636,11 @@ export class StrudelEngine implements LiveCodingEngine {
           Object.defineProperty(Pattern.prototype, underscore, {
             configurable: true,
             writable: true,
-            value: function(this: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            value: function(this: any, opts?: unknown) { // eslint-disable-line @typescript-eslint/no-explicit-any
               this._pendingViz = renderer
+              // Carry the `.pianoroll({...})` argument so the `.p()` wrapper
+              // can key it to this track's captureId → stave.options.
+              if (opts && typeof opts === 'object') this._pendingVizOptions = opts
               return this
             },
           })
@@ -637,8 +649,9 @@ export class StrudelEngine implements LiveCodingEngine {
           Object.defineProperty(Pattern.prototype, name, {
             configurable: true,
             writable: true,
-            value: function(this: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+            value: function(this: any, opts?: unknown) { // eslint-disable-line @typescript-eslint/no-explicit-any
               capturedBackdropViz = renderer
+              capturedBackdropVizOptions = opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : null
               return this
             },
           })
@@ -662,6 +675,11 @@ export class StrudelEngine implements LiveCodingEngine {
                 vizName = this._pendingViz
                 capturedVizRequests.set(captureId, vizName)
                 delete this._pendingViz
+              }
+              // Resolve pending viz options (`.pianoroll({...})` argument).
+              if (this._pendingVizOptions && typeof this._pendingVizOptions === 'object') {
+                capturedVizOptions.set(captureId, this._pendingVizOptions as Record<string, unknown>)
+                delete this._pendingVizOptions
               }
 
               // Per-track audio isolation: strudel's default orbit is 1, so every
@@ -727,7 +745,9 @@ export class StrudelEngine implements LiveCodingEngine {
           })
         }
         this.vizRequests = capturedVizRequests
+        this.vizOptions = capturedVizOptions
         this.backdropVizRequest = capturedBackdropViz
+        this.backdropVizOptions = capturedBackdropVizOptions
 
         // Per-track analyser side-taps: for each captured pattern, discover the
         // orbit it plays through and connect the orbit's output GainNode to a
@@ -825,7 +845,7 @@ export class StrudelEngine implements LiveCodingEngine {
           ? this.buildVizRequestsWithLines(this.vizRequests, this.lastEvaluatedCode!)
           : new Map(),
         backdropRequest: this.backdropVizRequest
-          ? { vizId: this.backdropVizRequest }
+          ? { vizId: this.backdropVizRequest, options: this.backdropVizOptions ?? undefined }
           : undefined,
       }
     }
@@ -847,8 +867,8 @@ export class StrudelEngine implements LiveCodingEngine {
   private buildVizRequestsWithLines(
     requests: Map<string, string>,
     code: string,
-  ): Map<string, { vizId: string; afterLine: number; contentHash: string }> {
-    const result = new Map<string, { vizId: string; afterLine: number; contentHash: string }>()
+  ): Map<string, { vizId: string; afterLine: number; contentHash: string; options?: Record<string, unknown> }> {
+    const result = new Map<string, { vizId: string; afterLine: number; contentHash: string; options?: Record<string, unknown> }>()
     const lines = code.split('\n')
     let anonIndex = 0
 
@@ -877,7 +897,8 @@ export class StrudelEngine implements LiveCodingEngine {
       const blockLines = lines.slice(i, lastLineIdx + 1).join(' ').replace(/\s+/g, ' ').trim()
       const contentHash = blockLines.slice(0, 120)
 
-      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash })
+      const options = this.vizOptions.get(key)
+      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...(options ? { options } : {}) })
     }
 
     return result

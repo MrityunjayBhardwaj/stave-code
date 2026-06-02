@@ -289,6 +289,9 @@ export function addInlineViewZones(
         ? { analyser: trackAnalyser, audioCtx, trackAnalysers: components.audio?.trackAnalysers }
         : components.audio
 
+      // Per-render viz options (`.pianoroll({...})` arg) ride alongside the
+      // request and become `stave.options` for this zone's sketch (#214).
+      const zoneOptions = (reqExtra as { options?: Record<string, unknown> }).options
       const zoneComponents: Partial<EngineComponents> = {
         ...components,
         ...(trackStream ? { streaming: { hapStream: trackStream } } : {}),
@@ -297,6 +300,7 @@ export function addInlineViewZones(
           scheduler: trackScheduler,
           trackSchedulers: components.queryable?.trackSchedulers ?? new Map(),
         },
+        options: zoneOptions ?? {},
       }
 
       // Start with default native + full crop; refined async once preset loads.

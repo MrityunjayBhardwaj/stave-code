@@ -338,6 +338,49 @@ describe('compileP5Code — stave namespace', () => {
     expect(p.seenHapStream).toBe(fakeHapStream)
   })
 
+  it('exposes the per-render options bag via stave.options, live (#214)', () => {
+    // The viz options bag (`.pianoroll({ labels: 1 })` argument) is the 5th
+    // factory ref → `stave.options`. Defaults to `{}` when not wired, and is
+    // LIVE so a re-eval with new options is picked up without recompiling.
+    const source = `function draw() { p.seenOptions = stave.options }`
+    const factory = compileP5Code(source)
+    const refs = makeRefs()
+    const optionsRef: { current: Record<string, unknown> } = { current: {} }
+
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+      optionsRef as unknown as RefObject<Record<string, unknown>>,
+    )
+    const { p } = makeFakeP5()
+    sketchFn(p)
+
+    ;(p.draw as () => void)()
+    expect(p.seenOptions).toEqual({}) // default empty bag
+
+    optionsRef.current = { labels: 1, vertical: true }
+    ;(p.draw as () => void)()
+    expect(p.seenOptions).toEqual({ labels: 1, vertical: true }) // live swap
+  })
+
+  it('stave.options defaults to {} when the optionsRef is not wired (back-compat)', () => {
+    const source = `function draw() { p.opt = stave.options }`
+    const refs = makeRefs()
+    // 4-arg call (no optionsRef) — the legacy P5SketchFactory signature.
+    const sketchFn = compileP5Code(source)(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+    )
+    const { p } = makeFakeP5()
+    sketchFn(p)
+    ;(p.draw as () => void)()
+    expect(p.opt).toEqual({})
+  })
+
   it('stave fields are LIVE — mid-mount ref swaps are visible on next read', () => {
     // This is the safety net for `P5VizRenderer.update(components)`:
     // when the audio source payload changes within a mount (same
