@@ -9901,7 +9901,7 @@ function draw() {
 // src/visualizers/defaultDescriptors.ts
 var DEFAULT_VIZ_DESCRIPTORS = [
   // p5 renderers (default for each mode) — compiled from bundled source.
-  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, "pianoroll")), "factory") },
+  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], nativeSize: { w: 1200, h: 750 }, factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, "pianoroll")), "factory") },
   { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(WORDFALL_P5_CODE, "wordfall")), "factory") },
   { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SCOPE_P5_CODE, "scope")), "factory") },
   { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(FSCOPE_P5_CODE, "fscope")), "factory") },
@@ -16298,7 +16298,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         },
         options: zoneOptions ?? {}
       };
-      const native = DEFAULT_NATIVE;
+      const native = descriptor.nativeSize ?? DEFAULT_NATIVE;
       const crop = FULL_CROP;
       const contentW = editor.getLayoutInfo().contentWidth || 400;
       const layout = computeLayout(contentW, native, crop);
@@ -23314,6 +23314,7 @@ function compilePreset(preset) {
       label: name,
       renderer: "hydra",
       requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
       factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(compileHydraCode(code)), "factory")
     };
   }
@@ -23323,6 +23324,7 @@ function compilePreset(preset) {
       label: name,
       renderer: "p5",
       requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
       // Pass `name` (the workspace path) as the source so the factory's
       // runtime-error catch can attribute the engineLog entry back to
       // the file. Without it, a top-level `new Mp()` typo surfaced on

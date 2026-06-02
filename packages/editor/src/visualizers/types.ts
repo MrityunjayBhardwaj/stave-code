@@ -52,6 +52,13 @@ export interface VizDescriptor {
   requires?: (keyof EngineComponents)[]
   /** Renderer technology name (e.g. 'p5', 'hydra', 'canvas2d'). Used for VizPicker grouping. */
   renderer?: string
+  /**
+   * Intrinsic drawing-surface size (the aspect the sketch is authored for).
+   * `viewZones` mounts the renderer at this size, so it sets the inline zone's
+   * aspect ratio. Omitted → the generic `DEFAULT_NATIVE` (2:1). The pianoroll
+   * sets a taller aspect so pitch lanes aren't squashed vs the time axis.
+   */
+  nativeSize?: { w: number; h: number }
   factory: () => VizRenderer
 }
 

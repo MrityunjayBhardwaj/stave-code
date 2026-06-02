@@ -303,8 +303,10 @@ export function addInlineViewZones(
         options: zoneOptions ?? {},
       }
 
-      // Start with default native + full crop; refined async once preset loads.
-      const native = DEFAULT_NATIVE
+      // Start with the descriptor's intrinsic aspect (pianoroll declares a
+      // taller one so pitch lanes aren't squashed, #214 follow-up) + full crop;
+      // refined async once the preset's measured canvas size lands.
+      const native = descriptor.nativeSize ?? DEFAULT_NATIVE
       const crop = FULL_CROP
       const contentW = editor.getLayoutInfo().contentWidth || 400
       const layout = computeLayout(contentW, native, crop)

@@ -33,7 +33,7 @@ import {
  */
 export const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[] = [
   // p5 renderers (default for each mode) — compiled from bundled source.
-  { id: 'pianoroll',  label: 'Piano Roll',  renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, 'pianoroll')) },
+  { id: 'pianoroll',  label: 'Piano Roll',  renderer: 'p5', requires: ['streaming'], nativeSize: { w: 1200, h: 750 }, factory: () => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, 'pianoroll')) },
   { id: 'wordfall',   label: 'Wordfall',    renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(WORDFALL_P5_CODE, 'wordfall')) },
   { id: 'scope',      label: 'Scope',       renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(SCOPE_P5_CODE, 'scope')) },
   { id: 'fscope',     label: 'FScope',      renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(FSCOPE_P5_CODE, 'fscope')) },
