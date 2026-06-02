@@ -309,6 +309,15 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
     if (audioSource?.inlineViz) {
       bag.inlineViz = audioSource.inlineViz
     }
+    // Backdrop viz options (#214): `.pianoroll({...})` (non-underscore →
+    // backdrop) captures its options into `inlineViz.backdropRequest.options`.
+    // The backdrop renders through THIS provider (not viewZones), so thread the
+    // options into `bag.options` the same way viewZones does per inline zone —
+    // P5VizRenderer reads `components.options` into `stave.options`. Without
+    // this the backdrop ignored every option.
+    if (audioSource?.inlineViz?.backdropRequest?.options) {
+      bag.options = audioSource.inlineViz.backdropRequest.options
+    }
     return bag
     // We deliberately depend on the audioSource reference, which is stable
     // within a single mount lifetime (PreviewView's key formula enforces

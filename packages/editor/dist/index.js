@@ -24758,6 +24758,9 @@ function CompiledVizMount(props) {
     if (audioSource?.inlineViz) {
       bag.inlineViz = audioSource.inlineViz;
     }
+    if (audioSource?.inlineViz?.backdropRequest?.options) {
+      bag.options = audioSource.inlineViz.backdropRequest.options;
+    }
     return bag;
   }, [audioSource]);
   useEffect(() => {

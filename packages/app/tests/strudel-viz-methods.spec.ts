@@ -57,6 +57,35 @@ test('non-underscore .pianoroll() resolves to "Piano Roll.p5" via normalized bas
   await expect(bgIndicator).toContainText(/bg:.*piano/i)
 })
 
+test('backdrop .pianoroll({ opts }) threads options to the backdrop sketch (#214)', async ({ page }) => {
+  // Non-underscore .pianoroll(opts) pins a backdrop that renders through
+  // compiledVizProvider (not viewZones). Its options live in
+  // inlineViz.backdropRequest.options and must reach the renderer's component
+  // bag → stave.options. A custom `background` only paints if they do —
+  // frame-independent, like the inline #215 check.
+  const redFrac = async () =>
+    page.locator('[data-workspace-background] canvas').first().evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const ctx = c.getContext('2d'); if (!ctx) return -1
+      const d = ctx.getImageData(0, 0, c.width, c.height).data
+      let red = 0, total = 0
+      for (let i = 0; i < d.length; i += 4) { total++; if (d[i] > 120 && d[i + 1] < 80 && d[i + 2] < 90) red++ }
+      return total ? red / total : -1
+    })
+
+  await setCode(page, `$: note("c4 e4 g4 c5").s("sawtooth").pianoroll({ background: '#cc1133' })`)
+  await runCode(page)
+  await page.locator('[data-workspace-background] canvas').first().waitFor({ timeout: 8000 })
+  await expect.poll(redFrac, { timeout: 6000 }).toBeGreaterThan(0.4)
+
+  // Control: no option → the (transparent) default backdrop is not red.
+  await setCode(page, `$: note("c4 e4 g4 c5").s("sawtooth").pianoroll()`)
+  await page.keyboard.press(`${MOD}+.`)
+  await page.waitForTimeout(500)
+  await runCode(page)
+  await expect.poll(redFrac, { timeout: 6000 }).toBeLessThan(0.05)
+})
+
 test('removing the non-underscore method clears the backdrop (code is source of truth)', async ({ page }) => {
   await setCode(page, `$: note("c e g").s("sawtooth").scope()`)
   await runCode(page)
