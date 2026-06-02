@@ -23388,6 +23388,190 @@ function compilePreset(preset) {
   throw new Error(`Unknown renderer: ${renderer}`);
 }
 __name(compilePreset, "compilePreset");
+
+// src/visualizers/signals/aliasMap.ts
+var ALIAS_MAP = {
+  uKick: "bd",
+  uSnare: "sd",
+  uHat: "hh",
+  uOpenHat: "oh",
+  uClap: "cp",
+  uRim: "rim",
+  uTom: ["lt", "mt", "ht"]
+};
+
+// src/visualizers/signals/SignalBus.ts
+var EPSILON = 1e-3;
+var DEFAULT_DECAY = 0.92;
+var _SignalBus = class _SignalBus {
+  constructor(aliasMap = ALIAS_MAP) {
+    /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
+    this.envMap = /* @__PURE__ */ new Map();
+    /** Last-bumped color per sound — the `.color` fallback feed. */
+    this.colorMap = /* @__PURE__ */ new Map();
+    /** Live refs — mutable so `bindScheduler()` rebinds in place
+     *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
+    this.scheduler = null;
+    this.trackSchedulers = /* @__PURE__ */ new Map();
+    /** Per-frame snapshot of active events from the combined scheduler feed
+     *  (set by `refreshActive`). The instantaneous feed for `sound()`. */
+    this.activeEvents = [];
+    /** Per-frame snapshot of active events per track-key (scheduler key space). */
+    this.activeByTrack = /* @__PURE__ */ new Map();
+    /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
+    this.seenSounds = /* @__PURE__ */ new Set();
+    this.aliasMap = aliasMap;
+    this.decay = DEFAULT_DECAY;
+  }
+  /** Store live scheduler refs (mutable rebind — mirror the renderer's
+   *  in-place update discipline). Pass `null`/empty in demo mode. */
+  bindScheduler(scheduler, trackSchedulers) {
+    this.scheduler = scheduler ?? null;
+    this.trackSchedulers = trackSchedulers ?? /* @__PURE__ */ new Map();
+  }
+  // ── .env feed (envelope: bump + decay) ──────────────────────────────────
+  /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
+   *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
+   *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
+  bump(e) {
+    const sound = e.s;
+    if (sound == null) return;
+    const gain = Math.min(1, Math.max(0, e.hap?.value?.gain ?? 1));
+    const prev = this.envMap.get(sound) ?? 0;
+    this.envMap.set(sound, Math.min(1, prev + gain));
+    if (e.color != null) this.colorMap.set(sound, e.color);
+    else if (!this.colorMap.has(sound)) this.colorMap.set(sound, null);
+    this.seenSounds.add(sound);
+  }
+  /** Apply decay to every envelope entry. Call ONCE per frame, BEFORE
+   *  `refreshActive` (mirror `HapEnergyEnvelope.tick`, `:85-89`). */
+  tick() {
+    for (const [sound, level] of this.envMap) {
+      this.envMap.set(sound, level * this.decay);
+    }
+  }
+  // ── instantaneous feed (scheduler query-at-now) ─────────────────────────
+  /** Snapshot the active events at `now` from the combined scheduler and each
+   *  per-track scheduler. Call ONCE per frame, AFTER `tick()`. The window is
+   *  [now, now + ε) — the same tight window `H()` uses (`:175`). */
+  refreshActive(now2) {
+    const begin = now2;
+    const end = now2 + EPSILON;
+    this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
+    this.activeByTrack.clear();
+    for (const [key, sched] of this.trackSchedulers) {
+      this.activeByTrack.set(key, sched.query(begin, end));
+    }
+  }
+  /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
+  now() {
+    return this.scheduler ? this.scheduler.now() : 0;
+  }
+  // ── accessors ───────────────────────────────────────────────────────────
+  /** Resolve an alias OR a raw sound name to a list of concrete sound names.
+   *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
+  resolveSounds(soundOrAlias) {
+    const mapped = this.aliasMap[soundOrAlias];
+    if (mapped == null) return [soundOrAlias];
+    return Array.isArray(mapped) ? mapped : [mapped];
+  }
+  /** Decayed envelope level for a sound or alias. Array aliases (`uTom`)
+   *  resolve as MAX over members. Demo-mode / never-fired → 0. */
+  envValue(soundOrAlias) {
+    let max = 0;
+    for (const sound of this.resolveSounds(soundOrAlias)) {
+      const v = this.envMap.get(sound) ?? 0;
+      if (v > max) max = v;
+    }
+    return max;
+  }
+  /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
+  activeEventForSounds(sounds) {
+    const set = new Set(sounds);
+    for (const ev of this.activeEvents) {
+      if (ev.s != null && set.has(ev.s)) return ev;
+    }
+    return void 0;
+  }
+  /** Per-sound reading — merged across tracks via the combined active feed
+   *  (D-03). `.env` from the envelope; `.velocity`/`.note` from the active
+   *  IREvent (NOT the envelope — silent-zero trap §5); `.color` from the
+   *  active IREvent, falling back to the last-bumped hap color. */
+  sound(soundOrAlias) {
+    const sounds = this.resolveSounds(soundOrAlias);
+    const env = this.envValue(soundOrAlias);
+    const ev = this.activeEventForSounds(sounds);
+    return {
+      env,
+      velocity: ev?.velocity ?? 0,
+      note: ev?.note ?? null,
+      color: ev?.color ?? this.colorFallback(sounds)
+    };
+  }
+  /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
+  colorFallback(sounds) {
+    for (const sound of sounds) {
+      const c = this.colorMap.get(sound);
+      if (c != null) return c;
+    }
+    return null;
+  }
+  /** Per-track reading, keyed on the SCHEDULER key space (TRAP §5 —
+   *  `trackSchedulers.get(id)`, NOT IREvent.trackId). `.env` is the max env over
+   *  the sounds this track fired this frame; `.velocity`/`.note`/`.color` come
+   *  from the track's first active IREvent (scheduler feed). A `sound(s)`
+   *  sub-accessor reads a specific sound within the track. Unknown id → zeros. */
+  track(id) {
+    const events = this.activeByTrack.get(id) ?? [];
+    const first = events[0];
+    const trackSounds = events.map((e) => e.s).filter((s) => s != null);
+    let env = 0;
+    for (const s of trackSounds) {
+      const v = this.envMap.get(s) ?? 0;
+      if (v > env) env = v;
+    }
+    const soundIn = /* @__PURE__ */ __name((soundOrAlias) => {
+      const resolved = new Set(this.resolveSounds(soundOrAlias));
+      const ev = events.find((e) => e.s != null && resolved.has(e.s));
+      let sEnv = 0;
+      for (const s of this.resolveSounds(soundOrAlias)) {
+        const v = this.envMap.get(s) ?? 0;
+        if (v > sEnv) sEnv = v;
+      }
+      return {
+        env: sEnv,
+        velocity: ev?.velocity ?? 0,
+        note: ev?.note ?? null,
+        color: ev?.color ?? null
+      };
+    }, "soundIn");
+    return {
+      env,
+      velocity: first?.velocity ?? 0,
+      note: first?.note ?? null,
+      color: first?.color ?? null,
+      sound: soundIn
+    };
+  }
+  /** Enumerate the published track keys — the SCHEDULER key space
+   *  (`trackSchedulers.keys()`, §5), e.g. `['$0','$1']` or `['d1','drums']`. */
+  get tracks() {
+    return [...this.trackSchedulers.keys()];
+  }
+  /** Enumerate distinct sounds ever bumped through the envelope feed. */
+  get sounds() {
+    return [...this.seenSounds];
+  }
+  /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
+   *  requested; the raw `.note` preserves the user's name|number form). Returns
+   *  null for percussion sample names / unrecognized input. */
+  noteToMidi(note) {
+    if (note == null) return null;
+    return noteToMidi(note);
+  }
+};
+__name(_SignalBus, "SignalBus");
+var SignalBus = _SignalBus;
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
   const subscribe3 = useCallback(
@@ -25233,6 +25417,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

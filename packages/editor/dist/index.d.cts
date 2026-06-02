@@ -2019,6 +2019,147 @@ declare function mountVizRenderer(container: HTMLDivElement, source: VizRenderer
     disconnect: () => void;
 };
 
+/**
+ * SignalBus — renderer-agnostic per-sound / per-track musical-signal bus.
+ *
+ * PURE module (P12): imports ONLY types + `noteToMidi`. NO p5 / hydra /
+ * renderer import — anything that transitively imports the bus (every unit
+ * test) must load in isolation. Renderers WRAP the shape (p5 getter-numbers,
+ * hydra `() => number` thunks, D-01); the bus only knows numbers, maps, and
+ * the alias constant.
+ *
+ * It generalizes two pre-existing per-renderer feeds:
+ *   - `.env`  — `HapEnergyEnvelope`'s bump+decay (decay 0.92, clamp 0..1),
+ *               but keyed `Map<sound, level>` on `e.s` ('bd'), NOT by MIDI bin.
+ *   - instantaneous (`.velocity`/`.note`/`.color`) — `H()`'s query-at-now read
+ *               (`scheduler.query(now, now + ε)`), ε = 0.001.
+ *
+ * ## Two key spaces (RESEARCH §5 — TRAP)
+ * `track(id)` keys on the SCHEDULER key space — `trackSchedulers.get(id)` whose
+ * keys are `$0`/`$1` (anonymous) or `d1`/`drums` (named). It does NOT key on
+ * `IREvent.trackId` (which is `d1`/`d{N}` and DIFFERS from the scheduler key for
+ * anonymous blocks). Keying on `IREvent.trackId` silently breaks anonymous-block
+ * addressing.
+ *
+ * ## Per-field feed (RESEARCH §5 — TRAP)
+ * `.env`      ← the envelope feed (`bump()` + `tick()` decay).
+ * `.velocity` ← the SCHEDULER-query feed (active IREvent). `HapEvent` carries NO
+ *               `velocity` — sourcing it from the envelope feed = silent ZERO.
+ * `.note`     ← the scheduler-query feed (preserves the user's form, name|number).
+ * `.color`    ← either feed (prefer the active IREvent; fall back to last bump).
+ */
+
+/** Minimal shape the `.env` feed consumes off a HapStream event.
+ *  We deliberately type only the fields the bus reads (`s`, optional gain via
+ *  `hap.value.gain`, optional color) so the bus does NOT import HapEvent and
+ *  stays decoupled from the engine event class (P12 — structural typing). */
+interface BusHapEvent {
+    /** Instrument/sample name — the env-map key. */
+    s: string | null;
+    /** From `.color()` in the pattern (last-bumped fallback for `.color`). */
+    color?: string | null;
+    /** Full Strudel hap — gain is read from `hap?.value?.gain`. */
+    hap?: any;
+}
+/** What an accessor returns for a single sound or track. */
+interface SignalReading {
+    /** Decayed envelope level 0..1 (envelope feed). */
+    env: number;
+    /** Active-event velocity 0..1 (scheduler feed — NOT the envelope). */
+    velocity: number;
+    /** Active-event note in the user's form (name|number|null — scheduler feed). */
+    note: number | string | null;
+    /** Display color (active event preferred, else last-bumped hap). */
+    color: string | null;
+}
+declare class SignalBus {
+    /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
+    private readonly envMap;
+    /** Last-bumped color per sound — the `.color` fallback feed. */
+    private readonly colorMap;
+    private readonly decay;
+    private readonly aliasMap;
+    /** Live refs — mutable so `bindScheduler()` rebinds in place
+     *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
+    private scheduler;
+    private trackSchedulers;
+    /** Per-frame snapshot of active events from the combined scheduler feed
+     *  (set by `refreshActive`). The instantaneous feed for `sound()`. */
+    private activeEvents;
+    /** Per-frame snapshot of active events per track-key (scheduler key space). */
+    private activeByTrack;
+    /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
+    private readonly seenSounds;
+    constructor(aliasMap?: Record<string, string | string[]>);
+    /** Store live scheduler refs (mutable rebind — mirror the renderer's
+     *  in-place update discipline). Pass `null`/empty in demo mode. */
+    bindScheduler(scheduler: IRPattern | null | undefined, trackSchedulers: Map<string, IRPattern> | null | undefined): void;
+    /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
+     *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
+     *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
+    bump(e: BusHapEvent): void;
+    /** Apply decay to every envelope entry. Call ONCE per frame, BEFORE
+     *  `refreshActive` (mirror `HapEnergyEnvelope.tick`, `:85-89`). */
+    tick(): void;
+    /** Snapshot the active events at `now` from the combined scheduler and each
+     *  per-track scheduler. Call ONCE per frame, AFTER `tick()`. The window is
+     *  [now, now + ε) — the same tight window `H()` uses (`:175`). */
+    refreshActive(now: number): void;
+    /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
+    now(): number;
+    /** Resolve an alias OR a raw sound name to a list of concrete sound names.
+     *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
+    private resolveSounds;
+    /** Decayed envelope level for a sound or alias. Array aliases (`uTom`)
+     *  resolve as MAX over members. Demo-mode / never-fired → 0. */
+    envValue(soundOrAlias: string): number;
+    /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
+    private activeEventForSounds;
+    /** Per-sound reading — merged across tracks via the combined active feed
+     *  (D-03). `.env` from the envelope; `.velocity`/`.note` from the active
+     *  IREvent (NOT the envelope — silent-zero trap §5); `.color` from the
+     *  active IREvent, falling back to the last-bumped hap color. */
+    sound(soundOrAlias: string): SignalReading;
+    /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
+    private colorFallback;
+    /** Per-track reading, keyed on the SCHEDULER key space (TRAP §5 —
+     *  `trackSchedulers.get(id)`, NOT IREvent.trackId). `.env` is the max env over
+     *  the sounds this track fired this frame; `.velocity`/`.note`/`.color` come
+     *  from the track's first active IREvent (scheduler feed). A `sound(s)`
+     *  sub-accessor reads a specific sound within the track. Unknown id → zeros. */
+    track(id: string): SignalReading & {
+        sound: (s: string) => SignalReading;
+    };
+    /** Enumerate the published track keys — the SCHEDULER key space
+     *  (`trackSchedulers.keys()`, §5), e.g. `['$0','$1']` or `['d1','drums']`. */
+    get tracks(): string[];
+    /** Enumerate distinct sounds ever bumped through the envelope feed. */
+    get sounds(): string[];
+    /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
+     *  requested; the raw `.note` preserves the user's name|number form). Returns
+     *  null for percussion sample names / unrecognized input. */
+    noteToMidi(note: number | string | null): number | null;
+}
+
+/**
+ * ALIAS_MAP — built-in bare-alias → Strudel sound-name mapping for the
+ * SignalBus. Data, NOT code paths (RESEARCH §4 — "the only genuinely new
+ * datum is the alias map").
+ *
+ * `uKick` → `bd`, `uSnare` → `sd`, … An alias may map to a SINGLE sound
+ * (`uKick → 'bd'`) or an ARRAY of sounds (`uTom → ['lt','mt','ht']`); for
+ * array aliases the bus resolves the envelope value as the MAX over members
+ * (any tom firing lights the alias).
+ *
+ * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active
+ * event's `.velocity` (global, or per-track via `u.track`). It is handled
+ * in the per-renderer bare-alias preamble (T2/T3), not here.
+ *
+ * Custom alias-override maps are DEFERRED (D-04). The bus constructor accepts
+ * an `aliasMap` arg so a future override is purely additive.
+ */
+declare const ALIAS_MAP: Record<string, string | string[]>;
+
 interface SplitPaneProps {
     direction: 'horizontal' | 'vertical';
     children: React__default.ReactNode[];
@@ -6218,4 +6359,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BusHapEvent, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, SignalBus, type SignalReading, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
