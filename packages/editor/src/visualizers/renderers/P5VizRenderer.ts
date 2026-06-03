@@ -17,6 +17,11 @@ import { installP5FesBridgeWith } from '../p5FesBridge'
 import { SignalBus } from '../signals/SignalBus'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
+import { perf } from '../../perf/profiler'
+
+/** Monotone id source so each renderer instance gets a stable profiler key
+ *  (`p5#1`, `p5#2`, …) for per-instance frame/fps tracking (#228). */
+let p5PerfSeq = 0
 
 /**
  * Adapter that wraps an existing p5 SketchFactory into the VizRenderer interface.
@@ -54,6 +59,8 @@ export class P5VizRenderer implements VizRenderer {
    * NUMBER here, not a `() => number` thunk.
    */
   private bus: SignalBus | null = new SignalBus()
+  /** Stable per-instance profiler key (`p5#N`) — frame/fps + bus timing (#228). */
+  private readonly perfId = `p5#${++p5PerfSeq}`
   /**
    * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
    * `destroy()` can off it unconditionally (it is the bus's own subscription —
@@ -154,6 +161,11 @@ export class P5VizRenderer implements VizRenderer {
     // surface it as a sketch identifier; the draw wrapper calls it explicitly.
     Object.defineProperty(uniforms, '__tick', {
       value: (): void => {
+        // Profiler (#228): __tick fires exactly once per p5 frame (the draw
+        // wrapper calls it) → use it as the per-instance frame beat + time the
+        // bus's per-frame work. Both no-op when profiling is disabled.
+        perf.frame(this.perfId)
+        perf.begin('p5.bus')
         bus.tick()
         bus.refreshActive(bus.now())
         // readAudio MUST run AFTER refreshActive (Slice 2): `audioFor` resolves
@@ -161,6 +173,7 @@ export class P5VizRenderer implements VizRenderer {
         // Wrong order = sound-keyed DSP reads stale/empty. Once per frame (U2),
         // reusing this same draw-wrapper tick — no second loop.
         bus.readAudio()
+        perf.end('p5.bus')
       },
       enumerable: false,
     })
@@ -173,6 +186,7 @@ export class P5VizRenderer implements VizRenderer {
     size: { w: number; h: number },
     onError: (e: Error) => void
   ): void {
+    perf.inc('viz.p5') // live p5-instance count (#228); dec'd in destroy()
     // Install the FES bridge with the real p5 constructor we already
     // hold statically. Doing this here (rather than via a dynamic
     // `import('p5')` in CompiledVizMount) eliminates the class of bug
@@ -340,6 +354,8 @@ export class P5VizRenderer implements VizRenderer {
   }
 
   destroy(): void {
+    perf.dec('viz.p5') // #228 — release the live-instance count + frame history
+    perf.dropFrames(this.perfId)
     if (this.instance) {
       // p5 v2 defers its `#_setup()` chain to the next animation
       // frame (PV5 / PK2). #_setup is `async` and contains FOUR

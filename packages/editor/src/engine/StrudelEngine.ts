@@ -1,6 +1,7 @@
 import { HapStream } from './HapStream'
 import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
+import { perf } from '../perf/profiler'
 import { OfflineRenderer } from './OfflineRenderer'
 import { normalizeStrudelHap } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
@@ -456,6 +457,7 @@ export class StrudelEngine implements LiveCodingEngine {
     //   t = current AudioContext.currentTime
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wrappedOutput = async (hap: any, deadline: number, duration: number, cps: number, t: number) => {
+      perf.inc('audio.triggers') // #228 — scheduler event throughput (rate = count/uptime)
       // Phase 20-14 β-2 — Strategy A sound-alias intercept. We are POST-
       // reify (P1): `hap.value.s` is the final per-event string Strudel's
       // scheduler resolved. If the bare name is not in the live soundMap

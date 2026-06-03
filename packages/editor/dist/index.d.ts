@@ -1619,6 +1619,8 @@ declare class P5VizRenderer implements VizRenderer {
      * NUMBER here, not a `() => number` thunk.
      */
     private bus;
+    /** Stable per-instance profiler key (`p5#N`) — frame/fps + bus timing (#228). */
+    private readonly perfId;
     /**
      * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
      * `destroy()` can off it unconditionally (it is the bus's own subscription —
@@ -1825,6 +1827,8 @@ declare class HydraVizRenderer implements VizRenderer {
     private envelope;
     private hapHandler;
     private useEnvelope;
+    /** Stable per-instance profiler key (`hydra#N`) — frame/fps + bus/draw timing (#228). */
+    private readonly perfId;
     /**
      * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
      * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
