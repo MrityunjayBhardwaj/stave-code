@@ -25184,7 +25184,14 @@ function CompiledVizMount(props) {
     if (audioSource?.scheduler) {
       bag.queryable = {
         scheduler: audioSource.scheduler,
-        trackSchedulers: /* @__PURE__ */ new Map()
+        // PV64/P95 — mirror viewZones.ts:304-307. The backdrop receives the
+        // SAME bus payload as the inline path; the real per-track schedulers
+        // ride on `engineComponents` (published verbatim at
+        // LiveCodingRuntime.ts:362 from `this.engine.components`). A hardcoded
+        // `new Map()` here dropped them, so `u.tracks` enumeration was empty
+        // as a backdrop while working inline — the classic "works inline, dead
+        // full-screen" no-op. `?? new Map()` preserves the demo-mode fallback.
+        trackSchedulers: audioSource.engineComponents?.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map()
       };
     }
     if (audioSource?.inlineViz) {
