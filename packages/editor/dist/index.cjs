@@ -15374,6 +15374,289 @@ function registerHydraProviders(monaco) {
 }
 __name(registerHydraProviders, "registerHydraProviders");
 
+// src/monaco/docs/signals.ts
+var SIGNAL_BUS_DOCS = {
+  // ── accessors / namespaces ────────────────────────────────────────────────
+  u: {
+    signature: "u(sound: string): SignalReading",
+    description: "Named-signal accessor. `u('bd')` reads a sound's live signals (`.env`/`.velocity`/`.note`/`.color` + DSP `.rms`/`.fft`/\u2026). Also callable as `u.track(id)`, with `u.tracks` / `u.sounds` enumerators and the master-mix DSP `u.rms`/`u.bass`/`u.mid`/`u.treble`/`u.fft`/`u.wave`. In p5 the scalar fields are live NUMBERS; in hydra they are `() => number` THUNKS.",
+    example: "u('bd').env",
+    kind: "function",
+    returns: "SignalReading (sound/track) \u2014 env, velocity, note, color, rms, bass, mid, treble, fft[], wave[]"
+  },
+  stave: {
+    signature: "stave: { u, width, height, options, H }",
+    description: "The live namespace passed to every sketch. Carries `stave.u` (the signal accessor, same as the bare `u`), `stave.width` / `stave.height` (live preview-pane size), `stave.options` (per-render `.viz(opts)`), and `stave.H(track)` (per-track gain thunk).",
+    example: "stave.u('bd').env",
+    kind: "variable"
+  },
+  // ── bare drum/percussion aliases (envelope level 0..1) ────────────────────
+  uKick: {
+    signature: "uKick",
+    description: "Kick (`bd`) envelope level, 0..1, decaying each frame. In p5 a live NUMBER; in hydra a `() => number` THUNK \u2014 call it: `uKick()`.",
+    example: "circle(width / 2, height / 2, 100 * uKick)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uSnare: {
+    signature: "uSnare",
+    description: "Snare (`sd`) envelope level, 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uSnare()`).",
+    example: "osc(() => uSnare() * 10)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uHat: {
+    signature: "uHat",
+    description: "Closed hat (`hh`) envelope level, 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uHat()`).",
+    example: "fill(255 * uHat)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uOpenHat: {
+    signature: "uOpenHat",
+    description: "Open hat (`oh`) envelope level, 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uOpenHat()`).",
+    example: "strokeWeight(1 + 8 * uOpenHat)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uClap: {
+    signature: "uClap",
+    description: "Clap (`cp`) envelope level, 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uClap()`).",
+    example: "rotate(uClap * PI)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uRim: {
+    signature: "uRim",
+    description: "Rim (`rim`) envelope level, 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uRim()`).",
+    example: "square(x, y, 20 + 40 * uRim)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uTom: {
+    signature: "uTom",
+    description: "Tom envelope level \u2014 MAX over `lt`/`mt`/`ht`, 0..1 (any tom lights it). p5: live NUMBER; hydra: `() => number` THUNK (`uTom()`).",
+    example: "translate(0, 50 * uTom)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uKeyVelocity: {
+    signature: "uKeyVelocity",
+    description: "Velocity of the currently active event (global), 0..1. NOT a sound alias \u2014 reads the active scheduler event's velocity. p5: live NUMBER; hydra: `() => number` THUNK (`uKeyVelocity()`).",
+    example: "scale(0.5 + uKeyVelocity)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  // ── bare master-mix DSP scalars (analyser, combined mix) ──────────────────
+  uRms: {
+    signature: "uRms",
+    description: "Master-mix time-domain RMS (loudness), 0..1, from the combined analyser. 0 when no analyser is bound. p5: live NUMBER; hydra: `() => number` THUNK (`uRms()`).",
+    example: "background(0, 0, 100 * uRms)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uBass: {
+    signature: "uBass",
+    description: "Master-mix low-band magnitude (mean of the low third of the spectrum), 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uBass()`).",
+    example: "osc(() => uBass() * 10)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uMid: {
+    signature: "uMid",
+    description: "Master-mix mid-band magnitude (mean of the mid third of the spectrum), 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uMid()`).",
+    example: "fill(255 * uMid)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  uTreble: {
+    signature: "uTreble",
+    description: "Master-mix high-band magnitude (mean of the high third of the spectrum), 0..1. p5: live NUMBER; hydra: `() => number` THUNK (`uTreble()`).",
+    example: "strokeWeight(1 + 10 * uTreble)",
+    kind: "variable",
+    returns: "number 0..1"
+  },
+  // ── fields on a SignalReading (u('bd').<field>) ───────────────────────────
+  env: {
+    signature: ".env",
+    description: "Decayed envelope level for the sound/track, 0..1 (bumps on a hit, decays 0.92/frame). p5: live NUMBER; hydra: `() => number` THUNK.",
+    example: "u('bd').env",
+    kind: "method",
+    returns: "number 0..1"
+  },
+  velocity: {
+    signature: ".velocity",
+    description: "Velocity of the active event for this sound/track, 0..1 (scheduler feed, NOT the envelope). p5: live NUMBER; hydra: `() => number` THUNK.",
+    example: "u('bd').velocity",
+    kind: "method",
+    returns: "number 0..1"
+  },
+  note: {
+    signature: ".note",
+    description: "Active event note in the user's form (name|number|null) \u2014 scheduler feed. p5: live value; hydra: `() => number | string | null` THUNK.",
+    example: "u('arp').note",
+    kind: "method",
+    returns: "number | string | null"
+  },
+  color: {
+    signature: ".color",
+    description: "Display color of the active event (or last-bumped hap fallback), or null. p5: live value; hydra: `() => string | null` THUNK.",
+    example: "u('bd').color",
+    kind: "method",
+    returns: "string | null"
+  },
+  rms: {
+    signature: ".rms",
+    description: "Time-domain RMS (loudness) of the sound/track's analyser, 0..1. 0 if no analyser bound. p5: live NUMBER; hydra: `() => number` THUNK.",
+    example: "u('bd').rms",
+    kind: "method",
+    returns: "number 0..1"
+  },
+  bass: {
+    signature: ".bass",
+    description: "Mean of the LOW third of the spectrum, 0..1. p5: live NUMBER; hydra: `() => number` THUNK.",
+    example: "u('bd').bass",
+    kind: "method",
+    returns: "number 0..1"
+  },
+  mid: {
+    signature: ".mid",
+    description: "Mean of the MID third of the spectrum, 0..1. p5: live NUMBER; hydra: `() => number` THUNK.",
+    example: "u('bd').mid",
+    kind: "method",
+    returns: "number 0..1"
+  },
+  treble: {
+    signature: ".treble",
+    description: "Mean of the HIGH third of the spectrum, 0..1. p5: live NUMBER; hydra: `() => number` THUNK.",
+    example: "u('bd').treble",
+    kind: "method",
+    returns: "number 0..1"
+  },
+  fft: {
+    signature: ".fft",
+    description: "Normalized magnitude spectrum, a live `number[]` (32 buckets, each 0..1). An ARRAY in BOTH p5 and hydra \u2014 index it natively (`u('bd').fft[0]`). `[]` if no analyser bound.",
+    example: "u('bd').fft[0]",
+    kind: "method",
+    returns: "number[] (each 0..1)"
+  },
+  wave: {
+    signature: ".wave",
+    description: "Time-domain waveform, a live `number[]` normalized -1..1. An ARRAY in BOTH p5 and hydra \u2014 index it natively. `[]` if no analyser bound.",
+    example: "u('bd').wave[0]",
+    kind: "method",
+    returns: "number[] (-1..1)"
+  },
+  track: {
+    signature: "u.track(id: string): SignalReading",
+    description: "Per-track reading, keyed on the SCHEDULER key space (`$0`/`$1` anonymous, `d1`/`drums` named) \u2014 NOT `IREvent.trackId`. Same fields as `u(sound)`, plus a `.sound(s)` sub-accessor for a specific sound within the track.",
+    example: "u.track('$0').color",
+    kind: "method",
+    returns: "SignalReading"
+  },
+  tracks: {
+    signature: "u.tracks: string[]",
+    description: "Published track keys (scheduler key space, e.g. `['$0','$1']` or `['d1','drums']`). A live array.",
+    example: "u.tracks.forEach((id) => u.track(id))",
+    kind: "method",
+    returns: "string[]"
+  },
+  sounds: {
+    signature: "u.sounds: string[]",
+    description: "Distinct sound names seen through the envelope feed this session. A live array.",
+    example: "u.sounds.map((s) => u(s).env)",
+    kind: "method",
+    returns: "string[]"
+  }
+};
+var SYMBOL_NAMES = [
+  "u",
+  "stave",
+  "uKick",
+  "uSnare",
+  "uHat",
+  "uOpenHat",
+  "uClap",
+  "uRim",
+  "uTom",
+  "uKeyVelocity",
+  "uRms",
+  "uBass",
+  "uMid",
+  "uTreble"
+];
+var FIELD_NAMES = [
+  "env",
+  "velocity",
+  "note",
+  "color",
+  "rms",
+  "fft",
+  "bass",
+  "mid",
+  "treble",
+  "wave",
+  "track",
+  "tracks",
+  "sounds"
+];
+var SYMBOL_DOCS = Object.fromEntries(
+  SYMBOL_NAMES.map((n) => [n, SIGNAL_BUS_DOCS[n]])
+);
+var FIELD_DOCS = Object.fromEntries(
+  FIELD_NAMES.map((n) => [n, SIGNAL_BUS_DOCS[n]])
+);
+var BUS_ACCESSOR_RE = /(?:u\s*\([^)]*\)|\bu|stave\.u|\.track\s*\([^)]*\))\s*\.\w*$/;
+function fieldKind(monaco) {
+  return monaco.languages.CompletionItemKind.Method;
+}
+__name(fieldKind, "fieldKind");
+function createBusFieldCompletionProvider(monaco, runtime) {
+  return monaco.languages.registerCompletionItemProvider(runtime, {
+    triggerCharacters: ["."],
+    provideCompletionItems(model, position) {
+      const lineBefore = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
+      if (!BUS_ACCESSOR_RE.test(lineBefore)) {
+        return { suggestions: [] };
+      }
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      };
+      return {
+        suggestions: Object.entries(FIELD_DOCS).map(([name, doc]) => {
+          const documentation = {
+            value: (doc.description ?? "") + (doc.example ? "\n\n**Example:** `" + doc.example + "`" : ""),
+            isTrusted: true
+          };
+          return {
+            label: name,
+            kind: fieldKind(monaco),
+            insertText: name,
+            detail: doc.signature,
+            documentation,
+            range
+          };
+        })
+      };
+    }
+  });
+}
+__name(createBusFieldCompletionProvider, "createBusFieldCompletionProvider");
+function registerSignalBusProviders(monaco, runtime) {
+  const hoverIndex = { runtime, docs: SIGNAL_BUS_DOCS };
+  const identifierIndex = { runtime, docs: SYMBOL_DOCS };
+  return [
+    createHoverProvider(monaco, hoverIndex),
+    createIdentifierCompletionProvider(monaco, identifierIndex),
+    createBusFieldCompletionProvider(monaco, runtime)
+  ];
+}
+__name(registerSignalBusProviders, "registerSignalBusProviders");
+
 // src/workspace/languages.ts
 var hydraRegistered = false;
 var p5jsRegistered = false;
@@ -15601,8 +15884,14 @@ function ensureWorkspaceLanguages(monaco) {
       ensureStrudelLintCodeActionProvider(m, "strudel");
     }
   });
-  ensureProviders("p5js", monaco, registerP5Providers);
-  ensureProviders("hydra", monaco, registerHydraProviders);
+  ensureProviders("p5js", monaco, (m) => {
+    registerP5Providers(m);
+    registerSignalBusProviders(m, "p5js");
+  });
+  ensureProviders("hydra", monaco, (m) => {
+    registerHydraProviders(m);
+    registerSignalBusProviders(m, "hydra");
+  });
   ensureProviders("sonicpi", monaco, registerSonicPiProviders);
 }
 __name(ensureWorkspaceLanguages, "ensureWorkspaceLanguages");
