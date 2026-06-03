@@ -349,6 +349,94 @@ export function onBackdropOpacityChange(
   return () => { backdropOpacityListeners.delete(cb) }
 }
 
+// ── Signal aliases (custom bare-name → sound(s) map) Phase 21 ───────
+// FIRST JSON/object-valued setting. Every other setting here is scalar
+// (number / bool / enum) and round-trips through String(). This one
+// holds a `Record<string, string | string[]>` so it needs its own
+// JSON.stringify / JSON.parse path plus a SHAPE GUARD: a corrupt or
+// legacy stored value MUST NOT throw or leak a malformed entry — the
+// merged map is pushed straight into the SignalBus/renderers (T2),
+// which expect every value to be `string | string[]`. A bad entry that
+// slipped through would crash bare-name resolution at draw time, so we
+// validate on read and drop anything that isn't a non-empty string or a
+// non-empty array of non-empty strings.
+export type SignalAliasMap = Record<string, string | string[]>
+const DEFAULT_SIGNAL_ALIASES: SignalAliasMap = {}
+const SIGNAL_ALIASES_STORAGE = 'stave:signalAliases'
+const signalAliasesListeners = new Set<(map: SignalAliasMap) => void>()
+
+/** True iff `v` is a non-empty string. */
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0
+}
+
+/** Validate + sanitize a parsed alias map. Keeps only entries whose value
+ *  is a non-empty string OR a non-empty array of non-empty strings; drops
+ *  every other entry. Returns a fresh object (never mutates input). */
+function sanitizeSignalAliases(raw: unknown): SignalAliasMap {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: SignalAliasMap = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isNonEmptyString(key)) continue
+    if (isNonEmptyString(value)) {
+      out[key] = value
+    } else if (
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.every(isNonEmptyString)
+    ) {
+      out[key] = value as string[]
+    }
+    // anything else (number, empty string, empty array, array with a
+    // non-string member, nested object, null) is silently dropped.
+  }
+  return out
+}
+
+function readSignalAliases(): SignalAliasMap {
+  const ls = safeLocalStorage()
+  if (!ls) return { ...DEFAULT_SIGNAL_ALIASES }
+  try {
+    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE)
+    if (saved == null) return { ...DEFAULT_SIGNAL_ALIASES }
+    return sanitizeSignalAliases(JSON.parse(saved))
+  } catch {
+    // Corrupt / legacy / non-JSON value — never let it propagate.
+    return { ...DEFAULT_SIGNAL_ALIASES }
+  }
+}
+
+function writeSignalAliases(map: SignalAliasMap): void {
+  try {
+    safeLocalStorage()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map))
+  } catch {
+    /* quota / serialization failure — non-fatal, in-memory listeners still fire */
+  }
+}
+
+/** Current custom signal-alias map (sanitized). Always a plain object. */
+export function getSignalAliases(): SignalAliasMap {
+  return readSignalAliases()
+}
+
+/** Replace the custom signal-alias map, persist it, and notify listeners.
+ *  The map is sanitized before persisting so a bad caller can't poison
+ *  storage either. */
+export function setSignalAliases(map: SignalAliasMap): void {
+  const clean = sanitizeSignalAliases(map)
+  writeSignalAliases(clean)
+  for (const cb of Array.from(signalAliasesListeners)) cb(clean)
+}
+
+/** Subscribe to alias-map changes (fires on every setSignalAliases).
+ *  Returns an unsubscribe. */
+export function onSignalAliasesChange(
+  cb: (map: SignalAliasMap) => void,
+): () => void {
+  signalAliasesListeners.add(cb)
+  return () => { signalAliasesListeners.delete(cb) }
+}
+
 // ── Backdrop quality ladder (Full / Half / Quarter) #41 ─────────────
 export type BackdropQuality = 'full' | 'half' | 'quarter'
 const DEFAULT_BACKDROP_QUALITY: BackdropQuality = 'half'

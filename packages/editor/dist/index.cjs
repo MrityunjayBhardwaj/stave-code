@@ -16475,6 +16475,63 @@ function onBackdropOpacityChange(cb) {
   };
 }
 __name(onBackdropOpacityChange, "onBackdropOpacityChange");
+var DEFAULT_SIGNAL_ALIASES = {};
+var SIGNAL_ALIASES_STORAGE = "stave:signalAliases";
+var signalAliasesListeners = /* @__PURE__ */ new Set();
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.length > 0;
+}
+__name(isNonEmptyString, "isNonEmptyString");
+function sanitizeSignalAliases(raw) {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isNonEmptyString(key)) continue;
+    if (isNonEmptyString(value)) {
+      out[key] = value;
+    } else if (Array.isArray(value) && value.length > 0 && value.every(isNonEmptyString)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+__name(sanitizeSignalAliases, "sanitizeSignalAliases");
+function readSignalAliases() {
+  const ls = safeLocalStorage2();
+  if (!ls) return { ...DEFAULT_SIGNAL_ALIASES };
+  try {
+    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE);
+    if (saved == null) return { ...DEFAULT_SIGNAL_ALIASES };
+    return sanitizeSignalAliases(JSON.parse(saved));
+  } catch {
+    return { ...DEFAULT_SIGNAL_ALIASES };
+  }
+}
+__name(readSignalAliases, "readSignalAliases");
+function writeSignalAliases(map) {
+  try {
+    safeLocalStorage2()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map));
+  } catch {
+  }
+}
+__name(writeSignalAliases, "writeSignalAliases");
+function getSignalAliases() {
+  return readSignalAliases();
+}
+__name(getSignalAliases, "getSignalAliases");
+function setSignalAliases(map) {
+  const clean = sanitizeSignalAliases(map);
+  writeSignalAliases(clean);
+  for (const cb of Array.from(signalAliasesListeners)) cb(clean);
+}
+__name(setSignalAliases, "setSignalAliases");
+function onSignalAliasesChange(cb) {
+  signalAliasesListeners.add(cb);
+  return () => {
+    signalAliasesListeners.delete(cb);
+  };
+}
+__name(onSignalAliasesChange, "onSignalAliasesChange");
 var DEFAULT_BACKDROP_QUALITY = "half";
 var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
 var backdropQualityListeners = /* @__PURE__ */ new Set();
@@ -26043,6 +26100,7 @@ exports.getProject = getProject;
 exports.getResolvedTheme = getResolvedTheme;
 exports.getRuntimeProviderForExtension = getRuntimeProviderForExtension;
 exports.getRuntimeProviderForLanguage = getRuntimeProviderForLanguage;
+exports.getSignalAliases = getSignalAliases;
 exports.getSubfolderOrder = getSubfolderOrder;
 exports.getTierFlags = getTierFlags;
 exports.getTrackMeta = getTrackMeta;
@@ -26088,6 +26146,7 @@ exports.onBackdropQualityChange = onBackdropQualityChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
 exports.onMusicalTimelineSubRowHeightChange = onMusicalTimelineSubRowHeightChange;
 exports.onNamedVizChanged = onNamedVizChanged;
+exports.onSignalAliasesChange = onSignalAliasesChange;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.parseMini = parseMini;
@@ -26148,6 +26207,7 @@ exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setProjectBackgroundFileId = setProjectBackgroundFileId;
+exports.setSignalAliases = setSignalAliases;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
 exports.setTrackMeta = setTrackMeta;

@@ -205,6 +205,9 @@ export {
   getBackdropOpacity,
   setBackdropOpacity,
   onBackdropOpacityChange,
+  getSignalAliases,
+  setSignalAliases,
+  onSignalAliasesChange,
   getEditorTheme,
   getResolvedTheme,
   setEditorTheme,
@@ -212,7 +215,7 @@ export {
   onThemeChange,
   applyPersistedTheme,
 } from './workspace/editorRegistry'
-export type { EditorTheme, ResolvedTheme } from './workspace/editorRegistry'
+export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,
   listSnapshots,
