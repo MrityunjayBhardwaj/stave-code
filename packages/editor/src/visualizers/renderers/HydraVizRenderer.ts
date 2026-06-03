@@ -4,6 +4,7 @@ import type { IRPattern } from '../../ir/IRPattern'
 import type { IREvent } from '../../ir/IREvent'
 import type { VizRenderer } from '../types'
 import { getVizConfig } from '../vizConfig'
+import { SignalBus } from '../signals/SignalBus'
 
 /**
  * Stave-specific bag exposed to `.hydra` sketches as the second
@@ -35,6 +36,59 @@ export interface HydraStaveBag {
    * NaN a shader uniform even during silence.
    */
   H: (trackId: string, field?: keyof IREvent) => () => number
+
+  // ── Named signal bus (Phase 21, D-01 hydra shape) ──────────────────────
+  // All `uKick…` are `() => number` thunks so hydra can call them natively
+  // each frame (`osc(() => uKick() * 10)`). The bus ticks ONCE per rAF in
+  // `pumpAudio` (U2 — never inside a thunk); thunks are pure reads.
+
+  /** Active `bd` (kick) envelope level, 0..1. */
+  uKick: () => number
+  /** Active `sd` (snare) envelope level, 0..1. */
+  uSnare: () => number
+  /** Active `hh` (closed hat) envelope level, 0..1. */
+  uHat: () => number
+  /** Active `oh` (open hat) envelope level, 0..1. */
+  uOpenHat: () => number
+  /** Active `cp` (clap) envelope level, 0..1. */
+  uClap: () => number
+  /** Active `rim` envelope level, 0..1. */
+  uRim: () => number
+  /** Active tom envelope level (max over `lt`/`mt`/`ht`), 0..1. */
+  uTom: () => number
+  /** Active event velocity (global, 0..1). */
+  uKeyVelocity: () => number
+
+  /**
+   * General per-sound / per-track signal accessor.
+   *
+   *   osc(() => u('bd').env() * 10).out(o0)
+   *   u.track('$0').color()
+   *
+   * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color`.
+   * `u.track(id)` keys on the SCHEDULER key space (`$0`/`drums`, NOT
+   * `IREvent.trackId`). `u.tracks` / `u.sounds` enumerate.
+   */
+  u: HydraSignalAccessor
+}
+
+/** A per-sound or per-track reading exposed as `() => value` thunks (D-01). */
+export interface HydraSignalThunks {
+  env: () => number
+  velocity: () => number
+  note: () => number | string | null
+  color: () => string | null
+}
+
+/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props. */
+export interface HydraSignalAccessor {
+  (sound: string): HydraSignalThunks
+  /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
+  track: (id: string) => HydraSignalThunks
+  /** Enumerate published track keys (scheduler key space). */
+  tracks: string[]
+  /** Enumerate distinct sounds seen through the envelope feed. */
+  sounds: string[]
 }
 
 export type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void
@@ -145,6 +199,22 @@ export class HydraVizRenderer implements VizRenderer {
   private hapHandler: ((e: HapEvent) => void) | null = null
   private useEnvelope = false
   /**
+   * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
+   * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
+   * (`.velocity`/`.note`/`.color`). Fed UNCONDITIONALLY — NOT analyser-gated
+   * like the envelope (BLOCK-1): the bus is IR-grounded and must stay live
+   * whenever a real analyser is published (which is normal playback), or
+   * `uKick` is dead in the headline use case.
+   */
+  private bus: SignalBus | null = new SignalBus()
+  /**
+   * The bus's own HapStream subscription — SEPARATE from `hapHandler` (the
+   * analyser-fallback envelope handler) so `destroy()` can off it
+   * independently and unconditionally. The bus feed is never gated on
+   * `useEnvelope`.
+   */
+  private busHapHandler: ((e: HapEvent) => void) | null = null
+  /**
    * Live `stave` bag handed to the user's sketch function. Built once
    * per mount; `update()` mutates its fields in place so sketches that
    * capture `scheduler` or `tracks` in a per-frame closure observe the
@@ -158,9 +228,53 @@ export class HydraVizRenderer implements VizRenderer {
    */
   private staveBag: HydraStaveBag
   constructor(private pattern?: HydraPatternFn) {
+    // Bus is created at field-init; capture it for the bag thunks. Thunks
+    // close over `this.bus` indirectly via a stable local so they survive
+    // re-binds (the bus instance itself is stable for the renderer's life;
+    // only its scheduler refs swap, in-place, on `update()`).
+    const bus = this.bus as SignalBus
+
+    // The general `u(...)` accessor (D-03), with attached enumerators.
+    const u: HydraSignalAccessor = ((sound: string): HydraSignalThunks => ({
+      env: () => bus.sound(sound).env,
+      velocity: () => bus.sound(sound).velocity,
+      note: () => bus.sound(sound).note,
+      color: () => bus.sound(sound).color,
+    })) as HydraSignalAccessor
+    u.track = (id: string): HydraSignalThunks => ({
+      env: () => bus.track(id).env,
+      velocity: () => bus.track(id).velocity,
+      note: () => bus.track(id).note,
+      color: () => bus.track(id).color,
+    })
+    // `tracks`/`sounds` are getter-backed so they reflect live bus state
+    // every read (D-03 enumeration) rather than a frozen snapshot.
+    Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
+    Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
+
     const bag: HydraStaveBag = {
       scheduler: null,
       tracks: new Map(),
+      // ── Named signal thunks (D-01 hydra shape — `() => number`) ──────────
+      uKick: () => bus.envValue('uKick'),
+      uSnare: () => bus.envValue('uSnare'),
+      uHat: () => bus.envValue('uHat'),
+      uOpenHat: () => bus.envValue('uOpenHat'),
+      uClap: () => bus.envValue('uClap'),
+      uRim: () => bus.envValue('uRim'),
+      uTom: () => bus.envValue('uTom'),
+      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — it is the
+      // active event's velocity globally. Read the max velocity over every
+      // sound seen this frame; 0 when nothing is active.
+      uKeyVelocity: () => {
+        let max = 0
+        for (const s of bus.sounds) {
+          const v = bus.sound(s).velocity
+          if (v > max) max = v
+        }
+        return max
+      },
+      u,
       H: (trackId, field = 'gain') => {
         return () => {
           const sched = bag.tracks.get(trackId) ?? bag.scheduler
@@ -205,6 +319,25 @@ export class HydraVizRenderer implements VizRenderer {
       this.staveBag.scheduler = components.queryable?.scheduler ?? null
       this.staveBag.tracks =
         components.queryable?.trackSchedulers ?? new Map()
+
+      // ── Named signal bus feed (Phase 21) — UNCONDITIONAL (BLOCK-1) ───────
+      // Bind the live scheduler refs, then subscribe the bus's `.env` feed
+      // to the HapStream. This MUST live OUTSIDE the `if (this.analyser) …
+      // else if (this.hapStream) …` block below: the envelope's `.on()` in
+      // the `else if` branch is SKIPPED whenever a real analyser is present
+      // (normal playback always publishes one — compiledVizProvider.tsx:297).
+      // The bus is IR-grounded (works with zero audio routing) and must NOT
+      // inherit the envelope's analyser gating, or `uKick` is dead in real
+      // playback (the headline). Its handler ref is SEPARATE from
+      // `hapHandler` so `destroy()` offs it independently.
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      )
+      if (this.hapStream && this.bus) {
+        this.busHapHandler = (e: HapEvent) => this.bus?.bump(e)
+        this.hapStream.on(this.busHapHandler)
+      }
 
       if (this.analyser) {
         // Real-FFT path. Allocate the byte buffer once; pumpAudio
@@ -329,6 +462,19 @@ export class HydraVizRenderer implements VizRenderer {
         }
       }
     }
+    // ── Named signal bus tick (Phase 21) — UNCONDITIONAL (BLOCK-1) ─────────
+    // Tick the bus EXACTLY ONCE per rAF, guarded ONLY by the paused/destroyed
+    // early-return above — NOT by the analyser/envelope branch. The
+    // `this.envelope?.tick()` at the FFT block above is analyser-gated (only
+    // runs in envelope-fallback mode); the bus must decay + re-snapshot every
+    // frame regardless of the FFT source, or `uKick` is dead under real
+    // playback (BLOCK-1). `tick()` (decay) then `refreshActive(now)`
+    // (scheduler snapshot) — in that order, ONCE (U2 — never in a thunk).
+    if (this.bus) {
+      this.bus.tick()
+      this.bus.refreshActive(this.bus.now())
+    }
+
     // We own the loop — tick hydra exactly once per rAF. Without
     // this call hydra would never advance its shader because we
     // construct it with `autoLoop: false`. The `tick(time)`
@@ -369,6 +515,16 @@ export class HydraVizRenderer implements VizRenderer {
     this.staveBag.scheduler = components.queryable?.scheduler ?? null
     this.staveBag.tracks =
       components.queryable?.trackSchedulers ?? this.staveBag.tracks
+
+    // Re-bind the bus's live scheduler refs in place (Phase 21) so the SAME
+    // thunk closures captured by the sketch observe the swapped scheduler /
+    // trackSchedulers without re-compiling — mirrors the staveBag in-place
+    // rebind discipline above. Fall back to the current tracks ref (not an
+    // empty Map) so a partial update doesn't blank the track schedulers.
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers ?? this.staveBag.tracks
+    )
   }
 
   resize(w: number, h: number): void {
@@ -412,6 +568,15 @@ export class HydraVizRenderer implements VizRenderer {
       this.hapStream.off(this.hapHandler)
       this.hapHandler = null
     }
+    // Unsubscribe the bus feed UNCONDITIONALLY (Phase 21, BLOCK-1) — it is a
+    // SEPARATE subscription from `hapHandler` (the analyser-fallback envelope
+    // handler) and exists regardless of FFT mode, so its teardown must not be
+    // gated on `useEnvelope` or the `hapHandler` guard above.
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler)
+      this.busHapHandler = null
+    }
+    this.bus = null
     this.canvas?.remove()
     this.canvas = null
     this.hydra = null

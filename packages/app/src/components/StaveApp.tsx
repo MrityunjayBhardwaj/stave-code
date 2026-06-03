@@ -68,6 +68,8 @@ import {
   subscribeLog,
   installEngineLogMarkers,
   installGlobalErrorCatch,
+  seedWorkspaceFile,
+  setContent,
 } from "@stave/editor";
 import StrudelEditorClient from "./StrudelEditorClient";
 import { MusicalTimeline } from "./MusicalTimeline";
@@ -376,6 +378,65 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     },
     [activeProject.id],
   );
+
+  // E2E-only hook (Phase 21 T5-C/D): seed a custom viz workspace FILE and pin
+  // it as the backdrop directly. Production pins the backdrop by mapping a
+  // non-underscore code method (`.scope()`/`.pianoroll()`) to a project viz
+  // file's basename — only the methods in STRUDEL_VIZ_METHODS are installed,
+  // so a one-off custom backdrop sketch can't be reached by code alone. T5
+  // proves the BACKDROP surface reads `u.tracks`/`u.track(id).color` (T4's
+  // compiledVizProvider threading), NOT the method→file mapping, so shortcut
+  // only the pin. Guarded on `__STAVE_E2E__`. Uses the SAME `seedWorkspaceFile`
+  // + `setBackgroundFile` the production restore/pin paths use.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Defense-in-depth: never install the E2E hooks in a production build —
+    // `process.env.NODE_ENV` is statically replaced so the body dead-code-
+    // eliminates. The `__STAVE_E2E__` flag is the runtime gate for dev/test.
+    if (process.env.NODE_ENV === "production") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(window as any).__STAVE_E2E__) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveSeedAndPinBackdrop = (
+      id: string,
+      name: string,
+      renderer: "p5" | "hydra",
+      code: string,
+    ): boolean => {
+      const lang = renderer === "hydra" ? "hydra" : "p5js";
+      seedWorkspaceFile(id, `preset/viz/${name}.${renderer}`, code, lang, {
+        presetId: id,
+      });
+      handleSetAsBackground(id);
+      return true;
+    };
+    // Override an EXISTING workspace viz file's code (e.g. the bundled
+    // `preset/viz/spectrum.p5`) so a real non-underscore method (`.spectrum()`)
+    // pins it through the production code-driven backdrop path — which is the
+    // ONLY path that associates the running audio source with the backdrop
+    // PreviewView. A directly-pinned ad-hoc file gets a null audioSource, so
+    // T5-C/D drive the real method instead. Returns the file id that was
+    // overridden, or null if no workspace file with that basename exists.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveOverrideVizFile = (
+      basename: string,
+      code: string,
+    ): string | null => {
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const target = norm(basename);
+      const f = listWorkspaceFiles().find(
+        (wf) =>
+          (wf.language === "p5js" || wf.language === "hydra") &&
+          norm(wf.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
+      );
+      if (!f) return null;
+      setContent(f.id, code);
+      return f.id;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveBackgroundFileId = (): string | null =>
+      backgroundFileId;
+  });
 
   /**
    * Code-driven backdrop — CODE IS THE SOURCE OF TRUTH. Fires on every

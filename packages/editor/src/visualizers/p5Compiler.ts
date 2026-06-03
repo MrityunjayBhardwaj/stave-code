@@ -45,6 +45,62 @@ interface StaveContext {
    * `@strudel/draw` option vocabulary without recompiling.
    */
   readonly options: Record<string, unknown>
+  /**
+   * Phase 21 — the named-signal accessor mirrored onto the stave namespace
+   * (D-02). Same `u` object exposed bare via `with (staveUniforms)`. Reads
+   * `u('bd')`, `u.track('$0')`, `u.tracks`, `u.sounds`.
+   */
+  readonly u: P5SignalAccessor
+}
+
+/** A per-sound or per-track reading as live NUMBERS (p5 D-01 shape — getters,
+ *  NOT thunks; the renderer reads them directly inside `draw`). */
+export interface P5SignalReading {
+  env: number
+  velocity: number
+  note: number | string | null
+  color: string | null
+}
+
+/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props.
+ *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk. */
+export interface P5SignalAccessor {
+  (sound: string): P5SignalReading
+  /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
+  track: (id: string) => P5SignalReading
+  /** Enumerate published track keys (scheduler key space). */
+  tracks: string[]
+  /** Enumerate distinct sounds seen through the envelope feed. */
+  sounds: string[]
+}
+
+/**
+ * Phase 21 — the live named-signal uniform object handed to a p5 sketch as the
+ * THIRD `new Function` arg. Bare `uKick…uTom` / `uKeyVelocity` are GETTERS
+ * (p5 D-01: live numbers, NOT thunks) resolved per-frame through the inner
+ * `with (staveUniforms)`. `u` is the callable accessor (also mirrored onto
+ * `stave.u`, D-02).
+ *
+ * `__tick` is a NON-enumerable hook the draw wrapper calls ONCE per frame
+ * (`bus.tick(); bus.refreshActive(bus.now())`) — the decay tick fires exactly
+ * once per draw (U2), NEVER inside a getter (a getter-tick double-ticks when a
+ * sketch reads N uniforms → decay collapses to 0). Built by `P5VizRenderer`,
+ * which owns the (pure) SignalBus; the compiler stays renderer-agnostic and
+ * only consumes the shape.
+ */
+export interface StaveUniforms {
+  readonly uKick: number
+  readonly uSnare: number
+  readonly uHat: number
+  readonly uOpenHat: number
+  readonly uClap: number
+  readonly uRim: number
+  readonly uTom: number
+  readonly uKeyVelocity: number
+  readonly u: P5SignalAccessor
+  /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
+   *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
+  __tick?: () => void
 }
 
 /**
@@ -161,13 +217,24 @@ export function compileP5Code(code: string, source?: string) {
   // error propagates up through `compilePreset` into the useMemo
   // catch in CompiledVizMount where it becomes a proper engineLog
   // entry (Console row, toast, status-bar chip, Monaco squiggle).
-  new Function('p', 'stave', body)
+  // Phase 21 — the body now references a THIRD arg `staveUniforms` (the inner
+  // `with (staveUniforms)` in the full-lifecycle body, and the `staveUniforms.u`
+  // / `staveUniforms.uKick…` aliases in the legacy draw). Pre-validate with the
+  // same arity as the real compile below or the SyntaxError pre-check would
+  // diverge from the executed function.
+  new Function('p', 'stave', 'staveUniforms', body)
 
   // P5SketchFactory signature — fourth arg is the container-size ref
   // maintained by the renderer so `stave.width` / `stave.height`
   // expose the preview pane dimensions. Optional (and defaulted) so
   // callers that don't wire the ref still get a usable stave,
   // falling back to window.innerWidth / innerHeight.
+  //
+  // The SIXTH arg (`staveUniformsRef`, Phase 21) carries the live named-signal
+  // uniform object built by `P5VizRenderer` from its per-renderer SignalBus.
+  // Optional + defaulted to an inert object so callers that don't wire signals
+  // (tests, demo) still compile — bare `uKick` then reads 0, `u(...)` returns
+  // zeros, and `__tick` is a no-op.
   return (
     hapStreamRef: RefObject<HapStream | null>,
     analyserRef: RefObject<AnalyserNode | null>,
@@ -178,9 +245,21 @@ export function compileP5Code(code: string, source?: string) {
     optionsRef: RefObject<Record<string, unknown>> = {
       current: {},
     } as RefObject<Record<string, unknown>>,
+    staveUniformsRef: RefObject<StaveUniforms> = {
+      current: makeInertStaveUniforms(),
+    } as RefObject<StaveUniforms>,
   ) => {
 
     return (p: unknown) => {
+      // The live named-signal uniform object (Phase 21). Read off the ref so a
+      // `renderer.update()` that swaps the bus refs is picked up — but in
+      // practice the bus instance is stable for the renderer's life and only
+      // its scheduler refs swap in place, so the SAME object's getters stay
+      // live across updates. Falls back to an inert object when no signals are
+      // wired (tests / demo mode).
+      const staveUniforms: StaveUniforms =
+        staveUniformsRef.current ?? makeInertStaveUniforms()
+
       // Live stave namespace — getters forward to the refs so reads
       // inside setup/draw/preload always see the CURRENT values.
       // Caching `const a = stave.analyser` in module scope still
@@ -205,6 +284,11 @@ export function compileP5Code(code: string, source?: string) {
         get options(): Record<string, unknown> {
           return optionsRef.current ?? {}
         },
+        // D-02 — mirror the named-signal accessor onto the stave namespace.
+        // `stave.u` is the SAME `u` object exposed bare via `with`.
+        get u(): P5SignalAccessor {
+          return (staveUniformsRef.current ?? staveUniforms).u
+        },
       }
 
       let lifecycle: {
@@ -213,11 +297,12 @@ export function compileP5Code(code: string, source?: string) {
         draw?: () => void
       }
       try {
-        const compile = new Function('p', 'stave', body) as (
+        const compile = new Function('p', 'stave', 'staveUniforms', body) as (
           p: unknown,
           stave: StaveContext,
+          staveUniforms: StaveUniforms,
         ) => typeof lifecycle
-        lifecycle = compile(p, stave)
+        lifecycle = compile(p, stave, staveUniforms)
       } catch (err) {
         // Top-level runtime error inside the user sketch — the most
         // common shape is a ReferenceError from a typo'd identifier
@@ -253,8 +338,40 @@ export function compileP5Code(code: string, source?: string) {
         return
       }
 
-      installLifecycle(p, lifecycle, source, lineOffset)
+      installLifecycle(p, lifecycle, source, lineOffset, staveUniforms)
     }
+  }
+}
+
+/**
+ * An inert `StaveUniforms` — all signals 0, `u(...)` returns zeros, `__tick` a
+ * no-op. Used when a sketch is compiled without a wired SignalBus (unit tests,
+ * demo mode). Keeps bare `uKick` / `u('bd')` safe (never `undefined`) so a
+ * sketch written for live signals still runs silently rather than throwing.
+ */
+function makeInertStaveUniforms(): StaveUniforms {
+  const zeroReading = (): P5SignalReading => ({
+    env: 0,
+    velocity: 0,
+    note: null,
+    color: null,
+  })
+  const u = ((_sound: string): P5SignalReading =>
+    zeroReading()) as P5SignalAccessor
+  u.track = (_id: string): P5SignalReading => zeroReading()
+  u.tracks = []
+  u.sounds = []
+  return {
+    uKick: 0,
+    uSnare: 0,
+    uHat: 0,
+    uOpenHat: 0,
+    uClap: 0,
+    uRim: 0,
+    uTom: 0,
+    uKeyVelocity: 0,
+    u,
+    __tick: () => {},
   }
 }
 
@@ -275,7 +392,16 @@ export function compileP5Code(code: string, source?: string) {
  * Counted at module load so the emit-time line offset tracks the
  * template verbatim (change the template → offset self-updates).
  */
-const FULL_LIFECYCLE_PREFIX = '\nwith (p) {\n  '
+// Phase 21 — a SECOND `with (staveUniforms)` nests inside `with (p)` so that
+// bare named signals (`uKick`, `uSnare`, `u`, `stave.u`) resolve LIVE through
+// the inner object's GETTERS every frame, exactly the way `width` / `mouseX`
+// resolve through `with (p)` (see the execution-model jsdoc above, :120-128).
+// A top-level `const uKick = staveUniforms.uKick` would capture ONCE at
+// compile time and freeze (U2 trap) — the inner `with` is what keeps the read
+// per-frame fresh. The prefix is counted at module load so the emit-time line
+// offset self-updates from the template string (change the template → the
+// offset tracks it).
+const FULL_LIFECYCLE_PREFIX = '\nwith (p) {\n  with (staveUniforms) {\n  '
 const FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || [])
   .length
 
@@ -285,6 +411,7 @@ function buildFullLifecycleBody(userCode: string): string {
     setup: typeof setup === 'function' ? setup : undefined,
     draw: typeof draw === 'function' ? draw : undefined,
     preload: typeof preload === 'function' ? preload : undefined,
+  }
   }
 }
   `
@@ -300,7 +427,18 @@ function buildFullLifecycleBody(userCode: string): string {
  * snippets written for the OLD compiler (which exposed those as
  * locals) keep working without modification.
  */
-/** Prefix preceding `${userCode}` in the legacy draw-body template. */
+/**
+ * Prefix preceding `${userCode}` in the legacy draw-body template.
+ *
+ * Phase 21 — the named-signal aliases (`u`, `uKick…uTom`, `uKeyVelocity`) are
+ * declared as `const`s INSIDE the synthetic `draw` body, NOT at top level —
+ * they are re-read EVERY frame (mirroring the existing `const scheduler =
+ * stave.scheduler` aliasing). A top-level const would evaluate ONCE at
+ * `compile(p, stave, staveUniforms)` time, before any draw fires, and freeze
+ * (U2 trap). Reading the getters here on each draw keeps the values live.
+ * `stave.u` is the same `u` object mirrored on the stave namespace (D-02);
+ * bare `uKick` reads the live getter each draw.
+ */
 const LEGACY_PREFIX = `
 with (p) {
   return {
@@ -312,6 +450,15 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
+      const u = staveUniforms.u
+      const uKick = staveUniforms.uKick
+      const uSnare = staveUniforms.uSnare
+      const uHat = staveUniforms.uHat
+      const uOpenHat = staveUniforms.uOpenHat
+      const uClap = staveUniforms.uClap
+      const uRim = staveUniforms.uRim
+      const uTom = staveUniforms.uTom
+      const uKeyVelocity = staveUniforms.uKeyVelocity
       `
 const LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length
 
@@ -344,6 +491,7 @@ function installLifecycle(
   lifecycle: { preload?: () => void; setup?: () => void; draw?: () => void },
   source: string | undefined,
   lineOffset: number,
+  staveUniforms?: StaveUniforms,
 ): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pi = p as any
@@ -388,7 +536,28 @@ function installLifecycle(
     function () {
       pi.createCanvas(pi.windowWidth, pi.windowHeight)
     }
-  if (lifecycle.draw) pi.draw = wrap('draw', lifecycle.draw)
+  // Phase 21 — fire the signal-bus tick EXACTLY ONCE per draw frame, BEFORE the
+  // user's draw body so the bare `uKick` getters it reads see the freshly
+  // decayed + re-snapshotted bus state. The tick lives HERE (the renderer-owned
+  // draw wrapper), NEVER inside a uniform getter — a getter-driven tick would
+  // double-tick when a sketch reads N uniforms in one frame (decay collapses to
+  // 0, U2). `__tick` is a no-op for inert/demo uniforms.
+  //
+  // KNOWN LIMITATION (FLAG-3): we only attach `pi.draw` — and therefore the
+  // tick — when the sketch declared a `draw`. A setup-only / static sketch
+  // never ticks, so `.env` never decays for it. ACCEPTABLE for Slice 1 (every
+  // reactive sketch has a draw); `.env` reactivity REQUIRES a `draw()`. A
+  // static sketch needing reactive signals would attach the tick to a
+  // renderer-owned hook instead — out of scope here.
+  if (lifecycle.draw) {
+    const wrappedDraw = wrap('draw', lifecycle.draw)
+    // p5 calls `draw()` with no args — the tick fires first (once per frame),
+    // then the user's (error-wrapped) draw body runs and reads fresh uniforms.
+    pi.draw = function (this: unknown) {
+      staveUniforms?.__tick?.()
+      return wrappedDraw?.call(this)
+    }
+  }
 }
 
 /**

@@ -4600,6 +4600,190 @@ function setCurrentP5Source(source, lineOffset = 0) {
 }
 __name(setCurrentP5Source, "setCurrentP5Source");
 
+// src/visualizers/signals/aliasMap.ts
+var ALIAS_MAP = {
+  uKick: "bd",
+  uSnare: "sd",
+  uHat: "hh",
+  uOpenHat: "oh",
+  uClap: "cp",
+  uRim: "rim",
+  uTom: ["lt", "mt", "ht"]
+};
+
+// src/visualizers/signals/SignalBus.ts
+var EPSILON = 1e-3;
+var DEFAULT_DECAY = 0.92;
+var _SignalBus = class _SignalBus {
+  constructor(aliasMap = ALIAS_MAP) {
+    /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
+    this.envMap = /* @__PURE__ */ new Map();
+    /** Last-bumped color per sound — the `.color` fallback feed. */
+    this.colorMap = /* @__PURE__ */ new Map();
+    /** Live refs — mutable so `bindScheduler()` rebinds in place
+     *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
+    this.scheduler = null;
+    this.trackSchedulers = /* @__PURE__ */ new Map();
+    /** Per-frame snapshot of active events from the combined scheduler feed
+     *  (set by `refreshActive`). The instantaneous feed for `sound()`. */
+    this.activeEvents = [];
+    /** Per-frame snapshot of active events per track-key (scheduler key space). */
+    this.activeByTrack = /* @__PURE__ */ new Map();
+    /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
+    this.seenSounds = /* @__PURE__ */ new Set();
+    this.aliasMap = aliasMap;
+    this.decay = DEFAULT_DECAY;
+  }
+  /** Store live scheduler refs (mutable rebind — mirror the renderer's
+   *  in-place update discipline). Pass `null`/empty in demo mode. */
+  bindScheduler(scheduler, trackSchedulers) {
+    this.scheduler = scheduler ?? null;
+    this.trackSchedulers = trackSchedulers ?? /* @__PURE__ */ new Map();
+  }
+  // ── .env feed (envelope: bump + decay) ──────────────────────────────────
+  /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
+   *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
+   *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
+  bump(e) {
+    const sound = e.s;
+    if (sound == null) return;
+    const gain = Math.min(1, Math.max(0, e.hap?.value?.gain ?? 1));
+    const prev = this.envMap.get(sound) ?? 0;
+    this.envMap.set(sound, Math.min(1, prev + gain));
+    if (e.color != null) this.colorMap.set(sound, e.color);
+    else if (!this.colorMap.has(sound)) this.colorMap.set(sound, null);
+    this.seenSounds.add(sound);
+  }
+  /** Apply decay to every envelope entry. Call ONCE per frame, BEFORE
+   *  `refreshActive` (mirror `HapEnergyEnvelope.tick`, `:85-89`). */
+  tick() {
+    for (const [sound, level] of this.envMap) {
+      this.envMap.set(sound, level * this.decay);
+    }
+  }
+  // ── instantaneous feed (scheduler query-at-now) ─────────────────────────
+  /** Snapshot the active events at `now` from the combined scheduler and each
+   *  per-track scheduler. Call ONCE per frame, AFTER `tick()`. The window is
+   *  [now, now + ε) — the same tight window `H()` uses (`:175`). */
+  refreshActive(now2) {
+    const begin = now2;
+    const end = now2 + EPSILON;
+    this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
+    this.activeByTrack.clear();
+    for (const [key, sched] of this.trackSchedulers) {
+      this.activeByTrack.set(key, sched.query(begin, end));
+    }
+  }
+  /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
+  now() {
+    return this.scheduler ? this.scheduler.now() : 0;
+  }
+  // ── accessors ───────────────────────────────────────────────────────────
+  /** Resolve an alias OR a raw sound name to a list of concrete sound names.
+   *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
+  resolveSounds(soundOrAlias) {
+    const mapped = this.aliasMap[soundOrAlias];
+    if (mapped == null) return [soundOrAlias];
+    return Array.isArray(mapped) ? mapped : [mapped];
+  }
+  /** Decayed envelope level for a sound or alias. Array aliases (`uTom`)
+   *  resolve as MAX over members. Demo-mode / never-fired → 0. */
+  envValue(soundOrAlias) {
+    let max = 0;
+    for (const sound of this.resolveSounds(soundOrAlias)) {
+      const v = this.envMap.get(sound) ?? 0;
+      if (v > max) max = v;
+    }
+    return max;
+  }
+  /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
+  activeEventForSounds(sounds) {
+    const set = new Set(sounds);
+    for (const ev of this.activeEvents) {
+      if (ev.s != null && set.has(ev.s)) return ev;
+    }
+    return void 0;
+  }
+  /** Per-sound reading — merged across tracks via the combined active feed
+   *  (D-03). `.env` from the envelope; `.velocity`/`.note` from the active
+   *  IREvent (NOT the envelope — silent-zero trap §5); `.color` from the
+   *  active IREvent, falling back to the last-bumped hap color. */
+  sound(soundOrAlias) {
+    const sounds = this.resolveSounds(soundOrAlias);
+    const env = this.envValue(soundOrAlias);
+    const ev = this.activeEventForSounds(sounds);
+    return {
+      env,
+      velocity: ev?.velocity ?? 0,
+      note: ev?.note ?? null,
+      color: ev?.color ?? this.colorFallback(sounds)
+    };
+  }
+  /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
+  colorFallback(sounds) {
+    for (const sound of sounds) {
+      const c = this.colorMap.get(sound);
+      if (c != null) return c;
+    }
+    return null;
+  }
+  /** Per-track reading, keyed on the SCHEDULER key space (TRAP §5 —
+   *  `trackSchedulers.get(id)`, NOT IREvent.trackId). `.env` is the max env over
+   *  the sounds this track fired this frame; `.velocity`/`.note`/`.color` come
+   *  from the track's first active IREvent (scheduler feed). A `sound(s)`
+   *  sub-accessor reads a specific sound within the track. Unknown id → zeros. */
+  track(id) {
+    const events = this.activeByTrack.get(id) ?? [];
+    const first = events[0];
+    const trackSounds = events.map((e) => e.s).filter((s) => s != null);
+    let env = 0;
+    for (const s of trackSounds) {
+      const v = this.envMap.get(s) ?? 0;
+      if (v > env) env = v;
+    }
+    const soundIn = /* @__PURE__ */ __name((soundOrAlias) => {
+      const resolved = new Set(this.resolveSounds(soundOrAlias));
+      const ev = events.find((e) => e.s != null && resolved.has(e.s));
+      let sEnv = 0;
+      for (const s of this.resolveSounds(soundOrAlias)) {
+        const v = this.envMap.get(s) ?? 0;
+        if (v > sEnv) sEnv = v;
+      }
+      return {
+        env: sEnv,
+        velocity: ev?.velocity ?? 0,
+        note: ev?.note ?? null,
+        color: ev?.color ?? null
+      };
+    }, "soundIn");
+    return {
+      env,
+      velocity: first?.velocity ?? 0,
+      note: first?.note ?? null,
+      color: first?.color ?? null,
+      sound: soundIn
+    };
+  }
+  /** Enumerate the published track keys — the SCHEDULER key space
+   *  (`trackSchedulers.keys()`, §5), e.g. `['$0','$1']` or `['d1','drums']`. */
+  get tracks() {
+    return [...this.trackSchedulers.keys()];
+  }
+  /** Enumerate distinct sounds ever bumped through the envelope feed. */
+  get sounds() {
+    return [...this.seenSounds];
+  }
+  /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
+   *  requested; the raw `.note` preserves the user's name|number form). Returns
+   *  null for percussion sample names / unrecognized input. */
+  noteToMidi(note) {
+    if (note == null) return null;
+    return noteToMidi(note);
+  }
+};
+__name(_SignalBus, "SignalBus");
+var SignalBus = _SignalBus;
+
 // src/visualizers/renderers/P5VizRenderer.ts
 var _P5VizRenderer = class _P5VizRenderer {
   constructor(sketch) {
@@ -4613,6 +4797,72 @@ var _P5VizRenderer = class _P5VizRenderer {
     };
     // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
     this.optionsRef = { current: {} };
+    /**
+     * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
+     * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
+     * is IR-grounded and must stay live whenever a real analyser is published,
+     * which is normal playback). Mirrors `HydraVizRenderer`'s bus discipline; the
+     * only difference is the p5 SHAPE (D-01): bare `uKick` is a live GETTER
+     * NUMBER here, not a `() => number` thunk.
+     */
+    this.bus = new SignalBus();
+    /**
+     * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
+     * `destroy()` can off it unconditionally (it is the bus's own subscription —
+     * p5 has no analyser-fallback envelope, but keeping a named ref matches the
+     * hydra teardown discipline and stays correct if a fallback is added later).
+     */
+    this.busHapHandler = null;
+    /** The HapStream the bus handler is subscribed to (for clean off()). */
+    this.boundHapStream = null;
+    const bus = this.bus;
+    const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
+    u.track = (id) => bus.track(id);
+    Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+    Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+    const uniforms = {
+      get uKick() {
+        return bus.envValue("uKick");
+      },
+      get uSnare() {
+        return bus.envValue("uSnare");
+      },
+      get uHat() {
+        return bus.envValue("uHat");
+      },
+      get uOpenHat() {
+        return bus.envValue("uOpenHat");
+      },
+      get uClap() {
+        return bus.envValue("uClap");
+      },
+      get uRim() {
+        return bus.envValue("uRim");
+      },
+      get uTom() {
+        return bus.envValue("uTom");
+      },
+      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — the active
+      // event's velocity globally. Max velocity over every sound seen this
+      // frame; 0 when nothing is active.
+      get uKeyVelocity() {
+        let max = 0;
+        for (const s of bus.sounds) {
+          const v = bus.sound(s).velocity;
+          if (v > max) max = v;
+        }
+        return max;
+      },
+      u
+    };
+    Object.defineProperty(uniforms, "__tick", {
+      value: /* @__PURE__ */ __name(() => {
+        bus.tick();
+        bus.refreshActive(bus.now());
+      }, "value"),
+      enumerable: false
+    });
+    this.staveUniformsRef = { current: uniforms };
   }
   mount(container, components, size, onError) {
     installP5FesBridgeWith(p5__default.default);
@@ -4621,13 +4871,24 @@ var _P5VizRenderer = class _P5VizRenderer {
       this.analyserRef.current = components.audio?.analyser ?? null;
       this.schedulerRef.current = components.queryable?.scheduler ?? null;
       this.optionsRef.current = components.options ?? {};
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      );
+      const hapStream = components.streaming?.hapStream ?? null;
+      if (hapStream && this.bus && typeof hapStream.on === "function") {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        hapStream.on(this.busHapHandler);
+        this.boundHapStream = hapStream;
+      }
       this.containerSizeRef.current = { w: size.w, h: size.h };
       const sketchFn = this.sketch(
         this.hapStreamRef,
         this.analyserRef,
         this.schedulerRef,
         this.containerSizeRef,
-        this.optionsRef
+        this.optionsRef,
+        this.staveUniformsRef
       );
       this.instance = new p5__default.default(sketchFn, container);
       this.instance.resizeCanvas(size.w, size.h);
@@ -4641,6 +4902,23 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.analyserRef.current = components.audio?.analyser ?? null;
     this.schedulerRef.current = components.queryable?.scheduler ?? null;
     this.optionsRef.current = components.options ?? {};
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers
+    );
+    const nextHapStream = components.streaming?.hapStream ?? null;
+    if (nextHapStream !== this.boundHapStream) {
+      if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
+        this.boundHapStream.off(this.busHapHandler);
+      }
+      this.busHapHandler = null;
+      this.boundHapStream = null;
+      if (nextHapStream && this.bus && typeof nextHapStream.on === "function") {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        nextHapStream.on(this.busHapHandler);
+        this.boundHapStream = nextHapStream;
+      }
+    }
   }
   resize(w, h) {
     this.containerSizeRef.current = { w, h };
@@ -4669,6 +4947,12 @@ var _P5VizRenderer = class _P5VizRenderer {
       this.instance.remove();
     }
     this.instance = null;
+    if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
+      this.boundHapStream.off(this.busHapHandler);
+    }
+    this.busHapHandler = null;
+    this.boundHapStream = null;
+    this.bus = null;
   }
 };
 __name(_P5VizRenderer, "P5VizRenderer");
@@ -4764,6 +5048,22 @@ var _HydraVizRenderer = class _HydraVizRenderer {
     this.envelope = null;
     this.hapHandler = null;
     this.useEnvelope = false;
+    /**
+     * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
+     * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
+     * (`.velocity`/`.note`/`.color`). Fed UNCONDITIONALLY — NOT analyser-gated
+     * like the envelope (BLOCK-1): the bus is IR-grounded and must stay live
+     * whenever a real analyser is published (which is normal playback), or
+     * `uKick` is dead in the headline use case.
+     */
+    this.bus = new SignalBus();
+    /**
+     * The bus's own HapStream subscription — SEPARATE from `hapHandler` (the
+     * analyser-fallback envelope handler) so `destroy()` can off it
+     * independently and unconditionally. The bus feed is never gated on
+     * `useEnvelope`.
+     */
+    this.busHapHandler = null;
     this.pumpAudio = /* @__PURE__ */ __name((now2) => {
       if (this.paused || this.destroyed) {
         this.rafId = null;
@@ -4790,6 +5090,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
           }
         }
       }
+      if (this.bus) {
+        this.bus.tick();
+        this.bus.refreshActive(this.bus.now());
+      }
       if (this.hydra && typeof this.hydra.tick === "function") {
         try {
           this.hydra.tick(now2 ?? performance.now());
@@ -4798,9 +5102,44 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       }
       this.rafId = requestAnimationFrame(this.pumpAudio);
     }, "pumpAudio");
+    const bus = this.bus;
+    const u = /* @__PURE__ */ __name(((sound) => ({
+      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color")
+    })), "u");
+    u.track = (id) => ({
+      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color")
+    });
+    Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+    Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
     const bag = {
       scheduler: null,
       tracks: /* @__PURE__ */ new Map(),
+      // ── Named signal thunks (D-01 hydra shape — `() => number`) ──────────
+      uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
+      uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
+      uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
+      uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
+      uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
+      uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
+      uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
+      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — it is the
+      // active event's velocity globally. Read the max velocity over every
+      // sound seen this frame; 0 when nothing is active.
+      uKeyVelocity: /* @__PURE__ */ __name(() => {
+        let max = 0;
+        for (const s of bus.sounds) {
+          const v = bus.sound(s).velocity;
+          if (v > max) max = v;
+        }
+        return max;
+      }, "uKeyVelocity"),
+      u,
       H: /* @__PURE__ */ __name((trackId, field = "gain") => {
         return () => {
           const sched = bag.tracks.get(trackId) ?? bag.scheduler;
@@ -4823,6 +5162,14 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.hapStream = components.streaming?.hapStream ?? null;
       this.staveBag.scheduler = components.queryable?.scheduler ?? null;
       this.staveBag.tracks = components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map();
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      );
+      if (this.hapStream && this.bus) {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        this.hapStream.on(this.busHapHandler);
+      }
       if (this.analyser) {
         this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
         this.useEnvelope = false;
@@ -4893,6 +5240,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
     }
     this.staveBag.scheduler = components.queryable?.scheduler ?? null;
     this.staveBag.tracks = components.queryable?.trackSchedulers ?? this.staveBag.tracks;
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers ?? this.staveBag.tracks
+    );
   }
   resize(w, h) {
     if (this.canvas) {
@@ -4924,6 +5275,11 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.hapStream.off(this.hapHandler);
       this.hapHandler = null;
     }
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.bus = null;
     this.canvas?.remove();
     this.canvas = null;
     this.hydra = null;
@@ -9347,13 +9703,16 @@ __name(getP5LineOffset, "getP5LineOffset");
 function compileP5Code(code, source) {
   const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
   const lineOffset = getP5LineOffset(code);
-  new Function("p", "stave", body);
+  new Function("p", "stave", "staveUniforms", body);
   return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
     current: { w: 400, h: 300 }
   }, optionsRef = {
     current: {}
+  }, staveUniformsRef = {
+    current: makeInertStaveUniforms()
   }) => {
     return (p) => {
+      const staveUniforms = staveUniformsRef.current ?? makeInertStaveUniforms();
       const stave = {
         get scheduler() {
           return schedulerRef.current;
@@ -9372,12 +9731,17 @@ function compileP5Code(code, source) {
         },
         get options() {
           return optionsRef.current ?? {};
+        },
+        // D-02 — mirror the named-signal accessor onto the stave namespace.
+        // `stave.u` is the SAME `u` object exposed bare via `with`.
+        get u() {
+          return (staveUniformsRef.current ?? staveUniforms).u;
         }
       };
       let lifecycle;
       try {
-        const compile = new Function("p", "stave", body);
-        lifecycle = compile(p, stave);
+        const compile = new Function("p", "stave", "staveUniforms", body);
+        lifecycle = compile(p, stave, staveUniforms);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         installErrorSketch(p, error.message);
@@ -9398,12 +9762,38 @@ function compileP5Code(code, source) {
         });
         return;
       }
-      installLifecycle(p, lifecycle, source, lineOffset);
+      installLifecycle(p, lifecycle, source, lineOffset, staveUniforms);
     };
   };
 }
 __name(compileP5Code, "compileP5Code");
-var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  ";
+function makeInertStaveUniforms() {
+  const zeroReading = /* @__PURE__ */ __name(() => ({
+    env: 0,
+    velocity: 0,
+    note: null,
+    color: null
+  }), "zeroReading");
+  const u = /* @__PURE__ */ __name(((_sound) => zeroReading()), "u");
+  u.track = (_id) => zeroReading();
+  u.tracks = [];
+  u.sounds = [];
+  return {
+    uKick: 0,
+    uSnare: 0,
+    uHat: 0,
+    uOpenHat: 0,
+    uClap: 0,
+    uRim: 0,
+    uTom: 0,
+    uKeyVelocity: 0,
+    u,
+    __tick: /* @__PURE__ */ __name(() => {
+    }, "__tick")
+  };
+}
+__name(makeInertStaveUniforms, "makeInertStaveUniforms");
+var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  with (staveUniforms) {\n  ";
 var FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || []).length;
 function buildFullLifecycleBody(userCode) {
   return `${FULL_LIFECYCLE_PREFIX}${userCode}
@@ -9411,6 +9801,7 @@ function buildFullLifecycleBody(userCode) {
     setup: typeof setup === 'function' ? setup : undefined,
     draw: typeof draw === 'function' ? draw : undefined,
     preload: typeof preload === 'function' ? preload : undefined,
+  }
   }
 }
   `;
@@ -9427,6 +9818,15 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
+      const u = staveUniforms.u
+      const uKick = staveUniforms.uKick
+      const uSnare = staveUniforms.uSnare
+      const uHat = staveUniforms.uHat
+      const uOpenHat = staveUniforms.uOpenHat
+      const uClap = staveUniforms.uClap
+      const uRim = staveUniforms.uRim
+      const uTom = staveUniforms.uTom
+      const uKeyVelocity = staveUniforms.uKeyVelocity
       `;
 var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
 function buildLegacyBody(userCode) {
@@ -9438,7 +9838,7 @@ function buildLegacyBody(userCode) {
   `;
 }
 __name(buildLegacyBody, "buildLegacyBody");
-function installLifecycle(p, lifecycle, source, lineOffset) {
+function installLifecycle(p, lifecycle, source, lineOffset, staveUniforms) {
   const pi = p;
   const reportLifecycleError = /* @__PURE__ */ __name((hook, err) => {
     const error = err instanceof Error ? err : new Error(String(err));
@@ -9470,7 +9870,13 @@ function installLifecycle(p, lifecycle, source, lineOffset) {
   pi.setup = wrap5("setup", lifecycle.setup) ?? function() {
     pi.createCanvas(pi.windowWidth, pi.windowHeight);
   };
-  if (lifecycle.draw) pi.draw = wrap5("draw", lifecycle.draw);
+  if (lifecycle.draw) {
+    const wrappedDraw = wrap5("draw", lifecycle.draw);
+    pi.draw = function() {
+      staveUniforms?.__tick?.();
+      return wrappedDraw?.call(this);
+    };
+  }
 }
 __name(installLifecycle, "installLifecycle");
 function installErrorSketch(p, message) {
@@ -24778,7 +25184,14 @@ function CompiledVizMount(props) {
     if (audioSource?.scheduler) {
       bag.queryable = {
         scheduler: audioSource.scheduler,
-        trackSchedulers: /* @__PURE__ */ new Map()
+        // PV64/P95 — mirror viewZones.ts:304-307. The backdrop receives the
+        // SAME bus payload as the inline path; the real per-track schedulers
+        // ride on `engineComponents` (published verbatim at
+        // LiveCodingRuntime.ts:362 from `this.engine.components`). A hardcoded
+        // `new Map()` here dropped them, so `u.tracks` enumeration was empty
+        // as a backdrop while working inline — the classic "works inline, dead
+        // full-screen" no-op. `?? new Map()` preserves the demo-mode fallback.
+        trackSchedulers: audioSource.engineComponents?.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map()
       };
     }
     if (audioSource?.inlineViz) {
@@ -25259,6 +25672,7 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
+exports.ALIAS_MAP = ALIAS_MAP;
 exports.AUTO_SNAPSHOT_PREFIX = AUTO_SNAPSHOT_PREFIX;
 exports.BACKDROP_BLUR_VAR = BACKDROP_BLUR_VAR;
 exports.BOTTOM_PANEL_ACTIVE_TAB_KEY = BOTTOM_PANEL_ACTIVE_TAB_KEY;
@@ -25310,6 +25724,7 @@ exports.SPECTRUM_P5_CODE = SPECTRUM_P5_CODE;
 exports.SPIRAL_P5_CODE = SPIRAL_P5_CODE;
 exports.STRUDEL_DOCS_INDEX = STRUDEL_DOCS_INDEX;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
+exports.SignalBus = SignalBus;
 exports.SonicPiEngine = SonicPiEngine;
 exports.SplitPane = SplitPane;
 exports.StrudelEditor = StrudelEditor;
