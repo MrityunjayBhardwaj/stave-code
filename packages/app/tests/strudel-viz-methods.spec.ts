@@ -755,3 +755,247 @@ function draw() {
     expect(range).toBeGreaterThan(800)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 21 (aliases) — CUSTOM signal aliases, end-to-end OBSERVATION (T4).
+//
+// T1-T3 shipped the spine: a user-defined alias map persists under the
+// `stave:signalAliases` localStorage key (editorRegistry), the renderers MERGE
+// it into the (pure) SignalBus at MOUNT — built-ins first, custom LAST so a
+// user override WINS — and expose every custom name as a live bare GETTER on
+// `staveUniforms` (p5, resolved through the inner `with (staveUniforms)`) and a
+// `stave.<name>()` thunk on the bag (hydra, which has no bare scope). These
+// three tests OBSERVE that a custom alias drives a viz on the REAL inline
+// surface — never "renders without error" (P93: a dead bare `kick` is either a
+// ReferenceError on the sketch error path OR a frozen 0 with range≈0 — both
+// caught by variance-over-frames). assertAudioLive (P96/FLAG-2) guards the
+// audio path so a silent context can't false-green a "reactive" claim.
+//
+// CRITICAL — the alias is read at MOUNT (`{ ...ALIAS_MAP, ...getSignalAliases() }`
+// in P5VizRenderer/HydraVizRenderer mount()). So the custom map MUST be in
+// localStorage BEFORE the renderer mounts. We seed it via `addInitScript`
+// (runs before navigation, so it's present on first mount). Live-remount on
+// alias change is DEFERRED — we do NOT rely on it.
+// ─────────────────────────────────────────────────────────────────────────
+test.describe('Phase 21 aliases — custom signal alias drives a viz (T4 observation)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+      // Seed the custom alias map BEFORE navigation so it is present in
+      // localStorage on the FIRST renderer mount (the renderer reads it via
+      // getSignalAliases() at mount; live-remount is deferred). `kick` resolves
+      // as MAX env over `bd` + `kick9`; `lead` is a single-sound alias.
+      try {
+        window.localStorage.setItem(
+          'stave:signalAliases',
+          JSON.stringify({ kick: ['bd', 'kick9'], lead: 'sawtooth' }),
+        )
+      } catch {
+        /* private-mode / quota — the renderer falls back to {} and the test
+           below would observe a frozen `kick` (range 0) → real failure. */
+      }
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+    await page.waitForTimeout(1200)
+  })
+
+  // Assert the running AudioContext (the analyser/FFT path is live, not a
+  // false-green silent context — P96/FLAG-2). Shared by the audio probes.
+  async function assertAudioLive(page: Page): Promise<void> {
+    const acState = await page.evaluate(() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (window as any).getAudioContext?.()?.state ?? 'none'
+      } catch {
+        return 'error'
+      }
+    })
+    expect(acState).toBe('running')
+  }
+
+  // Mean luminance of a locator's screenshot (decoded in-browser). Used for the
+  // WebGL (hydra) canvas — a non-preserveDrawingBuffer GL context reads back
+  // BLACK via getImageData, but the compositor (what screenshot() captures) has
+  // the real pixels. Mirrors the T5 helper.
+  async function screenshotLum(page: Page, sel: string): Promise<number> {
+    const buf = await page.locator(sel).first().screenshot()
+    const b64 = buf.toString('base64')
+    return page.evaluate(async (data) => {
+      const img = new Image()
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res()
+        img.onerror = () => rej(new Error('img decode failed'))
+        img.src = 'data:image/png;base64,' + data
+      })
+      const c = document.createElement('canvas')
+      c.width = Math.min(img.width, 160)
+      c.height = Math.min(img.height, 120)
+      const ctx = c.getContext('2d')!
+      ctx.drawImage(img, 0, 0, c.width, c.height)
+      const d = ctx.getImageData(0, 0, c.width, c.height).data
+      let s = 0
+      for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]
+      return s / (d.length / 4)
+    }, b64)
+  }
+
+  test('T4-A — custom bare `kick` (and u("kick").env) sizes a p5 sketch reactively over the custom alias', async ({ page }) => {
+    // The alias `kick → ['bd','kick9']` was seeded before mount. A p5 sketch
+    // sizes a circle by BARE `kick` (resolved through the inner
+    // `with (staveUniforms)` — proves the renderer injected a live getter for
+    // the custom name) and tints it by `u('kick').env` (the accessor form — the
+    // SignalBus resolves the same alias). Over `s("bd*4 kick9*2")` BOTH samples
+    // fire, so the bright-pixel count VARIES frame-to-frame. A dead bare `kick`
+    // is either a ReferenceError (surfaces on the sketch error path → no canvas,
+    // test times out / errors) OR a frozen 0 (range ≈ 0) — both are REAL
+    // failures meaning the T2 injection didn't reach this surface (P93).
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(String(e)))
+
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke()
+  // tint by the ACCESSOR form of the same custom alias (u('kick').env) — a
+  // second, independent resolution path through the bus.
+  const t = u('kick').env
+  fill(255, 60 + t * 180, 60)
+  // size by the BARE custom name — resolved through with(staveUniforms).
+  circle(width / 2, height / 2, 4 + kick * Math.min(width, height) * 0.9)
+}`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21a-kick-p5', name: 'p21akickp5', renderer: 'p5', code,
+        requires: ['streaming'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4 kick9*2").viz("p21akickp5")`)
+    await runCode(page)
+    const canvas = page.locator('[data-viz-zone-track] canvas').first()
+    await canvas.waitFor({ timeout: 8000 })
+
+    const brightCount = () => canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        // the warm circle: red-dominant, fully opaque
+        if (d[i] > 180 && d[i + 2] < 120 && d[i + 3] > 180) n++
+      }
+      return n
+    })
+    const samples: number[] = []
+    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+
+    // A ReferenceError on bare `kick` would surface here (the sketch never
+    // painted → all-zero samples AND a pageerror). Fail loud if so.
+    expect(errors, `sketch errors (bare \`kick\` may be undefined): ${errors.join(' | ')}`).toEqual([])
+
+    const range = Math.max(...samples) - Math.min(...samples)
+    // The custom `kick` alias swings the radius across most of the canvas; a
+    // frozen/unresolved alias is a constant circle (range 0). 5000 px clears
+    // measurement noise (mirror T5-A's threshold; observed range ~tens of k).
+    expect(range).toBeGreaterThan(5000)
+  })
+
+  test('T4-B — custom `stave.kick()` thunk drives a hydra sketch reactively (analyser LIVE)', async ({ page }) => {
+    // Same alias seeded before mount. A hydra sketch uses the custom
+    // `stave.kick()` thunk (injected on the bag at mount — hydra has no bare
+    // scope) to drive osc frequency + brightness over `s("bd*4 kick9*2")`.
+    // Brightness varies over frames. assertAudioLive (P96/FLAG-2) confirms a
+    // real running context — a dead one would publish a silent analyser and
+    // false-green a flat shader.
+    //
+    // `.brightness(() => stave.kick() - 0.25)` swings the WHOLE-FRAME mean
+    // luminance directly (negative at rest, positive on a kick) — a far larger
+    // mean-lum delta than osc-frequency alone, which only moves the stripe
+    // PHASE (similar mean across frames). This keeps the probe robustly above
+    // the compositor-noise floor instead of skimming it (observed 34.6 once
+    // with the frequency-only driver — a real but marginal signal).
+    const sketch =
+      `s.osc(() => stave.kick() * 90 + 8, 0.1, 0.5).brightness(() => stave.kick() * 1.2 - 0.25).out()`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21a-kick-hydra', name: 'p21akickhydra', renderer: 'hydra', code,
+        requires: ['audio'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4 kick9*2").viz("p21akickhydra")`)
+    await runCode(page)
+    await page.locator('[data-viz-zone-track] canvas').first().waitFor({ timeout: 8000 })
+
+    await assertAudioLive(page)
+
+    // 14 frames (more than T5-B's 9): `bd*4 kick9*2` spreads energy across two
+    // sounds, so the kick-driven brightness peak/trough phase relative to the
+    // probe clock is less predictable — more samples reliably catch both
+    // extremes (same rationale as the master probe T4-C's 12-frame loop).
+    const lums: number[] = []
+    for (let k = 0; k < 14; k++) {
+      lums.push(await screenshotLum(page, '[data-viz-zone-track] canvas'))
+      await page.waitForTimeout(150)
+    }
+    const range = Math.max(...lums) - Math.min(...lums)
+    // The custom kick swings whole-frame brightness → mean luminance varies. A
+    // frozen/unresolved alias renders a constant shader (range ≈ 0). 40 (of 765
+    // max) clears compositor noise; the .brightness() driver lifts the observed
+    // range well into the hundreds (vs ~35 for the frequency-only driver).
+    expect(range).toBeGreaterThan(40)
+  })
+
+  test('T4-C — built-in `uKick` still reacts with a custom alias seeded (merge did not clobber built-ins)', async ({ page }) => {
+    // Regression: the merge `{ ...ALIAS_MAP, ...getSignalAliases() }` must keep
+    // the built-ins. With the custom `kick`/`lead` aliases seeded, a sketch
+    // using the BUILT-IN bare `uKick` over `s("bd*4")` must STILL react — a
+    // clobbered ALIAS_MAP would freeze `uKick` (range 0). Same variance probe
+    // as T5-A, now run under a non-empty custom alias map.
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(String(e)))
+
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke(); fill(255, 60, 60)
+  circle(width / 2, height / 2, 4 + uKick * Math.min(width, height) * 0.9)
+}`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21a-ukick-builtin', name: 'p21aukickbuiltin', renderer: 'p5', code,
+        requires: ['streaming'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4").viz("p21aukickbuiltin")`)
+    await runCode(page)
+    const canvas = page.locator('[data-viz-zone-track] canvas').first()
+    await canvas.waitFor({ timeout: 8000 })
+
+    const brightCount = () => canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110 && d[i + 3] > 180) n++
+      }
+      return n
+    })
+    const samples: number[] = []
+    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+
+    expect(errors, `sketch errors with custom alias seeded: ${errors.join(' | ')}`).toEqual([])
+    const range = Math.max(...samples) - Math.min(...samples)
+    // Built-in uKick still swings the radius despite the custom map. A clobbered
+    // built-in would freeze it (range 0). 5000 px mirror T5-A.
+    expect(range).toBeGreaterThan(5000)
+  })
+})
