@@ -19,6 +19,8 @@ import {
   listTiers,
   getSignalAliases,
   setSignalAliases,
+  getPerfEnabled,
+  setPerfEnabled,
   type EditorTheme,
   type TierFlags,
   type TierName,
@@ -153,6 +155,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   const [vizActionSize, setVizActionSize] = useState(11);
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
+  const [perfEnabled, setPerfEnabledState] = useState(false);
   // Phase 20-14 β-3 — Strudel tier flags. Mid-session toggle changes are
   // NOT observed by the engine until reload (the engine reads tierFlags
   // ONCE at init per α-5); the caption below the section makes that
@@ -184,6 +187,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setVizActionSize(getInlineVizActionSize());
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
+    setPerfEnabledState(getPerfEnabled());
     setTierFlagsState(getTierFlags());
     const seeded = rowsFromAliasMap(getSignalAliases());
     setAliasRows(seeded);
@@ -227,6 +231,20 @@ export function EditorSettingsModal({ open, onClose }: Props) {
                 onChange={() => { toggleEditorMinimap(); setMinimap((v) => !v); }}
               />
               <span>{minimap ? "Enabled" : "Disabled"}</span>
+            </label>
+          </Row>
+          <Row label="Performance overlay">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={perfEnabled}
+                onChange={() => {
+                  const next = !perfEnabled;
+                  setPerfEnabled(next);
+                  setPerfEnabledState(next);
+                }}
+              />
+              <span>{perfEnabled ? "On (Alt+P)" : "Off (Alt+P)"}</span>
             </label>
           </Row>
           <Row label="Icon size">

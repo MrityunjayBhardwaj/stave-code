@@ -5714,6 +5714,48 @@ function applyPersistedTheme() {
   setEditorTheme(readTheme());
 }
 __name(applyPersistedTheme, "applyPersistedTheme");
+var PERF_ENABLED_STORAGE = "stave:perfEnabled";
+var perfEnabledListeners = /* @__PURE__ */ new Set();
+function readPerfEnabled() {
+  try {
+    if (globalThis.__STAVE_PERF__ === true) {
+      return true;
+    }
+  } catch {
+  }
+  return safeLocalStorage2()?.getItem(PERF_ENABLED_STORAGE) === "1";
+}
+__name(readPerfEnabled, "readPerfEnabled");
+function getPerfEnabled() {
+  return readPerfEnabled();
+}
+__name(getPerfEnabled, "getPerfEnabled");
+function setPerfEnabled(on) {
+  try {
+    safeLocalStorage2()?.setItem(PERF_ENABLED_STORAGE, on ? "1" : "0");
+  } catch {
+  }
+  perf.setEnabled(on);
+  for (const cb of Array.from(perfEnabledListeners)) cb(on);
+}
+__name(setPerfEnabled, "setPerfEnabled");
+function togglePerfEnabled() {
+  const next = !readPerfEnabled();
+  setPerfEnabled(next);
+  return next;
+}
+__name(togglePerfEnabled, "togglePerfEnabled");
+function onPerfEnabledChange(cb) {
+  perfEnabledListeners.add(cb);
+  return () => {
+    perfEnabledListeners.delete(cb);
+  };
+}
+__name(onPerfEnabledChange, "onPerfEnabledChange");
+function applyPersistedPerfEnabled() {
+  perf.setEnabled(readPerfEnabled());
+}
+__name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
 
 // src/visualizers/renderers/P5VizRenderer.ts
 var p5PerfSeq = 0;
@@ -26883,6 +26925,7 @@ exports.WavEncoder = WavEncoder;
 exports.WorkspaceShell = WorkspaceShell;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;
 exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
+exports.applyPersistedPerfEnabled = applyPersistedPerfEnabled;
 exports.applyPersistedTheme = applyPersistedTheme;
 exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyTheme = applyTheme;
@@ -26951,6 +26994,7 @@ exports.getLogHistory = getLogHistory;
 exports.getModifiedFileIdsSinceHead = getModifiedFileIdsSinceHead;
 exports.getMusicalTimelineSubRowHeight = getMusicalTimelineSubRowHeight;
 exports.getNamedViz = getNamedViz;
+exports.getPerfEnabled = getPerfEnabled;
 exports.getPresetIdForFile = getPresetIdForFile;
 exports.getPreviewProviderForExtension = getPreviewProviderForExtension;
 exports.getPreviewProviderForLanguage = getPreviewProviderForLanguage;
@@ -27005,6 +27049,7 @@ exports.onBackdropQualityChange = onBackdropQualityChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
 exports.onMusicalTimelineSubRowHeightChange = onMusicalTimelineSubRowHeightChange;
 exports.onNamedVizChanged = onNamedVizChanged;
+exports.onPerfEnabledChange = onPerfEnabledChange;
 exports.onSignalAliasesChange = onSignalAliasesChange;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
@@ -27066,6 +27111,7 @@ exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
 exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
+exports.setPerfEnabled = setPerfEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setProjectBackgroundFileId = setProjectBackgroundFileId;
 exports.setSignalAliases = setSignalAliases;
@@ -27098,6 +27144,7 @@ exports.switchToBranch = switchToBranch;
 exports.timestretch = timestretch;
 exports.toStrudel = toStrudel;
 exports.toggleEditorMinimap = toggleEditorMinimap;
+exports.togglePerfEnabled = togglePerfEnabled;
 exports.touchProject = touchProject;
 exports.transpose = transpose;
 exports.undo = undo;
