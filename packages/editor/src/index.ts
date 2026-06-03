@@ -97,7 +97,18 @@ export type {
   AudioReading,
   BusAnalyser,
 } from './visualizers/signals/SignalBus'
-export { ALIAS_MAP } from './visualizers/signals/aliasMap'
+export {
+  ALIAS_MAP,
+  BUILTIN_ALIASES,
+  DEFAULT_VIZ_ENGINE,
+  resolveAliasesForEngine,
+} from './visualizers/signals/aliasMap'
+export type {
+  VizEngine,
+  EngineAliasValue,
+  EngineAliasMap,
+  StoredSignalAliases,
+} from './visualizers/signals/aliasMap'
 
 // Visualizers — editor internals (advanced use)
 export { SplitPane } from './visualizers/editor/SplitPane'
@@ -208,6 +219,10 @@ export {
   getBackdropOpacity,
   setBackdropOpacity,
   onBackdropOpacityChange,
+  getSignalAliases,
+  getStoredSignalAliases,
+  setSignalAliases,
+  onSignalAliasesChange,
   getEditorTheme,
   getResolvedTheme,
   setEditorTheme,
@@ -215,7 +230,7 @@ export {
   onThemeChange,
   applyPersistedTheme,
 } from './workspace/editorRegistry'
-export type { EditorTheme, ResolvedTheme } from './workspace/editorRegistry'
+export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,
   listSnapshots,

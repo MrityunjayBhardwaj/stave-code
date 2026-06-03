@@ -10,6 +10,13 @@
  * symbol" lands wherever the editor is currently focused).
  */
 
+import { DEFAULT_VIZ_ENGINE } from '../visualizers/signals/aliasMap'
+import type {
+  VizEngine,
+  EngineAliasMap,
+  StoredSignalAliases,
+} from '../visualizers/signals/aliasMap'
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -347,6 +354,159 @@ export function onBackdropOpacityChange(
 ): () => void {
   backdropOpacityListeners.add(cb)
   return () => { backdropOpacityListeners.delete(cb) }
+}
+
+// ── Signal aliases (custom bare-name → sound(s) map) Phase 21 ───────
+// The ONLY JSON/object-valued setting. Persisted ENGINE-KEYED so one alias
+// NAME can carry per-engine sound lists (`kick → { strudel:['bd'],
+// sonicpi:['drum_heavy_kick'] }`) — the engine dimension is absorbed HERE
+// (storage) and in the aliasMap resolver, NOT in the bus, which stays pure and
+// only ever sees a flat `name → value` map for one engine (PV12). See
+// aliasMap.ts for why a sound's identity is a string in every engine.
+//
+// Two SHAPE GUARDS on read: (1) a corrupt/non-JSON value MUST NOT throw, and
+// (2) a malformed entry MUST NOT leak — the flattened map is pushed straight
+// into the SignalBus/renderers, which would crash bare-name resolution at draw
+// time on a bad value. A LEGACY FLAT stored map (`{ kick:'bd' }`, the pre-
+// engine-keyed shape) is migrated on read to `{ kick:{ strudel:'bd' } }` so no
+// destructive localStorage migration is ever needed.
+
+/** The flat per-engine view the bus consumes and the settings UI edits. */
+export type SignalAliasMap = Record<string, string | string[]>
+const DEFAULT_STORED_ALIASES: StoredSignalAliases = {}
+const SIGNAL_ALIASES_STORAGE = 'stave:signalAliases'
+// Listeners receive the FLAT view for the engine that was set (the active
+// engine on a UI edit) — the shape a live-remount consumer wants. The raw
+// engine-keyed map is available via getStoredSignalAliases().
+const signalAliasesListeners = new Set<(map: SignalAliasMap) => void>()
+
+/** True iff `v` is a non-empty string. */
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0
+}
+
+/** Sanitize one alias value → a non-empty string or a non-empty array of
+ *  non-empty strings, else null (the caller drops null). */
+function sanitizeAliasValue(v: unknown): string | string[] | null {
+  if (isNonEmptyString(v)) return v
+  if (Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString)) {
+    return v as string[]
+  }
+  return null
+}
+
+/** Validate + MIGRATE a parsed alias map to the engine-keyed shape. Accepts
+ *  either the LEGACY FLAT shape (`{ kick:'bd' }` → `{ kick:{ strudel:'bd' } }`)
+ *  or the ENGINE-KEYED shape (kept, each slot sanitized). Engine keys are NOT
+ *  allow-listed — any key with a valid value is kept, so a future engine
+ *  survives a round-trip through an older build. Everything malformed is
+ *  silently dropped. Returns a fresh object (never mutates input). */
+function sanitizeStoredSignalAliases(raw: unknown): StoredSignalAliases {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: StoredSignalAliases = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isNonEmptyString(key)) continue
+    // Legacy flat value (string | string[]) → wrap under the default engine.
+    const legacy = sanitizeAliasValue(value)
+    if (legacy != null) {
+      out[key] = { [DEFAULT_VIZ_ENGINE]: legacy }
+      continue
+    }
+    // Engine-keyed object → sanitize each engine slot.
+    if (value != null && typeof value === 'object' && !Array.isArray(value)) {
+      const slot: EngineAliasMap = {}
+      for (const [eng, ev] of Object.entries(value as Record<string, unknown>)) {
+        if (!isNonEmptyString(eng)) continue
+        const sv = sanitizeAliasValue(ev)
+        if (sv != null) slot[eng as VizEngine] = sv
+      }
+      if (Object.keys(slot).length > 0) out[key] = slot
+    }
+    // anything else (number, null, empty) is silently dropped.
+  }
+  return out
+}
+
+function readStoredSignalAliases(): StoredSignalAliases {
+  const ls = safeLocalStorage()
+  if (!ls) return { ...DEFAULT_STORED_ALIASES }
+  try {
+    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE)
+    if (saved == null) return { ...DEFAULT_STORED_ALIASES }
+    return sanitizeStoredSignalAliases(JSON.parse(saved))
+  } catch {
+    // Corrupt / non-JSON value — never let it propagate.
+    return { ...DEFAULT_STORED_ALIASES }
+  }
+}
+
+function writeStoredSignalAliases(map: StoredSignalAliases): void {
+  try {
+    safeLocalStorage()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map))
+  } catch {
+    /* quota / serialization failure — non-fatal, in-memory listeners still fire */
+  }
+}
+
+/** Flatten the stored engine-keyed map to the per-engine `name → value` view. */
+function flattenForEngine(
+  stored: StoredSignalAliases,
+  engine: VizEngine,
+): SignalAliasMap {
+  const out: SignalAliasMap = {}
+  for (const [name, slot] of Object.entries(stored)) {
+    const v = slot[engine]
+    if (v != null) out[name] = v
+  }
+  return out
+}
+
+/** The raw engine-keyed custom-alias map (sanitized + migrated). Source of
+ *  truth for the renderer's `resolveAliasesForEngine` and any future
+ *  multi-engine settings UI. */
+export function getStoredSignalAliases(): StoredSignalAliases {
+  return readStoredSignalAliases()
+}
+
+/** Custom signal aliases for ONE engine (default: the active engine, Strudel),
+ *  as the flat `name → value` view the settings UI edits. Built-ins are NOT
+ *  included — custom map only. */
+export function getSignalAliases(
+  engine: VizEngine = DEFAULT_VIZ_ENGINE,
+): SignalAliasMap {
+  return flattenForEngine(readStoredSignalAliases(), engine)
+}
+
+/** Replace the custom aliases for ONE engine (default: active/Strudel) from the
+ *  flat `name → value` view, persist, and notify. Surviving names KEEP their
+ *  other engines' slots (editing the Strudel column never wipes a Sonic Pi one);
+ *  names absent from `map` are removed. The values are sanitized so a bad caller
+ *  can't poison storage. */
+export function setSignalAliases(
+  map: SignalAliasMap,
+  engine: VizEngine = DEFAULT_VIZ_ENGINE,
+): void {
+  const prev = readStoredSignalAliases()
+  const next: StoredSignalAliases = {}
+  for (const [name, value] of Object.entries(map)) {
+    if (!isNonEmptyString(name)) continue
+    const sv = sanitizeAliasValue(value)
+    if (sv == null) continue
+    next[name] = { ...(prev[name] ?? {}), [engine]: sv }
+  }
+  writeStoredSignalAliases(next)
+  const flat = flattenForEngine(next, engine)
+  for (const cb of Array.from(signalAliasesListeners)) cb(flat)
+}
+
+/** Subscribe to alias-map changes (fires on every setSignalAliases). The
+ *  callback receives the FLAT view for the engine that was set. Returns an
+ *  unsubscribe. */
+export function onSignalAliasesChange(
+  cb: (map: SignalAliasMap) => void,
+): () => void {
+  signalAliasesListeners.add(cb)
+  return () => { signalAliasesListeners.delete(cb) }
 }
 
 // ── Backdrop quality ladder (Full / Half / Quarter) #41 ─────────────

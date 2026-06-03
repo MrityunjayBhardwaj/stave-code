@@ -4575,15 +4575,36 @@ function setCurrentP5Source(source, lineOffset = 0) {
 __name(setCurrentP5Source, "setCurrentP5Source");
 
 // src/visualizers/signals/aliasMap.ts
-var ALIAS_MAP = {
-  uKick: "bd",
-  uSnare: "sd",
-  uHat: "hh",
-  uOpenHat: "oh",
-  uClap: "cp",
-  uRim: "rim",
-  uTom: ["lt", "mt", "ht"]
+var DEFAULT_VIZ_ENGINE = "strudel";
+var BUILTIN_ALIASES = {
+  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
+  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
+  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
+  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
+  uClap: { strudel: "cp" },
+  uRim: { strudel: "rim" },
+  uTom: {
+    strudel: ["lt", "mt", "ht"],
+    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
+  }
 };
+function resolveAliasesForEngine(custom, engine) {
+  const out = {};
+  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  for (const [name, slots] of Object.entries(custom)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(resolveAliasesForEngine, "resolveAliasesForEngine");
+var ALIAS_MAP = resolveAliasesForEngine(
+  {},
+  DEFAULT_VIZ_ENGINE
+);
 
 // src/visualizers/signals/SignalBus.ts
 var ZERO_AUDIO = {
@@ -4646,6 +4667,16 @@ var _SignalBus = class _SignalBus {
   bindAnalysers(master, trackAnalysers) {
     this.masterAnalyser = master ?? null;
     this.trackAnalysers = trackAnalysers ?? /* @__PURE__ */ new Map();
+  }
+  /** Replace the active alias map in place (mirror `bindScheduler`'s mutable
+   *  rebind). The RENDERER builds the merged map — `{ ...ALIAS_MAP, ...custom }`
+   *  with custom WINNING on collision — and pushes it here at mount. The bus
+   *  stays PURE (P12): it does NOT import `getSignalAliases`; it only stores the
+   *  numbers/maps it is handed. `envValue`/`resolveSounds` resolve ANY key
+   *  through this map, so a freshly-set custom alias resolves with no other
+   *  change. */
+  setAliases(map) {
+    this.aliasMap = map;
   }
   // ── .env feed (envelope: bump + decay) ──────────────────────────────────
   /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
@@ -4896,6 +4927,513 @@ function meanSlice(arr, from, to) {
 }
 __name(meanSlice, "meanSlice");
 
+// src/workspace/editorRegistry.ts
+var editors = /* @__PURE__ */ new Map();
+var monacoNs = null;
+function registerMonacoNamespace(monaco) {
+  if (!monacoNs) monacoNs = monaco;
+}
+__name(registerMonacoNamespace, "registerMonacoNamespace");
+function getMonacoNamespace() {
+  return monacoNs;
+}
+__name(getMonacoNamespace, "getMonacoNamespace");
+function registerEditor(fileId, editor) {
+  editors.set(fileId, editor);
+}
+__name(registerEditor, "registerEditor");
+function unregisterEditor(fileId, editor) {
+  if (editors.get(fileId) === editor) editors.delete(fileId);
+}
+__name(unregisterEditor, "unregisterEditor");
+function getEditorForFile(fileId) {
+  return editors.get(fileId);
+}
+__name(getEditorForFile, "getEditorForFile");
+function revealLineInFile(fileId, line) {
+  const editor = editors.get(fileId);
+  if (!editor) return false;
+  try {
+    editor.revealLineInCenter?.(line);
+    editor.setPosition?.({ lineNumber: line, column: 1 });
+    editor.focus?.();
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(revealLineInFile, "revealLineInFile");
+var DEFAULT_FONT_SIZE = 14;
+var FONT_SIZE_STORAGE = "stave:editorFontSize";
+var MINIMAP_STORAGE = "stave:editorMinimap";
+var DEFAULT_UI_ICON_SIZE = 25;
+var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
+var UI_ICON_SIZE_VAR = "--ui-icon-size";
+var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
+var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
+var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
+function safeLocalStorage2() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage2, "safeLocalStorage");
+function readFontSize() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_FONT_SIZE;
+  const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
+}
+__name(readFontSize, "readFontSize");
+function readMinimap() {
+  const ls = safeLocalStorage2();
+  return ls?.getItem(MINIMAP_STORAGE) === "1";
+}
+__name(readMinimap, "readMinimap");
+function writeFontSize(size) {
+  safeLocalStorage2()?.setItem(FONT_SIZE_STORAGE, String(size));
+}
+__name(writeFontSize, "writeFontSize");
+function writeMinimap(on) {
+  safeLocalStorage2()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
+}
+__name(writeMinimap, "writeMinimap");
+function applyOptionsToEditor(editor) {
+  const fontSize = readFontSize();
+  const minimap = readMinimap();
+  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
+}
+__name(applyOptionsToEditor, "applyOptionsToEditor");
+function getEditorFontSize() {
+  return readFontSize();
+}
+__name(getEditorFontSize, "getEditorFontSize");
+function getEditorMinimap() {
+  return readMinimap();
+}
+__name(getEditorMinimap, "getEditorMinimap");
+function setEditorFontSize(size) {
+  const clamped = Math.max(8, Math.min(40, Math.round(size)));
+  writeFontSize(clamped);
+  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
+}
+__name(setEditorFontSize, "setEditorFontSize");
+function bumpEditorFontSize(delta) {
+  setEditorFontSize(readFontSize() + delta);
+}
+__name(bumpEditorFontSize, "bumpEditorFontSize");
+function toggleEditorMinimap() {
+  const next = !readMinimap();
+  writeMinimap(next);
+  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
+}
+__name(toggleEditorMinimap, "toggleEditorMinimap");
+var uiIconSizeListeners = /* @__PURE__ */ new Set();
+function readUiIconSize() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_UI_ICON_SIZE;
+  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
+}
+__name(readUiIconSize, "readUiIconSize");
+function writeUiIconSize(size) {
+  safeLocalStorage2()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
+}
+__name(writeUiIconSize, "writeUiIconSize");
+function applyUiIconSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
+}
+__name(applyUiIconSizeVar, "applyUiIconSizeVar");
+function getEditorUiIconSize() {
+  return readUiIconSize();
+}
+__name(getEditorUiIconSize, "getEditorUiIconSize");
+function setEditorUiIconSize(size) {
+  const clamped = Math.max(10, Math.min(40, Math.round(size)));
+  writeUiIconSize(clamped);
+  applyUiIconSizeVar(clamped);
+  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
+}
+__name(setEditorUiIconSize, "setEditorUiIconSize");
+function onUiIconSizeChange(cb) {
+  uiIconSizeListeners.add(cb);
+  return () => {
+    uiIconSizeListeners.delete(cb);
+  };
+}
+__name(onUiIconSizeChange, "onUiIconSizeChange");
+function applyPersistedUiIconSize() {
+  applyUiIconSizeVar(readUiIconSize());
+}
+__name(applyPersistedUiIconSize, "applyPersistedUiIconSize");
+var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
+function readInlineVizActionSize() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
+  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
+}
+__name(readInlineVizActionSize, "readInlineVizActionSize");
+function writeInlineVizActionSize(size) {
+  safeLocalStorage2()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
+}
+__name(writeInlineVizActionSize, "writeInlineVizActionSize");
+function applyInlineVizActionSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    INLINE_VIZ_ACTION_SIZE_VAR,
+    `${size}px`
+  );
+}
+__name(applyInlineVizActionSizeVar, "applyInlineVizActionSizeVar");
+function getInlineVizActionSize() {
+  return readInlineVizActionSize();
+}
+__name(getInlineVizActionSize, "getInlineVizActionSize");
+function setInlineVizActionSize(size) {
+  const clamped = Math.max(8, Math.min(28, Math.round(size)));
+  writeInlineVizActionSize(clamped);
+  applyInlineVizActionSizeVar(clamped);
+  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
+}
+__name(setInlineVizActionSize, "setInlineVizActionSize");
+function onInlineVizActionSizeChange(cb) {
+  inlineVizActionSizeListeners.add(cb);
+  return () => {
+    inlineVizActionSizeListeners.delete(cb);
+  };
+}
+__name(onInlineVizActionSizeChange, "onInlineVizActionSizeChange");
+function applyPersistedInlineVizActionSize() {
+  applyInlineVizActionSizeVar(readInlineVizActionSize());
+}
+__name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
+var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
+var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
+function readMusicalTimelineSubRowHeight() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
+  const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
+  return Number.isFinite(saved) && saved >= 12 && saved <= 48 ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
+}
+__name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
+function writeMusicalTimelineSubRowHeight(h) {
+  safeLocalStorage2()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
+}
+__name(writeMusicalTimelineSubRowHeight, "writeMusicalTimelineSubRowHeight");
+function getMusicalTimelineSubRowHeight() {
+  return readMusicalTimelineSubRowHeight();
+}
+__name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
+function setMusicalTimelineSubRowHeight(h) {
+  const clamped = Math.max(12, Math.min(48, Math.round(h)));
+  writeMusicalTimelineSubRowHeight(clamped);
+  for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
+}
+__name(setMusicalTimelineSubRowHeight, "setMusicalTimelineSubRowHeight");
+function onMusicalTimelineSubRowHeightChange(cb) {
+  musicalTimelineSubRowHeightListeners.add(cb);
+  return () => {
+    musicalTimelineSubRowHeightListeners.delete(cb);
+  };
+}
+__name(onMusicalTimelineSubRowHeightChange, "onMusicalTimelineSubRowHeightChange");
+var DEFAULT_BACKDROP_BLUR = 8;
+var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
+var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
+function readBackdropBlur() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_BACKDROP_BLUR;
+  const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE));
+  return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
+}
+__name(readBackdropBlur, "readBackdropBlur");
+function writeBackdropBlur(size) {
+  safeLocalStorage2()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
+}
+__name(writeBackdropBlur, "writeBackdropBlur");
+function applyBackdropBlurVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    BACKDROP_BLUR_VAR,
+    `${size}px`
+  );
+}
+__name(applyBackdropBlurVar, "applyBackdropBlurVar");
+function getEditorBackdropBlur() {
+  return readBackdropBlur();
+}
+__name(getEditorBackdropBlur, "getEditorBackdropBlur");
+function setEditorBackdropBlur(size) {
+  const clamped = Math.max(0, Math.min(40, Math.round(size)));
+  writeBackdropBlur(clamped);
+  applyBackdropBlurVar(clamped);
+}
+__name(setEditorBackdropBlur, "setEditorBackdropBlur");
+function applyPersistedBackdropBlur() {
+  applyBackdropBlurVar(readBackdropBlur());
+}
+__name(applyPersistedBackdropBlur, "applyPersistedBackdropBlur");
+var DEFAULT_BACKDROP_OPACITY = 1;
+var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
+var backdropOpacityListeners = /* @__PURE__ */ new Set();
+function readBackdropOpacity() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_BACKDROP_OPACITY;
+  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
+}
+__name(readBackdropOpacity, "readBackdropOpacity");
+function writeBackdropOpacity(o) {
+  safeLocalStorage2()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
+}
+__name(writeBackdropOpacity, "writeBackdropOpacity");
+function getBackdropOpacity() {
+  return readBackdropOpacity();
+}
+__name(getBackdropOpacity, "getBackdropOpacity");
+function setBackdropOpacity(o) {
+  const clamped = Math.max(0, Math.min(1, o));
+  writeBackdropOpacity(clamped);
+  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
+}
+__name(setBackdropOpacity, "setBackdropOpacity");
+function onBackdropOpacityChange(cb) {
+  backdropOpacityListeners.add(cb);
+  return () => {
+    backdropOpacityListeners.delete(cb);
+  };
+}
+__name(onBackdropOpacityChange, "onBackdropOpacityChange");
+var DEFAULT_STORED_ALIASES = {};
+var SIGNAL_ALIASES_STORAGE = "stave:signalAliases";
+var signalAliasesListeners = /* @__PURE__ */ new Set();
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.length > 0;
+}
+__name(isNonEmptyString, "isNonEmptyString");
+function sanitizeAliasValue(v) {
+  if (isNonEmptyString(v)) return v;
+  if (Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString)) {
+    return v;
+  }
+  return null;
+}
+__name(sanitizeAliasValue, "sanitizeAliasValue");
+function sanitizeStoredSignalAliases(raw) {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isNonEmptyString(key)) continue;
+    const legacy = sanitizeAliasValue(value);
+    if (legacy != null) {
+      out[key] = { [DEFAULT_VIZ_ENGINE]: legacy };
+      continue;
+    }
+    if (value != null && typeof value === "object" && !Array.isArray(value)) {
+      const slot = {};
+      for (const [eng, ev] of Object.entries(value)) {
+        if (!isNonEmptyString(eng)) continue;
+        const sv = sanitizeAliasValue(ev);
+        if (sv != null) slot[eng] = sv;
+      }
+      if (Object.keys(slot).length > 0) out[key] = slot;
+    }
+  }
+  return out;
+}
+__name(sanitizeStoredSignalAliases, "sanitizeStoredSignalAliases");
+function readStoredSignalAliases() {
+  const ls = safeLocalStorage2();
+  if (!ls) return { ...DEFAULT_STORED_ALIASES };
+  try {
+    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE);
+    if (saved == null) return { ...DEFAULT_STORED_ALIASES };
+    return sanitizeStoredSignalAliases(JSON.parse(saved));
+  } catch {
+    return { ...DEFAULT_STORED_ALIASES };
+  }
+}
+__name(readStoredSignalAliases, "readStoredSignalAliases");
+function writeStoredSignalAliases(map) {
+  try {
+    safeLocalStorage2()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map));
+  } catch {
+  }
+}
+__name(writeStoredSignalAliases, "writeStoredSignalAliases");
+function flattenForEngine(stored, engine) {
+  const out = {};
+  for (const [name, slot] of Object.entries(stored)) {
+    const v = slot[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(flattenForEngine, "flattenForEngine");
+function getStoredSignalAliases() {
+  return readStoredSignalAliases();
+}
+__name(getStoredSignalAliases, "getStoredSignalAliases");
+function getSignalAliases(engine = DEFAULT_VIZ_ENGINE) {
+  return flattenForEngine(readStoredSignalAliases(), engine);
+}
+__name(getSignalAliases, "getSignalAliases");
+function setSignalAliases(map, engine = DEFAULT_VIZ_ENGINE) {
+  const prev = readStoredSignalAliases();
+  const next = {};
+  for (const [name, value] of Object.entries(map)) {
+    if (!isNonEmptyString(name)) continue;
+    const sv = sanitizeAliasValue(value);
+    if (sv == null) continue;
+    next[name] = { ...prev[name] ?? {}, [engine]: sv };
+  }
+  writeStoredSignalAliases(next);
+  const flat = flattenForEngine(next, engine);
+  for (const cb of Array.from(signalAliasesListeners)) cb(flat);
+}
+__name(setSignalAliases, "setSignalAliases");
+function onSignalAliasesChange(cb) {
+  signalAliasesListeners.add(cb);
+  return () => {
+    signalAliasesListeners.delete(cb);
+  };
+}
+__name(onSignalAliasesChange, "onSignalAliasesChange");
+var DEFAULT_BACKDROP_QUALITY = "half";
+var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
+var backdropQualityListeners = /* @__PURE__ */ new Set();
+function readBackdropQuality() {
+  const ls = safeLocalStorage2();
+  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
+  return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
+}
+__name(readBackdropQuality, "readBackdropQuality");
+function writeBackdropQuality(q) {
+  safeLocalStorage2()?.setItem(BACKDROP_QUALITY_STORAGE, q);
+}
+__name(writeBackdropQuality, "writeBackdropQuality");
+function getBackdropQuality() {
+  return readBackdropQuality();
+}
+__name(getBackdropQuality, "getBackdropQuality");
+function setBackdropQuality(q) {
+  writeBackdropQuality(q);
+  for (const cb of Array.from(backdropQualityListeners)) cb(q);
+}
+__name(setBackdropQuality, "setBackdropQuality");
+function onBackdropQualityChange(cb) {
+  backdropQualityListeners.add(cb);
+  return () => {
+    backdropQualityListeners.delete(cb);
+  };
+}
+__name(onBackdropQualityChange, "onBackdropQualityChange");
+function backdropQualityFactor(q) {
+  return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
+}
+__name(backdropQualityFactor, "backdropQualityFactor");
+function applyPersistedEditorOptions(editor) {
+  applyOptionsToEditor(editor);
+}
+__name(applyPersistedEditorOptions, "applyPersistedEditorOptions");
+var THEME_STORAGE = "stave:editorTheme";
+function readTheme() {
+  const ls = safeLocalStorage2();
+  const v = ls?.getItem(THEME_STORAGE);
+  return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
+}
+__name(readTheme, "readTheme");
+function writeTheme(t) {
+  safeLocalStorage2()?.setItem(THEME_STORAGE, t);
+}
+__name(writeTheme, "writeTheme");
+function systemPrefersLight() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-color-scheme: light)").matches;
+}
+__name(systemPrefersLight, "systemPrefersLight");
+function resolveTheme(t) {
+  if (t === "dark" || t === "light") return t;
+  return systemPrefersLight() ? "light" : "dark";
+}
+__name(resolveTheme, "resolveTheme");
+var themeListeners = /* @__PURE__ */ new Set();
+var systemMqlWired = false;
+var systemMql = null;
+function notifyThemeListeners(resolved) {
+  for (const fn of themeListeners) {
+    try {
+      fn(resolved);
+    } catch {
+    }
+  }
+}
+__name(notifyThemeListeners, "notifyThemeListeners");
+function wireSystemMqlOnce() {
+  if (systemMqlWired || typeof window === "undefined" || !window.matchMedia) return;
+  systemMqlWired = true;
+  systemMql = window.matchMedia("(prefers-color-scheme: light)");
+  const onChange = /* @__PURE__ */ __name(() => {
+    if (readTheme() !== "system") return;
+    applyResolvedTheme(resolveTheme("system"));
+  }, "onChange");
+  try {
+    systemMql.addEventListener("change", onChange);
+  } catch {
+    systemMql.addListener?.(onChange);
+  }
+}
+__name(wireSystemMqlOnce, "wireSystemMqlOnce");
+function applyResolvedTheme(resolved) {
+  if (monacoNs?.editor?.setTheme) {
+    monacoNs.editor.setTheme(resolved === "light" ? "stave-light" : "stave-dark");
+  }
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-stave-theme", resolved);
+  }
+  notifyThemeListeners(resolved);
+}
+__name(applyResolvedTheme, "applyResolvedTheme");
+function getEditorTheme() {
+  return readTheme();
+}
+__name(getEditorTheme, "getEditorTheme");
+function getResolvedTheme() {
+  return resolveTheme(readTheme());
+}
+__name(getResolvedTheme, "getResolvedTheme");
+function setEditorTheme(theme) {
+  writeTheme(theme);
+  wireSystemMqlOnce();
+  applyResolvedTheme(resolveTheme(theme));
+}
+__name(setEditorTheme, "setEditorTheme");
+function cycleEditorTheme() {
+  const next = readTheme() === "dark" ? "light" : readTheme() === "light" ? "system" : "dark";
+  setEditorTheme(next);
+  return next;
+}
+__name(cycleEditorTheme, "cycleEditorTheme");
+function onThemeChange(fn) {
+  themeListeners.add(fn);
+  return () => {
+    themeListeners.delete(fn);
+  };
+}
+__name(onThemeChange, "onThemeChange");
+function applyPersistedTheme() {
+  wireSystemMqlOnce();
+  setEditorTheme(readTheme());
+}
+__name(applyPersistedTheme, "applyPersistedTheme");
+
 // src/visualizers/renderers/P5VizRenderer.ts
 var _P5VizRenderer = class _P5VizRenderer {
   constructor(sketch) {
@@ -5012,6 +5550,23 @@ var _P5VizRenderer = class _P5VizRenderer {
         components.audio?.analyser,
         components.audio?.trackAnalysers
       );
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE
+      );
+      this.bus?.setAliases(mergedAliases);
+      const aliasBus = this.bus;
+      const uniforms = this.staveUniformsRef.current;
+      if (aliasBus && uniforms) {
+        for (const name of Object.keys(mergedAliases)) {
+          if (name in uniforms) continue;
+          Object.defineProperty(uniforms, name, {
+            get: /* @__PURE__ */ __name(() => aliasBus.envValue(name), "get"),
+            enumerable: true,
+            configurable: true
+          });
+        }
+      }
       const hapStream = components.streaming?.hapStream ?? null;
       if (hapStream && this.bus && typeof hapStream.on === "function") {
         this.busHapHandler = (e) => this.bus?.bump(e);
@@ -5343,6 +5898,18 @@ var _HydraVizRenderer = class _HydraVizRenderer {
         components.audio?.analyser,
         components.audio?.trackAnalysers
       );
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE
+      );
+      this.bus?.setAliases(mergedAliases);
+      const bus = this.bus;
+      if (bus) {
+        for (const name of Object.keys(mergedAliases)) {
+          if (name in this.staveBag) continue;
+          this.staveBag[name] = () => bus.envValue(name);
+        }
+      }
       if (this.hapStream && this.bus) {
         this.busHapHandler = (e) => this.bus?.bump(e);
         this.hapStream.on(this.busHapHandler);
@@ -10006,6 +10573,7 @@ function buildFullLifecycleBody(userCode) {
 __name(buildFullLifecycleBody, "buildFullLifecycleBody");
 var LEGACY_PREFIX = `
 with (p) {
+  with (staveUniforms) {
   return {
     setup: function () {
       createCanvas(p.windowWidth, p.windowHeight)
@@ -10034,6 +10602,7 @@ function buildLegacyBody(userCode) {
   return `${LEGACY_PREFIX}${userCode}
     },
     preload: undefined,
+  }
   }
 }
   `;
@@ -16642,418 +17211,6 @@ function useBreakpoints(editor, store, onResume) {
   return { clearAll };
 }
 __name(useBreakpoints, "useBreakpoints");
-
-// src/workspace/editorRegistry.ts
-var editors = /* @__PURE__ */ new Map();
-var monacoNs = null;
-function registerMonacoNamespace(monaco) {
-  if (!monacoNs) monacoNs = monaco;
-}
-__name(registerMonacoNamespace, "registerMonacoNamespace");
-function getMonacoNamespace() {
-  return monacoNs;
-}
-__name(getMonacoNamespace, "getMonacoNamespace");
-function registerEditor(fileId, editor) {
-  editors.set(fileId, editor);
-}
-__name(registerEditor, "registerEditor");
-function unregisterEditor(fileId, editor) {
-  if (editors.get(fileId) === editor) editors.delete(fileId);
-}
-__name(unregisterEditor, "unregisterEditor");
-function getEditorForFile(fileId) {
-  return editors.get(fileId);
-}
-__name(getEditorForFile, "getEditorForFile");
-function revealLineInFile(fileId, line) {
-  const editor = editors.get(fileId);
-  if (!editor) return false;
-  try {
-    editor.revealLineInCenter?.(line);
-    editor.setPosition?.({ lineNumber: line, column: 1 });
-    editor.focus?.();
-    return true;
-  } catch {
-    return false;
-  }
-}
-__name(revealLineInFile, "revealLineInFile");
-var DEFAULT_FONT_SIZE = 14;
-var FONT_SIZE_STORAGE = "stave:editorFontSize";
-var MINIMAP_STORAGE = "stave:editorMinimap";
-var DEFAULT_UI_ICON_SIZE = 25;
-var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
-var UI_ICON_SIZE_VAR = "--ui-icon-size";
-var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
-var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
-var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
-function safeLocalStorage2() {
-  try {
-    if (typeof window === "undefined") return null;
-    if (typeof window.localStorage?.getItem !== "function") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-__name(safeLocalStorage2, "safeLocalStorage");
-function readFontSize() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_FONT_SIZE;
-  const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
-}
-__name(readFontSize, "readFontSize");
-function readMinimap() {
-  const ls = safeLocalStorage2();
-  return ls?.getItem(MINIMAP_STORAGE) === "1";
-}
-__name(readMinimap, "readMinimap");
-function writeFontSize(size) {
-  safeLocalStorage2()?.setItem(FONT_SIZE_STORAGE, String(size));
-}
-__name(writeFontSize, "writeFontSize");
-function writeMinimap(on) {
-  safeLocalStorage2()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
-}
-__name(writeMinimap, "writeMinimap");
-function applyOptionsToEditor(editor) {
-  const fontSize = readFontSize();
-  const minimap = readMinimap();
-  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
-}
-__name(applyOptionsToEditor, "applyOptionsToEditor");
-function getEditorFontSize() {
-  return readFontSize();
-}
-__name(getEditorFontSize, "getEditorFontSize");
-function getEditorMinimap() {
-  return readMinimap();
-}
-__name(getEditorMinimap, "getEditorMinimap");
-function setEditorFontSize(size) {
-  const clamped = Math.max(8, Math.min(40, Math.round(size)));
-  writeFontSize(clamped);
-  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
-}
-__name(setEditorFontSize, "setEditorFontSize");
-function bumpEditorFontSize(delta) {
-  setEditorFontSize(readFontSize() + delta);
-}
-__name(bumpEditorFontSize, "bumpEditorFontSize");
-function toggleEditorMinimap() {
-  const next = !readMinimap();
-  writeMinimap(next);
-  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
-}
-__name(toggleEditorMinimap, "toggleEditorMinimap");
-var uiIconSizeListeners = /* @__PURE__ */ new Set();
-function readUiIconSize() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_UI_ICON_SIZE;
-  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
-}
-__name(readUiIconSize, "readUiIconSize");
-function writeUiIconSize(size) {
-  safeLocalStorage2()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
-}
-__name(writeUiIconSize, "writeUiIconSize");
-function applyUiIconSizeVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
-}
-__name(applyUiIconSizeVar, "applyUiIconSizeVar");
-function getEditorUiIconSize() {
-  return readUiIconSize();
-}
-__name(getEditorUiIconSize, "getEditorUiIconSize");
-function setEditorUiIconSize(size) {
-  const clamped = Math.max(10, Math.min(40, Math.round(size)));
-  writeUiIconSize(clamped);
-  applyUiIconSizeVar(clamped);
-  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
-}
-__name(setEditorUiIconSize, "setEditorUiIconSize");
-function onUiIconSizeChange(cb) {
-  uiIconSizeListeners.add(cb);
-  return () => {
-    uiIconSizeListeners.delete(cb);
-  };
-}
-__name(onUiIconSizeChange, "onUiIconSizeChange");
-function applyPersistedUiIconSize() {
-  applyUiIconSizeVar(readUiIconSize());
-}
-__name(applyPersistedUiIconSize, "applyPersistedUiIconSize");
-var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
-function readInlineVizActionSize() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
-  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
-}
-__name(readInlineVizActionSize, "readInlineVizActionSize");
-function writeInlineVizActionSize(size) {
-  safeLocalStorage2()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
-}
-__name(writeInlineVizActionSize, "writeInlineVizActionSize");
-function applyInlineVizActionSizeVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(
-    INLINE_VIZ_ACTION_SIZE_VAR,
-    `${size}px`
-  );
-}
-__name(applyInlineVizActionSizeVar, "applyInlineVizActionSizeVar");
-function getInlineVizActionSize() {
-  return readInlineVizActionSize();
-}
-__name(getInlineVizActionSize, "getInlineVizActionSize");
-function setInlineVizActionSize(size) {
-  const clamped = Math.max(8, Math.min(28, Math.round(size)));
-  writeInlineVizActionSize(clamped);
-  applyInlineVizActionSizeVar(clamped);
-  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
-}
-__name(setInlineVizActionSize, "setInlineVizActionSize");
-function onInlineVizActionSizeChange(cb) {
-  inlineVizActionSizeListeners.add(cb);
-  return () => {
-    inlineVizActionSizeListeners.delete(cb);
-  };
-}
-__name(onInlineVizActionSizeChange, "onInlineVizActionSizeChange");
-function applyPersistedInlineVizActionSize() {
-  applyInlineVizActionSizeVar(readInlineVizActionSize());
-}
-__name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
-var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
-var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
-var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
-function readMusicalTimelineSubRowHeight() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
-  const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
-  return Number.isFinite(saved) && saved >= 12 && saved <= 48 ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
-}
-__name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
-function writeMusicalTimelineSubRowHeight(h) {
-  safeLocalStorage2()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
-}
-__name(writeMusicalTimelineSubRowHeight, "writeMusicalTimelineSubRowHeight");
-function getMusicalTimelineSubRowHeight() {
-  return readMusicalTimelineSubRowHeight();
-}
-__name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
-function setMusicalTimelineSubRowHeight(h) {
-  const clamped = Math.max(12, Math.min(48, Math.round(h)));
-  writeMusicalTimelineSubRowHeight(clamped);
-  for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
-}
-__name(setMusicalTimelineSubRowHeight, "setMusicalTimelineSubRowHeight");
-function onMusicalTimelineSubRowHeightChange(cb) {
-  musicalTimelineSubRowHeightListeners.add(cb);
-  return () => {
-    musicalTimelineSubRowHeightListeners.delete(cb);
-  };
-}
-__name(onMusicalTimelineSubRowHeightChange, "onMusicalTimelineSubRowHeightChange");
-var DEFAULT_BACKDROP_BLUR = 8;
-var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
-var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
-function readBackdropBlur() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_BACKDROP_BLUR;
-  const saved = Number(ls.getItem(BACKDROP_BLUR_STORAGE));
-  return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
-}
-__name(readBackdropBlur, "readBackdropBlur");
-function writeBackdropBlur(size) {
-  safeLocalStorage2()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
-}
-__name(writeBackdropBlur, "writeBackdropBlur");
-function applyBackdropBlurVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(
-    BACKDROP_BLUR_VAR,
-    `${size}px`
-  );
-}
-__name(applyBackdropBlurVar, "applyBackdropBlurVar");
-function getEditorBackdropBlur() {
-  return readBackdropBlur();
-}
-__name(getEditorBackdropBlur, "getEditorBackdropBlur");
-function setEditorBackdropBlur(size) {
-  const clamped = Math.max(0, Math.min(40, Math.round(size)));
-  writeBackdropBlur(clamped);
-  applyBackdropBlurVar(clamped);
-}
-__name(setEditorBackdropBlur, "setEditorBackdropBlur");
-function applyPersistedBackdropBlur() {
-  applyBackdropBlurVar(readBackdropBlur());
-}
-__name(applyPersistedBackdropBlur, "applyPersistedBackdropBlur");
-var DEFAULT_BACKDROP_OPACITY = 1;
-var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
-var backdropOpacityListeners = /* @__PURE__ */ new Set();
-function readBackdropOpacity() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_BACKDROP_OPACITY;
-  const saved = Number(ls.getItem(BACKDROP_OPACITY_STORAGE));
-  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
-}
-__name(readBackdropOpacity, "readBackdropOpacity");
-function writeBackdropOpacity(o) {
-  safeLocalStorage2()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
-}
-__name(writeBackdropOpacity, "writeBackdropOpacity");
-function getBackdropOpacity() {
-  return readBackdropOpacity();
-}
-__name(getBackdropOpacity, "getBackdropOpacity");
-function setBackdropOpacity(o) {
-  const clamped = Math.max(0, Math.min(1, o));
-  writeBackdropOpacity(clamped);
-  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
-}
-__name(setBackdropOpacity, "setBackdropOpacity");
-function onBackdropOpacityChange(cb) {
-  backdropOpacityListeners.add(cb);
-  return () => {
-    backdropOpacityListeners.delete(cb);
-  };
-}
-__name(onBackdropOpacityChange, "onBackdropOpacityChange");
-var DEFAULT_BACKDROP_QUALITY = "half";
-var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
-var backdropQualityListeners = /* @__PURE__ */ new Set();
-function readBackdropQuality() {
-  const ls = safeLocalStorage2();
-  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
-  return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
-}
-__name(readBackdropQuality, "readBackdropQuality");
-function writeBackdropQuality(q) {
-  safeLocalStorage2()?.setItem(BACKDROP_QUALITY_STORAGE, q);
-}
-__name(writeBackdropQuality, "writeBackdropQuality");
-function getBackdropQuality() {
-  return readBackdropQuality();
-}
-__name(getBackdropQuality, "getBackdropQuality");
-function setBackdropQuality(q) {
-  writeBackdropQuality(q);
-  for (const cb of Array.from(backdropQualityListeners)) cb(q);
-}
-__name(setBackdropQuality, "setBackdropQuality");
-function onBackdropQualityChange(cb) {
-  backdropQualityListeners.add(cb);
-  return () => {
-    backdropQualityListeners.delete(cb);
-  };
-}
-__name(onBackdropQualityChange, "onBackdropQualityChange");
-function backdropQualityFactor(q) {
-  return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
-}
-__name(backdropQualityFactor, "backdropQualityFactor");
-function applyPersistedEditorOptions(editor) {
-  applyOptionsToEditor(editor);
-}
-__name(applyPersistedEditorOptions, "applyPersistedEditorOptions");
-var THEME_STORAGE = "stave:editorTheme";
-function readTheme() {
-  const ls = safeLocalStorage2();
-  const v = ls?.getItem(THEME_STORAGE);
-  return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
-}
-__name(readTheme, "readTheme");
-function writeTheme(t) {
-  safeLocalStorage2()?.setItem(THEME_STORAGE, t);
-}
-__name(writeTheme, "writeTheme");
-function systemPrefersLight() {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-color-scheme: light)").matches;
-}
-__name(systemPrefersLight, "systemPrefersLight");
-function resolveTheme(t) {
-  if (t === "dark" || t === "light") return t;
-  return systemPrefersLight() ? "light" : "dark";
-}
-__name(resolveTheme, "resolveTheme");
-var themeListeners = /* @__PURE__ */ new Set();
-var systemMqlWired = false;
-var systemMql = null;
-function notifyThemeListeners(resolved) {
-  for (const fn of themeListeners) {
-    try {
-      fn(resolved);
-    } catch {
-    }
-  }
-}
-__name(notifyThemeListeners, "notifyThemeListeners");
-function wireSystemMqlOnce() {
-  if (systemMqlWired || typeof window === "undefined" || !window.matchMedia) return;
-  systemMqlWired = true;
-  systemMql = window.matchMedia("(prefers-color-scheme: light)");
-  const onChange = /* @__PURE__ */ __name(() => {
-    if (readTheme() !== "system") return;
-    applyResolvedTheme(resolveTheme("system"));
-  }, "onChange");
-  try {
-    systemMql.addEventListener("change", onChange);
-  } catch {
-    systemMql.addListener?.(onChange);
-  }
-}
-__name(wireSystemMqlOnce, "wireSystemMqlOnce");
-function applyResolvedTheme(resolved) {
-  if (monacoNs?.editor?.setTheme) {
-    monacoNs.editor.setTheme(resolved === "light" ? "stave-light" : "stave-dark");
-  }
-  if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-stave-theme", resolved);
-  }
-  notifyThemeListeners(resolved);
-}
-__name(applyResolvedTheme, "applyResolvedTheme");
-function getEditorTheme() {
-  return readTheme();
-}
-__name(getEditorTheme, "getEditorTheme");
-function getResolvedTheme() {
-  return resolveTheme(readTheme());
-}
-__name(getResolvedTheme, "getResolvedTheme");
-function setEditorTheme(theme) {
-  writeTheme(theme);
-  wireSystemMqlOnce();
-  applyResolvedTheme(resolveTheme(theme));
-}
-__name(setEditorTheme, "setEditorTheme");
-function cycleEditorTheme() {
-  const next = readTheme() === "dark" ? "light" : readTheme() === "light" ? "system" : "dark";
-  setEditorTheme(next);
-  return next;
-}
-__name(cycleEditorTheme, "cycleEditorTheme");
-function onThemeChange(fn) {
-  themeListeners.add(fn);
-  return () => {
-    themeListeners.delete(fn);
-  };
-}
-__name(onThemeChange, "onThemeChange");
-function applyPersistedTheme() {
-  wireSystemMqlOnce();
-  setEditorTheme(readTheme());
-}
-__name(applyPersistedTheme, "applyPersistedTheme");
 
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
@@ -26351,6 +26508,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

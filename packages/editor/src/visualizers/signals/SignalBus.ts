@@ -127,7 +127,12 @@ export class SignalBus {
   /** Last-bumped color per sound — the `.color` fallback feed. */
   private readonly colorMap = new Map<string, string | null>()
   private readonly decay: number
-  private readonly aliasMap: Record<string, string | string[]>
+  /** Active alias map (built-ins + any merged custom). NOT `readonly` — the
+   *  renderer pushes the merged map in via `setAliases` at mount, mirroring the
+   *  in-place rebind discipline of `bindScheduler`/`bindAnalysers`. The bus
+   *  stays PURE (P12): it NEVER reads the editorRegistry settings surface — the
+   *  renderer reads the impure settings and pushes the map down. */
+  private aliasMap: Record<string, string | string[]>
 
   /** Live refs — mutable so `bindScheduler()` rebinds in place
    *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
@@ -184,6 +189,17 @@ export class SignalBus {
   ): void {
     this.masterAnalyser = master ?? null
     this.trackAnalysers = trackAnalysers ?? new Map()
+  }
+
+  /** Replace the active alias map in place (mirror `bindScheduler`'s mutable
+   *  rebind). The RENDERER builds the merged map — `{ ...ALIAS_MAP, ...custom }`
+   *  with custom WINNING on collision — and pushes it here at mount. The bus
+   *  stays PURE (P12): it does NOT import `getSignalAliases`; it only stores the
+   *  numbers/maps it is handed. `envValue`/`resolveSounds` resolve ANY key
+   *  through this map, so a freshly-set custom alias resolves with no other
+   *  change. */
+  setAliases(map: Record<string, string | string[]>): void {
+    this.aliasMap = map
   }
 
   // ── .env feed (envelope: bump + decay) ──────────────────────────────────
