@@ -4694,6 +4694,190 @@ function setVizConfig(config) {
 }
 __name(setVizConfig, "setVizConfig");
 
+// src/visualizers/signals/aliasMap.ts
+var ALIAS_MAP = {
+  uKick: "bd",
+  uSnare: "sd",
+  uHat: "hh",
+  uOpenHat: "oh",
+  uClap: "cp",
+  uRim: "rim",
+  uTom: ["lt", "mt", "ht"]
+};
+
+// src/visualizers/signals/SignalBus.ts
+var EPSILON = 1e-3;
+var DEFAULT_DECAY = 0.92;
+var _SignalBus = class _SignalBus {
+  constructor(aliasMap = ALIAS_MAP) {
+    /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
+    this.envMap = /* @__PURE__ */ new Map();
+    /** Last-bumped color per sound — the `.color` fallback feed. */
+    this.colorMap = /* @__PURE__ */ new Map();
+    /** Live refs — mutable so `bindScheduler()` rebinds in place
+     *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
+    this.scheduler = null;
+    this.trackSchedulers = /* @__PURE__ */ new Map();
+    /** Per-frame snapshot of active events from the combined scheduler feed
+     *  (set by `refreshActive`). The instantaneous feed for `sound()`. */
+    this.activeEvents = [];
+    /** Per-frame snapshot of active events per track-key (scheduler key space). */
+    this.activeByTrack = /* @__PURE__ */ new Map();
+    /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
+    this.seenSounds = /* @__PURE__ */ new Set();
+    this.aliasMap = aliasMap;
+    this.decay = DEFAULT_DECAY;
+  }
+  /** Store live scheduler refs (mutable rebind — mirror the renderer's
+   *  in-place update discipline). Pass `null`/empty in demo mode. */
+  bindScheduler(scheduler, trackSchedulers) {
+    this.scheduler = scheduler ?? null;
+    this.trackSchedulers = trackSchedulers ?? /* @__PURE__ */ new Map();
+  }
+  // ── .env feed (envelope: bump + decay) ──────────────────────────────────
+  /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
+   *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
+   *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
+  bump(e) {
+    const sound = e.s;
+    if (sound == null) return;
+    const gain = Math.min(1, Math.max(0, e.hap?.value?.gain ?? 1));
+    const prev = this.envMap.get(sound) ?? 0;
+    this.envMap.set(sound, Math.min(1, prev + gain));
+    if (e.color != null) this.colorMap.set(sound, e.color);
+    else if (!this.colorMap.has(sound)) this.colorMap.set(sound, null);
+    this.seenSounds.add(sound);
+  }
+  /** Apply decay to every envelope entry. Call ONCE per frame, BEFORE
+   *  `refreshActive` (mirror `HapEnergyEnvelope.tick`, `:85-89`). */
+  tick() {
+    for (const [sound, level] of this.envMap) {
+      this.envMap.set(sound, level * this.decay);
+    }
+  }
+  // ── instantaneous feed (scheduler query-at-now) ─────────────────────────
+  /** Snapshot the active events at `now` from the combined scheduler and each
+   *  per-track scheduler. Call ONCE per frame, AFTER `tick()`. The window is
+   *  [now, now + ε) — the same tight window `H()` uses (`:175`). */
+  refreshActive(now2) {
+    const begin = now2;
+    const end = now2 + EPSILON;
+    this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
+    this.activeByTrack.clear();
+    for (const [key, sched] of this.trackSchedulers) {
+      this.activeByTrack.set(key, sched.query(begin, end));
+    }
+  }
+  /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
+  now() {
+    return this.scheduler ? this.scheduler.now() : 0;
+  }
+  // ── accessors ───────────────────────────────────────────────────────────
+  /** Resolve an alias OR a raw sound name to a list of concrete sound names.
+   *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
+  resolveSounds(soundOrAlias) {
+    const mapped = this.aliasMap[soundOrAlias];
+    if (mapped == null) return [soundOrAlias];
+    return Array.isArray(mapped) ? mapped : [mapped];
+  }
+  /** Decayed envelope level for a sound or alias. Array aliases (`uTom`)
+   *  resolve as MAX over members. Demo-mode / never-fired → 0. */
+  envValue(soundOrAlias) {
+    let max = 0;
+    for (const sound of this.resolveSounds(soundOrAlias)) {
+      const v = this.envMap.get(sound) ?? 0;
+      if (v > max) max = v;
+    }
+    return max;
+  }
+  /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
+  activeEventForSounds(sounds) {
+    const set = new Set(sounds);
+    for (const ev of this.activeEvents) {
+      if (ev.s != null && set.has(ev.s)) return ev;
+    }
+    return void 0;
+  }
+  /** Per-sound reading — merged across tracks via the combined active feed
+   *  (D-03). `.env` from the envelope; `.velocity`/`.note` from the active
+   *  IREvent (NOT the envelope — silent-zero trap §5); `.color` from the
+   *  active IREvent, falling back to the last-bumped hap color. */
+  sound(soundOrAlias) {
+    const sounds = this.resolveSounds(soundOrAlias);
+    const env = this.envValue(soundOrAlias);
+    const ev = this.activeEventForSounds(sounds);
+    return {
+      env,
+      velocity: ev?.velocity ?? 0,
+      note: ev?.note ?? null,
+      color: ev?.color ?? this.colorFallback(sounds)
+    };
+  }
+  /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
+  colorFallback(sounds) {
+    for (const sound of sounds) {
+      const c = this.colorMap.get(sound);
+      if (c != null) return c;
+    }
+    return null;
+  }
+  /** Per-track reading, keyed on the SCHEDULER key space (TRAP §5 —
+   *  `trackSchedulers.get(id)`, NOT IREvent.trackId). `.env` is the max env over
+   *  the sounds this track fired this frame; `.velocity`/`.note`/`.color` come
+   *  from the track's first active IREvent (scheduler feed). A `sound(s)`
+   *  sub-accessor reads a specific sound within the track. Unknown id → zeros. */
+  track(id) {
+    const events = this.activeByTrack.get(id) ?? [];
+    const first = events[0];
+    const trackSounds = events.map((e) => e.s).filter((s) => s != null);
+    let env = 0;
+    for (const s of trackSounds) {
+      const v = this.envMap.get(s) ?? 0;
+      if (v > env) env = v;
+    }
+    const soundIn = /* @__PURE__ */ __name((soundOrAlias) => {
+      const resolved = new Set(this.resolveSounds(soundOrAlias));
+      const ev = events.find((e) => e.s != null && resolved.has(e.s));
+      let sEnv = 0;
+      for (const s of this.resolveSounds(soundOrAlias)) {
+        const v = this.envMap.get(s) ?? 0;
+        if (v > sEnv) sEnv = v;
+      }
+      return {
+        env: sEnv,
+        velocity: ev?.velocity ?? 0,
+        note: ev?.note ?? null,
+        color: ev?.color ?? null
+      };
+    }, "soundIn");
+    return {
+      env,
+      velocity: first?.velocity ?? 0,
+      note: first?.note ?? null,
+      color: first?.color ?? null,
+      sound: soundIn
+    };
+  }
+  /** Enumerate the published track keys — the SCHEDULER key space
+   *  (`trackSchedulers.keys()`, §5), e.g. `['$0','$1']` or `['d1','drums']`. */
+  get tracks() {
+    return [...this.trackSchedulers.keys()];
+  }
+  /** Enumerate distinct sounds ever bumped through the envelope feed. */
+  get sounds() {
+    return [...this.seenSounds];
+  }
+  /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
+   *  requested; the raw `.note` preserves the user's name|number form). Returns
+   *  null for percussion sample names / unrecognized input. */
+  noteToMidi(note) {
+    if (note == null) return null;
+    return noteToMidi(note);
+  }
+};
+__name(_SignalBus, "SignalBus");
+var SignalBus = _SignalBus;
+
 // src/visualizers/renderers/HydraVizRenderer.ts
 var _HapEnergyEnvelope = class _HapEnergyEnvelope {
   constructor(numBins, decay = 0.92) {
@@ -4738,6 +4922,22 @@ var _HydraVizRenderer = class _HydraVizRenderer {
     this.envelope = null;
     this.hapHandler = null;
     this.useEnvelope = false;
+    /**
+     * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
+     * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
+     * (`.velocity`/`.note`/`.color`). Fed UNCONDITIONALLY — NOT analyser-gated
+     * like the envelope (BLOCK-1): the bus is IR-grounded and must stay live
+     * whenever a real analyser is published (which is normal playback), or
+     * `uKick` is dead in the headline use case.
+     */
+    this.bus = new SignalBus();
+    /**
+     * The bus's own HapStream subscription — SEPARATE from `hapHandler` (the
+     * analyser-fallback envelope handler) so `destroy()` can off it
+     * independently and unconditionally. The bus feed is never gated on
+     * `useEnvelope`.
+     */
+    this.busHapHandler = null;
     this.pumpAudio = /* @__PURE__ */ __name((now2) => {
       if (this.paused || this.destroyed) {
         this.rafId = null;
@@ -4764,6 +4964,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
           }
         }
       }
+      if (this.bus) {
+        this.bus.tick();
+        this.bus.refreshActive(this.bus.now());
+      }
       if (this.hydra && typeof this.hydra.tick === "function") {
         try {
           this.hydra.tick(now2 ?? performance.now());
@@ -4772,9 +4976,44 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       }
       this.rafId = requestAnimationFrame(this.pumpAudio);
     }, "pumpAudio");
+    const bus = this.bus;
+    const u = /* @__PURE__ */ __name(((sound) => ({
+      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color")
+    })), "u");
+    u.track = (id) => ({
+      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color")
+    });
+    Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+    Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
     const bag = {
       scheduler: null,
       tracks: /* @__PURE__ */ new Map(),
+      // ── Named signal thunks (D-01 hydra shape — `() => number`) ──────────
+      uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
+      uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
+      uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
+      uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
+      uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
+      uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
+      uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
+      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — it is the
+      // active event's velocity globally. Read the max velocity over every
+      // sound seen this frame; 0 when nothing is active.
+      uKeyVelocity: /* @__PURE__ */ __name(() => {
+        let max = 0;
+        for (const s of bus.sounds) {
+          const v = bus.sound(s).velocity;
+          if (v > max) max = v;
+        }
+        return max;
+      }, "uKeyVelocity"),
+      u,
       H: /* @__PURE__ */ __name((trackId, field = "gain") => {
         return () => {
           const sched = bag.tracks.get(trackId) ?? bag.scheduler;
@@ -4797,6 +5036,14 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.hapStream = components.streaming?.hapStream ?? null;
       this.staveBag.scheduler = components.queryable?.scheduler ?? null;
       this.staveBag.tracks = components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map();
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      );
+      if (this.hapStream && this.bus) {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        this.hapStream.on(this.busHapHandler);
+      }
       if (this.analyser) {
         this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
         this.useEnvelope = false;
@@ -4867,6 +5114,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
     }
     this.staveBag.scheduler = components.queryable?.scheduler ?? null;
     this.staveBag.tracks = components.queryable?.trackSchedulers ?? this.staveBag.tracks;
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers ?? this.staveBag.tracks
+    );
   }
   resize(w, h) {
     if (this.canvas) {
@@ -4898,6 +5149,11 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.hapStream.off(this.hapHandler);
       this.hapHandler = null;
     }
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.bus = null;
     this.canvas?.remove();
     this.canvas = null;
     this.hydra = null;
@@ -23388,190 +23644,6 @@ function compilePreset(preset) {
   throw new Error(`Unknown renderer: ${renderer}`);
 }
 __name(compilePreset, "compilePreset");
-
-// src/visualizers/signals/aliasMap.ts
-var ALIAS_MAP = {
-  uKick: "bd",
-  uSnare: "sd",
-  uHat: "hh",
-  uOpenHat: "oh",
-  uClap: "cp",
-  uRim: "rim",
-  uTom: ["lt", "mt", "ht"]
-};
-
-// src/visualizers/signals/SignalBus.ts
-var EPSILON = 1e-3;
-var DEFAULT_DECAY = 0.92;
-var _SignalBus = class _SignalBus {
-  constructor(aliasMap = ALIAS_MAP) {
-    /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
-    this.envMap = /* @__PURE__ */ new Map();
-    /** Last-bumped color per sound — the `.color` fallback feed. */
-    this.colorMap = /* @__PURE__ */ new Map();
-    /** Live refs — mutable so `bindScheduler()` rebinds in place
-     *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
-    this.scheduler = null;
-    this.trackSchedulers = /* @__PURE__ */ new Map();
-    /** Per-frame snapshot of active events from the combined scheduler feed
-     *  (set by `refreshActive`). The instantaneous feed for `sound()`. */
-    this.activeEvents = [];
-    /** Per-frame snapshot of active events per track-key (scheduler key space). */
-    this.activeByTrack = /* @__PURE__ */ new Map();
-    /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
-    this.seenSounds = /* @__PURE__ */ new Set();
-    this.aliasMap = aliasMap;
-    this.decay = DEFAULT_DECAY;
-  }
-  /** Store live scheduler refs (mutable rebind — mirror the renderer's
-   *  in-place update discipline). Pass `null`/empty in demo mode. */
-  bindScheduler(scheduler, trackSchedulers) {
-    this.scheduler = scheduler ?? null;
-    this.trackSchedulers = trackSchedulers ?? /* @__PURE__ */ new Map();
-  }
-  // ── .env feed (envelope: bump + decay) ──────────────────────────────────
-  /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
-   *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
-   *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
-  bump(e) {
-    const sound = e.s;
-    if (sound == null) return;
-    const gain = Math.min(1, Math.max(0, e.hap?.value?.gain ?? 1));
-    const prev = this.envMap.get(sound) ?? 0;
-    this.envMap.set(sound, Math.min(1, prev + gain));
-    if (e.color != null) this.colorMap.set(sound, e.color);
-    else if (!this.colorMap.has(sound)) this.colorMap.set(sound, null);
-    this.seenSounds.add(sound);
-  }
-  /** Apply decay to every envelope entry. Call ONCE per frame, BEFORE
-   *  `refreshActive` (mirror `HapEnergyEnvelope.tick`, `:85-89`). */
-  tick() {
-    for (const [sound, level] of this.envMap) {
-      this.envMap.set(sound, level * this.decay);
-    }
-  }
-  // ── instantaneous feed (scheduler query-at-now) ─────────────────────────
-  /** Snapshot the active events at `now` from the combined scheduler and each
-   *  per-track scheduler. Call ONCE per frame, AFTER `tick()`. The window is
-   *  [now, now + ε) — the same tight window `H()` uses (`:175`). */
-  refreshActive(now2) {
-    const begin = now2;
-    const end = now2 + EPSILON;
-    this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
-    this.activeByTrack.clear();
-    for (const [key, sched] of this.trackSchedulers) {
-      this.activeByTrack.set(key, sched.query(begin, end));
-    }
-  }
-  /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
-  now() {
-    return this.scheduler ? this.scheduler.now() : 0;
-  }
-  // ── accessors ───────────────────────────────────────────────────────────
-  /** Resolve an alias OR a raw sound name to a list of concrete sound names.
-   *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
-  resolveSounds(soundOrAlias) {
-    const mapped = this.aliasMap[soundOrAlias];
-    if (mapped == null) return [soundOrAlias];
-    return Array.isArray(mapped) ? mapped : [mapped];
-  }
-  /** Decayed envelope level for a sound or alias. Array aliases (`uTom`)
-   *  resolve as MAX over members. Demo-mode / never-fired → 0. */
-  envValue(soundOrAlias) {
-    let max = 0;
-    for (const sound of this.resolveSounds(soundOrAlias)) {
-      const v = this.envMap.get(sound) ?? 0;
-      if (v > max) max = v;
-    }
-    return max;
-  }
-  /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
-  activeEventForSounds(sounds) {
-    const set = new Set(sounds);
-    for (const ev of this.activeEvents) {
-      if (ev.s != null && set.has(ev.s)) return ev;
-    }
-    return void 0;
-  }
-  /** Per-sound reading — merged across tracks via the combined active feed
-   *  (D-03). `.env` from the envelope; `.velocity`/`.note` from the active
-   *  IREvent (NOT the envelope — silent-zero trap §5); `.color` from the
-   *  active IREvent, falling back to the last-bumped hap color. */
-  sound(soundOrAlias) {
-    const sounds = this.resolveSounds(soundOrAlias);
-    const env = this.envValue(soundOrAlias);
-    const ev = this.activeEventForSounds(sounds);
-    return {
-      env,
-      velocity: ev?.velocity ?? 0,
-      note: ev?.note ?? null,
-      color: ev?.color ?? this.colorFallback(sounds)
-    };
-  }
-  /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
-  colorFallback(sounds) {
-    for (const sound of sounds) {
-      const c = this.colorMap.get(sound);
-      if (c != null) return c;
-    }
-    return null;
-  }
-  /** Per-track reading, keyed on the SCHEDULER key space (TRAP §5 —
-   *  `trackSchedulers.get(id)`, NOT IREvent.trackId). `.env` is the max env over
-   *  the sounds this track fired this frame; `.velocity`/`.note`/`.color` come
-   *  from the track's first active IREvent (scheduler feed). A `sound(s)`
-   *  sub-accessor reads a specific sound within the track. Unknown id → zeros. */
-  track(id) {
-    const events = this.activeByTrack.get(id) ?? [];
-    const first = events[0];
-    const trackSounds = events.map((e) => e.s).filter((s) => s != null);
-    let env = 0;
-    for (const s of trackSounds) {
-      const v = this.envMap.get(s) ?? 0;
-      if (v > env) env = v;
-    }
-    const soundIn = /* @__PURE__ */ __name((soundOrAlias) => {
-      const resolved = new Set(this.resolveSounds(soundOrAlias));
-      const ev = events.find((e) => e.s != null && resolved.has(e.s));
-      let sEnv = 0;
-      for (const s of this.resolveSounds(soundOrAlias)) {
-        const v = this.envMap.get(s) ?? 0;
-        if (v > sEnv) sEnv = v;
-      }
-      return {
-        env: sEnv,
-        velocity: ev?.velocity ?? 0,
-        note: ev?.note ?? null,
-        color: ev?.color ?? null
-      };
-    }, "soundIn");
-    return {
-      env,
-      velocity: first?.velocity ?? 0,
-      note: first?.note ?? null,
-      color: first?.color ?? null,
-      sound: soundIn
-    };
-  }
-  /** Enumerate the published track keys — the SCHEDULER key space
-   *  (`trackSchedulers.keys()`, §5), e.g. `['$0','$1']` or `['d1','drums']`. */
-  get tracks() {
-    return [...this.trackSchedulers.keys()];
-  }
-  /** Enumerate distinct sounds ever bumped through the envelope feed. */
-  get sounds() {
-    return [...this.seenSounds];
-  }
-  /** Normalize a note to a MIDI number (P93 — only when a NUMBER is explicitly
-   *  requested; the raw `.note` preserves the user's name|number form). Returns
-   *  null for percussion sample names / unrecognized input. */
-  noteToMidi(note) {
-    if (note == null) return null;
-    return noteToMidi(note);
-  }
-};
-__name(_SignalBus, "SignalBus");
-var SignalBus = _SignalBus;
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
   const subscribe3 = useCallback(

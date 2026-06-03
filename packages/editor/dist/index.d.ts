@@ -1539,6 +1539,50 @@ interface HydraStaveBag {
      * NaN a shader uniform even during silence.
      */
     H: (trackId: string, field?: keyof IREvent) => () => number;
+    /** Active `bd` (kick) envelope level, 0..1. */
+    uKick: () => number;
+    /** Active `sd` (snare) envelope level, 0..1. */
+    uSnare: () => number;
+    /** Active `hh` (closed hat) envelope level, 0..1. */
+    uHat: () => number;
+    /** Active `oh` (open hat) envelope level, 0..1. */
+    uOpenHat: () => number;
+    /** Active `cp` (clap) envelope level, 0..1. */
+    uClap: () => number;
+    /** Active `rim` envelope level, 0..1. */
+    uRim: () => number;
+    /** Active tom envelope level (max over `lt`/`mt`/`ht`), 0..1. */
+    uTom: () => number;
+    /** Active event velocity (global, 0..1). */
+    uKeyVelocity: () => number;
+    /**
+     * General per-sound / per-track signal accessor.
+     *
+     *   osc(() => u('bd').env() * 10).out(o0)
+     *   u.track('$0').color()
+     *
+     * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color`.
+     * `u.track(id)` keys on the SCHEDULER key space (`$0`/`drums`, NOT
+     * `IREvent.trackId`). `u.tracks` / `u.sounds` enumerate.
+     */
+    u: HydraSignalAccessor;
+}
+/** A per-sound or per-track reading exposed as `() => value` thunks (D-01). */
+interface HydraSignalThunks {
+    env: () => number;
+    velocity: () => number;
+    note: () => number | string | null;
+    color: () => string | null;
+}
+/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props. */
+interface HydraSignalAccessor {
+    (sound: string): HydraSignalThunks;
+    /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
+    track: (id: string) => HydraSignalThunks;
+    /** Enumerate published track keys (scheduler key space). */
+    tracks: string[];
+    /** Enumerate distinct sounds seen through the envelope feed. */
+    sounds: string[];
 }
 type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
 /**
@@ -1597,6 +1641,22 @@ declare class HydraVizRenderer implements VizRenderer {
     private envelope;
     private hapHandler;
     private useEnvelope;
+    /**
+     * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
+     * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
+     * (`.velocity`/`.note`/`.color`). Fed UNCONDITIONALLY — NOT analyser-gated
+     * like the envelope (BLOCK-1): the bus is IR-grounded and must stay live
+     * whenever a real analyser is published (which is normal playback), or
+     * `uKick` is dead in the headline use case.
+     */
+    private bus;
+    /**
+     * The bus's own HapStream subscription — SEPARATE from `hapHandler` (the
+     * analyser-fallback envelope handler) so `destroy()` can off it
+     * independently and unconditionally. The bus feed is never gated on
+     * `useEnvelope`.
+     */
+    private busHapHandler;
     /**
      * Live `stave` bag handed to the user's sketch function. Built once
      * per mount; `update()` mutates its fields in place so sketches that

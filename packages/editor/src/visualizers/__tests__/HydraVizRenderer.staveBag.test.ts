@@ -200,6 +200,189 @@ describe('HydraVizRenderer — stave bag', () => {
     })
   })
 
+  describe('SignalBus wiring (Phase 21 — T2)', () => {
+    // Reuse the point-scheduler helper shape from the H() suite: a scheduler
+    // that returns the events whose time falls in [begin, end). The bus's
+    // `refreshActive` queries [now, now+ε); these events sit at t=0 and now()
+    // returns 0, so they are caught by the ε window.
+    function makePointScheduler(events: Record<number, Partial<IREvent>>): IRPattern {
+      const now = () => 0
+      const query = (begin: number, end: number): IREvent[] => {
+        const out: IREvent[] = []
+        for (const [tStr, ev] of Object.entries(events)) {
+          const t = Number(tStr)
+          if (t >= begin && t < end) {
+            out.push({
+              begin: t,
+              end: t + 0.1,
+              endClipped: t + 0.1,
+              note: 0,
+              freq: 0,
+              s: null,
+              gain: 1,
+              velocity: 1,
+              color: null,
+              ...ev,
+            } as IREvent)
+          }
+        }
+        return out
+      }
+      return { now, query } as IRPattern
+    }
+
+    // A minimal HapStream stand-in — records the subscribed handler so the
+    // test can drive `.env` bumps the way the engine's onTrigger would.
+    function makeHapStream() {
+      const handlers = new Set<(e: any) => void>()
+      return {
+        on: (h: (e: any) => void) => handlers.add(h),
+        off: (h: (e: any) => void) => handlers.delete(h),
+        emit: (e: any) => handlers.forEach((h) => h(e)),
+        get size() {
+          return handlers.size
+        },
+      }
+    }
+
+    /** Pull the renderer's private bag without re-mounting. */
+    function bagOf(r: HydraVizRenderer): HydraStaveBag {
+      return (r as unknown as { staveBag: HydraStaveBag }).staveBag
+    }
+    /** Read `this.analyser` truthiness — the BLOCK-1 guard assertion. */
+    function analyserOf(r: HydraVizRenderer): unknown {
+      return (r as unknown as { analyser: unknown }).analyser
+    }
+    /** Drive one `pumpAudio` rAF tick directly (deterministic — no rAF wait). */
+    function pump(r: HydraVizRenderer): void {
+      ;(r as unknown as { pumpAudio: (now?: number) => void }).pumpAudio(0)
+    }
+
+    it('feeds + ticks uKick UNCONDITIONALLY with a real analyser present (BLOCK-1/FLAG-2)', () => {
+      const renderer = new HydraVizRenderer()
+      const hapStream = makeHapStream()
+      // The kick track: an active `bd` event carrying a velocity. Keyed `$0`
+      // (scheduler key space — anonymous block), NOT IREvent.trackId.
+      const kickTrack = makePointScheduler({
+        0: { s: 'bd', velocity: 0.8, note: 'c2', color: '#ff0000' },
+      })
+      const trackSchedulers = new Map([['$0', kickTrack]])
+      const combined = makePointScheduler({
+        0: { s: 'bd', velocity: 0.8, note: 'c2', color: '#ff0000' },
+      })
+
+      // mount() with a NON-null analyser — this is the production real-FFT
+      // path. The envelope's `.on()` is SKIPPED here; the bus feed must NOT
+      // be (BLOCK-1). A no-analyser test would false-green the misplacement.
+      const fakeAnalyser = {
+        frequencyBinCount: 8,
+        getByteFrequencyData: () => {},
+      } as unknown as AnalyserNode
+      renderer.mount(
+        document.createElement('div'),
+        {
+          audio: { analyser: fakeAnalyser } as any,
+          streaming: { hapStream: hapStream as any } as any,
+          queryable: { scheduler: combined, trackSchedulers } as any,
+        } as Partial<EngineComponents>,
+        { w: 64, h: 64 },
+        () => {} // swallow the async hydra-synth import rejection in jsdom
+      )
+
+      // GUARD: the analyser IS truthy — we are on the real-FFT path, the one
+      // production runs and the one that skips the envelope subscription.
+      expect(analyserOf(renderer)).toBeTruthy()
+      // The bus subscribed to the HapStream despite the analyser being set.
+      expect(hapStream.size).toBe(1)
+
+      const bag = bagOf(renderer)
+
+      // Before any bump, uKick is 0.
+      expect(bag.uKick()).toBe(0)
+
+      // Fire a `bd` hap (what the engine's onTrigger does). `.env` bumps.
+      hapStream.emit({ s: 'bd', color: '#ff0000', hap: { value: { gain: 1 } } })
+      // uKick reflects the bumped `bd` env — NON-ZERO with the analyser
+      // present (the BLOCK-1 headline assertion).
+      expect(bag.uKick()).toBeGreaterThan(0)
+      const bumped = bag.uKick()
+      expect(bumped).toBe(1)
+
+      // pumpAudio ticks the bus (decay) UNCONDITIONALLY even on the FFT path.
+      pump(renderer)
+      // After one tick uKick has decayed (× 0.92) but stays non-zero — proves
+      // the tick ran WITH the analyser present (not gated to envelope mode).
+      const decayed = bag.uKick()
+      expect(decayed).toBeLessThan(bumped)
+      expect(decayed).toBeCloseTo(0.92, 5)
+      expect(decayed).toBeGreaterThan(0)
+
+      // .velocity reads the SCHEDULER event's velocity (NOT the envelope —
+      // §5 silent-zero trap). refreshActive ran in pump() above.
+      expect(bag.u('bd').velocity()).toBe(0.8)
+      // .note preserves the user's form (name), .color rides the event.
+      expect(bag.u('bd').note()).toBe('c2')
+      expect(bag.u('bd').color()).toBe('#ff0000')
+
+      // Two-key-space: u.track('$0') resolves on the scheduler key, not the
+      // IREvent.trackId. Enumeration lists the published key.
+      expect(bag.u.track('$0').velocity()).toBe(0.8)
+      expect(bag.u.tracks).toEqual(['$0'])
+      expect(bag.u.sounds).toContain('bd')
+
+      // uKeyVelocity = active event velocity globally.
+      expect(bag.uKeyVelocity()).toBe(0.8)
+
+      // stave.u is the SAME object as the bare bag.u (D-02).
+      expect(bag.u).toBe((bag as HydraStaveBag).u)
+
+      renderer.destroy()
+      // destroy() offs the bus subscription unconditionally.
+      expect(hapStream.size).toBe(0)
+    })
+
+    it('a live-ref scheduler swap on update() is observed by the SAME thunk closure', () => {
+      const renderer = new HydraVizRenderer()
+      const hapStream = makeHapStream()
+      const fakeAnalyser = {
+        frequencyBinCount: 8,
+        getByteFrequencyData: () => {},
+      } as unknown as AnalyserNode
+      renderer.mount(
+        document.createElement('div'),
+        {
+          audio: { analyser: fakeAnalyser } as any,
+          streaming: { hapStream: hapStream as any } as any,
+          queryable: { scheduler: null, trackSchedulers: new Map() } as any,
+        } as Partial<EngineComponents>,
+        { w: 64, h: 64 },
+        () => {}
+      )
+
+      const bag = bagOf(renderer)
+      // Capture the thunk ONCE — it must observe later scheduler swaps.
+      const velThunk = bag.u('sd').velocity
+      pump(renderer)
+      expect(velThunk()).toBe(0) // nothing bound yet
+
+      // Swap in a snare scheduler via update() — re-binds the bus in place.
+      const snareTrack = makePointScheduler({ 0: { s: 'sd', velocity: 0.55 } })
+      renderer.update({
+        queryable: {
+          scheduler: snareTrack,
+          trackSchedulers: new Map([['$0', snareTrack]]),
+        } as any,
+      } as Partial<EngineComponents>)
+      pump(renderer) // refreshActive snapshots the new scheduler
+
+      // SAME captured thunk now reads the swapped scheduler's event.
+      expect(velThunk()).toBe(0.55)
+      expect(bag.u.tracks).toEqual(['$0'])
+
+      renderer.destroy()
+    })
+  })
+
   it('destroy() clears the bag fields', () => {
     const renderer = new HydraVizRenderer()
     const scheduler = makeScheduler()
