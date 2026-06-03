@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
+import type { StaveUniforms } from '../visualizers/p5Compiler'
+
+// Mock the editorRegistry settings surface so the renderer reads a CUSTOM alias
+// map at mount (Phase 21 aliases — T2 Site A). Hoisted so the renderer import
+// below picks it up. The bus stays pure (P12) — only the renderer reads this.
+const mockGetSignalAliases = vi.fn(() => ({}) as Record<string, string | string[]>)
+vi.mock('../workspace/editorRegistry', () => ({
+  getSignalAliases: () => mockGetSignalAliases(),
+}))
 
 // Mock p5 — same pattern as old useP5Sketch.test.ts
 const p5Instances: Array<{
@@ -159,5 +168,87 @@ describe('P5VizRenderer', () => {
 
     // Should not throw when no instance exists
     expect(() => renderer.update({})).not.toThrow()
+  })
+
+  // ── Custom alias bare-getter injection (Phase 21 aliases — T2 Site A) ───────
+  describe('custom alias bare-getter injection', () => {
+    beforeEach(() => {
+      mockGetSignalAliases.mockReset()
+      mockGetSignalAliases.mockReturnValue({})
+    })
+
+    /** Drive the renderer's bus through the mount-time HapStream subscription so
+     *  the (private) bus envelope bumps — proving the injected getter reads it
+     *  LIVE. The subscription lives in mount(): `hapStream.on(handler)`. */
+    function makeHapStream() {
+      let handler: ((e: unknown) => void) | null = null
+      return {
+        on: (h: (e: unknown) => void) => {
+          handler = h
+        },
+        off: () => {
+          handler = null
+        },
+        emit: (e: unknown) => handler?.(e),
+      }
+    }
+
+    it('injects a custom `kick` getter on staveUniforms that reads the bus LIVE (fresh across two states)', () => {
+      // Custom alias map: bare `kick` resolves to the `bd` sound.
+      mockGetSignalAliases.mockReturnValue({ kick: 'bd' })
+      const sketchFactory = vi.fn(() => vi.fn())
+      const renderer = new P5VizRenderer(sketchFactory)
+      const hapStream = makeHapStream()
+
+      renderer.mount(
+        document.createElement('div'),
+        { streaming: { hapStream } } as unknown as Partial<EngineComponents>,
+        { w: 400, h: 200 },
+        vi.fn(),
+      )
+
+      // The 6th factory arg is the staveUniformsRef — the SAME object the sketch
+      // resolves bare names through (inner `with (staveUniforms)`).
+      const args = sketchFactory.mock.calls[0] as unknown[]
+      const uniformsRef = args[5] as { current: StaveUniforms }
+      const uniforms = uniformsRef.current as unknown as Record<string, number>
+
+      // The injected getter exists (custom name, not a built-in uniform).
+      expect('kick' in uniforms).toBe(true)
+      // Bare `uKick` (built-in) was NOT clobbered.
+      expect('uKick' in uniforms).toBe(true)
+
+      // State A: bump bd → custom `kick` getter reflects bd's level LIVE.
+      hapStream.emit({ s: 'bd', hap: { value: { gain: 1 } } })
+      const a = uniforms.kick // getter → bus.envValue('kick') → bd env = 1
+      expect(a).toBeCloseTo(1, 6)
+
+      // State B: tick the bus (decay) WITHOUT a new bump → the SAME getter reads
+      // the LOWER value. A stale capture would freeze at `a`. The bus tick fires
+      // via the staveUniforms __tick hook (the renderer-owned per-frame hook).
+      ;(uniforms as unknown as { __tick: () => void }).__tick()
+      const b = uniforms.kick
+      expect(b).toBeGreaterThan(0)
+      expect(b).toBeLessThan(a) // fresh read after one decay (0.92), not frozen
+      expect(b).toBeCloseTo(0.92, 5)
+    })
+
+    it('does NOT inject when there are no custom aliases (only built-ins present)', () => {
+      mockGetSignalAliases.mockReturnValue({})
+      const sketchFactory = vi.fn(() => vi.fn())
+      const renderer = new P5VizRenderer(sketchFactory)
+      renderer.mount(
+        document.createElement('div'),
+        {} as Partial<EngineComponents>,
+        { w: 400, h: 200 },
+        vi.fn(),
+      )
+      const args = sketchFactory.mock.calls[0] as unknown[]
+      const uniforms = (args[5] as { current: StaveUniforms })
+        .current as unknown as Record<string, unknown>
+      // No `kick` (no custom alias); built-in `uKick` still present.
+      expect('kick' in uniforms).toBe(false)
+      expect('uKick' in uniforms).toBe(true)
+    })
   })
 })

@@ -433,4 +433,48 @@ describe('SignalBus — DSP feed (analyser reads, Slice 2)', () => {
     bus.readAudio()
     expect(bus.master().bass).toBeCloseTo(1, 6)
   })
+
+  // ── Custom alias merge (Phase 21 aliases — T2) ─────────────────────────────
+  describe('setAliases (custom alias merge — T2)', () => {
+    it('resolves a NEW array alias (kick → [bd, kick9]) as MAX over members', () => {
+      const bus = new SignalBus()
+      // The bus starts with ONLY the built-in ALIAS_MAP — `kick` is unknown,
+      // so it resolves to the raw sound name `kick` (env 0, nothing fired).
+      expect(bus.envValue('kick')).toBe(0)
+
+      // The renderer pushes a merged map (built-ins + custom). Custom `kick`
+      // maps to two members — env resolves as the MAX over them.
+      bus.setAliases({ ...ALIAS_MAP, kick: ['bd', 'kick9'] })
+
+      // bump bd → kick (alias) reflects bd's level.
+      bus.bump(hap('bd', 1))
+      expect(bus.envValue('kick')).toBeCloseTo(1, 6) // max(bd=1, kick9=0)
+
+      // bump kick9 higher is impossible (gain clamps to 1); bump a SECOND
+      // member to prove MAX-over-members, not just the first.
+      bus.bump(hap('kick9', 1))
+      expect(bus.envValue('kick')).toBeCloseTo(1, 6) // max(bd=1, kick9=1)
+
+      // A built-in alias still resolves AFTER the merge (custom didn't clobber).
+      expect(bus.envValue('uKick')).toBeCloseTo(1, 6) // uKick → bd → 1
+    })
+
+    it('resolves a NEW single-string alias (lead → sawtooth)', () => {
+      const bus = new SignalBus()
+      bus.setAliases({ ...ALIAS_MAP, lead: 'sawtooth' })
+      bus.bump(hap('sawtooth', 1))
+      expect(bus.envValue('lead')).toBeCloseTo(1, 6)
+    })
+
+    it('custom WINS on collision with a built-in key', () => {
+      const bus = new SignalBus()
+      // Override the built-in `uKick → bd` to point at a DIFFERENT sound.
+      bus.setAliases({ ...ALIAS_MAP, uKick: 'tabla' })
+      bus.bump(hap('bd', 1))
+      // bd fired but uKick now maps to `tabla` → custom override wins → 0.
+      expect(bus.envValue('uKick')).toBe(0)
+      bus.bump(hap('tabla', 1))
+      expect(bus.envValue('uKick')).toBeCloseTo(1, 6)
+    })
+  })
 })

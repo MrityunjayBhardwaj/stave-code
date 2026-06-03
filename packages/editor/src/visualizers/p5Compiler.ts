@@ -141,6 +141,17 @@ export interface StaveUniforms {
   /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
    *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
   __tick?: () => void
+  /**
+   * Custom alias getters (Phase 21 aliases). A user-defined alias (e.g.
+   * `kick → bd`) is injected at mount by `P5VizRenderer` as a live getter
+   * (`Object.defineProperty(uniforms, name, { get: () => bus.envValue(name) })`)
+   * for every merged-map name NOT already a built-in uniform. The index
+   * signature lets `uniforms[name]` typecheck under strict TS; reads resolve
+   * per-frame through the inner `with (staveUniforms)` (full-lifecycle) and the
+   * legacy `with (staveUniforms)` wrap (legacy draw-body). `__tick` is read via
+   * the optional field above, never via this index (it's non-enumerable). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [customAlias: string]: any
 }
 
 /**
@@ -496,9 +507,22 @@ function buildFullLifecycleBody(userCode: string): string {
  * (U2 trap). Reading the getters here on each draw keeps the values live.
  * `stave.u` is the same `u` object mirrored on the stave namespace (D-02);
  * bare `uKick` reads the live getter each draw.
+ *
+ * Phase 21 ALIASES — the draw body is ALSO wrapped in `with (staveUniforms)`
+ * (nested inside `with (p)`), the SAME inner-`with` the full-lifecycle body
+ * already uses. WITHOUT it, a CUSTOM bare alias (e.g. `kick` from a
+ * user-defined `kick → bd` map) would be DEAD here: the hardcoded `const`s
+ * above only cover the BUILT-IN names, and the pure compiler can't know the
+ * runtime-dynamic custom names. The inner `with` resolves any custom getter
+ * `Object.defineProperty`'d onto `staveUniforms` at mount, per frame (LIVE — no
+ * capture, U2). The built-in `const`s are kept (they shadow the with-resolved
+ * built-ins harmlessly and keep `LEGACY_PREFIX_LINES` self-counting). The
+ * inner `with` adds lines to the prefix — `LEGACY_PREFIX_LINES` recounts the
+ * template at module load so `getP5LineOffset` self-corrects.
  */
 const LEGACY_PREFIX = `
 with (p) {
+  with (staveUniforms) {
   return {
     setup: function () {
       createCanvas(p.windowWidth, p.windowHeight)
@@ -528,6 +552,7 @@ function buildLegacyBody(userCode: string): string {
   return `${LEGACY_PREFIX}${userCode}
     },
     preload: undefined,
+  }
   }
 }
   `

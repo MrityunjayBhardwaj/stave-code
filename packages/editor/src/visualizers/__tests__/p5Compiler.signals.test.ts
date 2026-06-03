@@ -342,6 +342,55 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     expect(b).toBeLessThan(a)
   })
 
+  // ── CUSTOM ALIAS bare name in a LEGACY sketch (Phase 21 aliases — T2 Site B)
+  // THE TRAP-GUARD: legacy draw-body sketches (no `function draw`) get NO inner
+  // `with (staveUniforms)` UNLESS we add the legacy with()-wrap. Without it a
+  // CUSTOM bare name (`kick`) silently dies in legacy sketches (the headline
+  // R-2 trap). Here we inject a custom `kick` getter onto staveUniforms (exactly
+  // as `P5VizRenderer.mount` does) and assert a LEGACY sketch reading bare
+  // `kick` compiles AND resolves it live through the legacy with()-wrap.
+  it('legacy sketch resolves a CUSTOM bare alias (kick) through the with()-wrap (Site B)', () => {
+    const bus = new SignalBus()
+    const { uniforms } = makeStaveUniforms(bus)
+    // Simulate the renderer's custom-getter injection: `kick → bd`.
+    bus.setAliases({ kick: 'bd' })
+    Object.defineProperty(uniforms, 'kick', {
+      get: () => bus.envValue('kick'),
+      enumerable: true,
+      configurable: true,
+    })
+
+    const seen: number[] = []
+    // LEGACY form — bare statements, NO `function draw`. Reads bare `kick`.
+    const factory = compileP5Code(`stave.options.__sink(kick)`)
+    const refs = makeRefs(uniforms)
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+      refs.optionsRef,
+      refs.staveUniformsRef,
+    )
+    ;(refs.optionsRef as { current: Record<string, unknown> }).current = {
+      __sink: (v: number) => seen.push(v),
+    }
+    const { p } = makeFakeP5()
+    // Compiles + runs WITHOUT throwing — the with()-wrap makes `kick` resolvable
+    // (no ReferenceError). Site B fix proven.
+    expect(() => sketchFn(p as unknown as import('p5').default)).not.toThrow()
+    const draw = (p as Record<string, unknown>).draw as () => void
+
+    // Live across two bus states — bump bd, read; tick (decay), read lower.
+    bus.bump({ s: 'bd', hap: { value: { gain: 1 } } })
+    expect(() => draw()).not.toThrow()
+    const a = seen[seen.length - 1]
+    draw()
+    const b = seen[seen.length - 1]
+    expect(a).toBeGreaterThan(0) // custom bare `kick` resolved (NOT dead)
+    expect(b).toBeLessThan(a) // fresh getter through with(), not frozen
+  })
+
   // ── DSP fields (Slice 2, T3) — p5 reads u('bd').rms as a FRESH number ──────
   it('reads u("bd").rms FRESH across two analyser states, and exposes arrays as arrays', () => {
     const bus = new SignalBus()

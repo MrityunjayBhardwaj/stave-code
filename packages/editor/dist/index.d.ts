@@ -959,6 +959,16 @@ interface StaveUniforms {
     /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
      *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
     __tick?: () => void;
+    /**
+     * Custom alias getters (Phase 21 aliases). A user-defined alias (e.g.
+     * `kick → bd`) is injected at mount by `P5VizRenderer` as a live getter
+     * (`Object.defineProperty(uniforms, name, { get: () => bus.envValue(name) })`)
+     * for every merged-map name NOT already a built-in uniform. The index
+     * signature lets `uniforms[name]` typecheck under strict TS; reads resolve
+     * per-frame through the inner `with (staveUniforms)` (full-lifecycle) and the
+     * legacy `with (staveUniforms)` wrap (legacy draw-body). `__tick` is read via
+     * the optional field above, never via this index (it's non-enumerable). */
+    [customAlias: string]: any;
 }
 
 /** Real-time hap event stream for visualizers and highlighting. */
@@ -1711,6 +1721,7 @@ interface HydraStaveBag {
      * arrays. `u.tracks` / `u.sounds` enumerate.
      */
     u: HydraSignalAccessor;
+    [customAlias: string]: any;
 }
 /** A per-sound or per-track reading exposed as `() => value` thunks (D-01).
  *  DSP scalars (`rms`/`bass`/`mid`/`treble`) are thunks (same shape as `.env`);
@@ -2344,7 +2355,12 @@ declare class SignalBus {
     /** Last-bumped color per sound — the `.color` fallback feed. */
     private readonly colorMap;
     private readonly decay;
-    private readonly aliasMap;
+    /** Active alias map (built-ins + any merged custom). NOT `readonly` — the
+     *  renderer pushes the merged map in via `setAliases` at mount, mirroring the
+     *  in-place rebind discipline of `bindScheduler`/`bindAnalysers`. The bus
+     *  stays PURE (P12): it NEVER reads the editorRegistry settings surface — the
+     *  renderer reads the impure settings and pushes the map down. */
+    private aliasMap;
     /** Live refs — mutable so `bindScheduler()` rebinds in place
      *  (mirrors `HydraVizRenderer.update` live-ref discipline, `:369-371`). */
     private scheduler;
@@ -2380,6 +2396,14 @@ declare class SignalBus {
      *  BOTH events (the scheduler feed) AND an analyser (this DSP feed). Pass
      *  `null`/empty in IR-only / demo mode → DSP fields degrade to 0/[]. */
     bindAnalysers(master?: BusAnalyser | null, trackAnalysers?: Map<string, BusAnalyser> | null): void;
+    /** Replace the active alias map in place (mirror `bindScheduler`'s mutable
+     *  rebind). The RENDERER builds the merged map — `{ ...ALIAS_MAP, ...custom }`
+     *  with custom WINNING on collision — and pushes it here at mount. The bus
+     *  stays PURE (P12): it does NOT import `getSignalAliases`; it only stores the
+     *  numbers/maps it is handed. `envValue`/`resolveSounds` resolve ANY key
+     *  through this map, so a freshly-set custom alias resolves with no other
+     *  change. */
+    setAliases(map: Record<string, string | string[]>): void;
     /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
      *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
      *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */

@@ -13,7 +13,17 @@
  * off the critical path of these assertions.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// Mock the editorRegistry settings surface so mount() reads a controllable
+// custom alias map (Phase 21 aliases — T2 hydra thunks). Defaults to `{}` so
+// every PRE-EXISTING test keeps its built-ins-only behavior; the alias test
+// overrides the return. The bus stays pure (P12) — only the renderer reads it.
+const mockGetSignalAliases = vi.fn(() => ({}) as Record<string, string | string[]>)
+vi.mock('../../workspace/editorRegistry', () => ({
+  getSignalAliases: () => mockGetSignalAliases(),
+}))
+
 import { HydraVizRenderer, type HydraStaveBag } from '../renderers/HydraVizRenderer'
 import type { SignalBus } from '../signals/SignalBus'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
@@ -572,6 +582,60 @@ describe('HydraVizRenderer — stave bag', () => {
       // SAME captured thunk now reads the swapped scheduler's event.
       expect(velThunk()).toBe(0.55)
       expect(bag.u.tracks).toEqual(['$0'])
+
+      renderer.destroy()
+    })
+
+    // ── Custom alias thunk injection (Phase 21 aliases — T2 hydra) ───────────
+    // The bag IS `stave`; hydra has no bare scope, so a custom alias is a
+    // `stave.kick()` THUNK on the bag. mount() merges {...ALIAS_MAP, ...custom}
+    // (custom wins), pushes it into the bus, and injects a thunk per custom name
+    // NOT already on the bag. The thunk reads `bus.envValue(name)` LIVE.
+    it('injects a custom `stave.kick()` thunk reading the alias env, live across a frame', () => {
+      mockGetSignalAliases.mockReturnValueOnce({ kick: 'bd' })
+      const renderer = new HydraVizRenderer()
+      const hapStream = makeHapStream()
+      const combined = makePointScheduler({ 0: { s: 'bd' } })
+      const trackSchedulers = new Map([['$0', combined]])
+      const fakeAnalyser = {
+        frequencyBinCount: 8,
+        getByteFrequencyData: () => {},
+        getByteTimeDomainData: () => {},
+      } as unknown as AnalyserNode
+
+      renderer.mount(
+        document.createElement('div'),
+        {
+          audio: { analyser: fakeAnalyser } as any,
+          streaming: { hapStream: hapStream as any } as any,
+          queryable: { scheduler: combined, trackSchedulers } as any,
+        } as Partial<EngineComponents>,
+        { w: 64, h: 64 },
+        () => {},
+      )
+
+      const bag = bagOf(renderer)
+      // The custom thunk exists and is callable; built-in `uKick` survived.
+      expect(typeof (bag as unknown as Record<string, unknown>).kick).toBe(
+        'function',
+      )
+      expect(typeof bag.uKick).toBe('function')
+
+      const kick = (bag as unknown as { kick: () => number }).kick
+      // Before any bump → 0.
+      expect(kick()).toBe(0)
+
+      // bump bd → `kick` (custom alias → bd) reads NON-ZERO, LIVE.
+      hapStream.emit({ s: 'bd', hap: { value: { gain: 1 } } })
+      const a = kick()
+      expect(a).toBe(1)
+
+      // pumpAudio decays the env → the SAME thunk reads the lower value
+      // (live, not captured).
+      pump(renderer)
+      const b = kick()
+      expect(b).toBeLessThan(a)
+      expect(b).toBeCloseTo(0.92, 5)
 
       renderer.destroy()
     })

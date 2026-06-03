@@ -5,6 +5,8 @@ import type { IREvent } from '../../ir/IREvent'
 import type { VizRenderer } from '../types'
 import { getVizConfig } from '../vizConfig'
 import { SignalBus } from '../signals/SignalBus'
+import { ALIAS_MAP } from '../signals/aliasMap'
+import { getSignalAliases } from '../../workspace/editorRegistry'
 
 /**
  * Stave-specific bag exposed to `.hydra` sketches as the second
@@ -89,6 +91,16 @@ export interface HydraStaveBag {
    * arrays. `u.tracks` / `u.sounds` enumerate.
    */
   u: HydraSignalAccessor
+
+  // ── Custom alias thunks (Phase 21 aliases) ─────────────────────────────────
+  // A user-defined alias (e.g. `kick → bd`) is injected at mount as a
+  // `() => number` thunk on the bag (the bag IS `stave`, so `stave.kick()`
+  // works natively in hydra — there is no bare scope). The index signature
+  // lets `bag[name] = () => bus.envValue(name)` typecheck under strict TS
+  // without widening the named fields above. Custom names that collide with a
+  // built-in bag property are skipped (the typed field wins).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [customAlias: string]: any
 }
 
 /** A per-sound or per-track reading exposed as `() => value` thunks (D-01).
@@ -435,6 +447,24 @@ export class HydraVizRenderer implements VizRenderer {
         components.audio?.analyser,
         components.audio?.trackAnalysers
       )
+      // ── Custom alias merge + thunk injection (Phase 21 aliases) ──────────
+      // Read the impure settings surface HERE (the renderer, NOT the bus —
+      // P12) and build the merged map ONCE: built-ins first, custom LAST so a
+      // user override WINS on collision. Push it into the (pure) bus, then
+      // expose every custom name as a `stave.<name>()` thunk on the bag (the
+      // bag IS `stave`; hydra has no bare scope). The thunk reads
+      // `bus.envValue(name)` LIVE each call (U2 — never captured), resolving
+      // through the alias map we just set. Skip names already on the bag so a
+      // collision with a built-in thunk (`uKick`, `u`, `H`, …) is preserved.
+      const mergedAliases = { ...ALIAS_MAP, ...getSignalAliases() }
+      this.bus?.setAliases(mergedAliases)
+      const bus = this.bus
+      if (bus) {
+        for (const name of Object.keys(mergedAliases)) {
+          if (name in this.staveBag) continue
+          this.staveBag[name] = () => bus.envValue(name)
+        }
+      }
       if (this.hapStream && this.bus) {
         this.busHapHandler = (e: HapEvent) => this.bus?.bump(e)
         this.hapStream.on(this.busHapHandler)

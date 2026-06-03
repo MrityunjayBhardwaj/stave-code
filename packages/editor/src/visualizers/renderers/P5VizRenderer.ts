@@ -15,6 +15,8 @@ import type {
 } from '../p5Compiler'
 import { installP5FesBridgeWith } from '../p5FesBridge'
 import { SignalBus } from '../signals/SignalBus'
+import { ALIAS_MAP } from '../signals/aliasMap'
+import { getSignalAliases } from '../../workspace/editorRegistry'
 
 /**
  * Adapter that wraps an existing p5 SketchFactory into the VizRenderer interface.
@@ -204,6 +206,31 @@ export class P5VizRenderer implements VizRenderer {
         components.audio?.analyser,
         components.audio?.trackAnalysers
       )
+      // ── Custom alias merge + bare-getter injection (Phase 21 aliases) ─────
+      // Read the impure settings surface HERE (the renderer, NOT the bus — P12)
+      // and build the merged map ONCE: built-ins first, custom LAST so a user
+      // override WINS on collision. Push it into the (pure) bus, then expose
+      // every custom name as a live GETTER on the SAME `staveUniforms` object
+      // the sketch resolves bare names through (inner `with (staveUniforms)` for
+      // full-lifecycle; the legacy `with`-wrap for legacy draw-body — Site B).
+      // The getter reads `bus.envValue(name)` LIVE each access (U2 — never
+      // captured), so bare `kick` is frame-fresh exactly like bare `uKick`.
+      // Skip names already a property on the uniform object (built-ins win the
+      // collision; the merge already let custom win the alias-RESOLUTION).
+      const mergedAliases = { ...ALIAS_MAP, ...getSignalAliases() }
+      this.bus?.setAliases(mergedAliases)
+      const aliasBus = this.bus
+      const uniforms = this.staveUniformsRef.current
+      if (aliasBus && uniforms) {
+        for (const name of Object.keys(mergedAliases)) {
+          if (name in uniforms) continue
+          Object.defineProperty(uniforms, name, {
+            get: () => aliasBus.envValue(name),
+            enumerable: true,
+            configurable: true,
+          })
+        }
+      }
       const hapStream = components.streaming?.hapStream ?? null
       // Guard `.on` — a partial/non-conforming stream (e.g. a demo-mode stub or
       // a test double) must degrade to "no signal feed", never tear down the
