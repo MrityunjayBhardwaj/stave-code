@@ -334,6 +334,16 @@ export class HydraVizRenderer implements VizRenderer {
         components.queryable?.scheduler,
         components.queryable?.trackSchedulers
       )
+      // Bind the orbit analysers (Slice 2) — UNCONDITIONAL, same BLOCK-1
+      // discipline as bindScheduler: this MUST live OUTSIDE the
+      // `if (this.analyser) … else if …` block below. Those branches are
+      // SKIPPED whenever a real analyser is present (normal playback), which is
+      // exactly when the DSP feed (`u('bd').rms`/`.fft`) must be live. The bus
+      // internally degrades absent analysers to 0/[] — never gate the bind.
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
+      )
       if (this.hapStream && this.bus) {
         this.busHapHandler = (e: HapEvent) => this.bus?.bump(e)
         this.hapStream.on(this.busHapHandler)
@@ -473,6 +483,11 @@ export class HydraVizRenderer implements VizRenderer {
     if (this.bus) {
       this.bus.tick()
       this.bus.refreshActive(this.bus.now())
+      // readAudio MUST run AFTER refreshActive (Slice 2): `audioFor` resolves a
+      // sound → its trackKey via `activeByTrack`, which refreshActive populates.
+      // Wrong order = sound-keyed DSP reads stale/empty. Once per frame (U2),
+      // reusing this same tick site — no second rAF.
+      this.bus.readAudio()
     }
 
     // We own the loop — tick hydra exactly once per rAF. Without
@@ -524,6 +539,14 @@ export class HydraVizRenderer implements VizRenderer {
     this.bus?.bindScheduler(
       components.queryable?.scheduler ?? null,
       components.queryable?.trackSchedulers ?? this.staveBag.tracks
+    )
+    // Re-bind the orbit analysers in place (Slice 2) — same live-ref discipline
+    // as the scheduler rebind above. A fresh engine re-publishes new analyser
+    // nodes; the SAME bus must point at them so the DSP feed stays live across
+    // re-evaluates. Unconditional (BLOCK-1) — the bus degrades absent → 0/[].
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
     )
   }
 

@@ -135,6 +135,11 @@ interface FakeAnalyser {
   frequencyBinCount: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getByteFrequencyData: any
+  // Phase 21 Slice 2: pumpAudio now also runs `bus.readAudio()`, which reads
+  // the time-domain buffer off every bound analyser. A real AnalyserNode always
+  // exposes this; the stub must too or readAudio throws.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getByteTimeDomainData: any
 }
 
 /**
@@ -146,9 +151,14 @@ function makeAnalyserComponents(fillByte: number): Partial<EngineComponents> {
   const getByteFrequencyData = vi.fn((arr: Uint8Array) => {
     arr.fill(fillByte)
   })
+  // 128 = time-domain silence center; the bus derives rms/wave from this.
+  const getByteTimeDomainData = vi.fn((arr: Uint8Array) => {
+    arr.fill(128)
+  })
   const analyser: FakeAnalyser = {
     frequencyBinCount: 64,
     getByteFrequencyData,
+    getByteTimeDomainData,
   }
   return {
     audio: {

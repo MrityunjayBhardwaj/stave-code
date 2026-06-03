@@ -4971,6 +4971,7 @@ var _P5VizRenderer = class _P5VizRenderer {
       value: /* @__PURE__ */ __name(() => {
         bus.tick();
         bus.refreshActive(bus.now());
+        bus.readAudio();
       }, "value"),
       enumerable: false
     });
@@ -4986,6 +4987,10 @@ var _P5VizRenderer = class _P5VizRenderer {
       this.bus?.bindScheduler(
         components.queryable?.scheduler,
         components.queryable?.trackSchedulers
+      );
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
       );
       const hapStream = components.streaming?.hapStream ?? null;
       if (hapStream && this.bus && typeof hapStream.on === "function") {
@@ -5017,6 +5022,10 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.bus?.bindScheduler(
       components.queryable?.scheduler ?? null,
       components.queryable?.trackSchedulers
+    );
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
     );
     const nextHapStream = components.streaming?.hapStream ?? null;
     if (nextHapStream !== this.boundHapStream) {
@@ -5205,6 +5214,7 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       if (this.bus) {
         this.bus.tick();
         this.bus.refreshActive(this.bus.now());
+        this.bus.readAudio();
       }
       if (this.hydra && typeof this.hydra.tick === "function") {
         try {
@@ -5277,6 +5287,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.bus?.bindScheduler(
         components.queryable?.scheduler,
         components.queryable?.trackSchedulers
+      );
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
       );
       if (this.hapStream && this.bus) {
         this.busHapHandler = (e) => this.bus?.bump(e);
@@ -5355,6 +5369,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
     this.bus?.bindScheduler(
       components.queryable?.scheduler ?? null,
       components.queryable?.trackSchedulers ?? this.staveBag.tracks
+    );
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
     );
   }
   resize(w, h) {

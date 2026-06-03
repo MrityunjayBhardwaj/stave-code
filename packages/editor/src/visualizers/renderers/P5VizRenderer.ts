@@ -127,6 +127,11 @@ export class P5VizRenderer implements VizRenderer {
       value: (): void => {
         bus.tick()
         bus.refreshActive(bus.now())
+        // readAudio MUST run AFTER refreshActive (Slice 2): `audioFor` resolves
+        // a sound → its trackKey via `activeByTrack`, which refreshActive fills.
+        // Wrong order = sound-keyed DSP reads stale/empty. Once per frame (U2),
+        // reusing this same draw-wrapper tick — no second loop.
+        bus.readAudio()
       },
       enumerable: false,
     })
@@ -164,6 +169,13 @@ export class P5VizRenderer implements VizRenderer {
       this.bus?.bindScheduler(
         components.queryable?.scheduler,
         components.queryable?.trackSchedulers
+      )
+      // Bind the orbit analysers (Slice 2) — UNCONDITIONAL, same discipline as
+      // bindScheduler. The bus internally degrades absent analysers to 0/[], so
+      // the bind is never gated. Drives `u('bd').rms`/`.fft` etc.
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
       )
       const hapStream = components.streaming?.hapStream ?? null
       // Guard `.on` — a partial/non-conforming stream (e.g. a demo-mode stub or
@@ -217,6 +229,14 @@ export class P5VizRenderer implements VizRenderer {
     this.bus?.bindScheduler(
       components.queryable?.scheduler ?? null,
       components.queryable?.trackSchedulers
+    )
+    // Re-bind the orbit analysers in place (Slice 2) — same live-ref discipline
+    // as the scheduler rebind above. A fresh engine re-publishes new analyser
+    // nodes; the SAME bus must point at them so the DSP feed stays live across
+    // re-evaluates. Unconditional (BLOCK-1) — the bus degrades absent → 0/[].
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
     )
 
     // Re-subscribe the `.env` feed if the HapStream itself swapped (a fresh
