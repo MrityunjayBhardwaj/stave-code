@@ -17,10 +17,18 @@ import {
   getTierFlags,
   setTierFlag,
   listTiers,
+  getSignalAliases,
+  setSignalAliases,
   type EditorTheme,
   type TierFlags,
   type TierName,
 } from "@stave/editor";
+import {
+  buildAliasMap,
+  rowsFromAliasMap,
+  type AliasRow,
+  type AliasRowError,
+} from "./signalAliasRows";
 
 interface Props {
   open: boolean;
@@ -150,6 +158,23 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   // ONCE at init per α-5); the caption below the section makes that
   // contract visible.
   const [tierFlags, setTierFlagsState] = useState<TierFlags | null>(null);
+  // Phase 21 T3 — Signal Aliases. The FIRST array/map-valued setting: the
+  // editable shape is a list of `{ name, sounds:CSV }` rows; the persisted
+  // shape is a SignalAliasMap. `aliasRows` is the edit buffer; `aliasErrors`
+  // is the parallel per-row validation result (so a blank/invalid row stays
+  // visible for editing but is NOT persisted). See signalAliasRows.ts.
+  const [aliasRows, setAliasRows] = useState<AliasRow[]>([]);
+  const [aliasErrors, setAliasErrors] = useState<AliasRowError[]>([]);
+
+  // Apply an edited row list: update the edit buffer, then build + validate
+  // and persist ONLY the valid entries (never a partial `{'':…}` or a
+  // built-in collision). Inline errors come from the same build pass.
+  const commitAliasRows = (next: AliasRow[]) => {
+    const { map, errors } = buildAliasMap(next);
+    setAliasRows(next);
+    setAliasErrors(errors);
+    setSignalAliases(map);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -160,6 +185,9 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
     setTierFlagsState(getTierFlags());
+    const seeded = rowsFromAliasMap(getSignalAliases());
+    setAliasRows(seeded);
+    setAliasErrors(seeded.map(() => null));
     assertTierSchemaCoverage();
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -310,6 +338,90 @@ export function EditorSettingsModal({ open, onClose }: Props) {
           <div style={s.tierFootnote}>
             Changes take effect when you reload the page.
           </div>
+          {/* Phase 21 T3 — Signal Aliases. Dynamic name → sound(s) rows.
+              The first array/map-valued setting: each row's `sounds` is a
+              comma-separated list; a single sound persists as a string, two+
+              as an array (see signalAliasRows.buildAliasMap). Only valid
+              rows are persisted — a blank/invalid row stays editable but is
+              never written. */}
+          <div style={s.sectionDivider} />
+          <div style={s.sectionTitle}>Signal Aliases</div>
+          <div style={s.aliasHelp}>
+            Name a signal over one or more sounds — use it in any viz as{" "}
+            <code style={s.aliasCode}>kick</code> or{" "}
+            <code style={s.aliasCode}>u(&apos;kick&apos;)</code>.
+          </div>
+          {aliasRows.map((aliasRow, i) => {
+            const err = aliasErrors[i] ?? null;
+            return (
+              <div key={i} style={s.aliasRow}>
+                <div style={s.aliasInputs}>
+                  <input
+                    type="text"
+                    placeholder="name"
+                    value={aliasRow.name}
+                    aria-label={`Alias name ${i + 1}`}
+                    onChange={(e) => {
+                      const next = aliasRows.map((r, j) =>
+                        j === i ? { ...r, name: e.target.value } : r,
+                      );
+                      commitAliasRows(next);
+                    }}
+                    style={{
+                      ...s.aliasNameInput,
+                      ...(err === "name" ? s.aliasInputError : null),
+                    }}
+                  />
+                  <span style={s.aliasArrow}>→</span>
+                  <input
+                    type="text"
+                    placeholder="bd, kick9"
+                    value={aliasRow.sounds}
+                    aria-label={`Alias sounds ${i + 1}`}
+                    onChange={(e) => {
+                      const next = aliasRows.map((r, j) =>
+                        j === i ? { ...r, sounds: e.target.value } : r,
+                      );
+                      commitAliasRows(next);
+                    }}
+                    style={{
+                      ...s.aliasSoundsInput,
+                      ...(err === "sounds" ? s.aliasInputError : null),
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Remove alias ${i + 1}`}
+                    title="Remove alias"
+                    onClick={() =>
+                      commitAliasRows(aliasRows.filter((_, j) => j !== i))
+                    }
+                    style={s.aliasRemoveBtn}
+                  >
+                    ×
+                  </button>
+                </div>
+                {err === "name" ? (
+                  <div style={s.aliasError}>
+                    Name must be a single word (letters, digits, _ or $) and
+                    not a built-in alias.
+                  </div>
+                ) : null}
+                {err === "sounds" ? (
+                  <div style={s.aliasError}>
+                    Add at least one sound name.
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => commitAliasRows([...aliasRows, { name: "", sounds: "" }])}
+            style={s.aliasAddBtn}
+          >
+            + Add alias
+          </button>
         </div>
       </div>
     </div>
@@ -373,5 +485,45 @@ const s: Record<string, React.CSSProperties> = {
   tierFootnote: {
     fontSize: 11, color: "var(--text-tertiary)", marginTop: 4,
     fontStyle: "italic",
+  },
+  // Phase 21 T3 — Signal Aliases styling.
+  aliasHelp: {
+    fontSize: 11, color: "var(--text-secondary)", marginBottom: 4,
+    lineHeight: 1.5,
+  },
+  aliasCode: {
+    background: "var(--bg-active)", border: "1px solid var(--border-subtle)",
+    borderRadius: 3, padding: "0 4px", fontSize: 10,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    color: "var(--text-primary)",
+  },
+  aliasRow: { display: "flex", flexDirection: "column", gap: 3 },
+  aliasInputs: { display: "flex", alignItems: "center", gap: 6 },
+  aliasArrow: { fontSize: 12, color: "var(--text-tertiary)" },
+  aliasNameInput: {
+    width: 96, background: "var(--bg-active)",
+    border: "1px solid var(--border-strong)", borderRadius: 4,
+    color: "var(--text-primary)", padding: "4px 8px", fontSize: 12,
+    fontFamily: "inherit",
+  },
+  aliasSoundsInput: {
+    flex: 1, minWidth: 0, background: "var(--bg-active)",
+    border: "1px solid var(--border-strong)", borderRadius: 4,
+    color: "var(--text-primary)", padding: "4px 8px", fontSize: 12,
+    fontFamily: "inherit",
+  },
+  aliasInputError: { borderColor: "var(--accent-danger, #e5484d)" },
+  aliasRemoveBtn: {
+    background: "none", border: "none", color: "var(--text-icon)",
+    fontSize: 18, cursor: "pointer", padding: "0 4px", lineHeight: 1,
+  },
+  aliasError: {
+    fontSize: 11, color: "var(--accent-danger, #e5484d)", paddingLeft: 2,
+  },
+  aliasAddBtn: {
+    alignSelf: "flex-start", background: "var(--bg-active)",
+    border: "1px solid var(--border-strong)", borderRadius: 4,
+    color: "var(--text-primary)", padding: "4px 12px", fontSize: 12,
+    cursor: "pointer", fontFamily: "inherit", marginTop: 2,
   },
 };
