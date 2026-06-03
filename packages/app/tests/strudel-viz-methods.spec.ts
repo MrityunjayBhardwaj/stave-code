@@ -275,3 +275,271 @@ test('inline ._pianoroll(options) — the options object reaches the sketch and 
   }
   expect(errors).toEqual([])
 })
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 21 — Named Signal Bus, end-to-end OBSERVATION (T5).
+//
+// The signal-bus spine (pure SignalBus → per-renderer injection → PV64 backdrop
+// threading) was unit-green but unobserved on the real surfaces. "Renders
+// without error" is NOT proof of reactivity (P93 — a frozen `uKick` throws
+// nothing). These four tests measure VARIANCE-OVER-TIME (reactivity) and
+// PIXEL-PRESENCE (per-codeblock color), never an error count.
+//
+// The `__STAVE_E2E__` flag (set via addInitScript before navigation) unlocks
+// two test-only window hooks in StaveApp / StrudelEditorClient:
+//   - `__staveRegisterViz(preset)` — register a one-off named viz so a custom
+//     p5/hydra sketch reading `uKick`/`u.tracks` is reachable via `.viz("name")`
+//     (inline, A/B). Calls the SAME `registerPresetAsNamedViz` the app uses for
+//     bundled presets.
+//   - `__staveOverrideVizFile(basename, code)` — replace an existing workspace
+//     viz file's code (e.g. the bundled `spectrum.p5`) so a REAL non-underscore
+//     method (`.spectrum()`) pins it through the production code-driven backdrop
+//     path (C/D). This is the only path that wires the running audio source into
+//     the backdrop PreviewView — a directly-pinned ad-hoc file gets a null
+//     audioSource. Only the preset-authoring UI step is shortcut; the renderer →
+//     SignalBus → scheduler path under test is the production one.
+// ─────────────────────────────────────────────────────────────────────────
+test.describe('Phase 21 — named signal bus (T5 end-to-end observation)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+    await page.waitForTimeout(1200)
+  })
+
+  // Mean luminance of a locator's screenshot, decoded in-browser via an Image.
+  // Used for the WebGL (hydra) canvas: a WebGL context with the default
+  // preserveDrawingBuffer:false reads back BLACK via getImageData/drawImage, but
+  // the browser compositor (what `screenshot()` captures) has the real pixels.
+  async function screenshotLum(page: Page, sel: string): Promise<number> {
+    const buf = await page.locator(sel).first().screenshot()
+    const b64 = buf.toString('base64')
+    return page.evaluate(async (data) => {
+      const img = new Image()
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res()
+        img.onerror = () => rej(new Error('img decode failed'))
+        img.src = 'data:image/png;base64,' + data
+      })
+      const c = document.createElement('canvas')
+      c.width = Math.min(img.width, 160)
+      c.height = Math.min(img.height, 120)
+      const ctx = c.getContext('2d')!
+      ctx.drawImage(img, 0, 0, c.width, c.height)
+      const d = ctx.getImageData(0, 0, c.width, c.height).data
+      let s = 0
+      for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]
+      return s / (d.length / 4)
+    }, b64)
+  }
+
+  test('T5-A — uKick is reactive in a p5 inline sketch (size varies over frames)', async ({ page }) => {
+    // A `.viz()` p5 sketch draws a circle whose radius = uKick·(canvas span).
+    // Over a `s("bd*4")` kick the bright-pixel count must VARY frame-to-frame —
+    // a dead/stale `uKick` (the U2 const-capture trap) gives range ≈ 0.
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke(); fill(255, 60, 60)
+  circle(width / 2, height / 2, 4 + uKick * Math.min(width, height) * 0.9)
+}`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21-ukick-p5', name: 'p21ukickp5', renderer: 'p5', code,
+        requires: ['streaming'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4").viz("p21ukickp5")`)
+    await runCode(page)
+    const canvas = page.locator('[data-viz-zone-track] canvas').first()
+    await canvas.waitFor({ timeout: 8000 })
+
+    const brightCount = () => canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110 && d[i + 3] > 180) n++
+      }
+      return n
+    })
+    const samples: number[] = []
+    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+
+    const range = Math.max(...samples) - Math.min(...samples)
+    // The kick swings the radius across most of the canvas; a frozen uKick is
+    // a constant circle (range 0). 5000 px is far above measurement noise and
+    // far below the observed range (~40k).
+    expect(range).toBeGreaterThan(5000)
+  })
+
+  test('T5-B — uKick is reactive in a hydra inline sketch, with the analyser LIVE (FLAG-2)', async ({ page }) => {
+    // `s.osc(() => stave.uKick()*N)` brightness varies over frames. Crucially,
+    // we ALSO assert the AudioContext is running (a real analyser is published
+    // in normal playback) — this exercises the real-FFT path where the bus
+    // feed/tick MUST stay live (BLOCK-1). A no-analyser run would false-green
+    // the mis-placed (analyser-gated) feed/tick this test guards against.
+    const sketch =
+      `s.osc(() => stave.uKick() * 90 + 1, 0.1, () => stave.uKick() * 3).out()`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21-ukick-hydra', name: 'p21ukickhydra', renderer: 'hydra', code,
+        requires: ['audio'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4").viz("p21ukickhydra")`)
+    await runCode(page)
+    await page.locator('[data-viz-zone-track] canvas').first().waitFor({ timeout: 8000 })
+
+    // FLAG-2: the real-FFT path is active (analyser present ⇒ AudioContext
+    // running). If this is not 'running', the bus would be on the envelope
+    // fallback and the test would not exercise BLOCK-1.
+    const acState = await page.evaluate(() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (window as any).getAudioContext?.()?.state ?? 'none'
+      } catch { return 'error' }
+    })
+    expect(acState).toBe('running')
+
+    const lums: number[] = []
+    for (let k = 0; k < 9; k++) {
+      lums.push(await screenshotLum(page, '[data-viz-zone-track] canvas'))
+      await page.waitForTimeout(160)
+    }
+    const range = Math.max(...lums) - Math.min(...lums)
+    // uKick swings osc frequency + saturation → brightness varies. A frozen
+    // uKick renders a constant shader (range ≈ 0). 40 (of 765 max) clears
+    // compositor noise; observed range ~350.
+    expect(range).toBeGreaterThan(40)
+  })
+
+  test('T5-C — backdrop paints per-codeblock color from u.tracks + .color() (the headline)', async ({ page }, testInfo) => {
+    // Override the bundled `spectrum.p5` with a backdrop sketch that walks
+    // `u.tracks` and fills a vertical band per track in `u.track(id).color`.
+    // Two codeblocks, each `.color()`-tinted differently; the 2nd pins
+    // `.spectrum()` as the backdrop. Both tints must appear in the BACKDROP
+    // canvas — proving T4's compiledVizProvider trackSchedulers threading
+    // reaches the bus on the full-screen surface (PV64/P95), not just inline.
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke()
+  const tracks = u.tracks || []
+  const n = tracks.length
+  if (n === 0) { fill(40, 40, 40); rect(0, 0, 24, 24); return }
+  for (let i = 0; i < n; i++) {
+    const col = u.track(tracks[i]).color
+    if (col) fill(col); else fill(120, 120, 120)
+    rect((i / n) * width, 0, width / n, height)
+  }
+}`
+    const overridden = await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).__staveOverrideVizFile('spectrum', code)
+    }, sketch)
+    expect(overridden).toBeTruthy() // the bundled spectrum.p5 file exists
+    await page.waitForTimeout(400)
+
+    await setCode(
+      page,
+      `$: s("bd*4").color('red')\n$: s("hh*8").color('cyan').spectrum()`,
+    )
+    await runCode(page)
+    const bd = page.locator('[data-workspace-background] canvas').first()
+    await bd.waitFor({ timeout: 8000 })
+    await page.waitForTimeout(1500)
+
+    const counts = () => bd.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let red = 0, cyan = 0
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3]
+        if (a < 20) continue
+        if (r > 140 && g < 110 && b < 110) red++
+        else if (r < 110 && g > 110 && b > 110) cyan++
+      }
+      return { red, cyan, total: d.length / 4 }
+    })
+
+    const { red, cyan, total } = await counts()
+    // BOTH tints present — the two .color() codeblocks each paint their own
+    // backdrop band. Each band is ~half the canvas; require a clear fraction
+    // of each so neither tint is a stray antialias pixel.
+    expect(red / total).toBeGreaterThan(0.2)
+    expect(cyan / total).toBeGreaterThan(0.2)
+
+    // P74 — capture a screenshot as a test artifact so the per-codeblock
+    // colors can be eyeballed (a pixel count alone doesn't confirm the colors
+    // are the ones the music code set).
+    const shot = await page.locator('[data-workspace-background]').first().screenshot()
+    await testInfo.attach('backdrop-per-codeblock-color', { body: shot, contentType: 'image/png' })
+
+    // Control: no .color() on either block → neither tint is present.
+    await setCode(page, `$: s("bd*4")\n$: s("hh*8").spectrum()`)
+    await page.keyboard.press(`${MOD}+.`)
+    await page.waitForTimeout(600)
+    await runCode(page)
+    await page.waitForTimeout(1500)
+    const ctrl = await counts()
+    expect(ctrl.red / ctrl.total).toBeLessThan(0.05)
+    expect(ctrl.cyan / ctrl.total).toBeLessThan(0.05)
+  })
+
+  test('T5-D — backdrop u.tracks refreshes on re-evaluate (adding a 2nd codeblock)', async ({ page }) => {
+    // Run with one codeblock, then add a second and re-evaluate. The backdrop's
+    // `u.tracks` must grow from 1 → 2 (the new tint appears). Proves the
+    // identity guard re-binds trackSchedulers on re-eval (T4 deliberately left
+    // engineComponents OUT of the memo guard — this OBSERVES that the scheduler
+    // re-publish refreshes the per-track map anyway).
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke()
+  const tracks = u.tracks || []
+  window.__p21bdTracks = JSON.stringify(tracks)
+  const n = tracks.length || 1
+  for (let i = 0; i < tracks.length; i++) {
+    const col = u.track(tracks[i]).color
+    if (col) fill(col); else fill(120, 120, 120)
+    rect((i / n) * width, 0, width / n, height)
+  }
+}`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveOverrideVizFile('spectrum', code)
+    }, sketch)
+    await page.waitForTimeout(400)
+
+    const readTracks = () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      page.evaluate(() => (window as any).__p21bdTracks ?? 'unset')
+
+    await setCode(page, `$: s("bd*4").color('red').spectrum()`)
+    await runCode(page)
+    await page.waitForTimeout(1800)
+    const one = JSON.parse(await readTracks())
+    expect(one.length).toBe(1)
+
+    await setCode(
+      page,
+      `$: s("bd*4").color('red').spectrum()\n$: s("hh*8").color('cyan')`,
+    )
+    await page.keyboard.press(`${MOD}+.`)
+    await page.waitForTimeout(600)
+    await runCode(page)
+    await page.waitForTimeout(1800)
+    const two = JSON.parse(await readTracks())
+    expect(two.length).toBe(2)
+  })
+})

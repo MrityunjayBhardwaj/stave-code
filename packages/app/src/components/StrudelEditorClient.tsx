@@ -328,6 +328,23 @@ export default function StrudelEditorClient({
     registerPresetAsNamedViz(hydraPreset);
   }, [seedState.p5PresetId, seedState.hydraPresetId]);
 
+  // E2E-only hook (Phase 21 T5 observation): expose the named-viz registrar so
+  // Playwright can register a one-off custom p5/hydra sketch by name and then
+  // reference it via `.viz("name")` / `.color()`. This exercises the EXACT
+  // production renderer→SignalBus→scheduler path the spine relies on; only the
+  // preset-authoring UI step (Viz Editor + Ctrl+S) is shortcut — that flow is
+  // not what T5 proves (reactivity + PV64 backdrop threading is). Guarded on
+  // `__STAVE_E2E__` so it never attaches in normal use; it calls the same
+  // `registerPresetAsNamedViz` the app itself uses for bundled presets.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(window as any).__STAVE_E2E__) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveRegisterViz = (preset: VizPreset): boolean =>
+      registerPresetAsNamedViz(preset);
+  }, []);
+
   // Persist bundled presets to IndexedDB on FIRST seed only — never
   // overwrite an existing entry. Earlier the bundled `code` was put
   // back every mount, which silently erased user edits to the bundled
