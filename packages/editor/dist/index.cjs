@@ -4601,15 +4601,36 @@ function setCurrentP5Source(source, lineOffset = 0) {
 __name(setCurrentP5Source, "setCurrentP5Source");
 
 // src/visualizers/signals/aliasMap.ts
-var ALIAS_MAP = {
-  uKick: "bd",
-  uSnare: "sd",
-  uHat: "hh",
-  uOpenHat: "oh",
-  uClap: "cp",
-  uRim: "rim",
-  uTom: ["lt", "mt", "ht"]
+var DEFAULT_VIZ_ENGINE = "strudel";
+var BUILTIN_ALIASES = {
+  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
+  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
+  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
+  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
+  uClap: { strudel: "cp" },
+  uRim: { strudel: "rim" },
+  uTom: {
+    strudel: ["lt", "mt", "ht"],
+    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
+  }
 };
+function resolveAliasesForEngine(custom, engine) {
+  const out = {};
+  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  for (const [name, slots] of Object.entries(custom)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(resolveAliasesForEngine, "resolveAliasesForEngine");
+var ALIAS_MAP = resolveAliasesForEngine(
+  {},
+  DEFAULT_VIZ_ENGINE
+);
 
 // src/visualizers/signals/SignalBus.ts
 var ZERO_AUDIO = {
@@ -5216,54 +5237,92 @@ function onBackdropOpacityChange(cb) {
   };
 }
 __name(onBackdropOpacityChange, "onBackdropOpacityChange");
-var DEFAULT_SIGNAL_ALIASES = {};
+var DEFAULT_STORED_ALIASES = {};
 var SIGNAL_ALIASES_STORAGE = "stave:signalAliases";
 var signalAliasesListeners = /* @__PURE__ */ new Set();
 function isNonEmptyString(v) {
   return typeof v === "string" && v.length > 0;
 }
 __name(isNonEmptyString, "isNonEmptyString");
-function sanitizeSignalAliases(raw) {
+function sanitizeAliasValue(v) {
+  if (isNonEmptyString(v)) return v;
+  if (Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString)) {
+    return v;
+  }
+  return null;
+}
+__name(sanitizeAliasValue, "sanitizeAliasValue");
+function sanitizeStoredSignalAliases(raw) {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!isNonEmptyString(key)) continue;
-    if (isNonEmptyString(value)) {
-      out[key] = value;
-    } else if (Array.isArray(value) && value.length > 0 && value.every(isNonEmptyString)) {
-      out[key] = value;
+    const legacy = sanitizeAliasValue(value);
+    if (legacy != null) {
+      out[key] = { [DEFAULT_VIZ_ENGINE]: legacy };
+      continue;
+    }
+    if (value != null && typeof value === "object" && !Array.isArray(value)) {
+      const slot = {};
+      for (const [eng, ev] of Object.entries(value)) {
+        if (!isNonEmptyString(eng)) continue;
+        const sv = sanitizeAliasValue(ev);
+        if (sv != null) slot[eng] = sv;
+      }
+      if (Object.keys(slot).length > 0) out[key] = slot;
     }
   }
   return out;
 }
-__name(sanitizeSignalAliases, "sanitizeSignalAliases");
-function readSignalAliases() {
+__name(sanitizeStoredSignalAliases, "sanitizeStoredSignalAliases");
+function readStoredSignalAliases() {
   const ls = safeLocalStorage2();
-  if (!ls) return { ...DEFAULT_SIGNAL_ALIASES };
+  if (!ls) return { ...DEFAULT_STORED_ALIASES };
   try {
     const saved = ls.getItem(SIGNAL_ALIASES_STORAGE);
-    if (saved == null) return { ...DEFAULT_SIGNAL_ALIASES };
-    return sanitizeSignalAliases(JSON.parse(saved));
+    if (saved == null) return { ...DEFAULT_STORED_ALIASES };
+    return sanitizeStoredSignalAliases(JSON.parse(saved));
   } catch {
-    return { ...DEFAULT_SIGNAL_ALIASES };
+    return { ...DEFAULT_STORED_ALIASES };
   }
 }
-__name(readSignalAliases, "readSignalAliases");
-function writeSignalAliases(map) {
+__name(readStoredSignalAliases, "readStoredSignalAliases");
+function writeStoredSignalAliases(map) {
   try {
     safeLocalStorage2()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map));
   } catch {
   }
 }
-__name(writeSignalAliases, "writeSignalAliases");
-function getSignalAliases() {
-  return readSignalAliases();
+__name(writeStoredSignalAliases, "writeStoredSignalAliases");
+function flattenForEngine(stored, engine) {
+  const out = {};
+  for (const [name, slot] of Object.entries(stored)) {
+    const v = slot[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(flattenForEngine, "flattenForEngine");
+function getStoredSignalAliases() {
+  return readStoredSignalAliases();
+}
+__name(getStoredSignalAliases, "getStoredSignalAliases");
+function getSignalAliases(engine = DEFAULT_VIZ_ENGINE) {
+  return flattenForEngine(readStoredSignalAliases(), engine);
 }
 __name(getSignalAliases, "getSignalAliases");
-function setSignalAliases(map) {
-  const clean = sanitizeSignalAliases(map);
-  writeSignalAliases(clean);
-  for (const cb of Array.from(signalAliasesListeners)) cb(clean);
+function setSignalAliases(map, engine = DEFAULT_VIZ_ENGINE) {
+  const prev = readStoredSignalAliases();
+  const next = {};
+  for (const [name, value] of Object.entries(map)) {
+    if (!isNonEmptyString(name)) continue;
+    const sv = sanitizeAliasValue(value);
+    if (sv == null) continue;
+    next[name] = { ...prev[name] ?? {}, [engine]: sv };
+  }
+  writeStoredSignalAliases(next);
+  const flat = flattenForEngine(next, engine);
+  for (const cb of Array.from(signalAliasesListeners)) cb(flat);
 }
 __name(setSignalAliases, "setSignalAliases");
 function onSignalAliasesChange(cb) {
@@ -26000,6 +26059,7 @@ exports.BOTTOM_PANEL_HEIGHT_KEY = BOTTOM_PANEL_HEIGHT_KEY;
 exports.BOTTOM_PANEL_HEIGHT_MAX = BOTTOM_PANEL_HEIGHT_MAX;
 exports.BOTTOM_PANEL_HEIGHT_MIN = BOTTOM_PANEL_HEIGHT_MIN;
 exports.BOTTOM_PANEL_OPEN_KEY = BOTTOM_PANEL_OPEN_KEY;
+exports.BUILTIN_ALIASES = BUILTIN_ALIASES;
 exports.BUNDLED_PREFIX = BUNDLED_PREFIX;
 exports.BottomPanel = BottomPanel;
 exports.BreakpointStore = BreakpointStore;
@@ -26007,6 +26067,7 @@ exports.BufferedScheduler = BufferedScheduler;
 exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
 exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
 exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
+exports.DEFAULT_VIZ_ENGINE = DEFAULT_VIZ_ENGINE;
 exports.DemoEngine = DemoEngine;
 exports.EditorView = EditorView;
 exports.ErrorBoundary = ErrorBoundary;
@@ -26136,6 +26197,7 @@ exports.getResolvedTheme = getResolvedTheme;
 exports.getRuntimeProviderForExtension = getRuntimeProviderForExtension;
 exports.getRuntimeProviderForLanguage = getRuntimeProviderForLanguage;
 exports.getSignalAliases = getSignalAliases;
+exports.getStoredSignalAliases = getStoredSignalAliases;
 exports.getSubfolderOrder = getSubfolderOrder;
 exports.getTierFlags = getTierFlags;
 exports.getTrackMeta = getTrackMeta;
@@ -26207,6 +26269,7 @@ exports.resetFileStore = resetFileStore;
 exports.resetHistoryState = resetHistoryState;
 exports.resetUndoManager = resetUndoManager;
 exports.resolveAlias = resolveAlias;
+exports.resolveAliasesForEngine = resolveAliasesForEngine;
 exports.resolveDescriptor = resolveDescriptor;
 exports.restoreFileToCommit = restoreFileToCommit;
 exports.restoreProject = restoreProject;

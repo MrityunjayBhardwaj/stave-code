@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   getSignalAliases,
+  getStoredSignalAliases,
   setSignalAliases,
   onSignalAliasesChange,
 } from '../editorRegistry'
@@ -67,11 +68,74 @@ describe('signalAliases — round-trip', () => {
     expect(getSignalAliases()).toEqual({})
   })
 
-  it('persists JSON under the stave:signalAliases key', () => {
+  it('persists ENGINE-KEYED JSON under the stave:signalAliases key', () => {
+    // The flat write goes into the active engine's slot (Strudel).
     setSignalAliases({ kick: 'bd' })
     expect(JSON.parse(store.get(SIGNAL_ALIASES_STORAGE) as string)).toEqual({
-      kick: 'bd',
+      kick: { strudel: 'bd' },
     })
+  })
+})
+
+describe('signalAliases — engine-keyed storage + migration', () => {
+  it('getStoredSignalAliases exposes the raw engine-keyed map', () => {
+    setSignalAliases({ kick: ['bd', 'kick9'] })
+    expect(getStoredSignalAliases()).toEqual({
+      kick: { strudel: ['bd', 'kick9'] },
+    })
+  })
+
+  it('migrates a LEGACY FLAT stored map to engine-keyed on read', () => {
+    // Pre-engine-keyed shape written by an older build.
+    store.set(SIGNAL_ALIASES_STORAGE, JSON.stringify({ kick: 'bd', tom: ['lt', 'mt'] }))
+    expect(getStoredSignalAliases()).toEqual({
+      kick: { strudel: 'bd' },
+      tom: { strudel: ['lt', 'mt'] },
+    })
+    // The flat strudel view is unchanged across the migration.
+    expect(getSignalAliases()).toEqual({ kick: 'bd', tom: ['lt', 'mt'] })
+  })
+
+  it('round-trips an engine-keyed stored map and reads per engine', () => {
+    store.set(
+      SIGNAL_ALIASES_STORAGE,
+      JSON.stringify({ kick: { strudel: ['bd', 'kick9'], sonicpi: ['drum_heavy_kick'] } }),
+    )
+    expect(getSignalAliases('strudel')).toEqual({ kick: ['bd', 'kick9'] })
+    expect(getSignalAliases('sonicpi')).toEqual({ kick: ['drum_heavy_kick'] })
+  })
+
+  it('keeps ANY engine slot with a valid value (forward-compat for new engines)', () => {
+    store.set(
+      SIGNAL_ALIASES_STORAGE,
+      JSON.stringify({ kick: { strudel: 'bd', tau5: 'kick' } }),
+    )
+    expect(getStoredSignalAliases()).toEqual({
+      kick: { strudel: 'bd', tau5: 'kick' },
+    })
+  })
+
+  it('setting one engine preserves the other engine slots of surviving names', () => {
+    store.set(
+      SIGNAL_ALIASES_STORAGE,
+      JSON.stringify({ kick: { strudel: 'bd', sonicpi: 'drum_heavy_kick' } }),
+    )
+    // Edit only the Strudel column — sonicpi must survive.
+    setSignalAliases({ kick: ['bd', 'kick9'] }, 'strudel')
+    expect(getStoredSignalAliases()).toEqual({
+      kick: { strudel: ['bd', 'kick9'], sonicpi: 'drum_heavy_kick' },
+    })
+  })
+
+  it('drops a slot whose value is malformed within an engine-keyed object', () => {
+    store.set(
+      SIGNAL_ALIASES_STORAGE,
+      JSON.stringify({
+        kick: { strudel: 'bd', sonicpi: 5 },
+        bad: { strudel: [] },
+      }),
+    )
+    expect(getStoredSignalAliases()).toEqual({ kick: { strudel: 'bd' } })
   })
 })
 
