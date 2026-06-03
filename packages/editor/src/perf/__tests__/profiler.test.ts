@@ -137,27 +137,34 @@ describe('frames → fps + drops', () => {
   })
 })
 
-describe('counters', () => {
-  it('inc/dec track a live count', () => {
-    perf.inc('viz')
-    perf.inc('viz')
-    perf.dec('viz')
-    expect(perf.snapshot().counters.viz).toBe(1)
+describe('counters (cumulative) vs gauges (live state)', () => {
+  it('inc/dec accumulate a cumulative counter', () => {
     perf.inc('triggers', 8)
-    expect(perf.snapshot().counters.triggers).toBe(8)
+    perf.inc('triggers')
+    expect(perf.snapshot().counters.triggers).toBe(9)
+  })
+
+  it('gauge tracks a live +1/-1 count', () => {
+    perf.gauge('viz', 1)
+    perf.gauge('viz', 1)
+    perf.gauge('viz', -1)
+    expect(perf.snapshot().gauges.viz).toBe(1)
   })
 })
 
 describe('reset', () => {
-  it('clears samples but keeps enabled', () => {
+  it('clears samples + counters but keeps enabled AND live gauges', () => {
     perf.record('s', 1)
     perf.frame('a')
-    perf.inc('c')
+    perf.inc('c') // cumulative — cleared
+    perf.gauge('viz.p5', 2) // live gauge — survives (instances still mounted)
     perf.reset()
     const snap = perf.snapshot()
     expect(snap.enabled).toBe(true)
     expect(snap.sections).toEqual({})
     expect(snap.frames).toEqual({})
     expect(snap.counters).toEqual({})
+    // The gauge represents what's live NOW — reset must NOT wipe it.
+    expect(snap.gauges['viz.p5']).toBe(2)
   })
 })

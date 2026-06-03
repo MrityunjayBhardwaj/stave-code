@@ -62,8 +62,8 @@ export function PerfOverlay() {
   const triggers = snap.counters["audio.triggers"] ?? 0;
   const triggerRate =
     snap.uptimeMs > 0 ? (triggers / snap.uptimeMs) * 1000 : 0;
-  const p5n = snap.counters["viz.p5"] ?? 0;
-  const hydraN = snap.counters["viz.hydra"] ?? 0;
+  const p5n = snap.gauges["viz.p5"] ?? 0;
+  const hydraN = snap.gauges["viz.hydra"] ?? 0;
 
   return (
     <div style={styles.panel} role="status" aria-label="Performance overlay">

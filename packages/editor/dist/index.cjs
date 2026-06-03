@@ -3503,6 +3503,8 @@ var _Profiler = class _Profiler {
     this.sections = /* @__PURE__ */ new Map();
     this.frames = /* @__PURE__ */ new Map();
     this.counters = /* @__PURE__ */ new Map();
+    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
+    this.gauges = /* @__PURE__ */ new Map();
     /** Open spans for begin()/end() keyed by label — last-write-wins (a label
      *  isn't expected to nest with itself within a frame). */
     this.open = /* @__PURE__ */ new Map();
@@ -3600,6 +3602,7 @@ var _Profiler = class _Profiler {
     this.frames.delete(instanceId);
   }
   // ── counters ──────────────────────────────────────────────────────────────
+  /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
   inc(name, by = 1) {
     if (!this._enabled) return;
     this.counters.set(name, (this.counters.get(name) ?? 0) + by);
@@ -3607,6 +3610,13 @@ var _Profiler = class _Profiler {
   dec(name, by = 1) {
     if (!this._enabled) return;
     this.counters.set(name, (this.counters.get(name) ?? 0) - by);
+  }
+  /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
+   *  Gauges survive reset() — they reflect what's live now, not samples.
+   *  Use +1 on mount, -1 on destroy. */
+  gauge(name, delta) {
+    if (!this._enabled) return;
+    this.gauges.set(name, (this.gauges.get(name) ?? 0) + delta);
   }
   // ── read / reset ────────────────────────────────────────────────────────
   snapshot() {
@@ -3616,12 +3626,15 @@ var _Profiler = class _Profiler {
     for (const [id, ft] of this.frames) frames[id] = ft.stats();
     const counters = {};
     for (const [name, v] of this.counters) counters[name] = v;
+    const gauges = {};
+    for (const [name, v] of this.gauges) gauges[name] = v;
     return {
       enabled: this._enabled,
       uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
       sections,
       frames,
       counters,
+      gauges,
       longtasks: {
         count: this.longtaskCount,
         totalMs: this.longtaskTotalMs,
@@ -5865,7 +5878,7 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.staveUniformsRef = { current: uniforms };
   }
   mount(container, components, size, onError) {
-    perf.inc("viz.p5");
+    perf.gauge("viz.p5", 1);
     installP5FesBridgeWith(p5__default.default);
     try {
       this.hapStreamRef.current = components.streaming?.hapStream ?? null;
@@ -5957,7 +5970,7 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.instance?.loop();
   }
   destroy() {
-    perf.dec("viz.p5");
+    perf.gauge("viz.p5", -1);
     perf.dropFrames(this.perfId);
     if (this.instance) {
       const pi = this.instance;
@@ -6225,7 +6238,7 @@ var _HydraVizRenderer = class _HydraVizRenderer {
     this.staveBag = bag;
   }
   mount(container, components, size, onError) {
-    perf.inc("viz.hydra");
+    perf.gauge("viz.hydra", 1);
     try {
       const config = getVizConfig();
       this.analyser = components.audio?.analyser ?? null;
@@ -6357,7 +6370,7 @@ var _HydraVizRenderer = class _HydraVizRenderer {
   }
   destroy() {
     this.destroyed = true;
-    perf.dec("viz.hydra");
+    perf.gauge("viz.hydra", -1);
     perf.dropFrames(this.perfId);
     if (this.rafId != null) {
       cancelAnimationFrame(this.rafId);

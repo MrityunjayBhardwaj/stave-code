@@ -2629,8 +2629,11 @@ interface PerfSnapshot {
     uptimeMs: number;
     sections: Record<string, SectionStats>;
     frames: Record<string, FrameStats>;
-    /** Current counter values (live or cumulative — caller's choice of semantics). */
+    /** Cumulative counters since reset (e.g. `audio.triggers`) — rate = value/uptime. */
     counters: Record<string, number>;
+    /** Live gauges — current state (e.g. `viz.p5` mounted instances). NOT cleared
+     *  by reset(), because they represent what's live NOW, not accumulated samples. */
+    gauges: Record<string, number>;
     longtasks: {
         count: number;
         totalMs: number;
@@ -2644,6 +2647,8 @@ declare class Profiler {
     private readonly sections;
     private readonly frames;
     private readonly counters;
+    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
+    private readonly gauges;
     /** Open spans for begin()/end() keyed by label — last-write-wins (a label
      *  isn't expected to nest with itself within a frame). */
     private readonly open;
@@ -2674,8 +2679,13 @@ declare class Profiler {
     /** Forget an instance's frame history (on renderer destroy) so a dead viz
      *  doesn't linger in the snapshot. No-op when disabled. */
     dropFrames(instanceId: string): void;
+    /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
     inc(name: string, by?: number): void;
     dec(name: string, by?: number): void;
+    /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
+     *  Gauges survive reset() — they reflect what's live now, not samples.
+     *  Use +1 on mount, -1 on destroy. */
+    gauge(name: string, delta: number): void;
     snapshot(): PerfSnapshot;
     /** Clear all samples/counters but keep the enabled state + observer. Use to
      *  start a clean measurement window (e.g. before driving a heavy patch). */

@@ -90,8 +90,11 @@ export interface PerfSnapshot {
   uptimeMs: number
   sections: Record<string, SectionStats>
   frames: Record<string, FrameStats>
-  /** Current counter values (live or cumulative — caller's choice of semantics). */
+  /** Cumulative counters since reset (e.g. `audio.triggers`) — rate = value/uptime. */
   counters: Record<string, number>
+  /** Live gauges — current state (e.g. `viz.p5` mounted instances). NOT cleared
+   *  by reset(), because they represent what's live NOW, not accumulated samples. */
+  gauges: Record<string, number>
   longtasks: { count: number; totalMs: number; maxMs: number }
 }
 
@@ -195,6 +198,8 @@ class Profiler {
   private readonly sections = new Map<string, Ring>()
   private readonly frames = new Map<string, FrameTracker>()
   private readonly counters = new Map<string, number>()
+  /** Live gauges (current-state counts) — survive reset(), unlike counters. */
+  private readonly gauges = new Map<string, number>()
   /** Open spans for begin()/end() keyed by label — last-write-wins (a label
    *  isn't expected to nest with itself within a frame). */
   private readonly open = new Map<string, number>()
@@ -306,6 +311,7 @@ class Profiler {
 
   // ── counters ──────────────────────────────────────────────────────────────
 
+  /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
   inc(name: string, by = 1): void {
     if (!this._enabled) return
     this.counters.set(name, (this.counters.get(name) ?? 0) + by)
@@ -314,6 +320,14 @@ class Profiler {
   dec(name: string, by = 1): void {
     if (!this._enabled) return
     this.counters.set(name, (this.counters.get(name) ?? 0) - by)
+  }
+
+  /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
+   *  Gauges survive reset() — they reflect what's live now, not samples.
+   *  Use +1 on mount, -1 on destroy. */
+  gauge(name: string, delta: number): void {
+    if (!this._enabled) return
+    this.gauges.set(name, (this.gauges.get(name) ?? 0) + delta)
   }
 
   // ── read / reset ────────────────────────────────────────────────────────
@@ -325,12 +339,15 @@ class Profiler {
     for (const [id, ft] of this.frames) frames[id] = ft.stats()
     const counters: Record<string, number> = {}
     for (const [name, v] of this.counters) counters[name] = v
+    const gauges: Record<string, number> = {}
+    for (const [name, v] of this.gauges) gauges[name] = v
     return {
       enabled: this._enabled,
       uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
       sections,
       frames,
       counters,
+      gauges,
       longtasks: {
         count: this.longtaskCount,
         totalMs: this.longtaskTotalMs,

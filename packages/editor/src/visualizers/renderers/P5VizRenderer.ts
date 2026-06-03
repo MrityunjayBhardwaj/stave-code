@@ -186,7 +186,7 @@ export class P5VizRenderer implements VizRenderer {
     size: { w: number; h: number },
     onError: (e: Error) => void
   ): void {
-    perf.inc('viz.p5') // live p5-instance count (#228); dec'd in destroy()
+    perf.gauge('viz.p5', 1) // live p5-instance gauge (#228); -1 in destroy()
     // Install the FES bridge with the real p5 constructor we already
     // hold statically. Doing this here (rather than via a dynamic
     // `import('p5')` in CompiledVizMount) eliminates the class of bug
@@ -354,7 +354,7 @@ export class P5VizRenderer implements VizRenderer {
   }
 
   destroy(): void {
-    perf.dec('viz.p5') // #228 — release the live-instance count + frame history
+    perf.gauge('viz.p5', -1) // #228 — release the live-instance gauge + frame history
     perf.dropFrames(this.perfId)
     if (this.instance) {
       // p5 v2 defers its `#_setup()` chain to the next animation

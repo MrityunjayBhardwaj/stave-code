@@ -413,7 +413,7 @@ export class HydraVizRenderer implements VizRenderer {
     size: { w: number; h: number },
     onError: (e: Error) => void
   ): void {
-    perf.inc('viz.hydra') // live hydra-instance count (#228); dec'd in destroy()
+    perf.gauge('viz.hydra', 1) // live hydra-instance gauge (#228); -1 in destroy()
     try {
       const config = getVizConfig()
 
@@ -725,7 +725,7 @@ export class HydraVizRenderer implements VizRenderer {
 
   destroy(): void {
     this.destroyed = true
-    perf.dec('viz.hydra') // #228 — release the live-instance count + frame history
+    perf.gauge('viz.hydra', -1) // #228 — release the live-instance gauge + frame history
     perf.dropFrames(this.perfId)
     if (this.rafId != null) {
       cancelAnimationFrame(this.rafId)
