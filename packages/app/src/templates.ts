@@ -21,6 +21,9 @@ import {
   SPECTRUM_P5_CODE,
   SPIRAL_P5_CODE,
   PITCHWHEEL_P5_CODE,
+  // Signal-bus example sketches (Phase 21) — living docs for the named bus.
+  SIGNALS_SPECTRUM_P5_CODE,
+  SIGNALS_BACKDROP_P5_CODE,
 } from "@stave/editor";
 
 // ── Default code snippets ────────────────────────────────────────────
@@ -109,6 +112,34 @@ s.osc(6, 0.1, () => s.a.fft[0] * 3)
   .modulate(s.noise(3), () => s.a.fft[0] * 0.05)
   .out()`;
 
+export const SIGNALS_BANDS_HYDRA_CODE = `// Hydra Signals (Bands) — the named musical-signal bus in hydra.
+// Try it over a drum pattern, e.g.   $: s("bd*4 hh*8")
+//
+// IMPORTANT: hydra sketches receive two namespaces — \`s\` (the hydra synth) and
+// \`stave\` (the live bus). Unlike p5, nothing is exposed bare here, so write
+// \`s.osc(...)\` and \`stave.uBass(...)\`. And in hydra the bus SCALARS are
+// () => number THUNKS (call them every frame), while \`fft\` / \`wave\` are arrays:
+//
+//   stave.uBass()          — master low-band magnitude, 0..1 (a THUNK — call it).
+//                            stave.uRms() / uMid() / uTreble() are siblings.
+//   stave.u('bd').rms()    — the 'bd' (kick) sound's loudness 0..1 (also a thunk).
+//   stave.u('bd').env()    — that sound's envelope, 0..1 (bumps on each hit).
+//   stave.u('bd').fft[i]   — that sound's spectrum: an ARRAY, indexed natively.
+//                            Wrap the WHOLE expression in () => … so hydra reads
+//                            it fresh each frame:  () => stave.u('bd').fft[2]
+//
+// (In p5 these same names are bare LIVE NUMBERS — see "Signals (Spectrum)".)
+
+s.osc(() => 8 + stave.uBass() * 30, 0.1, 0)        // density rides the low band
+  .color(
+    () => 0.4 + stave.u('bd').rms() * 0.6,          // red pulses with the kick
+    0.5,
+    () => 0.6 + stave.uTreble() * 0.4               // blue follows the highs
+  )
+  .rotate(() => stave.u('bd').fft[2] || 0)          // spin from a kick spectrum bin
+  .modulate(s.noise(2), () => stave.uMid() * 0.15)  // wobble with the mids
+  .out(s.o0)`;
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface TemplateFile {
@@ -184,6 +215,9 @@ function makeStarterFiles(): TemplateFile[] {
     vizFile("spiral", "p5", SPIRAL_P5_CODE),
     vizFile("pitchwheel", "p5", PITCHWHEEL_P5_CODE),
     vizFile("wordfall", "p5", WORDFALL_P5_CODE),
+    // Signal-bus example sketches (Phase 21) — bundled docs for the named bus.
+    vizFile("Signals (Spectrum)", "p5", SIGNALS_SPECTRUM_P5_CODE),
+    vizFile("Signals (Backdrop)", "p5", SIGNALS_BACKDROP_P5_CODE),
     // Viz presets — Hydra
     {
       id: workspaceFileIdForPreset(hydraId),
@@ -194,6 +228,7 @@ function makeStarterFiles(): TemplateFile[] {
     },
     vizFile("scope", "hydra", HYDRA_SCOPE_CODE),
     vizFile("kaleidoscope", "hydra", HYDRA_KALEIDOSCOPE_CODE),
+    vizFile("Signals (Bands)", "hydra", SIGNALS_BANDS_HYDRA_CODE),
   ];
 }
 

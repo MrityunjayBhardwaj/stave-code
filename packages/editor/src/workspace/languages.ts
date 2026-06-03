@@ -54,6 +54,7 @@ import { registerStrudelHover } from '../monaco/strudelDocs'
 import { ensureStrudelLintCodeActionProvider } from '../monaco/diagnostics'
 import { registerP5Providers, P5_DOCS_INDEX } from '../monaco/docs/p5'
 import { registerHydraProviders, HYDRA_DOCS_INDEX } from '../monaco/docs/hydra'
+import { registerSignalBusProviders } from '../monaco/docs/signals'
 import { registerSonicPiProviders } from '../monaco/docs/sonicpi'
 import {
   buildIdentifierAlternation,
@@ -339,8 +340,19 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
       ensureStrudelLintCodeActionProvider(m, 'strudel')
     }
   })
-  ensureProviders('p5js', monaco, registerP5Providers)
-  ensureProviders('hydra', monaco, registerHydraProviders)
+  ensureProviders('p5js', monaco, (m) => {
+    registerP5Providers(m)
+    // Phase 21 — signal-bus hover/completion. p5's general dot-completion is
+    // OFF by design, so the bus's TARGETED dot provider supplies `u('bd').`
+    // field suggestions without polluting every `.`. Inside the same
+    // ensureProviders callback so the dedupe guard covers it (idempotent on
+    // re-mount).
+    registerSignalBusProviders(m, 'p5js')
+  })
+  ensureProviders('hydra', monaco, (m) => {
+    registerHydraProviders(m)
+    registerSignalBusProviders(m, 'hydra')
+  })
   ensureProviders('sonicpi', monaco, registerSonicPiProviders)
 }
 

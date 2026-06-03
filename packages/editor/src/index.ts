@@ -125,6 +125,9 @@ export {
   SPECTRUM_P5_CODE,
   SPIRAL_P5_CODE,
   PITCHWHEEL_P5_CODE,
+  // Signal-bus example sketches (Phase 21) — living docs for the named bus.
+  SIGNALS_SPECTRUM_P5_CODE,
+  SIGNALS_BACKDROP_P5_CODE,
 } from './visualizers/builtinP5Code'
 
 // ---------------------------------------------------------------------------

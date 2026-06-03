@@ -501,3 +501,114 @@ function draw() {
   line(0, height * PH, width, height * PH)
 }`;
 
+// ── Signal-bus example sketches (Phase 21) ───────────────────────────────────
+// Living documentation for the named musical-signal bus. Each sketch names and
+// explains the API in comments. Run them over a simple drum pattern, e.g.
+//   $: s("bd*4 hh*8").viz("Signals (Spectrum)")
+// In p5 the bus values are LIVE NUMBERS/ARRAYS read fresh each draw (no thunks):
+//   uKick / uSnare / …    — bare envelope numbers (0..1), via `with(stave)`.
+//   u('bd')               — a sound's live SignalReading.
+//   u('bd').rms           — a NUMBER (loudness of that sound's own analyser).
+//   u('bd').fft           — a number[] spectrum (32 buckets, each 0..1).
+//   u.fft / uBass / uRms  — the MASTER mix (combined audio).
+// (hydra uses the same names but as () => number THUNKS — see SIGNALS_BANDS.)
+
+export const SIGNALS_SPECTRUM_P5_CODE = `// Stave p5 viz — Signals (Spectrum)
+// Showcases the named musical-signal bus. Try it over:  s("bd*4 hh*8")
+//
+// The bus is exposed BARE in p5 (via the sketch's stave namespace), so you can
+// read these directly — they are LIVE NUMBERS / ARRAYS, refreshed every draw():
+//
+//   u('bd')        — the 'bd' (kick) sound's live signals (a SignalReading).
+//   u('bd').fft    — that sound's spectrum: a number[] of 32 buckets, each 0..1
+//                    (real audio off the kick's OWN analyser/orbit). [] if muted.
+//   u('bd').rms    — that sound's loudness 0..1. .bass/.mid/.treble also exist.
+//   uKick          — the kick ENVELOPE, 0..1, bumped on each hit, decaying ~0.92
+//                    per frame. uSnare / uHat / uClap / uTom … are siblings.
+//   u.fft          — the MASTER mix spectrum (combined audio), same shape.
+//
+// In hydra these same names are () => number THUNKS — see "Signals (Bands)".
+
+function setup() {
+  createCanvas(stave.width, stave.height)
+  noStroke()
+}
+
+function draw() {
+  clear()
+
+  // ── Spectrum bars from the kick's own audio: u('bd').fft is a number[] ──────
+  // Each bucket is 0..1. We fall back to the master mix (u.fft) so the demo
+  // still moves before any 'bd' has fired its analyser.
+  const spectrum = (u('bd').fft.length ? u('bd').fft : u.fft) || []
+  const bw = width / Math.max(1, spectrum.length)
+  for (let i = 0; i < spectrum.length; i++) {
+    const v = spectrum[i]            // 0..1 magnitude for this band
+    const h = v * height
+    fill(117, 186, 255, 180 + v * 75)
+    rect(i * bw, height - h, bw - 1, h)
+  }
+
+  // ── A circle pulsed by uKick (a live NUMBER 0..1 in p5) ─────────────────────
+  // uKick bumps to ~1 on each kick hit and decays each frame, so the circle
+  // punches outward on the beat. (hydra would call it: uKick().)
+  const base = min(width, height) * 0.18
+  const r = base + uKick * base * 1.6
+  noFill()
+  stroke(255, 255, 255, 120 + uKick * 135)
+  strokeWeight(2 + uKick * 4)
+  circle(width / 2, height / 2, r * 2)
+
+  // Inner dot brightens with overall loudness (master RMS, a number in p5).
+  noStroke()
+  fill(255, 255, 255, 60 + uRms * 195)
+  circle(width / 2, height / 2, base * 0.5)
+}`;
+
+export const SIGNALS_BACKDROP_P5_CODE = `// Stave p5 viz — Signals (Backdrop)
+// One color band per code block (track). Showcases the per-track side of the
+// bus: u.tracks enumerates the live track keys, and u.track(id).color is the
+// color that block declared in the music via .color() (e.g. in Strudel:
+//   $: s("bd*4").color("#f97316")
+//   $: s("hh*8").color("#06b6d4")
+// ). Each band's brightness follows that track's loudness (rms).
+
+function setup() {
+  createCanvas(stave.width, stave.height)
+  noStroke()
+}
+
+// Parse a "#rrggbb" / "#rgb" hap color into [r,g,b]; null if unparseable.
+function parseHex(hex) {
+  const s = String(hex).replace('#', '')
+  if (s.length === 6) return [parseInt(s.slice(0,2),16), parseInt(s.slice(2,4),16), parseInt(s.slice(4,6),16)]
+  if (s.length === 3) return [parseInt(s[0]+s[0],16), parseInt(s[1]+s[1],16), parseInt(s[2]+s[2],16)]
+  return null
+}
+
+function draw() {
+  clear()
+
+  // u.tracks — the live track keys ('$0','$1',… anonymous, or 'd1','drums'…).
+  const tracks = u.tracks || []
+  if (!tracks.length) {
+    fill(120); textAlign(CENTER, CENTER); textSize(13)
+    text('play a multi-block pattern…', width / 2, height / 2)
+    return
+  }
+
+  const bandH = height / tracks.length
+  for (let i = 0; i < tracks.length; i++) {
+    const id = tracks[i]
+    const reading = u.track(id)            // this track's live SignalReading
+    // .color — the color this block set with .color() in the music. p5: a value
+    // (string|null). Fall back to a neutral blue if the block set none.
+    const rgb = parseHex(reading.color) || [117, 186, 255]
+    // .rms — this track's loudness 0..1 (own analyser; 0 if silent). Drives the
+    // band's brightness so the active block lights up.
+    const lvl = reading.rms
+    fill(rgb[0], rgb[1], rgb[2], 60 + lvl * 195)
+    rect(0, i * bandH, width, bandH)
+  }
+}`;
+
