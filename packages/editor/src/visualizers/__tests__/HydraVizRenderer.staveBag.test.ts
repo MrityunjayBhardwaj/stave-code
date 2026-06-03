@@ -15,6 +15,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { HydraVizRenderer, type HydraStaveBag } from '../renderers/HydraVizRenderer'
+import type { SignalBus } from '../signals/SignalBus'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
 import type { IRPattern } from '../../ir/IRPattern'
 import type { IREvent } from '../../ir/IREvent'
@@ -277,6 +278,9 @@ describe('HydraVizRenderer — stave bag', () => {
       const fakeAnalyser = {
         frequencyBinCount: 8,
         getByteFrequencyData: () => {},
+        // Slice 2: pumpAudio now runs bus.readAudio() unconditionally, which
+        // reads the time-domain buffer off every bound analyser. Stub it.
+        getByteTimeDomainData: () => {},
       } as unknown as AnalyserNode
       renderer.mount(
         document.createElement('div'),
@@ -341,12 +345,202 @@ describe('HydraVizRenderer — stave bag', () => {
       expect(hapStream.size).toBe(0)
     })
 
+    /**
+     * A fake analyser (BusAnalyser shape, T1 test pattern): `frequencyBinCount`
+     * bins, `getByteFrequencyData` fills a KNOWN magnitude into the low band
+     * (so `.bass`/`.fft` are non-zero), `getByteTimeDomainData` fills a constant
+     * non-silent offset (so `.rms` from `(v-128)/128` is non-zero). This is the
+     * DSP-feed analyser — distinct from the FFT-pump's bare `freqData`-only stub.
+     */
+    function makeAudioAnalyser(opts?: {
+      lowMag?: number
+      timeVal?: number
+      bins?: number
+    }) {
+      const n = opts?.bins ?? 32
+      const lowMag = opts?.lowMag ?? 200 // 0..255, lands in the LOW third → .bass
+      const timeVal = opts?.timeVal ?? 200 // 0..255, 128 = silence → rms>0
+      return {
+        frequencyBinCount: n,
+        getByteFrequencyData: (arr: Uint8Array) => {
+          // Fill only the low third — bass non-zero, treble ~0, fft populated.
+          const third = Math.floor(n / 3)
+          for (let i = 0; i < n; i++) arr[i] = i < third ? lowMag : 0
+        },
+        getByteTimeDomainData: (arr: Uint8Array) => {
+          for (let i = 0; i < n; i++) arr[i] = timeVal
+        },
+      }
+    }
+
+    /**
+     * Pull the renderer's private bus — T2's observation reads DSP fields at
+     * the BUS boundary (`bus.sound('bd').rms`), NOT the hydra `u('bd').rms()`
+     * thunk: the hydra accessor's DSP thunks (`.rms`/`.bass`/`.fft`) are
+     * T3's deliverable (PLAN-SLICE2 §T3), not yet wired. T2's job is the
+     * per-frame WIRING — that `pumpAudio` binds the analysers (in mount) and
+     * runs `readAudio()` AFTER `refreshActive`. The bus reading is the direct
+     * observation of that wiring; T3 will surface it on the bag thunks.
+     */
+    function busOf(r: HydraVizRenderer): SignalBus {
+      return (r as unknown as { bus: SignalBus }).bus
+    }
+
+    it('mount binds analysers + pumpAudio readAudio drives bus DSP off a live analyser, after a frame (T2 / FLAG-2)', () => {
+      const renderer = new HydraVizRenderer()
+      const hapStream = makeHapStream()
+      // `bd` lives in exactly ONE active track ($0) → audioFor picks that
+      // track's ISOLATED analyser (not master). Scheduler key space, NOT trackId.
+      const kickTrack = makePointScheduler({ 0: { s: 'bd', velocity: 0.8 } })
+      const trackSchedulers = new Map([['$0', kickTrack]])
+      const combined = makePointScheduler({ 0: { s: 'bd', velocity: 0.8 } })
+
+      // Master analyser AND a per-track ($0) analyser — the production shape
+      // (LiveCodingEngine publishes both). A REAL master analyser means we are
+      // on the production FFT path (P96/FLAG-2): the read must NOT be gated to
+      // the envelope-fallback branch.
+      const master = makeAudioAnalyser({ lowMag: 50 }) // weaker master mix
+      const kickAnalyser = makeAudioAnalyser({ lowMag: 200, timeVal: 200 })
+      const trackAnalysers = new Map([['$0', kickAnalyser]])
+
+      renderer.mount(
+        document.createElement('div'),
+        {
+          audio: {
+            analyser: master,
+            trackAnalysers,
+          } as any,
+          streaming: { hapStream: hapStream as any } as any,
+          queryable: { scheduler: combined, trackSchedulers } as any,
+        } as Partial<EngineComponents>,
+        { w: 64, h: 64 },
+        () => {} // swallow the async hydra-synth import rejection in jsdom
+      )
+
+      // GUARD (P96/FLAG-2): the analyser IS truthy — production FFT path, the
+      // one that skips the envelope subscription. A no-analyser test false-greens.
+      expect(analyserOf(renderer)).toBeTruthy()
+
+      const bus = busOf(renderer)
+
+      // Before any frame, readAudio hasn't run — DSP fields are the zero reading.
+      expect(bus.sound('bd').rms).toBe(0)
+      expect(bus.sound('bd').bass).toBe(0)
+      expect(bus.sound('bd').fft).toEqual([])
+
+      // Drive ONE frame. pumpAudio runs tick → refreshActive → readAudio in
+      // order; readAudio reads the bound analysers off the fresh activeByTrack.
+      pump(renderer)
+
+      // REAL audio is now live and distinct from `.env`: rms/bass non-zero,
+      // sourced from the isolated $0 analyser (audioFor picks it — bd owns one
+      // active track). fft is the populated 32-bucket spectrum.
+      const reading = bus.sound('bd')
+      expect(reading.rms).toBeGreaterThan(0)
+      expect(reading.bass).toBeGreaterThan(0)
+      expect(reading.fft.length).toBe(32)
+      expect(reading.fft.some((v) => v > 0)).toBe(true)
+      // The low band carries energy (treble ~0) — confirms the isolated read,
+      // not a flat/garbage buffer.
+      expect(reading.treble).toBe(0)
+      // DSP (real audio, this.rms) is independent of `.env` (the IR envelope
+      // feed) — distinct fields off the same reading. `.env` is 0 (no hap fired
+      // through the stream), `.rms` is non-zero (analyser live). Proves the DSP
+      // read is the analyser, NOT a re-label of the envelope.
+      expect(reading.env).toBe(0)
+      expect(reading.rms).toBeGreaterThan(0)
+
+      // Ordering guard: bass came from the ISOLATED $0 analyser (lowMag 200),
+      // not the weaker master (lowMag 50). audioFor needs the fresh
+      // activeByTrack that refreshActive fills BEFORE readAudio — so the read
+      // landing on the isolated track proves readAudio ran AFTER refreshActive.
+      // master bass would be ~50/255 of the low third; isolated is ~200/255.
+      expect(reading.bass).toBeGreaterThan(0.5)
+
+      renderer.destroy()
+    })
+
+    it('exposes DSP fields on the bag thunks: u("bd").rms()/.bass() thunks live, .fft array, u.rms() master (T3)', () => {
+      const renderer = new HydraVizRenderer()
+      const hapStream = makeHapStream()
+      // `bd` lives in exactly ONE active track ($0) → audioFor picks the
+      // isolated $0 analyser (lowMag 200), not the weaker master (lowMag 50).
+      const kickTrack = makePointScheduler({ 0: { s: 'bd', velocity: 0.8 } })
+      const trackSchedulers = new Map([['$0', kickTrack]])
+      const combined = makePointScheduler({ 0: { s: 'bd', velocity: 0.8 } })
+      const master = makeAudioAnalyser({ lowMag: 50, timeVal: 150 })
+      const kickAnalyser = makeAudioAnalyser({ lowMag: 200, timeVal: 200 })
+      const trackAnalysers = new Map([['$0', kickAnalyser]])
+
+      renderer.mount(
+        document.createElement('div'),
+        {
+          audio: { analyser: master, trackAnalysers } as any,
+          streaming: { hapStream: hapStream as any } as any,
+          queryable: { scheduler: combined, trackSchedulers } as any,
+        } as Partial<EngineComponents>,
+        { w: 64, h: 64 },
+        () => {}
+      )
+      expect(analyserOf(renderer)).toBeTruthy()
+
+      const bag = bagOf(renderer)
+
+      // SHAPE (D-01 hydra): DSP scalars are THUNKS (functions), arrays are ARRAYS.
+      expect(typeof bag.u('bd').rms).toBe('function')
+      expect(typeof bag.u('bd').bass).toBe('function')
+      expect(typeof bag.uRms).toBe('function')
+      // Before any frame, readAudio hasn't run — thunks read 0, arrays empty.
+      expect(bag.u('bd').rms()).toBe(0)
+      expect(Array.isArray(bag.u('bd').fft)).toBe(true)
+      expect(bag.u('bd').fft).toEqual([])
+
+      // Drive ONE frame — pumpAudio runs tick → refreshActive → readAudio.
+      pump(renderer)
+
+      // The rms thunk now reads the LIVE analyser value, non-zero (the headline
+      // T3 observation — a thunk that re-reads the bus each call).
+      expect(bag.u('bd').rms()).toBeGreaterThan(0)
+      expect(bag.u('bd').bass()).toBeGreaterThan(0)
+      // bass came from the ISOLATED $0 analyser (lowMag 200), not master (50).
+      expect(bag.u('bd').bass()).toBeGreaterThan(0.5)
+      // treble ~0 — confirms the isolated low-band read, not a flat buffer.
+      expect(bag.u('bd').treble()).toBe(0)
+      // fft is a populated 32-bucket ARRAY (indexed natively as u('bd').fft[i]).
+      const fft = bag.u('bd').fft
+      expect(Array.isArray(fft)).toBe(true)
+      expect(fft.length).toBe(32)
+      expect(fft.some((v) => v > 0)).toBe(true)
+      // wave is a populated ARRAY too (-1..1 time domain).
+      expect(Array.isArray(bag.u('bd').wave)).toBe(true)
+      expect(bag.u('bd').wave.length).toBeGreaterThan(0)
+
+      // Master thunks: u.rms() / u.bass() read bus.master() (the combined mix).
+      expect(typeof bag.u.rms).toBe('function')
+      expect(bag.u.rms()).toBeGreaterThan(0)
+      expect(bag.u.bass()).toBeGreaterThan(0)
+      // u.fft (master spectrum) is a live ARRAY.
+      expect(Array.isArray(bag.u.fft)).toBe(true)
+      expect(bag.u.fft.length).toBe(32)
+      // Bare master sugar thunk uRms matches u.rms() (parity with uKick).
+      expect(bag.uRms()).toBe(bag.u.rms())
+
+      // DSP is independent of `.env` (the IR envelope) — distinct fields. `.env`
+      // is 0 (no hap fired through the stream), `.rms` non-zero (analyser live).
+      expect(bag.u('bd').env()).toBe(0)
+
+      renderer.destroy()
+    })
+
     it('a live-ref scheduler swap on update() is observed by the SAME thunk closure', () => {
       const renderer = new HydraVizRenderer()
       const hapStream = makeHapStream()
       const fakeAnalyser = {
         frequencyBinCount: 8,
         getByteFrequencyData: () => {},
+        // Slice 2: pumpAudio now runs bus.readAudio() unconditionally, which
+        // reads the time-domain buffer off every bound analyser. Stub it.
+        getByteTimeDomainData: () => {},
       } as unknown as AnalyserNode
       renderer.mount(
         document.createElement('div'),

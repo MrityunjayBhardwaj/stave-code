@@ -71,6 +71,14 @@ function makeStaveUniforms(bus: SignalBus): {
   u.track = (id: string): P5SignalReading => bus.track(id)
   Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
   Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
+  // Master-mix DSP on `u` (Slice 2) — mirror the P5VizRenderer shape so the
+  // harness exercises the same getters the renderer builds.
+  Object.defineProperty(u, 'rms', { get: () => bus.master().rms, enumerable: true })
+  Object.defineProperty(u, 'bass', { get: () => bus.master().bass, enumerable: true })
+  Object.defineProperty(u, 'mid', { get: () => bus.master().mid, enumerable: true })
+  Object.defineProperty(u, 'treble', { get: () => bus.master().treble, enumerable: true })
+  Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
+  Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
 
   const uniforms = {
     get uKick(): number {
@@ -102,6 +110,18 @@ function makeStaveUniforms(bus: SignalBus): {
       }
       return max
     },
+    get uRms(): number {
+      return bus.master().rms
+    },
+    get uBass(): number {
+      return bus.master().bass
+    },
+    get uMid(): number {
+      return bus.master().mid
+    },
+    get uTreble(): number {
+      return bus.master().treble
+    },
     u,
   } as StaveUniforms
   Object.defineProperty(uniforms, '__tick', {
@@ -109,6 +129,9 @@ function makeStaveUniforms(bus: SignalBus): {
       ticks += 1
       bus.tick()
       bus.refreshActive(bus.now())
+      // Slice 2: readAudio AFTER refreshActive — mirrors P5VizRenderer's
+      // __tick so DSP fields (rms/fft) are live in the harness too.
+      bus.readAudio()
     },
     enumerable: false,
   })
@@ -317,5 +340,138 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     const b = seen[seen.length - 1]
     expect(a).toBeGreaterThan(0)
     expect(b).toBeLessThan(a)
+  })
+
+  // ── DSP fields (Slice 2, T3) — p5 reads u('bd').rms as a FRESH number ──────
+  it('reads u("bd").rms FRESH across two analyser states, and exposes arrays as arrays', () => {
+    const bus = new SignalBus()
+    const { uniforms } = makeStaveUniforms(bus)
+
+    // A mutable fake analyser whose time-domain offset (→ rms) is switchable so
+    // we can prove the p5 getter re-reads `bus.sound('bd').rms` fresh, not a
+    // compile-time capture. A single track ($0) carries `bd`, so audioFor picks
+    // the isolated analyser. Scheduler-key space ($0), NOT IREvent.trackId.
+    let timeVal = 160 // (160-128)/128 ≈ 0.25 magnitude
+    const analyser = {
+      frequencyBinCount: 32,
+      getByteFrequencyData: (arr: Uint8Array) => {
+        const third = Math.floor(arr.length / 3)
+        for (let i = 0; i < arr.length; i++) arr[i] = i < third ? 200 : 0
+      },
+      getByteTimeDomainData: (arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = timeVal
+      },
+    }
+    const kickTrack: PatternScheduler = {
+      now: () => 0,
+      query: (b: number, e: number) =>
+        0 >= b && 0 < e
+          ? [
+              {
+                begin: 0,
+                end: 0.1,
+                endClipped: 0.1,
+                note: 0,
+                freq: 0,
+                s: 'bd',
+                gain: 1,
+                velocity: 1,
+                color: null,
+              } as never,
+            ]
+          : [],
+    } as unknown as PatternScheduler
+    bus.bindScheduler(kickTrack as never, new Map([['$0', kickTrack as never]]))
+    bus.bindAnalysers(analyser, new Map([['$0', analyser]]))
+
+    // Capture what the sketch reads each draw: rms (scalar) + fft Array-ness.
+    const seenRms: number[] = []
+    const seenFftIsArray: boolean[] = []
+    const seenRmsIsNumber: boolean[] = []
+    const factory = compileP5Code(
+      `function draw() {
+         stave.options.__sink(u('bd').rms, Array.isArray(u('bd').fft), typeof u('bd').rms === 'number')
+       }`,
+    )
+    const refs = makeRefs(uniforms)
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+      refs.optionsRef,
+      refs.staveUniformsRef,
+    )
+    ;(refs.optionsRef as { current: Record<string, unknown> }).current = {
+      __sink: (rms: number, fftIsArr: boolean, rmsIsNum: boolean) => {
+        seenRms.push(rms)
+        seenFftIsArray.push(fftIsArr)
+        seenRmsIsNumber.push(rmsIsNum)
+      },
+    }
+    const { p } = makeFakeP5()
+    sketchFn(p as unknown as import('p5').default)
+    const draw = (p as Record<string, unknown>).draw as () => void
+
+    // Frame 1: __tick → readAudio reads the analyser (timeVal 160). rms > 0.
+    draw()
+    const rms1 = seenRms[seenRms.length - 1]
+    expect(rms1).toBeGreaterThan(0)
+    // Shape: rms is a NUMBER, fft is an ARRAY (p5 D-01).
+    expect(seenRmsIsNumber[seenRmsIsNumber.length - 1]).toBe(true)
+    expect(seenFftIsArray[seenFftIsArray.length - 1]).toBe(true)
+
+    // Switch the analyser's time-domain to a LOUDER offset and draw again.
+    // A stale compile-time capture would freeze rms1; the fresh getter reads
+    // the new analyser state → a DIFFERENT (larger) rms. This is the U2 proof.
+    timeVal = 220 // (220-128)/128 ≈ 0.72 magnitude — much louder
+    draw()
+    const rms2 = seenRms[seenRms.length - 1]
+    expect(rms2).toBeGreaterThan(rms1)
+  })
+
+  // ── Master DSP sugar (Slice 2, T3) — bare uRms getter + u.fft array ───────
+  it('exposes bare uRms (master) as a fresh getter number and u.fft as an array', () => {
+    const bus = new SignalBus()
+    const { uniforms } = makeStaveUniforms(bus)
+    const master = {
+      frequencyBinCount: 32,
+      getByteFrequencyData: (arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = 180
+      },
+      getByteTimeDomainData: (arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = 200
+      },
+    }
+    bus.bindAnalysers(master, new Map())
+
+    const seen: Array<{ uRms: number; uFftIsArr: boolean; uRmsIsNum: boolean }> =
+      []
+    const factory = compileP5Code(
+      `function draw() {
+         stave.options.__sink(uRms, Array.isArray(u.fft), typeof uRms === 'number')
+       }`,
+    )
+    const refs = makeRefs(uniforms)
+    const sketchFn = factory(
+      refs.hapStreamRef,
+      refs.analyserRef,
+      refs.schedulerRef,
+      refs.containerSizeRef,
+      refs.optionsRef,
+      refs.staveUniformsRef,
+    )
+    ;(refs.optionsRef as { current: Record<string, unknown> }).current = {
+      __sink: (uRms: number, uFftIsArr: boolean, uRmsIsNum: boolean) =>
+        seen.push({ uRms, uFftIsArr, uRmsIsNum }),
+    }
+    const { p } = makeFakeP5()
+    sketchFn(p as unknown as import('p5').default)
+    const draw = (p as Record<string, unknown>).draw as () => void
+    draw()
+    const last = seen[seen.length - 1]
+    expect(last.uRms).toBeGreaterThan(0) // master rms from the live analyser
+    expect(last.uRmsIsNum).toBe(true) // p5 shape: bare master scalar is a NUMBER
+    expect(last.uFftIsArr).toBe(true) // u.fft (master spectrum) is an ARRAY
   })
 })

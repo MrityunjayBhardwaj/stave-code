@@ -4586,8 +4586,17 @@ var ALIAS_MAP = {
 };
 
 // src/visualizers/signals/SignalBus.ts
+var ZERO_AUDIO = {
+  rms: 0,
+  bass: 0,
+  mid: 0,
+  treble: 0,
+  fft: [],
+  wave: []
+};
 var EPSILON = 1e-3;
 var DEFAULT_DECAY = 0.92;
+var FFT_BINS = 32;
 var _SignalBus = class _SignalBus {
   constructor(aliasMap = ALIAS_MAP) {
     /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
@@ -4605,6 +4614,22 @@ var _SignalBus = class _SignalBus {
     this.activeByTrack = /* @__PURE__ */ new Map();
     /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
     this.seenSounds = /* @__PURE__ */ new Set();
+    // ── DSP feed (analyser refs + per-frame cache, Slice 2) ───────────────────
+    /** Live master analyser ref — mutable so `bindAnalysers()` rebinds in place
+     *  (mirrors `bindScheduler`). Null in IR-only / demo mode. */
+    this.masterAnalyser = null;
+    /** Per-track analyser refs, keyed the SAME as `trackSchedulers` (the SCHEDULER
+     *  key space `$0`/`d1`, TRAP §5) — `trackAnalysers` is published with those
+     *  keys by the engine (LiveCodingEngine.ts:25). */
+    this.trackAnalysers = /* @__PURE__ */ new Map();
+    /** Scratch byte buffers per analyser (freq + time), allocated/resized lazily
+     *  keyed on analyser identity so a rebind to a new node re-allocates. */
+    this.freqBufs = /* @__PURE__ */ new WeakMap();
+    this.waveBufs = /* @__PURE__ */ new WeakMap();
+    /** Per-frame derived DSP reading per analyser — filled by `readAudio()`,
+     *  read by the accessors. Cleared each `readAudio()` so a now-unbound
+     *  analyser stops reporting stale data. */
+    this.audioByAnalyser = /* @__PURE__ */ new Map();
     this.aliasMap = aliasMap;
     this.decay = DEFAULT_DECAY;
   }
@@ -4613,6 +4638,14 @@ var _SignalBus = class _SignalBus {
   bindScheduler(scheduler, trackSchedulers) {
     this.scheduler = scheduler ?? null;
     this.trackSchedulers = trackSchedulers ?? /* @__PURE__ */ new Map();
+  }
+  /** Store live analyser refs (mutable rebind — mirror `bindScheduler`). The
+   *  orbit is the shared reference: a sound resolves to its orbit, which has
+   *  BOTH events (the scheduler feed) AND an analyser (this DSP feed). Pass
+   *  `null`/empty in IR-only / demo mode → DSP fields degrade to 0/[]. */
+  bindAnalysers(master, trackAnalysers) {
+    this.masterAnalyser = master ?? null;
+    this.trackAnalysers = trackAnalysers ?? /* @__PURE__ */ new Map();
   }
   // ── .env feed (envelope: bump + decay) ──────────────────────────────────
   /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
@@ -4652,6 +4685,55 @@ var _SignalBus = class _SignalBus {
   now() {
     return this.scheduler ? this.scheduler.now() : 0;
   }
+  // ── DSP feed (analyser read-at-now) ───────────────────────────────────────
+  /** Snapshot every bound analyser's spectrum + waveform for this frame. Call
+   *  ONCE per frame, AFTER `refreshActive` — `audioFor()` resolves a sound to a
+   *  trackKey via `activeByTrack`, which `refreshActive` populates (ordering is
+   *  the T2 call-site's responsibility). Reads each analyser via
+   *  `getByteFrequencyData` + `getByteTimeDomainData` (mirrors
+   *  `HydraVizRenderer.pumpAudio:445-455`) and caches the derived
+   *  `AudioReading`. An analyser that's no longer bound drops out of the cache. */
+  readAudio() {
+    this.audioByAnalyser.clear();
+    if (this.masterAnalyser) this.readOne(this.masterAnalyser);
+    for (const an of this.trackAnalysers.values()) this.readOne(an);
+  }
+  /** Read one analyser into the per-frame cache (idempotent within a frame). */
+  readOne(an) {
+    if (this.audioByAnalyser.has(an)) return;
+    this.audioByAnalyser.set(an, deriveAudio(an, this.freqBufs, this.waveBufs));
+  }
+  /** Resolve a sound (or alias) → the analyser whose mix it lives in. Find the
+   *  trackKey(s) in `activeByTrack` (SCHEDULER key space, TRAP §5 — NOT
+   *  IREvent.trackId) whose active events include any resolved sound. EXACTLY
+   *  one such track AND that track has a bound analyser → its isolated analyser.
+   *  Otherwise (multi-track, none, or no per-track analyser) → the master
+   *  analyser (the combined mix — still meaningful, never silent-zero-as-bug). */
+  audioFor(soundOrAlias) {
+    const resolved = new Set(this.resolveSounds(soundOrAlias));
+    let onlyKey = null;
+    for (const [key, events] of this.activeByTrack) {
+      const hit = events.some((e) => e.s != null && resolved.has(e.s));
+      if (!hit) continue;
+      if (onlyKey != null) return this.masterAnalyser;
+      onlyKey = key;
+    }
+    if (onlyKey != null) {
+      const isolated = this.trackAnalysers.get(onlyKey);
+      if (isolated) return isolated;
+    }
+    return this.masterAnalyser;
+  }
+  /** Cached DSP reading for an analyser (this frame), or the zero reading. */
+  audioReading(an) {
+    if (an == null) return ZERO_AUDIO;
+    return this.audioByAnalyser.get(an) ?? ZERO_AUDIO;
+  }
+  /** Master DSP reading (the combined-mix analyser). Surfaces `u.rms`/`u.fft`
+   *  etc. — the T3 master accessor path. Zero reading if no master bound. */
+  master() {
+    return this.audioReading(this.masterAnalyser);
+  }
   // ── accessors ───────────────────────────────────────────────────────────
   /** Resolve an alias OR a raw sound name to a list of concrete sound names.
    *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
@@ -4686,11 +4768,13 @@ var _SignalBus = class _SignalBus {
     const sounds = this.resolveSounds(soundOrAlias);
     const env = this.envValue(soundOrAlias);
     const ev = this.activeEventForSounds(sounds);
+    const audio = this.audioReading(this.audioFor(soundOrAlias));
     return {
       env,
       velocity: ev?.velocity ?? 0,
       note: ev?.note ?? null,
-      color: ev?.color ?? this.colorFallback(sounds)
+      color: ev?.color ?? this.colorFallback(sounds),
+      ...audio
     };
   }
   /** Last-bumped color over the resolved sounds (the `.color` fallback feed). */
@@ -4715,6 +4799,9 @@ var _SignalBus = class _SignalBus {
       const v = this.envMap.get(s) ?? 0;
       if (v > env) env = v;
     }
+    const trackAudio = this.audioReading(
+      this.trackAnalysers.get(id) ?? this.masterAnalyser
+    );
     const soundIn = /* @__PURE__ */ __name((soundOrAlias) => {
       const resolved = new Set(this.resolveSounds(soundOrAlias));
       const ev = events.find((e) => e.s != null && resolved.has(e.s));
@@ -4727,7 +4814,9 @@ var _SignalBus = class _SignalBus {
         env: sEnv,
         velocity: ev?.velocity ?? 0,
         note: ev?.note ?? null,
-        color: ev?.color ?? null
+        color: ev?.color ?? null,
+        // A specific sound within a named track reads that track's mix.
+        ...trackAudio
       };
     }, "soundIn");
     return {
@@ -4735,6 +4824,7 @@ var _SignalBus = class _SignalBus {
       velocity: first?.velocity ?? 0,
       note: first?.note ?? null,
       color: first?.color ?? null,
+      ...trackAudio,
       sound: soundIn
     };
   }
@@ -4757,6 +4847,54 @@ var _SignalBus = class _SignalBus {
 };
 __name(_SignalBus, "SignalBus");
 var SignalBus = _SignalBus;
+function deriveAudio(an, freqBufs, waveBufs) {
+  const n = an.frequencyBinCount | 0;
+  if (n <= 0) return { ...ZERO_AUDIO, fft: [], wave: [] };
+  let freq = freqBufs.get(an);
+  if (!freq || freq.length !== n) {
+    freq = new Uint8Array(n);
+    freqBufs.set(an, freq);
+  }
+  let time = waveBufs.get(an);
+  if (!time || time.length !== n) {
+    time = new Uint8Array(n);
+    waveBufs.set(an, time);
+  }
+  an.getByteFrequencyData(freq);
+  an.getByteTimeDomainData(time);
+  const fft = new Array(FFT_BINS).fill(0);
+  const binSize = Math.floor(n / FFT_BINS);
+  if (binSize >= 1) {
+    for (let i = 0; i < FFT_BINS; i++) {
+      let sum = 0;
+      for (let j = 0; j < binSize; j++) sum += freq[i * binSize + j];
+      fft[i] = sum / (binSize * 255);
+    }
+  } else {
+    for (let i = 0; i < n; i++) fft[i] = freq[i] / 255;
+  }
+  const third = Math.floor(FFT_BINS / 3);
+  const bass = meanSlice(fft, 0, third);
+  const mid = meanSlice(fft, third, 2 * third);
+  const treble = meanSlice(fft, 2 * third, FFT_BINS);
+  const wave = new Array(n);
+  let sumSq = 0;
+  for (let i = 0; i < n; i++) {
+    const v = (time[i] - 128) / 128;
+    wave[i] = v;
+    sumSq += v * v;
+  }
+  const rms = Math.min(1, Math.max(0, Math.sqrt(sumSq / n)));
+  return { rms, bass, mid, treble, fft, wave };
+}
+__name(deriveAudio, "deriveAudio");
+function meanSlice(arr, from, to) {
+  if (to <= from) return 0;
+  let sum = 0;
+  for (let i = from; i < to; i++) sum += arr[i];
+  return sum / (to - from);
+}
+__name(meanSlice, "meanSlice");
 
 // src/visualizers/renderers/P5VizRenderer.ts
 var _P5VizRenderer = class _P5VizRenderer {
@@ -4794,6 +4932,12 @@ var _P5VizRenderer = class _P5VizRenderer {
     u.track = (id) => bus.track(id);
     Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
     Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+    Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+    Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+    Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+    Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
+    Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+    Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
     const uniforms = {
       get uKick() {
         return bus.envValue("uKick");
@@ -4827,12 +4971,27 @@ var _P5VizRenderer = class _P5VizRenderer {
         }
         return max;
       },
+      // Master-mix DSP sugar (Slice 2, p5 D-01 — live getter numbers). Bare
+      // `uRms`/… read `bus.master()` fresh each draw, parity with `uKick`.
+      get uRms() {
+        return bus.master().rms;
+      },
+      get uBass() {
+        return bus.master().bass;
+      },
+      get uMid() {
+        return bus.master().mid;
+      },
+      get uTreble() {
+        return bus.master().treble;
+      },
       u
     };
     Object.defineProperty(uniforms, "__tick", {
       value: /* @__PURE__ */ __name(() => {
         bus.tick();
         bus.refreshActive(bus.now());
+        bus.readAudio();
       }, "value"),
       enumerable: false
     });
@@ -4848,6 +5007,10 @@ var _P5VizRenderer = class _P5VizRenderer {
       this.bus?.bindScheduler(
         components.queryable?.scheduler,
         components.queryable?.trackSchedulers
+      );
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
       );
       const hapStream = components.streaming?.hapStream ?? null;
       if (hapStream && this.bus && typeof hapStream.on === "function") {
@@ -4879,6 +5042,10 @@ var _P5VizRenderer = class _P5VizRenderer {
     this.bus?.bindScheduler(
       components.queryable?.scheduler ?? null,
       components.queryable?.trackSchedulers
+    );
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
     );
     const nextHapStream = components.streaming?.hapStream ?? null;
     if (nextHapStream !== this.boundHapStream) {
@@ -5067,6 +5234,7 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       if (this.bus) {
         this.bus.tick();
         this.bus.refreshActive(this.bus.now());
+        this.bus.readAudio();
       }
       if (this.hydra && typeof this.hydra.tick === "function") {
         try {
@@ -5077,20 +5245,45 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.rafId = requestAnimationFrame(this.pumpAudio);
     }, "pumpAudio");
     const bus = this.bus;
-    const u = /* @__PURE__ */ __name(((sound) => ({
-      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
-      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
-      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
-      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color")
-    })), "u");
-    u.track = (id) => ({
-      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
-      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
-      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
-      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color")
-    });
+    const soundThunks = /* @__PURE__ */ __name((sound) => {
+      const t = {
+        env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
+        velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
+        note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
+        color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color"),
+        rms: /* @__PURE__ */ __name(() => bus.sound(sound).rms, "rms"),
+        bass: /* @__PURE__ */ __name(() => bus.sound(sound).bass, "bass"),
+        mid: /* @__PURE__ */ __name(() => bus.sound(sound).mid, "mid"),
+        treble: /* @__PURE__ */ __name(() => bus.sound(sound).treble, "treble")
+      };
+      Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.sound(sound).fft, "get"), enumerable: true });
+      Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
+      return t;
+    }, "soundThunks");
+    const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
+    u.track = (id) => {
+      const t = {
+        env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
+        velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
+        note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
+        color: /* @__PURE__ */ __name(() => bus.track(id).color, "color"),
+        rms: /* @__PURE__ */ __name(() => bus.track(id).rms, "rms"),
+        bass: /* @__PURE__ */ __name(() => bus.track(id).bass, "bass"),
+        mid: /* @__PURE__ */ __name(() => bus.track(id).mid, "mid"),
+        treble: /* @__PURE__ */ __name(() => bus.track(id).treble, "treble")
+      };
+      Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.track(id).fft, "get"), enumerable: true });
+      Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
+      return t;
+    };
     Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
     Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+    u.rms = () => bus.master().rms;
+    u.bass = () => bus.master().bass;
+    u.mid = () => bus.master().mid;
+    u.treble = () => bus.master().treble;
+    Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+    Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
     const bag = {
       scheduler: null,
       tracks: /* @__PURE__ */ new Map(),
@@ -5113,6 +5306,12 @@ var _HydraVizRenderer = class _HydraVizRenderer {
         }
         return max;
       }, "uKeyVelocity"),
+      // Master-mix DSP sugar (Slice 2) — bare thunks mirroring uKick, reading
+      // `bus.master()` fresh each call. Parity with uKick/uSnare for audio.
+      uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
+      uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
+      uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
+      uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
       u,
       H: /* @__PURE__ */ __name((trackId, field = "gain") => {
         return () => {
@@ -5139,6 +5338,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.bus?.bindScheduler(
         components.queryable?.scheduler,
         components.queryable?.trackSchedulers
+      );
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
       );
       if (this.hapStream && this.bus) {
         this.busHapHandler = (e) => this.bus?.bump(e);
@@ -5217,6 +5420,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
     this.bus?.bindScheduler(
       components.queryable?.scheduler ?? null,
       components.queryable?.trackSchedulers ?? this.staveBag.tracks
+    );
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
     );
   }
   resize(w, h) {
@@ -9746,12 +9953,24 @@ function makeInertStaveUniforms() {
     env: 0,
     velocity: 0,
     note: null,
-    color: null
+    color: null,
+    rms: 0,
+    bass: 0,
+    mid: 0,
+    treble: 0,
+    fft: [],
+    wave: []
   }), "zeroReading");
   const u = /* @__PURE__ */ __name(((_sound) => zeroReading()), "u");
   u.track = (_id) => zeroReading();
   u.tracks = [];
   u.sounds = [];
+  u.rms = 0;
+  u.bass = 0;
+  u.mid = 0;
+  u.treble = 0;
+  u.fft = [];
+  u.wave = [];
   return {
     uKick: 0,
     uSnare: 0,
@@ -9761,6 +9980,10 @@ function makeInertStaveUniforms() {
     uRim: 0,
     uTom: 0,
     uKeyVelocity: 0,
+    uRms: 0,
+    uBass: 0,
+    uMid: 0,
+    uTreble: 0,
     u,
     __tick: /* @__PURE__ */ __name(() => {
     }, "__tick")
@@ -9801,6 +10024,10 @@ with (p) {
       const uRim = staveUniforms.uRim
       const uTom = staveUniforms.uTom
       const uKeyVelocity = staveUniforms.uKeyVelocity
+      const uRms = staveUniforms.uRms
+      const uBass = staveUniforms.uBass
+      const uMid = staveUniforms.uMid
+      const uTreble = staveUniforms.uTreble
       `;
 var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
 function buildLegacyBody(userCode) {

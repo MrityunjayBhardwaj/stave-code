@@ -10,7 +10,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { SignalBus, type BusHapEvent } from '../signals/SignalBus'
+import {
+  SignalBus,
+  type BusHapEvent,
+  type BusAnalyser,
+} from '../signals/SignalBus'
 import { ALIAS_MAP } from '../signals/aliasMap'
 import type { IRPattern } from '../../ir/IRPattern'
 import type { IREvent } from '../../ir/IREvent'
@@ -44,6 +48,27 @@ function makeScheduler(events: IREvent[], now = 0): IRPattern {
 /** A HapStream-shaped event for the envelope feed (`bump`). */
 function hap(s: string, gain = 1, color: string | null = null): BusHapEvent {
   return { s, color, hap: { value: { gain } } }
+}
+
+/**
+ * A fake AnalyserNode-shaped stub (P12 — structural, no DOM lib). `freqFill`
+ * fills the magnitude buffer, `timeFill` the time-domain buffer, both per-index
+ * so a known pattern can be asserted against the derived fields.
+ */
+function fakeAnalyser(
+  bins: number,
+  freqFill: (i: number) => number,
+  timeFill: (i: number) => number = () => 128,
+): BusAnalyser {
+  return {
+    frequencyBinCount: bins,
+    getByteFrequencyData: (arr: Uint8Array) => {
+      for (let i = 0; i < arr.length; i++) arr[i] = freqFill(i)
+    },
+    getByteTimeDomainData: (arr: Uint8Array) => {
+      for (let i = 0; i < arr.length; i++) arr[i] = timeFill(i)
+    },
+  }
 }
 
 describe('SignalBus — .env feed (bump + decay)', () => {
@@ -240,5 +265,172 @@ describe('SignalBus — purity / live-ref rebind', () => {
     expect(bus.envValue('uBoom')).toBe(1)
     // The built-in uKick is absent from the custom map → treated as raw name.
     expect(bus.envValue('uKick')).toBe(0)
+  })
+})
+
+describe('SignalBus — DSP feed (analyser reads, Slice 2)', () => {
+  // 32 raw bins → binSize 1 → fft[i] = freq[i]/255 directly (clean to assert).
+  // Magnitude pattern: low third (bins 0..9) = 255, rest = 0 → bass=1, mid=treble=0.
+  // FFT_BINS = 32; third = floor(32/3) = 10 → bass = mean(fft[0..10)),
+  // mid = mean(fft[10..20)), treble = mean(fft[20..32)).
+  const lowEnergyFreq = (i: number) => (i < 10 ? 255 : 0)
+  // Time-domain all 255 → (255-128)/128 = 0.9921875 → rms = that, wave = that.
+  const fullScaleTime = () => 255
+  const EXPECTED_FULL = (255 - 128) / 128 // 0.9921875
+
+  it('(g) .fft is normalized 0..1 and .bass/.mid/.treble are the band means', () => {
+    const bus = new SignalBus()
+    const master = fakeAnalyser(32, lowEnergyFreq)
+    bus.bindAnalysers(master, new Map())
+    bus.readAudio()
+
+    const r = bus.master()
+    expect(r.fft.length).toBe(32)
+    // Low third saturated (1.0), rest silent (0.0) — normalized, never >1.
+    expect(r.fft.slice(0, 10).every((v) => v === 1)).toBe(true)
+    expect(r.fft.slice(10).every((v) => v === 0)).toBe(true)
+    // bass = mean of bins 0..9 (all 1) = 1; mid/treble silent thirds = 0.
+    expect(r.bass).toBeCloseTo(1, 6)
+    expect(r.mid).toBeCloseTo(0, 6)
+    expect(r.treble).toBeCloseTo(0, 6)
+  })
+
+  it('(h) .rms + .wave derive from a known time-domain buffer (clamped 0..1)', () => {
+    const bus = new SignalBus()
+    const master = fakeAnalyser(16, () => 0, fullScaleTime)
+    bus.bindAnalysers(master, new Map())
+    bus.readAudio()
+
+    const r = bus.master()
+    // rms = sqrt(mean(((255-128)/128)²)) = (255-128)/128, clamped ≤ 1.
+    expect(r.rms).toBeCloseTo(EXPECTED_FULL, 6)
+    expect(r.rms).toBeLessThanOrEqual(1)
+    // wave normalized -1..1; every sample = the full-scale value.
+    expect(r.wave.length).toBe(16)
+    expect(r.wave.every((v) => Math.abs(v - EXPECTED_FULL) < 1e-9)).toBe(true)
+  })
+
+  it('mid-band isolation — energy ONLY in the mid third lifts .mid, not bass/treble', () => {
+    const bus = new SignalBus()
+    // Bins 10..19 saturated → mid = 1, bass = treble = 0.
+    const master = fakeAnalyser(32, (i) => (i >= 10 && i < 20 ? 255 : 0))
+    bus.bindAnalysers(master, new Map())
+    bus.readAudio()
+    const r = bus.master()
+    expect(r.mid).toBeCloseTo(1, 6)
+    expect(r.bass).toBeCloseTo(0, 6)
+    expect(r.treble).toBeCloseTo(0, 6)
+  })
+
+  it('(i) audioFor — isolated: bd in EXACTLY one active track reads THAT track analyser', () => {
+    const bus = new SignalBus()
+    // bd plays in only one anonymous track ($0). Its isolated analyser is a
+    // saturated-bass node; the master is silent — so a bass reading proves the
+    // per-track (not master) analyser was chosen.
+    const trackSched = makeScheduler([makeEvent({ s: 'bd', velocity: 1 })])
+    bus.bindScheduler(
+      makeScheduler([makeEvent({ s: 'bd', velocity: 1 })]),
+      new Map<string, IRPattern>([['$0', trackSched]]),
+    )
+    const isolated = fakeAnalyser(32, (i) => (i < 10 ? 255 : 0)) // bass = 1
+    const silentMaster = fakeAnalyser(32, () => 0) // bass = 0
+    bus.bindAnalysers(silentMaster, new Map([['$0', isolated]]))
+    bus.refreshActive(bus.now())
+    bus.readAudio()
+
+    // bd resolves to the $0 isolated analyser → bass = 1 (NOT the silent master).
+    expect(bus.sound('bd').bass).toBeCloseTo(1, 6)
+  })
+
+  it('(j) audioFor — fallback: bd spanning TWO active tracks reads the master mix', () => {
+    const bus = new SignalBus()
+    // bd is active in BOTH $0 and $1 → not isolated → master.
+    const tA = makeScheduler([makeEvent({ s: 'bd', velocity: 1 })])
+    const tB = makeScheduler([makeEvent({ s: 'bd', velocity: 1 })])
+    bus.bindScheduler(
+      makeScheduler([makeEvent({ s: 'bd', velocity: 1 })]),
+      new Map<string, IRPattern>([
+        ['$0', tA],
+        ['$1', tB],
+      ]),
+    )
+    // Per-track analysers are bass-saturated; the master is treble-saturated —
+    // so a treble reading proves the MASTER (not a track) was chosen.
+    const trackAn = fakeAnalyser(32, (i) => (i < 10 ? 255 : 0)) // bass
+    const master = fakeAnalyser(32, (i) => (i >= 20 ? 255 : 0)) // treble
+    bus.bindAnalysers(
+      master,
+      new Map([
+        ['$0', trackAn],
+        ['$1', trackAn],
+      ]),
+    )
+    bus.refreshActive(bus.now())
+    bus.readAudio()
+
+    const r = bus.sound('bd')
+    expect(r.treble).toBeCloseTo(1, 6) // master mix, not the per-track bass
+    expect(r.bass).toBeCloseTo(0, 6)
+  })
+
+  it('audioFor — no per-track analyser for the isolated track falls back to master', () => {
+    const bus = new SignalBus()
+    const trackSched = makeScheduler([makeEvent({ s: 'bd', velocity: 1 })])
+    bus.bindScheduler(
+      makeScheduler([makeEvent({ s: 'bd', velocity: 1 })]),
+      new Map<string, IRPattern>([['$0', trackSched]]),
+    )
+    // bd is isolated in $0, but NO analyser is bound for $0 → master mix.
+    const master = fakeAnalyser(32, (i) => (i < 10 ? 255 : 0)) // bass
+    bus.bindAnalysers(master, new Map()) // empty trackAnalysers
+    bus.refreshActive(bus.now())
+    bus.readAudio()
+    expect(bus.sound('bd').bass).toBeCloseTo(1, 6) // from the master
+  })
+
+  it('u.track(id) reads that track key-spaced analyser (TRAP §5 keying)', () => {
+    const bus = new SignalBus()
+    const trackSched = makeScheduler([makeEvent({ s: 'bd', velocity: 1 })])
+    bus.bindScheduler(
+      makeScheduler([]),
+      new Map<string, IRPattern>([['$0', trackSched]]),
+    )
+    const trackAn = fakeAnalyser(32, (i) => (i >= 20 ? 255 : 0)) // treble
+    bus.bindAnalysers(fakeAnalyser(32, () => 0), new Map([['$0', trackAn]]))
+    bus.refreshActive(bus.now())
+    bus.readAudio()
+    expect(bus.track('$0').treble).toBeCloseTo(1, 6)
+  })
+
+  it('(k) absent analyser → rms 0, fft/wave empty — never NaN', () => {
+    const bus = new SignalBus()
+    // No analysers bound at all (IR-only / demo mode).
+    bus.bindScheduler(makeScheduler([makeEvent({ s: 'bd' })]), new Map())
+    bus.refreshActive(bus.now())
+    bus.readAudio()
+
+    const r = bus.sound('bd')
+    expect(r.rms).toBe(0)
+    expect(Number.isNaN(r.rms)).toBe(false)
+    expect(r.fft).toEqual([])
+    expect(r.wave).toEqual([])
+    expect(r.bass).toBe(0)
+    expect(r.mid).toBe(0)
+    expect(r.treble).toBe(0)
+    // master() with no master bound is also the zero reading (no NaN).
+    expect(bus.master().rms).toBe(0)
+    expect(bus.master().fft).toEqual([])
+  })
+
+  it('readAudio is rebind-friendly — a new analyser ref re-reads next frame', () => {
+    const bus = new SignalBus()
+    bus.bindAnalysers(fakeAnalyser(32, () => 0), new Map())
+    bus.readAudio()
+    expect(bus.master().bass).toBeCloseTo(0, 6)
+
+    // Rebind to a bass-saturated master (mirror bindScheduler live-rebind).
+    bus.bindAnalysers(fakeAnalyser(32, (i) => (i < 10 ? 255 : 0)), new Map())
+    bus.readAudio()
+    expect(bus.master().bass).toBeCloseTo(1, 6)
   })
 })

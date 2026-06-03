@@ -542,4 +542,216 @@ function draw() {
     const two = JSON.parse(await readTracks())
     expect(two.length).toBe(2)
   })
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Slice 2 (T4) — REAL-AUDIO (DSP) reactivity, distinct from the IR envelope.
+  //
+  // Slice-1 (T5-A..D above) proved the SCHEDULER/IR feed reactive (`uKick`,
+  // `.color`). These three prove the ANALYSER (DSP) feed: a sound's own-orbit
+  // analyser drives `u('bd').rms`/`.bass`/`.fft` and the master mix drives
+  // `u.rms`/`u.fft`. The signal is the analyser's spectrum/time-domain, NOT the
+  // envelope bump+decay — so the kick `s("bd*4")` produces a MOVING spectrum.
+  //
+  // Discipline:
+  //   - P93: variance-over-time, never "renders without error" (a frozen rms
+  //     throws nothing). Every assertion is a range/variance over ~7-9 frames.
+  //   - P96/FLAG-2: assert the AudioContext is RUNNING at probe time — a dead
+  //     audio context publishes a silent analyser and would false-green a
+  //     "reactive" claim with a flat (but error-free) zero signal.
+  //   - P74: attach a screenshot of the fft-bars sketch so the spectrum can be
+  //     eyeballed (a bar-height variance number alone doesn't show the shape).
+  //
+  // These reuse the same `__staveRegisterViz` hook + `[data-viz-zone-track]`
+  // inline probe as T5-A; the audio source wired into the inline renderer is the
+  // production scheduler/analyser, only the preset-authoring step is shortcut.
+  // ───────────────────────────────────────────────────────────────────────
+
+  // Assert the running AudioContext (the analyser/FFT path is live, not a
+  // false-green silent context — P96/FLAG-2). Shared by all three DSP probes.
+  async function assertAudioLive(page: Page): Promise<void> {
+    const acState = await page.evaluate(() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (window as any).getAudioContext?.()?.state ?? 'none'
+      } catch {
+        return 'error'
+      }
+    })
+    expect(acState).toBe('running')
+  }
+
+  test('T4-A — u("bd").bass is reactive to REAL audio in a p5 inline sketch (size varies, analyser LIVE)', async ({ page }) => {
+    // A `.viz()` p5 sketch sizes a circle by `u('bd').bass` (a live NUMBER in
+    // the p5 shape — the low-third of the resolved orbit's FFT). Over `s("bd*4")`
+    // in its OWN orbit the kick's bass energy moves frame-to-frame, so the
+    // bright-pixel count VARIES. This is the analyser feed (real FFT), NOT the
+    // `.env` envelope Slice 1 proved — the assertion would still pass on a
+    // frozen `.env`, so we ALSO assert the audio context is running (FLAG-2):
+    // a dead context = silent analyser = flat bass = false-green.
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke(); fill(60, 200, 255)
+  const bass = u('bd').bass
+  circle(width / 2, height / 2, 4 + bass * Math.min(width, height) * 4)
+}`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21-bdbass-p5', name: 'p21bdbassp5', renderer: 'p5', code,
+        requires: ['audio'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4").viz("p21bdbassp5")`)
+    await runCode(page)
+    const canvas = page.locator('[data-viz-zone-track] canvas').first()
+    await canvas.waitFor({ timeout: 8000 })
+
+    // FLAG-2: the real-FFT path is active (a published analyser ⇒ a running
+    // context). Without this the variance below could be measurement noise on a
+    // silent signal.
+    await assertAudioLive(page)
+
+    const brightCount = () => canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        // the cyan circle: blue-dominant, fully opaque
+        if (d[i + 2] > 180 && d[i + 1] > 120 && d[i] < 140 && d[i + 3] > 180) n++
+      }
+      return n
+    })
+    const samples: number[] = []
+    for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
+
+    const range = Math.max(...samples) - Math.min(...samples)
+    // The kick's bass energy swings the circle radius; a frozen/silent analyser
+    // is a constant circle (range ≈ 0). 800 px clears measurement noise and is
+    // far below the observed swing on a live kick.
+    expect(range).toBeGreaterThan(800)
+  })
+
+  test('T4-B — u("bd").fft renders as bars and the spectrum VARIES over frames (+ screenshot, P74)', async ({ page }, testInfo) => {
+    // A sketch draws `u('bd').fft` (a live ARRAY in the p5 shape) as vertical
+    // bars. Over `s("bd*4")` the spectrum moves, so the per-frame total bar
+    // energy (sum of bar heights, read as bright-pixel count) VARIES. A frozen
+    // or empty fft → identical frames (range 0). We attach a screenshot so the
+    // bar shape can be eyeballed (P74 — a variance number doesn't show the
+    // spectrum is real).
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke(); fill(120, 255, 120)
+  const fft = u('bd').fft
+  const n = fft.length
+  if (n === 0) { fill(80, 0, 0); rect(0, 0, 12, 12); return }
+  const w = width / n
+  for (let i = 0; i < n; i++) {
+    const h = fft[i] * height
+    rect(i * w, height - h, w * 0.9, h)
+  }
+}`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21-bdfft-p5', name: 'p21bdfftp5', renderer: 'p5', code,
+        requires: ['audio'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4").viz("p21bdfftp5")`)
+    await runCode(page)
+    const canvas = page.locator('[data-viz-zone-track] canvas').first()
+    await canvas.waitFor({ timeout: 8000 })
+
+    await assertAudioLive(page)
+
+    // total green energy = Σ bar heights; a moving spectrum makes this vary.
+    const barEnergy = () => canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 1] > 180 && d[i] < 160 && d[i + 2] < 160 && d[i + 3] > 180) n++
+      }
+      return n
+    })
+    const samples: number[] = []
+    for (let k = 0; k < 9; k++) { samples.push(await barEnergy()); await page.waitForTimeout(170) }
+
+    // P74 — attach the fft-bars canvas so the spectrum is eyeball-verifiable.
+    const shot = await canvas.screenshot()
+    await testInfo.attach('fft-bars-sketch', { body: shot, contentType: 'image/png' })
+
+    const nonEmpty = samples.filter((s) => s > 0)
+    // at least some frames painted bars (fft was non-empty — the array reached
+    // the sketch, not a permanent []).
+    expect(nonEmpty.length).toBeGreaterThan(2)
+    const range = Math.max(...samples) - Math.min(...samples)
+    // the spectrum moves → bar energy varies. A static/empty fft is flat
+    // (range 0). 500 px clears noise; observed swings are several thousand.
+    expect(range).toBeGreaterThan(500)
+  })
+
+  test('T4-C — master u.rms / u.fft are reactive to the overall mix (variance over frames)', async ({ page }) => {
+    // A sketch reads the MASTER accessors `u.rms` (a live getter NUMBER) and
+    // `u.fft` (a live getter ARRAY) — the combined-mix analyser, distinct from a
+    // per-sound orbit. Two codeblocks feed the master; `u.rms` drives a circle
+    // and `u.fft` energy tints it. Over the mix the size + tint VARY frame to
+    // frame. Frozen master analyser → constant (range 0).
+    const sketch = `
+function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
+function draw() {
+  clear(); noStroke(); fill(255, 90, 40)
+  // master rms (time-domain) + total fft energy (frequency-domain) — BOTH the
+  // master accessors. Either moving over the mix swings the radius; summing
+  // them gives the master signal a robust dynamic range to observe.
+  const rms = u.rms
+  const fft = u.fft
+  let e = 0; for (let i = 0; i < fft.length; i++) e += fft[i]
+  const drive = rms + e / Math.max(1, fft.length)
+  circle(width / 2, height / 2, 4 + drive * Math.min(width, height) * 2.2)
+}`
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz({
+        id: 'p21-master-p5', name: 'p21masterp5', renderer: 'p5', code,
+        requires: ['audio'], nativeSize: { w: 400, h: 300 },
+        createdAt: Date.now(), updatedAt: Date.now(),
+      })
+    }, sketch)
+
+    await setCode(page, `$: s("bd*4")\n$: s("hh*8").viz("p21masterp5")`)
+    await runCode(page)
+    const canvas = page.locator('[data-viz-zone-track] canvas').first()
+    await canvas.waitFor({ timeout: 8000 })
+
+    await assertAudioLive(page)
+
+    const brightCount = () => canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        // the orange/red circle: red-dominant, fully opaque
+        if (d[i] > 180 && d[i + 2] < 120 && d[i + 3] > 180) n++
+      }
+      return n
+    })
+    // Sample more frames (12) than the per-band probes: the master mix is the
+    // sum of several sources, so its peak/trough phase relative to the probe
+    // clock is less predictable — more samples reliably catch both extremes.
+    const samples: number[] = []
+    for (let k = 0; k < 12; k++) { samples.push(await brightCount()); await page.waitForTimeout(150) }
+
+    const range = Math.max(...samples) - Math.min(...samples)
+    // the master mix (kick + hats) drives rms + fft energy; a frozen master
+    // analyser is a constant circle (range 0). 800 px clears measurement noise
+    // and sits well below the observed swing once both master signals drive it.
+    expect(range).toBeGreaterThan(800)
+  })
 })

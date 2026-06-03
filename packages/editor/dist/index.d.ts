@@ -877,15 +877,32 @@ declare class BreakpointStore {
  */
 
 /** A per-sound or per-track reading as live NUMBERS (p5 D-01 shape — getters,
- *  NOT thunks; the renderer reads them directly inside `draw`). */
+ *  NOT thunks; the renderer reads them directly inside `draw`). DSP scalars
+ *  (`rms`/`bass`/`mid`/`treble`) are live numbers; DSP arrays (`fft`/`wave`)
+ *  are live `number[]` indexed directly (`u('bd').fft[i]`). All read fresh per
+ *  access — the reading object is produced by a getter through `with`. */
 interface P5SignalReading {
     env: number;
     velocity: number;
     note: number | string | null;
     color: string | null;
+    /** Time-domain RMS, 0..1. */
+    rms: number;
+    /** Low-band magnitude, 0..1. */
+    bass: number;
+    /** Mid-band magnitude, 0..1. */
+    mid: number;
+    /** High-band magnitude, 0..1. */
+    treble: number;
+    /** Normalized magnitude spectrum, `number[]`. */
+    fft: number[];
+    /** Time-domain waveform -1..1, `number[]`. */
+    wave: number[];
 }
 /** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props.
- *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk. */
+ *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk.
+ *  `u` itself also carries the MASTER-mix DSP (Slice 2): `u.rms`/`u.bass`/… live
+ *  number getters + `u.fft`/`u.wave` live arrays. */
 interface P5SignalAccessor {
     (sound: string): P5SignalReading;
     /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
@@ -894,6 +911,18 @@ interface P5SignalAccessor {
     tracks: string[];
     /** Enumerate distinct sounds seen through the envelope feed. */
     sounds: string[];
+    /** Master-mix time-domain RMS, 0..1 (live getter). */
+    rms: number;
+    /** Master-mix low-band magnitude, 0..1 (live getter). */
+    bass: number;
+    /** Master-mix mid-band magnitude, 0..1 (live getter). */
+    mid: number;
+    /** Master-mix high-band magnitude, 0..1 (live getter). */
+    treble: number;
+    /** Live master-mix magnitude spectrum, `number[]`. */
+    fft: number[];
+    /** Live master-mix waveform -1..1, `number[]`. */
+    wave: number[];
 }
 /**
  * Phase 21 — the live named-signal uniform object handed to a p5 sketch as the
@@ -918,6 +947,14 @@ interface StaveUniforms {
     readonly uRim: number;
     readonly uTom: number;
     readonly uKeyVelocity: number;
+    /** Master-mix time-domain RMS, 0..1. */
+    readonly uRms: number;
+    /** Master-mix low-band magnitude, 0..1. */
+    readonly uBass: number;
+    /** Master-mix mid-band magnitude, 0..1. */
+    readonly uMid: number;
+    /** Master-mix high-band magnitude, 0..1. */
+    readonly uTreble: number;
     readonly u: P5SignalAccessor;
     /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
      *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
@@ -1648,26 +1685,57 @@ interface HydraStaveBag {
     uTom: () => number;
     /** Active event velocity (global, 0..1). */
     uKeyVelocity: () => number;
+    /** Master-mix time-domain RMS, 0..1. */
+    uRms: () => number;
+    /** Master-mix low-band magnitude, 0..1. */
+    uBass: () => number;
+    /** Master-mix mid-band magnitude, 0..1. */
+    uMid: () => number;
+    /** Master-mix high-band magnitude, 0..1. */
+    uTreble: () => number;
     /**
      * General per-sound / per-track signal accessor.
      *
      *   osc(() => u('bd').env() * 10).out(o0)
+     *   osc(() => u('bd').rms() * 10).out(o0)
+     *   shape(() => u('bd').fft[0] * 4).out(o0)   // arrays index natively
      *   u.track('$0').color()
+     *   osc(() => u.rms() * 10).out(o0)           // master scalar thunk
+     *   shape(() => u.fft[2] * 6).out(o0)          // master spectrum array
      *
-     * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color`.
-     * `u.track(id)` keys on the SCHEDULER key space (`$0`/`drums`, NOT
-     * `IREvent.trackId`). `u.tracks` / `u.sounds` enumerate.
+     * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color` AND the
+     * DSP scalars `.rms`/`.bass`/`.mid`/`.treble` (all `() => number`), plus the
+     * live `.fft`/`.wave` ARRAYS (indexed natively, NOT thunk-wrapped). `u.track(id)`
+     * keys on the SCHEDULER key space (`$0`/`drums`, NOT `IREvent.trackId`). `u`
+     * itself carries the MASTER-mix DSP: `u.rms()`/… thunks + `u.fft`/`u.wave`
+     * arrays. `u.tracks` / `u.sounds` enumerate.
      */
     u: HydraSignalAccessor;
 }
-/** A per-sound or per-track reading exposed as `() => value` thunks (D-01). */
+/** A per-sound or per-track reading exposed as `() => value` thunks (D-01).
+ *  DSP scalars (`rms`/`bass`/`mid`/`treble`) are thunks (same shape as `.env`);
+ *  DSP arrays (`fft`/`wave`) are LIVE `number[]` so hydra indexes them natively
+ *  (`() => u('bd').fft[i]`) — NOT thunk-of-number per element, NOT thunk-of-array. */
 interface HydraSignalThunks {
     env: () => number;
     velocity: () => number;
     note: () => number | string | null;
     color: () => string | null;
+    /** Time-domain RMS, 0..1 (thunk, re-reads the bus each call). */
+    rms: () => number;
+    /** Low-band magnitude, 0..1 (thunk). */
+    bass: () => number;
+    /** Mid-band magnitude, 0..1 (thunk). */
+    mid: () => number;
+    /** High-band magnitude, 0..1 (thunk). */
+    treble: () => number;
+    /** Live normalized magnitude spectrum, `number[]` (index natively). */
+    fft: number[];
+    /** Live time-domain waveform -1..1, `number[]` (index natively). */
+    wave: number[];
 }
-/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props. */
+/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props AND
+ *  the MASTER-mix DSP feed (Slice 2): scalar thunks + live arrays. */
 interface HydraSignalAccessor {
     (sound: string): HydraSignalThunks;
     /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
@@ -1676,6 +1744,18 @@ interface HydraSignalAccessor {
     tracks: string[];
     /** Enumerate distinct sounds seen through the envelope feed. */
     sounds: string[];
+    /** Master-mix time-domain RMS, 0..1 (thunk). */
+    rms: () => number;
+    /** Master-mix low-band magnitude, 0..1 (thunk). */
+    bass: () => number;
+    /** Master-mix mid-band magnitude, 0..1 (thunk). */
+    mid: () => number;
+    /** Master-mix high-band magnitude, 0..1 (thunk). */
+    treble: () => number;
+    /** Live master-mix magnitude spectrum, `number[]` (index natively). */
+    fft: number[];
+    /** Live master-mix waveform -1..1, `number[]` (index natively). */
+    wave: number[];
 }
 type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
 /**
@@ -2224,6 +2304,39 @@ interface SignalReading {
     note: number | string | null;
     /** Display color (active event preferred, else last-bumped hap). */
     color: string | null;
+    /** Time-domain RMS 0..1 from the resolved analyser. 0 if no analyser bound. */
+    rms: number;
+    /** Mean of the LOW third of `fft` (0..1). 0 if no analyser bound. */
+    bass: number;
+    /** Mean of the MID third of `fft` (0..1). 0 if no analyser bound. */
+    mid: number;
+    /** Mean of the HIGH third of `fft` (0..1). 0 if no analyser bound. */
+    treble: number;
+    /** Normalized magnitude spectrum, `FFT_BINS` buckets, each 0..1. `[]` if no
+     *  analyser bound (never NaN). */
+    fft: number[];
+    /** Time-domain waveform normalized -1..1. `[]` if no analyser bound. */
+    wave: number[];
+}
+/** Master/per-analyser DSP reading — the audio half of a `SignalReading`. */
+interface AudioReading {
+    rms: number;
+    bass: number;
+    mid: number;
+    treble: number;
+    fft: number[];
+    wave: number[];
+}
+/** Structural shape the bus reads off a Web-Audio `AnalyserNode` (DOM type).
+ *  Typed minimally so tests can feed a plain stub (P12 — structural typing,
+ *  no DOM-lib dependency for the fake). */
+interface BusAnalyser {
+    /** Real `AnalyserNode` exposes `frequencyBinCount = fftSize / 2`. */
+    frequencyBinCount: number;
+    /** Fill `arr` with the current magnitude spectrum (0..255 per bin). */
+    getByteFrequencyData(arr: Uint8Array): void;
+    /** Fill `arr` with the current time-domain waveform (0..255, 128 = silence). */
+    getByteTimeDomainData(arr: Uint8Array): void;
 }
 declare class SignalBus {
     /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
@@ -2243,10 +2356,30 @@ declare class SignalBus {
     private activeByTrack;
     /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
     private readonly seenSounds;
+    /** Live master analyser ref — mutable so `bindAnalysers()` rebinds in place
+     *  (mirrors `bindScheduler`). Null in IR-only / demo mode. */
+    private masterAnalyser;
+    /** Per-track analyser refs, keyed the SAME as `trackSchedulers` (the SCHEDULER
+     *  key space `$0`/`d1`, TRAP §5) — `trackAnalysers` is published with those
+     *  keys by the engine (LiveCodingEngine.ts:25). */
+    private trackAnalysers;
+    /** Scratch byte buffers per analyser (freq + time), allocated/resized lazily
+     *  keyed on analyser identity so a rebind to a new node re-allocates. */
+    private readonly freqBufs;
+    private readonly waveBufs;
+    /** Per-frame derived DSP reading per analyser — filled by `readAudio()`,
+     *  read by the accessors. Cleared each `readAudio()` so a now-unbound
+     *  analyser stops reporting stale data. */
+    private audioByAnalyser;
     constructor(aliasMap?: Record<string, string | string[]>);
     /** Store live scheduler refs (mutable rebind — mirror the renderer's
      *  in-place update discipline). Pass `null`/empty in demo mode. */
     bindScheduler(scheduler: IRPattern | null | undefined, trackSchedulers: Map<string, IRPattern> | null | undefined): void;
+    /** Store live analyser refs (mutable rebind — mirror `bindScheduler`). The
+     *  orbit is the shared reference: a sound resolves to its orbit, which has
+     *  BOTH events (the scheduler feed) AND an analyser (this DSP feed). Pass
+     *  `null`/empty in IR-only / demo mode → DSP fields degrade to 0/[]. */
+    bindAnalysers(master?: BusAnalyser | null, trackAnalysers?: Map<string, BusAnalyser> | null): void;
     /** Bump the envelope for an event's sound. Mirrors `HapEnergyEnvelope.onHap`
      *  (`:67-82`): gain clamped 0..1, level = min(1, prev + gain). Keyed on
      *  `e.s` (NOT a MIDI bin). No-ops for an event with no sound name. */
@@ -2260,6 +2393,28 @@ declare class SignalBus {
     refreshActive(now: number): void;
     /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
     now(): number;
+    /** Snapshot every bound analyser's spectrum + waveform for this frame. Call
+     *  ONCE per frame, AFTER `refreshActive` — `audioFor()` resolves a sound to a
+     *  trackKey via `activeByTrack`, which `refreshActive` populates (ordering is
+     *  the T2 call-site's responsibility). Reads each analyser via
+     *  `getByteFrequencyData` + `getByteTimeDomainData` (mirrors
+     *  `HydraVizRenderer.pumpAudio:445-455`) and caches the derived
+     *  `AudioReading`. An analyser that's no longer bound drops out of the cache. */
+    readAudio(): void;
+    /** Read one analyser into the per-frame cache (idempotent within a frame). */
+    private readOne;
+    /** Resolve a sound (or alias) → the analyser whose mix it lives in. Find the
+     *  trackKey(s) in `activeByTrack` (SCHEDULER key space, TRAP §5 — NOT
+     *  IREvent.trackId) whose active events include any resolved sound. EXACTLY
+     *  one such track AND that track has a bound analyser → its isolated analyser.
+     *  Otherwise (multi-track, none, or no per-track analyser) → the master
+     *  analyser (the combined mix — still meaningful, never silent-zero-as-bug). */
+    private audioFor;
+    /** Cached DSP reading for an analyser (this frame), or the zero reading. */
+    private audioReading;
+    /** Master DSP reading (the combined-mix analyser). Surfaces `u.rms`/`u.fft`
+     *  etc. — the T3 master accessor path. Zero reading if no master bound. */
+    master(): AudioReading;
     /** Resolve an alias OR a raw sound name to a list of concrete sound names.
      *  `'uKick'` → `['bd']`, `'uTom'` → `['lt','mt','ht']`, `'bd'` → `['bd']`. */
     private resolveSounds;
@@ -6512,4 +6667,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BusHapEvent, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, SignalBus, type SignalReading, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BusAnalyser, type BusHapEvent, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type ShellSnapshot, SignalBus, type SignalReading, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setProjectBackgroundCrop, setProjectBackgroundFileId, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
