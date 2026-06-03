@@ -76,12 +76,25 @@ export class P5VizRenderer implements VizRenderer {
 
     // The callable `u(...)` accessor (D-03) — p5 shape returns live NUMBERS
     // (NOT thunks), read fresh on each access.
+    // `u('bd')` / `u.track(id)` return the bus reading directly — it already
+    // carries the DSP fields (`rms`/`bass`/`mid`/`treble` numbers + `fft`/`wave`
+    // arrays) spread from `SignalReading`, so a sketch reads `u('bd').rms` /
+    // `u('bd').fft[i]` as live numbers/arrays with no extra wiring (Slice 2).
     const u = ((sound: string): P5SignalReading => bus.sound(sound)) as P5SignalAccessor
     u.track = (id: string): P5SignalReading => bus.track(id)
     // `tracks`/`sounds` are getter-backed so they reflect live bus state every
     // read (D-03 enumeration), not a frozen snapshot.
     Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
     Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
+    // Master-mix DSP on `u` itself (Slice 2, p5 shape): `u.rms`/`u.bass`/… are
+    // live getter NUMBERS, `u.fft`/`u.wave` live getter ARRAYS — each re-reads
+    // `bus.master()` fresh (frame-fresh through the draw, never compile-captured).
+    Object.defineProperty(u, 'rms', { get: () => bus.master().rms, enumerable: true })
+    Object.defineProperty(u, 'bass', { get: () => bus.master().bass, enumerable: true })
+    Object.defineProperty(u, 'mid', { get: () => bus.master().mid, enumerable: true })
+    Object.defineProperty(u, 'treble', { get: () => bus.master().treble, enumerable: true })
+    Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
+    Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
 
     // The uniform object — bare `uKick…uTom` / `uKeyVelocity` are GETTERS
     // (D-01 p5 shape: live numbers). `__tick` is a non-enumerable per-frame
@@ -118,6 +131,20 @@ export class P5VizRenderer implements VizRenderer {
           if (v > max) max = v
         }
         return max
+      },
+      // Master-mix DSP sugar (Slice 2, p5 D-01 — live getter numbers). Bare
+      // `uRms`/… read `bus.master()` fresh each draw, parity with `uKick`.
+      get uRms(): number {
+        return bus.master().rms
+      },
+      get uBass(): number {
+        return bus.master().bass
+      },
+      get uMid(): number {
+        return bus.master().mid
+      },
+      get uTreble(): number {
+        return bus.master().treble
       },
       u,
     } as StaveUniforms

@@ -877,15 +877,32 @@ declare class BreakpointStore {
  */
 
 /** A per-sound or per-track reading as live NUMBERS (p5 D-01 shape — getters,
- *  NOT thunks; the renderer reads them directly inside `draw`). */
+ *  NOT thunks; the renderer reads them directly inside `draw`). DSP scalars
+ *  (`rms`/`bass`/`mid`/`treble`) are live numbers; DSP arrays (`fft`/`wave`)
+ *  are live `number[]` indexed directly (`u('bd').fft[i]`). All read fresh per
+ *  access — the reading object is produced by a getter through `with`. */
 interface P5SignalReading {
     env: number;
     velocity: number;
     note: number | string | null;
     color: string | null;
+    /** Time-domain RMS, 0..1. */
+    rms: number;
+    /** Low-band magnitude, 0..1. */
+    bass: number;
+    /** Mid-band magnitude, 0..1. */
+    mid: number;
+    /** High-band magnitude, 0..1. */
+    treble: number;
+    /** Normalized magnitude spectrum, `number[]`. */
+    fft: number[];
+    /** Time-domain waveform -1..1, `number[]`. */
+    wave: number[];
 }
 /** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props.
- *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk. */
+ *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk.
+ *  `u` itself also carries the MASTER-mix DSP (Slice 2): `u.rms`/`u.bass`/… live
+ *  number getters + `u.fft`/`u.wave` live arrays. */
 interface P5SignalAccessor {
     (sound: string): P5SignalReading;
     /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
@@ -894,6 +911,18 @@ interface P5SignalAccessor {
     tracks: string[];
     /** Enumerate distinct sounds seen through the envelope feed. */
     sounds: string[];
+    /** Master-mix time-domain RMS, 0..1 (live getter). */
+    rms: number;
+    /** Master-mix low-band magnitude, 0..1 (live getter). */
+    bass: number;
+    /** Master-mix mid-band magnitude, 0..1 (live getter). */
+    mid: number;
+    /** Master-mix high-band magnitude, 0..1 (live getter). */
+    treble: number;
+    /** Live master-mix magnitude spectrum, `number[]`. */
+    fft: number[];
+    /** Live master-mix waveform -1..1, `number[]`. */
+    wave: number[];
 }
 /**
  * Phase 21 — the live named-signal uniform object handed to a p5 sketch as the
@@ -918,6 +947,14 @@ interface StaveUniforms {
     readonly uRim: number;
     readonly uTom: number;
     readonly uKeyVelocity: number;
+    /** Master-mix time-domain RMS, 0..1. */
+    readonly uRms: number;
+    /** Master-mix low-band magnitude, 0..1. */
+    readonly uBass: number;
+    /** Master-mix mid-band magnitude, 0..1. */
+    readonly uMid: number;
+    /** Master-mix high-band magnitude, 0..1. */
+    readonly uTreble: number;
     readonly u: P5SignalAccessor;
     /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
      *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
@@ -1648,26 +1685,57 @@ interface HydraStaveBag {
     uTom: () => number;
     /** Active event velocity (global, 0..1). */
     uKeyVelocity: () => number;
+    /** Master-mix time-domain RMS, 0..1. */
+    uRms: () => number;
+    /** Master-mix low-band magnitude, 0..1. */
+    uBass: () => number;
+    /** Master-mix mid-band magnitude, 0..1. */
+    uMid: () => number;
+    /** Master-mix high-band magnitude, 0..1. */
+    uTreble: () => number;
     /**
      * General per-sound / per-track signal accessor.
      *
      *   osc(() => u('bd').env() * 10).out(o0)
+     *   osc(() => u('bd').rms() * 10).out(o0)
+     *   shape(() => u('bd').fft[0] * 4).out(o0)   // arrays index natively
      *   u.track('$0').color()
+     *   osc(() => u.rms() * 10).out(o0)           // master scalar thunk
+     *   shape(() => u.fft[2] * 6).out(o0)          // master spectrum array
      *
-     * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color`.
-     * `u.track(id)` keys on the SCHEDULER key space (`$0`/`drums`, NOT
-     * `IREvent.trackId`). `u.tracks` / `u.sounds` enumerate.
+     * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color` AND the
+     * DSP scalars `.rms`/`.bass`/`.mid`/`.treble` (all `() => number`), plus the
+     * live `.fft`/`.wave` ARRAYS (indexed natively, NOT thunk-wrapped). `u.track(id)`
+     * keys on the SCHEDULER key space (`$0`/`drums`, NOT `IREvent.trackId`). `u`
+     * itself carries the MASTER-mix DSP: `u.rms()`/… thunks + `u.fft`/`u.wave`
+     * arrays. `u.tracks` / `u.sounds` enumerate.
      */
     u: HydraSignalAccessor;
 }
-/** A per-sound or per-track reading exposed as `() => value` thunks (D-01). */
+/** A per-sound or per-track reading exposed as `() => value` thunks (D-01).
+ *  DSP scalars (`rms`/`bass`/`mid`/`treble`) are thunks (same shape as `.env`);
+ *  DSP arrays (`fft`/`wave`) are LIVE `number[]` so hydra indexes them natively
+ *  (`() => u('bd').fft[i]`) — NOT thunk-of-number per element, NOT thunk-of-array. */
 interface HydraSignalThunks {
     env: () => number;
     velocity: () => number;
     note: () => number | string | null;
     color: () => string | null;
+    /** Time-domain RMS, 0..1 (thunk, re-reads the bus each call). */
+    rms: () => number;
+    /** Low-band magnitude, 0..1 (thunk). */
+    bass: () => number;
+    /** Mid-band magnitude, 0..1 (thunk). */
+    mid: () => number;
+    /** High-band magnitude, 0..1 (thunk). */
+    treble: () => number;
+    /** Live normalized magnitude spectrum, `number[]` (index natively). */
+    fft: number[];
+    /** Live time-domain waveform -1..1, `number[]` (index natively). */
+    wave: number[];
 }
-/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props. */
+/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props AND
+ *  the MASTER-mix DSP feed (Slice 2): scalar thunks + live arrays. */
 interface HydraSignalAccessor {
     (sound: string): HydraSignalThunks;
     /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
@@ -1676,6 +1744,18 @@ interface HydraSignalAccessor {
     tracks: string[];
     /** Enumerate distinct sounds seen through the envelope feed. */
     sounds: string[];
+    /** Master-mix time-domain RMS, 0..1 (thunk). */
+    rms: () => number;
+    /** Master-mix low-band magnitude, 0..1 (thunk). */
+    bass: () => number;
+    /** Master-mix mid-band magnitude, 0..1 (thunk). */
+    mid: () => number;
+    /** Master-mix high-band magnitude, 0..1 (thunk). */
+    treble: () => number;
+    /** Live master-mix magnitude spectrum, `number[]` (index natively). */
+    fft: number[];
+    /** Live master-mix waveform -1..1, `number[]` (index natively). */
+    wave: number[];
 }
 type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void;
 /**

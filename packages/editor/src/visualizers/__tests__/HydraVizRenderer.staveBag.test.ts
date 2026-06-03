@@ -460,6 +460,78 @@ describe('HydraVizRenderer — stave bag', () => {
       renderer.destroy()
     })
 
+    it('exposes DSP fields on the bag thunks: u("bd").rms()/.bass() thunks live, .fft array, u.rms() master (T3)', () => {
+      const renderer = new HydraVizRenderer()
+      const hapStream = makeHapStream()
+      // `bd` lives in exactly ONE active track ($0) → audioFor picks the
+      // isolated $0 analyser (lowMag 200), not the weaker master (lowMag 50).
+      const kickTrack = makePointScheduler({ 0: { s: 'bd', velocity: 0.8 } })
+      const trackSchedulers = new Map([['$0', kickTrack]])
+      const combined = makePointScheduler({ 0: { s: 'bd', velocity: 0.8 } })
+      const master = makeAudioAnalyser({ lowMag: 50, timeVal: 150 })
+      const kickAnalyser = makeAudioAnalyser({ lowMag: 200, timeVal: 200 })
+      const trackAnalysers = new Map([['$0', kickAnalyser]])
+
+      renderer.mount(
+        document.createElement('div'),
+        {
+          audio: { analyser: master, trackAnalysers } as any,
+          streaming: { hapStream: hapStream as any } as any,
+          queryable: { scheduler: combined, trackSchedulers } as any,
+        } as Partial<EngineComponents>,
+        { w: 64, h: 64 },
+        () => {}
+      )
+      expect(analyserOf(renderer)).toBeTruthy()
+
+      const bag = bagOf(renderer)
+
+      // SHAPE (D-01 hydra): DSP scalars are THUNKS (functions), arrays are ARRAYS.
+      expect(typeof bag.u('bd').rms).toBe('function')
+      expect(typeof bag.u('bd').bass).toBe('function')
+      expect(typeof bag.uRms).toBe('function')
+      // Before any frame, readAudio hasn't run — thunks read 0, arrays empty.
+      expect(bag.u('bd').rms()).toBe(0)
+      expect(Array.isArray(bag.u('bd').fft)).toBe(true)
+      expect(bag.u('bd').fft).toEqual([])
+
+      // Drive ONE frame — pumpAudio runs tick → refreshActive → readAudio.
+      pump(renderer)
+
+      // The rms thunk now reads the LIVE analyser value, non-zero (the headline
+      // T3 observation — a thunk that re-reads the bus each call).
+      expect(bag.u('bd').rms()).toBeGreaterThan(0)
+      expect(bag.u('bd').bass()).toBeGreaterThan(0)
+      // bass came from the ISOLATED $0 analyser (lowMag 200), not master (50).
+      expect(bag.u('bd').bass()).toBeGreaterThan(0.5)
+      // treble ~0 — confirms the isolated low-band read, not a flat buffer.
+      expect(bag.u('bd').treble()).toBe(0)
+      // fft is a populated 32-bucket ARRAY (indexed natively as u('bd').fft[i]).
+      const fft = bag.u('bd').fft
+      expect(Array.isArray(fft)).toBe(true)
+      expect(fft.length).toBe(32)
+      expect(fft.some((v) => v > 0)).toBe(true)
+      // wave is a populated ARRAY too (-1..1 time domain).
+      expect(Array.isArray(bag.u('bd').wave)).toBe(true)
+      expect(bag.u('bd').wave.length).toBeGreaterThan(0)
+
+      // Master thunks: u.rms() / u.bass() read bus.master() (the combined mix).
+      expect(typeof bag.u.rms).toBe('function')
+      expect(bag.u.rms()).toBeGreaterThan(0)
+      expect(bag.u.bass()).toBeGreaterThan(0)
+      // u.fft (master spectrum) is a live ARRAY.
+      expect(Array.isArray(bag.u.fft)).toBe(true)
+      expect(bag.u.fft.length).toBe(32)
+      // Bare master sugar thunk uRms matches u.rms() (parity with uKick).
+      expect(bag.uRms()).toBe(bag.u.rms())
+
+      // DSP is independent of `.env` (the IR envelope) — distinct fields. `.env`
+      // is 0 (no hap fired through the stream), `.rms` non-zero (analyser live).
+      expect(bag.u('bd').env()).toBe(0)
+
+      renderer.destroy()
+    })
+
     it('a live-ref scheduler swap on update() is observed by the SAME thunk closure', () => {
       const renderer = new HydraVizRenderer()
       const hapStream = makeHapStream()

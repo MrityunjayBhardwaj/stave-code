@@ -59,28 +59,64 @@ export interface HydraStaveBag {
   /** Active event velocity (global, 0..1). */
   uKeyVelocity: () => number
 
+  // ── Master-mix DSP sugar aliases (Phase 21 Slice 2, D-01 hydra shape) ──────
+  // Bare `() => number` thunks reading the MASTER analyser (`bus.master()`) —
+  // parity with `uKick` for the combined-mix audio scalars.
+  /** Master-mix time-domain RMS, 0..1. */
+  uRms: () => number
+  /** Master-mix low-band magnitude, 0..1. */
+  uBass: () => number
+  /** Master-mix mid-band magnitude, 0..1. */
+  uMid: () => number
+  /** Master-mix high-band magnitude, 0..1. */
+  uTreble: () => number
+
   /**
    * General per-sound / per-track signal accessor.
    *
    *   osc(() => u('bd').env() * 10).out(o0)
+   *   osc(() => u('bd').rms() * 10).out(o0)
+   *   shape(() => u('bd').fft[0] * 4).out(o0)   // arrays index natively
    *   u.track('$0').color()
+   *   osc(() => u.rms() * 10).out(o0)           // master scalar thunk
+   *   shape(() => u.fft[2] * 6).out(o0)          // master spectrum array
    *
-   * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color`.
-   * `u.track(id)` keys on the SCHEDULER key space (`$0`/`drums`, NOT
-   * `IREvent.trackId`). `u.tracks` / `u.sounds` enumerate.
+   * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color` AND the
+   * DSP scalars `.rms`/`.bass`/`.mid`/`.treble` (all `() => number`), plus the
+   * live `.fft`/`.wave` ARRAYS (indexed natively, NOT thunk-wrapped). `u.track(id)`
+   * keys on the SCHEDULER key space (`$0`/`drums`, NOT `IREvent.trackId`). `u`
+   * itself carries the MASTER-mix DSP: `u.rms()`/… thunks + `u.fft`/`u.wave`
+   * arrays. `u.tracks` / `u.sounds` enumerate.
    */
   u: HydraSignalAccessor
 }
 
-/** A per-sound or per-track reading exposed as `() => value` thunks (D-01). */
+/** A per-sound or per-track reading exposed as `() => value` thunks (D-01).
+ *  DSP scalars (`rms`/`bass`/`mid`/`treble`) are thunks (same shape as `.env`);
+ *  DSP arrays (`fft`/`wave`) are LIVE `number[]` so hydra indexes them natively
+ *  (`() => u('bd').fft[i]`) — NOT thunk-of-number per element, NOT thunk-of-array. */
 export interface HydraSignalThunks {
   env: () => number
   velocity: () => number
   note: () => number | string | null
   color: () => string | null
+  // ── DSP feed (analyser — Slice 2) ─────────────────────────────────────────
+  /** Time-domain RMS, 0..1 (thunk, re-reads the bus each call). */
+  rms: () => number
+  /** Low-band magnitude, 0..1 (thunk). */
+  bass: () => number
+  /** Mid-band magnitude, 0..1 (thunk). */
+  mid: () => number
+  /** High-band magnitude, 0..1 (thunk). */
+  treble: () => number
+  /** Live normalized magnitude spectrum, `number[]` (index natively). */
+  fft: number[]
+  /** Live time-domain waveform -1..1, `number[]` (index natively). */
+  wave: number[]
 }
 
-/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props. */
+/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props AND
+ *  the MASTER-mix DSP feed (Slice 2): scalar thunks + live arrays. */
 export interface HydraSignalAccessor {
   (sound: string): HydraSignalThunks
   /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
@@ -89,6 +125,19 @@ export interface HydraSignalAccessor {
   tracks: string[]
   /** Enumerate distinct sounds seen through the envelope feed. */
   sounds: string[]
+  // ── Master-mix DSP (Slice 2) — `u.rms()` thunk, `u.fft` live array ────────
+  /** Master-mix time-domain RMS, 0..1 (thunk). */
+  rms: () => number
+  /** Master-mix low-band magnitude, 0..1 (thunk). */
+  bass: () => number
+  /** Master-mix mid-band magnitude, 0..1 (thunk). */
+  mid: () => number
+  /** Master-mix high-band magnitude, 0..1 (thunk). */
+  treble: () => number
+  /** Live master-mix magnitude spectrum, `number[]` (index natively). */
+  fft: number[]
+  /** Live master-mix waveform -1..1, `number[]` (index natively). */
+  wave: number[]
 }
 
 export type HydraPatternFn = (synth: any, stave: HydraStaveBag) => void
@@ -235,22 +284,58 @@ export class HydraVizRenderer implements VizRenderer {
     const bus = this.bus as SignalBus
 
     // The general `u(...)` accessor (D-03), with attached enumerators.
-    const u: HydraSignalAccessor = ((sound: string): HydraSignalThunks => ({
-      env: () => bus.sound(sound).env,
-      velocity: () => bus.sound(sound).velocity,
-      note: () => bus.sound(sound).note,
-      color: () => bus.sound(sound).color,
-    })) as HydraSignalAccessor
-    u.track = (id: string): HydraSignalThunks => ({
-      env: () => bus.track(id).env,
-      velocity: () => bus.track(id).velocity,
-      note: () => bus.track(id).note,
-      color: () => bus.track(id).color,
-    })
+    // DSP scalars (`rms`/`bass`/`mid`/`treble`) are thunks — same shape as
+    // `.env` — each re-reading `bus.sound(sound)` fresh. DSP arrays
+    // (`fft`/`wave`) are LIVE getter-backed `number[]` props (Slice 2, D-01):
+    // hydra indexes them natively (`() => u('bd').fft[i]`), so a thunk-of-number
+    // per element would break the idiom and a thunk-returning-an-array would not
+    // match the native `a.fft[i]` access. A getter re-reads the bus per access,
+    // keeping the array frame-fresh (mirror U2 — no compile-time capture).
+    const soundThunks = (sound: string): HydraSignalThunks => {
+      const t = {
+        env: () => bus.sound(sound).env,
+        velocity: () => bus.sound(sound).velocity,
+        note: () => bus.sound(sound).note,
+        color: () => bus.sound(sound).color,
+        rms: () => bus.sound(sound).rms,
+        bass: () => bus.sound(sound).bass,
+        mid: () => bus.sound(sound).mid,
+        treble: () => bus.sound(sound).treble,
+      } as HydraSignalThunks
+      Object.defineProperty(t, 'fft', { get: () => bus.sound(sound).fft, enumerable: true })
+      Object.defineProperty(t, 'wave', { get: () => bus.sound(sound).wave, enumerable: true })
+      return t
+    }
+    const u: HydraSignalAccessor = ((sound: string): HydraSignalThunks =>
+      soundThunks(sound)) as HydraSignalAccessor
+    u.track = (id: string): HydraSignalThunks => {
+      const t = {
+        env: () => bus.track(id).env,
+        velocity: () => bus.track(id).velocity,
+        note: () => bus.track(id).note,
+        color: () => bus.track(id).color,
+        rms: () => bus.track(id).rms,
+        bass: () => bus.track(id).bass,
+        mid: () => bus.track(id).mid,
+        treble: () => bus.track(id).treble,
+      } as HydraSignalThunks
+      Object.defineProperty(t, 'fft', { get: () => bus.track(id).fft, enumerable: true })
+      Object.defineProperty(t, 'wave', { get: () => bus.track(id).wave, enumerable: true })
+      return t
+    }
     // `tracks`/`sounds` are getter-backed so they reflect live bus state
     // every read (D-03 enumeration) rather than a frozen snapshot.
     Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
     Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
+    // Master-mix DSP on `u` itself (Slice 2): scalar thunks read `bus.master()`
+    // fresh; `u.fft`/`u.wave` are live getter-backed arrays (same frame-fresh
+    // discipline as the per-sound arrays above).
+    u.rms = () => bus.master().rms
+    u.bass = () => bus.master().bass
+    u.mid = () => bus.master().mid
+    u.treble = () => bus.master().treble
+    Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
+    Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
 
     const bag: HydraStaveBag = {
       scheduler: null,
@@ -274,6 +359,12 @@ export class HydraVizRenderer implements VizRenderer {
         }
         return max
       },
+      // Master-mix DSP sugar (Slice 2) — bare thunks mirroring uKick, reading
+      // `bus.master()` fresh each call. Parity with uKick/uSnare for audio.
+      uRms: () => bus.master().rms,
+      uBass: () => bus.master().bass,
+      uMid: () => bus.master().mid,
+      uTreble: () => bus.master().treble,
       u,
       H: (trackId, field = 'gain') => {
         return () => {

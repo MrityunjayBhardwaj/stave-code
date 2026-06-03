@@ -54,16 +54,34 @@ interface StaveContext {
 }
 
 /** A per-sound or per-track reading as live NUMBERS (p5 D-01 shape — getters,
- *  NOT thunks; the renderer reads them directly inside `draw`). */
+ *  NOT thunks; the renderer reads them directly inside `draw`). DSP scalars
+ *  (`rms`/`bass`/`mid`/`treble`) are live numbers; DSP arrays (`fft`/`wave`)
+ *  are live `number[]` indexed directly (`u('bd').fft[i]`). All read fresh per
+ *  access — the reading object is produced by a getter through `with`. */
 export interface P5SignalReading {
   env: number
   velocity: number
   note: number | string | null
   color: string | null
+  // ── DSP feed (analyser — Slice 2) ─────────────────────────────────────────
+  /** Time-domain RMS, 0..1. */
+  rms: number
+  /** Low-band magnitude, 0..1. */
+  bass: number
+  /** Mid-band magnitude, 0..1. */
+  mid: number
+  /** High-band magnitude, 0..1. */
+  treble: number
+  /** Normalized magnitude spectrum, `number[]`. */
+  fft: number[]
+  /** Time-domain waveform -1..1, `number[]`. */
+  wave: number[]
 }
 
 /** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props.
- *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk. */
+ *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk.
+ *  `u` itself also carries the MASTER-mix DSP (Slice 2): `u.rms`/`u.bass`/… live
+ *  number getters + `u.fft`/`u.wave` live arrays. */
 export interface P5SignalAccessor {
   (sound: string): P5SignalReading
   /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
@@ -72,6 +90,19 @@ export interface P5SignalAccessor {
   tracks: string[]
   /** Enumerate distinct sounds seen through the envelope feed. */
   sounds: string[]
+  // ── Master-mix DSP (Slice 2) — live getters / arrays ──────────────────────
+  /** Master-mix time-domain RMS, 0..1 (live getter). */
+  rms: number
+  /** Master-mix low-band magnitude, 0..1 (live getter). */
+  bass: number
+  /** Master-mix mid-band magnitude, 0..1 (live getter). */
+  mid: number
+  /** Master-mix high-band magnitude, 0..1 (live getter). */
+  treble: number
+  /** Live master-mix magnitude spectrum, `number[]`. */
+  fft: number[]
+  /** Live master-mix waveform -1..1, `number[]`. */
+  wave: number[]
 }
 
 /**
@@ -97,6 +128,15 @@ export interface StaveUniforms {
   readonly uRim: number
   readonly uTom: number
   readonly uKeyVelocity: number
+  // ── Master-mix DSP sugar aliases (Slice 2, p5 D-01 — live getter numbers) ──
+  /** Master-mix time-domain RMS, 0..1. */
+  readonly uRms: number
+  /** Master-mix low-band magnitude, 0..1. */
+  readonly uBass: number
+  /** Master-mix mid-band magnitude, 0..1. */
+  readonly uMid: number
+  /** Master-mix high-band magnitude, 0..1. */
+  readonly uTreble: number
   readonly u: P5SignalAccessor
   /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
    *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
@@ -355,12 +395,26 @@ function makeInertStaveUniforms(): StaveUniforms {
     velocity: 0,
     note: null,
     color: null,
+    rms: 0,
+    bass: 0,
+    mid: 0,
+    treble: 0,
+    fft: [],
+    wave: [],
   })
   const u = ((_sound: string): P5SignalReading =>
     zeroReading()) as P5SignalAccessor
   u.track = (_id: string): P5SignalReading => zeroReading()
   u.tracks = []
   u.sounds = []
+  // Master-mix DSP zeros (Slice 2) — `u.rms`/… are inert numbers, `u.fft`/… are
+  // empty arrays, so a sketch reading them in demo mode never NaNs / throws.
+  u.rms = 0
+  u.bass = 0
+  u.mid = 0
+  u.treble = 0
+  u.fft = []
+  u.wave = []
   return {
     uKick: 0,
     uSnare: 0,
@@ -370,6 +424,10 @@ function makeInertStaveUniforms(): StaveUniforms {
     uRim: 0,
     uTom: 0,
     uKeyVelocity: 0,
+    uRms: 0,
+    uBass: 0,
+    uMid: 0,
+    uTreble: 0,
     u,
     __tick: () => {},
   }
@@ -459,6 +517,10 @@ with (p) {
       const uRim = staveUniforms.uRim
       const uTom = staveUniforms.uTom
       const uKeyVelocity = staveUniforms.uKeyVelocity
+      const uRms = staveUniforms.uRms
+      const uBass = staveUniforms.uBass
+      const uMid = staveUniforms.uMid
+      const uTreble = staveUniforms.uTreble
       `
 const LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length
 

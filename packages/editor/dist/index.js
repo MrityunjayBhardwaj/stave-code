@@ -4932,6 +4932,12 @@ var _P5VizRenderer = class _P5VizRenderer {
     u.track = (id) => bus.track(id);
     Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
     Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+    Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+    Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+    Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+    Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
+    Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+    Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
     const uniforms = {
       get uKick() {
         return bus.envValue("uKick");
@@ -4964,6 +4970,20 @@ var _P5VizRenderer = class _P5VizRenderer {
           if (v > max) max = v;
         }
         return max;
+      },
+      // Master-mix DSP sugar (Slice 2, p5 D-01 — live getter numbers). Bare
+      // `uRms`/… read `bus.master()` fresh each draw, parity with `uKick`.
+      get uRms() {
+        return bus.master().rms;
+      },
+      get uBass() {
+        return bus.master().bass;
+      },
+      get uMid() {
+        return bus.master().mid;
+      },
+      get uTreble() {
+        return bus.master().treble;
       },
       u
     };
@@ -5225,20 +5245,45 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       this.rafId = requestAnimationFrame(this.pumpAudio);
     }, "pumpAudio");
     const bus = this.bus;
-    const u = /* @__PURE__ */ __name(((sound) => ({
-      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
-      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
-      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
-      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color")
-    })), "u");
-    u.track = (id) => ({
-      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
-      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
-      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
-      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color")
-    });
+    const soundThunks = /* @__PURE__ */ __name((sound) => {
+      const t = {
+        env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
+        velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
+        note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
+        color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color"),
+        rms: /* @__PURE__ */ __name(() => bus.sound(sound).rms, "rms"),
+        bass: /* @__PURE__ */ __name(() => bus.sound(sound).bass, "bass"),
+        mid: /* @__PURE__ */ __name(() => bus.sound(sound).mid, "mid"),
+        treble: /* @__PURE__ */ __name(() => bus.sound(sound).treble, "treble")
+      };
+      Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.sound(sound).fft, "get"), enumerable: true });
+      Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
+      return t;
+    }, "soundThunks");
+    const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
+    u.track = (id) => {
+      const t = {
+        env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
+        velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
+        note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
+        color: /* @__PURE__ */ __name(() => bus.track(id).color, "color"),
+        rms: /* @__PURE__ */ __name(() => bus.track(id).rms, "rms"),
+        bass: /* @__PURE__ */ __name(() => bus.track(id).bass, "bass"),
+        mid: /* @__PURE__ */ __name(() => bus.track(id).mid, "mid"),
+        treble: /* @__PURE__ */ __name(() => bus.track(id).treble, "treble")
+      };
+      Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.track(id).fft, "get"), enumerable: true });
+      Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
+      return t;
+    };
     Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
     Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+    u.rms = () => bus.master().rms;
+    u.bass = () => bus.master().bass;
+    u.mid = () => bus.master().mid;
+    u.treble = () => bus.master().treble;
+    Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+    Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
     const bag = {
       scheduler: null,
       tracks: /* @__PURE__ */ new Map(),
@@ -5261,6 +5306,12 @@ var _HydraVizRenderer = class _HydraVizRenderer {
         }
         return max;
       }, "uKeyVelocity"),
+      // Master-mix DSP sugar (Slice 2) — bare thunks mirroring uKick, reading
+      // `bus.master()` fresh each call. Parity with uKick/uSnare for audio.
+      uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
+      uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
+      uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
+      uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
       u,
       H: /* @__PURE__ */ __name((trackId, field = "gain") => {
         return () => {
@@ -9902,12 +9953,24 @@ function makeInertStaveUniforms() {
     env: 0,
     velocity: 0,
     note: null,
-    color: null
+    color: null,
+    rms: 0,
+    bass: 0,
+    mid: 0,
+    treble: 0,
+    fft: [],
+    wave: []
   }), "zeroReading");
   const u = /* @__PURE__ */ __name(((_sound) => zeroReading()), "u");
   u.track = (_id) => zeroReading();
   u.tracks = [];
   u.sounds = [];
+  u.rms = 0;
+  u.bass = 0;
+  u.mid = 0;
+  u.treble = 0;
+  u.fft = [];
+  u.wave = [];
   return {
     uKick: 0,
     uSnare: 0,
@@ -9917,6 +9980,10 @@ function makeInertStaveUniforms() {
     uRim: 0,
     uTom: 0,
     uKeyVelocity: 0,
+    uRms: 0,
+    uBass: 0,
+    uMid: 0,
+    uTreble: 0,
     u,
     __tick: /* @__PURE__ */ __name(() => {
     }, "__tick")
@@ -9957,6 +10024,10 @@ with (p) {
       const uRim = staveUniforms.uRim
       const uTom = staveUniforms.uTom
       const uKeyVelocity = staveUniforms.uKeyVelocity
+      const uRms = staveUniforms.uRms
+      const uBass = staveUniforms.uBass
+      const uMid = staveUniforms.uMid
+      const uTreble = staveUniforms.uTreble
       `;
 var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
 function buildLegacyBody(userCode) {
