@@ -349,7 +349,8 @@ export function EditorSettingsModal({ open, onClose }: Props) {
           <div style={s.aliasHelp}>
             Name a signal over one or more sounds — use it in any viz as{" "}
             <code style={s.aliasCode}>kick</code> or{" "}
-            <code style={s.aliasCode}>u(&apos;kick&apos;)</code>.
+            <code style={s.aliasCode}>u(&apos;kick&apos;)</code>. Sounds are
+            Strudel names today; the name stays the same across engines.
           </div>
           {aliasRows.map((aliasRow, i) => {
             const err = aliasErrors[i] ?? null;
