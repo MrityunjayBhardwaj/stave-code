@@ -57,6 +57,41 @@ export interface SignalReading {
   note: number | string | null
   /** Display color (active event preferred, else last-bumped hap). */
   color: string | null
+  // ── DSP feed (analyser — Slice 2) ─────────────────────────────────────────
+  /** Time-domain RMS 0..1 from the resolved analyser. 0 if no analyser bound. */
+  rms: number
+  /** Mean of the LOW third of `fft` (0..1). 0 if no analyser bound. */
+  bass: number
+  /** Mean of the MID third of `fft` (0..1). 0 if no analyser bound. */
+  mid: number
+  /** Mean of the HIGH third of `fft` (0..1). 0 if no analyser bound. */
+  treble: number
+  /** Normalized magnitude spectrum, `FFT_BINS` buckets, each 0..1. `[]` if no
+   *  analyser bound (never NaN). */
+  fft: number[]
+  /** Time-domain waveform normalized -1..1. `[]` if no analyser bound. */
+  wave: number[]
+}
+
+/** Master/per-analyser DSP reading — the audio half of a `SignalReading`. */
+export interface AudioReading {
+  rms: number
+  bass: number
+  mid: number
+  treble: number
+  fft: number[]
+  wave: number[]
+}
+
+/** A zero DSP reading — the graceful-degradation value when no analyser is
+ *  bound or resolvable. Empty arrays + 0 scalars, NEVER NaN (pre-mortem). */
+const ZERO_AUDIO: AudioReading = {
+  rms: 0,
+  bass: 0,
+  mid: 0,
+  treble: 0,
+  fft: [],
+  wave: [],
 }
 
 /** ε window for the query-at-now read — matches `H()`'s 1ms window
@@ -66,6 +101,25 @@ const EPSILON = 0.001
 
 /** Decay constant — reused from `HapEnergyEnvelope` (`HydraVizRenderer.ts:60`). */
 const DEFAULT_DECAY = 0.92
+
+/** Number of normalized spectrum buckets the bus publishes on `.fft`. The raw
+ *  analyser `frequencyBinCount` (typically 1024) is downsampled into this many
+ *  buckets — the SAME `sum/(binSize*255)` scheme `HydraVizRenderer.pumpAudio`
+ *  uses (`:447-455`). 32 is a documented default; `bass/mid/treble` are the
+ *  means of the low / mid / high THIRD of these bins. */
+const FFT_BINS = 32
+
+/** Structural shape the bus reads off a Web-Audio `AnalyserNode` (DOM type).
+ *  Typed minimally so tests can feed a plain stub (P12 — structural typing,
+ *  no DOM-lib dependency for the fake). */
+export interface BusAnalyser {
+  /** Real `AnalyserNode` exposes `frequencyBinCount = fftSize / 2`. */
+  frequencyBinCount: number
+  /** Fill `arr` with the current magnitude spectrum (0..255 per bin). */
+  getByteFrequencyData(arr: Uint8Array): void
+  /** Fill `arr` with the current time-domain waveform (0..255, 128 = silence). */
+  getByteTimeDomainData(arr: Uint8Array): void
+}
 
 export class SignalBus {
   /** Per-sound envelope levels (0..1), decayed each frame. Keyed on `e.s`. */
@@ -88,6 +142,23 @@ export class SignalBus {
   /** Every distinct `e.s` ever bumped — backs `get sounds()`. */
   private readonly seenSounds = new Set<string>()
 
+  // ── DSP feed (analyser refs + per-frame cache, Slice 2) ───────────────────
+  /** Live master analyser ref — mutable so `bindAnalysers()` rebinds in place
+   *  (mirrors `bindScheduler`). Null in IR-only / demo mode. */
+  private masterAnalyser: BusAnalyser | null = null
+  /** Per-track analyser refs, keyed the SAME as `trackSchedulers` (the SCHEDULER
+   *  key space `$0`/`d1`, TRAP §5) — `trackAnalysers` is published with those
+   *  keys by the engine (LiveCodingEngine.ts:25). */
+  private trackAnalysers: Map<string, BusAnalyser> = new Map()
+  /** Scratch byte buffers per analyser (freq + time), allocated/resized lazily
+   *  keyed on analyser identity so a rebind to a new node re-allocates. */
+  private readonly freqBufs = new WeakMap<BusAnalyser, Uint8Array>()
+  private readonly waveBufs = new WeakMap<BusAnalyser, Uint8Array>()
+  /** Per-frame derived DSP reading per analyser — filled by `readAudio()`,
+   *  read by the accessors. Cleared each `readAudio()` so a now-unbound
+   *  analyser stops reporting stale data. */
+  private audioByAnalyser = new Map<BusAnalyser, AudioReading>()
+
   constructor(aliasMap: Record<string, string | string[]> = ALIAS_MAP) {
     this.aliasMap = aliasMap
     this.decay = DEFAULT_DECAY
@@ -101,6 +172,18 @@ export class SignalBus {
   ): void {
     this.scheduler = scheduler ?? null
     this.trackSchedulers = trackSchedulers ?? new Map()
+  }
+
+  /** Store live analyser refs (mutable rebind — mirror `bindScheduler`). The
+   *  orbit is the shared reference: a sound resolves to its orbit, which has
+   *  BOTH events (the scheduler feed) AND an analyser (this DSP feed). Pass
+   *  `null`/empty in IR-only / demo mode → DSP fields degrade to 0/[]. */
+  bindAnalysers(
+    master?: BusAnalyser | null,
+    trackAnalysers?: Map<string, BusAnalyser> | null,
+  ): void {
+    this.masterAnalyser = master ?? null
+    this.trackAnalysers = trackAnalysers ?? new Map()
   }
 
   // ── .env feed (envelope: bump + decay) ──────────────────────────────────
@@ -149,6 +232,61 @@ export class SignalBus {
     return this.scheduler ? this.scheduler.now() : 0
   }
 
+  // ── DSP feed (analyser read-at-now) ───────────────────────────────────────
+
+  /** Snapshot every bound analyser's spectrum + waveform for this frame. Call
+   *  ONCE per frame, AFTER `refreshActive` — `audioFor()` resolves a sound to a
+   *  trackKey via `activeByTrack`, which `refreshActive` populates (ordering is
+   *  the T2 call-site's responsibility). Reads each analyser via
+   *  `getByteFrequencyData` + `getByteTimeDomainData` (mirrors
+   *  `HydraVizRenderer.pumpAudio:445-455`) and caches the derived
+   *  `AudioReading`. An analyser that's no longer bound drops out of the cache. */
+  readAudio(): void {
+    this.audioByAnalyser.clear()
+    if (this.masterAnalyser) this.readOne(this.masterAnalyser)
+    for (const an of this.trackAnalysers.values()) this.readOne(an)
+  }
+
+  /** Read one analyser into the per-frame cache (idempotent within a frame). */
+  private readOne(an: BusAnalyser): void {
+    if (this.audioByAnalyser.has(an)) return
+    this.audioByAnalyser.set(an, deriveAudio(an, this.freqBufs, this.waveBufs))
+  }
+
+  /** Resolve a sound (or alias) → the analyser whose mix it lives in. Find the
+   *  trackKey(s) in `activeByTrack` (SCHEDULER key space, TRAP §5 — NOT
+   *  IREvent.trackId) whose active events include any resolved sound. EXACTLY
+   *  one such track AND that track has a bound analyser → its isolated analyser.
+   *  Otherwise (multi-track, none, or no per-track analyser) → the master
+   *  analyser (the combined mix — still meaningful, never silent-zero-as-bug). */
+  private audioFor(soundOrAlias: string): BusAnalyser | null {
+    const resolved = new Set(this.resolveSounds(soundOrAlias))
+    let onlyKey: string | null = null
+    for (const [key, events] of this.activeByTrack) {
+      const hit = events.some((e) => e.s != null && resolved.has(e.s))
+      if (!hit) continue
+      if (onlyKey != null) return this.masterAnalyser // spans 2+ tracks → master
+      onlyKey = key
+    }
+    if (onlyKey != null) {
+      const isolated = this.trackAnalysers.get(onlyKey)
+      if (isolated) return isolated
+    }
+    return this.masterAnalyser
+  }
+
+  /** Cached DSP reading for an analyser (this frame), or the zero reading. */
+  private audioReading(an: BusAnalyser | null): AudioReading {
+    if (an == null) return ZERO_AUDIO
+    return this.audioByAnalyser.get(an) ?? ZERO_AUDIO
+  }
+
+  /** Master DSP reading (the combined-mix analyser). Surfaces `u.rms`/`u.fft`
+   *  etc. — the T3 master accessor path. Zero reading if no master bound. */
+  master(): AudioReading {
+    return this.audioReading(this.masterAnalyser)
+  }
+
   // ── accessors ───────────────────────────────────────────────────────────
 
   /** Resolve an alias OR a raw sound name to a list of concrete sound names.
@@ -187,11 +325,15 @@ export class SignalBus {
     const sounds = this.resolveSounds(soundOrAlias)
     const env = this.envValue(soundOrAlias)
     const ev = this.activeEventForSounds(sounds)
+    // DSP from the sound's resolved orbit analyser (isolated if the sound owns
+    // exactly one active track, else the combined master mix — `audioFor`).
+    const audio = this.audioReading(this.audioFor(soundOrAlias))
     return {
       env,
       velocity: ev?.velocity ?? 0,
       note: ev?.note ?? null,
       color: ev?.color ?? this.colorFallback(sounds),
+      ...audio,
     }
   }
 
@@ -220,6 +362,11 @@ export class SignalBus {
       const v = this.envMap.get(s) ?? 0
       if (v > env) env = v
     }
+    // DSP for the whole track — its own analyser (SCHEDULER key space, §5),
+    // master mix as the graceful fallback when no per-track analyser is bound.
+    const trackAudio = this.audioReading(
+      this.trackAnalysers.get(id) ?? this.masterAnalyser,
+    )
     const soundIn = (soundOrAlias: string): SignalReading => {
       const resolved = new Set(this.resolveSounds(soundOrAlias))
       const ev = events.find((e) => e.s != null && resolved.has(e.s))
@@ -233,6 +380,8 @@ export class SignalBus {
         velocity: ev?.velocity ?? 0,
         note: ev?.note ?? null,
         color: ev?.color ?? null,
+        // A specific sound within a named track reads that track's mix.
+        ...trackAudio,
       }
     }
     return {
@@ -240,6 +389,7 @@ export class SignalBus {
       velocity: first?.velocity ?? 0,
       note: first?.note ?? null,
       color: first?.color ?? null,
+      ...trackAudio,
       sound: soundIn,
     }
   }
@@ -262,4 +412,80 @@ export class SignalBus {
     if (note == null) return null
     return noteToMidi(note)
   }
+}
+
+// ── DSP derivation (pure, module-level — no class state) ────────────────────
+
+/**
+ * Read one analyser and derive its `AudioReading`:
+ *   - `fft[FFT_BINS]`  — magnitude spectrum downsampled into `FFT_BINS`
+ *     buckets, each `sum/(binSize*255)` so 0..1 (mirror
+ *     `HydraVizRenderer.pumpAudio:447-455`). If `frequencyBinCount < FFT_BINS`
+ *     (`binSize` would be 0) we map 1:1 and pad — never divide by zero.
+ *   - `bass/mid/treble` — mean of the low / mid / high THIRD of `fft`.
+ *   - `wave[]` — time-domain normalized `(v-128)/128` ∈ -1..1.
+ *   - `rms` — `sqrt(mean(((v-128)/128)²))`, clamped 0..1.
+ * Scratch byte buffers are cached per analyser (allocated/resized on identity).
+ */
+function deriveAudio(
+  an: BusAnalyser,
+  freqBufs: WeakMap<BusAnalyser, Uint8Array>,
+  waveBufs: WeakMap<BusAnalyser, Uint8Array>,
+): AudioReading {
+  const n = an.frequencyBinCount | 0
+  if (n <= 0) return { ...ZERO_AUDIO, fft: [], wave: [] }
+
+  let freq = freqBufs.get(an)
+  if (!freq || freq.length !== n) {
+    freq = new Uint8Array(n)
+    freqBufs.set(an, freq)
+  }
+  let time = waveBufs.get(an)
+  if (!time || time.length !== n) {
+    time = new Uint8Array(n)
+    waveBufs.set(an, time)
+  }
+
+  an.getByteFrequencyData(freq)
+  an.getByteTimeDomainData(time)
+
+  // fft — downsample n raw magnitude bins into FFT_BINS buckets, normalized.
+  const fft = new Array<number>(FFT_BINS).fill(0)
+  const binSize = Math.floor(n / FFT_BINS)
+  if (binSize >= 1) {
+    for (let i = 0; i < FFT_BINS; i++) {
+      let sum = 0
+      for (let j = 0; j < binSize; j++) sum += freq[i * binSize + j]
+      fft[i] = sum / (binSize * 255)
+    }
+  } else {
+    // Fewer raw bins than buckets (tiny fftSize) — map 1:1, leave the rest 0.
+    for (let i = 0; i < n; i++) fft[i] = freq[i] / 255
+  }
+
+  // bass / mid / treble — mean of the low / mid / high third of fft.
+  const third = Math.floor(FFT_BINS / 3)
+  const bass = meanSlice(fft, 0, third)
+  const mid = meanSlice(fft, third, 2 * third)
+  const treble = meanSlice(fft, 2 * third, FFT_BINS)
+
+  // wave + rms from the time-domain buffer (128 = silence center).
+  const wave = new Array<number>(n)
+  let sumSq = 0
+  for (let i = 0; i < n; i++) {
+    const v = (time[i] - 128) / 128
+    wave[i] = v
+    sumSq += v * v
+  }
+  const rms = Math.min(1, Math.max(0, Math.sqrt(sumSq / n)))
+
+  return { rms, bass, mid, treble, fft, wave }
+}
+
+/** Mean of `arr[from, to)`; 0 for an empty range (never NaN). */
+function meanSlice(arr: number[], from: number, to: number): number {
+  if (to <= from) return 0
+  let sum = 0
+  for (let i = from; i < to; i++) sum += arr[i]
+  return sum / (to - from)
 }

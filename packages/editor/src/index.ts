@@ -91,7 +91,12 @@ export { mountVizRenderer } from './visualizers/mountVizRenderer'
 // (Phase 21). PURE module (no p5/hydra import — P12); renderers wrap its shape
 // (p5 getter-numbers, hydra thunks). Consumed by P5/Hydra renderers (T2/T3).
 export { SignalBus } from './visualizers/signals/SignalBus'
-export type { BusHapEvent, SignalReading } from './visualizers/signals/SignalBus'
+export type {
+  BusHapEvent,
+  SignalReading,
+  AudioReading,
+  BusAnalyser,
+} from './visualizers/signals/SignalBus'
 export { ALIAS_MAP } from './visualizers/signals/aliasMap'
 
 // Visualizers — editor internals (advanced use)
