@@ -14,7 +14,7 @@
  * (wired in StaveApp), or `window.__stavePerf.setEnabled(true)`.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   perf,
   getPerfEnabled,
@@ -30,31 +30,27 @@ function ms(n: number): string {
 }
 
 export function PerfOverlay() {
-  const [enabled, setEnabled] = useState(false);
+  // Subscribe to the perf-enabled external store (reflects Alt+P / settings /
+  // window.__stavePerf toggles). useSyncExternalStore is the idiomatic, lint-
+  // clean way to mirror an external store into render — no setState-in-effect.
+  const enabled = useSyncExternalStore(
+    (cb) => onPerfEnabledChange(cb),
+    () => getPerfEnabled(),
+    () => false, // SSR snapshot — never enabled on the server
+  );
+
   const [snap, setSnap] = useState<PerfSnapshot | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Track the persisted enabled state (also reflects Alt+P / settings toggles).
+  // Poll the snapshot only while enabled. setState lives in the timer callback
+  // (not the effect body), so it doesn't trigger cascading renders. The first
+  // sample appears after one REFRESH_MS tick; until then render is gated below.
   useEffect(() => {
-    setEnabled(getPerfEnabled());
-    return onPerfEnabledChange(setEnabled);
-  }, []);
-
-  // Poll the snapshot only while enabled — no interval otherwise.
-  useEffect(() => {
-    if (!enabled) {
-      setSnap(null);
-      return;
-    }
-    const tick = () => setSnap(perf.snapshot());
-    tick();
-    timerRef.current = setInterval(tick, REFRESH_MS);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = null;
-    };
+    if (!enabled) return;
+    const id = setInterval(() => setSnap(perf.snapshot()), REFRESH_MS);
+    return () => clearInterval(id);
   }, [enabled]);
 
+  // When disabled we render nothing regardless of any stale snapshot.
   if (!enabled || !snap) return null;
 
   const frameIds = Object.keys(snap.frames).sort();
