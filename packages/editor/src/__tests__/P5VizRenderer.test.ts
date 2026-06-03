@@ -5,9 +5,14 @@ import type { StaveUniforms } from '../visualizers/p5Compiler'
 // Mock the editorRegistry settings surface so the renderer reads a CUSTOM alias
 // map at mount (Phase 21 aliases — T2 Site A). Hoisted so the renderer import
 // below picks it up. The bus stays pure (P12) — only the renderer reads this.
-const mockGetSignalAliases = vi.fn(() => ({}) as Record<string, string | string[]>)
+// The renderer reads the RAW engine-keyed map; resolveAliasesForEngine (real,
+// not mocked) flattens it to the active engine. So the mock returns the stored
+// engine-keyed shape `{ name: { strudel: ... } }`.
+const mockGetStoredSignalAliases = vi.fn(
+  () => ({}) as Record<string, Record<string, string | string[]>>,
+)
 vi.mock('../workspace/editorRegistry', () => ({
-  getSignalAliases: () => mockGetSignalAliases(),
+  getStoredSignalAliases: () => mockGetStoredSignalAliases(),
 }))
 
 // Mock p5 — same pattern as old useP5Sketch.test.ts
@@ -173,8 +178,8 @@ describe('P5VizRenderer', () => {
   // ── Custom alias bare-getter injection (Phase 21 aliases — T2 Site A) ───────
   describe('custom alias bare-getter injection', () => {
     beforeEach(() => {
-      mockGetSignalAliases.mockReset()
-      mockGetSignalAliases.mockReturnValue({})
+      mockGetStoredSignalAliases.mockReset()
+      mockGetStoredSignalAliases.mockReturnValue({})
     })
 
     /** Drive the renderer's bus through the mount-time HapStream subscription so
@@ -194,8 +199,8 @@ describe('P5VizRenderer', () => {
     }
 
     it('injects a custom `kick` getter on staveUniforms that reads the bus LIVE (fresh across two states)', () => {
-      // Custom alias map: bare `kick` resolves to the `bd` sound.
-      mockGetSignalAliases.mockReturnValue({ kick: 'bd' })
+      // Custom alias map: bare `kick` resolves to the `bd` sound (Strudel slot).
+      mockGetStoredSignalAliases.mockReturnValue({ kick: { strudel: 'bd' } })
       const sketchFactory = vi.fn(() => vi.fn())
       const renderer = new P5VizRenderer(sketchFactory)
       const hapStream = makeHapStream()
@@ -234,7 +239,7 @@ describe('P5VizRenderer', () => {
     })
 
     it('does NOT inject when there are no custom aliases (only built-ins present)', () => {
-      mockGetSignalAliases.mockReturnValue({})
+      mockGetStoredSignalAliases.mockReturnValue({})
       const sketchFactory = vi.fn(() => vi.fn())
       const renderer = new P5VizRenderer(sketchFactory)
       renderer.mount(

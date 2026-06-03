@@ -19,9 +19,14 @@ import { describe, it, expect, vi } from 'vitest'
 // custom alias map (Phase 21 aliases — T2 hydra thunks). Defaults to `{}` so
 // every PRE-EXISTING test keeps its built-ins-only behavior; the alias test
 // overrides the return. The bus stays pure (P12) — only the renderer reads it.
-const mockGetSignalAliases = vi.fn(() => ({}) as Record<string, string | string[]>)
+// The renderer reads the RAW engine-keyed map; resolveAliasesForEngine (real,
+// not mocked) flattens it to the active engine. So the mock returns the stored
+// engine-keyed shape `{ name: { strudel: ... } }`.
+const mockGetStoredSignalAliases = vi.fn(
+  () => ({}) as Record<string, Record<string, string | string[]>>,
+)
 vi.mock('../../workspace/editorRegistry', () => ({
-  getSignalAliases: () => mockGetSignalAliases(),
+  getStoredSignalAliases: () => mockGetStoredSignalAliases(),
 }))
 
 import { HydraVizRenderer, type HydraStaveBag } from '../renderers/HydraVizRenderer'
@@ -588,11 +593,12 @@ describe('HydraVizRenderer — stave bag', () => {
 
     // ── Custom alias thunk injection (Phase 21 aliases — T2 hydra) ───────────
     // The bag IS `stave`; hydra has no bare scope, so a custom alias is a
-    // `stave.kick()` THUNK on the bag. mount() merges {...ALIAS_MAP, ...custom}
-    // (custom wins), pushes it into the bus, and injects a thunk per custom name
+    // `stave.kick()` THUNK on the bag. mount() resolves built-ins+custom for the
+    // active engine (resolveAliasesForEngine, custom wins), pushes it into the
+    // bus, and injects a thunk per custom name
     // NOT already on the bag. The thunk reads `bus.envValue(name)` LIVE.
     it('injects a custom `stave.kick()` thunk reading the alias env, live across a frame', () => {
-      mockGetSignalAliases.mockReturnValueOnce({ kick: 'bd' })
+      mockGetStoredSignalAliases.mockReturnValueOnce({ kick: { strudel: 'bd' } })
       const renderer = new HydraVizRenderer()
       const hapStream = makeHapStream()
       const combined = makePointScheduler({ 0: { s: 'bd' } })

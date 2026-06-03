@@ -5576,7 +5576,10 @@ var _P5VizRenderer = class _P5VizRenderer {
         components.audio?.analyser,
         components.audio?.trackAnalysers
       );
-      const mergedAliases = { ...ALIAS_MAP, ...getSignalAliases() };
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE
+      );
       this.bus?.setAliases(mergedAliases);
       const aliasBus = this.bus;
       const uniforms = this.staveUniformsRef.current;
@@ -5921,7 +5924,10 @@ var _HydraVizRenderer = class _HydraVizRenderer {
         components.audio?.analyser,
         components.audio?.trackAnalysers
       );
-      const mergedAliases = { ...ALIAS_MAP, ...getSignalAliases() };
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE
+      );
       this.bus?.setAliases(mergedAliases);
       const bus = this.bus;
       if (bus) {

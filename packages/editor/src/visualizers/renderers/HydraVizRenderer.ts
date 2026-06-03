@@ -5,8 +5,8 @@ import type { IREvent } from '../../ir/IREvent'
 import type { VizRenderer } from '../types'
 import { getVizConfig } from '../vizConfig'
 import { SignalBus } from '../signals/SignalBus'
-import { ALIAS_MAP } from '../signals/aliasMap'
-import { getSignalAliases } from '../../workspace/editorRegistry'
+import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
+import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 
 /**
  * Stave-specific bag exposed to `.hydra` sketches as the second
@@ -456,7 +456,13 @@ export class HydraVizRenderer implements VizRenderer {
       // `bus.envValue(name)` LIVE each call (U2 — never captured), resolving
       // through the alias map we just set. Skip names already on the bag so a
       // collision with a built-in thunk (`uKick`, `u`, `H`, …) is preserved.
-      const mergedAliases = { ...ALIAS_MAP, ...getSignalAliases() }
+      // Resolve built-ins + custom aliases for the ACTIVE viz engine (Strudel
+      // today; the single wire-point — when Sonic Pi Web lands, source the
+      // engine from the running LiveCodingEngine here). Custom wins on collision.
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE,
+      )
       this.bus?.setAliases(mergedAliases)
       const bus = this.bus
       if (bus) {

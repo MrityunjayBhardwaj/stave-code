@@ -15,8 +15,8 @@ import type {
 } from '../p5Compiler'
 import { installP5FesBridgeWith } from '../p5FesBridge'
 import { SignalBus } from '../signals/SignalBus'
-import { ALIAS_MAP } from '../signals/aliasMap'
-import { getSignalAliases } from '../../workspace/editorRegistry'
+import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
+import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 
 /**
  * Adapter that wraps an existing p5 SketchFactory into the VizRenderer interface.
@@ -217,7 +217,13 @@ export class P5VizRenderer implements VizRenderer {
       // captured), so bare `kick` is frame-fresh exactly like bare `uKick`.
       // Skip names already a property on the uniform object (built-ins win the
       // collision; the merge already let custom win the alias-RESOLUTION).
-      const mergedAliases = { ...ALIAS_MAP, ...getSignalAliases() }
+      // Resolve built-ins + custom aliases for the ACTIVE viz engine (Strudel
+      // today; the single wire-point — when Sonic Pi Web lands, source the
+      // engine from the running LiveCodingEngine here). Custom wins on collision.
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE,
+      )
       this.bus?.setAliases(mergedAliases)
       const aliasBus = this.bus
       const uniforms = this.staveUniformsRef.current
