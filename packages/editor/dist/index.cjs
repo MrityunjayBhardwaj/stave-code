@@ -4600,126 +4600,6 @@ function setCurrentP5Source(source, lineOffset = 0) {
 }
 __name(setCurrentP5Source, "setCurrentP5Source");
 
-// src/visualizers/renderers/P5VizRenderer.ts
-var _P5VizRenderer = class _P5VizRenderer {
-  constructor(sketch) {
-    this.sketch = sketch;
-    this.instance = null;
-    this.hapStreamRef = { current: null };
-    this.analyserRef = { current: null };
-    this.schedulerRef = { current: null };
-    this.containerSizeRef = {
-      current: { w: 400, h: 300 }
-    };
-    // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
-    this.optionsRef = { current: {} };
-  }
-  mount(container, components, size, onError) {
-    installP5FesBridgeWith(p5__default.default);
-    try {
-      this.hapStreamRef.current = components.streaming?.hapStream ?? null;
-      this.analyserRef.current = components.audio?.analyser ?? null;
-      this.schedulerRef.current = components.queryable?.scheduler ?? null;
-      this.optionsRef.current = components.options ?? {};
-      this.containerSizeRef.current = { w: size.w, h: size.h };
-      const sketchFn = this.sketch(
-        this.hapStreamRef,
-        this.analyserRef,
-        this.schedulerRef,
-        this.containerSizeRef,
-        this.optionsRef
-      );
-      this.instance = new p5__default.default(sketchFn, container);
-      this.instance.resizeCanvas(size.w, size.h);
-    } catch (e) {
-      onError(e);
-    }
-  }
-  update(components) {
-    if (!this.instance) return;
-    this.hapStreamRef.current = components.streaming?.hapStream ?? null;
-    this.analyserRef.current = components.audio?.analyser ?? null;
-    this.schedulerRef.current = components.queryable?.scheduler ?? null;
-    this.optionsRef.current = components.options ?? {};
-  }
-  resize(w, h) {
-    this.containerSizeRef.current = { w, h };
-    this.instance?.resizeCanvas(w, h);
-  }
-  pause() {
-    this.instance?.noLoop();
-  }
-  resume() {
-    this.instance?.loop();
-  }
-  destroy() {
-    if (this.instance) {
-      const pi = this.instance;
-      pi.hitCriticalError = true;
-      pi.setup = function() {
-      };
-      pi.draw = function() {
-      };
-      pi.preload = function() {
-      };
-      pi.createCanvas = function() {
-        return null;
-      };
-      pi._setupDone = true;
-      this.instance.remove();
-    }
-    this.instance = null;
-  }
-};
-__name(_P5VizRenderer, "P5VizRenderer");
-var P5VizRenderer = _P5VizRenderer;
-
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
-}
-__name(createVizConfig, "createVizConfig");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-function getVizConfig() {
-  return _active;
-}
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
-}
-__name(setVizConfig, "setVizConfig");
-
 // src/visualizers/signals/aliasMap.ts
 var ALIAS_MAP = {
   uKick: "bd",
@@ -4903,6 +4783,226 @@ var _SignalBus = class _SignalBus {
 };
 __name(_SignalBus, "SignalBus");
 var SignalBus = _SignalBus;
+
+// src/visualizers/renderers/P5VizRenderer.ts
+var _P5VizRenderer = class _P5VizRenderer {
+  constructor(sketch) {
+    this.sketch = sketch;
+    this.instance = null;
+    this.hapStreamRef = { current: null };
+    this.analyserRef = { current: null };
+    this.schedulerRef = { current: null };
+    this.containerSizeRef = {
+      current: { w: 400, h: 300 }
+    };
+    // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
+    this.optionsRef = { current: {} };
+    /**
+     * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
+     * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
+     * is IR-grounded and must stay live whenever a real analyser is published,
+     * which is normal playback). Mirrors `HydraVizRenderer`'s bus discipline; the
+     * only difference is the p5 SHAPE (D-01): bare `uKick` is a live GETTER
+     * NUMBER here, not a `() => number` thunk.
+     */
+    this.bus = new SignalBus();
+    /**
+     * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
+     * `destroy()` can off it unconditionally (it is the bus's own subscription —
+     * p5 has no analyser-fallback envelope, but keeping a named ref matches the
+     * hydra teardown discipline and stays correct if a fallback is added later).
+     */
+    this.busHapHandler = null;
+    /** The HapStream the bus handler is subscribed to (for clean off()). */
+    this.boundHapStream = null;
+    const bus = this.bus;
+    const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
+    u.track = (id) => bus.track(id);
+    Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+    Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+    const uniforms = {
+      get uKick() {
+        return bus.envValue("uKick");
+      },
+      get uSnare() {
+        return bus.envValue("uSnare");
+      },
+      get uHat() {
+        return bus.envValue("uHat");
+      },
+      get uOpenHat() {
+        return bus.envValue("uOpenHat");
+      },
+      get uClap() {
+        return bus.envValue("uClap");
+      },
+      get uRim() {
+        return bus.envValue("uRim");
+      },
+      get uTom() {
+        return bus.envValue("uTom");
+      },
+      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — the active
+      // event's velocity globally. Max velocity over every sound seen this
+      // frame; 0 when nothing is active.
+      get uKeyVelocity() {
+        let max = 0;
+        for (const s of bus.sounds) {
+          const v = bus.sound(s).velocity;
+          if (v > max) max = v;
+        }
+        return max;
+      },
+      u
+    };
+    Object.defineProperty(uniforms, "__tick", {
+      value: /* @__PURE__ */ __name(() => {
+        bus.tick();
+        bus.refreshActive(bus.now());
+      }, "value"),
+      enumerable: false
+    });
+    this.staveUniformsRef = { current: uniforms };
+  }
+  mount(container, components, size, onError) {
+    installP5FesBridgeWith(p5__default.default);
+    try {
+      this.hapStreamRef.current = components.streaming?.hapStream ?? null;
+      this.analyserRef.current = components.audio?.analyser ?? null;
+      this.schedulerRef.current = components.queryable?.scheduler ?? null;
+      this.optionsRef.current = components.options ?? {};
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      );
+      const hapStream = components.streaming?.hapStream ?? null;
+      if (hapStream && this.bus && typeof hapStream.on === "function") {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        hapStream.on(this.busHapHandler);
+        this.boundHapStream = hapStream;
+      }
+      this.containerSizeRef.current = { w: size.w, h: size.h };
+      const sketchFn = this.sketch(
+        this.hapStreamRef,
+        this.analyserRef,
+        this.schedulerRef,
+        this.containerSizeRef,
+        this.optionsRef,
+        this.staveUniformsRef
+      );
+      this.instance = new p5__default.default(sketchFn, container);
+      this.instance.resizeCanvas(size.w, size.h);
+    } catch (e) {
+      onError(e);
+    }
+  }
+  update(components) {
+    if (!this.instance) return;
+    this.hapStreamRef.current = components.streaming?.hapStream ?? null;
+    this.analyserRef.current = components.audio?.analyser ?? null;
+    this.schedulerRef.current = components.queryable?.scheduler ?? null;
+    this.optionsRef.current = components.options ?? {};
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers
+    );
+    const nextHapStream = components.streaming?.hapStream ?? null;
+    if (nextHapStream !== this.boundHapStream) {
+      if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
+        this.boundHapStream.off(this.busHapHandler);
+      }
+      this.busHapHandler = null;
+      this.boundHapStream = null;
+      if (nextHapStream && this.bus && typeof nextHapStream.on === "function") {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        nextHapStream.on(this.busHapHandler);
+        this.boundHapStream = nextHapStream;
+      }
+    }
+  }
+  resize(w, h) {
+    this.containerSizeRef.current = { w, h };
+    this.instance?.resizeCanvas(w, h);
+  }
+  pause() {
+    this.instance?.noLoop();
+  }
+  resume() {
+    this.instance?.loop();
+  }
+  destroy() {
+    if (this.instance) {
+      const pi = this.instance;
+      pi.hitCriticalError = true;
+      pi.setup = function() {
+      };
+      pi.draw = function() {
+      };
+      pi.preload = function() {
+      };
+      pi.createCanvas = function() {
+        return null;
+      };
+      pi._setupDone = true;
+      this.instance.remove();
+    }
+    this.instance = null;
+    if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
+      this.boundHapStream.off(this.busHapHandler);
+    }
+    this.busHapHandler = null;
+    this.boundHapStream = null;
+    this.bus = null;
+  }
+};
+__name(_P5VizRenderer, "P5VizRenderer");
+var P5VizRenderer = _P5VizRenderer;
+
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+}
+__name(createVizConfig, "createVizConfig");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+}
+__name(setVizConfig, "setVizConfig");
 
 // src/visualizers/renderers/HydraVizRenderer.ts
 var _HapEnergyEnvelope = class _HapEnergyEnvelope {
@@ -9603,13 +9703,16 @@ __name(getP5LineOffset, "getP5LineOffset");
 function compileP5Code(code, source) {
   const body = isFullLifecycleSketch(code) ? buildFullLifecycleBody(code) : buildLegacyBody(code);
   const lineOffset = getP5LineOffset(code);
-  new Function("p", "stave", body);
+  new Function("p", "stave", "staveUniforms", body);
   return (hapStreamRef, analyserRef, schedulerRef, containerSizeRef = {
     current: { w: 400, h: 300 }
   }, optionsRef = {
     current: {}
+  }, staveUniformsRef = {
+    current: makeInertStaveUniforms()
   }) => {
     return (p) => {
+      const staveUniforms = staveUniformsRef.current ?? makeInertStaveUniforms();
       const stave = {
         get scheduler() {
           return schedulerRef.current;
@@ -9628,12 +9731,17 @@ function compileP5Code(code, source) {
         },
         get options() {
           return optionsRef.current ?? {};
+        },
+        // D-02 — mirror the named-signal accessor onto the stave namespace.
+        // `stave.u` is the SAME `u` object exposed bare via `with`.
+        get u() {
+          return (staveUniformsRef.current ?? staveUniforms).u;
         }
       };
       let lifecycle;
       try {
-        const compile = new Function("p", "stave", body);
-        lifecycle = compile(p, stave);
+        const compile = new Function("p", "stave", "staveUniforms", body);
+        lifecycle = compile(p, stave, staveUniforms);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         installErrorSketch(p, error.message);
@@ -9654,12 +9762,38 @@ function compileP5Code(code, source) {
         });
         return;
       }
-      installLifecycle(p, lifecycle, source, lineOffset);
+      installLifecycle(p, lifecycle, source, lineOffset, staveUniforms);
     };
   };
 }
 __name(compileP5Code, "compileP5Code");
-var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  ";
+function makeInertStaveUniforms() {
+  const zeroReading = /* @__PURE__ */ __name(() => ({
+    env: 0,
+    velocity: 0,
+    note: null,
+    color: null
+  }), "zeroReading");
+  const u = /* @__PURE__ */ __name(((_sound) => zeroReading()), "u");
+  u.track = (_id) => zeroReading();
+  u.tracks = [];
+  u.sounds = [];
+  return {
+    uKick: 0,
+    uSnare: 0,
+    uHat: 0,
+    uOpenHat: 0,
+    uClap: 0,
+    uRim: 0,
+    uTom: 0,
+    uKeyVelocity: 0,
+    u,
+    __tick: /* @__PURE__ */ __name(() => {
+    }, "__tick")
+  };
+}
+__name(makeInertStaveUniforms, "makeInertStaveUniforms");
+var FULL_LIFECYCLE_PREFIX = "\nwith (p) {\n  with (staveUniforms) {\n  ";
 var FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || []).length;
 function buildFullLifecycleBody(userCode) {
   return `${FULL_LIFECYCLE_PREFIX}${userCode}
@@ -9667,6 +9801,7 @@ function buildFullLifecycleBody(userCode) {
     setup: typeof setup === 'function' ? setup : undefined,
     draw: typeof draw === 'function' ? draw : undefined,
     preload: typeof preload === 'function' ? preload : undefined,
+  }
   }
 }
   `;
@@ -9683,6 +9818,15 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
+      const u = staveUniforms.u
+      const uKick = staveUniforms.uKick
+      const uSnare = staveUniforms.uSnare
+      const uHat = staveUniforms.uHat
+      const uOpenHat = staveUniforms.uOpenHat
+      const uClap = staveUniforms.uClap
+      const uRim = staveUniforms.uRim
+      const uTom = staveUniforms.uTom
+      const uKeyVelocity = staveUniforms.uKeyVelocity
       `;
 var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
 function buildLegacyBody(userCode) {
@@ -9694,7 +9838,7 @@ function buildLegacyBody(userCode) {
   `;
 }
 __name(buildLegacyBody, "buildLegacyBody");
-function installLifecycle(p, lifecycle, source, lineOffset) {
+function installLifecycle(p, lifecycle, source, lineOffset, staveUniforms) {
   const pi = p;
   const reportLifecycleError = /* @__PURE__ */ __name((hook, err) => {
     const error = err instanceof Error ? err : new Error(String(err));
@@ -9726,7 +9870,13 @@ function installLifecycle(p, lifecycle, source, lineOffset) {
   pi.setup = wrap5("setup", lifecycle.setup) ?? function() {
     pi.createCanvas(pi.windowWidth, pi.windowHeight);
   };
-  if (lifecycle.draw) pi.draw = wrap5("draw", lifecycle.draw);
+  if (lifecycle.draw) {
+    const wrappedDraw = wrap5("draw", lifecycle.draw);
+    pi.draw = function() {
+      staveUniforms?.__tick?.();
+      return wrappedDraw?.call(this);
+    };
+  }
 }
 __name(installLifecycle, "installLifecycle");
 function installErrorSketch(p, message) {

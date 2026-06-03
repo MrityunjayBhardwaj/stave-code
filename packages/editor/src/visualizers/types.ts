@@ -91,11 +91,18 @@ export type VizOptions = Record<string, unknown>
  *
  * `optionsRef` (5th, optional for back-compat) exposes the live per-render
  * options bag as `stave.options`; callers that don't wire it get `{}`.
+ *
+ * `staveUniformsRef` (6th, optional for back-compat — Phase 21) carries the
+ * live named-signal uniform object (`uKick…`, `u(...)`) built by
+ * `P5VizRenderer` from its per-renderer SignalBus. Callers that don't wire it
+ * get an inert object (all signals 0). Type-only import to avoid a runtime
+ * cycle with `p5Compiler`.
  */
 export type P5SketchFactory = (
   hapStreamRef: RefObject<HapStream | null>,
   analyserRef: RefObject<AnalyserNode | null>,
   schedulerRef: RefObject<PatternScheduler | null>,
   containerSizeRef: RefObject<ContainerSize>,
-  optionsRef?: RefObject<VizOptions>
+  optionsRef?: RefObject<VizOptions>,
+  staveUniformsRef?: RefObject<import('./p5Compiler').StaveUniforms>
 ) => (p: import('p5').default) => void

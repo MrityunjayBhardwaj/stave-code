@@ -1,14 +1,20 @@
 import p5 from 'p5'
 import type { RefObject } from 'react'
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
-import type { HapStream } from '../../engine/HapStream'
+import type { HapStream, HapEvent } from '../../engine/HapStream'
 import type {
   VizRenderer,
   P5SketchFactory,
   PatternScheduler,
   ContainerSize,
 } from '../types'
+import type {
+  StaveUniforms,
+  P5SignalAccessor,
+  P5SignalReading,
+} from '../p5Compiler'
 import { installP5FesBridgeWith } from '../p5FesBridge'
+import { SignalBus } from '../signals/SignalBus'
 
 /**
  * Adapter that wraps an existing p5 SketchFactory into the VizRenderer interface.
@@ -37,7 +43,95 @@ export class P5VizRenderer implements VizRenderer {
   // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
   private optionsRef = { current: {} as Record<string, unknown> }
 
-  constructor(private sketch: P5SketchFactory) {}
+  /**
+   * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
+   * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
+   * is IR-grounded and must stay live whenever a real analyser is published,
+   * which is normal playback). Mirrors `HydraVizRenderer`'s bus discipline; the
+   * only difference is the p5 SHAPE (D-01): bare `uKick` is a live GETTER
+   * NUMBER here, not a `() => number` thunk.
+   */
+  private bus: SignalBus | null = new SignalBus()
+  /**
+   * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
+   * `destroy()` can off it unconditionally (it is the bus's own subscription —
+   * p5 has no analyser-fallback envelope, but keeping a named ref matches the
+   * hydra teardown discipline and stays correct if a fallback is added later).
+   */
+  private busHapHandler: ((e: HapEvent) => void) | null = null
+  /** The HapStream the bus handler is subscribed to (for clean off()). */
+  private boundHapStream: HapStream | null = null
+  /**
+   * The live named-signal uniform object handed to the sketch factory as the
+   * 6th arg. Built ONCE in the constructor; its `uKick…` getters read the
+   * stable `bus` live each access (U2 — frame-fresh through the inner
+   * `with (staveUniforms)`). `update()` rebinds only the bus's scheduler refs
+   * in place, so this SAME object's getters keep returning current values
+   * without a re-compile.
+   */
+  private staveUniformsRef: { current: StaveUniforms }
+
+  constructor(private sketch: P5SketchFactory) {
+    const bus = this.bus as SignalBus
+
+    // The callable `u(...)` accessor (D-03) — p5 shape returns live NUMBERS
+    // (NOT thunks), read fresh on each access.
+    const u = ((sound: string): P5SignalReading => bus.sound(sound)) as P5SignalAccessor
+    u.track = (id: string): P5SignalReading => bus.track(id)
+    // `tracks`/`sounds` are getter-backed so they reflect live bus state every
+    // read (D-03 enumeration), not a frozen snapshot.
+    Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
+    Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
+
+    // The uniform object — bare `uKick…uTom` / `uKeyVelocity` are GETTERS
+    // (D-01 p5 shape: live numbers). `__tick` is a non-enumerable per-frame
+    // hook the draw wrapper calls ONCE per frame (U2 — never in a getter).
+    const uniforms = {
+      get uKick(): number {
+        return bus.envValue('uKick')
+      },
+      get uSnare(): number {
+        return bus.envValue('uSnare')
+      },
+      get uHat(): number {
+        return bus.envValue('uHat')
+      },
+      get uOpenHat(): number {
+        return bus.envValue('uOpenHat')
+      },
+      get uClap(): number {
+        return bus.envValue('uClap')
+      },
+      get uRim(): number {
+        return bus.envValue('uRim')
+      },
+      get uTom(): number {
+        return bus.envValue('uTom')
+      },
+      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — the active
+      // event's velocity globally. Max velocity over every sound seen this
+      // frame; 0 when nothing is active.
+      get uKeyVelocity(): number {
+        let max = 0
+        for (const s of bus.sounds) {
+          const v = bus.sound(s).velocity
+          if (v > max) max = v
+        }
+        return max
+      },
+      u,
+    } as StaveUniforms
+    // `__tick` non-enumerable so a `with (staveUniforms)` / for-in doesn't
+    // surface it as a sketch identifier; the draw wrapper calls it explicitly.
+    Object.defineProperty(uniforms, '__tick', {
+      value: (): void => {
+        bus.tick()
+        bus.refreshActive(bus.now())
+      },
+      enumerable: false,
+    })
+    this.staveUniformsRef = { current: uniforms }
+  }
 
   mount(
     container: HTMLDivElement,
@@ -59,6 +153,28 @@ export class P5VizRenderer implements VizRenderer {
       this.schedulerRef.current = components.queryable?.scheduler ?? null
       this.optionsRef.current = components.options ?? {}
 
+      // ── Named signal bus feed (Phase 21) — UNCONDITIONAL ─────────────────
+      // Bind the live scheduler + per-track schedulers, then subscribe the
+      // bus's `.env` feed to the HapStream. The bus is IR-grounded and is NOT
+      // analyser-gated (mirror HydraVizRenderer BLOCK-1) — it must stay live
+      // whenever a real analyser is published (normal playback). The
+      // trackSchedulers read is NEW here: mount previously read only
+      // `queryable?.scheduler` — `u.tracks` / `u.track(id)` need the per-track
+      // map too.
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      )
+      const hapStream = components.streaming?.hapStream ?? null
+      // Guard `.on` — a partial/non-conforming stream (e.g. a demo-mode stub or
+      // a test double) must degrade to "no signal feed", never tear down the
+      // renderer. A real HapStream always has `.on`.
+      if (hapStream && this.bus && typeof hapStream.on === 'function') {
+        this.busHapHandler = (e: HapEvent) => this.bus?.bump(e)
+        hapStream.on(this.busHapHandler)
+        this.boundHapStream = hapStream
+      }
+
       // Seed the container size ref BEFORE invoking the sketch
       // factory so `stave.width` / `stave.height` reads inside user
       // setup() see the intended canvas dimensions. If clientWidth
@@ -73,7 +189,8 @@ export class P5VizRenderer implements VizRenderer {
         this.analyserRef as RefObject<AnalyserNode | null>,
         this.schedulerRef as RefObject<PatternScheduler | null>,
         this.containerSizeRef as RefObject<ContainerSize>,
-        this.optionsRef as RefObject<Record<string, unknown>>
+        this.optionsRef as RefObject<Record<string, unknown>>,
+        this.staveUniformsRef as RefObject<StaveUniforms>
       )
       this.instance = new p5(sketchFn, container)
       // Correct canvas size after p5 setup() which may use
@@ -92,6 +209,37 @@ export class P5VizRenderer implements VizRenderer {
     this.analyserRef.current = components.audio?.analyser ?? null
     this.schedulerRef.current = components.queryable?.scheduler ?? null
     this.optionsRef.current = components.options ?? {}
+
+    // Re-bind the bus's live scheduler refs in place (Phase 21) so the SAME
+    // staveUniforms getters captured by the sketch observe the swapped
+    // scheduler / trackSchedulers without a re-compile — mirrors the ref
+    // rebind discipline above and the hydra renderer's in-place rebind.
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers
+    )
+
+    // Re-subscribe the `.env` feed if the HapStream itself swapped (a fresh
+    // engine re-publishes a new stream). Off the old, on the new — so `uKick`
+    // keeps decaying after a re-evaluate that replaces the stream.
+    const nextHapStream = components.streaming?.hapStream ?? null
+    if (nextHapStream !== this.boundHapStream) {
+      if (
+        this.boundHapStream &&
+        this.busHapHandler &&
+        typeof this.boundHapStream.off === 'function'
+      ) {
+        this.boundHapStream.off(this.busHapHandler)
+      }
+      this.busHapHandler = null
+      this.boundHapStream = null
+      // Guard `.on` (see mount) — a partial stream degrades to no feed.
+      if (nextHapStream && this.bus && typeof nextHapStream.on === 'function') {
+        this.busHapHandler = (e: HapEvent) => this.bus?.bump(e)
+        nextHapStream.on(this.busHapHandler)
+        this.boundHapStream = nextHapStream
+      }
+    }
   }
 
   resize(w: number, h: number): void {
@@ -165,5 +313,19 @@ export class P5VizRenderer implements VizRenderer {
       this.instance.remove()
     }
     this.instance = null
+
+    // Unsubscribe the bus `.env` feed (Phase 21) and null the bus. The
+    // subscription is the bus's OWN handler (p5 has no analyser-fallback
+    // envelope to gate against), so teardown is unconditional.
+    if (
+      this.boundHapStream &&
+      this.busHapHandler &&
+      typeof this.boundHapStream.off === 'function'
+    ) {
+      this.boundHapStream.off(this.busHapHandler)
+    }
+    this.busHapHandler = null
+    this.boundHapStream = null
+    this.bus = null
   }
 }

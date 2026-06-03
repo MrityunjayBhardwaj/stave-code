@@ -864,6 +864,66 @@ declare class BreakpointStore {
     private fireChanged;
 }
 
+/**
+ * p5 viz compiler — pure compilation logic with no renderer dependencies.
+ *
+ * Kept separate from `vizCompiler.ts` so that tests and tooling can
+ * import the compile functions without pulling the full p5 /
+ * gifenc / renderer stack through the module graph. (The same
+ * isolation trick used by `namedVizBridge.ts` vs. `vizPresetBridge.ts`.)
+ *
+ * The descriptor wiring layer lives in `vizCompiler.ts` and calls
+ * into here for the actual source-to-factory conversion.
+ */
+
+/** A per-sound or per-track reading as live NUMBERS (p5 D-01 shape — getters,
+ *  NOT thunks; the renderer reads them directly inside `draw`). */
+interface P5SignalReading {
+    env: number;
+    velocity: number;
+    note: number | string | null;
+    color: string | null;
+}
+/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props.
+ *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk. */
+interface P5SignalAccessor {
+    (sound: string): P5SignalReading;
+    /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
+    track: (id: string) => P5SignalReading;
+    /** Enumerate published track keys (scheduler key space). */
+    tracks: string[];
+    /** Enumerate distinct sounds seen through the envelope feed. */
+    sounds: string[];
+}
+/**
+ * Phase 21 — the live named-signal uniform object handed to a p5 sketch as the
+ * THIRD `new Function` arg. Bare `uKick…uTom` / `uKeyVelocity` are GETTERS
+ * (p5 D-01: live numbers, NOT thunks) resolved per-frame through the inner
+ * `with (staveUniforms)`. `u` is the callable accessor (also mirrored onto
+ * `stave.u`, D-02).
+ *
+ * `__tick` is a NON-enumerable hook the draw wrapper calls ONCE per frame
+ * (`bus.tick(); bus.refreshActive(bus.now())`) — the decay tick fires exactly
+ * once per draw (U2), NEVER inside a getter (a getter-tick double-ticks when a
+ * sketch reads N uniforms → decay collapses to 0). Built by `P5VizRenderer`,
+ * which owns the (pure) SignalBus; the compiler stays renderer-agnostic and
+ * only consumes the shape.
+ */
+interface StaveUniforms {
+    readonly uKick: number;
+    readonly uSnare: number;
+    readonly uHat: number;
+    readonly uOpenHat: number;
+    readonly uClap: number;
+    readonly uRim: number;
+    readonly uTom: number;
+    readonly uKeyVelocity: number;
+    readonly u: P5SignalAccessor;
+    /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
+     *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
+    __tick?: () => void;
+}
+
 /** Real-time hap event stream for visualizers and highlighting. */
 interface StreamingComponent {
     hapStream: HapStream;
@@ -1062,8 +1122,14 @@ type VizOptions = Record<string, unknown>;
  *
  * `optionsRef` (5th, optional for back-compat) exposes the live per-render
  * options bag as `stave.options`; callers that don't wire it get `{}`.
+ *
+ * `staveUniformsRef` (6th, optional for back-compat — Phase 21) carries the
+ * live named-signal uniform object (`uKick…`, `u(...)`) built by
+ * `P5VizRenderer` from its per-renderer SignalBus. Callers that don't wire it
+ * get an inert object (all signals 0). Type-only import to avoid a runtime
+ * cycle with `p5Compiler`.
  */
-type P5SketchFactory = (hapStreamRef: RefObject<HapStream | null>, analyserRef: RefObject<AnalyserNode | null>, schedulerRef: RefObject<PatternScheduler | null>, containerSizeRef: RefObject<ContainerSize>, optionsRef?: RefObject<VizOptions>) => (p: p5.default) => void;
+type P5SketchFactory = (hapStreamRef: RefObject<HapStream | null>, analyserRef: RefObject<AnalyserNode | null>, schedulerRef: RefObject<PatternScheduler | null>, containerSizeRef: RefObject<ContainerSize>, optionsRef?: RefObject<VizOptions>, staveUniformsRef?: RefObject<StaveUniforms>) => (p: p5.default) => void;
 
 type TierName = 'csound' | 'tidal' | 'midi' | 'osc' | 'serial' | 'gamepad' | 'motion' | 'mqtt';
 type TierFlags = Record<TierName, boolean>;
@@ -1497,6 +1563,33 @@ declare class P5VizRenderer implements VizRenderer {
     private schedulerRef;
     private containerSizeRef;
     private optionsRef;
+    /**
+     * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
+     * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
+     * is IR-grounded and must stay live whenever a real analyser is published,
+     * which is normal playback). Mirrors `HydraVizRenderer`'s bus discipline; the
+     * only difference is the p5 SHAPE (D-01): bare `uKick` is a live GETTER
+     * NUMBER here, not a `() => number` thunk.
+     */
+    private bus;
+    /**
+     * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
+     * `destroy()` can off it unconditionally (it is the bus's own subscription —
+     * p5 has no analyser-fallback envelope, but keeping a named ref matches the
+     * hydra teardown discipline and stays correct if a fallback is added later).
+     */
+    private busHapHandler;
+    /** The HapStream the bus handler is subscribed to (for clean off()). */
+    private boundHapStream;
+    /**
+     * The live named-signal uniform object handed to the sketch factory as the
+     * 6th arg. Built ONCE in the constructor; its `uKick…` getters read the
+     * stable `bus` live each access (U2 — frame-fresh through the inner
+     * `with (staveUniforms)`). `update()` rebinds only the bus's scheduler refs
+     * in place, so this SAME object's getters keep returning current values
+     * without a re-compile.
+     */
+    private staveUniformsRef;
     constructor(sketch: P5SketchFactory);
     mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
