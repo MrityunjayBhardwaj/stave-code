@@ -78,6 +78,11 @@ import {
   readPersistedOpen,
   readPersistedActiveTabId,
 } from "@stave/editor";
+import {
+  applyPersistedPerfEnabled,
+  togglePerfEnabled,
+} from "@stave/editor";
+import { PerfOverlay } from "./PerfOverlay";
 
 interface StaveAppProps {
   initialProject: ProjectMeta;
@@ -333,6 +338,21 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // commands. Commands register in a later effect once all handlers
   // exist (some handlers close over state defined below this point).
   useEffect(() => installKeybindingDispatcher(), []);
+
+  // Perf profiler (#228): restore the persisted overlay state on load, and bind
+  // Alt+P to toggle it (low-collision; the overlay also has a Settings row +
+  // window.__stavePerf hook). The profiler is inert when disabled.
+  useEffect(() => {
+    applyPersistedPerfEnabled();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        togglePerfEnabled();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // (Legacy 60s auto-snapshot retired — the project commit store + its
   //  idle/eval/unload driver, wired in StrudelEditorClient, is now the single
@@ -1314,6 +1334,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         open={editorSettingsOpen}
         onClose={() => setEditorSettingsOpen(false)}
       />
+
+      {/* Perf overlay (#228) — renders only when profiling is enabled. */}
+      <PerfOverlay />
 
       {cropTarget?.mode === "inline" && (
         <CropPopup

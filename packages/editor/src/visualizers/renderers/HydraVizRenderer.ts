@@ -7,6 +7,11 @@ import { getVizConfig } from '../vizConfig'
 import { SignalBus } from '../signals/SignalBus'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
+import { perf } from '../../perf/profiler'
+
+/** Monotone id source so each hydra instance gets a stable profiler key
+ *  (`hydra#1`, …) for per-instance frame/fps tracking (#228). */
+let hydraPerfSeq = 0
 
 /**
  * Stave-specific bag exposed to `.hydra` sketches as the second
@@ -259,6 +264,8 @@ export class HydraVizRenderer implements VizRenderer {
   private envelope: HapEnergyEnvelope | null = null
   private hapHandler: ((e: HapEvent) => void) | null = null
   private useEnvelope = false
+  /** Stable per-instance profiler key (`hydra#N`) — frame/fps + bus/draw timing (#228). */
+  private readonly perfId = `hydra#${++hydraPerfSeq}`
   /**
    * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
    * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
@@ -406,6 +413,7 @@ export class HydraVizRenderer implements VizRenderer {
     size: { w: number; h: number },
     onError: (e: Error) => void
   ): void {
+    perf.gauge('viz.hydra', 1) // live hydra-instance gauge (#228); -1 in destroy()
     try {
       const config = getVizConfig()
 
@@ -607,7 +615,11 @@ export class HydraVizRenderer implements VizRenderer {
     // frame regardless of the FFT source, or `uKick` is dead under real
     // playback (BLOCK-1). `tick()` (decay) then `refreshActive(now)`
     // (scheduler snapshot) — in that order, ONCE (U2 — never in a thunk).
+    // Profiler (#228): pumpAudio is the hydra rAF body → one frame beat here +
+    // time the bus's per-frame work. Both no-op when profiling is disabled.
+    perf.frame(this.perfId)
     if (this.bus) {
+      perf.begin('hydra.bus')
       this.bus.tick()
       this.bus.refreshActive(this.bus.now())
       // readAudio MUST run AFTER refreshActive (Slice 2): `audioFor` resolves a
@@ -615,6 +627,7 @@ export class HydraVizRenderer implements VizRenderer {
       // Wrong order = sound-keyed DSP reads stale/empty. Once per frame (U2),
       // reusing this same tick site — no second rAF.
       this.bus.readAudio()
+      perf.end('hydra.bus')
     }
 
     // We own the loop — tick hydra exactly once per rAF. Without
@@ -623,12 +636,15 @@ export class HydraVizRenderer implements VizRenderer {
     // signature matches what hydra-synth uses internally when
     // `autoLoop: true` mode runs the loop on its own.
     if (this.hydra && typeof this.hydra.tick === 'function') {
+      perf.begin('hydra.draw')
       try {
         this.hydra.tick(now ?? performance.now())
       } catch {
         // Non-fatal — a broken shader shouldn't tear down the
         // renderer; the error will already have surfaced via
         // hydra's onError path or as a console message.
+      } finally {
+        perf.end('hydra.draw') // close the span even if tick() threw (#228)
       }
     }
     this.rafId = requestAnimationFrame(this.pumpAudio)
@@ -709,6 +725,8 @@ export class HydraVizRenderer implements VizRenderer {
 
   destroy(): void {
     this.destroyed = true
+    perf.gauge('viz.hydra', -1) // #228 — release the live-instance gauge + frame history
+    perf.dropFrames(this.perfId)
     if (this.rafId != null) {
       cancelAnimationFrame(this.rafId)
       this.rafId = null

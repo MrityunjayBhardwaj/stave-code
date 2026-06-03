@@ -16,6 +16,7 @@ import type {
   EngineAliasMap,
   StoredSignalAliases,
 } from '../visualizers/signals/aliasMap'
+import { perf } from '../perf/profiler'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
@@ -646,4 +647,62 @@ export function onThemeChange(fn: ThemeListener): () => void {
 export function applyPersistedTheme(): void {
   wireSystemMqlOnce()
   setEditorTheme(readTheme())
+}
+
+// ── Performance overlay toggle (issue #228) ─────────────────────────
+// Persists whether the perf profiler + overlay are active, and keeps the
+// profiler singleton in sync (the profiler holds the live `enabled` flag the
+// hot-path branches on; this is just the persisted preference + a notifier).
+// `globalThis.__STAVE_PERF__ === true` (set before load, e.g. e2e) forces it on
+// regardless of the stored value.
+const PERF_ENABLED_STORAGE = 'stave:perfEnabled'
+const perfEnabledListeners = new Set<(on: boolean) => void>()
+
+function readPerfEnabled(): boolean {
+  try {
+    if ((globalThis as { __STAVE_PERF__?: boolean }).__STAVE_PERF__ === true) {
+      return true
+    }
+  } catch {
+    /* locked global — ignore */
+  }
+  return safeLocalStorage()?.getItem(PERF_ENABLED_STORAGE) === '1'
+}
+
+/** Whether the perf overlay/profiler is enabled (persisted preference, or the
+ *  `__STAVE_PERF__` global force-on). */
+export function getPerfEnabled(): boolean {
+  return readPerfEnabled()
+}
+
+/** Enable/disable the perf profiler + overlay. Persists, flips the profiler
+ *  singleton's live flag, and notifies listeners (the overlay subscribes). */
+export function setPerfEnabled(on: boolean): void {
+  try {
+    safeLocalStorage()?.setItem(PERF_ENABLED_STORAGE, on ? '1' : '0')
+  } catch {
+    /* quota — non-fatal */
+  }
+  perf.setEnabled(on)
+  for (const cb of Array.from(perfEnabledListeners)) cb(on)
+}
+
+/** Toggle the perf overlay; returns the new state. */
+export function togglePerfEnabled(): boolean {
+  const next = !readPerfEnabled()
+  setPerfEnabled(next)
+  return next
+}
+
+/** Subscribe to perf-enabled changes (fires on set/toggle). Returns an
+ *  unsubscribe. */
+export function onPerfEnabledChange(cb: (on: boolean) => void): () => void {
+  perfEnabledListeners.add(cb)
+  return () => { perfEnabledListeners.delete(cb) }
+}
+
+/** Apply the persisted perf-enabled preference to the profiler. Call once at
+ *  app start so a reload restores an enabled overlay. */
+export function applyPersistedPerfEnabled(): void {
+  perf.setEnabled(readPerfEnabled())
 }

@@ -110,6 +110,15 @@ export type {
   StoredSignalAliases,
 } from './visualizers/signals/aliasMap'
 
+// Performance profiler (issue #228) — zero-cost-when-disabled runtime profiler.
+// Renderers/engine call `perf.*`; the overlay + automation read `perf.snapshot()`.
+export { perf } from './perf/profiler'
+export type {
+  PerfSnapshot,
+  SectionStats,
+  FrameStats,
+} from './perf/profiler'
+
 // Visualizers — editor internals (advanced use)
 export { SplitPane } from './visualizers/editor/SplitPane'
 // EditorGroup deleted in Phase 10.2 Task 09 — replaced by WorkspaceShell.
@@ -223,6 +232,11 @@ export {
   getStoredSignalAliases,
   setSignalAliases,
   onSignalAliasesChange,
+  getPerfEnabled,
+  setPerfEnabled,
+  togglePerfEnabled,
+  onPerfEnabledChange,
+  applyPersistedPerfEnabled,
   getEditorTheme,
   getResolvedTheme,
   setEditorTheme,
