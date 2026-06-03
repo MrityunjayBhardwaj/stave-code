@@ -145,6 +145,74 @@ describe('SIGNAL_BUS_DOCS shape', () => {
       expect(SIGNAL_BUS_DOCS[n], `missing doc: ${n}`).toBeDefined()
     }
   })
+
+  it('every entry carries BOTH a p5 and a hydra example string', () => {
+    for (const [name, doc] of Object.entries(SIGNAL_BUS_DOCS)) {
+      expect(typeof doc.example.p5, `${name}.example.p5`).toBe('string')
+      expect(typeof doc.example.hydra, `${name}.example.hydra`).toBe('string')
+      expect(doc.example.p5.length, `${name}.example.p5`).toBeGreaterThan(0)
+      expect(doc.example.hydra.length, `${name}.example.hydra`).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('runtime-aware examples', () => {
+  it('flattens uKick to a p5 form for p5js (no stave., uses a p5 verb)', () => {
+    const docs = __test.buildRuntimeDocs(['uKick'], 'p5js')
+    const ex = docs.uKick.example!
+    expect(ex).toContain('uKick')
+    expect(ex).toContain('circle')
+    expect(ex).not.toContain('stave.')
+    expect(ex).not.toContain('s.osc')
+  })
+
+  it('flattens uKick to a hydra form for hydra (stave.uKick() + s.)', () => {
+    const docs = __test.buildRuntimeDocs(['uKick'], 'hydra')
+    const ex = docs.uKick.example!
+    expect(ex).toContain('stave.uKick()')
+    expect(ex).toContain('s.osc')
+  })
+
+  it('p5 scalar field examples read the bare number (u(...).rms, no thunk call)', () => {
+    const docs = __test.buildRuntimeDocs(['rms'], 'p5js')
+    const ex = docs.rms.example!
+    expect(ex).toContain("u('bd').rms")
+    expect(ex).not.toContain("u('bd').rms()")
+    expect(ex).not.toContain('stave.')
+  })
+
+  it('hydra scalar field examples call the thunk through stave.', () => {
+    const docs = __test.buildRuntimeDocs(['rms'], 'hydra')
+    const ex = docs.rms.example!
+    expect(ex).toContain("stave.u('bd').rms()")
+  })
+
+  it('NO hydra example uses a bare osc(/uKick( without stave./s.', () => {
+    const docs = __test.buildRuntimeDocs(
+      [...__test.SYMBOL_NAMES, ...__test.FIELD_NAMES],
+      'hydra',
+    )
+    for (const [name, doc] of Object.entries(docs)) {
+      const ex = doc.example ?? ''
+      // A bare synth verb (`osc(`) not prefixed by `s.` is wrong for hydra.
+      expect(/(?<!s\.)\bosc\(/.test(ex), `${name} bare osc(`).toBe(false)
+      // A bare uKick()/uSnare()/… thunk call not reached via `stave.` is wrong.
+      expect(/(?<!stave\.)\bu[A-Z]\w*\(/.test(ex), `${name} bare uXxx(`).toBe(false)
+    }
+  })
+
+  it('NO p5 example uses a hydra-only form (stave-thunk call or s. synth)', () => {
+    const docs = __test.buildRuntimeDocs(
+      [...__test.SYMBOL_NAMES, ...__test.FIELD_NAMES],
+      'p5js',
+    )
+    for (const [name, doc] of Object.entries(docs)) {
+      const ex = doc.example ?? ''
+      expect(ex.includes('s.osc'), `${name} uses s.osc in p5`).toBe(false)
+      // p5 scalar reads are bare numbers — no `stave.uKick()` thunk-call form.
+      expect(/stave\.u[A-Z]\w*\(\)/.test(ex), `${name} thunk-call in p5`).toBe(false)
+    }
+  })
 })
 
 describe.each(['p5js', 'hydra'] as const)('hover (%s)', (runtime) => {
@@ -173,6 +241,24 @@ describe.each(['p5js', 'hydra'] as const)('hover (%s)', (runtime) => {
   it('returns null for an unrelated word', () => {
     const { hover } = register(runtime)
     expect(hoverFor(hover, 'circle', 2)).toBeNull()
+  })
+
+  it('uKick hover shows the runtime-correct example (end-to-end)', () => {
+    const { hover } = register(runtime)
+    const h = hoverFor(hover, 'uKick', 2)
+    // Isolate the rendered "**Example:**" content entry — the description
+    // intentionally mentions BOTH forms, so assert only the example line.
+    const exLine =
+      h!.contents.find((c) => c.value.startsWith('**Example:**'))?.value ?? ''
+    if (runtime === 'hydra') {
+      expect(exLine).toContain('stave.uKick()')
+      expect(exLine).toContain('s.osc')
+    } else {
+      // p5: bare uKick, p5 verb, never the hydra thunk/synth form.
+      expect(exLine).toContain('100 * uKick')
+      expect(exLine).not.toContain('stave.uKick()')
+      expect(exLine).not.toContain('s.osc')
+    }
   })
 })
 
