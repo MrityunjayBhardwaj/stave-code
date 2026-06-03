@@ -338,6 +338,10 @@ export default function StrudelEditorClient({
   // `registerPresetAsNamedViz` the app itself uses for bundled presets.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Defense-in-depth: never install the E2E hook in a production build —
+    // `process.env.NODE_ENV` is statically replaced so the body dead-code-
+    // eliminates. The `__STAVE_E2E__` flag is the runtime gate for dev/test.
+    if (process.env.NODE_ENV === "production") return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (!(window as any).__STAVE_E2E__) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
