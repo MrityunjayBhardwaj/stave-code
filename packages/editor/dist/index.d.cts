@@ -1916,9 +1916,20 @@ declare class WorkerVizRenderer implements VizRenderer {
     private onError;
     private readonly perfId;
     private diagHandler;
-    /** @param kind renderer kind (`'p5'` for B-3). @param code raw sketch source.
-     *  @param name workspace path (error attribution). */
-    constructor(kind: 'p5', code: string, name: string);
+    /** The presenting <canvas> this renderer appended (transferred to the worker).
+     *  Tracked so destroy() removes it — else a fallback to the main-thread renderer
+     *  would leave a dead, frozen canvas behind it (#247). */
+    private canvasEl;
+    /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
+     *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
+    private onReady;
+    /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
+     *  sketch source. @param name workspace path (error attribution). */
+    constructor(kind: 'p5' | 'hydra', code: string, name: string);
+    /** Register a callback fired once when the worker reports its first successful
+     *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
+     *  must be set BEFORE `mount`. */
+    whenReady(cb: () => void): void;
     mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
         w: number;
         h: number;

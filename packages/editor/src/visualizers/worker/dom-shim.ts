@@ -322,3 +322,65 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
 
   return { window: winProxy, document: doc }
 }
+
+/**
+ * Install the worker shim hydra-synth needs (Phase B / B-5). Hydra is the Tier-1
+ * "accepts a canvas explicitly" renderer (B.1 thesis) — `new Hydra({ canvas })`
+ * skips p5's createElement/appendChild/multi-canvas dance, so it needs only the
+ * 2-condition subset the Q3 spike grounded (`public/spike/hydra-worker.js`):
+ *   1. SHIM BEFORE IMPORT — hydra touches `window` at module-eval (`mouseListen`
+ *      adds a `mousemove` listener, hydra-synth.js:3926), so the shim must precede
+ *      `import('hydra-synth')`. Unlike p5, `window` is ALIASED to the worker global
+ *      (`self.window = self`) — hydra reads `window.innerWidth`/`addEventListener`/
+ *      `URL`/`navigator`, all of which then resolve to the worker's own globals.
+ *   2. thin document + size — only the createElement/body/head paths hydra might
+ *      touch (the canvas path is skipped because we pass an explicit OffscreenCanvas).
+ *
+ * Distinct from `installWorkerDomShim` (p5's 6-part superset): hydra's needs are a
+ * strict subset AND it wants `window === self`, where p5 wants a separate window
+ * object. One worker hosts ONE renderer kind (B-3/B-5), so only one shim installs.
+ *
+ * REF: PV70 (worker-render feasibility), packages/app/public/spike/hydra-worker.js
+ *      (the grounded Q3 POC), HydraVizRenderer.initHydra (the main-thread contract).
+ */
+export function installWorkerHydraShim(size: { w: number; h: number }): void {
+  const self = globalThis as any
+  const W = size.w
+  const H = size.h
+
+  // window === self: hydra reads window.* expecting the global (it does global
+  // writes via window in some paths) — aliasing keeps those consistent.
+  self.window = self
+  if (typeof self.requestAnimationFrame !== 'function') {
+    self.requestAnimationFrame = (cb: (t: number) => void) =>
+      setTimeout(() => cb(performance.now()), 16)
+    self.cancelAnimationFrame = (id: number) => clearTimeout(id)
+  }
+  if (!('innerWidth' in self)) self.innerWidth = W
+  if (!('innerHeight' in self)) self.innerHeight = H
+  if (!('devicePixelRatio' in self)) self.devicePixelRatio = 1
+
+  const noopEl = (): any => ({
+    style: {},
+    appendChild: () => {},
+    removeChild: () => {},
+    remove: () => {},
+    setAttribute: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })
+  self.document = {
+    createElement: (tag: string) =>
+      String(tag).toLowerCase() === 'canvas' ? new OffscreenCanvas(W, H) : noopEl(),
+    createElementNS: () => noopEl(),
+    body: noopEl(),
+    head: noopEl(),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getElementById: () => null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    readyState: 'complete',
+  }
+  self.screen = { width: W, height: H }
+}

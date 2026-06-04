@@ -264,6 +264,50 @@ function installWorkerDomShim(makeCanvasEl) {
   return { window: winProxy, document: doc };
 }
 __name(installWorkerDomShim, "installWorkerDomShim");
+function installWorkerHydraShim(size) {
+  const self = globalThis;
+  const W = size.w;
+  const H = size.h;
+  self.window = self;
+  if (typeof self.requestAnimationFrame !== "function") {
+    self.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
+    self.cancelAnimationFrame = (id) => clearTimeout(id);
+  }
+  if (!("innerWidth" in self)) self.innerWidth = W;
+  if (!("innerHeight" in self)) self.innerHeight = H;
+  if (!("devicePixelRatio" in self)) self.devicePixelRatio = 1;
+  const noopEl = /* @__PURE__ */ __name(() => ({
+    style: {},
+    appendChild: /* @__PURE__ */ __name(() => {
+    }, "appendChild"),
+    removeChild: /* @__PURE__ */ __name(() => {
+    }, "removeChild"),
+    remove: /* @__PURE__ */ __name(() => {
+    }, "remove"),
+    setAttribute: /* @__PURE__ */ __name(() => {
+    }, "setAttribute"),
+    addEventListener: /* @__PURE__ */ __name(() => {
+    }, "addEventListener"),
+    removeEventListener: /* @__PURE__ */ __name(() => {
+    }, "removeEventListener")
+  }), "noopEl");
+  self.document = {
+    createElement: /* @__PURE__ */ __name((tag) => String(tag).toLowerCase() === "canvas" ? new OffscreenCanvas(W, H) : noopEl(), "createElement"),
+    createElementNS: /* @__PURE__ */ __name(() => noopEl(), "createElementNS"),
+    body: noopEl(),
+    head: noopEl(),
+    querySelector: /* @__PURE__ */ __name(() => null, "querySelector"),
+    querySelectorAll: /* @__PURE__ */ __name(() => [], "querySelectorAll"),
+    getElementById: /* @__PURE__ */ __name(() => null, "getElementById"),
+    addEventListener: /* @__PURE__ */ __name(() => {
+    }, "addEventListener"),
+    removeEventListener: /* @__PURE__ */ __name(() => {
+    }, "removeEventListener"),
+    readyState: "complete"
+  };
+  self.screen = { width: W, height: H };
+}
+__name(installWorkerHydraShim, "installWorkerHydraShim");
 
 // src/engine/noteToMidi.ts
 function noteToMidi(note) {
@@ -889,6 +933,87 @@ function buildStaveUniforms(bus, onTick) {
   return uniforms;
 }
 __name(buildStaveUniforms, "buildStaveUniforms");
+
+// src/visualizers/renderers/hydraStaveBag.ts
+function buildHydraStaveBag(bus) {
+  const soundThunks = /* @__PURE__ */ __name((sound) => {
+    const t = {
+      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color"),
+      rms: /* @__PURE__ */ __name(() => bus.sound(sound).rms, "rms"),
+      bass: /* @__PURE__ */ __name(() => bus.sound(sound).bass, "bass"),
+      mid: /* @__PURE__ */ __name(() => bus.sound(sound).mid, "mid"),
+      treble: /* @__PURE__ */ __name(() => bus.sound(sound).treble, "treble")
+    };
+    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.sound(sound).fft, "get"), enumerable: true });
+    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
+    return t;
+  }, "soundThunks");
+  const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
+  u.track = (id) => {
+    const t = {
+      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color"),
+      rms: /* @__PURE__ */ __name(() => bus.track(id).rms, "rms"),
+      bass: /* @__PURE__ */ __name(() => bus.track(id).bass, "bass"),
+      mid: /* @__PURE__ */ __name(() => bus.track(id).mid, "mid"),
+      treble: /* @__PURE__ */ __name(() => bus.track(id).treble, "treble")
+    };
+    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.track(id).fft, "get"), enumerable: true });
+    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
+    return t;
+  };
+  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  u.rms = () => bus.master().rms;
+  u.bass = () => bus.master().bass;
+  u.mid = () => bus.master().mid;
+  u.treble = () => bus.master().treble;
+  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  const bag = {
+    scheduler: null,
+    tracks: /* @__PURE__ */ new Map(),
+    uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
+    uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
+    uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
+    uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
+    uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
+    uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
+    uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
+    uKeyVelocity: /* @__PURE__ */ __name(() => {
+      let max = 0;
+      for (const s of bus.sounds) {
+        const v = bus.sound(s).velocity;
+        if (v > max) max = v;
+      }
+      return max;
+    }, "uKeyVelocity"),
+    uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
+    uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
+    uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
+    uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
+    u,
+    H: /* @__PURE__ */ __name((trackId, field = "gain") => {
+      return () => {
+        const sched = bag.tracks.get(trackId) ?? bag.scheduler;
+        if (!sched) return 0;
+        const now = sched.now();
+        const events = sched.query(now, now + 1e-3);
+        const ev = events[0];
+        if (!ev) return 0;
+        const raw = ev[field];
+        return typeof raw === "number" ? raw : 0;
+      };
+    }, "H")
+  };
+  return bag;
+}
+__name(buildHydraStaveBag, "buildHydraStaveBag");
 
 // src/engine/engineLog.ts
 var MAX_HISTORY = 500;
@@ -5389,6 +5514,61 @@ function installErrorSketch(p, message) {
 }
 __name(installErrorSketch, "installErrorSketch");
 
+// src/visualizers/hydraCompiler.ts
+function compileHydraCode(code) {
+  new Function("s", "stave", code);
+  return (s, stave) => {
+    const fn = new Function("s", "stave", code);
+    fn(s, stave);
+  };
+}
+__name(compileHydraCode, "compileHydraCode");
+
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+var _active = { ...DEFAULT_VIZ_CONFIG };
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+
 // src/visualizers/worker/workerMessages.ts
 function isControlMessage(data) {
   return typeof data === "object" && data !== null && typeof data.type === "string";
@@ -5397,7 +5577,8 @@ __name(isControlMessage, "isControlMessage");
 
 // src/visualizers/worker/hostP5Worker.ts
 var P5ctor = null;
-function hostP5Worker(scope) {
+var Hydractor = null;
+function hostVizWorker(scope) {
   let state = null;
   const diag = /* @__PURE__ */ __name((level, message, stack) => {
     try {
@@ -5405,6 +5586,12 @@ function hostP5Worker(scope) {
     } catch {
     }
   }, "diag");
+  const signalReady = /* @__PURE__ */ __name(() => {
+    try {
+      scope.postMessage({ type: "ready" });
+    } catch {
+    }
+  }, "signalReady");
   scope.addEventListener("message", (ev) => {
     const data = ev.data;
     if (!isControlMessage(data)) return;
@@ -5434,18 +5621,38 @@ function hostP5Worker(scope) {
   __name(handleControl, "handleControl");
   async function mount(msg) {
     if (state) destroy();
+    const dpr = msg.dpr > 0 ? msg.dpr : 1;
+    const feed = new WorkerBusFeed();
+    if (msg.aliases) feed.setAliases(msg.aliases);
+    const rawAnalyser = new RawAnalyserShim();
+    const rawScheduler = new RawSchedulerShim();
+    const containerSizeRef = { current: { w: msg.size.w, h: msg.size.h } };
+    const strategy = msg.kind === "hydra" ? await mountHydra(msg, feed, rawAnalyser, rawScheduler) : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr);
+    const reader = createPostMessageReader(scope);
+    state = {
+      feed,
+      rawAnalyser,
+      rawScheduler,
+      containerSizeRef,
+      canvas: msg.canvas,
+      reader,
+      dpr,
+      paused: false,
+      readySent: false,
+      ...strategy
+    };
+    reader.onFrame(applyAndDraw);
+    diag("info", `mounted ${msg.kind} viz '${msg.name}' (${msg.size.w}\xD7${msg.size.h}@${dpr})`);
+  }
+  __name(mount, "mount");
+  async function mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr) {
     if (!P5ctor) {
       installWorkerDomShim(() => wrapCanvas(new OffscreenCanvas(1, 1)));
       const mod = await import('p5');
       P5ctor = mod.default || mod.p5 || mod;
       P5ctor.disableFriendlyErrors = true;
     }
-    const feed = new WorkerBusFeed();
-    if (msg.aliases) feed.setAliases(msg.aliases);
-    const rawAnalyser = new RawAnalyserShim();
-    const rawScheduler = new RawSchedulerShim();
     const staveUniforms = buildStaveUniforms(feed.bus);
-    const containerSizeRef = { current: { w: msg.size.w, h: msg.size.h } };
     const analyserRef = { current: rawAnalyser };
     const schedulerRef = { current: rawScheduler };
     const hapStreamRef = { current: null };
@@ -5474,7 +5681,6 @@ function hostP5Worker(scope) {
       };
     }, "sketchFn");
     const inst = new P5ctor(sketchFn);
-    const dpr = msg.dpr > 0 ? msg.dpr : 1;
     msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr));
     msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr));
     let present = null;
@@ -5483,65 +5689,144 @@ function hostP5Worker(scope) {
     } catch (e) {
       diag("error", `bitmaprenderer unavailable: ${errMsg(e)}`);
     }
-    const reader = createPostMessageReader(scope);
-    state = {
-      inst,
-      feed,
-      rawAnalyser,
-      rawScheduler,
-      containerSizeRef,
-      present,
-      canvas: msg.canvas,
-      reader,
-      dpr,
-      paused: false,
-      setupDone: /* @__PURE__ */ __name(() => setup, "setupDone")
+    return {
+      setupDone: /* @__PURE__ */ __name(() => setup, "setupDone"),
+      draw: /* @__PURE__ */ __name(() => {
+        inst.redraw();
+        if (!present) return;
+        const src = inst?.drawingContext?.canvas;
+        if (!src) return;
+        try {
+          present.transferFromImageBitmap(src.transferToImageBitmap());
+        } catch (e) {
+          diag("error", `present blit failed: ${errMsg(e)}`);
+        }
+      }, "draw"),
+      resizeKind: /* @__PURE__ */ __name((w, h, dprNew) => {
+        msg.canvas.width = Math.max(1, Math.round(w * dprNew));
+        msg.canvas.height = Math.max(1, Math.round(h * dprNew));
+        inst?.resizeCanvas?.(w, h);
+      }, "resizeKind"),
+      teardown: /* @__PURE__ */ __name(() => {
+        try {
+          inst.hitCriticalError = true;
+          inst.setup = function() {
+          };
+          inst.draw = function() {
+          };
+          inst.preload = function() {
+          };
+          inst.createCanvas = function() {
+            return null;
+          };
+          inst._setupDone = true;
+          inst.remove?.();
+        } catch {
+        }
+      }, "teardown")
     };
-    reader.onFrame(applyAndDraw);
-    diag("info", `mounted ${msg.kind} viz '${msg.name}' (${msg.size.w}\xD7${msg.size.h}@${dpr})`);
   }
-  __name(mount, "mount");
+  __name(mountP5, "mountP5");
+  async function mountHydra(msg, feed, rawAnalyser, rawScheduler, _dpr) {
+    installWorkerHydraShim({ w: msg.size.w, h: msg.size.h });
+    if (!Hydractor) {
+      const mod = await import('hydra-synth');
+      Hydractor = mod.default || mod;
+    }
+    const bag = buildHydraStaveBag(feed.bus);
+    bag.scheduler = rawScheduler;
+    const bins = getVizConfig().hydraAudioBins;
+    msg.canvas.width = Math.max(1, Math.round(msg.size.w));
+    msg.canvas.height = Math.max(1, Math.round(msg.size.h));
+    const hydra = new Hydractor({
+      canvas: msg.canvas,
+      width: msg.size.w,
+      height: msg.size.h,
+      detectAudio: false,
+      // no Meyda/getUserMedia/AudioContext in the worker
+      makeGlobal: false,
+      // generators live on hydra.synth
+      autoLoop: false,
+      // WE drive tick() (1:1 with the frame — PK22)
+      enableStreamCapture: false
+      // OffscreenCanvas has no captureStream
+    });
+    const synth = hydra.synth;
+    const audio = hydra.a;
+    if (audio) {
+      synth.a = audio;
+      if (typeof audio.setCutoff === "function") audio.setCutoff(bins);
+      if (typeof audio.setBins === "function") audio.setBins(bins);
+      if (!Array.isArray(audio.fft) || audio.fft.length < bins) {
+        audio.fft = new Array(bins).fill(0);
+      }
+    } else {
+      synth.a = { fft: new Array(bins).fill(0) };
+    }
+    compileHydraCode(msg.code)(synth, bag);
+    let freqScratch = new Uint8Array(rawAnalyser.frequencyBinCount || 1024);
+    return {
+      setupDone: /* @__PURE__ */ __name(() => true, "setupDone"),
+      // pattern ran synchronously above; frames arrive after
+      draw: /* @__PURE__ */ __name(() => {
+        const a = hydra?.synth?.a;
+        if (a?.fft) {
+          if (freqScratch.length !== rawAnalyser.frequencyBinCount) {
+            freqScratch = new Uint8Array(rawAnalyser.frequencyBinCount);
+          }
+          rawAnalyser.getByteFrequencyData(freqScratch);
+          const numBins = getVizConfig().hydraAudioBins;
+          const binSize = Math.max(1, Math.floor(freqScratch.length / numBins));
+          for (let i = 0; i < numBins; i++) {
+            let sum = 0;
+            for (let j = 0; j < binSize; j++) sum += freqScratch[i * binSize + j];
+            a.fft[i] = sum / (binSize * 255);
+          }
+        }
+        hydra.tick(performance.now());
+      }, "draw"),
+      resizeKind: /* @__PURE__ */ __name((w, h) => {
+        msg.canvas.width = Math.max(1, Math.round(w));
+        msg.canvas.height = Math.max(1, Math.round(h));
+        hydra?.setResolution?.(w, h);
+      }, "resizeKind"),
+      teardown: /* @__PURE__ */ __name(() => {
+        try {
+          hydra?.synth?.hush?.();
+        } catch {
+        }
+      }, "teardown")
+    };
+  }
+  __name(mountHydra, "mountHydra");
   function applyAndDraw(frame) {
     const s = state;
     if (!s) return;
     s.feed.applyFrame(frame);
-    let master = void 0;
+    let master;
     for (const a of frame.analysers) if (a.key === MASTER_KEY) master = a;
     s.rawAnalyser.set(master);
     s.rawScheduler.set(frame.rawScheduler);
     if (!s.setupDone() || s.paused) return;
     try {
-      s.inst.redraw();
+      s.draw();
     } catch (e) {
       diag("error", `draw threw: ${errMsg(e)}`, errStack(e));
       return;
     }
-    blit(s);
-  }
-  __name(applyAndDraw, "applyAndDraw");
-  function blit(s) {
-    if (!s.present) return;
-    const src = s.inst?.drawingContext?.canvas;
-    if (!src) return;
-    try {
-      const bmp = src.transferToImageBitmap();
-      s.present.transferFromImageBitmap(bmp);
-    } catch (e) {
-      diag("error", `present blit failed: ${errMsg(e)}`);
+    if (!s.readySent) {
+      s.readySent = true;
+      signalReady();
     }
   }
-  __name(blit, "blit");
+  __name(applyAndDraw, "applyAndDraw");
   function resize(w, h, dpr) {
     const s = state;
     if (!s) return;
     s.dpr = dpr > 0 ? dpr : 1;
     s.containerSizeRef.current = { w, h };
-    const bw = Math.max(1, Math.round(w * s.dpr));
-    const bh = Math.max(1, Math.round(h * s.dpr));
     try {
-      s.canvas.width = bw;
-      s.canvas.height = bh;
-      s.inst?.resizeCanvas?.(w, h);
+      s.resizeKind(w, h, s.dpr);
     } catch (e) {
       diag("error", `resize failed: ${errMsg(e)}`);
     }
@@ -5555,28 +5840,15 @@ function hostP5Worker(scope) {
       s.reader.dispose();
     } catch {
     }
-    const inst = s.inst;
-    if (inst) {
-      try {
-        inst.hitCriticalError = true;
-        inst.setup = function() {
-        };
-        inst.draw = function() {
-        };
-        inst.preload = function() {
-        };
-        inst.createCanvas = function() {
-          return null;
-        };
-        inst._setupDone = true;
-        inst.remove?.();
-      } catch {
-      }
+    try {
+      s.teardown();
+    } catch {
     }
   }
   __name(destroy, "destroy");
 }
-__name(hostP5Worker, "hostP5Worker");
+__name(hostVizWorker, "hostVizWorker");
+var hostP5Worker = hostVizWorker;
 function errMsg(e) {
   return e instanceof Error ? e.message : String(e);
 }
@@ -5586,6 +5858,6 @@ function errStack(e) {
 }
 __name(errStack, "errStack");
 
-export { hostP5Worker };
+export { hostP5Worker, hostVizWorker };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

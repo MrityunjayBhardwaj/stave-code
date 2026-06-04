@@ -38,7 +38,7 @@ import { getVizWorkerFactory } from '../vizWorkerFactory'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
-import type { MountMessage, WorkerDiagMessage } from '../worker/workerMessages'
+import type { MountMessage, WorkerDiagMessage, WorkerReadyMessage } from '../worker/workerMessages'
 
 let workerPerfSeq = 0
 
@@ -52,14 +52,28 @@ export class WorkerVizRenderer implements VizRenderer {
   private onError: ((e: Error) => void) | null = null
   private readonly perfId = `worker#${++workerPerfSeq}`
   private diagHandler: ((ev: MessageEvent) => void) | null = null
+  /** The presenting <canvas> this renderer appended (transferred to the worker).
+   *  Tracked so destroy() removes it — else a fallback to the main-thread renderer
+   *  would leave a dead, frozen canvas behind it (#247). */
+  private canvasEl: HTMLCanvasElement | null = null
+  /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
+   *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
+  private onReady: (() => void) | null = null
 
-  /** @param kind renderer kind (`'p5'` for B-3). @param code raw sketch source.
-   *  @param name workspace path (error attribution). */
+  /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
+   *  sketch source. @param name workspace path (error attribution). */
   constructor(
-    private readonly kind: 'p5',
+    private readonly kind: 'p5' | 'hydra',
     private readonly code: string,
     private readonly name: string,
   ) {}
+
+  /** Register a callback fired once when the worker reports its first successful
+   *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
+   *  must be set BEFORE `mount`. */
+  whenReady(cb: () => void): void {
+    this.onReady = cb
+  }
 
   mount(
     container: HTMLDivElement,
@@ -88,6 +102,7 @@ export class WorkerVizRenderer implements VizRenderer {
       canvas.width = Math.max(1, Math.round(size.w * dpr))
       canvas.height = Math.max(1, Math.round(size.h * dpr))
       container.appendChild(canvas)
+      this.canvasEl = canvas
       const offscreen = canvas.transferControlToOffscreen()
 
       const worker = make()
@@ -97,8 +112,14 @@ export class WorkerVizRenderer implements VizRenderer {
       // Worker → main diagnostics (sketch errors, ready). Forward errors to the
       // host's onError so the existing engineLog/console surfacing applies.
       this.diagHandler = (ev: MessageEvent) => {
-        const d = ev.data as WorkerDiagMessage | undefined
-        if (!d || d.type !== 'diag') return
+        const d = ev.data as WorkerDiagMessage | WorkerReadyMessage | undefined
+        if (!d) return
+        if (d.type === 'ready') {
+          // First successful worker frame — end the fallback probation (#247).
+          this.onReady?.()
+          return
+        }
+        if (d.type !== 'diag') return
         if (d.level === 'error') {
           // Surface the WORKER-side stack (the throw site) — the forwarded Error
           // only carries the message, so the worker stack would otherwise be lost.
@@ -181,6 +202,15 @@ export class WorkerVizRenderer implements VizRenderer {
     }
     this.writer = null
     this.sampler.dispose()
+    // Remove the (now frozen) presenting canvas — its control was transferred to
+    // the terminated worker, so it can never paint again; leaving it in the DOM
+    // would stack a dead canvas behind a fallback main-thread renderer (#247).
+    try {
+      this.canvasEl?.remove()
+    } catch {
+      /* ignore */
+    }
+    this.canvasEl = null
   }
 
   /** Bind the sampler's live inputs from the component bag (mirror P5VizRenderer:
@@ -202,10 +232,17 @@ export class WorkerVizRenderer implements VizRenderer {
     const tick = (): void => {
       if (!this.running || !this.writer) return
       perf.frame(this.perfId)
+      // Decompose the per-frame main cost into its two parts so the matrix can
+      // attribute it (B-4 decision gate, #249): `sample` = analyser reads + the
+      // wide scheduler query (duplicated work, only a SHARED sampler removes the
+      // N×); `write` = transport (envelope structured-clone + postMessage —
+      // bytes already transferred zero-copy; this is the slice SAB removes).
       perf.begin('viz.worker.sample')
       const frame = this.sampler.sample()
-      this.writer.writeFrame(frame)
       perf.end('viz.worker.sample')
+      perf.begin('viz.worker.write')
+      this.writer.writeFrame(frame)
+      perf.end('viz.worker.write')
       this.rafId = requestAnimationFrame(tick)
     }
     this.rafId = requestAnimationFrame(tick)

@@ -1,7 +1,7 @@
 import type { VizDescriptor } from './types'
 import type { VizPreset } from './vizPreset'
-import { HydraVizRenderer } from './renderers/HydraVizRenderer'
 import { makeP5Renderer } from './renderers/makeP5Renderer'
+import { makeHydraRenderer } from './renderers/makeHydraRenderer'
 import { compileP5Code, isFullLifecycleSketch } from './p5Compiler'
 import { compileHydraCode } from './hydraCompiler'
 
@@ -41,7 +41,11 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       renderer: 'hydra',
       requires,
       ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
-      factory: () => new HydraVizRenderer(compileHydraCode(code)),
+      // B-5: `makeHydraRenderer` returns a worker-offloaded renderer (with
+      // main-thread fallback) when the flag is on + the browser is capable, else
+      // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
+      // string, so it can cross to the worker (built-in hydra closures can't yet).
+      factory: () => makeHydraRenderer(code, name),
     }
   }
 
