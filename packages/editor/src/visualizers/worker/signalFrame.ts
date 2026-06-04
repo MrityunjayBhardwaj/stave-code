@@ -53,8 +53,61 @@ export interface AnalyserBytes {
   frequencyBinCount: number
   /** Magnitude spectrum, one byte per bin (0..255). length === frequencyBinCount. */
   freq: Uint8Array
-  /** Time-domain waveform, one byte per bin (0..255, 128 = silence). */
+  /**
+   * Time-domain waveform, one byte per sample (0..255, 128 = silence).
+   * B-3: length === `fftSize` (the FULL time-domain), not `frequencyBinCount` —
+   * the bus only reads the first `frequencyBinCount` samples (so parity is
+   * unchanged), but a raw `stave.analyser` sketch (e.g. synthterrain) calls
+   * `getFloatTimeDomainData(new Float32Array(fftSize))` and needs all `fftSize`.
+   * Falls back to `frequencyBinCount` length for callers that don't set fftSize.
+   */
   time: Uint8Array
+  /**
+   * `AnalyserNode.fftSize` (= 2 × frequencyBinCount). B-3 — lets the worker's
+   * raw `stave.analyser` shim report the same `fftSize` a sketch reads. Optional
+   * (additive): the bus ignores it; absent → `frequencyBinCount × 2`.
+   */
+  fftSize?: number
+  /** `AnalyserNode.minDecibels` (default -100). B-3 — lets the raw shim
+   *  reconstruct `getFloatFrequencyData` (dB) from the magnitude bytes. */
+  minDecibels?: number
+  /** `AnalyserNode.maxDecibels` (default -30). See {@link AnalyserBytes.minDecibels}. */
+  maxDecibels?: number
+}
+
+/**
+ * One scheduler event marshalled for a RAW `stave.scheduler.query()` consumer
+ * (B-3). The signal BUS reads only the four `ActiveEventSummary` fields, but a
+ * raw sketch (synthterrain, scope, pianoroll…) reads the full hap shape over an
+ * arbitrary window. We ship the top-level `IREvent` fields the built-in sketches
+ * actually read — NOT `loc`/`irNodeId`/`dollarPos` (heavy, viz-irrelevant). The
+ * worker scheduler shim hands these back as plain objects, so a sketch reads
+ * `h.begin`/`h.note`/`h.gain` exactly as on main.
+ */
+export interface RawHapSummary {
+  begin: number
+  end: number
+  endClipped: number
+  note: number | string | null
+  freq: number | null
+  s: string | null
+  gain: number
+  velocity: number
+  color: string | null
+}
+
+/**
+ * The raw COMBINED-scheduler feed for `stave.scheduler` (B-3). The main sampler
+ * queries one WIDE window each frame (covering every built-in sketch's window —
+ * scope needs `now-4`, pianoroll/wordfall need `now+2`); the worker shim's
+ * `query(a,b)` filters these events to the requested sub-window. Only the
+ * combined scheduler is shipped (per-track raw query is not a built-in need).
+ */
+export interface RawSchedulerFrame {
+  /** `scheduler.now()` at sample (same value as `SignalFrame.now`). */
+  now: number
+  /** Events in the shipped wide window, in query order. */
+  events: RawHapSummary[]
 }
 
 /** The master analyser key — the combined-mix analyser (`SignalBus.master()`). */
@@ -77,6 +130,13 @@ export interface SignalFrame {
   activeByTrack: Array<[string, ActiveEventSummary[]]>
   /** Haps fired since the previous frame, in order (envelope `bump` feed). */
   bumps: BumpSummary[]
+  /**
+   * Wide-window combined-scheduler feed for raw `stave.scheduler` sketches (B-3).
+   * Optional + additive: absent in B-2 frames and ignored by the signal bus
+   * (which uses `activeEvents`/`activeByTrack`). The worker scheduler shim reads
+   * it; absent → the shim returns no events.
+   */
+  rawScheduler?: RawSchedulerFrame
 }
 
 /** Collect the transferable `ArrayBuffer`s in a frame (for postMessage transfer
@@ -113,5 +173,6 @@ export function emptyFrame(seq = 0): SignalFrame {
     activeEvents: [],
     activeByTrack: [],
     bumps: [],
+    rawScheduler: { now: 0, events: [] },
   }
 }

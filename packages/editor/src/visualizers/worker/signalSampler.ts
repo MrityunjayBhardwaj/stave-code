@@ -24,12 +24,54 @@ import {
   type ActiveEventSummary,
   type BumpSummary,
   type AnalyserBytes,
+  type RawHapSummary,
+  type RawSchedulerFrame,
 } from './signalFrame'
 
 /** ε window for the query-at-now read — identical to `SignalBus.refreshActive`
  *  (`EPSILON = 0.001`). Kept in sync deliberately: the sampler stands in for the
  *  bus's own query, so the window must match or the worker sees a different slice. */
 const EPSILON = 0.001
+
+/**
+ * Wide window (in scheduler time units — cycles for Strudel) the raw
+ * `stave.scheduler` feed is queried over each frame (B-3). Sized to cover every
+ * built-in sketch's own window so the worker shim can filter to any sub-window:
+ * scope reaches `now-4`; pianoroll/wordfall reach `now+2`. The worker scheduler
+ * shim narrows to the sketch's requested `[a,b]`, so over-querying here is
+ * correct, just slightly more events shipped. Centralising ONE wide query is
+ * also cheaper than each on-main sketch querying separately (the old path).
+ */
+const RAW_QUERY_BACK = 4
+const RAW_QUERY_FWD = 2
+
+/** Map a queried scheduler event to the lean raw-hap shape (drop loc/ids — heavy,
+ *  viz-irrelevant). Defaults mirror the bus + the built-in sketches' `?? 1`. */
+function summariseRawHap(e: {
+  begin?: number
+  end?: number
+  endClipped?: number
+  note?: number | string | null
+  freq?: number | null
+  s?: string | null
+  gain?: number
+  velocity?: number
+  color?: string | null
+}): RawHapSummary {
+  const begin = e.begin ?? 0
+  const end = e.end ?? begin
+  return {
+    begin,
+    end,
+    endClipped: e.endClipped ?? end,
+    note: e.note ?? null,
+    freq: e.freq ?? null,
+    s: e.s ?? null,
+    gain: e.gain ?? 1,
+    velocity: e.velocity ?? 1,
+    color: e.color ?? null,
+  }
+}
 
 /** The live inputs the sampler reads — the main-thread feed. All optional: any
  *  absent input degrades to the bus's zero (empty arrays / no events). */
@@ -66,11 +108,31 @@ function summariseEvent(e: {
 function readAnalyserBytes(key: string, an: BusAnalyser): AnalyserBytes | null {
   const n = an.frequencyBinCount | 0
   if (n <= 0) return null
+  // Read the EXTRA AnalyserNode fields a raw `stave.analyser` shim needs (B-3).
+  // `BusAnalyser` is structural (bus needs only binCount + getByte*), but the
+  // real input is an `AnalyserNode` carrying `fftSize`/`min|maxDecibels`. Read
+  // them defensively so the deterministic bus stubs (no fftSize) still work.
+  const node = an as BusAnalyser & {
+    fftSize?: number
+    minDecibels?: number
+    maxDecibels?: number
+  }
+  const fftSize = node.fftSize && node.fftSize > 0 ? node.fftSize : n * 2
   const freq = new Uint8Array(n)
-  const time = new Uint8Array(n)
+  // Time-domain is FULL fftSize (a raw waveform sketch reads all of it); the bus
+  // reads only the first `n` — parity unchanged (PK22 contract).
+  const time = new Uint8Array(fftSize)
   an.getByteFrequencyData(freq)
   an.getByteTimeDomainData(time)
-  return { key, frequencyBinCount: n, freq, time }
+  return {
+    key,
+    frequencyBinCount: n,
+    freq,
+    time,
+    fftSize,
+    minDecibels: node.minDecibels ?? -100,
+    maxDecibels: node.maxDecibels ?? -30,
+  }
 }
 
 export class MainSignalSampler {
@@ -146,7 +208,19 @@ export class MainSignalSampler {
     const bumps = this.pendingBumps
     this.pendingBumps = []
 
-    return { seq, now, analysers, activeEvents, activeByTrack, bumps }
+    // ── raw scheduler feed (B-3) — one WIDE combined query for `stave.scheduler`
+    // sketches. Separate from the bus's [now, now+ε] active query above (that
+    // feeds the bus; this feeds raw sketches that scroll a window of haps). ──
+    const rawScheduler: RawSchedulerFrame = {
+      now,
+      events: scheduler
+        ? scheduler
+            .query(now - RAW_QUERY_BACK, now + RAW_QUERY_FWD)
+            .map(summariseRawHap)
+        : [],
+    }
+
+    return { seq, now, analysers, activeEvents, activeByTrack, bumps, rawScheduler }
   }
 
   /** Unsubscribe + reset (renderer destroy). */

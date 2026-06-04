@@ -25,6 +25,18 @@ export interface VizConfig {
    */
   defaultRenderer: string
 
+  /**
+   * Phase B / B-3 feature flag (epic #228). When `true` AND the browser is
+   * worker-capable (OffscreenCanvas + transferControlToOffscreen + a registered
+   * worker factory), p5 vizzes render in an OffscreenCanvas Web Worker
+   * (`WorkerVizRenderer`), moving `draw()` off the main thread so it stops
+   * starving the audio scheduler. When `false` (DEFAULT until the matrix gate is
+   * green), every p5 viz renders on the main thread (`P5VizRenderer`) — today's
+   * behaviour, unchanged. The main-thread renderer is ALWAYS the fallback when a
+   * browser can't offload, regardless of this flag.
+   */
+  workerRenderer: boolean
+
   // ── Inline View Zones ─────────────────────────────────────────────────
   /** Height in pixels of each inline viz zone rendered below a pattern block. */
   inlineZoneHeight: number
@@ -118,6 +130,14 @@ export interface VizConfig {
 export const DEFAULT_VIZ_CONFIG: Readonly<VizConfig> = {
   // Resolver
   defaultRenderer: 'p5',
+
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
 
   // Inline view zones
   inlineZoneHeight: 150,

@@ -1,7 +1,13 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // Two entries: the main editor bundle, and a SEPARATE worker-safe bundle
+  // (`@stave/editor/worker`, Phase B / B-3) a Web Worker imports without dragging
+  // the Monaco/React/yjs monolith into the worker chunk. `splitting: false` keeps
+  // each entry a self-contained bundle; `p5` is `import()`'d lazily inside the
+  // host (PV70 condition 1 — shim before p5 eval) so the final app bundler (Next)
+  // emits it as the worker's own sub-chunk.
+  entry: ['src/index.ts', 'src/visualizers/worker/index.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   sourcemap: true,

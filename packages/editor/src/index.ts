@@ -52,6 +52,11 @@ export { DARK_THEME_TOKENS, LIGHT_THEME_TOKENS, applyTheme } from './theme/token
 export type { VizRenderer, VizRefs, VizRendererSource, VizDescriptor, PatternScheduler } from './visualizers/types'
 export { P5VizRenderer } from './visualizers/renderers/P5VizRenderer'
 export { HydraVizRenderer } from './visualizers/renderers/HydraVizRenderer'
+// Phase B / B-3 (#245) — OffscreenCanvas-worker p5 renderer + the DI seam the app
+// uses to register its Next-bundled worker constructor.
+export { WorkerVizRenderer } from './visualizers/renderers/WorkerVizRenderer'
+export { setVizWorkerFactory, getVizWorkerFactory } from './visualizers/vizWorkerFactory'
+export type { VizWorkerFactory } from './visualizers/vizWorkerFactory'
 export type { HydraPatternFn } from './visualizers/renderers/HydraVizRenderer'
 export { hydraPianoroll, hydraScope, hydraKaleidoscope } from './visualizers/renderers/hydraPresets'
 export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'

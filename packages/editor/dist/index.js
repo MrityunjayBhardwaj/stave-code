@@ -4688,159 +4688,58 @@ var _StrudelEngine = class _StrudelEngine {
 __name(_StrudelEngine, "StrudelEngine");
 var StrudelEngine = _StrudelEngine;
 
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var listeners = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
 }
-__name(fixedKey, "fixedKey");
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+__name(createVizConfig, "createVizConfig");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+function getVizConfig() {
+  return _active;
 }
-__name(makeId, "makeId");
-function emitLog(partial) {
-  const last = history.length > 0 ? history[history.length - 1] : void 0;
-  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
-    last.ts = Date.now();
-    queueMicrotask(() => {
-      for (const fn of listeners) {
-        try {
-          fn(last, history);
-        } catch {
-        }
-      }
-    });
-    return last;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    ...partial
-  };
-  history.push(entry);
-  if (history.length > MAX_HISTORY) {
-    history.splice(0, history.length - MAX_HISTORY);
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
 }
-__name(emitLog, "emitLog");
-function subscribeLog(fn) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-__name(subscribeLog, "subscribeLog");
-function getLogHistory() {
-  return [...history];
-}
-__name(getLogHistory, "getLogHistory");
-function clearLog() {
-  history.length = 0;
-  fixedMarkers.clear();
-  for (const fn of listeners) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-__name(clearLog, "clearLog");
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-__name(emitFixed, "emitFixed");
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-__name(subscribeFixed, "subscribeFixed");
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-__name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-__name(makeFixedKey, "makeFixedKey");
-
-// src/visualizers/p5FesBridge.ts
-var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
-var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
-var installed = false;
-var currentSource = null;
-var currentLineOffset = 0;
-function buildLogger() {
-  return (msg) => {
-    const raw = String(msg);
-    const clean = raw.replace(P5_PREFIX_RE, "").trim();
-    if (!clean) return;
-    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
-    let line;
-    const match = raw.match(FES_LINE_RE);
-    if (match) {
-      const wrapped = parseInt(match[1], 10);
-      if (Number.isFinite(wrapped)) {
-        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
-        if (candidate >= 1) line = candidate;
-      }
-    }
-    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
-      message
-    );
-    emitLog({
-      runtime: "p5",
-      level: isLikelyBug ? "error" : "warn",
-      source: currentSource ?? void 0,
-      message,
-      line
-    });
-  };
-}
-__name(buildLogger, "buildLogger");
-function installP5FesBridgeWith(p5Ctor) {
-  if (installed) return;
-  installed = true;
-  const ctor = p5Ctor;
-  ctor.disableFriendlyErrors = false;
-  ctor._fesLogger = buildLogger();
-}
-__name(installP5FesBridgeWith, "installP5FesBridgeWith");
-function setCurrentP5Source(source, lineOffset = 0) {
-  currentSource = source;
-  currentLineOffset = source == null ? 0 : lineOffset;
-}
-__name(setCurrentP5Source, "setCurrentP5Source");
+__name(setVizConfig, "setVizConfig");
 
 // src/visualizers/signals/aliasMap.ts
 var DEFAULT_VIZ_ENGINE = "strudel";
@@ -5744,281 +5643,6 @@ function applyPersistedPerfEnabled() {
 }
 __name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
 
-// src/visualizers/renderers/P5VizRenderer.ts
-var p5PerfSeq = 0;
-var _P5VizRenderer = class _P5VizRenderer {
-  constructor(sketch) {
-    this.sketch = sketch;
-    this.instance = null;
-    this.hapStreamRef = { current: null };
-    this.analyserRef = { current: null };
-    this.schedulerRef = { current: null };
-    this.containerSizeRef = {
-      current: { w: 400, h: 300 }
-    };
-    // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
-    this.optionsRef = { current: {} };
-    /**
-     * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
-     * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
-     * is IR-grounded and must stay live whenever a real analyser is published,
-     * which is normal playback). Mirrors `HydraVizRenderer`'s bus discipline; the
-     * only difference is the p5 SHAPE (D-01): bare `uKick` is a live GETTER
-     * NUMBER here, not a `() => number` thunk.
-     */
-    this.bus = new SignalBus();
-    /** Stable per-instance profiler key (`p5#N`) — frame/fps + bus timing (#228). */
-    this.perfId = `p5#${++p5PerfSeq}`;
-    /**
-     * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
-     * `destroy()` can off it unconditionally (it is the bus's own subscription —
-     * p5 has no analyser-fallback envelope, but keeping a named ref matches the
-     * hydra teardown discipline and stays correct if a fallback is added later).
-     */
-    this.busHapHandler = null;
-    /** The HapStream the bus handler is subscribed to (for clean off()). */
-    this.boundHapStream = null;
-    const bus = this.bus;
-    const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
-    u.track = (id) => bus.track(id);
-    Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-    Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-    Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
-    Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
-    Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
-    Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
-    Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-    Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-    const uniforms = {
-      get uKick() {
-        return bus.envValue("uKick");
-      },
-      get uSnare() {
-        return bus.envValue("uSnare");
-      },
-      get uHat() {
-        return bus.envValue("uHat");
-      },
-      get uOpenHat() {
-        return bus.envValue("uOpenHat");
-      },
-      get uClap() {
-        return bus.envValue("uClap");
-      },
-      get uRim() {
-        return bus.envValue("uRim");
-      },
-      get uTom() {
-        return bus.envValue("uTom");
-      },
-      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — the active
-      // event's velocity globally. Max velocity over every sound seen this
-      // frame; 0 when nothing is active.
-      get uKeyVelocity() {
-        let max = 0;
-        for (const s of bus.sounds) {
-          const v = bus.sound(s).velocity;
-          if (v > max) max = v;
-        }
-        return max;
-      },
-      // Master-mix DSP sugar (Slice 2, p5 D-01 — live getter numbers). Bare
-      // `uRms`/… read `bus.master()` fresh each draw, parity with `uKick`.
-      get uRms() {
-        return bus.master().rms;
-      },
-      get uBass() {
-        return bus.master().bass;
-      },
-      get uMid() {
-        return bus.master().mid;
-      },
-      get uTreble() {
-        return bus.master().treble;
-      },
-      u
-    };
-    Object.defineProperty(uniforms, "__tick", {
-      value: /* @__PURE__ */ __name(() => {
-        perf.frame(this.perfId);
-        perf.begin("p5.bus");
-        bus.tick();
-        bus.refreshActive(bus.now());
-        bus.readAudio();
-        perf.end("p5.bus");
-      }, "value"),
-      enumerable: false
-    });
-    this.staveUniformsRef = { current: uniforms };
-  }
-  mount(container, components, size, onError) {
-    perf.gauge("viz.p5", 1);
-    installP5FesBridgeWith(p5);
-    try {
-      this.hapStreamRef.current = components.streaming?.hapStream ?? null;
-      this.analyserRef.current = components.audio?.analyser ?? null;
-      this.schedulerRef.current = components.queryable?.scheduler ?? null;
-      this.optionsRef.current = components.options ?? {};
-      this.bus?.bindScheduler(
-        components.queryable?.scheduler,
-        components.queryable?.trackSchedulers
-      );
-      this.bus?.bindAnalysers(
-        components.audio?.analyser,
-        components.audio?.trackAnalysers
-      );
-      const mergedAliases = resolveAliasesForEngine(
-        getStoredSignalAliases(),
-        DEFAULT_VIZ_ENGINE
-      );
-      this.bus?.setAliases(mergedAliases);
-      const aliasBus = this.bus;
-      const uniforms = this.staveUniformsRef.current;
-      if (aliasBus && uniforms) {
-        for (const name of Object.keys(mergedAliases)) {
-          if (name in uniforms) continue;
-          Object.defineProperty(uniforms, name, {
-            get: /* @__PURE__ */ __name(() => aliasBus.envValue(name), "get"),
-            enumerable: true,
-            configurable: true
-          });
-        }
-      }
-      const hapStream = components.streaming?.hapStream ?? null;
-      if (hapStream && this.bus && typeof hapStream.on === "function") {
-        this.busHapHandler = (e) => this.bus?.bump(e);
-        hapStream.on(this.busHapHandler);
-        this.boundHapStream = hapStream;
-      }
-      this.containerSizeRef.current = { w: size.w, h: size.h };
-      const sketchFn = this.sketch(
-        this.hapStreamRef,
-        this.analyserRef,
-        this.schedulerRef,
-        this.containerSizeRef,
-        this.optionsRef,
-        this.staveUniformsRef
-      );
-      this.instance = new p5(sketchFn, container);
-      this.instance.resizeCanvas(size.w, size.h);
-    } catch (e) {
-      onError(e);
-    }
-  }
-  update(components) {
-    if (!this.instance) return;
-    this.hapStreamRef.current = components.streaming?.hapStream ?? null;
-    this.analyserRef.current = components.audio?.analyser ?? null;
-    this.schedulerRef.current = components.queryable?.scheduler ?? null;
-    this.optionsRef.current = components.options ?? {};
-    this.bus?.bindScheduler(
-      components.queryable?.scheduler ?? null,
-      components.queryable?.trackSchedulers
-    );
-    this.bus?.bindAnalysers(
-      components.audio?.analyser ?? null,
-      components.audio?.trackAnalysers
-    );
-    const nextHapStream = components.streaming?.hapStream ?? null;
-    if (nextHapStream !== this.boundHapStream) {
-      if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
-        this.boundHapStream.off(this.busHapHandler);
-      }
-      this.busHapHandler = null;
-      this.boundHapStream = null;
-      if (nextHapStream && this.bus && typeof nextHapStream.on === "function") {
-        this.busHapHandler = (e) => this.bus?.bump(e);
-        nextHapStream.on(this.busHapHandler);
-        this.boundHapStream = nextHapStream;
-      }
-    }
-  }
-  resize(w, h) {
-    this.containerSizeRef.current = { w, h };
-    this.instance?.resizeCanvas(w, h);
-  }
-  pause() {
-    this.instance?.noLoop();
-  }
-  resume() {
-    this.instance?.loop();
-  }
-  destroy() {
-    perf.gauge("viz.p5", -1);
-    perf.dropFrames(this.perfId);
-    if (this.instance) {
-      const pi = this.instance;
-      pi.hitCriticalError = true;
-      pi.setup = function() {
-      };
-      pi.draw = function() {
-      };
-      pi.preload = function() {
-      };
-      pi.createCanvas = function() {
-        return null;
-      };
-      pi._setupDone = true;
-      this.instance.remove();
-    }
-    this.instance = null;
-    if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
-      this.boundHapStream.off(this.busHapHandler);
-    }
-    this.busHapHandler = null;
-    this.boundHapStream = null;
-    this.bus = null;
-  }
-};
-__name(_P5VizRenderer, "P5VizRenderer");
-var P5VizRenderer = _P5VizRenderer;
-
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
-}
-__name(createVizConfig, "createVizConfig");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-function getVizConfig() {
-  return _active;
-}
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
-}
-__name(setVizConfig, "setVizConfig");
-
 // src/visualizers/renderers/HydraVizRenderer.ts
 var hydraPerfSeq = 0;
 var _HapEnergyEnvelope = class _HapEnergyEnvelope {
@@ -6397,6 +6021,751 @@ var hydraKaleidoscope = /* @__PURE__ */ __name((s) => {
     () => 0.8 + s.a.fft[2] * 0.2
   ).rotate(() => s.a.fft[3] * 3.14).modulate(s.noise(3), () => s.a.fft[0] * 0.05).out();
 }, "hydraKaleidoscope");
+
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var listeners = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+__name(fixedKey, "fixedKey");
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+__name(makeId, "makeId");
+function emitLog(partial) {
+  const last = history.length > 0 ? history[history.length - 1] : void 0;
+  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
+    last.ts = Date.now();
+    queueMicrotask(() => {
+      for (const fn of listeners) {
+        try {
+          fn(last, history);
+        } catch {
+        }
+      }
+    });
+    return last;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    ...partial
+  };
+  history.push(entry);
+  if (history.length > MAX_HISTORY) {
+    history.splice(0, history.length - MAX_HISTORY);
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
+}
+__name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
+function getLogHistory() {
+  return [...history];
+}
+__name(getLogHistory, "getLogHistory");
+function clearLog() {
+  history.length = 0;
+  fixedMarkers.clear();
+  for (const fn of listeners) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+__name(clearLog, "clearLog");
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+__name(emitFixed, "emitFixed");
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+__name(subscribeFixed, "subscribeFixed");
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+__name(getFixedMarkers, "getFixedMarkers");
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+__name(makeFixedKey, "makeFixedKey");
+
+// src/visualizers/p5FesBridge.ts
+var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
+var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
+var installed = false;
+var currentSource = null;
+var currentLineOffset = 0;
+function buildLogger() {
+  return (msg) => {
+    const raw = String(msg);
+    const clean = raw.replace(P5_PREFIX_RE, "").trim();
+    if (!clean) return;
+    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
+    let line;
+    const match = raw.match(FES_LINE_RE);
+    if (match) {
+      const wrapped = parseInt(match[1], 10);
+      if (Number.isFinite(wrapped)) {
+        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
+        if (candidate >= 1) line = candidate;
+      }
+    }
+    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
+      message
+    );
+    emitLog({
+      runtime: "p5",
+      level: isLikelyBug ? "error" : "warn",
+      source: currentSource ?? void 0,
+      message,
+      line
+    });
+  };
+}
+__name(buildLogger, "buildLogger");
+function installP5FesBridgeWith(p5Ctor) {
+  if (installed) return;
+  installed = true;
+  const ctor = p5Ctor;
+  ctor.disableFriendlyErrors = false;
+  ctor._fesLogger = buildLogger();
+}
+__name(installP5FesBridgeWith, "installP5FesBridgeWith");
+function setCurrentP5Source(source, lineOffset = 0) {
+  currentSource = source;
+  currentLineOffset = source == null ? 0 : lineOffset;
+}
+__name(setCurrentP5Source, "setCurrentP5Source");
+
+// src/visualizers/signals/staveUniforms.ts
+function buildStaveUniforms(bus, onTick) {
+  const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
+  u.track = (id) => bus.track(id);
+  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+  Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+  Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+  Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
+  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  const uniforms = {
+    get uKick() {
+      return bus.envValue("uKick");
+    },
+    get uSnare() {
+      return bus.envValue("uSnare");
+    },
+    get uHat() {
+      return bus.envValue("uHat");
+    },
+    get uOpenHat() {
+      return bus.envValue("uOpenHat");
+    },
+    get uClap() {
+      return bus.envValue("uClap");
+    },
+    get uRim() {
+      return bus.envValue("uRim");
+    },
+    get uTom() {
+      return bus.envValue("uTom");
+    },
+    // `uKeyVelocity` is NOT a sound alias — the active event's velocity globally
+    // (max over every sound seen this frame; 0 when nothing is active).
+    get uKeyVelocity() {
+      let max = 0;
+      for (const s of bus.sounds) {
+        const v = bus.sound(s).velocity;
+        if (v > max) max = v;
+      }
+      return max;
+    },
+    // Master-mix DSP sugar (live getter numbers) — parity with `uKick`.
+    get uRms() {
+      return bus.master().rms;
+    },
+    get uBass() {
+      return bus.master().bass;
+    },
+    get uMid() {
+      return bus.master().mid;
+    },
+    get uTreble() {
+      return bus.master().treble;
+    },
+    u
+  };
+  Object.defineProperty(uniforms, "__tick", {
+    value: onTick ?? (() => {
+    }),
+    enumerable: false
+  });
+  return uniforms;
+}
+__name(buildStaveUniforms, "buildStaveUniforms");
+
+// src/visualizers/renderers/P5VizRenderer.ts
+var p5PerfSeq = 0;
+var _P5VizRenderer = class _P5VizRenderer {
+  constructor(sketch) {
+    this.sketch = sketch;
+    this.instance = null;
+    this.hapStreamRef = { current: null };
+    this.analyserRef = { current: null };
+    this.schedulerRef = { current: null };
+    this.containerSizeRef = {
+      current: { w: 400, h: 300 }
+    };
+    // Per-render viz options (#214) → exposed to the sketch as `stave.options`.
+    this.optionsRef = { current: {} };
+    /**
+     * Per-renderer named-signal bus (Phase 21). PURE (P12) — owned here, fed
+     * UNCONDITIONALLY from the HapStream + scheduler (NOT analyser-gated; the bus
+     * is IR-grounded and must stay live whenever a real analyser is published,
+     * which is normal playback). Mirrors `HydraVizRenderer`'s bus discipline; the
+     * only difference is the p5 SHAPE (D-01): bare `uKick` is a live GETTER
+     * NUMBER here, not a `() => number` thunk.
+     */
+    this.bus = new SignalBus();
+    /** Stable per-instance profiler key (`p5#N`) — frame/fps + bus timing (#228). */
+    this.perfId = `p5#${++p5PerfSeq}`;
+    /**
+     * The bus's HapStream `.env`-feed subscription. Kept as an instance ref so
+     * `destroy()` can off it unconditionally (it is the bus's own subscription —
+     * p5 has no analyser-fallback envelope, but keeping a named ref matches the
+     * hydra teardown discipline and stays correct if a fallback is added later).
+     */
+    this.busHapHandler = null;
+    /** The HapStream the bus handler is subscribed to (for clean off()). */
+    this.boundHapStream = null;
+    const bus = this.bus;
+    this.staveUniformsRef = {
+      current: buildStaveUniforms(bus, () => {
+        perf.frame(this.perfId);
+        perf.begin("p5.bus");
+        bus.tick();
+        bus.refreshActive(bus.now());
+        bus.readAudio();
+        perf.end("p5.bus");
+      })
+    };
+  }
+  mount(container, components, size, onError) {
+    perf.gauge("viz.p5", 1);
+    installP5FesBridgeWith(p5);
+    try {
+      this.hapStreamRef.current = components.streaming?.hapStream ?? null;
+      this.analyserRef.current = components.audio?.analyser ?? null;
+      this.schedulerRef.current = components.queryable?.scheduler ?? null;
+      this.optionsRef.current = components.options ?? {};
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      );
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
+      );
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE
+      );
+      this.bus?.setAliases(mergedAliases);
+      const aliasBus = this.bus;
+      const uniforms = this.staveUniformsRef.current;
+      if (aliasBus && uniforms) {
+        for (const name of Object.keys(mergedAliases)) {
+          if (name in uniforms) continue;
+          Object.defineProperty(uniforms, name, {
+            get: /* @__PURE__ */ __name(() => aliasBus.envValue(name), "get"),
+            enumerable: true,
+            configurable: true
+          });
+        }
+      }
+      const hapStream = components.streaming?.hapStream ?? null;
+      if (hapStream && this.bus && typeof hapStream.on === "function") {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        hapStream.on(this.busHapHandler);
+        this.boundHapStream = hapStream;
+      }
+      this.containerSizeRef.current = { w: size.w, h: size.h };
+      const sketchFn = this.sketch(
+        this.hapStreamRef,
+        this.analyserRef,
+        this.schedulerRef,
+        this.containerSizeRef,
+        this.optionsRef,
+        this.staveUniformsRef
+      );
+      this.instance = new p5(sketchFn, container);
+      this.instance.resizeCanvas(size.w, size.h);
+    } catch (e) {
+      onError(e);
+    }
+  }
+  update(components) {
+    if (!this.instance) return;
+    this.hapStreamRef.current = components.streaming?.hapStream ?? null;
+    this.analyserRef.current = components.audio?.analyser ?? null;
+    this.schedulerRef.current = components.queryable?.scheduler ?? null;
+    this.optionsRef.current = components.options ?? {};
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers
+    );
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
+    );
+    const nextHapStream = components.streaming?.hapStream ?? null;
+    if (nextHapStream !== this.boundHapStream) {
+      if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
+        this.boundHapStream.off(this.busHapHandler);
+      }
+      this.busHapHandler = null;
+      this.boundHapStream = null;
+      if (nextHapStream && this.bus && typeof nextHapStream.on === "function") {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        nextHapStream.on(this.busHapHandler);
+        this.boundHapStream = nextHapStream;
+      }
+    }
+  }
+  resize(w, h) {
+    this.containerSizeRef.current = { w, h };
+    this.instance?.resizeCanvas(w, h);
+  }
+  pause() {
+    this.instance?.noLoop();
+  }
+  resume() {
+    this.instance?.loop();
+  }
+  destroy() {
+    perf.gauge("viz.p5", -1);
+    perf.dropFrames(this.perfId);
+    if (this.instance) {
+      const pi = this.instance;
+      pi.hitCriticalError = true;
+      pi.setup = function() {
+      };
+      pi.draw = function() {
+      };
+      pi.preload = function() {
+      };
+      pi.createCanvas = function() {
+        return null;
+      };
+      pi._setupDone = true;
+      this.instance.remove();
+    }
+    this.instance = null;
+    if (this.boundHapStream && this.busHapHandler && typeof this.boundHapStream.off === "function") {
+      this.boundHapStream.off(this.busHapHandler);
+    }
+    this.busHapHandler = null;
+    this.boundHapStream = null;
+    this.bus = null;
+  }
+};
+__name(_P5VizRenderer, "P5VizRenderer");
+var P5VizRenderer = _P5VizRenderer;
+
+// src/visualizers/worker/signalFrame.ts
+var MASTER_KEY = "master";
+function frameTransferables(frame) {
+  const out = [];
+  for (const a of frame.analysers) {
+    const fb = a.freq.buffer;
+    if (fb instanceof ArrayBuffer && a.freq.byteOffset === 0 && fb.byteLength === a.freq.byteLength) {
+      out.push(fb);
+    }
+    const tb = a.time.buffer;
+    if (tb instanceof ArrayBuffer && a.time.byteOffset === 0 && tb.byteLength === a.time.byteLength) {
+      out.push(tb);
+    }
+  }
+  return out;
+}
+__name(frameTransferables, "frameTransferables");
+function emptyFrame(seq = 0) {
+  return {
+    seq,
+    now: 0,
+    analysers: [],
+    activeEvents: [],
+    activeByTrack: [],
+    bumps: [],
+    rawScheduler: { now: 0, events: [] }
+  };
+}
+__name(emptyFrame, "emptyFrame");
+
+// src/visualizers/worker/signalSampler.ts
+var EPSILON2 = 1e-3;
+var RAW_QUERY_BACK = 4;
+var RAW_QUERY_FWD = 2;
+function summariseRawHap(e) {
+  const begin = e.begin ?? 0;
+  const end = e.end ?? begin;
+  return {
+    begin,
+    end,
+    endClipped: e.endClipped ?? end,
+    note: e.note ?? null,
+    freq: e.freq ?? null,
+    s: e.s ?? null,
+    gain: e.gain ?? 1,
+    velocity: e.velocity ?? 1,
+    color: e.color ?? null
+  };
+}
+__name(summariseRawHap, "summariseRawHap");
+function summariseEvent(e) {
+  return { s: e.s, velocity: e.velocity, note: e.note, color: e.color };
+}
+__name(summariseEvent, "summariseEvent");
+function readAnalyserBytes(key, an) {
+  const n = an.frequencyBinCount | 0;
+  if (n <= 0) return null;
+  const node = an;
+  const fftSize = node.fftSize && node.fftSize > 0 ? node.fftSize : n * 2;
+  const freq = new Uint8Array(n);
+  const time = new Uint8Array(fftSize);
+  an.getByteFrequencyData(freq);
+  an.getByteTimeDomainData(time);
+  return {
+    key,
+    frequencyBinCount: n,
+    freq,
+    time,
+    fftSize,
+    minDecibels: node.minDecibels ?? -100,
+    maxDecibels: node.maxDecibels ?? -30
+  };
+}
+__name(readAnalyserBytes, "readAnalyserBytes");
+var _MainSignalSampler = class _MainSignalSampler {
+  constructor() {
+    this.inputs = {};
+    this.seq = 0;
+    /** Haps accumulated since the last `sample()` (the envelope feed). */
+    this.pendingBumps = [];
+    this.boundStream = null;
+    this.hapHandler = /* @__PURE__ */ __name((e) => {
+      this.pendingBumps.push({
+        s: e.s ?? null,
+        color: e.color ?? null,
+        gain: e.hap?.value?.gain ?? 1
+      });
+    }, "hapHandler");
+  }
+  /** Rebind the live inputs (mirror the renderer's in-place rebind on
+   *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
+  bind(inputs) {
+    this.inputs = inputs;
+  }
+  /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
+   *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
+   *  P5VizRenderer.update). A partial stream (no `.on`) degrades to no feed. */
+  bindHapStream(stream) {
+    if (stream === this.boundStream) return;
+    if (this.boundStream && typeof this.boundStream.off === "function") {
+      this.boundStream.off(this.hapHandler);
+    }
+    this.boundStream = null;
+    this.pendingBumps = [];
+    if (stream && typeof stream.on === "function") {
+      stream.on(this.hapHandler);
+      this.boundStream = stream;
+    }
+  }
+  /** Produce one frame from the current inputs + the haps since the last call.
+   *  Drains the pending bumps (so each hap ships exactly once). */
+  sample() {
+    const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } = this.inputs;
+    const seq = ++this.seq;
+    const now2 = scheduler ? scheduler.now() : 0;
+    const begin = now2;
+    const end = now2 + EPSILON2;
+    const activeEvents = scheduler ? scheduler.query(begin, end).map(summariseEvent) : [];
+    const activeByTrack = [];
+    if (trackSchedulers) {
+      for (const [key, sched] of trackSchedulers) {
+        activeByTrack.push([key, sched.query(begin, end).map(summariseEvent)]);
+      }
+    }
+    const analysers = [];
+    if (masterAnalyser) {
+      const b = readAnalyserBytes(MASTER_KEY, masterAnalyser);
+      if (b) analysers.push(b);
+    }
+    if (trackAnalysers) {
+      for (const [key, an] of trackAnalysers) {
+        const b = readAnalyserBytes(key, an);
+        if (b) analysers.push(b);
+      }
+    }
+    const bumps = this.pendingBumps;
+    this.pendingBumps = [];
+    const rawScheduler = {
+      now: now2,
+      events: scheduler ? scheduler.query(now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
+    };
+    return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
+  }
+  /** Unsubscribe + reset (renderer destroy). */
+  dispose() {
+    if (this.boundStream && typeof this.boundStream.off === "function") {
+      this.boundStream.off(this.hapHandler);
+    }
+    this.boundStream = null;
+    this.pendingBumps = [];
+    this.inputs = {};
+  }
+  /** The next seq an `emptyFrame` should carry (test/demo helper). */
+  emptyFrame() {
+    return emptyFrame(++this.seq);
+  }
+};
+__name(_MainSignalSampler, "MainSignalSampler");
+var MainSignalSampler = _MainSignalSampler;
+
+// src/visualizers/worker/signalTransport.ts
+var SIGNAL_FRAME_TAG = "__staveSignalFrame";
+function isFrameEnvelope(data) {
+  return typeof data === "object" && data !== null && data[SIGNAL_FRAME_TAG] === true;
+}
+__name(isFrameEnvelope, "isFrameEnvelope");
+function createPostMessageWriter(channel) {
+  let disposed = false;
+  return {
+    writeFrame(frame) {
+      if (disposed) return;
+      const envelope = { [SIGNAL_FRAME_TAG]: true, frame };
+      channel.postMessage(envelope, frameTransferables(frame));
+    },
+    dispose() {
+      disposed = true;
+    }
+  };
+}
+__name(createPostMessageWriter, "createPostMessageWriter");
+function createPostMessageReader(channel) {
+  let consumer = null;
+  const handler = /* @__PURE__ */ __name((ev) => {
+    if (consumer && isFrameEnvelope(ev.data)) consumer(ev.data.frame);
+  }, "handler");
+  channel.addEventListener("message", handler);
+  return {
+    onFrame(cb) {
+      consumer = cb;
+    },
+    dispose() {
+      consumer = null;
+      channel.removeEventListener("message", handler);
+    }
+  };
+}
+__name(createPostMessageReader, "createPostMessageReader");
+
+// src/visualizers/vizWorkerFactory.ts
+var factory = null;
+function setVizWorkerFactory(f) {
+  factory = f;
+}
+__name(setVizWorkerFactory, "setVizWorkerFactory");
+function getVizWorkerFactory() {
+  return factory;
+}
+__name(getVizWorkerFactory, "getVizWorkerFactory");
+
+// src/visualizers/renderers/WorkerVizRenderer.ts
+var workerPerfSeq = 0;
+var _WorkerVizRenderer = class _WorkerVizRenderer {
+  /** @param kind renderer kind (`'p5'` for B-3). @param code raw sketch source.
+   *  @param name workspace path (error attribution). */
+  constructor(kind, code, name) {
+    this.kind = kind;
+    this.code = code;
+    this.name = name;
+    this.worker = null;
+    this.writer = null;
+    this.sampler = new MainSignalSampler();
+    this.rafId = 0;
+    this.running = false;
+    this.size = { w: 400, h: 300 };
+    this.onError = null;
+    this.perfId = `worker#${++workerPerfSeq}`;
+    this.diagHandler = null;
+  }
+  mount(container, components, size, onError) {
+    this.onError = onError;
+    this.size = { w: size.w, h: size.h };
+    perf.gauge("viz.worker", 1);
+    const make = getVizWorkerFactory();
+    if (!make) {
+      onError(new Error("WorkerVizRenderer: no viz-worker factory registered"));
+      return;
+    }
+    try {
+      const dpr = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : 1;
+      const canvas = document.createElement("canvas");
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      canvas.style.display = "block";
+      canvas.width = Math.max(1, Math.round(size.w * dpr));
+      canvas.height = Math.max(1, Math.round(size.h * dpr));
+      container.appendChild(canvas);
+      const offscreen = canvas.transferControlToOffscreen();
+      const worker = make();
+      this.worker = worker;
+      this.writer = createPostMessageWriter(worker);
+      this.diagHandler = (ev) => {
+        const d = ev.data;
+        if (!d || d.type !== "diag") return;
+        if (d.level === "error") {
+          console.error(`[viz worker ${this.name}] ${d.message}`, d.stack ? `
+${d.stack}` : "");
+          onError(new Error(`[viz worker ${this.name}] ${d.message}`));
+        }
+      };
+      worker.addEventListener("message", this.diagHandler);
+      this.bindSampler(components);
+      const aliases = resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE);
+      const mountMsg = {
+        type: "mount",
+        kind: this.kind,
+        code: this.code,
+        name: this.name,
+        canvas: offscreen,
+        size: { w: size.w, h: size.h },
+        dpr,
+        aliases
+      };
+      worker.postMessage(mountMsg, [offscreen]);
+      this.start();
+    } catch (e) {
+      onError(e);
+    }
+  }
+  update(components) {
+    if (!this.worker) return;
+    this.bindSampler(components);
+  }
+  resize(w, h) {
+    this.size = { w, h };
+    const dpr = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : 1;
+    this.worker?.postMessage({ type: "resize", w, h, dpr });
+  }
+  pause() {
+    this.stop();
+    this.worker?.postMessage({ type: "pause" });
+  }
+  resume() {
+    this.worker?.postMessage({ type: "resume" });
+    this.start();
+  }
+  destroy() {
+    perf.gauge("viz.worker", -1);
+    perf.dropFrames(this.perfId);
+    this.stop();
+    const worker = this.worker;
+    this.worker = null;
+    if (worker) {
+      try {
+        worker.postMessage({ type: "destroy" });
+      } catch {
+      }
+      if (this.diagHandler) worker.removeEventListener("message", this.diagHandler);
+      try {
+        worker.terminate();
+      } catch {
+      }
+    }
+    this.diagHandler = null;
+    try {
+      this.writer?.dispose();
+    } catch {
+    }
+    this.writer = null;
+    this.sampler.dispose();
+  }
+  /** Bind the sampler's live inputs from the component bag (mirror P5VizRenderer:
+   *  scheduler + per-track schedulers, master + per-track analysers, hap stream). */
+  bindSampler(components) {
+    this.sampler.bind({
+      scheduler: components.queryable?.scheduler ?? null,
+      trackSchedulers: components.queryable?.trackSchedulers ?? null,
+      masterAnalyser: components.audio?.analyser ?? null,
+      trackAnalysers: components.audio?.trackAnalysers ?? null
+    });
+    this.sampler.bindHapStream(components.streaming?.hapStream ?? null);
+  }
+  /** Start the main rAF sample→writeFrame loop (the single cadence clock). */
+  start() {
+    if (this.running) return;
+    this.running = true;
+    const tick = /* @__PURE__ */ __name(() => {
+      if (!this.running || !this.writer) return;
+      perf.frame(this.perfId);
+      perf.begin("viz.worker.sample");
+      const frame = this.sampler.sample();
+      this.writer.writeFrame(frame);
+      perf.end("viz.worker.sample");
+      this.rafId = requestAnimationFrame(tick);
+    }, "tick");
+    this.rafId = requestAnimationFrame(tick);
+  }
+  stop() {
+    this.running = false;
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    this.rafId = 0;
+  }
+};
+__name(_WorkerVizRenderer, "WorkerVizRenderer");
+var WorkerVizRenderer = _WorkerVizRenderer;
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
@@ -10999,6 +11368,47 @@ function installErrorSketch(p, message) {
 }
 __name(installErrorSketch, "installErrorSketch");
 
+// src/visualizers/worker/capabilities.ts
+function isFn(v) {
+  return typeof v === "function";
+}
+__name(isFn, "isFn");
+function detectWorkerVizCapabilities(env = globalThis) {
+  const crossOriginIsolated = env.crossOriginIsolated === true;
+  const hasOffscreenCanvas = isFn(env.OffscreenCanvas);
+  const hasSharedArrayBuffer = isFn(env.SharedArrayBuffer);
+  const hasWorker = isFn(env.Worker);
+  const canTransferControl = isFn(
+    env.HTMLCanvasElement?.prototype?.transferControlToOffscreen
+  );
+  const canUseWorker = hasWorker && hasOffscreenCanvas && canTransferControl;
+  let transport;
+  if (!canUseWorker) {
+    transport = "main-thread";
+  } else if (crossOriginIsolated && hasSharedArrayBuffer) {
+    transport = "sab";
+  } else {
+    transport = "postmessage";
+  }
+  return {
+    crossOriginIsolated,
+    hasOffscreenCanvas,
+    hasSharedArrayBuffer,
+    canTransferControl,
+    hasWorker,
+    canUseWorker,
+    transport
+  };
+}
+__name(detectWorkerVizCapabilities, "detectWorkerVizCapabilities");
+
+// src/visualizers/renderers/makeP5Renderer.ts
+function makeP5Renderer(code, name) {
+  const useWorker = getVizConfig().workerRenderer && getVizWorkerFactory() !== null && detectWorkerVizCapabilities().transport !== "main-thread";
+  return useWorker ? new WorkerVizRenderer("p5", code, name) : new P5VizRenderer(compileP5Code(code, name));
+}
+__name(makeP5Renderer, "makeP5Renderer");
+
 // src/visualizers/builtinP5Code.ts
 var PIANOROLL_P5_CODE = `// Stave p5 viz \u2014 Piano Roll
 // stave.scheduler, stave.analyser, stave.hapStream, stave.options are injected
@@ -11591,13 +12001,15 @@ function draw() {
 // src/visualizers/defaultDescriptors.ts
 var DEFAULT_VIZ_DESCRIPTORS = [
   // p5 renderers (default for each mode) — compiled from bundled source.
-  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], nativeSize: { w: 1200, h: 200 }, factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, "pianoroll")), "factory") },
-  { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(WORDFALL_P5_CODE, "wordfall")), "factory") },
-  { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SCOPE_P5_CODE, "scope")), "factory") },
-  { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(FSCOPE_P5_CODE, "fscope")), "factory") },
-  { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SPECTRUM_P5_CODE, "spectrum")), "factory") },
-  { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(SPIRAL_P5_CODE, "spiral")), "factory") },
-  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(PITCHWHEEL_P5_CODE, "pitchwheel")), "factory") },
+  // B-3: `makeP5Renderer` offloads to an OffscreenCanvas worker when the flag is
+  // on + the browser is capable, else the main-thread P5VizRenderer (fallback).
+  { id: "pianoroll", label: "Piano Roll", renderer: "p5", requires: ["streaming"], nativeSize: { w: 1200, h: 200 }, factory: /* @__PURE__ */ __name(() => makeP5Renderer(PIANOROLL_P5_CODE, "pianoroll"), "factory") },
+  { id: "wordfall", label: "Wordfall", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(WORDFALL_P5_CODE, "wordfall"), "factory") },
+  { id: "scope", label: "Scope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SCOPE_P5_CODE, "scope"), "factory") },
+  { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(FSCOPE_P5_CODE, "fscope"), "factory") },
+  { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPECTRUM_P5_CODE, "spectrum"), "factory") },
+  { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPIRAL_P5_CODE, "spiral"), "factory") },
+  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
   // Hydra renderers (WebGL shader-based)
   { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(), "factory") },
   { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraPianoroll), "factory") },
@@ -24408,167 +24820,6 @@ var _SonicPiEngine = class _SonicPiEngine {
 __name(_SonicPiEngine, "SonicPiEngine");
 var SonicPiEngine = _SonicPiEngine;
 
-// src/visualizers/worker/capabilities.ts
-function isFn(v) {
-  return typeof v === "function";
-}
-__name(isFn, "isFn");
-function detectWorkerVizCapabilities(env = globalThis) {
-  const crossOriginIsolated = env.crossOriginIsolated === true;
-  const hasOffscreenCanvas = isFn(env.OffscreenCanvas);
-  const hasSharedArrayBuffer = isFn(env.SharedArrayBuffer);
-  const hasWorker = isFn(env.Worker);
-  const canTransferControl = isFn(
-    env.HTMLCanvasElement?.prototype?.transferControlToOffscreen
-  );
-  const canUseWorker = hasWorker && hasOffscreenCanvas && canTransferControl;
-  let transport;
-  if (!canUseWorker) {
-    transport = "main-thread";
-  } else if (crossOriginIsolated && hasSharedArrayBuffer) {
-    transport = "sab";
-  } else {
-    transport = "postmessage";
-  }
-  return {
-    crossOriginIsolated,
-    hasOffscreenCanvas,
-    hasSharedArrayBuffer,
-    canTransferControl,
-    hasWorker,
-    canUseWorker,
-    transport
-  };
-}
-__name(detectWorkerVizCapabilities, "detectWorkerVizCapabilities");
-
-// src/visualizers/worker/signalFrame.ts
-var MASTER_KEY = "master";
-function frameTransferables(frame) {
-  const out = [];
-  for (const a of frame.analysers) {
-    const fb = a.freq.buffer;
-    if (fb instanceof ArrayBuffer && a.freq.byteOffset === 0 && fb.byteLength === a.freq.byteLength) {
-      out.push(fb);
-    }
-    const tb = a.time.buffer;
-    if (tb instanceof ArrayBuffer && a.time.byteOffset === 0 && tb.byteLength === a.time.byteLength) {
-      out.push(tb);
-    }
-  }
-  return out;
-}
-__name(frameTransferables, "frameTransferables");
-function emptyFrame(seq = 0) {
-  return {
-    seq,
-    now: 0,
-    analysers: [],
-    activeEvents: [],
-    activeByTrack: [],
-    bumps: []
-  };
-}
-__name(emptyFrame, "emptyFrame");
-
-// src/visualizers/worker/signalSampler.ts
-var EPSILON2 = 1e-3;
-function summariseEvent(e) {
-  return { s: e.s, velocity: e.velocity, note: e.note, color: e.color };
-}
-__name(summariseEvent, "summariseEvent");
-function readAnalyserBytes(key, an) {
-  const n = an.frequencyBinCount | 0;
-  if (n <= 0) return null;
-  const freq = new Uint8Array(n);
-  const time = new Uint8Array(n);
-  an.getByteFrequencyData(freq);
-  an.getByteTimeDomainData(time);
-  return { key, frequencyBinCount: n, freq, time };
-}
-__name(readAnalyserBytes, "readAnalyserBytes");
-var _MainSignalSampler = class _MainSignalSampler {
-  constructor() {
-    this.inputs = {};
-    this.seq = 0;
-    /** Haps accumulated since the last `sample()` (the envelope feed). */
-    this.pendingBumps = [];
-    this.boundStream = null;
-    this.hapHandler = /* @__PURE__ */ __name((e) => {
-      this.pendingBumps.push({
-        s: e.s ?? null,
-        color: e.color ?? null,
-        gain: e.hap?.value?.gain ?? 1
-      });
-    }, "hapHandler");
-  }
-  /** Rebind the live inputs (mirror the renderer's in-place rebind on
-   *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
-  bind(inputs) {
-    this.inputs = inputs;
-  }
-  /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
-   *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
-   *  P5VizRenderer.update). A partial stream (no `.on`) degrades to no feed. */
-  bindHapStream(stream) {
-    if (stream === this.boundStream) return;
-    if (this.boundStream && typeof this.boundStream.off === "function") {
-      this.boundStream.off(this.hapHandler);
-    }
-    this.boundStream = null;
-    this.pendingBumps = [];
-    if (stream && typeof stream.on === "function") {
-      stream.on(this.hapHandler);
-      this.boundStream = stream;
-    }
-  }
-  /** Produce one frame from the current inputs + the haps since the last call.
-   *  Drains the pending bumps (so each hap ships exactly once). */
-  sample() {
-    const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } = this.inputs;
-    const seq = ++this.seq;
-    const now2 = scheduler ? scheduler.now() : 0;
-    const begin = now2;
-    const end = now2 + EPSILON2;
-    const activeEvents = scheduler ? scheduler.query(begin, end).map(summariseEvent) : [];
-    const activeByTrack = [];
-    if (trackSchedulers) {
-      for (const [key, sched] of trackSchedulers) {
-        activeByTrack.push([key, sched.query(begin, end).map(summariseEvent)]);
-      }
-    }
-    const analysers = [];
-    if (masterAnalyser) {
-      const b = readAnalyserBytes(MASTER_KEY, masterAnalyser);
-      if (b) analysers.push(b);
-    }
-    if (trackAnalysers) {
-      for (const [key, an] of trackAnalysers) {
-        const b = readAnalyserBytes(key, an);
-        if (b) analysers.push(b);
-      }
-    }
-    const bumps = this.pendingBumps;
-    this.pendingBumps = [];
-    return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps };
-  }
-  /** Unsubscribe + reset (renderer destroy). */
-  dispose() {
-    if (this.boundStream && typeof this.boundStream.off === "function") {
-      this.boundStream.off(this.hapHandler);
-    }
-    this.boundStream = null;
-    this.pendingBumps = [];
-    this.inputs = {};
-  }
-  /** The next seq an `emptyFrame` should carry (test/demo helper). */
-  emptyFrame() {
-    return emptyFrame(++this.seq);
-  }
-};
-__name(_MainSignalSampler, "MainSignalSampler");
-var MainSignalSampler = _MainSignalSampler;
-
 // src/visualizers/worker/workerBusFeed.ts
 var _FrameAnalyser = class _FrameAnalyser {
   constructor() {
@@ -24658,44 +24909,6 @@ var _WorkerBusFeed = class _WorkerBusFeed {
 };
 __name(_WorkerBusFeed, "WorkerBusFeed");
 var WorkerBusFeed = _WorkerBusFeed;
-
-// src/visualizers/worker/signalTransport.ts
-var SIGNAL_FRAME_TAG = "__staveSignalFrame";
-function isFrameEnvelope(data) {
-  return typeof data === "object" && data !== null && data[SIGNAL_FRAME_TAG] === true;
-}
-__name(isFrameEnvelope, "isFrameEnvelope");
-function createPostMessageWriter(channel) {
-  let disposed = false;
-  return {
-    writeFrame(frame) {
-      if (disposed) return;
-      const envelope = { [SIGNAL_FRAME_TAG]: true, frame };
-      channel.postMessage(envelope, frameTransferables(frame));
-    },
-    dispose() {
-      disposed = true;
-    }
-  };
-}
-__name(createPostMessageWriter, "createPostMessageWriter");
-function createPostMessageReader(channel) {
-  let consumer = null;
-  const handler = /* @__PURE__ */ __name((ev) => {
-    if (consumer && isFrameEnvelope(ev.data)) consumer(ev.data.frame);
-  }, "handler");
-  channel.addEventListener("message", handler);
-  return {
-    onFrame(cb) {
-      consumer = cb;
-    },
-    dispose() {
-      consumer = null;
-      channel.removeEventListener("message", handler);
-    }
-  };
-}
-__name(createPostMessageReader, "createPostMessageReader");
 
 // src/visualizers/mountVizRenderer.ts
 function mountVizRenderer(container, source, components, size, onError) {
@@ -25279,7 +25492,9 @@ function compilePreset(preset) {
       // the file. Without it, a top-level `new Mp()` typo surfaced on
       // the preview canvas but nowhere else — no Console row, no
       // Monaco squiggle.
-      factory: /* @__PURE__ */ __name(() => new P5VizRenderer(compileP5Code(code, name)), "factory")
+      // B-3: `makeP5Renderer` returns a worker-offloaded renderer when the flag
+      // is on + the browser is capable, else the main-thread P5VizRenderer.
+      factory: /* @__PURE__ */ __name(() => makeP5Renderer(code, name), "factory")
     };
   }
   throw new Error(`Unknown renderer: ${renderer}`);
@@ -27137,6 +27352,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizWorkerFactory, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

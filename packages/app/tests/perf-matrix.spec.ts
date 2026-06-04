@@ -251,7 +251,7 @@ async function measure(page: Page, scenario: string): Promise<Row> {
 
   return {
     scenario,
-    vizGauge: (snap.gauges['viz.p5'] ?? 0) + (snap.gauges['viz.hydra'] ?? 0),
+    vizGauge: (snap.gauges['viz.p5'] ?? 0) + (snap.gauges['viz.hydra'] ?? 0) + (snap.gauges['viz.worker'] ?? 0),
     instances: frameIds.length,
     minFps: fpsList.length ? Math.min(...fpsList) : 0,
     maxP95: p95List.length ? Math.max(...p95List) : 0,
@@ -265,12 +265,22 @@ async function measure(page: Page, scenario: string): Promise<Row> {
 
 test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
+    // B-3 (#245): VIZ_WORKER=1 force-enables OffscreenCanvas-worker rendering via
+    // the localStorage override (registerVizWorker reads it at mount). Lets the
+    // SAME pristine synthterrain fixture run both ways — main-thread baseline
+    // (unset) vs worker (set) — so trig/s + longtasks are A/B comparable.
+    const vizWorker = !!process.env.VIZ_WORKER
+    await page.addInitScript((useWorker) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__STAVE_PERF__ = true
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__STAVE_E2E__ = true
-    })
+      try {
+        localStorage.setItem('stave.viz.worker', useWorker ? '1' : '0')
+      } catch {
+        /* private mode — ignore */
+      }
+    }, vizWorker)
     await page.goto('/', { waitUntil: 'domcontentloaded' })
     await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
     await page.waitForTimeout(1000)
