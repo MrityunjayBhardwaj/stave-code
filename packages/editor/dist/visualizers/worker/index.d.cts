@@ -1,36 +1,32 @@
 /**
- * hostP5Worker — the bundler-AGNOSTIC worker host that runs a p5 sketch in a
- * `WorkerGlobalScope` and renders it to a transferred `OffscreenCanvas` (Phase B /
- * B-3, epic #228). The app's `viz-worker.ts` (bundled by Next via
- * `new Worker(new URL(...))`) is a two-line shell: `hostP5Worker(self)`.
+ * hostVizWorker — the bundler-AGNOSTIC worker host that runs a viz sketch in a
+ * `WorkerGlobalScope` and renders it to a transferred `OffscreenCanvas` (Phase B,
+ * epic #228). Hosts BOTH renderer kinds, branching on `MountMessage.kind`:
+ *   - `'p5'`    (B-3) — install the 6-part p5 DOM shim, compile via the shared
+ *     `compileP5Code`, drive `redraw()` then BLIT p5's worker-local canvas onto the
+ *     transferred presenting canvas (p5 makes its OWN canvases — Tier 2).
+ *   - `'hydra'` (B-5) — install the 2-part hydra shim, `new Hydra({ canvas })` on
+ *     the transferred canvas DIRECTLY (Tier 1: hydra accepts a canvas → no blit),
+ *     feed `s.a.fft[]` from the frame's master bytes, drive `hydra.tick()`.
  *
- * Lifecycle (one worker per renderer for B-3; pool arrives in B-6):
- *   1. `mount`  — install the DOM shim (PV70) BEFORE importing p5 (condition 1),
- *      compile the sketch from its CODE STRING (the SAME pure `compileP5Code` the
- *      main renderer uses — no fork), feed it shim-backed `stave.analyser` /
- *      `stave.scheduler` + a bus-backed `staveUniforms`, and start consuming
- *      `SignalFrame`s.
- *   2. per FRAME — `feed.applyFrame` (owns the ONE bus tick — PK22) + refresh the
- *      raw shims, then drive EXACTLY ONE p5 `redraw()` (1:1 with the main
- *      sampler's frame → cadence can't drift), then blit p5's render canvas onto
- *      the presenting canvas.
- *   3. `resize` / `pause` / `resume` / `destroy` — lifecycle control.
+ * The app's `viz-worker.ts` (bundled by Next via `new Worker(new URL(...))`) is a
+ * two-line shell: `hostVizWorker(self)`. ONE worker hosts ONE kind (B-3/B-5; a
+ * pool that reuses a worker across kinds is B-6) — so only one shim ever installs.
  *
- * RENDER-PRESENT: p5's own canvases stay worker-local throwaways (the shim mints a
- * fresh OffscreenCanvas per `createElement('canvas')` — condition 5); each redraw
- * we BLIT p5's render canvas → the transferred presenting canvas via a
- * `bitmaprenderer` context (`transferToImageBitmap` → `transferFromImageBitmap`,
- * zero-copy). This sidesteps the fragile "which createElement call is the on-screen
- * canvas" problem and keeps ALL p5 cost in the worker (the B-0 spike already proved
- * the WEBGL offscreen content reads back).
+ * SHARED per frame (both kinds) — `applyAndDraw`: `feed.applyFrame` owns the ONE
+ * bus tick (PK22) + refresh the raw shims, then the kind-specific `draw()` runs
+ * EXACTLY ONCE (1:1 with the main sampler's frame → cadence can't drift). After
+ * the first successful draw the host posts a one-shot `ready` (B-5 / #247): the
+ * main `FallbackVizRenderer` waits for it; a throw or timeout BEFORE it falls the
+ * renderer back to the main thread (a worker that throws/hangs at startup = blank).
  *
- * CADENCE (PK22 resolution): the user setup is wrapped to call `noLoop()` right
- * after it runs, so p5 does NOT auto-loop; we drive one `redraw()` per received
- * frame. `staveUniforms.__tick` is a no-op in the worker (built without `onTick`) —
- * the feed already ticked the bus, so the draw reads an already-ticked bus.
+ * CADENCE (PK22): the p5 setup is wrapped to `noLoop()` (we drive `redraw()`); the
+ * hydra instance is `autoLoop:false` (we drive `tick()`). `staveUniforms.__tick`
+ * is a no-op in the worker (built without `onTick`) — the feed already ticked.
  *
  * REF: PV70 (.anvi/vyapti.md), PK22 (.anvi/krama.md), dom-shim.ts, rawShims.ts,
- *      workerBusFeed.ts, signalTransport.ts, p5Compiler.ts (the shared compiler).
+ *      workerBusFeed.ts, signalTransport.ts, p5Compiler.ts, hydraCompiler.ts,
+ *      hydraStaveBag.ts (the shared bag builder), HydraVizRenderer (main contract).
  */
 /** The minimal worker-global surface the host needs (a `DedicatedWorkerGlobalScope`
  *  on the real worker; structural so it's testable). */
@@ -40,7 +36,11 @@ interface WorkerScope {
     }) => void): void;
     postMessage(message: unknown): void;
 }
-declare function hostP5Worker(scope: WorkerScope): void;
+declare function hostVizWorker(scope: WorkerScope): void;
+/** Back-compat alias — the app's worker entry historically called `hostP5Worker`.
+ *  The host now serves both kinds; the name is retained so existing wiring (and
+ *  the worker-safe `index.ts` export) keeps resolving. Prefer `hostVizWorker`. */
+declare const hostP5Worker: typeof hostVizWorker;
 
 /**
  * Control-message protocol for the viz worker (B-3) — the lifecycle commands the
@@ -50,11 +50,12 @@ declare function hostP5Worker(scope: WorkerScope): void;
  * frames carry the `__staveSignalFrame` envelope tag and NO `type` (signalTransport.ts).
  * So each side ignores the other's messages by checking for `.type`.
  */
-/** MAIN → WORKER: create the p5 instance against a transferred OffscreenCanvas. */
+/** MAIN → WORKER: create the renderer instance against a transferred OffscreenCanvas. */
 interface MountMessage {
     type: 'mount';
-    /** Renderer kind — `'p5'` for B-3 (hydra arrives in B-5). */
-    kind: 'p5';
+    /** Renderer kind — `'p5'` (B-3) or `'hydra'` (B-5). The host installs the
+     *  matching DOM shim + imports the matching library + drives the matching draw. */
+    kind: 'p5' | 'hydra';
     /** The sketch source (a transferable string, compiled in-worker — PLAN §7.3). */
     code: string;
     /** Source label for error attribution (the workspace path). */
@@ -101,5 +102,12 @@ interface WorkerDiagMessage {
     /** Optional stack (first frames) for an error. */
     stack?: string;
 }
+/** WORKER → MAIN: the worker drew its FIRST frame successfully (B-5 / #247). One-
+ *  shot liveness signal: `FallbackVizRenderer` waits for this to mark the worker
+ *  healthy; an error or a mount timeout BEFORE it triggers the main-thread
+ *  fallback (a worker that throws or hangs at startup = blank viz without this). */
+interface WorkerReadyMessage {
+    type: 'ready';
+}
 
-export { type DestroyMessage, type MountMessage, type PauseMessage, type ResizeMessage, type ResumeMessage, type WorkerControlMessage, type WorkerDiagMessage, hostP5Worker };
+export { type DestroyMessage, type MountMessage, type PauseMessage, type ResizeMessage, type ResumeMessage, type WorkerControlMessage, type WorkerDiagMessage, type WorkerReadyMessage, hostP5Worker, hostVizWorker };

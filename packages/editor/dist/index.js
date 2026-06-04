@@ -5094,6 +5094,87 @@ function meanSlice(arr, from, to) {
 }
 __name(meanSlice, "meanSlice");
 
+// src/visualizers/renderers/hydraStaveBag.ts
+function buildHydraStaveBag(bus) {
+  const soundThunks = /* @__PURE__ */ __name((sound) => {
+    const t = {
+      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color"),
+      rms: /* @__PURE__ */ __name(() => bus.sound(sound).rms, "rms"),
+      bass: /* @__PURE__ */ __name(() => bus.sound(sound).bass, "bass"),
+      mid: /* @__PURE__ */ __name(() => bus.sound(sound).mid, "mid"),
+      treble: /* @__PURE__ */ __name(() => bus.sound(sound).treble, "treble")
+    };
+    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.sound(sound).fft, "get"), enumerable: true });
+    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
+    return t;
+  }, "soundThunks");
+  const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
+  u.track = (id) => {
+    const t = {
+      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color"),
+      rms: /* @__PURE__ */ __name(() => bus.track(id).rms, "rms"),
+      bass: /* @__PURE__ */ __name(() => bus.track(id).bass, "bass"),
+      mid: /* @__PURE__ */ __name(() => bus.track(id).mid, "mid"),
+      treble: /* @__PURE__ */ __name(() => bus.track(id).treble, "treble")
+    };
+    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.track(id).fft, "get"), enumerable: true });
+    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
+    return t;
+  };
+  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  u.rms = () => bus.master().rms;
+  u.bass = () => bus.master().bass;
+  u.mid = () => bus.master().mid;
+  u.treble = () => bus.master().treble;
+  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  const bag = {
+    scheduler: null,
+    tracks: /* @__PURE__ */ new Map(),
+    uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
+    uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
+    uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
+    uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
+    uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
+    uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
+    uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
+    uKeyVelocity: /* @__PURE__ */ __name(() => {
+      let max = 0;
+      for (const s of bus.sounds) {
+        const v = bus.sound(s).velocity;
+        if (v > max) max = v;
+      }
+      return max;
+    }, "uKeyVelocity"),
+    uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
+    uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
+    uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
+    uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
+    u,
+    H: /* @__PURE__ */ __name((trackId, field = "gain") => {
+      return () => {
+        const sched = bag.tracks.get(trackId) ?? bag.scheduler;
+        if (!sched) return 0;
+        const now2 = sched.now();
+        const events = sched.query(now2, now2 + 1e-3);
+        const ev = events[0];
+        if (!ev) return 0;
+        const raw = ev[field];
+        return typeof raw === "number" ? raw : 0;
+      };
+    }, "H")
+  };
+  return bag;
+}
+__name(buildHydraStaveBag, "buildHydraStaveBag");
+
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
 var monacoNs = null;
@@ -5751,89 +5832,7 @@ var _HydraVizRenderer = class _HydraVizRenderer {
       }
       this.rafId = requestAnimationFrame(this.pumpAudio);
     }, "pumpAudio");
-    const bus = this.bus;
-    const soundThunks = /* @__PURE__ */ __name((sound) => {
-      const t = {
-        env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
-        velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
-        note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
-        color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color"),
-        rms: /* @__PURE__ */ __name(() => bus.sound(sound).rms, "rms"),
-        bass: /* @__PURE__ */ __name(() => bus.sound(sound).bass, "bass"),
-        mid: /* @__PURE__ */ __name(() => bus.sound(sound).mid, "mid"),
-        treble: /* @__PURE__ */ __name(() => bus.sound(sound).treble, "treble")
-      };
-      Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.sound(sound).fft, "get"), enumerable: true });
-      Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
-      return t;
-    }, "soundThunks");
-    const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
-    u.track = (id) => {
-      const t = {
-        env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
-        velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
-        note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
-        color: /* @__PURE__ */ __name(() => bus.track(id).color, "color"),
-        rms: /* @__PURE__ */ __name(() => bus.track(id).rms, "rms"),
-        bass: /* @__PURE__ */ __name(() => bus.track(id).bass, "bass"),
-        mid: /* @__PURE__ */ __name(() => bus.track(id).mid, "mid"),
-        treble: /* @__PURE__ */ __name(() => bus.track(id).treble, "treble")
-      };
-      Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.track(id).fft, "get"), enumerable: true });
-      Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
-      return t;
-    };
-    Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-    Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-    u.rms = () => bus.master().rms;
-    u.bass = () => bus.master().bass;
-    u.mid = () => bus.master().mid;
-    u.treble = () => bus.master().treble;
-    Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-    Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-    const bag = {
-      scheduler: null,
-      tracks: /* @__PURE__ */ new Map(),
-      // ── Named signal thunks (D-01 hydra shape — `() => number`) ──────────
-      uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
-      uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
-      uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
-      uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
-      uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
-      uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
-      uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
-      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — it is the
-      // active event's velocity globally. Read the max velocity over every
-      // sound seen this frame; 0 when nothing is active.
-      uKeyVelocity: /* @__PURE__ */ __name(() => {
-        let max = 0;
-        for (const s of bus.sounds) {
-          const v = bus.sound(s).velocity;
-          if (v > max) max = v;
-        }
-        return max;
-      }, "uKeyVelocity"),
-      // Master-mix DSP sugar (Slice 2) — bare thunks mirroring uKick, reading
-      // `bus.master()` fresh each call. Parity with uKick/uSnare for audio.
-      uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
-      uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
-      uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
-      uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
-      u,
-      H: /* @__PURE__ */ __name((trackId, field = "gain") => {
-        return () => {
-          const sched = bag.tracks.get(trackId) ?? bag.scheduler;
-          if (!sched) return 0;
-          const now2 = sched.now();
-          const events = sched.query(now2, now2 + 1e-3);
-          const ev = events[0];
-          if (!ev) return 0;
-          const raw = ev[field];
-          return typeof raw === "number" ? raw : 0;
-        };
-      }, "H")
-    };
-    this.staveBag = bag;
+    this.staveBag = buildHydraStaveBag(this.bus);
   }
   mount(container, components, size, onError) {
     perf.gauge("viz.hydra", 1);
@@ -6624,8 +6623,8 @@ __name(getVizWorkerFactory, "getVizWorkerFactory");
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
 var _WorkerVizRenderer = class _WorkerVizRenderer {
-  /** @param kind renderer kind (`'p5'` for B-3). @param code raw sketch source.
-   *  @param name workspace path (error attribution). */
+  /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
+   *  sketch source. @param name workspace path (error attribution). */
   constructor(kind, code, name) {
     this.kind = kind;
     this.code = code;
@@ -6639,6 +6638,19 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     this.onError = null;
     this.perfId = `worker#${++workerPerfSeq}`;
     this.diagHandler = null;
+    /** The presenting <canvas> this renderer appended (transferred to the worker).
+     *  Tracked so destroy() removes it — else a fallback to the main-thread renderer
+     *  would leave a dead, frozen canvas behind it (#247). */
+    this.canvasEl = null;
+    /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
+     *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
+    this.onReady = null;
+  }
+  /** Register a callback fired once when the worker reports its first successful
+   *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
+   *  must be set BEFORE `mount`. */
+  whenReady(cb) {
+    this.onReady = cb;
   }
   mount(container, components, size, onError) {
     this.onError = onError;
@@ -6658,13 +6670,19 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       canvas.width = Math.max(1, Math.round(size.w * dpr));
       canvas.height = Math.max(1, Math.round(size.h * dpr));
       container.appendChild(canvas);
+      this.canvasEl = canvas;
       const offscreen = canvas.transferControlToOffscreen();
       const worker = make();
       this.worker = worker;
       this.writer = createPostMessageWriter(worker);
       this.diagHandler = (ev) => {
         const d = ev.data;
-        if (!d || d.type !== "diag") return;
+        if (!d) return;
+        if (d.type === "ready") {
+          this.onReady?.();
+          return;
+        }
+        if (d.type !== "diag") return;
         if (d.level === "error") {
           console.error(`[viz worker ${this.name}] ${d.message}`, d.stack ? `
 ${d.stack}` : "");
@@ -6731,6 +6749,11 @@ ${d.stack}` : "");
     }
     this.writer = null;
     this.sampler.dispose();
+    try {
+      this.canvasEl?.remove();
+    } catch {
+    }
+    this.canvasEl = null;
   }
   /** Bind the sampler's live inputs from the component bag (mirror P5VizRenderer:
    *  scheduler + per-track schedulers, master + per-track analysers, hap stream). */
@@ -6768,6 +6791,98 @@ ${d.stack}` : "");
 };
 __name(_WorkerVizRenderer, "WorkerVizRenderer");
 var WorkerVizRenderer = _WorkerVizRenderer;
+
+// src/visualizers/renderers/FallbackVizRenderer.ts
+var PROBATION_MS = 8e3;
+var _FallbackVizRenderer = class _FallbackVizRenderer {
+  constructor(makeWorker, makeMain) {
+    this.makeMain = makeMain;
+    this.fellBack = false;
+    this.ready = false;
+    this.probationTimer = null;
+    // Captured at mount so the fallback can re-mount the main renderer identically.
+    this.container = null;
+    this.components = {};
+    this.size = { w: 400, h: 300 };
+    this.hostOnError = null;
+    this.worker = makeWorker();
+    this.active = this.worker;
+  }
+  mount(container, components, size, onError) {
+    this.container = container;
+    this.components = components;
+    this.size = { w: size.w, h: size.h };
+    this.hostOnError = onError;
+    this.worker.whenReady(() => {
+      this.ready = true;
+      this.clearProbation();
+    });
+    this.probationTimer = setTimeout(() => {
+      if (!this.ready && !this.fellBack) {
+        this.fallback(new Error("worker viz did not produce a frame within probation"));
+      }
+    }, PROBATION_MS);
+    this.worker.mount(container, components, size, (e) => this.onWorkerError(e));
+  }
+  onWorkerError(e) {
+    if (!this.fellBack && !this.ready) {
+      this.fallback(e);
+    } else {
+      this.hostOnError?.(e);
+    }
+  }
+  fallback(reason) {
+    if (this.fellBack) return;
+    this.fellBack = true;
+    this.clearProbation();
+    console.warn(
+      `[viz] worker renderer failed (${reason.message}) \u2014 falling back to the main thread`
+    );
+    try {
+      this.worker.destroy();
+    } catch {
+    }
+    this.active = this.makeMain();
+    if (!this.container) return;
+    try {
+      this.active.mount(
+        this.container,
+        this.components,
+        this.size,
+        this.hostOnError ?? (() => {
+        })
+      );
+    } catch (e) {
+      this.hostOnError?.(e);
+    }
+  }
+  update(components) {
+    this.components = components;
+    this.active.update(components);
+  }
+  resize(w, h) {
+    this.size = { w, h };
+    this.active.resize(w, h);
+  }
+  pause() {
+    this.active.pause();
+  }
+  resume() {
+    this.active.resume();
+  }
+  destroy() {
+    this.clearProbation();
+    this.active.destroy();
+  }
+  clearProbation() {
+    if (this.probationTimer !== null) {
+      clearTimeout(this.probationTimer);
+      this.probationTimer = null;
+    }
+  }
+};
+__name(_FallbackVizRenderer, "FallbackVizRenderer");
+var FallbackVizRenderer = _FallbackVizRenderer;
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
@@ -11405,9 +11520,15 @@ function detectWorkerVizCapabilities(env = globalThis) {
 __name(detectWorkerVizCapabilities, "detectWorkerVizCapabilities");
 
 // src/visualizers/renderers/makeP5Renderer.ts
+function shouldUseWorkerRenderer() {
+  return getVizConfig().workerRenderer && getVizWorkerFactory() !== null && detectWorkerVizCapabilities().transport !== "main-thread";
+}
+__name(shouldUseWorkerRenderer, "shouldUseWorkerRenderer");
 function makeP5Renderer(code, name) {
-  const useWorker = getVizConfig().workerRenderer && getVizWorkerFactory() !== null && detectWorkerVizCapabilities().transport !== "main-thread";
-  return useWorker ? new WorkerVizRenderer("p5", code, name) : new P5VizRenderer(compileP5Code(code, name));
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("p5", code, name),
+    () => new P5VizRenderer(compileP5Code(code, name))
+  ) : new P5VizRenderer(compileP5Code(code, name));
 }
 __name(makeP5Renderer, "makeP5Renderer");
 
@@ -25469,6 +25590,15 @@ function getHydraLineOffset() {
 }
 __name(getHydraLineOffset, "getHydraLineOffset");
 
+// src/visualizers/renderers/makeHydraRenderer.ts
+function makeHydraRenderer(code, name) {
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("hydra", code, name),
+    () => new HydraVizRenderer(compileHydraCode(code))
+  ) : new HydraVizRenderer(compileHydraCode(code));
+}
+__name(makeHydraRenderer, "makeHydraRenderer");
+
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
   const { id, name, renderer, code, requires } = preset;
@@ -25479,7 +25609,11 @@ function compilePreset(preset) {
       renderer: "hydra",
       requires,
       ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
-      factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(compileHydraCode(code)), "factory")
+      // B-5: `makeHydraRenderer` returns a worker-offloaded renderer (with
+      // main-thread fallback) when the flag is on + the browser is capable, else
+      // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
+      // string, so it can cross to the worker (built-in hydra closures can't yet).
+      factory: /* @__PURE__ */ __name(() => makeHydraRenderer(code, name), "factory")
     };
   }
   if (renderer === "p5") {

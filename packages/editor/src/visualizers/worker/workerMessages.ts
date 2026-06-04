@@ -7,11 +7,12 @@
  * So each side ignores the other's messages by checking for `.type`.
  */
 
-/** MAIN → WORKER: create the p5 instance against a transferred OffscreenCanvas. */
+/** MAIN → WORKER: create the renderer instance against a transferred OffscreenCanvas. */
 export interface MountMessage {
   type: 'mount'
-  /** Renderer kind — `'p5'` for B-3 (hydra arrives in B-5). */
-  kind: 'p5'
+  /** Renderer kind — `'p5'` (B-3) or `'hydra'` (B-5). The host installs the
+   *  matching DOM shim + imports the matching library + drives the matching draw. */
+  kind: 'p5' | 'hydra'
   /** The sketch source (a transferable string, compiled in-worker — PLAN §7.3). */
   code: string
   /** Source label for error attribution (the workspace path). */
@@ -64,6 +65,14 @@ export interface WorkerDiagMessage {
   message: string
   /** Optional stack (first frames) for an error. */
   stack?: string
+}
+
+/** WORKER → MAIN: the worker drew its FIRST frame successfully (B-5 / #247). One-
+ *  shot liveness signal: `FallbackVizRenderer` waits for this to mark the worker
+ *  healthy; an error or a mount timeout BEFORE it triggers the main-thread
+ *  fallback (a worker that throws or hangs at startup = blank viz without this). */
+export interface WorkerReadyMessage {
+  type: 'ready'
 }
 
 /** Structural guard — is this a control message (has a string `type`) rather than
