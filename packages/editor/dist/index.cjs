@@ -24468,6 +24468,261 @@ function detectWorkerVizCapabilities(env = globalThis) {
 }
 __name(detectWorkerVizCapabilities, "detectWorkerVizCapabilities");
 
+// src/visualizers/worker/signalFrame.ts
+var MASTER_KEY = "master";
+function frameTransferables(frame) {
+  const out = [];
+  for (const a of frame.analysers) {
+    const fb = a.freq.buffer;
+    if (fb instanceof ArrayBuffer && a.freq.byteOffset === 0 && fb.byteLength === a.freq.byteLength) {
+      out.push(fb);
+    }
+    const tb = a.time.buffer;
+    if (tb instanceof ArrayBuffer && a.time.byteOffset === 0 && tb.byteLength === a.time.byteLength) {
+      out.push(tb);
+    }
+  }
+  return out;
+}
+__name(frameTransferables, "frameTransferables");
+function emptyFrame(seq = 0) {
+  return {
+    seq,
+    now: 0,
+    analysers: [],
+    activeEvents: [],
+    activeByTrack: [],
+    bumps: []
+  };
+}
+__name(emptyFrame, "emptyFrame");
+
+// src/visualizers/worker/signalSampler.ts
+var EPSILON2 = 1e-3;
+function summariseEvent(e) {
+  return { s: e.s, velocity: e.velocity, note: e.note, color: e.color };
+}
+__name(summariseEvent, "summariseEvent");
+function readAnalyserBytes(key, an) {
+  const n = an.frequencyBinCount | 0;
+  if (n <= 0) return null;
+  const freq = new Uint8Array(n);
+  const time = new Uint8Array(n);
+  an.getByteFrequencyData(freq);
+  an.getByteTimeDomainData(time);
+  return { key, frequencyBinCount: n, freq, time };
+}
+__name(readAnalyserBytes, "readAnalyserBytes");
+var _MainSignalSampler = class _MainSignalSampler {
+  constructor() {
+    this.inputs = {};
+    this.seq = 0;
+    /** Haps accumulated since the last `sample()` (the envelope feed). */
+    this.pendingBumps = [];
+    this.boundStream = null;
+    this.hapHandler = /* @__PURE__ */ __name((e) => {
+      this.pendingBumps.push({
+        s: e.s ?? null,
+        color: e.color ?? null,
+        gain: e.hap?.value?.gain ?? 1
+      });
+    }, "hapHandler");
+  }
+  /** Rebind the live inputs (mirror the renderer's in-place rebind on
+   *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
+  bind(inputs) {
+    this.inputs = inputs;
+  }
+  /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
+   *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
+   *  P5VizRenderer.update). A partial stream (no `.on`) degrades to no feed. */
+  bindHapStream(stream) {
+    if (stream === this.boundStream) return;
+    if (this.boundStream && typeof this.boundStream.off === "function") {
+      this.boundStream.off(this.hapHandler);
+    }
+    this.boundStream = null;
+    this.pendingBumps = [];
+    if (stream && typeof stream.on === "function") {
+      stream.on(this.hapHandler);
+      this.boundStream = stream;
+    }
+  }
+  /** Produce one frame from the current inputs + the haps since the last call.
+   *  Drains the pending bumps (so each hap ships exactly once). */
+  sample() {
+    const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } = this.inputs;
+    const seq = ++this.seq;
+    const now2 = scheduler ? scheduler.now() : 0;
+    const begin = now2;
+    const end = now2 + EPSILON2;
+    const activeEvents = scheduler ? scheduler.query(begin, end).map(summariseEvent) : [];
+    const activeByTrack = [];
+    if (trackSchedulers) {
+      for (const [key, sched] of trackSchedulers) {
+        activeByTrack.push([key, sched.query(begin, end).map(summariseEvent)]);
+      }
+    }
+    const analysers = [];
+    if (masterAnalyser) {
+      const b = readAnalyserBytes(MASTER_KEY, masterAnalyser);
+      if (b) analysers.push(b);
+    }
+    if (trackAnalysers) {
+      for (const [key, an] of trackAnalysers) {
+        const b = readAnalyserBytes(key, an);
+        if (b) analysers.push(b);
+      }
+    }
+    const bumps = this.pendingBumps;
+    this.pendingBumps = [];
+    return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps };
+  }
+  /** Unsubscribe + reset (renderer destroy). */
+  dispose() {
+    if (this.boundStream && typeof this.boundStream.off === "function") {
+      this.boundStream.off(this.hapHandler);
+    }
+    this.boundStream = null;
+    this.pendingBumps = [];
+    this.inputs = {};
+  }
+  /** The next seq an `emptyFrame` should carry (test/demo helper). */
+  emptyFrame() {
+    return emptyFrame(++this.seq);
+  }
+};
+__name(_MainSignalSampler, "MainSignalSampler");
+var MainSignalSampler = _MainSignalSampler;
+
+// src/visualizers/worker/workerBusFeed.ts
+var _FrameAnalyser = class _FrameAnalyser {
+  constructor() {
+    this.frequencyBinCount = 0;
+    this.freq = new Uint8Array(0);
+    this.time = new Uint8Array(0);
+  }
+  /** Adopt this frame's bytes (copy in — the source buffers may be transferred
+   *  away / reused by the transport after the frame is consumed). */
+  set(frequencyBinCount, freq, time) {
+    this.frequencyBinCount = frequencyBinCount;
+    if (this.freq.length !== freq.length) this.freq = new Uint8Array(freq.length);
+    if (this.time.length !== time.length) this.time = new Uint8Array(time.length);
+    this.freq.set(freq);
+    this.time.set(time);
+  }
+  getByteFrequencyData(arr) {
+    arr.set(this.freq.subarray(0, arr.length));
+  }
+  getByteTimeDomainData(arr) {
+    arr.set(this.time.subarray(0, arr.length));
+  }
+};
+__name(_FrameAnalyser, "FrameAnalyser");
+var FrameAnalyser = _FrameAnalyser;
+function makeSchedulerStub(now2, events) {
+  const widened = events;
+  return {
+    now: /* @__PURE__ */ __name(() => now2, "now"),
+    query: /* @__PURE__ */ __name(() => widened, "query")
+  };
+}
+__name(makeSchedulerStub, "makeSchedulerStub");
+var _WorkerBusFeed = class _WorkerBusFeed {
+  constructor(aliasMap = ALIAS_MAP) {
+    /** Stable analyser stubs by key (`'master'` + track keys). */
+    this.analysers = /* @__PURE__ */ new Map();
+    this.lastSeq = -1;
+    this.bus = new SignalBus(aliasMap);
+  }
+  /** Push the merged alias map (the renderer reads impure settings on main and
+   *  ships the map; the worker bus stays pure — mirrors P5VizRenderer). */
+  setAliases(map) {
+    this.bus.setAliases(map);
+  }
+  /**
+   * Apply one frame: rebuild the bus's inputs from `frame`, replay bumps, then
+   * run the per-frame sequence. Idempotent on a duplicate/stale `seq` (no-op) so
+   * a dropped or repeated transport frame can't double-decay the envelope.
+   * Returns `true` if the frame advanced state, `false` if skipped as stale.
+   */
+  applyFrame(frame) {
+    if (frame.seq <= this.lastSeq) return false;
+    this.lastSeq = frame.seq;
+    let master = null;
+    const trackAnalysers = /* @__PURE__ */ new Map();
+    const present = /* @__PURE__ */ new Set();
+    for (const a of frame.analysers) {
+      present.add(a.key);
+      let stub = this.analysers.get(a.key);
+      if (!stub) {
+        stub = new FrameAnalyser();
+        this.analysers.set(a.key, stub);
+      }
+      stub.set(a.frequencyBinCount, a.freq, a.time);
+      if (a.key === MASTER_KEY) master = stub;
+      else trackAnalysers.set(a.key, stub);
+    }
+    for (const key of [...this.analysers.keys()]) {
+      if (!present.has(key)) this.analysers.delete(key);
+    }
+    const scheduler = makeSchedulerStub(frame.now, frame.activeEvents);
+    const trackSchedulers = /* @__PURE__ */ new Map();
+    for (const [key, events] of frame.activeByTrack) {
+      trackSchedulers.set(key, makeSchedulerStub(frame.now, events));
+    }
+    this.bus.bindScheduler(scheduler, trackSchedulers);
+    this.bus.bindAnalysers(master, trackAnalysers);
+    for (const b of frame.bumps) {
+      this.bus.bump({ s: b.s, color: b.color, hap: { value: { gain: b.gain } } });
+    }
+    this.bus.tick();
+    this.bus.refreshActive(frame.now);
+    this.bus.readAudio();
+    return true;
+  }
+};
+__name(_WorkerBusFeed, "WorkerBusFeed");
+var WorkerBusFeed = _WorkerBusFeed;
+
+// src/visualizers/worker/signalTransport.ts
+var SIGNAL_FRAME_TAG = "__staveSignalFrame";
+function isFrameEnvelope(data) {
+  return typeof data === "object" && data !== null && data[SIGNAL_FRAME_TAG] === true;
+}
+__name(isFrameEnvelope, "isFrameEnvelope");
+function createPostMessageWriter(channel) {
+  let disposed = false;
+  return {
+    writeFrame(frame) {
+      if (disposed) return;
+      const envelope = { [SIGNAL_FRAME_TAG]: true, frame };
+      channel.postMessage(envelope, frameTransferables(frame));
+    },
+    dispose() {
+      disposed = true;
+    }
+  };
+}
+__name(createPostMessageWriter, "createPostMessageWriter");
+function createPostMessageReader(channel) {
+  let consumer = null;
+  const handler = /* @__PURE__ */ __name((ev) => {
+    if (consumer && isFrameEnvelope(ev.data)) consumer(ev.data.frame);
+  }, "handler");
+  channel.addEventListener("message", handler);
+  return {
+    onFrame(cb) {
+      consumer = cb;
+    },
+    dispose() {
+      consumer = null;
+      channel.removeEventListener("message", handler);
+    }
+  };
+}
+__name(createPostMessageReader, "createPostMessageReader");
+
 // src/visualizers/mountVizRenderer.ts
 function mountVizRenderer(container, source, components, size, onError) {
   const renderer = typeof source === "function" ? source() : source;
@@ -26942,6 +27197,8 @@ exports.LIGHT_THEME_TOKENS = LIGHT_THEME_TOKENS;
 exports.LiveCodingEditor = LiveCodingEditor;
 exports.LiveCodingRuntime = LiveCodingRuntime;
 exports.LiveRecorder = LiveRecorder;
+exports.MASTER_KEY = MASTER_KEY;
+exports.MainSignalSampler = MainSignalSampler;
 exports.OfflineRenderer = OfflineRenderer;
 exports.P5VizRenderer = P5VizRenderer;
 exports.P5_DOCS_INDEX = P5_DOCS_INDEX;
@@ -26978,6 +27235,7 @@ exports.VizPicker = VizPicker;
 exports.VizPresetStore = VizPresetStore;
 exports.WORDFALL_P5_CODE = WORDFALL_P5_CODE;
 exports.WavEncoder = WavEncoder;
+exports.WorkerBusFeed = WorkerBusFeed;
 exports.WorkspaceShell = WorkspaceShell;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;
 exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
@@ -27003,6 +27261,8 @@ exports.collectCycles = collectCycles;
 exports.commitWorkspace = commitWorkspace;
 exports.compilePreset = compilePreset;
 exports.createBranchAt = createBranchAt;
+exports.createPostMessageReader = createPostMessageReader;
+exports.createPostMessageWriter = createPostMessageWriter;
 exports.createProject = createProject;
 exports.createVizConfig = createVizConfig;
 exports.createWorkspaceFile = createWorkspaceFile;
@@ -27014,6 +27274,7 @@ exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
 exports.duplicateProject = duplicateProject;
 exports.emitFixed = emitFixed;
 exports.emitLog = emitLog;
+exports.emptyFrame = emptyFrame;
 exports.enterRuntimeView = enterRuntimeView;
 exports.exitRuntimeView = exitRuntimeView;
 exports.extractReferenceIdentifier = extractReferenceIdentifier;
@@ -27021,6 +27282,7 @@ exports.fileHistory = fileHistory;
 exports.filter = filter;
 exports.flushToPreset = flushToPreset;
 exports.formatFriendlyError = formatFriendlyError;
+exports.frameTransferables = frameTransferables;
 exports.fuzzyMatch = fuzzyMatch;
 exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveHistoryFile = getActiveHistoryFile;
