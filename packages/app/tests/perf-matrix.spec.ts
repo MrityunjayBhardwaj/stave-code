@@ -228,6 +228,13 @@ interface Row {
   maxP95: number
   totalDrops: number
   busP95: number
+  /** Worker per-frame main cost, decomposed (B-4 gate #249): `sample()` =
+   *  analyser reads + wide scheduler query (duplicated work; shared sampler
+   *  removes the N×). Only present in the VIZ_WORKER=1 run. */
+  wkSampleP95: number
+  /** Worker `writeFrame()` = transport (envelope clone + postMessage; bytes
+   *  already transferred). The slice SAB removes. */
+  wkWriteP95: number
   longtasks: number
   longtaskMax: number
   triggersPerSec: number
@@ -247,6 +254,8 @@ async function measure(page: Page, scenario: string): Promise<Row> {
   const drops = frameIds.reduce((a, id) => a + snap.frames[id].drops, 0)
   const busSections = Object.keys(snap.sections).filter((n) => n.endsWith('.bus'))
   const busP95 = busSections.reduce((m, n) => Math.max(m, snap.sections[n].p95), 0)
+  const wkSampleP95 = snap.sections['viz.worker.sample']?.p95 ?? 0
+  const wkWriteP95 = snap.sections['viz.worker.write']?.p95 ?? 0
   const triggers = snap.counters['audio.triggers'] ?? 0
 
   return {
@@ -257,6 +266,8 @@ async function measure(page: Page, scenario: string): Promise<Row> {
     maxP95: p95List.length ? Math.max(...p95List) : 0,
     totalDrops: drops,
     busP95,
+    wkSampleP95,
+    wkWriteP95,
     longtasks: snap.longtasks.count,
     longtaskMax: snap.longtasks.maxMs,
     triggersPerSec: snap.uptimeMs > 0 ? (triggers / snap.uptimeMs) * 1000 : 0,
@@ -318,8 +329,12 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     await play(page, AUDIO)
     rows.push(await measure(page, 'audio-only'))
 
-    // 3-5. audio + N inline WEBGL terrains
-    for (const n of [1, 2, 4]) {
+    // 3-7. audio + N inline WEBGL terrains. SCALE rungs (6, 8) added for the B-4
+    // gate (#249): the per-viz main cost (sample vs write) only separates as N
+    // grows — inline-4 wasn't enough to attribute the cost. Each rung is one
+    // more independent sampler+rAF reading the SAME master analyser, so the
+    // delta between rungs IS the per-viz main cost (duplicated work + transport).
+    for (const n of [1, 2, 4, 6, 8]) {
       await play(page, [AUDIO, ...Array(n).fill(vizLine)].join('\n'))
       rows.push(await measure(page, `inline-${n}`))
     }
@@ -343,13 +358,15 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     // eslint-disable-next-line no-console
     console.log(
       pad('scenario', 18) + pad('viz', 5) + pad('minFps', 8) + pad('frameP95ms', 12) +
-        pad('drops', 7) + pad('busP95ms', 10) + pad('longtask(n/max)', 18) + 'trig/s',
+        pad('drops', 7) + pad('busP95ms', 10) + pad('wkSampleP95', 13) + pad('wkWriteP95', 12) +
+        pad('longtask(n/max)', 18) + 'trig/s',
     )
     for (const r of rows) {
       // eslint-disable-next-line no-console
       console.log(
         pad(r.scenario, 18) + pad(r.vizGauge, 5) + pad(fix(r.minFps), 8) +
           pad(fix(r.maxP95), 12) + pad(r.totalDrops, 7) + pad(fix(r.busP95, 2), 10) +
+          pad(fix(r.wkSampleP95, 3), 13) + pad(fix(r.wkWriteP95, 3), 12) +
           pad(`${r.longtasks} / ${fix(r.longtaskMax)}`, 18) + fix(r.triggersPerSec),
       )
     }
@@ -357,7 +374,8 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     console.log('=== end matrix ===\n')
 
     // STRUCTURE assertions — data was produced, not env thresholds.
-    expect(rows.length).toBe(7)
+    // idle + audio-only + inline-{1,2,4,6,8} + backdrop-1 + mix = 9 rungs.
+    expect(rows.length).toBe(9)
     const audioOnly = rows.find((r) => r.scenario === 'audio-only')!
     expect(audioOnly.triggersPerSec).toBeGreaterThan(0) // scheduler running
     const inline4 = rows.find((r) => r.scenario === 'inline-4')!

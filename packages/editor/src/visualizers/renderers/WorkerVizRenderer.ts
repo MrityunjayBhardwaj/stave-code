@@ -202,10 +202,17 @@ export class WorkerVizRenderer implements VizRenderer {
     const tick = (): void => {
       if (!this.running || !this.writer) return
       perf.frame(this.perfId)
+      // Decompose the per-frame main cost into its two parts so the matrix can
+      // attribute it (B-4 decision gate, #249): `sample` = analyser reads + the
+      // wide scheduler query (duplicated work, only a SHARED sampler removes the
+      // N×); `write` = transport (envelope structured-clone + postMessage —
+      // bytes already transferred zero-copy; this is the slice SAB removes).
       perf.begin('viz.worker.sample')
       const frame = this.sampler.sample()
-      this.writer.writeFrame(frame)
       perf.end('viz.worker.sample')
+      perf.begin('viz.worker.write')
+      this.writer.writeFrame(frame)
+      perf.end('viz.worker.write')
       this.rafId = requestAnimationFrame(tick)
     }
     this.rafId = requestAnimationFrame(tick)
