@@ -60,14 +60,50 @@ one fresh OffscreenCanvas per canvas element, each augmented in place with DOM p
 pnpm --filter @stave/app exec playwright test b0-worker-spike.spec.ts --reporter=line
 ```
 
-## Not yet proven (Phase B pre-flight, not the fork)
+---
 
-- **Direct render into the *transferred* canvas** (on-screen): proven feasible in principle
-  (transferControlToOffscreen available; p5 renders into worker OffscreenCanvases fine) but the
-  spike reads back a worker-local canvas. Phase B wires the transferred canvas as p5's main
-  WEBGL surface (route it to the canvas whose `getContext` is `webgl2`).
-- **COOP/COEP for SharedArrayBuffer** (Q2): Next 16.2.1 supports `async headers()` in
-  `next.config.ts` (mechanism confirmed). Whether it breaks superdough/AudioWorklet/fonts/embeds
-  must be observed — make it the first Phase B task.
-- **hydra-synth in a worker** (Q3, fallback path): not spiked; lower priority now that the
-  primary (p5) path is YES.
+# Phase B pre-flight — Q2 + Q3 (issue #237)
+
+## Q3 — hydra-synth in a worker: **YES**
+
+`hydra-worker.js` (classic worker, `importScripts` the self-contained UMD bundle) renders an
+`osc().rotate().out()` into the **transferred** OffscreenCanvas — 12 ticks, full rainbow
+gradient, `nonBlank=2048/2048`. Driver: `tests/b-preflight-hydra.spec.ts`.
+
+**Confirmed the prediction: hydra needs a far smaller shim than p5 — only 2 conditions vs p5's 6:**
+1. install the shim **before** `importScripts` (hydra touches `window` at module-eval —
+   `mouseListen` adds a mousemove listener, hydra-synth.js:3926).
+2. `window = self` alias + a thin `document` + size props. That's it.
+
+No FES, no multi-canvas dance, no Proxy-vs-native issue — because hydra takes the canvas
+**explicitly** (`new Hydra({ canvas })`, hydra-synth.js:235 `if (canvas) this.canvas = canvas`)
+and `makeGlobal/autoLoop/detectAudio/enableStreamCapture = false` strip the rest. Note hydra
+rendered **directly into the transferred canvas** (the real on-screen path), unlike the p5 spike
+which read back a worker-local surface.
+
+## Q2 — COOP/COEP for SharedArrayBuffer without breaking audio: **YES (with credentialless)**
+
+`next.config.ts` sets `COOP=same-origin` + `COEP=credentialless`. Observed
+(`tests/b-preflight-coep.spec.ts`, dev server restarted with the headers):
+`crossOriginIsolated=true`, `SharedArrayBuffer` allocatable, `audioContext.state=running`,
+`audio.triggers=15 (~4.3/s)`, **COEP-blocked requests = 0** (the strudel.cc sample packs still load).
+
+**Key: `credentialless`, NOT `require-corp`.** `require-corp` would block every cross-origin
+subresource lacking a CORP header — including the CDN sample packs — silencing drums.
+`credentialless` sends cross-origin no-cors requests without credentials but allows them, so
+isolation + samples coexist. ⇒ SAB is viable for Phase B's per-frame signal transport.
+
+### ⚠️ NOT yet tested under isolation (Phase B must check before performance→main)
+- **OAuth popups / `window.opener`.** COOP `same-origin` (required for `crossOriginIsolated`)
+  can break popup-based OAuth (`window.opener`/`postMessage`). The app has Google OAuth (PM
+  signup) — **untested here.** If it's a popup flow, COOP same-origin breaks it; a redirect flow
+  is fine. Verify; if it breaks, the SAB plan must reconcile with OAuth (or use a redirect flow).
+- **Fonts / embeds / images** from cross-origin origins — credentialless should be fine, but only
+  audio + samples were exercised.
+- **Browser support:** COEP `credentialless` is Chromium-only-ish (no Safari < 16.4). Phase B must
+  feature-detect `crossOriginIsolated` and **degrade to transferable-ArrayBuffer postMessage** when SAB is absent.
+
+## Still open for Phase B proper (not the forks)
+- **Direct render into the transferred canvas for p5** (hydra already proven): route the transferred
+  canvas to the surface whose `getContext` is `webgl2`.
+- **One shared worker vs a pool** — decide by the matrix (`trig/s` recovery + frameP95).
