@@ -1,4 +1,4 @@
-# Vendored p5 standalone ESM bundle (1MB) — NOT committed. The spike test
-# (tests/b0-worker-spike.spec.ts) copies it from
-# packages/editor/node_modules/p5/lib/p5.esm.min.js in beforeAll.
+# Vendored renderer bundles — NOT committed. The spike tests copy them from
+# packages/editor/node_modules/{p5,hydra-synth} in beforeAll.
 p5.esm.min.js
+hydra-synth.js
