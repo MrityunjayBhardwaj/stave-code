@@ -40,6 +40,7 @@ export class FallbackVizRenderer implements VizRenderer {
   private active: VizRenderer
   private fellBack = false
   private ready = false
+  private paused = false
   private probationTimer: ReturnType<typeof setTimeout> | null = null
 
   // Captured at mount so the fallback can re-mount the main renderer identically.
@@ -71,14 +72,22 @@ export class FallbackVizRenderer implements VizRenderer {
       this.ready = true
       this.clearProbation()
     })
+    // Don't arm probation if the viz mounted already paused (off-screen / hidden
+    // tab) — a paused worker won't frame, so the timer would fire a spurious
+    // fallback. resume() arms it then (Phase C, #258).
+    if (!this.paused) this.armProbation()
+
+    // Route the worker's errors through the probation gate.
+    this.worker.mount(container, components, size, (e) => this.onWorkerError(e))
+  }
+
+  private armProbation(): void {
+    if (this.ready || this.fellBack || this.probationTimer !== null) return
     this.probationTimer = setTimeout(() => {
       if (!this.ready && !this.fellBack) {
         this.fallback(new Error('worker viz did not produce a frame within probation'))
       }
     }, PROBATION_MS)
-
-    // Route the worker's errors through the probation gate.
-    this.worker.mount(container, components, size, (e) => this.onWorkerError(e))
   }
 
   private onWorkerError(e: Error): void {
@@ -112,6 +121,9 @@ export class FallbackVizRenderer implements VizRenderer {
         this.size,
         this.hostOnError ?? (() => {}),
       )
+      // If we fell back WHILE paused (off-screen), keep the new main renderer
+      // paused too — it must not start running just because the worker failed.
+      if (this.paused) this.active.pause()
     } catch (e) {
       this.hostOnError?.(e as Error)
     }
@@ -128,10 +140,18 @@ export class FallbackVizRenderer implements VizRenderer {
   }
 
   pause(): void {
+    this.paused = true
+    // Suspend probation while paused — the worker is intentionally not framing,
+    // so the timer must not fire a spurious fallback. resume() re-arms it.
+    if (!this.ready && !this.fellBack) this.clearProbation()
     this.active.pause()
   }
 
   resume(): void {
+    this.paused = false
+    // Re-arm probation if the worker still hasn't readied (it was paused before
+    // its first frame); a now-visible worker gets its fair probation window.
+    if (!this.ready && !this.fellBack) this.armProbation()
     this.active.resume()
   }
 

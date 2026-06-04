@@ -175,4 +175,73 @@ describe('FallbackVizRenderer — startup probation (#247)', () => {
     expect(main.updates).toBe(1)
     expect(main.resizes).toEqual([[800, 600]])
   })
+
+  // ── Phase C (#258): pausing an off-screen viz must not trip the probation
+  // timer into a spurious fallback while the worker is intentionally not framing.
+  it('pause before ready SUSPENDS probation → no spurious fallback on timer fire', () => {
+    const worker = new FakeWorkerRenderer()
+    const main = new FakeRenderer()
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => main,
+    )
+    fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
+
+    fb.pause() // scrolled off-screen before the worker readied
+    expect(worker.paused).toBe(true)
+    vi.advanceTimersByTime(20000) // well past PROBATION_MS — must NOT fall back
+    expect(main.mounted).toBe(false)
+    expect(worker.destroyed).toBe(false)
+  })
+
+  it('resume RE-ARMS probation → a still-stuck worker then falls back', () => {
+    const worker = new FakeWorkerRenderer()
+    const main = new FakeRenderer()
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => main,
+    )
+    fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
+    fb.pause()
+    vi.advanceTimersByTime(20000)
+    expect(main.mounted).toBe(false) // suspended
+
+    fb.resume() // back on-screen → probation re-armed
+    expect(worker.paused).toBe(false)
+    vi.advanceTimersByTime(8001) // still never frames
+    expect(worker.destroyed).toBe(true)
+    expect(main.mounted).toBe(true)
+  })
+
+  it('resume after ready does NOT re-arm probation (already healthy)', () => {
+    const worker = new FakeWorkerRenderer()
+    const main = new FakeRenderer()
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => main,
+    )
+    fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
+    worker.readyCb?.() // healthy
+    fb.pause()
+    fb.resume()
+    vi.advanceTimersByTime(20000)
+    expect(main.mounted).toBe(false) // no probation to re-arm
+    expect(worker.destroyed).toBe(false)
+  })
+
+  it('fallback that occurs WHILE paused leaves the main renderer paused', () => {
+    const worker = new FakeWorkerRenderer()
+    const main = new FakeRenderer()
+    const fb = new FallbackVizRenderer(
+      () => worker as unknown as WorkerVizRenderer,
+      () => main,
+    )
+    fb.mount(makeContainer(), {}, { w: 100, h: 100 }, vi.fn())
+    fb.pause()
+    // A pre-ready worker ERROR still falls back immediately (error ≠ stuck) —
+    // but the new main renderer must inherit the paused state, not start running.
+    worker.capturedOnError?.(new Error('import failed'))
+    expect(main.mounted).toBe(true)
+    expect(main.paused).toBe(true)
+  })
 })
