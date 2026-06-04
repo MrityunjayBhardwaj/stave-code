@@ -69,6 +69,26 @@ export { DEFAULT_VIZ_CONFIG, createVizConfig, getVizConfig, setVizConfig } from 
 // Phase B — worker-viz capability detection / transport degrade scaffold (B-1 #239)
 export { detectWorkerVizCapabilities } from './visualizers/worker/capabilities'
 export type { VizTransport, WorkerVizCapabilities, CapabilityEnv } from './visualizers/worker/capabilities'
+// Phase B — signal-transport substrate (B-2 #242): main sampler, worker feed, transport
+export { MainSignalSampler } from './visualizers/worker/signalSampler'
+export type { SamplerInputs } from './visualizers/worker/signalSampler'
+export { WorkerBusFeed } from './visualizers/worker/workerBusFeed'
+export {
+  createPostMessageWriter,
+  createPostMessageReader,
+} from './visualizers/worker/signalTransport'
+export type {
+  SignalTransportWriter,
+  SignalTransportReader,
+  FrameChannel,
+} from './visualizers/worker/signalTransport'
+export { MASTER_KEY, emptyFrame, frameTransferables } from './visualizers/worker/signalFrame'
+export type {
+  SignalFrame,
+  AnalyserBytes,
+  ActiveEventSummary,
+  BumpSummary,
+} from './visualizers/worker/signalFrame'
 
 // Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'
