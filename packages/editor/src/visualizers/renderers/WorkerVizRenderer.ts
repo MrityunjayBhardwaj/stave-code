@@ -100,6 +100,10 @@ export class WorkerVizRenderer implements VizRenderer {
         const d = ev.data as WorkerDiagMessage | undefined
         if (!d || d.type !== 'diag') return
         if (d.level === 'error') {
+          // Surface the WORKER-side stack (the throw site) — the forwarded Error
+          // only carries the message, so the worker stack would otherwise be lost.
+          // eslint-disable-next-line no-console
+          console.error(`[viz worker ${this.name}] ${d.message}`, d.stack ? `\n${d.stack}` : '')
           onError(new Error(`[viz worker ${this.name}] ${d.message}`))
         }
       }

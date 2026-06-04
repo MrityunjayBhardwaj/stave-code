@@ -4692,9 +4692,13 @@ var StrudelEngine = _StrudelEngine;
 var DEFAULT_VIZ_CONFIG = {
   // Resolver
   defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. OFF until the matrix gate
-  // is green (then flipped on, with the main-thread renderer kept as fallback).
-  workerRenderer: false,
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
   // Inline view zones
   inlineZoneHeight: 150,
   // Audio analysis
@@ -6662,6 +6666,8 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
         const d = ev.data;
         if (!d || d.type !== "diag") return;
         if (d.level === "error") {
+          console.error(`[viz worker ${this.name}] ${d.message}`, d.stack ? `
+${d.stack}` : "");
           onError(new Error(`[viz worker ${this.name}] ${d.message}`));
         }
       };

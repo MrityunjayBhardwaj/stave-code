@@ -199,17 +199,32 @@ function installWorkerDomShim(makeCanvasEl) {
   const docEl = makeElement("html");
   body.ownerDocument = doc;
   docEl.ownerDocument = doc;
+  docEl.lang = "en-US";
+  docEl.setAttribute("lang", "en-US");
   doc.body = body;
   doc.documentElement = docEl;
   doc.head = makeElement("head");
   doc.readyState = "complete";
+  doc.cookie = "";
+  const loc = self.location || {};
+  const location = {
+    href: loc.href ?? "about:blank",
+    search: loc.search ?? "",
+    hash: loc.hash ?? "",
+    pathname: loc.pathname ?? "/",
+    host: loc.host ?? "",
+    hostname: loc.hostname ?? "",
+    port: loc.port ?? "",
+    protocol: loc.protocol ?? "https:",
+    origin: loc.origin ?? "null"
+  };
   const win = {
     document: doc,
     devicePixelRatio: 1,
     innerWidth: 800,
     innerHeight: 600,
     screen: { width: 800, height: 600 },
-    location: { href: self.location ? self.location.href : "about:blank" },
+    location,
     navigator: self.navigator,
     addEventListener() {
     },

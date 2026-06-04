@@ -239,10 +239,36 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
   const docEl = makeElement('html')
   body.ownerDocument = doc
   docEl.ownerDocument = doc
+  // p5 v2 initialises an i18next FES at `import('p5')`, whose browser
+  // language-detector reads `document.documentElement.lang` (htmlTag detector) —
+  // a real <html> has one; without it the detector hits `.substring` on undefined
+  // and the whole p5 import throws. Provide a sane lang (both property + attr).
+  docEl.lang = 'en-US'
+  docEl.setAttribute('lang', 'en-US')
   doc.body = body
   doc.documentElement = docEl
   doc.head = makeElement('head')
   doc.readyState = 'complete'
+  // The same i18next detector reads `document.cookie` (cookie detector). A worker
+  // has no cookies — an empty string keeps the detector's split/parse safe.
+  doc.cookie = ''
+
+  // Build a FULL location — p5 v2's i18next FES language-detector runs the
+  // `querystring` detector FIRST: `window.location.search.substring(1)`. A bare
+  // `{ href }` leaves `.search` undefined → `.substring` throws → p5 import dies.
+  // Mirror the worker's own `self.location` fields (which include search/hash).
+  const loc = (self.location as Partial<Location>) || ({} as Partial<Location>)
+  const location = {
+    href: loc.href ?? 'about:blank',
+    search: loc.search ?? '',
+    hash: loc.hash ?? '',
+    pathname: loc.pathname ?? '/',
+    host: loc.host ?? '',
+    hostname: loc.hostname ?? '',
+    port: loc.port ?? '',
+    protocol: loc.protocol ?? 'https:',
+    origin: loc.origin ?? 'null',
+  }
 
   const win: any = {
     document: doc,
@@ -250,7 +276,7 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
     innerWidth: 800,
     innerHeight: 600,
     screen: { width: 800, height: 600 },
-    location: { href: self.location ? self.location.href : 'about:blank' },
+    location,
     navigator: self.navigator,
     addEventListener() {},
     removeEventListener() {},
