@@ -39,4 +39,32 @@ export function registerVizWorker(): void {
   } catch {
     /* localStorage may be unavailable (private mode) — ignore */
   }
+
+  installForceBrokenWorkerHook()
+}
+
+/**
+ * E2E-only observation hook — swap the worker factory for one whose worker
+ * ALWAYS fails before the first `ready` frame (it posts a `diag` error on mount).
+ * `WorkerVizRenderer` forwards that to `onError`, and because it's pre-`ready`,
+ * `FallbackVizRenderer` tears the worker down and mounts the main-thread renderer
+ * with the real sketch (PK23). Lets a test OBSERVE the runtime fallback in the
+ * real app, rather than only the unit-level trigger logic.
+ *
+ * Dead in production (statically-eliminated `NODE_ENV` guard) and gated on the
+ * `__STAVE_E2E__` runtime flag — mirrors the other `__stave*` E2E hooks.
+ */
+function installForceBrokenWorkerHook(): void {
+  if (typeof window === 'undefined') return
+  if (process.env.NODE_ENV === 'production') return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!(window as any).__STAVE_E2E__) return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).__staveForceBrokenVizWorker = (): boolean => {
+    const src =
+      "self.onmessage=function(){self.postMessage({type:'diag',level:'error',message:'forced E2E worker failure (pre-ready)'})}"
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))
+    setVizWorkerFactory(() => new Worker(url))
+    return true
+  }
 }
