@@ -11210,6 +11210,8 @@ function draw() {
   noStroke()
 }`;
 var SCOPE_P5_CODE = `// Stave p5 viz \u2014 Scope (oscilloscope / event pulses)
+// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().
+let _wave = null
 function setup() {
   createCanvas(stave.width, stave.height)
   noFill()
@@ -11220,7 +11222,8 @@ function draw() {
   line(0, height * 0.5, width, height * 0.5)
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
-    const data = new Float32Array(buf)
+    if (!_wave || _wave.length !== buf) _wave = new Float32Array(buf)
+    const data = _wave
     stave.analyser.getFloatTimeDomainData(data)
     let trig = 0
     for (let i = 1; i < buf; i++) { if (data[i-1] > 0 && data[i] <= 0) { trig = i; break } }
@@ -11242,6 +11245,8 @@ function draw() {
   }
 }`;
 var FSCOPE_P5_CODE = `// Stave p5 viz \u2014 Frequency Scope (FFT bars / note bars)
+// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().
+let _freq = null
 function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
@@ -11266,7 +11271,8 @@ function draw() {
   line(0, height * 0.75, width, height * 0.75); noStroke()
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
-    const data = new Float32Array(buf)
+    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)
+    const data = _freq
     stave.analyser.getFloatFrequencyData(data)
     fill('#75baff')
     const sw = width / buf
@@ -11295,6 +11301,8 @@ function draw() {
   }
 }`;
 var SPECTRUM_P5_CODE = `// Stave p5 viz \u2014 Spectrum (scrolling waterfall)
+// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().
+let _freq = null
 function setup() {
   createCanvas(stave.width, stave.height)
   pixelDensity(1); noStroke()
@@ -11317,7 +11325,8 @@ function draw() {
   const ctx = drawingContext
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
-    const data = new Float32Array(buf)
+    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)
+    const data = _freq
     stave.analyser.getFloatFrequencyData(data)
     const img = ctx.getImageData(0, 0, width, height)
     ctx.clearRect(0, 0, width, height)
