@@ -129,4 +129,54 @@ test.describe('B-5 hydra worker render observation', () => {
     const workerErrors = consoleErrors.filter((e) => /viz worker|OffscreenCanvas|hydra|worker/i.test(e))
     expect(workerErrors, `worker errors:\n${workerErrors.join('\n')}`).toEqual([])
   })
+
+  test('BUILT-IN hydra preset renders in a worker, no fallback (#252)', async ({ page }) => {
+    test.skip(!process.env.B5_OBS, 'manual observation — set B5_OBS=1')
+
+    const consoleErrors: string[] = []
+    const fallbackWarnings: string[] = []
+    page.on('console', (m) => {
+      const t = m.text()
+      if (m.type() === 'error') consoleErrors.push(t)
+      if (t.includes('falling back to the main thread')) fallbackWarnings.push(t)
+    })
+    page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`))
+
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_PERF__ = true
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+      try {
+        localStorage.setItem('stave.viz.worker', '1')
+      } catch {
+        /* ignore */
+      }
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 20000 })
+    await page.waitForTimeout(1500)
+
+    // No registration — kaleidoscope:hydra is a BUILT-IN descriptor, now routed
+    // through makeHydraRenderer (code-string, worker-capable) per #252.
+    await stop(page)
+    await setCode(page, `$: s("bd*4, ~ sd, hh*8").bank("RolandTR909").viz('kaleidoscope:hydra')`)
+    await run(page)
+    await page.waitForTimeout(1500)
+
+    const gauges = await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = (window as any).__stavePerf?.snapshot?.()
+      return s?.gauges ?? {}
+    })
+    // eslint-disable-next-line no-console
+    console.log(`[obs builtin] gauges = ${JSON.stringify(gauges)}`)
+    await page.screenshot({ path: 'test-results/b5-builtin-kaleid-worker.png' })
+
+    expect(gauges['viz.worker'] ?? 0, 'built-in hydra must mount in the worker').toBeGreaterThan(0)
+    expect(gauges['viz.hydra'] ?? 0, 'must NOT have fallen back to main-thread hydra').toBe(0)
+    expect(fallbackWarnings, `unexpected fallback:\n${fallbackWarnings.join('\n')}`).toEqual([])
+    const workerErrors = consoleErrors.filter((e) => /viz worker|OffscreenCanvas|hydra|worker/i.test(e))
+    expect(workerErrors, `worker errors:\n${workerErrors.join('\n')}`).toEqual([])
+  })
 })
