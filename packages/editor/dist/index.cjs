@@ -24434,6 +24434,40 @@ var _SonicPiEngine = class _SonicPiEngine {
 __name(_SonicPiEngine, "SonicPiEngine");
 var SonicPiEngine = _SonicPiEngine;
 
+// src/visualizers/worker/capabilities.ts
+function isFn(v) {
+  return typeof v === "function";
+}
+__name(isFn, "isFn");
+function detectWorkerVizCapabilities(env = globalThis) {
+  const crossOriginIsolated = env.crossOriginIsolated === true;
+  const hasOffscreenCanvas = isFn(env.OffscreenCanvas);
+  const hasSharedArrayBuffer = isFn(env.SharedArrayBuffer);
+  const hasWorker = isFn(env.Worker);
+  const canTransferControl = isFn(
+    env.HTMLCanvasElement?.prototype?.transferControlToOffscreen
+  );
+  const canUseWorker = hasWorker && hasOffscreenCanvas && canTransferControl;
+  let transport;
+  if (!canUseWorker) {
+    transport = "main-thread";
+  } else if (crossOriginIsolated && hasSharedArrayBuffer) {
+    transport = "sab";
+  } else {
+    transport = "postmessage";
+  }
+  return {
+    crossOriginIsolated,
+    hasOffscreenCanvas,
+    hasSharedArrayBuffer,
+    canTransferControl,
+    hasWorker,
+    canUseWorker,
+    transport
+  };
+}
+__name(detectWorkerVizCapabilities, "detectWorkerVizCapabilities");
+
 // src/visualizers/mountVizRenderer.ts
 function mountVizRenderer(container, source, components, size, onError) {
   const renderer = typeof source === "function" ? source() : source;
@@ -26976,6 +27010,7 @@ exports.cycleEditorTheme = cycleEditorTheme;
 exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
+exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
 exports.duplicateProject = duplicateProject;
 exports.emitFixed = emitFixed;
 exports.emitLog = emitLog;
