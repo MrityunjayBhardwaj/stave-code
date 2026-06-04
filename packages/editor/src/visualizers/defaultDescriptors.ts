@@ -1,8 +1,7 @@
 import type { VizDescriptor } from './types'
-import { P5VizRenderer } from './renderers/P5VizRenderer'
 import { HydraVizRenderer } from './renderers/HydraVizRenderer'
 import { hydraPianoroll, hydraScope, hydraKaleidoscope } from './renderers/hydraPresets'
-import { compileP5Code } from './p5Compiler'
+import { makeP5Renderer } from './renderers/makeP5Renderer'
 import {
   PIANOROLL_P5_CODE,
   WORDFALL_P5_CODE,
@@ -33,13 +32,15 @@ import {
  */
 export const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[] = [
   // p5 renderers (default for each mode) — compiled from bundled source.
-  { id: 'pianoroll',  label: 'Piano Roll',  renderer: 'p5', requires: ['streaming'], nativeSize: { w: 1200, h: 200 }, factory: () => new P5VizRenderer(compileP5Code(PIANOROLL_P5_CODE, 'pianoroll')) },
-  { id: 'wordfall',   label: 'Wordfall',    renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(WORDFALL_P5_CODE, 'wordfall')) },
-  { id: 'scope',      label: 'Scope',       renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(SCOPE_P5_CODE, 'scope')) },
-  { id: 'fscope',     label: 'FScope',      renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(FSCOPE_P5_CODE, 'fscope')) },
-  { id: 'spectrum',   label: 'Spectrum',    renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(SPECTRUM_P5_CODE, 'spectrum')) },
-  { id: 'spiral',     label: 'Spiral',      renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(SPIRAL_P5_CODE, 'spiral')) },
-  { id: 'pitchwheel', label: 'Pitchwheel',  renderer: 'p5', requires: ['streaming'], factory: () => new P5VizRenderer(compileP5Code(PITCHWHEEL_P5_CODE, 'pitchwheel')) },
+  // B-3: `makeP5Renderer` offloads to an OffscreenCanvas worker when the flag is
+  // on + the browser is capable, else the main-thread P5VizRenderer (fallback).
+  { id: 'pianoroll',  label: 'Piano Roll',  renderer: 'p5', requires: ['streaming'], nativeSize: { w: 1200, h: 200 }, factory: () => makeP5Renderer(PIANOROLL_P5_CODE, 'pianoroll') },
+  { id: 'wordfall',   label: 'Wordfall',    renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(WORDFALL_P5_CODE, 'wordfall') },
+  { id: 'scope',      label: 'Scope',       renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(SCOPE_P5_CODE, 'scope') },
+  { id: 'fscope',     label: 'FScope',      renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(FSCOPE_P5_CODE, 'fscope') },
+  { id: 'spectrum',   label: 'Spectrum',    renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(SPECTRUM_P5_CODE, 'spectrum') },
+  { id: 'spiral',     label: 'Spiral',      renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(SPIRAL_P5_CODE, 'spiral') },
+  { id: 'pitchwheel', label: 'Pitchwheel',  renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(PITCHWHEEL_P5_CODE, 'pitchwheel') },
 
   // Hydra renderers (WebGL shader-based)
   { id: 'hydra',              label: 'Hydra',              renderer: 'hydra', requires: ['audio'], factory: () => new HydraVizRenderer() },

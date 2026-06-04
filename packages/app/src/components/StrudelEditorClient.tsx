@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
+import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
   WorkspaceShell,
   getResolvedTheme,
@@ -224,6 +225,11 @@ export default function StrudelEditorClient({
   // Seed any missing viz preset files into the project so older
   // projects get the full set of built-in viz workspace files.
   useEffect(() => { seedMissingPresetFiles(); }, []);
+
+  // Phase B / B-3 (#245) — register the Next-bundled viz-worker constructor with
+  // the editor's DI seam so `WorkerVizRenderer` can spawn it (gated behind the
+  // `workerRenderer` flag, OFF by default — this only wires the seam).
+  useEffect(() => { registerVizWorker(); }, []);
 
   // Register ALL .p5/.hydra workspace files as named viz presets so
   // `.viz("name")` works for user-created files, not just bundled ones.

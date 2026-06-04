@@ -1,7 +1,7 @@
 import type { VizDescriptor } from './types'
 import type { VizPreset } from './vizPreset'
-import { P5VizRenderer } from './renderers/P5VizRenderer'
 import { HydraVizRenderer } from './renderers/HydraVizRenderer'
+import { makeP5Renderer } from './renderers/makeP5Renderer'
 import { compileP5Code, isFullLifecycleSketch } from './p5Compiler'
 import { compileHydraCode } from './hydraCompiler'
 
@@ -57,7 +57,9 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       // the file. Without it, a top-level `new Mp()` typo surfaced on
       // the preview canvas but nowhere else — no Console row, no
       // Monaco squiggle.
-      factory: () => new P5VizRenderer(compileP5Code(code, name)),
+      // B-3: `makeP5Renderer` returns a worker-offloaded renderer when the flag
+      // is on + the browser is capable, else the main-thread P5VizRenderer.
+      factory: () => makeP5Renderer(code, name),
     }
   }
 
