@@ -1,7 +1,6 @@
 import type { VizDescriptor } from './types'
-import { HydraVizRenderer } from './renderers/HydraVizRenderer'
-import { hydraPianoroll, hydraScope, hydraKaleidoscope } from './renderers/hydraPresets'
 import { makeP5Renderer } from './renderers/makeP5Renderer'
+import { makeHydraRenderer } from './renderers/makeHydraRenderer'
 import {
   PIANOROLL_P5_CODE,
   WORDFALL_P5_CODE,
@@ -11,6 +10,12 @@ import {
   SPIRAL_P5_CODE,
   PITCHWHEEL_P5_CODE,
 } from './builtinP5Code'
+import {
+  HYDRA_DEFAULT_CODE,
+  HYDRA_PIANOROLL_CODE,
+  HYDRA_SCOPE_CODE,
+  HYDRA_KALEID_CODE,
+} from './renderers/builtinHydraCode'
 
 /**
  * All built-in visualization modes.
@@ -42,9 +47,13 @@ export const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[] = [
   { id: 'spiral',     label: 'Spiral',      renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(SPIRAL_P5_CODE, 'spiral') },
   { id: 'pitchwheel', label: 'Pitchwheel',  renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(PITCHWHEEL_P5_CODE, 'pitchwheel') },
 
-  // Hydra renderers (WebGL shader-based)
-  { id: 'hydra',              label: 'Hydra',              renderer: 'hydra', requires: ['audio'], factory: () => new HydraVizRenderer() },
-  { id: 'pianoroll:hydra',    label: 'Piano Roll (Hydra)', renderer: 'hydra', requires: ['audio'], factory: () => new HydraVizRenderer(hydraPianoroll) },
-  { id: 'scope:hydra',        label: 'Scope (Hydra)',      renderer: 'hydra', requires: ['audio'], factory: () => new HydraVizRenderer(hydraScope) },
-  { id: 'kaleidoscope:hydra', label: 'Kaleidoscope',       renderer: 'hydra', requires: ['audio'], factory: () => new HydraVizRenderer(hydraKaleidoscope) },
+  // Hydra renderers (WebGL shader-based) — compiled from bundled code STRINGS
+  // (#252) so `makeHydraRenderer` can offload them to an OffscreenCanvas worker
+  // (a HydraPatternFn closure can't cross to a worker; on the main thread a heavy
+  // hydra backdrop drops the editor to ~24fps — PV69 addendum). Main-thread
+  // HydraVizRenderer remains the fallback (flag off / not isolated / worker fail).
+  { id: 'hydra',              label: 'Hydra',              renderer: 'hydra', requires: ['audio'], factory: () => makeHydraRenderer(HYDRA_DEFAULT_CODE, 'hydra') },
+  { id: 'pianoroll:hydra',    label: 'Piano Roll (Hydra)', renderer: 'hydra', requires: ['audio'], factory: () => makeHydraRenderer(HYDRA_PIANOROLL_CODE, 'pianoroll:hydra') },
+  { id: 'scope:hydra',        label: 'Scope (Hydra)',      renderer: 'hydra', requires: ['audio'], factory: () => makeHydraRenderer(HYDRA_SCOPE_CODE, 'scope:hydra') },
+  { id: 'kaleidoscope:hydra', label: 'Kaleidoscope',       renderer: 'hydra', requires: ['audio'], factory: () => makeHydraRenderer(HYDRA_KALEID_CODE, 'kaleidoscope:hydra') },
 ]

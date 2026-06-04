@@ -1969,12 +1969,18 @@ declare function setVizWorkerFactory(f: VizWorkerFactory | null): void;
 declare function getVizWorkerFactory(): VizWorkerFactory | null;
 
 /**
- * Hydra shader presets for audio-reactive visualization.
- * Each preset is a function that receives the Hydra synth object
- * and sets up a shader pipeline. Audio bins (a.fft[0..3]) are
- * pumped from the engine's AnalyserNode by HydraVizRenderer.
+ * Hydra shader presets for audio-reactive visualization — `HydraPatternFn`
+ * closures (the public `@stave/editor` API; re-exported from index.ts).
+ *
+ * These are now DERIVED from the canonical code STRINGS in `builtinHydraCode.ts`
+ * (B-5 #252): the strings are the single source of truth so the built-in hydra
+ * descriptors can compile in a worker (a closure can't cross to one). Deriving
+ * the closures from the same strings keeps the public API AND avoids the
+ * picker-vs-source divergence the p5 path hit (PV56/#184). `compileHydraCode`
+ * returns a `HydraPatternFn` that runs the string via `new Function('s','stave')`
+ * — `s` = the hydra synth, `s.a.fft[0..3]` = the master audio bins.
  */
-/** Scrolling frequency bands — Hydra's take on a pianoroll. */
+/** Scrolling frequency bands — hydra's take on a pianoroll. */
 declare const hydraPianoroll: HydraPatternFn;
 /** Audio-reactive oscilloscope — smooth waveform with frequency modulation. */
 declare const hydraScope: HydraPatternFn;

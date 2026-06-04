@@ -4688,58 +4688,159 @@ var _StrudelEngine = class _StrudelEngine {
 __name(_StrudelEngine, "StrudelEngine");
 var StrudelEngine = _StrudelEngine;
 
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
-  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
-  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
-  // automatic fallback when a browser can't offload (no OffscreenCanvas /
-  // transferControlToOffscreen / worker factory). Opt OUT per project via
-  // localStorage['stave.viz.worker'] = '0'.
-  workerRenderer: true,
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var listeners = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
 }
-__name(createVizConfig, "createVizConfig");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-function getVizConfig() {
-  return _active;
+__name(fixedKey, "fixedKey");
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
 }
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+__name(makeId, "makeId");
+function emitLog(partial) {
+  const last = history.length > 0 ? history[history.length - 1] : void 0;
+  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
+    last.ts = Date.now();
+    queueMicrotask(() => {
+      for (const fn of listeners) {
+        try {
+          fn(last, history);
+        } catch {
+        }
+      }
+    });
+    return last;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    ...partial
+  };
+  history.push(entry);
+  if (history.length > MAX_HISTORY) {
+    history.splice(0, history.length - MAX_HISTORY);
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
 }
-__name(setVizConfig, "setVizConfig");
+__name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
+function getLogHistory() {
+  return [...history];
+}
+__name(getLogHistory, "getLogHistory");
+function clearLog() {
+  history.length = 0;
+  fixedMarkers.clear();
+  for (const fn of listeners) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+__name(clearLog, "clearLog");
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+__name(emitFixed, "emitFixed");
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+__name(subscribeFixed, "subscribeFixed");
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+__name(getFixedMarkers, "getFixedMarkers");
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+__name(makeFixedKey, "makeFixedKey");
+
+// src/visualizers/p5FesBridge.ts
+var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
+var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
+var installed = false;
+var currentSource = null;
+var currentLineOffset = 0;
+function buildLogger() {
+  return (msg) => {
+    const raw = String(msg);
+    const clean = raw.replace(P5_PREFIX_RE, "").trim();
+    if (!clean) return;
+    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
+    let line;
+    const match = raw.match(FES_LINE_RE);
+    if (match) {
+      const wrapped = parseInt(match[1], 10);
+      if (Number.isFinite(wrapped)) {
+        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
+        if (candidate >= 1) line = candidate;
+      }
+    }
+    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
+      message
+    );
+    emitLog({
+      runtime: "p5",
+      level: isLikelyBug ? "error" : "warn",
+      source: currentSource ?? void 0,
+      message,
+      line
+    });
+  };
+}
+__name(buildLogger, "buildLogger");
+function installP5FesBridgeWith(p5Ctor) {
+  if (installed) return;
+  installed = true;
+  const ctor = p5Ctor;
+  ctor.disableFriendlyErrors = false;
+  ctor._fesLogger = buildLogger();
+}
+__name(installP5FesBridgeWith, "installP5FesBridgeWith");
+function setCurrentP5Source(source, lineOffset = 0) {
+  currentSource = source;
+  currentLineOffset = source == null ? 0 : lineOffset;
+}
+__name(setCurrentP5Source, "setCurrentP5Source");
 
 // src/visualizers/signals/aliasMap.ts
 var DEFAULT_VIZ_ENGINE = "strudel";
@@ -5094,86 +5195,73 @@ function meanSlice(arr, from, to) {
 }
 __name(meanSlice, "meanSlice");
 
-// src/visualizers/renderers/hydraStaveBag.ts
-function buildHydraStaveBag(bus) {
-  const soundThunks = /* @__PURE__ */ __name((sound) => {
-    const t = {
-      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
-      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
-      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
-      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color"),
-      rms: /* @__PURE__ */ __name(() => bus.sound(sound).rms, "rms"),
-      bass: /* @__PURE__ */ __name(() => bus.sound(sound).bass, "bass"),
-      mid: /* @__PURE__ */ __name(() => bus.sound(sound).mid, "mid"),
-      treble: /* @__PURE__ */ __name(() => bus.sound(sound).treble, "treble")
-    };
-    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.sound(sound).fft, "get"), enumerable: true });
-    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
-    return t;
-  }, "soundThunks");
-  const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
-  u.track = (id) => {
-    const t = {
-      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
-      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
-      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
-      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color"),
-      rms: /* @__PURE__ */ __name(() => bus.track(id).rms, "rms"),
-      bass: /* @__PURE__ */ __name(() => bus.track(id).bass, "bass"),
-      mid: /* @__PURE__ */ __name(() => bus.track(id).mid, "mid"),
-      treble: /* @__PURE__ */ __name(() => bus.track(id).treble, "treble")
-    };
-    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.track(id).fft, "get"), enumerable: true });
-    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
-    return t;
-  };
+// src/visualizers/signals/staveUniforms.ts
+function buildStaveUniforms(bus, onTick) {
+  const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
+  u.track = (id) => bus.track(id);
   Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
   Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  u.rms = () => bus.master().rms;
-  u.bass = () => bus.master().bass;
-  u.mid = () => bus.master().mid;
-  u.treble = () => bus.master().treble;
+  Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+  Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+  Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+  Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
   Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
   Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-  const bag = {
-    scheduler: null,
-    tracks: /* @__PURE__ */ new Map(),
-    uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
-    uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
-    uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
-    uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
-    uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
-    uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
-    uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
-    uKeyVelocity: /* @__PURE__ */ __name(() => {
+  const uniforms = {
+    get uKick() {
+      return bus.envValue("uKick");
+    },
+    get uSnare() {
+      return bus.envValue("uSnare");
+    },
+    get uHat() {
+      return bus.envValue("uHat");
+    },
+    get uOpenHat() {
+      return bus.envValue("uOpenHat");
+    },
+    get uClap() {
+      return bus.envValue("uClap");
+    },
+    get uRim() {
+      return bus.envValue("uRim");
+    },
+    get uTom() {
+      return bus.envValue("uTom");
+    },
+    // `uKeyVelocity` is NOT a sound alias — the active event's velocity globally
+    // (max over every sound seen this frame; 0 when nothing is active).
+    get uKeyVelocity() {
       let max = 0;
       for (const s of bus.sounds) {
         const v = bus.sound(s).velocity;
         if (v > max) max = v;
       }
       return max;
-    }, "uKeyVelocity"),
-    uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
-    uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
-    uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
-    uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
-    u,
-    H: /* @__PURE__ */ __name((trackId, field = "gain") => {
-      return () => {
-        const sched = bag.tracks.get(trackId) ?? bag.scheduler;
-        if (!sched) return 0;
-        const now2 = sched.now();
-        const events = sched.query(now2, now2 + 1e-3);
-        const ev = events[0];
-        if (!ev) return 0;
-        const raw = ev[field];
-        return typeof raw === "number" ? raw : 0;
-      };
-    }, "H")
+    },
+    // Master-mix DSP sugar (live getter numbers) — parity with `uKick`.
+    get uRms() {
+      return bus.master().rms;
+    },
+    get uBass() {
+      return bus.master().bass;
+    },
+    get uMid() {
+      return bus.master().mid;
+    },
+    get uTreble() {
+      return bus.master().treble;
+    },
+    u
   };
-  return bag;
+  Object.defineProperty(uniforms, "__tick", {
+    value: onTick ?? (() => {
+    }),
+    enumerable: false
+  });
+  return uniforms;
 }
-__name(buildHydraStaveBag, "buildHydraStaveBag");
+__name(buildStaveUniforms, "buildStaveUniforms");
 
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
@@ -5723,525 +5811,6 @@ function applyPersistedPerfEnabled() {
   perf.setEnabled(readPerfEnabled());
 }
 __name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
-
-// src/visualizers/renderers/HydraVizRenderer.ts
-var hydraPerfSeq = 0;
-var _HapEnergyEnvelope = class _HapEnergyEnvelope {
-  constructor(numBins, decay = 0.92) {
-    this.numBins = numBins;
-    this.bins = new Array(numBins).fill(0);
-    this.decay = decay;
-  }
-  /** Call when a hap event fires. */
-  onHap(event) {
-    const gain = Math.min(1, Math.max(0, event.hap?.value?.gain ?? 1));
-    const midi = event.midiNote;
-    if (midi != null) {
-      const bin = Math.min(this.numBins - 1, Math.floor(midi / 127 * this.numBins));
-      this.bins[bin] = Math.min(1, this.bins[bin] + gain);
-    } else {
-      this.bins[0] = Math.min(1, this.bins[0] + gain * 0.8);
-      if (this.numBins > 1) {
-        this.bins[1] = Math.min(1, this.bins[1] + gain * 0.4);
-      }
-    }
-  }
-  /** Call once per animation frame to apply decay. */
-  tick() {
-    for (let i = 0; i < this.numBins; i++) {
-      this.bins[i] *= this.decay;
-    }
-  }
-};
-__name(_HapEnergyEnvelope, "HapEnergyEnvelope");
-var HapEnergyEnvelope = _HapEnergyEnvelope;
-var _HydraVizRenderer = class _HydraVizRenderer {
-  constructor(pattern) {
-    this.pattern = pattern;
-    this.hydra = null;
-    this.canvas = null;
-    this.analyser = null;
-    this.freqData = null;
-    this.rafId = null;
-    this.paused = false;
-    this.destroyed = false;
-    this.hapStream = null;
-    this.envelope = null;
-    this.hapHandler = null;
-    this.useEnvelope = false;
-    /** Stable per-instance profiler key (`hydra#N`) — frame/fps + bus/draw timing (#228). */
-    this.perfId = `hydra#${++hydraPerfSeq}`;
-    /**
-     * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
-     * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
-     * (`.velocity`/`.note`/`.color`). Fed UNCONDITIONALLY — NOT analyser-gated
-     * like the envelope (BLOCK-1): the bus is IR-grounded and must stay live
-     * whenever a real analyser is published (which is normal playback), or
-     * `uKick` is dead in the headline use case.
-     */
-    this.bus = new SignalBus();
-    /**
-     * The bus's own HapStream subscription — SEPARATE from `hapHandler` (the
-     * analyser-fallback envelope handler) so `destroy()` can off it
-     * independently and unconditionally. The bus feed is never gated on
-     * `useEnvelope`.
-     */
-    this.busHapHandler = null;
-    this.pumpAudio = /* @__PURE__ */ __name((now2) => {
-      if (this.paused || this.destroyed) {
-        this.rafId = null;
-        return;
-      }
-      const a = this.hydra?.synth?.a;
-      if (a?.fft) {
-        if (this.analyser && this.freqData) {
-          this.analyser.getByteFrequencyData(this.freqData);
-          const numBins = getVizConfig().hydraAudioBins;
-          const binSize = Math.floor(this.freqData.length / numBins);
-          for (let i = 0; i < numBins; i++) {
-            let sum = 0;
-            for (let j = 0; j < binSize; j++) {
-              sum += this.freqData[i * binSize + j];
-            }
-            a.fft[i] = sum / (binSize * 255);
-          }
-        } else if (this.useEnvelope && this.envelope) {
-          this.envelope.tick();
-          const numBins = getVizConfig().hydraAudioBins;
-          for (let i = 0; i < numBins; i++) {
-            a.fft[i] = this.envelope.bins[i];
-          }
-        }
-      }
-      perf.frame(this.perfId);
-      if (this.bus) {
-        perf.begin("hydra.bus");
-        this.bus.tick();
-        this.bus.refreshActive(this.bus.now());
-        this.bus.readAudio();
-        perf.end("hydra.bus");
-      }
-      if (this.hydra && typeof this.hydra.tick === "function") {
-        perf.begin("hydra.draw");
-        try {
-          this.hydra.tick(now2 ?? performance.now());
-        } catch {
-        } finally {
-          perf.end("hydra.draw");
-        }
-      }
-      this.rafId = requestAnimationFrame(this.pumpAudio);
-    }, "pumpAudio");
-    this.staveBag = buildHydraStaveBag(this.bus);
-  }
-  mount(container, components, size, onError) {
-    perf.gauge("viz.hydra", 1);
-    try {
-      const config = getVizConfig();
-      this.analyser = components.audio?.analyser ?? null;
-      this.hapStream = components.streaming?.hapStream ?? null;
-      this.staveBag.scheduler = components.queryable?.scheduler ?? null;
-      this.staveBag.tracks = components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map();
-      this.bus?.bindScheduler(
-        components.queryable?.scheduler,
-        components.queryable?.trackSchedulers
-      );
-      this.bus?.bindAnalysers(
-        components.audio?.analyser,
-        components.audio?.trackAnalysers
-      );
-      const mergedAliases = resolveAliasesForEngine(
-        getStoredSignalAliases(),
-        DEFAULT_VIZ_ENGINE
-      );
-      this.bus?.setAliases(mergedAliases);
-      const bus = this.bus;
-      if (bus) {
-        for (const name of Object.keys(mergedAliases)) {
-          if (name in this.staveBag) continue;
-          this.staveBag[name] = () => bus.envValue(name);
-        }
-      }
-      if (this.hapStream && this.bus) {
-        this.busHapHandler = (e) => this.bus?.bump(e);
-        this.hapStream.on(this.busHapHandler);
-      }
-      if (this.analyser) {
-        this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
-        this.useEnvelope = false;
-      } else if (this.hapStream) {
-        this.envelope = new HapEnergyEnvelope(config.hydraAudioBins);
-        this.hapHandler = (e) => this.envelope?.onHap(e);
-        this.hapStream.on(this.hapHandler);
-        this.useEnvelope = true;
-      }
-      this.canvas = document.createElement("canvas");
-      this.canvas.width = size.w;
-      this.canvas.height = size.h;
-      this.canvas.style.width = "100%";
-      this.canvas.style.height = "100%";
-      container.appendChild(this.canvas);
-      this.initHydra(size).catch(onError);
-    } catch (e) {
-      onError(e);
-    }
-  }
-  async initHydra(size) {
-    const { default: Hydra } = await import('hydra-synth');
-    const config = getVizConfig();
-    if (!this.canvas || this.destroyed) return;
-    this.hydra = new Hydra({
-      canvas: this.canvas,
-      width: size.w,
-      height: size.h,
-      detectAudio: false,
-      makeGlobal: false,
-      // We OWN the animation loop (see class jsdoc) — hydra must
-      // not run its own rAF, or pause() can't actually halt the
-      // shader render. `pumpAudio` calls `hydra.tick(time)` itself.
-      autoLoop: false
-    });
-    const synth = this.hydra.synth;
-    const audio = this.hydra.a;
-    if (audio) {
-      synth.a = audio;
-      if (typeof audio.setCutoff === "function") audio.setCutoff(config.hydraAudioBins);
-      if (typeof audio.setBins === "function") audio.setBins(config.hydraAudioBins);
-      if (!Array.isArray(audio.fft) || audio.fft.length < config.hydraAudioBins) {
-        audio.fft = new Array(config.hydraAudioBins).fill(0);
-      }
-    } else {
-      synth.a = { fft: new Array(config.hydraAudioBins).fill(0) };
-    }
-    if (this.pattern) {
-      this.pattern(synth, this.staveBag);
-    } else {
-      this.defaultPattern(synth);
-    }
-    if (!this.paused && !this.destroyed && this.rafId == null) {
-      this.rafId = requestAnimationFrame(this.pumpAudio);
-    }
-  }
-  defaultPattern(s) {
-    s.osc(10, 0.1, () => s.a.fft[0] * 4).color(1, 0.5, () => s.a.fft[1] * 2).rotate(() => s.a.fft[2] * 6.28).modulate(s.noise(3, () => s.a.fft[3] * 0.5), 0.02).out();
-  }
-  update(components) {
-    const newAnalyser = components.audio?.analyser ?? null;
-    if (newAnalyser !== this.analyser) {
-      this.analyser = newAnalyser;
-      this.freqData = newAnalyser ? new Uint8Array(newAnalyser.frequencyBinCount) : null;
-      if (newAnalyser) {
-        this.useEnvelope = false;
-      }
-    }
-    this.staveBag.scheduler = components.queryable?.scheduler ?? null;
-    this.staveBag.tracks = components.queryable?.trackSchedulers ?? this.staveBag.tracks;
-    this.bus?.bindScheduler(
-      components.queryable?.scheduler ?? null,
-      components.queryable?.trackSchedulers ?? this.staveBag.tracks
-    );
-    this.bus?.bindAnalysers(
-      components.audio?.analyser ?? null,
-      components.audio?.trackAnalysers
-    );
-  }
-  resize(w, h) {
-    if (this.canvas) {
-      this.canvas.width = w;
-      this.canvas.height = h;
-    }
-    this.hydra?.setResolution?.(w, h);
-  }
-  pause() {
-    this.paused = true;
-    if (this.rafId != null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
-  }
-  resume() {
-    this.paused = false;
-    if (this.rafId == null && !this.destroyed) {
-      this.rafId = requestAnimationFrame(this.pumpAudio);
-    }
-  }
-  destroy() {
-    this.destroyed = true;
-    perf.gauge("viz.hydra", -1);
-    perf.dropFrames(this.perfId);
-    if (this.rafId != null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
-    if (this.hapStream && this.hapHandler) {
-      this.hapStream.off(this.hapHandler);
-      this.hapHandler = null;
-    }
-    if (this.hapStream && this.busHapHandler) {
-      this.hapStream.off(this.busHapHandler);
-      this.busHapHandler = null;
-    }
-    this.bus = null;
-    this.canvas?.remove();
-    this.canvas = null;
-    this.hydra = null;
-    this.analyser = null;
-    this.freqData = null;
-    this.envelope = null;
-    this.hapStream = null;
-    this.staveBag.scheduler = null;
-    this.staveBag.tracks = /* @__PURE__ */ new Map();
-  }
-};
-__name(_HydraVizRenderer, "HydraVizRenderer");
-var HydraVizRenderer = _HydraVizRenderer;
-
-// src/visualizers/renderers/hydraPresets.ts
-var hydraPianoroll = /* @__PURE__ */ __name((s) => {
-  s.osc(() => 10 + s.a.fft[0] * 50, -0.3, 0).thresh(() => 0.3 + s.a.fft[0] * 0.5, 0.1).color(0.46, 0.71, 1).add(
-    // Mid band — narrower stripes, scrolling right
-    s.osc(() => 20 + s.a.fft[1] * 40, 0.2, 0).rotate(Math.PI / 2).thresh(() => 0.4 + s.a.fft[1] * 0.4, 0.08).color(1, 0.79, 0.16),
-    // Stave active yellow
-    () => s.a.fft[1] * 0.8
-  ).add(
-    // High band — fine texture, subtle shimmer
-    s.osc(() => 40 + s.a.fft[2] * 60, 0.1, 0).thresh(() => 0.6 + s.a.fft[2] * 0.3, 0.05).color(0.54, 0.36, 0.96),
-    // purple accent
-    () => s.a.fft[2] * 0.5
-  ).modulate(s.noise(2, () => s.a.fft[3] * 0.4), () => s.a.fft[0] * 0.015).scrollX(() => s.a.fft[0] * 0.02).out();
-}, "hydraPianoroll");
-var hydraScope = /* @__PURE__ */ __name((s) => {
-  s.osc(() => 20 + s.a.fft[0] * 80, 0.1, 0).color(0.2, 0.8, 1).rotate(() => s.a.fft[1] * 0.5).modulate(s.osc(3, 0, 0), () => s.a.fft[2] * 0.1).diff(s.osc(2, 0.1, 0).rotate(0.5)).out();
-}, "hydraScope");
-var hydraKaleidoscope = /* @__PURE__ */ __name((s) => {
-  s.osc(6, 0.1, () => s.a.fft[0] * 3).kaleid(() => 3 + Math.floor(s.a.fft[1] * 8)).color(
-    () => 0.5 + s.a.fft[0] * 0.5,
-    () => 0.3 + s.a.fft[1] * 0.7,
-    () => 0.8 + s.a.fft[2] * 0.2
-  ).rotate(() => s.a.fft[3] * 3.14).modulate(s.noise(3), () => s.a.fft[0] * 0.05).out();
-}, "hydraKaleidoscope");
-
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var listeners = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
-}
-__name(fixedKey, "fixedKey");
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
-}
-__name(makeId, "makeId");
-function emitLog(partial) {
-  const last = history.length > 0 ? history[history.length - 1] : void 0;
-  if (last && last.level === partial.level && last.runtime === partial.runtime && last.source === partial.source && last.line === partial.line && last.message === partial.message) {
-    last.ts = Date.now();
-    queueMicrotask(() => {
-      for (const fn of listeners) {
-        try {
-          fn(last, history);
-        } catch {
-        }
-      }
-    });
-    return last;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    ...partial
-  };
-  history.push(entry);
-  if (history.length > MAX_HISTORY) {
-    history.splice(0, history.length - MAX_HISTORY);
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
-}
-__name(emitLog, "emitLog");
-function subscribeLog(fn) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-__name(subscribeLog, "subscribeLog");
-function getLogHistory() {
-  return [...history];
-}
-__name(getLogHistory, "getLogHistory");
-function clearLog() {
-  history.length = 0;
-  fixedMarkers.clear();
-  for (const fn of listeners) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-__name(clearLog, "clearLog");
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-__name(emitFixed, "emitFixed");
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-__name(subscribeFixed, "subscribeFixed");
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-__name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-__name(makeFixedKey, "makeFixedKey");
-
-// src/visualizers/p5FesBridge.ts
-var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
-var FES_LINE_RE = /,\s*line\s+(\d+)\s*\]/;
-var installed = false;
-var currentSource = null;
-var currentLineOffset = 0;
-function buildLogger() {
-  return (msg) => {
-    const raw = String(msg);
-    const clean = raw.replace(P5_PREFIX_RE, "").trim();
-    if (!clean) return;
-    let message = clean.replace(/^\[[^\]]*\]\s*/, "").trim() || clean;
-    let line;
-    const match = raw.match(FES_LINE_RE);
-    if (match) {
-      const wrapped = parseInt(match[1], 10);
-      if (Number.isFinite(wrapped)) {
-        const candidate = currentLineOffset > 0 ? wrapped - currentLineOffset : wrapped;
-        if (candidate >= 1) line = candidate;
-      }
-    }
-    const isLikelyBug = /accidentally written|is not defined|no such/i.test(
-      message
-    );
-    emitLog({
-      runtime: "p5",
-      level: isLikelyBug ? "error" : "warn",
-      source: currentSource ?? void 0,
-      message,
-      line
-    });
-  };
-}
-__name(buildLogger, "buildLogger");
-function installP5FesBridgeWith(p5Ctor) {
-  if (installed) return;
-  installed = true;
-  const ctor = p5Ctor;
-  ctor.disableFriendlyErrors = false;
-  ctor._fesLogger = buildLogger();
-}
-__name(installP5FesBridgeWith, "installP5FesBridgeWith");
-function setCurrentP5Source(source, lineOffset = 0) {
-  currentSource = source;
-  currentLineOffset = source == null ? 0 : lineOffset;
-}
-__name(setCurrentP5Source, "setCurrentP5Source");
-
-// src/visualizers/signals/staveUniforms.ts
-function buildStaveUniforms(bus, onTick) {
-  const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
-  u.track = (id) => bus.track(id);
-  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
-  Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
-  Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
-  Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
-  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-  const uniforms = {
-    get uKick() {
-      return bus.envValue("uKick");
-    },
-    get uSnare() {
-      return bus.envValue("uSnare");
-    },
-    get uHat() {
-      return bus.envValue("uHat");
-    },
-    get uOpenHat() {
-      return bus.envValue("uOpenHat");
-    },
-    get uClap() {
-      return bus.envValue("uClap");
-    },
-    get uRim() {
-      return bus.envValue("uRim");
-    },
-    get uTom() {
-      return bus.envValue("uTom");
-    },
-    // `uKeyVelocity` is NOT a sound alias — the active event's velocity globally
-    // (max over every sound seen this frame; 0 when nothing is active).
-    get uKeyVelocity() {
-      let max = 0;
-      for (const s of bus.sounds) {
-        const v = bus.sound(s).velocity;
-        if (v > max) max = v;
-      }
-      return max;
-    },
-    // Master-mix DSP sugar (live getter numbers) — parity with `uKick`.
-    get uRms() {
-      return bus.master().rms;
-    },
-    get uBass() {
-      return bus.master().bass;
-    },
-    get uMid() {
-      return bus.master().mid;
-    },
-    get uTreble() {
-      return bus.master().treble;
-    },
-    u
-  };
-  Object.defineProperty(uniforms, "__tick", {
-    value: onTick ?? (() => {
-    }),
-    enumerable: false
-  });
-  return uniforms;
-}
-__name(buildStaveUniforms, "buildStaveUniforms");
 
 // src/visualizers/renderers/P5VizRenderer.ts
 var p5PerfSeq = 0;
@@ -11485,6 +11054,59 @@ function installErrorSketch(p, message) {
 }
 __name(installErrorSketch, "installErrorSketch");
 
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+}
+__name(createVizConfig, "createVizConfig");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+}
+__name(setVizConfig, "setVizConfig");
+
 // src/visualizers/worker/capabilities.ts
 function isFn(v) {
   return typeof v === "function";
@@ -11531,6 +11153,383 @@ function makeP5Renderer(code, name) {
   ) : new P5VizRenderer(compileP5Code(code, name));
 }
 __name(makeP5Renderer, "makeP5Renderer");
+
+// src/visualizers/renderers/hydraStaveBag.ts
+function buildHydraStaveBag(bus) {
+  const soundThunks = /* @__PURE__ */ __name((sound) => {
+    const t = {
+      env: /* @__PURE__ */ __name(() => bus.sound(sound).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.sound(sound).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.sound(sound).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.sound(sound).color, "color"),
+      rms: /* @__PURE__ */ __name(() => bus.sound(sound).rms, "rms"),
+      bass: /* @__PURE__ */ __name(() => bus.sound(sound).bass, "bass"),
+      mid: /* @__PURE__ */ __name(() => bus.sound(sound).mid, "mid"),
+      treble: /* @__PURE__ */ __name(() => bus.sound(sound).treble, "treble")
+    };
+    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.sound(sound).fft, "get"), enumerable: true });
+    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
+    return t;
+  }, "soundThunks");
+  const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
+  u.track = (id) => {
+    const t = {
+      env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
+      velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
+      note: /* @__PURE__ */ __name(() => bus.track(id).note, "note"),
+      color: /* @__PURE__ */ __name(() => bus.track(id).color, "color"),
+      rms: /* @__PURE__ */ __name(() => bus.track(id).rms, "rms"),
+      bass: /* @__PURE__ */ __name(() => bus.track(id).bass, "bass"),
+      mid: /* @__PURE__ */ __name(() => bus.track(id).mid, "mid"),
+      treble: /* @__PURE__ */ __name(() => bus.track(id).treble, "treble")
+    };
+    Object.defineProperty(t, "fft", { get: /* @__PURE__ */ __name(() => bus.track(id).fft, "get"), enumerable: true });
+    Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
+    return t;
+  };
+  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  u.rms = () => bus.master().rms;
+  u.bass = () => bus.master().bass;
+  u.mid = () => bus.master().mid;
+  u.treble = () => bus.master().treble;
+  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  const bag = {
+    scheduler: null,
+    tracks: /* @__PURE__ */ new Map(),
+    uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
+    uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
+    uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
+    uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
+    uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
+    uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
+    uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
+    uKeyVelocity: /* @__PURE__ */ __name(() => {
+      let max = 0;
+      for (const s of bus.sounds) {
+        const v = bus.sound(s).velocity;
+        if (v > max) max = v;
+      }
+      return max;
+    }, "uKeyVelocity"),
+    uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
+    uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
+    uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
+    uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
+    u,
+    H: /* @__PURE__ */ __name((trackId, field = "gain") => {
+      return () => {
+        const sched = bag.tracks.get(trackId) ?? bag.scheduler;
+        if (!sched) return 0;
+        const now2 = sched.now();
+        const events = sched.query(now2, now2 + 1e-3);
+        const ev = events[0];
+        if (!ev) return 0;
+        const raw = ev[field];
+        return typeof raw === "number" ? raw : 0;
+      };
+    }, "H")
+  };
+  return bag;
+}
+__name(buildHydraStaveBag, "buildHydraStaveBag");
+
+// src/visualizers/renderers/HydraVizRenderer.ts
+var hydraPerfSeq = 0;
+var _HapEnergyEnvelope = class _HapEnergyEnvelope {
+  constructor(numBins, decay = 0.92) {
+    this.numBins = numBins;
+    this.bins = new Array(numBins).fill(0);
+    this.decay = decay;
+  }
+  /** Call when a hap event fires. */
+  onHap(event) {
+    const gain = Math.min(1, Math.max(0, event.hap?.value?.gain ?? 1));
+    const midi = event.midiNote;
+    if (midi != null) {
+      const bin = Math.min(this.numBins - 1, Math.floor(midi / 127 * this.numBins));
+      this.bins[bin] = Math.min(1, this.bins[bin] + gain);
+    } else {
+      this.bins[0] = Math.min(1, this.bins[0] + gain * 0.8);
+      if (this.numBins > 1) {
+        this.bins[1] = Math.min(1, this.bins[1] + gain * 0.4);
+      }
+    }
+  }
+  /** Call once per animation frame to apply decay. */
+  tick() {
+    for (let i = 0; i < this.numBins; i++) {
+      this.bins[i] *= this.decay;
+    }
+  }
+};
+__name(_HapEnergyEnvelope, "HapEnergyEnvelope");
+var HapEnergyEnvelope = _HapEnergyEnvelope;
+var _HydraVizRenderer = class _HydraVizRenderer {
+  constructor(pattern) {
+    this.pattern = pattern;
+    this.hydra = null;
+    this.canvas = null;
+    this.analyser = null;
+    this.freqData = null;
+    this.rafId = null;
+    this.paused = false;
+    this.destroyed = false;
+    this.hapStream = null;
+    this.envelope = null;
+    this.hapHandler = null;
+    this.useEnvelope = false;
+    /** Stable per-instance profiler key (`hydra#N`) — frame/fps + bus/draw timing (#228). */
+    this.perfId = `hydra#${++hydraPerfSeq}`;
+    /**
+     * Per-renderer named-signal bus (Phase 21). Generalizes `H()` /
+     * `HapEnergyEnvelope`: per-sound `.env` (bump+decay) + per-track query
+     * (`.velocity`/`.note`/`.color`). Fed UNCONDITIONALLY — NOT analyser-gated
+     * like the envelope (BLOCK-1): the bus is IR-grounded and must stay live
+     * whenever a real analyser is published (which is normal playback), or
+     * `uKick` is dead in the headline use case.
+     */
+    this.bus = new SignalBus();
+    /**
+     * The bus's own HapStream subscription — SEPARATE from `hapHandler` (the
+     * analyser-fallback envelope handler) so `destroy()` can off it
+     * independently and unconditionally. The bus feed is never gated on
+     * `useEnvelope`.
+     */
+    this.busHapHandler = null;
+    this.pumpAudio = /* @__PURE__ */ __name((now2) => {
+      if (this.paused || this.destroyed) {
+        this.rafId = null;
+        return;
+      }
+      const a = this.hydra?.synth?.a;
+      if (a?.fft) {
+        if (this.analyser && this.freqData) {
+          this.analyser.getByteFrequencyData(this.freqData);
+          const numBins = getVizConfig().hydraAudioBins;
+          const binSize = Math.floor(this.freqData.length / numBins);
+          for (let i = 0; i < numBins; i++) {
+            let sum = 0;
+            for (let j = 0; j < binSize; j++) {
+              sum += this.freqData[i * binSize + j];
+            }
+            a.fft[i] = sum / (binSize * 255);
+          }
+        } else if (this.useEnvelope && this.envelope) {
+          this.envelope.tick();
+          const numBins = getVizConfig().hydraAudioBins;
+          for (let i = 0; i < numBins; i++) {
+            a.fft[i] = this.envelope.bins[i];
+          }
+        }
+      }
+      perf.frame(this.perfId);
+      if (this.bus) {
+        perf.begin("hydra.bus");
+        this.bus.tick();
+        this.bus.refreshActive(this.bus.now());
+        this.bus.readAudio();
+        perf.end("hydra.bus");
+      }
+      if (this.hydra && typeof this.hydra.tick === "function") {
+        perf.begin("hydra.draw");
+        try {
+          this.hydra.tick(now2 ?? performance.now());
+        } catch {
+        } finally {
+          perf.end("hydra.draw");
+        }
+      }
+      this.rafId = requestAnimationFrame(this.pumpAudio);
+    }, "pumpAudio");
+    this.staveBag = buildHydraStaveBag(this.bus);
+  }
+  mount(container, components, size, onError) {
+    perf.gauge("viz.hydra", 1);
+    try {
+      const config = getVizConfig();
+      this.analyser = components.audio?.analyser ?? null;
+      this.hapStream = components.streaming?.hapStream ?? null;
+      this.staveBag.scheduler = components.queryable?.scheduler ?? null;
+      this.staveBag.tracks = components.queryable?.trackSchedulers ?? /* @__PURE__ */ new Map();
+      this.bus?.bindScheduler(
+        components.queryable?.scheduler,
+        components.queryable?.trackSchedulers
+      );
+      this.bus?.bindAnalysers(
+        components.audio?.analyser,
+        components.audio?.trackAnalysers
+      );
+      const mergedAliases = resolveAliasesForEngine(
+        getStoredSignalAliases(),
+        DEFAULT_VIZ_ENGINE
+      );
+      this.bus?.setAliases(mergedAliases);
+      const bus = this.bus;
+      if (bus) {
+        for (const name of Object.keys(mergedAliases)) {
+          if (name in this.staveBag) continue;
+          this.staveBag[name] = () => bus.envValue(name);
+        }
+      }
+      if (this.hapStream && this.bus) {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        this.hapStream.on(this.busHapHandler);
+      }
+      if (this.analyser) {
+        this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+        this.useEnvelope = false;
+      } else if (this.hapStream) {
+        this.envelope = new HapEnergyEnvelope(config.hydraAudioBins);
+        this.hapHandler = (e) => this.envelope?.onHap(e);
+        this.hapStream.on(this.hapHandler);
+        this.useEnvelope = true;
+      }
+      this.canvas = document.createElement("canvas");
+      this.canvas.width = size.w;
+      this.canvas.height = size.h;
+      this.canvas.style.width = "100%";
+      this.canvas.style.height = "100%";
+      container.appendChild(this.canvas);
+      this.initHydra(size).catch(onError);
+    } catch (e) {
+      onError(e);
+    }
+  }
+  async initHydra(size) {
+    const { default: Hydra } = await import('hydra-synth');
+    const config = getVizConfig();
+    if (!this.canvas || this.destroyed) return;
+    this.hydra = new Hydra({
+      canvas: this.canvas,
+      width: size.w,
+      height: size.h,
+      detectAudio: false,
+      makeGlobal: false,
+      // We OWN the animation loop (see class jsdoc) — hydra must
+      // not run its own rAF, or pause() can't actually halt the
+      // shader render. `pumpAudio` calls `hydra.tick(time)` itself.
+      autoLoop: false
+    });
+    const synth = this.hydra.synth;
+    const audio = this.hydra.a;
+    if (audio) {
+      synth.a = audio;
+      if (typeof audio.setCutoff === "function") audio.setCutoff(config.hydraAudioBins);
+      if (typeof audio.setBins === "function") audio.setBins(config.hydraAudioBins);
+      if (!Array.isArray(audio.fft) || audio.fft.length < config.hydraAudioBins) {
+        audio.fft = new Array(config.hydraAudioBins).fill(0);
+      }
+    } else {
+      synth.a = { fft: new Array(config.hydraAudioBins).fill(0) };
+    }
+    if (this.pattern) {
+      this.pattern(synth, this.staveBag);
+    } else {
+      this.defaultPattern(synth);
+    }
+    if (!this.paused && !this.destroyed && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.pumpAudio);
+    }
+  }
+  defaultPattern(s) {
+    s.osc(10, 0.1, () => s.a.fft[0] * 4).color(1, 0.5, () => s.a.fft[1] * 2).rotate(() => s.a.fft[2] * 6.28).modulate(s.noise(3, () => s.a.fft[3] * 0.5), 0.02).out();
+  }
+  update(components) {
+    const newAnalyser = components.audio?.analyser ?? null;
+    if (newAnalyser !== this.analyser) {
+      this.analyser = newAnalyser;
+      this.freqData = newAnalyser ? new Uint8Array(newAnalyser.frequencyBinCount) : null;
+      if (newAnalyser) {
+        this.useEnvelope = false;
+      }
+    }
+    this.staveBag.scheduler = components.queryable?.scheduler ?? null;
+    this.staveBag.tracks = components.queryable?.trackSchedulers ?? this.staveBag.tracks;
+    this.bus?.bindScheduler(
+      components.queryable?.scheduler ?? null,
+      components.queryable?.trackSchedulers ?? this.staveBag.tracks
+    );
+    this.bus?.bindAnalysers(
+      components.audio?.analyser ?? null,
+      components.audio?.trackAnalysers
+    );
+  }
+  resize(w, h) {
+    if (this.canvas) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
+    this.hydra?.setResolution?.(w, h);
+  }
+  pause() {
+    this.paused = true;
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+  resume() {
+    this.paused = false;
+    if (this.rafId == null && !this.destroyed) {
+      this.rafId = requestAnimationFrame(this.pumpAudio);
+    }
+  }
+  destroy() {
+    this.destroyed = true;
+    perf.gauge("viz.hydra", -1);
+    perf.dropFrames(this.perfId);
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    if (this.hapStream && this.hapHandler) {
+      this.hapStream.off(this.hapHandler);
+      this.hapHandler = null;
+    }
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.bus = null;
+    this.canvas?.remove();
+    this.canvas = null;
+    this.hydra = null;
+    this.analyser = null;
+    this.freqData = null;
+    this.envelope = null;
+    this.hapStream = null;
+    this.staveBag.scheduler = null;
+    this.staveBag.tracks = /* @__PURE__ */ new Map();
+  }
+};
+__name(_HydraVizRenderer, "HydraVizRenderer");
+var HydraVizRenderer = _HydraVizRenderer;
+
+// src/visualizers/hydraCompiler.ts
+function compileHydraCode(code) {
+  new Function("s", "stave", code);
+  return (s, stave) => {
+    const fn = new Function("s", "stave", code);
+    fn(s, stave);
+  };
+}
+__name(compileHydraCode, "compileHydraCode");
+var HYDRA_LINE_OFFSET = 2;
+function getHydraLineOffset() {
+  return HYDRA_LINE_OFFSET;
+}
+__name(getHydraLineOffset, "getHydraLineOffset");
+
+// src/visualizers/renderers/makeHydraRenderer.ts
+function makeHydraRenderer(code, name) {
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("hydra", code, name),
+    () => new HydraVizRenderer(compileHydraCode(code))
+  ) : new HydraVizRenderer(compileHydraCode(code));
+}
+__name(makeHydraRenderer, "makeHydraRenderer");
 
 // src/visualizers/builtinP5Code.ts
 var PIANOROLL_P5_CODE = `// Stave p5 viz \u2014 Piano Roll
@@ -12121,6 +12120,48 @@ function draw() {
   }
 }`;
 
+// src/visualizers/renderers/builtinHydraCode.ts
+var HYDRA_DEFAULT_CODE = `s.osc(10, 0.1, () => s.a.fft[0] * 4)
+  .color(1.0, 0.5, () => s.a.fft[1] * 2)
+  .rotate(() => s.a.fft[2] * 6.28)
+  .modulate(s.noise(3, () => s.a.fft[3] * 0.5), 0.02)
+  .out()`;
+var HYDRA_PIANOROLL_CODE = `s.osc(() => 10 + s.a.fft[0] * 50, -0.3, 0)
+  .thresh(() => 0.3 + s.a.fft[0] * 0.5, 0.1)
+  .color(0.46, 0.71, 1.0)
+  .add(
+    s.osc(() => 20 + s.a.fft[1] * 40, 0.2, 0)
+      .rotate(Math.PI / 2)
+      .thresh(() => 0.4 + s.a.fft[1] * 0.4, 0.08)
+      .color(1.0, 0.79, 0.16),
+    () => s.a.fft[1] * 0.8
+  )
+  .add(
+    s.osc(() => 40 + s.a.fft[2] * 60, 0.1, 0)
+      .thresh(() => 0.6 + s.a.fft[2] * 0.3, 0.05)
+      .color(0.54, 0.36, 0.96),
+    () => s.a.fft[2] * 0.5
+  )
+  .modulate(s.noise(2, () => s.a.fft[3] * 0.4), () => s.a.fft[0] * 0.015)
+  .scrollX(() => s.a.fft[0] * 0.02)
+  .out()`;
+var HYDRA_SCOPE_CODE = `s.osc(() => 20 + s.a.fft[0] * 80, 0.1, 0)
+  .color(0.2, 0.8, 1.0)
+  .rotate(() => s.a.fft[1] * 0.5)
+  .modulate(s.osc(3, 0, 0), () => s.a.fft[2] * 0.1)
+  .diff(s.osc(2, 0.1, 0).rotate(0.5))
+  .out()`;
+var HYDRA_KALEID_CODE = `s.osc(6, 0.1, () => s.a.fft[0] * 3)
+  .kaleid(() => 3 + Math.floor(s.a.fft[1] * 8))
+  .color(
+    () => 0.5 + s.a.fft[0] * 0.5,
+    () => 0.3 + s.a.fft[1] * 0.7,
+    () => 0.8 + s.a.fft[2] * 0.2
+  )
+  .rotate(() => s.a.fft[3] * 3.14)
+  .modulate(s.noise(3), () => s.a.fft[0] * 0.05)
+  .out()`;
+
 // src/visualizers/defaultDescriptors.ts
 var DEFAULT_VIZ_DESCRIPTORS = [
   // p5 renderers (default for each mode) — compiled from bundled source.
@@ -12133,11 +12174,15 @@ var DEFAULT_VIZ_DESCRIPTORS = [
   { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPECTRUM_P5_CODE, "spectrum"), "factory") },
   { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPIRAL_P5_CODE, "spiral"), "factory") },
   { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
-  // Hydra renderers (WebGL shader-based)
-  { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(), "factory") },
-  { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraPianoroll), "factory") },
-  { id: "scope:hydra", label: "Scope (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraScope), "factory") },
-  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => new HydraVizRenderer(hydraKaleidoscope), "factory") }
+  // Hydra renderers (WebGL shader-based) — compiled from bundled code STRINGS
+  // (#252) so `makeHydraRenderer` can offload them to an OffscreenCanvas worker
+  // (a HydraPatternFn closure can't cross to a worker; on the main thread a heavy
+  // hydra backdrop drops the editor to ~24fps — PV69 addendum). Main-thread
+  // HydraVizRenderer remains the fallback (flag off / not isolated / worker fail).
+  { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_DEFAULT_CODE, "hydra"), "factory") },
+  { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_PIANOROLL_CODE, "pianoroll:hydra"), "factory") },
+  { id: "scope:hydra", label: "Scope (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_SCOPE_CODE, "scope:hydra"), "factory") },
+  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_KALEID_CODE, "kaleidoscope:hydra"), "factory") }
 ];
 function SplitPane({
   direction,
@@ -24943,6 +24988,11 @@ var _SonicPiEngine = class _SonicPiEngine {
 __name(_SonicPiEngine, "SonicPiEngine");
 var SonicPiEngine = _SonicPiEngine;
 
+// src/visualizers/renderers/hydraPresets.ts
+var hydraPianoroll = compileHydraCode(HYDRA_PIANOROLL_CODE);
+var hydraScope = compileHydraCode(HYDRA_SCOPE_CODE);
+var hydraKaleidoscope = compileHydraCode(HYDRA_KALEID_CODE);
+
 // src/visualizers/worker/workerBusFeed.ts
 var _FrameAnalyser = class _FrameAnalyser {
   constructor() {
@@ -25574,30 +25624,6 @@ function VizEditor({
   );
 }
 __name(VizEditor, "VizEditor");
-
-// src/visualizers/hydraCompiler.ts
-function compileHydraCode(code) {
-  new Function("s", "stave", code);
-  return (s, stave) => {
-    const fn = new Function("s", "stave", code);
-    fn(s, stave);
-  };
-}
-__name(compileHydraCode, "compileHydraCode");
-var HYDRA_LINE_OFFSET = 2;
-function getHydraLineOffset() {
-  return HYDRA_LINE_OFFSET;
-}
-__name(getHydraLineOffset, "getHydraLineOffset");
-
-// src/visualizers/renderers/makeHydraRenderer.ts
-function makeHydraRenderer(code, name) {
-  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
-    () => new WorkerVizRenderer("hydra", code, name),
-    () => new HydraVizRenderer(compileHydraCode(code))
-  ) : new HydraVizRenderer(compileHydraCode(code));
-}
-__name(makeHydraRenderer, "makeHydraRenderer");
 
 // src/visualizers/vizCompiler.ts
 function compilePreset(preset) {
