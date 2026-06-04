@@ -5221,6 +5221,74 @@ function meanSlice(arr, from, to) {
 }
 __name(meanSlice, "meanSlice");
 
+// src/visualizers/signals/staveUniforms.ts
+function buildStaveUniforms(bus, onTick) {
+  const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
+  u.track = (id) => bus.track(id);
+  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+  Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+  Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+  Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
+  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  const uniforms = {
+    get uKick() {
+      return bus.envValue("uKick");
+    },
+    get uSnare() {
+      return bus.envValue("uSnare");
+    },
+    get uHat() {
+      return bus.envValue("uHat");
+    },
+    get uOpenHat() {
+      return bus.envValue("uOpenHat");
+    },
+    get uClap() {
+      return bus.envValue("uClap");
+    },
+    get uRim() {
+      return bus.envValue("uRim");
+    },
+    get uTom() {
+      return bus.envValue("uTom");
+    },
+    // `uKeyVelocity` is NOT a sound alias — the active event's velocity globally
+    // (max over every sound seen this frame; 0 when nothing is active).
+    get uKeyVelocity() {
+      let max = 0;
+      for (const s of bus.sounds) {
+        const v = bus.sound(s).velocity;
+        if (v > max) max = v;
+      }
+      return max;
+    },
+    // Master-mix DSP sugar (live getter numbers) — parity with `uKick`.
+    get uRms() {
+      return bus.master().rms;
+    },
+    get uBass() {
+      return bus.master().bass;
+    },
+    get uMid() {
+      return bus.master().mid;
+    },
+    get uTreble() {
+      return bus.master().treble;
+    },
+    u
+  };
+  Object.defineProperty(uniforms, "__tick", {
+    value: onTick ?? (() => {
+    }),
+    enumerable: false
+  });
+  return uniforms;
+}
+__name(buildStaveUniforms, "buildStaveUniforms");
+
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
 var monacoNs = null;
@@ -5805,77 +5873,16 @@ var _P5VizRenderer = class _P5VizRenderer {
     /** The HapStream the bus handler is subscribed to (for clean off()). */
     this.boundHapStream = null;
     const bus = this.bus;
-    const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
-    u.track = (id) => bus.track(id);
-    Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-    Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-    Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
-    Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
-    Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
-    Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
-    Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-    Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-    const uniforms = {
-      get uKick() {
-        return bus.envValue("uKick");
-      },
-      get uSnare() {
-        return bus.envValue("uSnare");
-      },
-      get uHat() {
-        return bus.envValue("uHat");
-      },
-      get uOpenHat() {
-        return bus.envValue("uOpenHat");
-      },
-      get uClap() {
-        return bus.envValue("uClap");
-      },
-      get uRim() {
-        return bus.envValue("uRim");
-      },
-      get uTom() {
-        return bus.envValue("uTom");
-      },
-      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — the active
-      // event's velocity globally. Max velocity over every sound seen this
-      // frame; 0 when nothing is active.
-      get uKeyVelocity() {
-        let max = 0;
-        for (const s of bus.sounds) {
-          const v = bus.sound(s).velocity;
-          if (v > max) max = v;
-        }
-        return max;
-      },
-      // Master-mix DSP sugar (Slice 2, p5 D-01 — live getter numbers). Bare
-      // `uRms`/… read `bus.master()` fresh each draw, parity with `uKick`.
-      get uRms() {
-        return bus.master().rms;
-      },
-      get uBass() {
-        return bus.master().bass;
-      },
-      get uMid() {
-        return bus.master().mid;
-      },
-      get uTreble() {
-        return bus.master().treble;
-      },
-      u
-    };
-    Object.defineProperty(uniforms, "__tick", {
-      value: /* @__PURE__ */ __name(() => {
+    this.staveUniformsRef = {
+      current: buildStaveUniforms(bus, () => {
         perf.frame(this.perfId);
         perf.begin("p5.bus");
         bus.tick();
         bus.refreshActive(bus.now());
         bus.readAudio();
         perf.end("p5.bus");
-      }, "value"),
-      enumerable: false
-    });
-    this.staveUniformsRef = { current: uniforms };
+      })
+    };
   }
   mount(container, components, size, onError) {
     perf.gauge("viz.p5", 1);
@@ -24492,13 +24499,32 @@ function emptyFrame(seq = 0) {
     analysers: [],
     activeEvents: [],
     activeByTrack: [],
-    bumps: []
+    bumps: [],
+    rawScheduler: { now: 0, events: [] }
   };
 }
 __name(emptyFrame, "emptyFrame");
 
 // src/visualizers/worker/signalSampler.ts
 var EPSILON2 = 1e-3;
+var RAW_QUERY_BACK = 4;
+var RAW_QUERY_FWD = 2;
+function summariseRawHap(e) {
+  const begin = e.begin ?? 0;
+  const end = e.end ?? begin;
+  return {
+    begin,
+    end,
+    endClipped: e.endClipped ?? end,
+    note: e.note ?? null,
+    freq: e.freq ?? null,
+    s: e.s ?? null,
+    gain: e.gain ?? 1,
+    velocity: e.velocity ?? 1,
+    color: e.color ?? null
+  };
+}
+__name(summariseRawHap, "summariseRawHap");
 function summariseEvent(e) {
   return { s: e.s, velocity: e.velocity, note: e.note, color: e.color };
 }
@@ -24506,11 +24532,21 @@ __name(summariseEvent, "summariseEvent");
 function readAnalyserBytes(key, an) {
   const n = an.frequencyBinCount | 0;
   if (n <= 0) return null;
+  const node = an;
+  const fftSize = node.fftSize && node.fftSize > 0 ? node.fftSize : n * 2;
   const freq = new Uint8Array(n);
-  const time = new Uint8Array(n);
+  const time = new Uint8Array(fftSize);
   an.getByteFrequencyData(freq);
   an.getByteTimeDomainData(time);
-  return { key, frequencyBinCount: n, freq, time };
+  return {
+    key,
+    frequencyBinCount: n,
+    freq,
+    time,
+    fftSize,
+    minDecibels: node.minDecibels ?? -100,
+    maxDecibels: node.maxDecibels ?? -30
+  };
 }
 __name(readAnalyserBytes, "readAnalyserBytes");
 var _MainSignalSampler = class _MainSignalSampler {
@@ -24576,7 +24612,11 @@ var _MainSignalSampler = class _MainSignalSampler {
     }
     const bumps = this.pendingBumps;
     this.pendingBumps = [];
-    return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps };
+    const rawScheduler = {
+      now: now2,
+      events: scheduler ? scheduler.query(now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
+    };
+    return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
   }
   /** Unsubscribe + reset (renderer destroy). */
   dispose() {

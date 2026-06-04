@@ -8,13 +8,10 @@ import type {
   PatternScheduler,
   ContainerSize,
 } from '../types'
-import type {
-  StaveUniforms,
-  P5SignalAccessor,
-  P5SignalReading,
-} from '../p5Compiler'
+import type { StaveUniforms } from '../p5Compiler'
 import { installP5FesBridgeWith } from '../p5FesBridge'
 import { SignalBus } from '../signals/SignalBus'
+import { buildStaveUniforms } from '../signals/staveUniforms'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
@@ -82,102 +79,23 @@ export class P5VizRenderer implements VizRenderer {
 
   constructor(private sketch: P5SketchFactory) {
     const bus = this.bus as SignalBus
-
-    // The callable `u(...)` accessor (D-03) — p5 shape returns live NUMBERS
-    // (NOT thunks), read fresh on each access.
-    // `u('bd')` / `u.track(id)` return the bus reading directly — it already
-    // carries the DSP fields (`rms`/`bass`/`mid`/`treble` numbers + `fft`/`wave`
-    // arrays) spread from `SignalReading`, so a sketch reads `u('bd').rms` /
-    // `u('bd').fft[i]` as live numbers/arrays with no extra wiring (Slice 2).
-    const u = ((sound: string): P5SignalReading => bus.sound(sound)) as P5SignalAccessor
-    u.track = (id: string): P5SignalReading => bus.track(id)
-    // `tracks`/`sounds` are getter-backed so they reflect live bus state every
-    // read (D-03 enumeration), not a frozen snapshot.
-    Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
-    Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
-    // Master-mix DSP on `u` itself (Slice 2, p5 shape): `u.rms`/`u.bass`/… are
-    // live getter NUMBERS, `u.fft`/`u.wave` live getter ARRAYS — each re-reads
-    // `bus.master()` fresh (frame-fresh through the draw, never compile-captured).
-    Object.defineProperty(u, 'rms', { get: () => bus.master().rms, enumerable: true })
-    Object.defineProperty(u, 'bass', { get: () => bus.master().bass, enumerable: true })
-    Object.defineProperty(u, 'mid', { get: () => bus.master().mid, enumerable: true })
-    Object.defineProperty(u, 'treble', { get: () => bus.master().treble, enumerable: true })
-    Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
-    Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
-
-    // The uniform object — bare `uKick…uTom` / `uKeyVelocity` are GETTERS
-    // (D-01 p5 shape: live numbers). `__tick` is a non-enumerable per-frame
-    // hook the draw wrapper calls ONCE per frame (U2 — never in a getter).
-    const uniforms = {
-      get uKick(): number {
-        return bus.envValue('uKick')
-      },
-      get uSnare(): number {
-        return bus.envValue('uSnare')
-      },
-      get uHat(): number {
-        return bus.envValue('uHat')
-      },
-      get uOpenHat(): number {
-        return bus.envValue('uOpenHat')
-      },
-      get uClap(): number {
-        return bus.envValue('uClap')
-      },
-      get uRim(): number {
-        return bus.envValue('uRim')
-      },
-      get uTom(): number {
-        return bus.envValue('uTom')
-      },
-      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — the active
-      // event's velocity globally. Max velocity over every sound seen this
-      // frame; 0 when nothing is active.
-      get uKeyVelocity(): number {
-        let max = 0
-        for (const s of bus.sounds) {
-          const v = bus.sound(s).velocity
-          if (v > max) max = v
-        }
-        return max
-      },
-      // Master-mix DSP sugar (Slice 2, p5 D-01 — live getter numbers). Bare
-      // `uRms`/… read `bus.master()` fresh each draw, parity with `uKick`.
-      get uRms(): number {
-        return bus.master().rms
-      },
-      get uBass(): number {
-        return bus.master().bass
-      },
-      get uMid(): number {
-        return bus.master().mid
-      },
-      get uTreble(): number {
-        return bus.master().treble
-      },
-      u,
-    } as StaveUniforms
-    // `__tick` non-enumerable so a `with (staveUniforms)` / for-in doesn't
-    // surface it as a sketch identifier; the draw wrapper calls it explicitly.
-    Object.defineProperty(uniforms, '__tick', {
-      value: (): void => {
-        // Profiler (#228): __tick fires exactly once per p5 frame (the draw
-        // wrapper calls it) → use it as the per-instance frame beat + time the
-        // bus's per-frame work. Both no-op when profiling is disabled.
+    // `__tick` (MAIN) — fires ONCE per p5 draw frame (the draw wrapper calls it):
+    // profiler beat + the bus's per-frame drive. readAudio MUST run AFTER
+    // refreshActive (Slice 2): `audioFor` resolves sound→track via the active map
+    // refreshActive fills; wrong order = sound-keyed DSP reads stale. The uniform
+    // SHAPE (getters + `u`) is built by the shared `buildStaveUniforms` so the
+    // worker renderer produces an IDENTICAL surface (PV54); only this tick differs
+    // — the worker omits it (its `WorkerBusFeed` drives the bus — PK22).
+    this.staveUniformsRef = {
+      current: buildStaveUniforms(bus, (): void => {
         perf.frame(this.perfId)
         perf.begin('p5.bus')
         bus.tick()
         bus.refreshActive(bus.now())
-        // readAudio MUST run AFTER refreshActive (Slice 2): `audioFor` resolves
-        // a sound → its trackKey via `activeByTrack`, which refreshActive fills.
-        // Wrong order = sound-keyed DSP reads stale/empty. Once per frame (U2),
-        // reusing this same draw-wrapper tick — no second loop.
         bus.readAudio()
         perf.end('p5.bus')
-      },
-      enumerable: false,
-    })
-    this.staveUniformsRef = { current: uniforms }
+      }),
+    }
   }
 
   mount(
