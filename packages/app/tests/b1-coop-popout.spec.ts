@@ -126,45 +126,42 @@ test('B-1: COOP same-origin — window.open popup + synchronous popup.document s
   const popupPages = context.pages().length
   console.log('context page count after open/close:', popupPages)
 
-  // ── Ground the capability-detection util against the LIVE environment ──
-  // Replicate detectWorkerVizCapabilities' 3-tier policy against real globals,
-  // proving the running app resolves to the SAB transport (not just the unit env).
+  // ── Observe the RAW worker-viz capability facts in the LIVE environment ──
+  // We deliberately read only the primitive facts here (no transport policy):
+  // these five being present IS the precondition for the `sab` transport. The
+  // facts → VizTransport mapping is owned + unit-tested by detectWorkerVizCapabilities
+  // (visualizers/worker/capabilities.test.ts) — duplicating the if/else here would
+  // just risk drift. The spike's job is to prove the live app supplies every `sab`
+  // prerequisite under the header.
   const caps = await page.evaluate(() => {
     const isFn = (v: unknown) => typeof v === 'function'
     const g = globalThis as Record<string, unknown> & {
       crossOriginIsolated?: boolean
       HTMLCanvasElement?: { prototype?: { transferControlToOffscreen?: unknown } }
     }
-    const crossOriginIsolated = g.crossOriginIsolated === true
-    const hasOffscreenCanvas = isFn(g.OffscreenCanvas)
-    const hasSharedArrayBuffer = isFn(g.SharedArrayBuffer)
-    const hasWorker = isFn(g.Worker)
-    const canTransferControl = isFn(
-      g.HTMLCanvasElement?.prototype?.transferControlToOffscreen
-    )
-    const canUseWorker = hasWorker && hasOffscreenCanvas && canTransferControl
-    const transport = !canUseWorker
-      ? 'main-thread'
-      : crossOriginIsolated && hasSharedArrayBuffer
-        ? 'sab'
-        : 'postmessage'
     return {
-      crossOriginIsolated,
-      hasOffscreenCanvas,
-      hasSharedArrayBuffer,
-      hasWorker,
-      canTransferControl,
-      canUseWorker,
-      transport,
+      crossOriginIsolated: g.crossOriginIsolated === true,
+      hasOffscreenCanvas: isFn(g.OffscreenCanvas),
+      hasSharedArrayBuffer: isFn(g.SharedArrayBuffer),
+      hasWorker: isFn(g.Worker),
+      canTransferControl: isFn(
+        g.HTMLCanvasElement?.prototype?.transferControlToOffscreen
+      ),
     }
   })
-  console.log('\n── live worker-viz capabilities (real app env) ──')
-  console.log('  canUseWorker :', caps.canUseWorker)
-  console.log('  transport    :', caps.transport)
-  expect(caps.canUseWorker, 'live app can offload viz to a worker').toBe(true)
-  expect(caps.transport, 'live app resolves to the SAB transport under the header').toBe(
-    'sab'
-  )
+  console.log('\n── live worker-viz capability facts (real app env) ──')
+  console.log('  crossOriginIsolated  :', caps.crossOriginIsolated)
+  console.log('  OffscreenCanvas      :', caps.hasOffscreenCanvas)
+  console.log('  SharedArrayBuffer    :', caps.hasSharedArrayBuffer)
+  console.log('  Worker               :', caps.hasWorker)
+  console.log('  transferControl      :', caps.canTransferControl)
+  console.log('  ⇒ all `sab` prereqs  :', Object.values(caps).every(Boolean))
+  // Every `sab` precondition present in the live app → detectWorkerVizCapabilities
+  // resolves to 'sab' (that derivation is asserted in the unit test).
+  expect(
+    Object.values(caps).every(Boolean),
+    'live app supplies every prerequisite for the SAB transport under the header'
+  ).toBe(true)
 
   // ── ASSERT the present-state finding ──
   expect(openerIso, 'opener is cross-origin isolated (header live)').toBe(true)
