@@ -2108,6 +2108,92 @@ declare function getVizConfig(): Readonly<VizConfig>;
  */
 declare function setVizConfig(config: Partial<VizConfig>): void;
 
+/**
+ * Worker-viz capability detection — the degrade-path scaffold for Phase B.
+ *
+ * Phase B moves viz `draw()` off the main thread into an OffscreenCanvas worker
+ * (epic #228). Whether that is possible — and *how* the per-frame signal data
+ * reaches the worker — depends on browser capabilities that vary by environment:
+ *
+ *   - `Worker` + `OffscreenCanvas` + `HTMLCanvasElement.transferControlToOffscreen`
+ *     → worker rendering is possible at all.
+ *   - `crossOriginIsolated` + `SharedArrayBuffer`
+ *     → the zero-copy SAB signal transport is available (the measured optimization,
+ *       gated behind the COOP/COEP header — see B-1 #239 / Q2 #237).
+ *
+ * B-1 (#239) confirmed by observation that the live COOP=same-origin +
+ * COEP=credentialless header yields `crossOriginIsolated === true` (and that a
+ * `window.open` popup inherits it). This module turns that runtime truth into a
+ * single capability snapshot + a sensible default transport choice, so B-2/B-3
+ * can pick SAB vs postMessage vs main-thread without re-probing globals ad hoc.
+ *
+ * Pure + environment-injectable → plain unit tests (no IDB/DOM — see the editor
+ * "split pure logic from I/O" rule). The live app passes nothing and reads
+ * `globalThis`.
+ */
+/**
+ * How per-frame viz signal data crosses to the renderer.
+ *
+ * - `'sab'`         — worker render + zero-copy SharedArrayBuffer transport
+ *                     (requires cross-origin isolation; the primary path).
+ * - `'postmessage'` — worker render + transferable-ArrayBuffer postMessage
+ *                     transport (no isolation needed; the required fallback for
+ *                     non-isolated browsers, e.g. Safari).
+ * - `'main-thread'` — no worker offload possible; render on the main thread with
+ *                     today's `P5VizRenderer` / `HydraVizRenderer`.
+ */
+type VizTransport = 'sab' | 'postmessage' | 'main-thread';
+interface WorkerVizCapabilities {
+    /** COOP/COEP cross-origin isolation is active (gates SharedArrayBuffer). */
+    crossOriginIsolated: boolean;
+    /** `OffscreenCanvas` constructor exists. */
+    hasOffscreenCanvas: boolean;
+    /** `SharedArrayBuffer` constructor exists (still needs isolation to be useful). */
+    hasSharedArrayBuffer: boolean;
+    /** `HTMLCanvasElement.prototype.transferControlToOffscreen` exists. */
+    canTransferControl: boolean;
+    /** `Worker` constructor exists. */
+    hasWorker: boolean;
+    /** Worker rendering is possible at all (worker + offscreen + transfer). */
+    canUseWorker: boolean;
+    /** The default transport given these capabilities (see {@link VizTransport}). */
+    transport: VizTransport;
+}
+/**
+ * The subset of the global environment this module reads. Injectable so the
+ * selection logic can be unit-tested across capability matrices without touching
+ * the real `globalThis`.
+ */
+interface CapabilityEnv {
+    crossOriginIsolated?: boolean;
+    OffscreenCanvas?: unknown;
+    SharedArrayBuffer?: unknown;
+    Worker?: unknown;
+    /** Stand-in for `HTMLCanvasElement` — we only probe for the transfer method. */
+    HTMLCanvasElement?: {
+        prototype?: {
+            transferControlToOffscreen?: unknown;
+        };
+    };
+}
+/**
+ * Derive worker-viz capabilities + the default transport from an environment.
+ *
+ * Transport policy (capability-derived, deliberately separate from any
+ * load/quality policy B-6 may add):
+ *   1. Can't offload (no worker / offscreen / transferControl) → `'main-thread'`.
+ *   2. Isolated + SharedArrayBuffer                            → `'sab'`.
+ *   3. Worker-capable but not isolated                         → `'postmessage'`.
+ *
+ * Note: PHASE-B-PLAN §4's conservative line ("fallback to main if
+ * !crossOriginIsolated") collapses cases 2+3; the plan's transport section +
+ * decision §1 are the refined intent — worker rendering works without isolation,
+ * only SAB needs it, so a non-isolated browser still offloads via postMessage.
+ * This function encodes the refined three-tier truth; a consumer that wants the
+ * conservative behaviour can treat anything but `'sab'` as main-thread.
+ */
+declare function detectWorkerVizCapabilities(env?: CapabilityEnv): WorkerVizCapabilities;
+
 interface VizPanelProps {
     vizHeight?: number | string;
     hapStream: HapStream | null;
@@ -6942,4 +7028,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BusAnalyser, type BusHapEvent, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SectionStats, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalReading, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, WORDFALL_P5_CODE, WavEncoder, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SectionStats, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalReading, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, type VizConfig, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizRefs, type VizRenderer, type VizRendererSource, type VizTransport, WORDFALL_P5_CODE, WavEncoder, type WorkerVizCapabilities, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };

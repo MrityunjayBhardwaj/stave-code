@@ -66,6 +66,9 @@ export {
 } from './visualizers/namedVizRegistry'
 export type { VizConfig } from './visualizers/vizConfig'
 export { DEFAULT_VIZ_CONFIG, createVizConfig, getVizConfig, setVizConfig } from './visualizers/vizConfig'
+// Phase B — worker-viz capability detection / transport degrade scaffold (B-1 #239)
+export { detectWorkerVizCapabilities } from './visualizers/worker/capabilities'
+export type { VizTransport, WorkerVizCapabilities, CapabilityEnv } from './visualizers/worker/capabilities'
 
 // Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'
