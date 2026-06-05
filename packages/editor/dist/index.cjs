@@ -6394,6 +6394,7 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
     this.makeMain = makeMain;
     this.fellBack = false;
     this.ready = false;
+    this.paused = false;
     this.probationTimer = null;
     // Captured at mount so the fallback can re-mount the main renderer identically.
     this.container = null;
@@ -6412,12 +6413,16 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
       this.ready = true;
       this.clearProbation();
     });
+    if (!this.paused) this.armProbation();
+    this.worker.mount(container, components, size, (e) => this.onWorkerError(e));
+  }
+  armProbation() {
+    if (this.ready || this.fellBack || this.probationTimer !== null) return;
     this.probationTimer = setTimeout(() => {
       if (!this.ready && !this.fellBack) {
         this.fallback(new Error("worker viz did not produce a frame within probation"));
       }
     }, PROBATION_MS);
-    this.worker.mount(container, components, size, (e) => this.onWorkerError(e));
   }
   onWorkerError(e) {
     if (!this.fellBack && !this.ready) {
@@ -6447,6 +6452,7 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
         this.hostOnError ?? (() => {
         })
       );
+      if (this.paused) this.active.pause();
     } catch (e) {
       this.hostOnError?.(e);
     }
@@ -6460,9 +6466,13 @@ var _FallbackVizRenderer = class _FallbackVizRenderer {
     this.active.resize(w, h);
   }
   pause() {
+    this.paused = true;
+    if (!this.ready && !this.fellBack) this.clearProbation();
     this.active.pause();
   }
   resume() {
+    this.paused = false;
+    if (!this.ready && !this.fellBack) this.armProbation();
     this.active.resume();
   }
   destroy() {
@@ -6927,11 +6937,11 @@ function createIdentifierCompletionProvider(monaco, index) {
         startColumn: word.startColumn,
         endColumn: word.endColumn
       };
-      const entries2 = Object.entries(index.docs).filter(
+      const entries3 = Object.entries(index.docs).filter(
         ([name]) => prefix.length === 0 ? true : name.toLowerCase().startsWith(prefix.toLowerCase())
       );
       return {
-        suggestions: entries2.map(
+        suggestions: entries3.map(
           ([name, doc]) => toSuggestion(monaco, name, doc, range)
         )
       };
@@ -12926,14 +12936,14 @@ function getChildOrder(parentPath) {
   return arr ? arr.toArray() : [];
 }
 __name(getChildOrder, "getChildOrder");
-function setChildOrder(parentPath, entries2) {
+function setChildOrder(parentPath, entries3) {
   ensureDoc();
   ensureFolderOrderObserver();
   const map = getChildOrderMap();
   const doc = ensureDoc();
   doc.transact(() => {
     const next = new Y3__namespace.Array();
-    next.push(entries2);
+    next.push(entries3);
     map.set(parentPath, next);
   }, STRUCT_ORIGIN);
 }
@@ -18081,15 +18091,15 @@ function useBreakpoints(editor, store, onResume) {
     const render = /* @__PURE__ */ __name(() => {
       const model = editor.getModel();
       if (!model) return;
-      const entries2 = store.entries();
-      if (entries2.size === 0) {
+      const entries3 = store.entries();
+      if (entries3.size === 0) {
         collectionRef.current?.clear();
         collectionRef.current = null;
         return;
       }
       const lineState = /* @__PURE__ */ new Map();
       const snap = currentSnapshot;
-      for (const [id, meta] of entries2) {
+      for (const [id, meta] of entries3) {
         const event = snap?.irNodeIdLookup.get(id);
         if (event && event.loc && event.loc.length > 0) {
           let line = null;
@@ -18235,6 +18245,63 @@ function resolveDescriptor(vizId, descriptors) {
   return descriptors.find((d) => d.id.startsWith(prefix));
 }
 __name(resolveDescriptor, "resolveDescriptor");
+
+// src/visualizers/vizVisibility.ts
+var entries2 = /* @__PURE__ */ new Set();
+var tabVisible = true;
+var visibilityWired = false;
+function syncEntry(e) {
+  const desired = e.onScreen && tabVisible;
+  if (desired === e.running) return;
+  e.running = desired;
+  if (desired) e.renderer.resume();
+  else e.renderer.pause();
+}
+__name(syncEntry, "syncEntry");
+function onVisibilityChange() {
+  tabVisible = typeof document === "undefined" || document.visibilityState !== "hidden";
+  entries2.forEach(syncEntry);
+}
+__name(onVisibilityChange, "onVisibilityChange");
+function wireVisibility() {
+  if (visibilityWired || typeof document === "undefined") return;
+  visibilityWired = true;
+  tabVisible = document.visibilityState !== "hidden";
+  document.addEventListener("visibilitychange", onVisibilityChange);
+}
+__name(wireVisibility, "wireVisibility");
+function unwireVisibility() {
+  if (!visibilityWired || entries2.size > 0 || typeof document === "undefined") return;
+  visibilityWired = false;
+  document.removeEventListener("visibilitychange", onVisibilityChange);
+}
+__name(unwireVisibility, "unwireVisibility");
+function registerVizVisibility(renderer, container) {
+  if (typeof IntersectionObserver === "undefined" || typeof document === "undefined") {
+    return () => {
+    };
+  }
+  const entry = { renderer, onScreen: true, running: true, io: null };
+  wireVisibility();
+  entries2.add(entry);
+  syncEntry(entry);
+  entry.io = new IntersectionObserver(
+    (records) => {
+      const last = records[records.length - 1];
+      if (last) entry.onScreen = last.isIntersecting;
+      syncEntry(entry);
+    },
+    { threshold: 0 }
+  );
+  entry.io.observe(container);
+  return () => {
+    entry.io?.disconnect();
+    entry.io = null;
+    entries2.delete(entry);
+    unwireVisibility();
+  };
+}
+__name(registerVizVisibility, "registerVizVisibility");
 
 // src/engine/BufferedScheduler.ts
 var _BufferedScheduler = class _BufferedScheduler {
@@ -18532,6 +18599,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }, "resume") };
   }
   const renderers = [];
+  const visibilityCleanups = [];
   const bufferedSchedulers = [];
   const zoneEntries = [];
   const audioCtx = components.audio?.audioCtx;
@@ -18589,6 +18657,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         console.error("[stave] viz mount failed:", e);
       }
       renderers.push(renderer);
+      visibilityCleanups.push(registerVizVisibility(renderer, container));
       const canvas = container.querySelector("canvas");
       applyLayout(container, canvas, layout);
       requestAnimationFrame(() => {
@@ -18935,6 +19004,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       contentChangeDisposable?.dispose?.();
       editorDom?.removeEventListener("mouseleave", mouseLeaveHandler);
       floatingBar?.remove();
+      visibilityCleanups.forEach((fn) => fn());
       renderers.forEach((r) => r.destroy());
       bufferedSchedulers.forEach((s) => s.dispose());
       editor.changeViewZones((accessor) => {
@@ -25115,8 +25185,8 @@ function mountVizRenderer(container, source, components, size, onError) {
   renderer.mount(container, components, size, onError);
   let lastW = size.w;
   let lastH = size.h;
-  const ro = new ResizeObserver((entries2) => {
-    const { width, height } = entries2[0].contentRect;
+  const ro = new ResizeObserver((entries3) => {
+    const { width, height } = entries3[0].contentRect;
     if (width > 0 && height > 0 && (Math.abs(width - lastW) > 1 || Math.abs(height - lastH) > 1)) {
       lastW = width;
       lastH = height;
@@ -25124,9 +25194,13 @@ function mountVizRenderer(container, source, components, size, onError) {
     }
   });
   ro.observe(container);
+  const unregisterVisibility = registerVizVisibility(renderer, container);
   return {
     renderer,
-    disconnect: /* @__PURE__ */ __name(() => ro.disconnect(), "disconnect")
+    disconnect: /* @__PURE__ */ __name(() => {
+      ro.disconnect();
+      unregisterVisibility();
+    }, "disconnect")
   };
 }
 __name(mountVizRenderer, "mountVizRenderer");

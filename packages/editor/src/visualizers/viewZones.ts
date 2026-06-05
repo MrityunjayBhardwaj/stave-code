@@ -2,6 +2,7 @@ import type * as Monaco from 'monaco-editor'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizRenderer, VizDescriptor } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
+import { registerVizVisibility } from './vizVisibility'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
@@ -260,6 +261,10 @@ export function addInlineViewZones(
   }
 
   const renderers: VizRenderer[] = []
+  // Phase C (#258): one unregister fn per zone — pauses the renderer while its
+  // zone is scrolled off-screen / collapsed or the tab is hidden. (viewZones
+  // mounts renderers DIRECTLY, NOT via mountVizRenderer, so it wires its own.)
+  const visibilityCleanups: Array<() => void> = []
   const bufferedSchedulers: BufferedScheduler[] = []
   const zoneEntries: ZoneEntry[] = []
 
@@ -346,6 +351,7 @@ export function addInlineViewZones(
         console.error('[stave] viz mount failed:', e)
       }
       renderers.push(renderer)
+      visibilityCleanups.push(registerVizVisibility(renderer, container))
 
       // The renderer may create the canvas asynchronously (p5 defers
       // to rAF). Apply layout now if the canvas is already present,
@@ -781,6 +787,7 @@ export function addInlineViewZones(
       contentChangeDisposable?.dispose?.()
       editorDom?.removeEventListener('mouseleave', mouseLeaveHandler)
       floatingBar?.remove()
+      visibilityCleanups.forEach(fn => fn())
       renderers.forEach(r => r.destroy())
       bufferedSchedulers.forEach(s => s.dispose())
       editor.changeViewZones((accessor) => {

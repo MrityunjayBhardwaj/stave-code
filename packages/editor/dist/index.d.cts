@@ -2951,10 +2951,13 @@ declare function compilePreset(preset: VizPreset): VizDescriptor;
 
 /**
  * Shared imperative utility that creates/resolves a VizRenderer, calls mount(),
- * and wires a ResizeObserver. Used by both useVizRenderer (React hook) and
- * viewZones.ts (imperative).
+ * and wires a ResizeObserver + visibility pausing. Used by both useVizRenderer
+ * (React hook) and viewZones.ts (imperative) — so inline, backdrop, and picker
+ * all get off-screen/collapsed/background-tab pausing (Phase C, #258) from one
+ * place.
  *
- * Returns the renderer instance and a disconnect function for the ResizeObserver.
+ * Returns the renderer instance and a disconnect function that tears down BOTH
+ * the ResizeObserver and the visibility registration.
  */
 declare function mountVizRenderer(container: HTMLDivElement, source: VizRendererSource, components: Partial<EngineComponents>, size: {
     w: number;
