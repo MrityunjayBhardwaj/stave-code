@@ -6189,9 +6189,80 @@ function getVizWorkerFactory() {
 }
 __name(getVizWorkerFactory, "getVizWorkerFactory");
 
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
+  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
+  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
+  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
+  // composite wall measured for multi-instance inline viz.
+  maxFps: 60,
+  maxDpr: 1,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+}
+__name(createVizConfig, "createVizConfig");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+}
+__name(setVizConfig, "setVizConfig");
+
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
 var MAX_FRAMES_IN_FLIGHT = 2;
+function effectiveDpr() {
+  const raw = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  const cap = getVizConfig().maxDpr;
+  return cap > 0 ? Math.min(raw, cap) : raw;
+}
+__name(effectiveDpr, "effectiveDpr");
+function minFrameMs() {
+  const fps = getVizConfig().maxFps;
+  return fps > 0 ? 1e3 / fps : 0;
+}
+__name(minFrameMs, "minFrameMs");
 var _WorkerVizRenderer = class _WorkerVizRenderer {
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
    *  sketch source. @param name workspace path (error attribution). */
@@ -6209,6 +6280,9 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
      *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
      *  wedged by acks owed for frames written before a pause. */
     this.inFlight = 0;
+    /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
+     *  (#261). Reset on (re)start. */
+    this.lastProduceTs = 0;
     this.size = { w: 400, h: 300 };
     this.onError = null;
     this.perfId = `worker#${++workerPerfSeq}`;
@@ -6237,7 +6311,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       return;
     }
     try {
-      const dpr = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : 1;
+      const dpr = effectiveDpr();
       const canvas = document.createElement("canvas");
       canvas.style.width = "100%";
       canvas.style.height = "100%";
@@ -6293,7 +6367,7 @@ ${d.stack}` : "");
   }
   resize(w, h) {
     this.size = { w, h };
-    const dpr = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : 1;
+    const dpr = effectiveDpr();
     this.worker?.postMessage({ type: "resize", w, h, dpr });
   }
   pause() {
@@ -6350,9 +6424,13 @@ ${d.stack}` : "");
     if (this.running) return;
     this.running = true;
     this.inFlight = 0;
-    const tick = /* @__PURE__ */ __name(() => {
+    this.lastProduceTs = 0;
+    const tick = /* @__PURE__ */ __name((ts) => {
       if (!this.running || !this.writer) return;
-      if (this.inFlight < MAX_FRAMES_IN_FLIGHT) {
+      const gap = minFrameMs();
+      const due = gap <= 0 || this.lastProduceTs === 0 || ts - this.lastProduceTs >= gap - 1;
+      if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due) {
+        this.lastProduceTs = ts;
         perf.frame(this.perfId);
         perf.begin("viz.worker.sample");
         const frame = this.sampler.sample();
@@ -11077,59 +11155,6 @@ function installErrorSketch(p, message) {
   };
 }
 __name(installErrorSketch, "installErrorSketch");
-
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
-  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
-  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
-  // automatic fallback when a browser can't offload (no OffscreenCanvas /
-  // transferControlToOffscreen / worker factory). Opt OUT per project via
-  // localStorage['stave.viz.worker'] = '0'.
-  workerRenderer: true,
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
-}
-__name(createVizConfig, "createVizConfig");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-function getVizConfig() {
-  return _active;
-}
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
-}
-__name(setVizConfig, "setVizConfig");
 
 // src/visualizers/worker/capabilities.ts
 function isFn(v) {

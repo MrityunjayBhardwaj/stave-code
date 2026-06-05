@@ -35,6 +35,7 @@ import type { IRPattern } from '../../ir/IRPattern'
 import { MainSignalSampler } from '../worker/signalSampler'
 import { createPostMessageWriter, type SignalTransportWriter } from '../worker/signalTransport'
 import { getVizWorkerFactory } from '../vizWorkerFactory'
+import { getVizConfig } from '../vizConfig'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
@@ -58,6 +59,22 @@ let workerPerfSeq = 0
  */
 const MAX_FRAMES_IN_FLIGHT = 2
 
+/** Effective device pixel ratio for worker viz, capped by `vizConfig.maxDpr`
+ *  (#261). The worker p5 sketch renders at 1×; capping the presenting canvas to
+ *  match avoids compositing an upscaled 1× image at 2× for nothing. */
+function effectiveDpr(): number {
+  const raw = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1
+  const cap = getVizConfig().maxDpr
+  return cap > 0 ? Math.min(raw, cap) : raw
+}
+
+/** Minimum ms between produced frames for the `vizConfig.maxFps` cap (#261).
+ *  0 when uncapped (maxFps ≤ 0) → produce every rAF (subject to backpressure). */
+function minFrameMs(): number {
+  const fps = getVizConfig().maxFps
+  return fps > 0 ? 1000 / fps : 0
+}
+
 export class WorkerVizRenderer implements VizRenderer {
   private worker: Worker | null = null
   private writer: SignalTransportWriter | null = null
@@ -69,6 +86,9 @@ export class WorkerVizRenderer implements VizRenderer {
    *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
    *  wedged by acks owed for frames written before a pause. */
   private inFlight = 0
+  /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
+   *  (#261). Reset on (re)start. */
+  private lastProduceTs = 0
   private size = { w: 400, h: 300 }
   private onError: ((e: Error) => void) | null = null
   private readonly perfId = `worker#${++workerPerfSeq}`
@@ -115,7 +135,7 @@ export class WorkerVizRenderer implements VizRenderer {
     try {
       // ── presenting canvas: the worker owns it via transferControlToOffscreen;
       // the browser composites the worker's draws into this element. ──
-      const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1
+      const dpr = effectiveDpr()
       const canvas = document.createElement('canvas')
       canvas.style.width = '100%'
       canvas.style.height = '100%'
@@ -188,7 +208,7 @@ export class WorkerVizRenderer implements VizRenderer {
 
   resize(w: number, h: number): void {
     this.size = { w, h }
-    const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1
+    const dpr = effectiveDpr()
     this.worker?.postMessage({ type: 'resize', w, h, dpr })
   }
 
@@ -260,7 +280,8 @@ export class WorkerVizRenderer implements VizRenderer {
     if (this.running) return
     this.running = true
     this.inFlight = 0 // fresh pipeline on (re)start — drop any owed acks (#261)
-    const tick = (): void => {
+    this.lastProduceTs = 0 // fresh fps-cap clock
+    const tick = (ts: number): void => {
       if (!this.running || !this.writer) return
       // #261 backpressure: only produce while the worker hasn't fallen `cap`
       // frames behind. The rAF keeps ticking (so we resume the instant an ack
@@ -270,7 +291,16 @@ export class WorkerVizRenderer implements VizRenderer {
       // sampling when skipped is deliberate: it lets the hap bumps accumulate
       // into the NEXT produced frame (envelope energy preserved, PK22) and saves
       // the duplicated main sample work when the worker is the bottleneck.
-      if (this.inFlight < MAX_FRAMES_IN_FLIGHT) {
+      //
+      // #261 fps cap: also skip if we produced a frame less than minFrameMs ago,
+      // so a 120fps display doesn't blit/composite/sample twice as often as a
+      // music viz can use. The `- 1` biases toward hitting the target rather than
+      // undershooting on a high-refresh display (skipping is always safe — it can
+      // only lower the rate, never exceed the cap). Composed with backpressure.
+      const gap = minFrameMs()
+      const due = gap <= 0 || this.lastProduceTs === 0 || ts - this.lastProduceTs >= gap - 1
+      if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due) {
+        this.lastProduceTs = ts
         perf.frame(this.perfId)
         // Decompose the per-frame main cost into its two parts so the matrix can
         // attribute it (B-4 decision gate, #249): `sample` = analyser reads + the

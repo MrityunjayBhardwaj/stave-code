@@ -1917,6 +1917,9 @@ declare class WorkerVizRenderer implements VizRenderer {
      *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
      *  wedged by acks owed for frames written before a pause. */
     private inFlight;
+    /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
+     *  (#261). Reset on (re)start. */
+    private lastProduceTs;
     private size;
     private onError;
     private readonly perfId;
@@ -2149,6 +2152,25 @@ interface VizConfig {
      * browser can't offload, regardless of this flag.
      */
     workerRenderer: boolean;
+    /**
+     * Frame-rate cap for worker-rendered viz (frames/sec). The main sampler rAF
+     * fires at the display rate (e.g. 120fps on ProMotion); a music viz gains
+     * nothing above ~60fps, so producing every display frame just doubles the
+     * blit/composite/sample work for no perceptual benefit. The `WorkerVizRenderer`
+     * production loop skips frames to hold at most this rate (composed with the
+     * #261 in-flight backpressure). 0 / non-positive = uncapped (display rate).
+     */
+    maxFps: number;
+    /**
+     * Cap on the device-pixel-ratio worker viz render + present at. The presenting
+     * canvas backing store is `cssSize × dpr` and is composited every frame — cost
+     * scales with dpr². The worker p5 sketch already renders at 1× (the worker DOM
+     * shim reports `devicePixelRatio = 1`), so presenting into a 2× canvas upscales
+     * a 1× image for nothing. Capping at 1 makes present match render (quality-
+     * neutral, ~4× cheaper composite on a 2× display); raise toward 2 for crisper
+     * viz at higher composite cost. Effective dpr = `min(devicePixelRatio, maxDpr)`.
+     */
+    maxDpr: number;
     /** Height in pixels of each inline viz zone rendered below a pattern block. */
     inlineZoneHeight: number;
     /**

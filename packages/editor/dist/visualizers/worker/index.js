@@ -5535,6 +5535,13 @@ var DEFAULT_VIZ_CONFIG = {
   // transferControlToOffscreen / worker factory). Opt OUT per project via
   // localStorage['stave.viz.worker'] = '0'.
   workerRenderer: true,
+  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
+  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
+  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
+  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
+  // composite wall measured for multi-instance inline viz.
+  maxFps: 60,
+  maxDpr: 1,
   // Inline view zones
   inlineZoneHeight: 150,
   // Audio analysis
