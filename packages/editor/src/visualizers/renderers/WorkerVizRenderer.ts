@@ -38,9 +38,25 @@ import { getVizWorkerFactory } from '../vizWorkerFactory'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
-import type { MountMessage, WorkerDiagMessage, WorkerReadyMessage } from '../worker/workerMessages'
+import type {
+  MountMessage,
+  WorkerDiagMessage,
+  WorkerReadyMessage,
+  WorkerFrameAckMessage,
+} from '../worker/workerMessages'
 
 let workerPerfSeq = 0
+
+/**
+ * Max SignalFrames allowed in flight (written but not yet acked by the worker)
+ * before the main sampler stops producing — the #261 backpressure cap. The main
+ * rAF can fire at the display rate (e.g. 120fps) while a heavy-WEBGL worker draws
+ * far slower (~20fps); without a bound, the surplus backlogs in the worker's
+ * postMessage queue and the worker renders seconds-stale data (looks "static").
+ * A small cap keeps the worker's queue ~1 frame deep (always drawing the freshest
+ * sampled frame) while leaving one frame buffered so it never idles waiting.
+ */
+const MAX_FRAMES_IN_FLIGHT = 2
 
 export class WorkerVizRenderer implements VizRenderer {
   private worker: Worker | null = null
@@ -48,6 +64,11 @@ export class WorkerVizRenderer implements VizRenderer {
   private readonly sampler = new MainSignalSampler()
   private rafId = 0
   private running = false
+  /** Frames written but not yet acked by the worker (#261 backpressure). The
+   *  sampler skips producing while this is at the cap so a slow worker can't be
+   *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
+   *  wedged by acks owed for frames written before a pause. */
+  private inFlight = 0
   private size = { w: 400, h: 300 }
   private onError: ((e: Error) => void) | null = null
   private readonly perfId = `worker#${++workerPerfSeq}`
@@ -112,8 +133,17 @@ export class WorkerVizRenderer implements VizRenderer {
       // Worker → main diagnostics (sketch errors, ready). Forward errors to the
       // host's onError so the existing engineLog/console surfacing applies.
       this.diagHandler = (ev: MessageEvent) => {
-        const d = ev.data as WorkerDiagMessage | WorkerReadyMessage | undefined
+        const d = ev.data as
+          | WorkerDiagMessage
+          | WorkerReadyMessage
+          | WorkerFrameAckMessage
+          | undefined
         if (!d) return
+        if (d.type === 'frameAck') {
+          // The worker consumed a frame — free a slot in the bounded pipeline (#261).
+          if (this.inFlight > 0) this.inFlight--
+          return
+        }
         if (d.type === 'ready') {
           // First successful worker frame — end the fallback probation (#247).
           this.onReady?.()
@@ -229,20 +259,32 @@ export class WorkerVizRenderer implements VizRenderer {
   private start(): void {
     if (this.running) return
     this.running = true
+    this.inFlight = 0 // fresh pipeline on (re)start — drop any owed acks (#261)
     const tick = (): void => {
       if (!this.running || !this.writer) return
-      perf.frame(this.perfId)
-      // Decompose the per-frame main cost into its two parts so the matrix can
-      // attribute it (B-4 decision gate, #249): `sample` = analyser reads + the
-      // wide scheduler query (duplicated work, only a SHARED sampler removes the
-      // N×); `write` = transport (envelope structured-clone + postMessage —
-      // bytes already transferred zero-copy; this is the slice SAB removes).
-      perf.begin('viz.worker.sample')
-      const frame = this.sampler.sample()
-      perf.end('viz.worker.sample')
-      perf.begin('viz.worker.write')
-      this.writer.writeFrame(frame)
-      perf.end('viz.worker.write')
+      // #261 backpressure: only produce while the worker hasn't fallen `cap`
+      // frames behind. The rAF keeps ticking (so we resume the instant an ack
+      // frees a slot), but we skip sample()+writeFrame() when the pipeline is
+      // full — this paces main's output to the worker's actual draw rate, so the
+      // worker always draws the freshest frame instead of a stale backlog. NOT
+      // sampling when skipped is deliberate: it lets the hap bumps accumulate
+      // into the NEXT produced frame (envelope energy preserved, PK22) and saves
+      // the duplicated main sample work when the worker is the bottleneck.
+      if (this.inFlight < MAX_FRAMES_IN_FLIGHT) {
+        perf.frame(this.perfId)
+        // Decompose the per-frame main cost into its two parts so the matrix can
+        // attribute it (B-4 decision gate, #249): `sample` = analyser reads + the
+        // wide scheduler query (duplicated work, only a SHARED sampler removes the
+        // N×); `write` = transport (envelope structured-clone + postMessage —
+        // bytes already transferred zero-copy; this is the slice SAB removes).
+        perf.begin('viz.worker.sample')
+        const frame = this.sampler.sample()
+        perf.end('viz.worker.sample')
+        perf.begin('viz.worker.write')
+        this.writer.writeFrame(frame)
+        perf.end('viz.worker.write')
+        this.inFlight++
+      }
       this.rafId = requestAnimationFrame(tick)
     }
     this.rafId = requestAnimationFrame(tick)

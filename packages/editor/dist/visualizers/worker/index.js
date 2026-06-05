@@ -5802,6 +5802,10 @@ function hostVizWorker(scope) {
   function applyAndDraw(frame) {
     const s = state;
     if (!s) return;
+    try {
+      scope.postMessage({ type: "frameAck" });
+    } catch {
+    }
     s.feed.applyFrame(frame);
     let master;
     for (const a of frame.analysers) if (a.key === MASTER_KEY) master = a;

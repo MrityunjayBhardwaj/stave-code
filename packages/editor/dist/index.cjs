@@ -6217,6 +6217,7 @@ __name(getVizWorkerFactory, "getVizWorkerFactory");
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
+var MAX_FRAMES_IN_FLIGHT = 2;
 var _WorkerVizRenderer = class _WorkerVizRenderer {
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
    *  sketch source. @param name workspace path (error attribution). */
@@ -6229,6 +6230,11 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     this.sampler = new MainSignalSampler();
     this.rafId = 0;
     this.running = false;
+    /** Frames written but not yet acked by the worker (#261 backpressure). The
+     *  sampler skips producing while this is at the cap so a slow worker can't be
+     *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
+     *  wedged by acks owed for frames written before a pause. */
+    this.inFlight = 0;
     this.size = { w: 400, h: 300 };
     this.onError = null;
     this.perfId = `worker#${++workerPerfSeq}`;
@@ -6273,6 +6279,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       this.diagHandler = (ev) => {
         const d = ev.data;
         if (!d) return;
+        if (d.type === "frameAck") {
+          if (this.inFlight > 0) this.inFlight--;
+          return;
+        }
         if (d.type === "ready") {
           this.onReady?.();
           return;
@@ -6365,15 +6375,19 @@ ${d.stack}` : "");
   start() {
     if (this.running) return;
     this.running = true;
+    this.inFlight = 0;
     const tick = /* @__PURE__ */ __name(() => {
       if (!this.running || !this.writer) return;
-      perf.frame(this.perfId);
-      perf.begin("viz.worker.sample");
-      const frame = this.sampler.sample();
-      perf.end("viz.worker.sample");
-      perf.begin("viz.worker.write");
-      this.writer.writeFrame(frame);
-      perf.end("viz.worker.write");
+      if (this.inFlight < MAX_FRAMES_IN_FLIGHT) {
+        perf.frame(this.perfId);
+        perf.begin("viz.worker.sample");
+        const frame = this.sampler.sample();
+        perf.end("viz.worker.sample");
+        perf.begin("viz.worker.write");
+        this.writer.writeFrame(frame);
+        perf.end("viz.worker.write");
+        this.inFlight++;
+      }
       this.rafId = requestAnimationFrame(tick);
     }, "tick");
     this.rafId = requestAnimationFrame(tick);

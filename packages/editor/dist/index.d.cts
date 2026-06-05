@@ -1912,6 +1912,11 @@ declare class WorkerVizRenderer implements VizRenderer {
     private readonly sampler;
     private rafId;
     private running;
+    /** Frames written but not yet acked by the worker (#261 backpressure). The
+     *  sampler skips producing while this is at the cap so a slow worker can't be
+     *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
+     *  wedged by acks owed for frames written before a pause. */
+    private inFlight;
     private size;
     private onError;
     private readonly perfId;

@@ -75,6 +75,18 @@ export interface WorkerReadyMessage {
   type: 'ready'
 }
 
+/** WORKER → MAIN: the worker consumed one transported `SignalFrame` (#261). The
+ *  main `WorkerVizRenderer` bounds the number of UNACKED frames in flight, so it
+ *  stops sampling+writing once the worker has fallen `cap` frames behind. Without
+ *  this, the main rAF produces frames (e.g. 120fps) far faster than a heavy-WEBGL
+ *  worker can draw (~20fps); the surplus backlogs in the worker's postMessage
+ *  queue and the worker renders seconds-stale audio data (looks "static"). Acked
+ *  on RECEIPT (not draw success) so p5's async setup phase can't deadlock the
+ *  pipeline. */
+export interface WorkerFrameAckMessage {
+  type: 'frameAck'
+}
+
 /** Structural guard — is this a control message (has a string `type`) rather than
  *  a `SignalFrame` envelope? */
 export function isControlMessage(data: unknown): data is WorkerControlMessage {
