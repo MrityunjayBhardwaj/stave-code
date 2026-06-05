@@ -240,6 +240,56 @@ export function applyPersistedInlineVizActionSize(): void {
   applyInlineVizActionSizeVar(readInlineVizActionSize())
 }
 
+// ── Inline-viz render resolution (#261 follow-up) ───────────────────
+// Project-wide render backing-store HEIGHT (px) for inline `.viz()` zones.
+// The zone renders at this resolution (width = aspect-preserved) and the
+// existing layout STRETCHES it to the computed display rect — so display
+// size, crop, and the drag-to-resize behaviour are all unchanged; only the
+// pixel resolution the sketch renders at changes. Lower = cheaper blit /
+// softer; higher = crisper / costlier (the per-instance blit is pixel-bound,
+// #261 profile). Applies to new/re-evaluated zones. Default 512.
+const DEFAULT_INLINE_VIZ_RESOLUTION = 512
+const MIN_INLINE_VIZ_RESOLUTION = 64
+const MAX_INLINE_VIZ_RESOLUTION = 2048
+const INLINE_VIZ_RESOLUTION_STORAGE = 'stave:inlineVizResolution'
+const inlineVizResolutionListeners = new Set<(n: number) => void>()
+
+function readInlineVizResolution(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_INLINE_VIZ_RESOLUTION
+  const saved = Number(ls.getItem(INLINE_VIZ_RESOLUTION_STORAGE))
+  return Number.isFinite(saved) &&
+    saved >= MIN_INLINE_VIZ_RESOLUTION &&
+    saved <= MAX_INLINE_VIZ_RESOLUTION
+    ? saved
+    : DEFAULT_INLINE_VIZ_RESOLUTION
+}
+
+function writeInlineVizResolution(n: number): void {
+  safeLocalStorage()?.setItem(INLINE_VIZ_RESOLUTION_STORAGE, String(n))
+}
+
+/** Current inline-viz render resolution (height in px). */
+export function getInlineVizResolution(): number {
+  return readInlineVizResolution()
+}
+
+/** Set the inline-viz render resolution (clamped 64–2048). Notifies listeners;
+ *  takes effect on the next zone (re)mount / evaluate. */
+export function setInlineVizResolution(n: number): void {
+  const clamped = Math.max(
+    MIN_INLINE_VIZ_RESOLUTION,
+    Math.min(MAX_INLINE_VIZ_RESOLUTION, Math.round(n)),
+  )
+  writeInlineVizResolution(clamped)
+  for (const cb of Array.from(inlineVizResolutionListeners)) cb(clamped)
+}
+
+export function onInlineVizResolutionChange(cb: (n: number) => void): () => void {
+  inlineVizResolutionListeners.add(cb)
+  return () => { inlineVizResolutionListeners.delete(cb) }
+}
+
 // ── Musical Timeline sub-row height (Phase 20-12 wave-δ) ────────────
 // Sub-row band height (px) when an expanded track has multiple leaves.
 // Mockup default = 18; range 12-48 covers compact-density to "I want to

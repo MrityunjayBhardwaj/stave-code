@@ -5475,6 +5475,42 @@ function applyPersistedInlineVizActionSize() {
   applyInlineVizActionSizeVar(readInlineVizActionSize());
 }
 __name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
+var DEFAULT_INLINE_VIZ_RESOLUTION = 512;
+var MIN_INLINE_VIZ_RESOLUTION = 64;
+var MAX_INLINE_VIZ_RESOLUTION = 2048;
+var INLINE_VIZ_RESOLUTION_STORAGE = "stave:inlineVizResolution";
+var inlineVizResolutionListeners = /* @__PURE__ */ new Set();
+function readInlineVizResolution() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_INLINE_VIZ_RESOLUTION;
+  const saved = Number(ls.getItem(INLINE_VIZ_RESOLUTION_STORAGE));
+  return Number.isFinite(saved) && saved >= MIN_INLINE_VIZ_RESOLUTION && saved <= MAX_INLINE_VIZ_RESOLUTION ? saved : DEFAULT_INLINE_VIZ_RESOLUTION;
+}
+__name(readInlineVizResolution, "readInlineVizResolution");
+function writeInlineVizResolution(n) {
+  safeLocalStorage2()?.setItem(INLINE_VIZ_RESOLUTION_STORAGE, String(n));
+}
+__name(writeInlineVizResolution, "writeInlineVizResolution");
+function getInlineVizResolution() {
+  return readInlineVizResolution();
+}
+__name(getInlineVizResolution, "getInlineVizResolution");
+function setInlineVizResolution(n) {
+  const clamped = Math.max(
+    MIN_INLINE_VIZ_RESOLUTION,
+    Math.min(MAX_INLINE_VIZ_RESOLUTION, Math.round(n))
+  );
+  writeInlineVizResolution(clamped);
+  for (const cb of Array.from(inlineVizResolutionListeners)) cb(clamped);
+}
+__name(setInlineVizResolution, "setInlineVizResolution");
+function onInlineVizResolutionChange(cb) {
+  inlineVizResolutionListeners.add(cb);
+  return () => {
+    inlineVizResolutionListeners.delete(cb);
+  };
+}
+__name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
@@ -18501,6 +18537,19 @@ function nativeSizeFor(preset) {
   return DEFAULT_NATIVE;
 }
 __name(nativeSizeFor, "nativeSizeFor");
+var MAX_RENDER_WIDTH = 4096;
+function renderSizeFor(native) {
+  const n = getInlineVizResolution();
+  const aspect = native.h > 0 ? native.w / native.h : 1;
+  let h = n;
+  let w = Math.round(n * aspect);
+  if (w > MAX_RENDER_WIDTH) {
+    w = MAX_RENDER_WIDTH;
+    h = Math.round(MAX_RENDER_WIDTH / aspect);
+  }
+  return { w: Math.max(1, w), h: Math.max(1, h) };
+}
+__name(renderSizeFor, "renderSizeFor");
 function computeLayout(contentW, native, crop) {
   const cropW = Math.max(0.01, crop.w);
   const cropH = Math.max(0.01, crop.h);
@@ -18691,7 +18740,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const zoneId = accessor.addZone(zoneDesc);
       const renderer = typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory;
       try {
-        renderer.mount(container, zoneComponents, { w: native.w, h: native.h }, console.error);
+        renderer.mount(container, zoneComponents, renderSizeFor(native), console.error);
       } catch (e) {
         console.error("[stave] viz mount failed:", e);
       }
@@ -27799,6 +27848,7 @@ exports.getFixedMarkers = getFixedMarkers;
 exports.getFolderOrder = getFolderOrder;
 exports.getIRSnapshot = getIRSnapshot;
 exports.getInlineVizActionSize = getInlineVizActionSize;
+exports.getInlineVizResolution = getInlineVizResolution;
 exports.getLastOpenedProject = getLastOpenedProject;
 exports.getLogHistory = getLogHistory;
 exports.getModifiedFileIdsSinceHead = getModifiedFileIdsSinceHead;
@@ -27858,6 +27908,7 @@ exports.noteToMidi = noteToMidi;
 exports.onBackdropOpacityChange = onBackdropOpacityChange;
 exports.onBackdropQualityChange = onBackdropQualityChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
+exports.onInlineVizResolutionChange = onInlineVizResolutionChange;
 exports.onMusicalTimelineSubRowHeightChange = onMusicalTimelineSubRowHeightChange;
 exports.onNamedVizChanged = onNamedVizChanged;
 exports.onPerfEnabledChange = onPerfEnabledChange;
@@ -27921,6 +27972,7 @@ exports.setEditorUiIconSize = setEditorUiIconSize;
 exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
 exports.setInlineVizActionSize = setInlineVizActionSize;
+exports.setInlineVizResolution = setInlineVizResolution;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;

@@ -6,6 +6,7 @@ import { registerVizVisibility } from './vizVisibility'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
+import { getInlineVizResolution } from '../workspace/editorRegistry'
 
 export interface InlineZoneHandle {
   cleanup(): void
@@ -39,6 +40,38 @@ function nativeSizeFor(preset: VizPreset | null): { w: number; h: number } {
   const s = preset?.nativeSize
   if (s && s.w > 0 && s.h > 0) return { w: s.w, h: s.h }
   return DEFAULT_NATIVE
+}
+
+/** Max render width so a wide-short native scaled to a tall resolution can't
+ *  blow up the backing store (e.g. 1100×200 @ res 1024 → 5632 wide). */
+const MAX_RENDER_WIDTH = 4096
+
+/**
+ * The render backing-store size for an inline zone (#261 follow-up): the
+ * configured `inlineVizResolution` (project setting) is the render HEIGHT; width
+ * is derived to PRESERVE the native aspect. The renderer draws at this size and
+ * the existing layout STRETCHES it to the display rect (computeLayout uses the
+ * unchanged `native`, which has the same aspect → identical zone height, crop,
+ * and transform). So display/crop/drag are untouched; only the rendered pixel
+ * resolution changes — lower = cheaper blit, higher = crisper. Aspect-preserved
+ * is what guarantees "all current behaviours just work": render aspect == display
+ * aspect → uniform stretch, no distortion.
+ */
+function renderSizeFor(native: { w: number; h: number }): { w: number; h: number } {
+  const n = getInlineVizResolution()
+  const aspect = native.h > 0 ? native.w / native.h : 1
+  let h = n
+  let w = Math.round(n * aspect)
+  // Clamp the WIDE dimension while PRESERVING aspect (scale both) — capping width
+  // alone would distort a wide-short native (e.g. 1100×200 @ res 1024 → 5632 wide
+  // → clamped 4096 → 4:1, not 5.5:1), which changes the displayed zone height
+  // (the canvas displays at its backing aspect). Aspect-preserve is the whole
+  // contract: render aspect == native aspect → identical display/crop/zone.
+  if (w > MAX_RENDER_WIDTH) {
+    w = MAX_RENDER_WIDTH
+    h = Math.round(MAX_RENDER_WIDTH / aspect)
+  }
+  return { w: Math.max(1, w), h: Math.max(1, h) }
 }
 
 /**
@@ -340,13 +373,16 @@ export function addInlineViewZones(
       }
       const zoneId = accessor.addZone(zoneDesc)
 
-      // Mount the renderer at native size. Canvas is created by the
-      // renderer as a direct child of container.
+      // Mount the renderer at the configured render RESOLUTION (#261): height =
+      // inlineVizResolution, width = aspect-preserved from `native`. The canvas
+      // renders at this backing-store size; the layout below (computeLayout uses
+      // the unchanged `native`) stretches it to the display rect — so display,
+      // crop, and drag-resize are identical, only the rendered resolution changes.
       const renderer = typeof descriptor.factory === 'function'
         ? descriptor.factory()
         : descriptor.factory as VizRenderer
       try {
-        renderer.mount(container, zoneComponents, { w: native.w, h: native.h }, console.error)
+        renderer.mount(container, zoneComponents, renderSizeFor(native), console.error)
       } catch (e) {
         console.error('[stave] viz mount failed:', e)
       }
