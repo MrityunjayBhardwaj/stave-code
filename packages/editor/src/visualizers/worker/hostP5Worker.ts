@@ -380,6 +380,15 @@ export function hostVizWorker(scope: WorkerScope): void {
   function applyAndDraw(frame: SignalFrame): void {
     const s = state
     if (!s) return
+    // #261 backpressure: ack EVERY received frame (on receipt, not draw success —
+    // a pre-setup frame that doesn't draw must still ack or the bounded pipeline
+    // deadlocks before p5's async setup completes). The main side caps unacked
+    // frames in flight so it can't flood a slow worker into a stale backlog.
+    try {
+      scope.postMessage({ type: 'frameAck' })
+    } catch {
+      /* ignore late-teardown failures */
+    }
     // Bus tick (PK22 — drops stale seq, ticks once) + refresh the raw shims.
     s.feed.applyFrame(frame)
     let master: AnalyserBytes | undefined

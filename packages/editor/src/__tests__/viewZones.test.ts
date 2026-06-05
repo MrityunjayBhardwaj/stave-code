@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import { addInlineViewZones } from '../visualizers/viewZones'
 import { mountVizRenderer } from '../visualizers/mountVizRenderer'
+import { getInlineVizResolution } from '../workspace/editorRegistry'
 
 // Mock p5 to avoid canvas/DOM side-effects in tests
 vi.mock('p5', () => {
@@ -288,7 +289,7 @@ describe('addInlineViewZones', () => {
     expect(firstMountCall[1].queryable.scheduler).toBe(mockScheduler)
   })
 
-  it('passes native canvas size (not contentWidth) to renderer.mount', () => {
+  it('passes the render resolution (aspect-preserved, height = inlineVizResolution) to renderer.mount', () => {
     const { editor } = makeEditor()
     const components = makeComponents(
       new Map([['$0', { vizId: 'pianoroll', afterLine: 1 }]])
@@ -297,9 +298,13 @@ describe('addInlineViewZones', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addInlineViewZones(editor as any, components, mockVizDescriptors as any)
 
-    // Default native size is 1200×600
+    // #261: mount renders at the configured render RESOLUTION, not the descriptor
+    // native — height = inlineVizResolution, width aspect-preserved from the
+    // native 1200×600 (2:1). Display/crop/zone-height stay driven by `native`
+    // (computeLayout, unchanged); only the rendered backing store changes.
+    const res = getInlineVizResolution() // default 512
     const firstMountCall = (mockRenderer.mount as ReturnType<typeof vi.fn>).mock.calls[0]
-    expect(firstMountCall[2]).toEqual({ w: 1200, h: 600 })
+    expect(firstMountCall[2]).toEqual({ w: res * 2, h: res })
   })
 
   it('handle.pause() calls renderer.pause() on all renderers', () => {

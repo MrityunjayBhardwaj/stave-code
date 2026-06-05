@@ -19,6 +19,11 @@ import { setVizWorkerFactory, getVizConfig, setVizConfig } from '@stave/editor'
  *  the matrix is green the config DEFAULT flips to true and this override stays as
  *  an opt-OUT (`'0'`). */
 const WORKER_VIZ_LS_KEY = 'stave.viz.worker'
+/** Per-project overrides for the #261 worker pacing/resolution levers (optional).
+ *  `stave.viz.maxFps` = frames/sec cap (e.g. '60'/'30'); `stave.viz.maxDpr` =
+ *  presenting/render dpr cap (e.g. '1'/'1.5'/'2'). Absent → config default. */
+const MAX_FPS_LS_KEY = 'stave.viz.maxFps'
+const MAX_DPR_LS_KEY = 'stave.viz.maxDpr'
 
 let registered = false
 
@@ -32,9 +37,15 @@ export function registerVizWorker(): void {
   // Apply the localStorage override (opt-in '1' / opt-out '0'); absent → leave the
   // config default. Merge over the live config so other runtime settings persist.
   try {
+    const overrides: Partial<{ workerRenderer: boolean; maxFps: number; maxDpr: number }> = {}
     const v = localStorage.getItem(WORKER_VIZ_LS_KEY)
-    if (v === '1' || v === '0') {
-      setVizConfig({ ...getVizConfig(), workerRenderer: v === '1' })
+    if (v === '1' || v === '0') overrides.workerRenderer = v === '1'
+    const fps = Number(localStorage.getItem(MAX_FPS_LS_KEY))
+    if (Number.isFinite(fps) && fps > 0) overrides.maxFps = fps
+    const dpr = Number(localStorage.getItem(MAX_DPR_LS_KEY))
+    if (Number.isFinite(dpr) && dpr > 0) overrides.maxDpr = dpr
+    if (Object.keys(overrides).length > 0) {
+      setVizConfig({ ...getVizConfig(), ...overrides })
     }
   } catch {
     /* localStorage may be unavailable (private mode) — ignore */
