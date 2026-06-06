@@ -290,6 +290,50 @@ export function onInlineVizResolutionChange(cb: (n: number) => void): () => void
   return () => { inlineVizResolutionListeners.delete(cb) }
 }
 
+// ── Off-screen inline-viz teardown (#263 / Phase B-teardown) ─────────────────
+// Phase C (#259) PAUSES an off-screen inline viz but HOLDS its worker + GL
+// context + ~60–110MB (PV77). When a zone stays off-screen past this threshold
+// we DESTROY the renderer to reclaim that memory + a WebGL-context slot, and
+// re-create it when it scrolls back (the trade = a brief reinit on return).
+// Off-screen ONLY (a hidden tab stays paused-resident — user decision). A later
+// worker pool will reuse a parked warm worker instead of respawn (#263 part A).
+const INLINE_VIZ_TEARDOWN_MS = 60_000
+const DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true
+const INLINE_VIZ_TEARDOWN_STORAGE = 'stave:inlineVizTeardown'
+const inlineVizTeardownListeners = new Set<(on: boolean) => void>()
+
+function readInlineVizTeardownEnabled(): boolean {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED
+  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE)
+  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED
+  return saved === '1'
+}
+
+/** Whether off-screen inline viz are torn down (destroyed to reclaim memory)
+ *  after the threshold. Default ON. */
+export function getInlineVizTeardownEnabled(): boolean {
+  return readInlineVizTeardownEnabled()
+}
+
+/** Enable/disable off-screen inline-viz teardown. Notifies listeners; takes
+ *  effect on the next zone (re)mount / evaluate. */
+export function setInlineVizTeardownEnabled(on: boolean): void {
+  safeLocalStorage()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? '1' : '0')
+  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on)
+}
+
+export function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void {
+  inlineVizTeardownListeners.add(cb)
+  return () => { inlineVizTeardownListeners.delete(cb) }
+}
+
+/** Effective teardown delay in ms for a newly-mounted inline zone: the fixed
+ *  threshold when enabled, 0 (= never tear down) when disabled. Read at mount. */
+export function getInlineVizTeardownMs(): number {
+  return readInlineVizTeardownEnabled() ? INLINE_VIZ_TEARDOWN_MS : 0
+}
+
 // ── Musical Timeline sub-row height (Phase 20-12 wave-δ) ────────────
 // Sub-row band height (px) when an expanded track has multiple leaves.
 // Mockup default = 18; range 12-48 covers compact-density to "I want to

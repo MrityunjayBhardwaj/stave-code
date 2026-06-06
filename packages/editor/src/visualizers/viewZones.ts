@@ -6,7 +6,8 @@ import { registerVizVisibility } from './vizVisibility'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
-import { getInlineVizResolution } from '../workspace/editorRegistry'
+import { getInlineVizResolution, getInlineVizTeardownMs } from '../workspace/editorRegistry'
+import { TeardownOnPauseRenderer } from './renderers/TeardownOnPauseRenderer'
 
 export interface InlineZoneHandle {
   cleanup(): void
@@ -378,16 +379,33 @@ export function addInlineViewZones(
       // renders at this backing-store size; the layout below (computeLayout uses
       // the unchanged `native`) stretches it to the display rect — so display,
       // crop, and drag-resize are identical, only the rendered resolution changes.
-      const renderer = typeof descriptor.factory === 'function'
-        ? descriptor.factory()
-        : descriptor.factory as VizRenderer
+      const makeInner = (): VizRenderer =>
+        typeof descriptor.factory === 'function'
+          ? descriptor.factory()
+          : (descriptor.factory as VizRenderer)
+      // #263 B — off-screen teardown: when enabled, wrap the renderer so a zone
+      // left off-screen past the threshold is DESTROYED (reclaims ~60–110MB + a
+      // WebGL-context slot, PV77) and re-created on scroll-back. The wrapper is a
+      // STABLE VizRenderer (renderers[]/visibility ref never swap); it replays the
+      // mount and calls back here to fix the inline DOM. `relayout` is assigned
+      // after `entry` exists (it reads the zone's current native/crop/height).
+      let relayout: () => void = () => {}
+      const teardownMs = getInlineVizTeardownMs()
+      const renderer: VizRenderer = teardownMs > 0
+        ? new TeardownOnPauseRenderer(makeInner, {
+            // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
+            // (applyLayout only creates+fills the wrapper when none exists).
+            onAfterTeardown: () => container.querySelector('[data-viz-canvas-wrap]')?.remove(),
+            onAfterReinit: () => relayout(),
+          })
+        : makeInner()
       try {
         renderer.mount(container, zoneComponents, renderSizeFor(native), console.error)
       } catch (e) {
         console.error('[stave] viz mount failed:', e)
       }
       renderers.push(renderer)
-      visibilityCleanups.push(registerVizVisibility(renderer, container))
+      visibilityCleanups.push(registerVizVisibility(renderer, container, { teardownMs }))
 
       // The renderer may create the canvas asynchronously (p5 defers
       // to rAF). Apply layout now if the canvas is already present,
@@ -432,6 +450,26 @@ export function addInlineViewZones(
         zoneId, zoneDesc, afterLine, container, canvas, trackKey, vizId, renderer: descriptor.renderer, presetId: null, native, crop, vizDecoration,
       }
       zoneEntries.push(entry)
+
+      // Re-apply the inline layout transform to the freshly-created canvas after
+      // an off-screen teardown→reinit (#263 B). Reads the zone's CURRENT
+      // native/crop/height from `entry`, so a crop or drag-resize done before the
+      // teardown is preserved on return — same math as the resize handler below
+      // (no zoneH → container height is left untouched, honouring any override).
+      relayout = () => {
+        const cw = editor.getLayoutInfo().contentWidth || 400
+        const nw = entry.native.w, nh = entry.native.h
+        const cropW = Math.max(0.01, entry.crop.w)
+        const cropH = Math.max(0.01, entry.crop.h)
+        const scale = Math.min(cw / (cropW * nw), entry.zoneDesc.heightInPx / (cropH * nh))
+        const tx = -entry.crop.x * nw * scale
+        const ty = -entry.crop.y * nh * scale
+        applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
+        // p5 (main path) creates its canvas async — re-apply next frame to catch it.
+        requestAnimationFrame(() =>
+          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty }),
+        )
+      }
 
       // ── Resize handle (bottom edge) ──
       // Thin strip at the bottom of the zone — reveals on hover, drag
