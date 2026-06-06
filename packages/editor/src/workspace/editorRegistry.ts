@@ -298,14 +298,17 @@ export function onInlineVizResolutionChange(cb: (n: number) => void): () => void
 // Off-screen ONLY (a hidden tab stays paused-resident — user decision). A later
 // worker pool will reuse a parked warm worker instead of respawn (#263 part A).
 const INLINE_VIZ_TEARDOWN_MS = 60_000
-// Default OFF until #263 part A (worker REUSE) lands. OBSERVED
-// (high-n-headroom.spec.ts): terminate-based teardown does NOT return renderer
-// RSS to the OS, and reinit spawns fresh workers that allocate anew — so under
-// scroll churn RSS can GROW (net +356MB over one teardown→reinit cycle). The
-// only durable in-range benefit today is freeing WebGL-context slots (the
-// out-of-range ~16-context cap), so this stays opt-in. When the worker pool
-// reuses parked warm workers (no fresh allocation), flip this default back on.
-const DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = false
+// Default ON — the validated memory/cap lever (#263). OBSERVED via the
+// multi-cycle A/B (high-n-headroom.spec.ts): destroying an off-screen inline viz
+// after this threshold bounds renderer RSS at a PLATEAU (it does NOT leak —
+// terminate settles ~2175MB over churn, LOWER than the worker pool) and frees a
+// WebGL-context slot, so a long scroll-through-many session holds only ~on-screen
+// viz live instead of all N (which would also hit Chrome's ~16-context cap →
+// black viz). The trade is a brief reinit when a long-gone zone scrolls back;
+// the opt-in worker pool (localStorage `stave.viz.pool`) smooths that at a memory
+// cost. (An earlier default-OFF was a reaction to a single-cycle RSS spike that
+// the multi-cycle plateau disproved.)
+const DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true
 const INLINE_VIZ_TEARDOWN_STORAGE = 'stave:inlineVizTeardown'
 const inlineVizTeardownListeners = new Set<(on: boolean) => void>()
 

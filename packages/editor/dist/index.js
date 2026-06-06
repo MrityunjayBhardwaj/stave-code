@@ -5486,7 +5486,7 @@ function onInlineVizResolutionChange(cb) {
 }
 __name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
 var INLINE_VIZ_TEARDOWN_MS = 6e4;
-var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = false;
+var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
 var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
 var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
 function readInlineVizTeardownEnabled() {
