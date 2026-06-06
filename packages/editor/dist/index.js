@@ -6455,6 +6455,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
           if (this.inFlight > 0) this.inFlight--;
           return;
         }
+        if (d.type === "vizlog") {
+          emitLog(d.entry);
+          return;
+        }
         if (d.type === "ready") {
           this.ready = true;
           this.onReady?.();
