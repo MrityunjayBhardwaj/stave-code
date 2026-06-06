@@ -5159,8 +5159,10 @@ declare function getInlineVizTeardownEnabled(): boolean;
  *  effect on the next zone (re)mount / evaluate. */
 declare function setInlineVizTeardownEnabled(on: boolean): void;
 declare function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void;
-/** Effective teardown delay in ms for a newly-mounted inline zone: the fixed
- *  threshold when enabled, 0 (= never tear down) when disabled. Read at mount. */
+/** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
+ *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
+ *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
+ *  test churn harnesses) — clamped to ≥1000ms; absent → the 60s default. */
 declare function getInlineVizTeardownMs(): number;
 declare function getMusicalTimelineSubRowHeight(): number;
 declare function setMusicalTimelineSubRowHeight(h: number): void;

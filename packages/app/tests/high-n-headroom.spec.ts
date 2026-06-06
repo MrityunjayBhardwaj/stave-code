@@ -478,4 +478,77 @@ test.describe('#263 spike — high-N viz memory + WebGL ~16-context cap (worker 
     expect(rssReinit, 'pool reinit must not blow past a gross ceiling').toBeLessThan(rssBefore + 500)
     await context.close()
   })
+
+  // ── #263: the DECISIVE long-session test — RSS PLATEAU vs LEAK over many cycles
+  // One teardown→reinit cycle grows RSS (+356 terminate / +172 pool). The real
+  // "long live session" question is whether that COMPOUNDS (linear leak) or
+  // PLATEAUS at a high-water mark (bounded = acceptable). We churn many cycles
+  // (pool ON, short teardown threshold via the localStorage override) by
+  // alternating scrollTop top/bottom so a different ~4 zones go off-screen each
+  // cycle (tear down) while the previous off-screen ones reinit (reuse the pool).
+  // The RSS SERIES is the observation; we assert only a gross linear-leak ceiling.
+  test('LONG SESSION: RSS plateaus (bounded) across many teardown→reinit cycles (pool)', async ({ browser }) => {
+    test.skip(!process.env.HIGHN, 'spike harness — set HIGHN=1')
+    const N = 12
+    const CYCLES = 8
+    const context = await browser.newContext({ viewport: { width: 1500, height: 1500 } })
+    const page = await context.newPage()
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_PERF__ = true
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+      try {
+        localStorage.setItem('stave.viz.worker', '1')
+        localStorage.setItem('stave.viz.pool', '1') // worker reuse ON
+        localStorage.setItem('stave:inlineVizTeardown', '1') // teardown ON
+        localStorage.setItem('stave:inlineVizTeardownMs', '5000') // fast churn for the test
+      } catch { /* ignore */ }
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
+    await page.waitForTimeout(1200)
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz?.({
+        id: 'swr', name: 'swr', renderer: 'p5', code,
+        requires: ['streaming'], nativeSize: { w: 1100, h: 200 }, createdAt: 1, updatedAt: 1,
+      })
+    }, SYNTHWAVE)
+    await press(page, `${MOD}+Period`)
+    await page.waitForTimeout(400)
+    await setCode(page, codeFor(N))
+    await press(page, `${MOD}+Enter`)
+    await page.waitForTimeout(3000)
+
+    const rss = (): number => rssKb(classify().renderer) / 1024
+    const series: number[] = []
+    for (let i = 0; i < CYCLES; i++) {
+      // Alternate scroll position so a different ~4 zones go off-screen each cycle.
+      await page.evaluate((toTop) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const e = (window as any).monaco?.editor?.getEditors?.()?.[0]
+        e?.setScrollTop(toTop ? 0 : (e?.getScrollHeight?.() ?? 999_999))
+      }, i % 2 === 0)
+      await page.waitForTimeout(8000) // > 5s threshold → off-screen zones tear down + churn
+      series.push(rss())
+    }
+
+    const avg = (xs: number[]): number => xs.reduce((s, x) => s + x, 0) / Math.max(1, xs.length)
+    const firstHalf = avg(series.slice(0, CYCLES / 2))
+    const secondHalf = avg(series.slice(CYCLES / 2))
+    const drift = secondHalf - firstHalf
+    // eslint-disable-next-line no-console
+    console.log(`\n[#263 plateau] RSS series MB: ${series.map((x) => x.toFixed(0)).join(' → ')}`)
+    // eslint-disable-next-line no-console
+    console.log(`[#263 plateau] first-half avg ${firstHalf.toFixed(0)} → second-half avg ${secondHalf.toFixed(0)} = drift ${drift.toFixed(0)}MB over ${CYCLES} cycles (small=plateau/bounded, large=linear leak)\n`)
+
+    // The observation is the SERIES + drift. Assert only a gross linear-leak
+    // ceiling: if churn truly leaked it would climb ~+170MB EVERY cycle → the
+    // second-half average would be hundreds of MB above the first. A bounded
+    // (plateauing) working set keeps the drift modest.
+    expect(series.length).toBe(CYCLES)
+    expect(drift, 'RSS plateaus across cycles (not a linear per-cycle leak)').toBeLessThan(500)
+    await context.close()
+  })
 })

@@ -335,10 +335,22 @@ export function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void
   return () => { inlineVizTeardownListeners.delete(cb) }
 }
 
-/** Effective teardown delay in ms for a newly-mounted inline zone: the fixed
- *  threshold when enabled, 0 (= never tear down) when disabled. Read at mount. */
+/** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
+ *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
+ *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
+ *  test churn harnesses) — clamped to ≥1000ms; absent → the 60s default. */
 export function getInlineVizTeardownMs(): number {
-  return readInlineVizTeardownEnabled() ? INLINE_VIZ_TEARDOWN_MS : 0
+  if (!readInlineVizTeardownEnabled()) return 0
+  try {
+    const raw = safeLocalStorage()?.getItem('stave:inlineVizTeardownMs')
+    if (raw != null) {
+      const n = Number(raw)
+      if (Number.isFinite(n) && n >= 1000) return n
+    }
+  } catch {
+    /* ignore */
+  }
+  return INLINE_VIZ_TEARDOWN_MS
 }
 
 // ── Musical Timeline sub-row height (Phase 20-12 wave-δ) ────────────

@@ -5540,7 +5540,16 @@ function onInlineVizTeardownChange(cb) {
 }
 __name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
 function getInlineVizTeardownMs() {
-  return readInlineVizTeardownEnabled() ? INLINE_VIZ_TEARDOWN_MS : 0;
+  if (!readInlineVizTeardownEnabled()) return 0;
+  try {
+    const raw = safeLocalStorage2()?.getItem("stave:inlineVizTeardownMs");
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1e3) return n;
+    }
+  } catch {
+  }
+  return INLINE_VIZ_TEARDOWN_MS;
 }
 __name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
