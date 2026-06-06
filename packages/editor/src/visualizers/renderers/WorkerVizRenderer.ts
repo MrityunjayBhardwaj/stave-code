@@ -109,6 +109,10 @@ export class WorkerVizRenderer implements VizRenderer {
    *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
    *  is terminated so it can't poison a future acquire. */
   private ready = false
+  /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
+   *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
+   *  happens after we've detached its listener, so we account it main-side). */
+  private glAccounted = false
 
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
    *  sketch source. @param name workspace path (error attribution). */
@@ -187,6 +191,14 @@ export class WorkerVizRenderer implements VizRenderer {
           return
         }
         if (d.type !== 'diag') return
+        if (d.message === 'glctx+') {
+          // Worker created a WebGL context (#266). Track the live count via a gauge
+          // mirroring `viz.worker`; decremented main-side in destroy() (the worker's
+          // own release fires after we detach this listener, so we can't rely on it).
+          this.glAccounted = true
+          perf.gauge('viz.glctx', 1)
+          return
+        }
         if (d.level === 'error') {
           // Surface the WORKER-side stack (the throw site) — the forwarded Error
           // only carries the message, so the worker stack would otherwise be lost.
@@ -241,6 +253,10 @@ export class WorkerVizRenderer implements VizRenderer {
 
   destroy(): void {
     perf.gauge('viz.worker', -1)
+    if (this.glAccounted) {
+      perf.gauge('viz.glctx', -1) // #266 — releases the WebGL-context slot count
+      this.glAccounted = false
+    }
     perf.dropFrames(this.perfId)
     this.stop()
     const worker = this.worker
@@ -254,8 +270,10 @@ export class WorkerVizRenderer implements VizRenderer {
       if (this.diagHandler) worker.removeEventListener('message', this.diagHandler)
       if (this.pooled && this.ready) {
         // Keep the HEALTHY thread WARM for reuse (#263 A): the `destroy` message
-        // above already freed the worker's p5/hydra instance + GL context (a
-        // context slot), so the parked worker holds no live context — only its
+        // above frees the worker's p5/hydra instance AND explicitly loses its WebGL
+        // context (#266 — p5/hydra never call loseContext, so without that the
+        // parked worker would retain the context toward Chrome's ~16-context cap
+        // until lazy GC). So the parked worker holds no live context — only its
         // warm isolate + imported modules, which the next mount re-mounts onto a
         // new OffscreenCanvas. NO terminate → no fresh-thread allocation on reuse.
         // A never-ready worker (broken / fell back to main) is NOT pooled — it's

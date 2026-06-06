@@ -1939,6 +1939,10 @@ declare class WorkerVizRenderer implements VizRenderer {
      *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
      *  is terminated so it can't poison a future acquire. */
     private ready;
+    /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
+     *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
+     *  happens after we've detached its listener, so we account it main-side). */
+    private glAccounted;
     /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
      *  sketch source. @param name workspace path (error attribution). */
     constructor(kind: 'p5' | 'hydra', code: string, name: string);
