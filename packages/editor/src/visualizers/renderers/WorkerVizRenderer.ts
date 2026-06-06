@@ -105,6 +105,10 @@ export class WorkerVizRenderer implements VizRenderer {
    *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
    *  terminated, so the next mount reuses the thread (no fresh allocation). */
   private pooled = false
+  /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+   *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+   *  is terminated so it can't poison a future acquire. */
+  private ready = false
 
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
    *  sketch source. @param name workspace path (error attribution). */
@@ -174,7 +178,11 @@ export class WorkerVizRenderer implements VizRenderer {
           return
         }
         if (d.type === 'ready') {
-          // First successful worker frame — end the fallback probation (#247).
+          // First successful worker frame — end the fallback probation (#247) and
+          // mark the worker HEALTHY so destroy() may pool it (#263 A). A worker
+          // that never reaches ready (broken/fallback path) is NEVER pooled — else
+          // the next acquire would reuse a broken worker and fail again.
+          this.ready = true
           this.onReady?.()
           return
         }
@@ -244,12 +252,14 @@ export class WorkerVizRenderer implements VizRenderer {
         /* ignore */
       }
       if (this.diagHandler) worker.removeEventListener('message', this.diagHandler)
-      if (this.pooled) {
-        // Keep the thread WARM for reuse (#263 A): the `destroy` message above
-        // already freed the worker's p5/hydra instance + GL context (a context
-        // slot), so the parked worker holds no live context — only its warm
-        // isolate + imported modules, which the next mount re-mounts onto a new
-        // OffscreenCanvas. NO terminate → no fresh-thread allocation on reuse.
+      if (this.pooled && this.ready) {
+        // Keep the HEALTHY thread WARM for reuse (#263 A): the `destroy` message
+        // above already freed the worker's p5/hydra instance + GL context (a
+        // context slot), so the parked worker holds no live context — only its
+        // warm isolate + imported modules, which the next mount re-mounts onto a
+        // new OffscreenCanvas. NO terminate → no fresh-thread allocation on reuse.
+        // A never-ready worker (broken / fell back to main) is NOT pooled — it's
+        // terminated below so a future acquire can't reuse a poisoned worker.
         releaseVizWorker(worker)
       } else {
         // Terminate after the destroy message is delivered (terminate is

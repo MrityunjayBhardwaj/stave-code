@@ -153,6 +153,58 @@ async function scanZones(page: Page): Promise<{ distinct: number; pngBytes: numb
   })
 }
 
+/** Drive a long churn session (alternate scroll top/bottom so a different ~4 of
+ *  N zones go off-screen each cycle → teardown + reinit) and return the renderer
+ *  RSS (MB) sampled after each cycle. `pool` toggles the worker-reuse pool. */
+async function runChurnSeries(
+  browser: import('@playwright/test').Browser,
+  pool: boolean,
+  cycles: number,
+  n = 12,
+): Promise<number[]> {
+  const context = await browser.newContext({ viewport: { width: 1500, height: 1500 } })
+  const page = await context.newPage()
+  await page.addInitScript((usePool) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__STAVE_PERF__ = true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__STAVE_E2E__ = true
+    try {
+      localStorage.setItem('stave.viz.worker', '1')
+      localStorage.setItem('stave:inlineVizTeardown', '1')
+      localStorage.setItem('stave:inlineVizTeardownMs', '5000')
+      localStorage.setItem('stave.viz.pool', usePool ? '1' : '0')
+    } catch { /* ignore */ }
+  }, pool)
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
+  await page.waitForTimeout(1200)
+  await page.evaluate((code) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__staveRegisterViz?.({
+      id: 'swr', name: 'swr', renderer: 'p5', code,
+      requires: ['streaming'], nativeSize: { w: 1100, h: 200 }, createdAt: 1, updatedAt: 1,
+    })
+  }, SYNTHWAVE)
+  await press(page, `${MOD}+Period`)
+  await page.waitForTimeout(400)
+  await setCode(page, codeFor(n))
+  await press(page, `${MOD}+Enter`)
+  await page.waitForTimeout(3000)
+  const series: number[] = []
+  for (let i = 0; i < cycles; i++) {
+    await page.evaluate((toTop) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = (window as any).monaco?.editor?.getEditors?.()?.[0]
+      e?.setScrollTop(toTop ? 0 : (e?.getScrollHeight?.() ?? 999_999))
+    }, i % 2 === 0)
+    await page.waitForTimeout(8000)
+    series.push(rssKb(classify().renderer) / 1024)
+  }
+  await context.close()
+  return series
+}
+
 interface Row {
   n: number
   vizGauge: number
@@ -549,6 +601,114 @@ test.describe('#263 spike — high-N viz memory + WebGL ~16-context cap (worker 
     // (plateauing) working set keeps the drift modest.
     expect(series.length).toBe(CYCLES)
     expect(drift, 'RSS plateaus across cycles (not a linear per-cycle leak)').toBeLessThan(500)
+    await context.close()
+  })
+
+  // ── #263 A/B: the pool/terminate MEMORY tradeoff (OBSERVED, hypothesis-inverting)
+  // Run the SAME churn with the pool OFF (terminate+respawn) vs ON (park+reuse).
+  // OBSERVED (this is NOT what we expected): BOTH plateau (neither leaks — the
+  // single-cycle +356/+172 does not compound), but TERMINATE plateaus LOWER
+  // (~2175MB) than the POOL (~2638MB). Parked-alive workers retain their warm
+  // isolate+module memory; terminated workers' memory is reclaimed across cycles.
+  // ⇒ the pool is NOT a memory win — it COSTS ~+460MB for the benefit of resume
+  // LATENCY (no ~52ms respawn on scroll-back). So B (terminate teardown) is the
+  // better MEMORY lever; A (pool) is a latency/UX optimization at a memory cost.
+  // We assert: BOTH bounded (no linear leak); the logged delta is the tradeoff.
+  test('A/B: pool vs terminate memory tradeoff — both bounded; pool trades RSS for latency', async ({ browser }) => {
+    test.skip(!process.env.HIGHN, 'spike harness — set HIGHN=1')
+    const CYCLES = 6
+    const avg = (xs: number[]): number => xs.reduce((s, x) => s + x, 0) / Math.max(1, xs.length)
+    const terminate = await runChurnSeries(browser, false, CYCLES)
+    const pooled = await runChurnSeries(browser, true, CYCLES)
+    const termSettled = avg(terminate.slice(CYCLES / 2))
+    const poolSettled = avg(pooled.slice(CYCLES / 2))
+    const termGrowth = terminate[CYCLES - 1] - terminate[0]
+    const poolGrowth = pooled[CYCLES - 1] - pooled[0]
+    // eslint-disable-next-line no-console
+    console.log(`\n[#263 A/B] terminate RSS: ${terminate.map((x) => x.toFixed(0)).join(' → ')}  (settled ${termSettled.toFixed(0)}MB)`)
+    // eslint-disable-next-line no-console
+    console.log(`[#263 A/B] pool      RSS: ${pooled.map((x) => x.toFixed(0)).join(' → ')}  (settled ${poolSettled.toFixed(0)}MB)`)
+    // eslint-disable-next-line no-console
+    console.log(`[#263 A/B] TRADEOFF: pool plateau is ${(poolSettled - termSettled).toFixed(0)}MB ${poolSettled > termSettled ? 'HIGHER' : 'lower'} than terminate (pool trades RSS for resume latency)\n`)
+    expect(terminate.length).toBe(CYCLES)
+    expect(pooled.length).toBe(CYCLES)
+    // Both must be BOUNDED (plateau, not a linear per-cycle leak): end-to-end
+    // growth across the run stays well under (cycles × single-cycle delta).
+    expect(termGrowth, 'terminate path is bounded (plateaus)').toBeLessThan(900)
+    expect(poolGrowth, 'pool path is bounded (plateaus)').toBeLessThan(900)
+  })
+
+  // ── #263 A: fallback × pool × teardown chain survives ───────────────────────
+  // A broken worker must (1) fall back to a main-thread renderer (PK23) even with
+  // the pool on, (2) NOT be returned to the pool (never-ready → terminated, so a
+  // future acquire can't reuse a poisoned worker), and (3) survive a teardown→
+  // reinit churn cycle without crashing (the 3-decorator chain:
+  // TeardownOnPauseRenderer → FallbackVizRenderer → WorkerVizRenderer).
+  test('fallback × pool × teardown: broken worker → main render, survives churn', async ({ browser }) => {
+    test.skip(!process.env.HIGHN, 'spike harness — set HIGHN=1')
+    const context = await browser.newContext({ viewport: { width: 1500, height: 1500 } })
+    const page = await context.newPage()
+    const pageErrors: string[] = []
+    page.on('pageerror', (e) => pageErrors.push(e.message))
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_PERF__ = true
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+      try {
+        localStorage.setItem('stave.viz.worker', '1')
+        localStorage.setItem('stave.viz.pool', '1')
+        localStorage.setItem('stave:inlineVizTeardown', '1')
+        localStorage.setItem('stave:inlineVizTeardownMs', '5000')
+      } catch { /* ignore */ }
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
+    await page.waitForTimeout(1200)
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz?.({
+        id: 'swr', name: 'swr', renderer: 'p5', code,
+        requires: ['streaming'], nativeSize: { w: 1100, h: 200 }, createdAt: 1, updatedAt: 1,
+      })
+    }, SYNTHWAVE)
+    // Force broken workers BEFORE any mount → every acquire gets a broken worker.
+    const forced = await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).__staveForceBrokenVizWorker?.() ?? false
+    })
+    expect(forced, '__staveForceBrokenVizWorker hook present').toBe(true)
+
+    await press(page, `${MOD}+Period`)
+    await page.waitForTimeout(400)
+    await setCode(page, codeFor(3))
+    await press(page, `${MOD}+Enter`)
+    await page.waitForTimeout(4000) // worker fails pre-ready → fallback mounts main
+
+    const gauges = async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = await page.evaluate(() => (window as any).__stavePerf?.snapshot?.())
+      return { p5: s?.gauges?.['viz.p5'] ?? 0, worker: s?.gauges?.['viz.worker'] ?? 0 }
+    }
+    const g1 = await gauges()
+    // eslint-disable-next-line no-console
+    console.log(`\n[#263 fallback] after broken-worker mount: viz.p5=${g1.p5} viz.worker=${g1.worker}`)
+    expect(g1.p5, 'fell back to main-thread renderer').toBeGreaterThan(0)
+
+    // Churn: scroll off-screen + back → teardown + reinit on the fallback chain.
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = (window as any).monaco?.editor?.getEditors?.()?.[0]
+      e?.setScrollTop(e?.getScrollHeight?.() ?? 999_999)
+    })
+    await page.waitForTimeout(8000)
+    await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.setScrollTop(0)) // eslint-disable-line @typescript-eslint/no-explicit-any
+    await page.waitForTimeout(4000)
+    const g2 = await gauges()
+    // eslint-disable-next-line no-console
+    console.log(`[#263 fallback] after teardown→reinit churn: viz.p5=${g2.p5} viz.worker=${g2.worker} · pageErrors=${pageErrors.length}\n`)
+    expect(g2.p5, 'still rendering on main after churn (chain survived)').toBeGreaterThan(0)
+    expect(pageErrors, 'no uncaught page errors through the chain').toHaveLength(0)
     await context.close()
   })
 })

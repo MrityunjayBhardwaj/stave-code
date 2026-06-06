@@ -6435,6 +6435,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
      *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
      *  terminated, so the next mount reuses the thread (no fresh allocation). */
     this.pooled = false;
+    /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+     *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+     *  is terminated so it can't poison a future acquire. */
+    this.ready = false;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -6474,6 +6478,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
           return;
         }
         if (d.type === "ready") {
+          this.ready = true;
           this.onReady?.();
           return;
         }
@@ -6532,7 +6537,7 @@ ${d.stack}` : "");
       } catch {
       }
       if (this.diagHandler) worker.removeEventListener("message", this.diagHandler);
-      if (this.pooled) {
+      if (this.pooled && this.ready) {
         releaseVizWorker(worker);
       } else {
         try {

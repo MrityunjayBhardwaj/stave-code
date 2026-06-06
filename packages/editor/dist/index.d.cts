@@ -1935,6 +1935,10 @@ declare class WorkerVizRenderer implements VizRenderer {
      *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
      *  terminated, so the next mount reuses the thread (no fresh allocation). */
     private pooled;
+    /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+     *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+     *  is terminated so it can't poison a future acquire. */
+    private ready;
     /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
      *  sketch source. @param name workspace path (error attribution). */
     constructor(kind: 'p5' | 'hydra', code: string, name: string);
