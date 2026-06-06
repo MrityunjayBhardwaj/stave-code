@@ -35,6 +35,7 @@ import type { IRPattern } from '../../ir/IRPattern'
 import { MainSignalSampler } from '../worker/signalSampler'
 import { createPostMessageWriter, type SignalTransportWriter } from '../worker/signalTransport'
 import { getVizWorkerFactory } from '../vizWorkerFactory'
+import { acquireVizWorker, releaseVizWorker, isVizWorkerPoolEnabled } from '../vizWorkerPool'
 import { getVizConfig } from '../vizConfig'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
@@ -100,6 +101,10 @@ export class WorkerVizRenderer implements VizRenderer {
   /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
    *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
   private onReady: (() => void) | null = null
+  /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+   *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+   *  terminated, so the next mount reuses the thread (no fresh allocation). */
+  private pooled = false
 
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
    *  sketch source. @param name workspace path (error attribution). */
@@ -131,6 +136,7 @@ export class WorkerVizRenderer implements VizRenderer {
       onError(new Error('WorkerVizRenderer: no viz-worker factory registered'))
       return
     }
+    this.pooled = isVizWorkerPoolEnabled()
 
     try {
       // ── presenting canvas: the worker owns it via transferControlToOffscreen;
@@ -146,7 +152,10 @@ export class WorkerVizRenderer implements VizRenderer {
       this.canvasEl = canvas
       const offscreen = canvas.transferControlToOffscreen()
 
-      const worker = make()
+      // Reuse a warm parked worker when the pool is on (#263 A) — else spawn a
+      // fresh one. acquireVizWorker falls back to the factory when no parked
+      // worker is free, so it never returns null while `make` exists.
+      const worker = this.pooled ? (acquireVizWorker() ?? make()) : make()
       this.worker = worker
       this.writer = createPostMessageWriter(worker)
 
@@ -235,13 +244,22 @@ export class WorkerVizRenderer implements VizRenderer {
         /* ignore */
       }
       if (this.diagHandler) worker.removeEventListener('message', this.diagHandler)
-      // Terminate after a microtask so the destroy message is delivered first
-      // (terminate is immediate; the message would otherwise be dropped). The
-      // worker's own teardown also runs on destroy, so this is belt-and-braces.
-      try {
-        worker.terminate()
-      } catch {
-        /* ignore */
+      if (this.pooled) {
+        // Keep the thread WARM for reuse (#263 A): the `destroy` message above
+        // already freed the worker's p5/hydra instance + GL context (a context
+        // slot), so the parked worker holds no live context — only its warm
+        // isolate + imported modules, which the next mount re-mounts onto a new
+        // OffscreenCanvas. NO terminate → no fresh-thread allocation on reuse.
+        releaseVizWorker(worker)
+      } else {
+        // Terminate after the destroy message is delivered (terminate is
+        // immediate; the message would otherwise be dropped). The worker's own
+        // teardown also runs on destroy, so this is belt-and-braces.
+        try {
+          worker.terminate()
+        } catch {
+          /* ignore */
+        }
       }
     }
     this.diagHandler = null

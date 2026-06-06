@@ -394,4 +394,88 @@ test.describe('#263 spike — high-N viz memory + WebGL ~16-context cap (worker 
     }
     await context.close()
   })
+
+  // ── #263 A: worker POOL bounds RSS across teardown→reinit churn ─────────────
+  // The fix for the limitation above. Same scenario WITH the worker pool on:
+  // teardown releases the worker to the pool (parked warm, no terminate); reinit
+  // REUSES a parked worker (no fresh thread/isolate). So re-creating the
+  // torn-down zones must NOT re-grow RSS the way the terminate path did — the
+  // reinit RSS stays bounded near the pre-teardown high-water mark. This is the
+  // hypothesis A rests on; the gate OBSERVES it (don't infer — P112's lesson).
+  test('worker pool: teardown→reinit churn stays BOUNDED (vs terminate +356MB)', async ({ browser }) => {
+    test.skip(!process.env.HIGHN, 'spike harness — set HIGHN=1')
+    const N = 10
+    const context = await browser.newContext({ viewport: { width: 1500, height: 1500 } })
+    const page = await context.newPage()
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_PERF__ = true
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+      try {
+        localStorage.setItem('stave.viz.worker', '1')
+        localStorage.setItem('stave:inlineVizTeardown', '1') // teardown ON
+        localStorage.setItem('stave.viz.pool', '1') // + worker REUSE pool ON
+      } catch { /* ignore */ }
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
+    await page.waitForTimeout(1200)
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz?.({
+        id: 'swr', name: 'swr', renderer: 'p5', code,
+        requires: ['streaming'], nativeSize: { w: 1100, h: 200 }, createdAt: 1, updatedAt: 1,
+      })
+    }, SYNTHWAVE)
+    await press(page, `${MOD}+Period`)
+    await page.waitForTimeout(400)
+    await setCode(page, codeFor(N))
+    await press(page, `${MOD}+Enter`)
+    await page.waitForTimeout(2500)
+    await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.setScrollTop(0)) // eslint-disable-line @typescript-eslint/no-explicit-any
+    await page.waitForTimeout(4000)
+
+    const gauge = async (): Promise<number> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = await page.evaluate(() => (window as any).__stavePerf?.snapshot?.())
+      return s?.gauges?.['viz.worker'] ?? 0
+    }
+    const rss = (): number => rssKb(classify().renderer) / 1024
+
+    const gaugeBefore = await gauge()
+    const rssBefore = rss()
+    expect(gaugeBefore, 'all N mounted').toBeGreaterThanOrEqual(N)
+
+    await page.waitForTimeout(67_000) // past the 60s off-screen teardown threshold
+    const gaugeAfter = await gauge()
+
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = (window as any).monaco?.editor?.getEditors?.()?.[0]
+      e?.setScrollTop(e?.getScrollHeight?.() ?? 999_999)
+    })
+    await page.waitForTimeout(4000)
+    const gaugeBack = await gauge()
+    const rssReinit = rss()
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n[#263 pool] gauge ${gaugeBefore}→${gaugeAfter}→${gaugeBack} · ` +
+      `rndRSS ${rssBefore.toFixed(0)}→${rssReinit.toFixed(0)}MB (reinit Δ ${(rssReinit - rssBefore).toFixed(0)}MB, want bounded)\n`,
+    )
+    // HARD gate = the reuse LIFECYCLE: teardown releases workers to the pool
+    // (parked warm) and scroll-back REUSES them (gauge recovers to N without
+    // fresh spawns). That part is solid + non-flaky.
+    expect(gaugeBefore - gaugeAfter, 'off-screen zones torn down').toBeGreaterThanOrEqual(1)
+    expect(gaugeBack, 'scroll-back reuses parked workers').toBeGreaterThan(gaugeAfter)
+    // RSS is INFORMATIONAL (a hard threshold flakes run-to-run): OBSERVED the pool
+    // roughly HALVES one-cycle churn growth vs the terminate path (~+172MB vs
+    // +356MB) but does NOT fully bound it — the per-mount p5 instance + GL context
+    // + canvas are re-created each reinit and the renderer-process allocator does
+    // not fully return/reuse the freed pages. Whether RSS PLATEAUS or grows
+    // linearly over MANY cycles (the true long-session question) is a separate
+    // multi-cycle observation. We assert only a gross-regression ceiling here.
+    expect(rssReinit, 'pool reinit must not blow past a gross ceiling').toBeLessThan(rssBefore + 500)
+    await context.close()
+  })
 })

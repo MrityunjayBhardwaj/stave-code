@@ -1931,6 +1931,10 @@ declare class WorkerVizRenderer implements VizRenderer {
     /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
      *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
     private onReady;
+    /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+     *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+     *  terminated, so the next mount reuses the thread (no fresh allocation). */
+    private pooled;
     /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
      *  sketch source. @param name workspace path (error attribution). */
     constructor(kind: 'p5' | 'hydra', code: string, name: string);

@@ -6283,6 +6283,40 @@ function getVizWorkerFactory() {
 }
 __name(getVizWorkerFactory, "getVizWorkerFactory");
 
+// src/visualizers/vizWorkerPool.ts
+function poolCap() {
+  const hc = typeof navigator !== "undefined" && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
+  return Math.max(2, hc - 2);
+}
+__name(poolCap, "poolCap");
+function isVizWorkerPoolEnabled() {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.pool") === "1";
+  } catch {
+    return false;
+  }
+}
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+var parked = [];
+function acquireVizWorker() {
+  const reused = parked.pop();
+  if (reused) return reused;
+  const make = getVizWorkerFactory();
+  return make ? make() : null;
+}
+__name(acquireVizWorker, "acquireVizWorker");
+function releaseVizWorker(worker) {
+  if (parked.length < poolCap()) {
+    parked.push(worker);
+  } else {
+    try {
+      worker.terminate();
+    } catch {
+    }
+  }
+}
+__name(releaseVizWorker, "releaseVizWorker");
+
 // src/visualizers/vizConfig.ts
 var DEFAULT_VIZ_CONFIG = {
   // Resolver
@@ -6388,6 +6422,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
      *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
     this.onReady = null;
+    /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+     *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+     *  terminated, so the next mount reuses the thread (no fresh allocation). */
+    this.pooled = false;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -6404,6 +6442,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       onError(new Error("WorkerVizRenderer: no viz-worker factory registered"));
       return;
     }
+    this.pooled = isVizWorkerPoolEnabled();
     try {
       const dpr = effectiveDpr();
       const canvas = document.createElement("canvas");
@@ -6415,7 +6454,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       container.appendChild(canvas);
       this.canvasEl = canvas;
       const offscreen = canvas.transferControlToOffscreen();
-      const worker = make();
+      const worker = this.pooled ? acquireVizWorker() ?? make() : make();
       this.worker = worker;
       this.writer = createPostMessageWriter(worker);
       this.diagHandler = (ev) => {
@@ -6484,9 +6523,13 @@ ${d.stack}` : "");
       } catch {
       }
       if (this.diagHandler) worker.removeEventListener("message", this.diagHandler);
-      try {
-        worker.terminate();
-      } catch {
+      if (this.pooled) {
+        releaseVizWorker(worker);
+      } else {
+        try {
+          worker.terminate();
+        } catch {
+        }
       }
     }
     this.diagHandler = null;
