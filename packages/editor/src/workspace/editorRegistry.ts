@@ -298,7 +298,14 @@ export function onInlineVizResolutionChange(cb: (n: number) => void): () => void
 // Off-screen ONLY (a hidden tab stays paused-resident — user decision). A later
 // worker pool will reuse a parked warm worker instead of respawn (#263 part A).
 const INLINE_VIZ_TEARDOWN_MS = 60_000
-const DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true
+// Default OFF until #263 part A (worker REUSE) lands. OBSERVED
+// (high-n-headroom.spec.ts): terminate-based teardown does NOT return renderer
+// RSS to the OS, and reinit spawns fresh workers that allocate anew — so under
+// scroll churn RSS can GROW (net +356MB over one teardown→reinit cycle). The
+// only durable in-range benefit today is freeing WebGL-context slots (the
+// out-of-range ~16-context cap), so this stays opt-in. When the worker pool
+// reuses parked warm workers (no fresh allocation), flip this default back on.
+const DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = false
 const INLINE_VIZ_TEARDOWN_STORAGE = 'stave:inlineVizTeardown'
 const inlineVizTeardownListeners = new Set<(on: boolean) => void>()
 

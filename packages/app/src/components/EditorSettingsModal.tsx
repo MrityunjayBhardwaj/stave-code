@@ -167,7 +167,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   // "Custom"), so a custom value stays editable instead of snapping to a preset.
   const [vizRes, setVizRes] = useState(512);
   const [vizResCustom, setVizResCustom] = useState(false);
-  const [vizTeardown, setVizTeardown] = useState(true);
+  const [vizTeardown, setVizTeardown] = useState(false);
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
   const [perfEnabled, setPerfEnabledState] = useState(false);
@@ -346,7 +346,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
                   setVizTeardown(next);
                 }}
               />
-              <span>{vizTeardown ? "On (frees memory after 60s)" : "Off (stay resident)"}</span>
+              <span>{vizTeardown ? "On (experimental — frees GPU contexts after 60s)" : "Off (stay resident)"}</span>
             </label>
           </Row>
           <Row label="Timeline sub-row">
