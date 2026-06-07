@@ -6398,6 +6398,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
         if (!d) return;
         if (d.type === "frameAck") {
           if (this.inFlight > 0) this.inFlight--;
+          if (typeof d.drawMs === "number") perf.record("viz.worker.draw", d.drawMs);
           return;
         }
         if (d.type === "ready") {

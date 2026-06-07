@@ -5589,6 +5589,7 @@ var P5ctor = null;
 var Hydractor = null;
 function hostVizWorker(scope) {
   let state = null;
+  let lastDrawMs;
   const diag = /* @__PURE__ */ __name((level, message, stack) => {
     try {
       scope.postMessage({ type: "diag", level, message, stack });
@@ -5812,7 +5813,7 @@ function hostVizWorker(scope) {
     const s = state;
     if (!s) return;
     try {
-      scope.postMessage({ type: "frameAck" });
+      scope.postMessage({ type: "frameAck", drawMs: lastDrawMs });
     } catch {
     }
     s.feed.applyFrame(frame);
@@ -5821,12 +5822,14 @@ function hostVizWorker(scope) {
     s.rawAnalyser.set(master);
     s.rawScheduler.set(frame.rawScheduler);
     if (!s.setupDone() || s.paused) return;
+    const drawT0 = globalThis.performance?.now?.() ?? 0;
     try {
       s.draw();
     } catch (e) {
       diag("error", `draw threw: ${errMsg(e)}`, errStack(e));
       return;
     }
+    lastDrawMs = (globalThis.performance?.now?.() ?? 0) - drawT0;
     if (!s.readySent) {
       s.readySent = true;
       signalReady();
@@ -5848,6 +5851,7 @@ function hostVizWorker(scope) {
   function destroy() {
     const s = state;
     state = null;
+    lastDrawMs = void 0;
     if (!s) return;
     try {
       s.reader.dispose();
