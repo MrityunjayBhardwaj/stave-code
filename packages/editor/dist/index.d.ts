@@ -2171,6 +2171,20 @@ interface VizConfig {
      * viz at higher composite cost. Effective dpr = `min(devicePixelRatio, maxDpr)`.
      */
     maxDpr: number;
+    /**
+     * Sketch-facing level-of-detail multiplier in `(0, 1]`. `1` = full detail
+     * (default). Lower values ask the SKETCH to DECIMATE its per-frame work —
+     * primarily segment / history COUNT for CPU-tessellation-bound line meshes,
+     * the class a resolution drop does NOT help (#232: canvas 600→150px at
+     * constant segments = no change). Exposed to sketches as `u.density`
+     * (staveUniforms) so a heavy sketch can scale its geometry, and marshalled
+     * into the worker via the config channel (the worker reads its OWN vizConfig
+     * singleton — P105 / #253). Fill/fragment-bound sketches (hydra, shaders,
+     * large filled regions) gain nothing from `density` and instead ride the
+     * resolution/dpr knobs the renderer applies composite-side; that is how a
+     * single "performance mode" helps both sketch classes (#232).
+     */
+    density: number;
     /** Height in pixels of each inline viz zone rendered below a pattern block. */
     inlineZoneHeight: number;
     /**

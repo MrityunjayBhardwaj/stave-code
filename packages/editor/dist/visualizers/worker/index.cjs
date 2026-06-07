@@ -5544,6 +5544,10 @@ var DEFAULT_VIZ_CONFIG = {
   // composite wall measured for multi-instance inline viz.
   maxFps: 60,
   maxDpr: 1,
+  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
+  // values are opted into via "performance mode" (deriveVizQuality) and read by
+  // sketches as `u.density`. Marshalled to the worker via the config channel.
+  density: 1,
   // Inline view zones
   inlineZoneHeight: 150,
   // Audio analysis

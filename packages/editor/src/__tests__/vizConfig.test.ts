@@ -1,7 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
   DEFAULT_VIZ_CONFIG,
+  DEFAULT_VIZ_QUALITY,
   createVizConfig,
+  deriveVizQuality,
   getVizConfig,
   setVizConfig,
 } from '../visualizers/vizConfig'
@@ -17,6 +19,7 @@ describe('VizConfig', () => {
     expect(DEFAULT_VIZ_CONFIG.fftSize).toBe(2048)
     expect(DEFAULT_VIZ_CONFIG.smoothingTimeConstant).toBe(0.8)
     expect(DEFAULT_VIZ_CONFIG.hydraAudioBins).toBe(4)
+    expect(DEFAULT_VIZ_CONFIG.density).toBe(1)
     expect(DEFAULT_VIZ_CONFIG.hydraAutoLoop).toBe(true)
     expect(DEFAULT_VIZ_CONFIG.pianorollWindowSeconds).toBe(6)
     expect(DEFAULT_VIZ_CONFIG.backgroundColor).toBe('#090912')
@@ -57,5 +60,39 @@ describe('VizConfig', () => {
     // Second call resets defaultRenderer back to default
     expect(getVizConfig().defaultRenderer).toBe('p5')
     expect(getVizConfig().pianorollCycles).toBe(8)
+  })
+})
+
+describe('deriveVizQuality (#269 — performance mode)', () => {
+  it('balanced is the default and reproduces today\'s values', () => {
+    expect(DEFAULT_VIZ_QUALITY).toBe('balanced')
+    // density 1 + resolution 512 == DEFAULT_VIZ_CONFIG.density + the
+    // editorRegistry inline-viz-resolution default → no regression at default.
+    expect(deriveVizQuality('balanced')).toEqual({ resolution: 512, density: 1 })
+    expect(deriveVizQuality('balanced').density).toBe(DEFAULT_VIZ_CONFIG.density)
+  })
+
+  it('scales BOTH resolution and density per level (#232)', () => {
+    const high = deriveVizQuality('high')
+    const balanced = deriveVizQuality('balanced')
+    const perf = deriveVizQuality('performance')
+
+    // Monotonic descent in BOTH knobs high → balanced → performance.
+    expect(high.resolution).toBeGreaterThan(balanced.resolution)
+    expect(balanced.resolution).toBeGreaterThan(perf.resolution)
+    expect(high.density).toBeGreaterThanOrEqual(balanced.density)
+    expect(balanced.density).toBeGreaterThan(perf.density)
+  })
+
+  it('density stays within (0, 1] at every level', () => {
+    for (const level of ['high', 'balanced', 'performance'] as const) {
+      const { density } = deriveVizQuality(level)
+      expect(density).toBeGreaterThan(0)
+      expect(density).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('performance mode drops both knobs (the worst-case lever)', () => {
+    expect(deriveVizQuality('performance')).toEqual({ resolution: 256, density: 0.5 })
   })
 })
