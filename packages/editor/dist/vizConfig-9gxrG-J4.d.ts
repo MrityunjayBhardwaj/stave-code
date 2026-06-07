@@ -130,6 +130,33 @@ declare const DEFAULT_VIZ_CONFIG: Readonly<VizConfig>;
  * ```
  */
 declare function createVizConfig(overrides?: Partial<VizConfig>): VizConfig;
+/**
+ * Discrete viz quality level. The user picks one ("performance mode"); it maps
+ * to the two knobs that scale per sketch class (`deriveVizQuality`).
+ */
+type VizQualityLevel = 'high' | 'balanced' | 'performance';
+/** The default quality level — `balanced` reproduces today's behaviour exactly. */
+declare const DEFAULT_VIZ_QUALITY: VizQualityLevel;
+/** The two knobs a quality level scales. */
+interface VizQualitySettings {
+    /** Inline-viz render backing-store HEIGHT (px) — composite/fill cost (main-side). */
+    resolution: number;
+    /** Sketch LOD multiplier in `(0, 1]` — segment/history count (worker-side, `u.density`). */
+    density: number;
+}
+/**
+ * Map a quality level to the two knobs it scales.
+ *
+ * A single "performance mode" drops BOTH resolution AND density because the
+ * WINNING lever differs by sketch class (#232): resolution helps fill/fragment/
+ * hydra; density helps CPU-tessellation line meshes. Each sketch benefits from
+ * whichever applies, and both move together with the level.
+ *
+ * `balanced` is the default and maps to today's values (resolution 512, density
+ * 1) so existing projects render identically until the user opts into a level.
+ * `resolution` mirrors the editorRegistry inline-viz-resolution presets.
+ */
+declare function deriveVizQuality(level: VizQualityLevel): VizQualitySettings;
 /** Returns the active viz configuration. */
 declare function getVizConfig(): Readonly<VizConfig>;
 /**
@@ -138,6 +165,13 @@ declare function getVizConfig(): Readonly<VizConfig>;
  * Unspecified fields RESET to defaults (see `updateVizConfig` to merge instead).
  */
 declare function setVizConfig(config: Partial<VizConfig>): void;
+/**
+ * MERGES a partial patch onto the ACTIVE config — unlike `setVizConfig`, which
+ * resets unspecified fields to defaults. Used by the worker config-marshal
+ * channel (#269): an incremental `{ density }` patch must NOT wipe a prior
+ * `hydraAudioBins`. Notifies listeners so the marshal channel can re-ship.
+ */
+declare function updateVizConfig(patch: Partial<VizConfig>): void;
 /**
  * The ONLY vizConfig fields the WORKER bundle reads. The worker has its own
  * `vizConfig` singleton (it's a separate bundle — P105) that otherwise stays at
@@ -152,4 +186,4 @@ declare function setVizConfig(config: Partial<VizConfig>): void;
 declare const WORKER_VIZ_CONFIG_KEYS: readonly ["hydraAudioBins", "density"];
 type WorkerVizConfig = Pick<VizConfig, (typeof WORKER_VIZ_CONFIG_KEYS)[number]>;
 
-export { DEFAULT_VIZ_CONFIG as D, type VizConfig as V, type WorkerVizConfig as W, createVizConfig as c, getVizConfig as g, setVizConfig as s };
+export { DEFAULT_VIZ_CONFIG as D, type VizQualityLevel as V, type WorkerVizConfig as W, DEFAULT_VIZ_QUALITY as a, type VizConfig as b, type VizQualitySettings as c, createVizConfig as d, deriveVizQuality as e, getVizConfig as g, setVizConfig as s, updateVizConfig as u };

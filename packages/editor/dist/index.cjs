@@ -5275,6 +5275,19 @@ function createVizConfig(overrides) {
   return { ...DEFAULT_VIZ_CONFIG, ...overrides };
 }
 __name(createVizConfig, "createVizConfig");
+var DEFAULT_VIZ_QUALITY = "balanced";
+function deriveVizQuality(level) {
+  switch (level) {
+    case "high":
+      return { resolution: 1024, density: 1 };
+    case "performance":
+      return { resolution: 256, density: 0.5 };
+    case "balanced":
+    default:
+      return { resolution: 512, density: 1 };
+  }
+}
+__name(deriveVizQuality, "deriveVizQuality");
 var _active = { ...DEFAULT_VIZ_CONFIG };
 var _listeners = /* @__PURE__ */ new Set();
 function notify() {
@@ -5290,6 +5303,11 @@ function setVizConfig(config) {
   notify();
 }
 __name(setVizConfig, "setVizConfig");
+function updateVizConfig(patch) {
+  _active = { ..._active, ...patch };
+  notify();
+}
+__name(updateVizConfig, "updateVizConfig");
 function onVizConfigChange(cb) {
   _listeners.add(cb);
   return () => {
@@ -5597,6 +5615,48 @@ function onInlineVizResolutionChange(cb) {
   };
 }
 __name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
+var VIZ_QUALITY_STORAGE = "stave:vizQuality";
+var VIZ_QUALITY_LEVELS = ["high", "balanced", "performance"];
+var vizQualityListeners = /* @__PURE__ */ new Set();
+function readVizQuality() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_VIZ_QUALITY;
+  const saved = ls.getItem(VIZ_QUALITY_STORAGE);
+  return VIZ_QUALITY_LEVELS.includes(saved) ? saved : DEFAULT_VIZ_QUALITY;
+}
+__name(readVizQuality, "readVizQuality");
+function writeVizQuality(level) {
+  safeLocalStorage2()?.setItem(VIZ_QUALITY_STORAGE, level);
+}
+__name(writeVizQuality, "writeVizQuality");
+function applyVizQuality(level) {
+  const { resolution, density } = deriveVizQuality(level);
+  setInlineVizResolution(resolution);
+  updateVizConfig({ density });
+}
+__name(applyVizQuality, "applyVizQuality");
+function getVizQuality() {
+  return readVizQuality();
+}
+__name(getVizQuality, "getVizQuality");
+function setVizQuality(level) {
+  const safe = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY;
+  writeVizQuality(safe);
+  applyVizQuality(safe);
+  for (const cb of Array.from(vizQualityListeners)) cb(safe);
+}
+__name(setVizQuality, "setVizQuality");
+function onVizQualityChange(cb) {
+  vizQualityListeners.add(cb);
+  return () => {
+    vizQualityListeners.delete(cb);
+  };
+}
+__name(onVizQualityChange, "onVizQualityChange");
+function applyPersistedVizQuality() {
+  applyVizQuality(readVizQuality());
+}
+__name(applyPersistedVizQuality, "applyPersistedVizQuality");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
@@ -27758,6 +27818,7 @@ exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
 exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
 exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DEFAULT_VIZ_ENGINE = DEFAULT_VIZ_ENGINE;
+exports.DEFAULT_VIZ_QUALITY = DEFAULT_VIZ_QUALITY;
 exports.DemoEngine = DemoEngine;
 exports.EditorView = EditorView;
 exports.ErrorBoundary = ErrorBoundary;
@@ -27820,6 +27881,7 @@ exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
 exports.applyPersistedPerfEnabled = applyPersistedPerfEnabled;
 exports.applyPersistedTheme = applyPersistedTheme;
 exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
+exports.applyPersistedVizQuality = applyPersistedVizQuality;
 exports.applyTheme = applyTheme;
 exports.backdropQualityFactor = backdropQualityFactor;
 exports.buildAliasSuffix = buildAliasSuffix;
@@ -27848,6 +27910,7 @@ exports.cycleEditorTheme = cycleEditorTheme;
 exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
+exports.deriveVizQuality = deriveVizQuality;
 exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
 exports.duplicateProject = duplicateProject;
 exports.emitFixed = emitFixed;
@@ -27909,6 +27972,7 @@ exports.getViewedCommit = getViewedCommit;
 exports.getViewedContent = getViewedContent;
 exports.getViewedFileIds = getViewedFileIds;
 exports.getVizConfig = getVizConfig;
+exports.getVizQuality = getVizQuality;
 exports.getVizWorkerFactory = getVizWorkerFactory;
 exports.getZoneCropOverride = getZoneCropOverride;
 exports.getZoneHeightOverride = getZoneHeightOverride;
@@ -27953,6 +28017,7 @@ exports.onPerfEnabledChange = onPerfEnabledChange;
 exports.onSignalAliasesChange = onSignalAliasesChange;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
+exports.onVizQualityChange = onVizQualityChange;
 exports.parseMini = parseMini;
 exports.parseStackLocation = parseStackLocation;
 exports.parseStrudel = parseStrudel;
@@ -28020,6 +28085,7 @@ exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
 exports.setTrackMeta = setTrackMeta;
 exports.setVizConfig = setVizConfig;
+exports.setVizQuality = setVizQuality;
 exports.setVizWorkerFactory = setVizWorkerFactory;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
@@ -28052,6 +28118,7 @@ exports.transpose = transpose;
 exports.undo = undo;
 exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
+exports.updateVizConfig = updateVizConfig;
 exports.useTrackMeta = useTrackMeta;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;
