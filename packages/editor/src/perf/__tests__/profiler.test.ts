@@ -127,6 +127,30 @@ describe('frames → fps + drops', () => {
     expect(perf.snapshot().frames.a.drops).toBeGreaterThanOrEqual(1)
   })
 
+  it('counts uniformly-slow frames that drops MISSES (#230 / PV80 blind spot)', () => {
+    // Every frame a steady 100ms (10fps): no VARIANCE → 0 drops, but every
+    // interval is < 30fps → slowFrames must catch it.
+    for (let i = 0; i < 8; i++) {
+      perf.frame('slow')
+      clock += 100
+    }
+    const f = perf.snapshot().frames.slow
+    expect(f.drops, 'uniform cadence has no variance → 0 drops').toBe(0)
+    expect(f.slowFrames, 'but every interval is <30fps').toBeGreaterThanOrEqual(6)
+    expect(f.fps).toBeCloseTo(10, 4)
+  })
+
+  it('does NOT count fast steady frames as slow', () => {
+    // 16ms intervals (~60fps) — above 30fps, so zero slowFrames.
+    for (let i = 0; i < 8; i++) {
+      perf.frame('fast')
+      clock += 16
+    }
+    const f = perf.snapshot().frames.fast
+    expect(f.slowFrames).toBe(0)
+    expect(f.drops).toBe(0)
+  })
+
   it('dropFrames forgets a dead instance', () => {
     perf.frame('a')
     clock += 10
@@ -149,6 +173,15 @@ describe('counters (cumulative) vs gauges (live state)', () => {
     perf.gauge('viz', 1)
     perf.gauge('viz', -1)
     expect(perf.snapshot().gauges.viz).toBe(1)
+  })
+
+  it('clamps a negative gauge to 0 in the snapshot (#230 #3 StrictMode dec-without-inc)', () => {
+    // A construct→destroy without a mount dec's below its incs; the snapshot
+    // must not surface a nonsensical negative live-count. Unique gauge name —
+    // gauges survive reset() (by design) + the singleton persists across tests,
+    // so reusing a shared name would leak into a later test's expectation.
+    perf.gauge('viz.clamptest', -2)
+    expect(perf.snapshot().gauges['viz.clamptest']).toBe(0)
   })
 })
 

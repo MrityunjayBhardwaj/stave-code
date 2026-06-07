@@ -186,6 +186,10 @@ export class WorkerVizRenderer implements VizRenderer {
         if (d.type === 'frameAck') {
           // The worker consumed a frame — free a slot in the bounded pipeline (#261).
           if (this.inFlight > 0) this.inFlight--
+          // Profiler bridge (#230 Phase F): the ack carries the prior draw's
+          // wall-time → record it so the default worker path is no longer a
+          // profiler blind spot. Aggregated section (like p5.bus / hydra.draw).
+          if (typeof d.drawMs === 'number') perf.record('viz.worker.draw', d.drawMs)
           return
         }
         if (d.type === 'vizlog') {

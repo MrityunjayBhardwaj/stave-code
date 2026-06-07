@@ -116,6 +116,14 @@ export interface WorkerReadyMessage {
  *  pipeline. */
 export interface WorkerFrameAckMessage {
   type: 'frameAck'
+  /** Profiler bridge (#230 Phase F): the wall-time (ms) of the LAST completed
+   *  `s.draw()` in this worker — the default worker path is otherwise a profiler
+   *  blind spot (the worker bundle never imported `perf`). Carried on the next
+   *  ack (which is sent on RECEIPT, before this frame's draw) so it costs ZERO
+   *  extra messages and doesn't change the ack-on-receipt deadlock guarantee.
+   *  `undefined` until the first draw completes. Main records it as the section
+   *  `viz.worker.draw` (aggregated across instances, like `p5.bus`/`hydra.draw`). */
+  drawMs?: number
 }
 
 /** Structural guard — is this a control message (has a string `type`) rather than

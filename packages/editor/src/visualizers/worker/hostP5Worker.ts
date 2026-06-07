@@ -115,6 +115,10 @@ const GLCTX_RELEASE = true
 
 export function hostVizWorker(scope: WorkerScope): void {
   let state: MountState | null = null
+  // Profiler bridge (#230 Phase F): wall-time of the last completed s.draw(),
+  // piggybacked on the next frameAck → main records `viz.worker.draw`. Reset per
+  // mount so a new sketch doesn't report the previous one's cost.
+  let lastDrawMs: number | undefined
 
   const diag = (level: 'error' | 'info', message: string, stack?: string): void => {
     try {
@@ -493,7 +497,9 @@ export function hostVizWorker(scope: WorkerScope): void {
     // deadlocks before p5's async setup completes). The main side caps unacked
     // frames in flight so it can't flood a slow worker into a stale backlog.
     try {
-      scope.postMessage({ type: 'frameAck' })
+      // Carry the LAST completed draw's duration (known from the prior frame) —
+      // this ack is sent on receipt, before THIS frame draws (#230 Phase F bridge).
+      scope.postMessage({ type: 'frameAck', drawMs: lastDrawMs })
     } catch {
       /* ignore late-teardown failures */
     }
@@ -505,6 +511,7 @@ export function hostVizWorker(scope: WorkerScope): void {
     s.rawScheduler.set(frame.rawScheduler)
 
     if (!s.setupDone() || s.paused) return
+    const drawT0 = globalThis.performance?.now?.() ?? 0
     try {
       s.draw() // kind-specific (p5 redraw+blit | hydra fft+tick)
     } catch (e) {
@@ -512,6 +519,8 @@ export function hostVizWorker(scope: WorkerScope): void {
       postVizLog({ level: 'error', runtime: currentRuntimeRef.kind, message: `draw(): ${errMsg(e)}`, stack: errStack(e) })
       return
     }
+    // Record this draw's wall-time for the NEXT ack to carry (#230 Phase F).
+    lastDrawMs = (globalThis.performance?.now?.() ?? 0) - drawT0
     // First successful frame → one-shot liveness signal (#247 fallback gate).
     if (!s.readySent) {
       s.readySent = true
@@ -535,6 +544,7 @@ export function hostVizWorker(scope: WorkerScope): void {
   function destroy(): void {
     const s = state
     state = null
+    lastDrawMs = undefined // don't carry a dead sketch's draw cost into the next mount
     if (!s) return
     try {
       s.reader.dispose()

@@ -90,10 +90,15 @@ export class P5VizRenderer implements VizRenderer {
       current: buildStaveUniforms(bus, (): void => {
         perf.frame(this.perfId)
         perf.begin('p5.bus')
-        bus.tick()
-        bus.refreshActive(bus.now())
-        bus.readAudio()
-        perf.end('p5.bus')
+        try {
+          bus.tick()
+          bus.refreshActive(bus.now())
+          bus.readAudio()
+        } finally {
+          // Close the span even if a bus call threw — else the open span leaks
+          // and is misattributed to the next frame (#230 #5; mirrors hydra.draw).
+          perf.end('p5.bus')
+        }
       }),
     }
   }
