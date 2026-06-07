@@ -180,4 +180,40 @@ test.describe('Phase D — density LOD moves the line-mesh cost curve (#269 / #2
     // floor while proving the lever fires for the #232 mesh class.
     expect(perf.p95, 'density drop must lower worker frame cost').toBeLessThan(high.p95 * 0.85)
   })
+
+  test('the Editor Settings "Viz quality" dropdown drives the real setter (#269 UI)', async ({ browser }) => {
+    const ctx = await browser.newContext()
+    const page = await ctx.newPage()
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
+    await page.waitForTimeout(1000)
+
+    // Open the gear menu → Editor Settings…
+    await page.locator('[aria-label="Settings"]').click()
+    await page.getByText('Editor Settings...').click()
+
+    const select = page.getByLabel('Viz quality (performance mode)')
+    await select.waitFor({ timeout: 5000 })
+
+    // Selecting a level must route through the real setVizQuality path — observe
+    // the persisted level AND the marshalled density, not just that the UI changed.
+    await select.selectOption('performance')
+    await page.waitForTimeout(300)
+    const afterPerf = await page.evaluate(() => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      q: localStorage.getItem('stave:vizQuality'),
+    }))
+    expect(afterPerf.q).toBe('performance')
+
+    await select.selectOption('high')
+    await page.waitForTimeout(300)
+    const afterHigh = await page.evaluate(() => localStorage.getItem('stave:vizQuality'))
+    expect(afterHigh).toBe('high')
+
+    await ctx.close()
+  })
 })
