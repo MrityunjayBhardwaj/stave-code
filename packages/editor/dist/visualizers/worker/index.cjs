@@ -1061,6 +1061,13 @@ function emitLog(partial) {
   return entry;
 }
 __name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
@@ -5603,6 +5610,24 @@ function hostVizWorker(scope) {
     } catch {
     }
   }, "signalReady");
+  const seenWorkerErrors = /* @__PURE__ */ new Set();
+  const currentRuntimeRef = { kind: "p5" };
+  const postVizLog = /* @__PURE__ */ __name((entry) => {
+    const sig = `${entry.runtime}|${entry.message}|${entry.line ?? ""}`;
+    if (seenWorkerErrors.has(sig)) return;
+    if (seenWorkerErrors.size > 64) seenWorkerErrors.clear();
+    seenWorkerErrors.add(sig);
+    try {
+      scope.postMessage({ type: "vizlog", entry });
+    } catch {
+    }
+  }, "postVizLog");
+  subscribeLog((entry) => {
+    if (entry?.level === "error") {
+      const { id: _id, ts: _ts, ...rest } = entry;
+      postVizLog(rest);
+    }
+  });
   let glLoseExt = null;
   let glAccounted = false;
   const accountGL = /* @__PURE__ */ __name(() => {
@@ -5657,6 +5682,7 @@ function hostVizWorker(scope) {
   __name(handleControl, "handleControl");
   async function mount(msg) {
     if (state) destroy();
+    currentRuntimeRef.kind = msg.kind;
     const dpr = msg.dpr > 0 ? msg.dpr : 1;
     const feed = new WorkerBusFeed();
     if (msg.aliases) feed.setAliases(msg.aliases);
@@ -5857,7 +5883,7 @@ function hostVizWorker(scope) {
     try {
       s.draw();
     } catch (e) {
-      diag("error", `draw threw: ${errMsg(e)}`, errStack(e));
+      postVizLog({ level: "error", runtime: currentRuntimeRef.kind, message: `draw(): ${errMsg(e)}`, stack: errStack(e) });
       return;
     }
     if (!s.readySent) {

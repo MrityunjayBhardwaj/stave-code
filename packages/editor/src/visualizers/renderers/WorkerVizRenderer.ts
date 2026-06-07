@@ -40,11 +40,13 @@ import { getVizConfig } from '../vizConfig'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
+import { emitLog } from '../../engine/engineLog'
 import type {
   MountMessage,
   WorkerDiagMessage,
   WorkerReadyMessage,
   WorkerFrameAckMessage,
+  WorkerVizLogMessage,
 } from '../worker/workerMessages'
 
 let workerPerfSeq = 0
@@ -174,11 +176,20 @@ export class WorkerVizRenderer implements VizRenderer {
           | WorkerDiagMessage
           | WorkerReadyMessage
           | WorkerFrameAckMessage
+          | WorkerVizLogMessage
           | undefined
         if (!d) return
         if (d.type === 'frameAck') {
           // The worker consumed a frame — free a slot in the bounded pipeline (#261).
           if (this.inFlight > 0) this.inFlight--
+          return
+        }
+        if (d.type === 'vizlog') {
+          // #257 — a worker viz RUNTIME error (p5/hydra draw/setup throw). Re-emit
+          // into the MAIN engineLog so it surfaces in the Console panel + squiggle
+          // like the main-thread path. NOT onError → no fallback (post-ready user
+          // typo must not tear the worker down). Worker already deduped per error.
+          emitLog(d.entry)
           return
         }
         if (d.type === 'ready') {

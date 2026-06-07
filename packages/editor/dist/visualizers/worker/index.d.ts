@@ -50,6 +50,7 @@ declare const hostP5Worker: typeof hostVizWorker;
  * frames carry the `__staveSignalFrame` envelope tag and NO `type` (signalTransport.ts).
  * So each side ignores the other's messages by checking for `.type`.
  */
+
 /** MAIN → WORKER: create the renderer instance against a transferred OffscreenCanvas. */
 interface MountMessage {
     type: 'mount';

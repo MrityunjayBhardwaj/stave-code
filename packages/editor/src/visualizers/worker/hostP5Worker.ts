@@ -44,6 +44,7 @@ import { buildStaveUniforms } from '../signals/staveUniforms'
 import { buildHydraStaveBag } from '../renderers/hydraStaveBag'
 import { compileP5Code } from '../p5Compiler'
 import { compileHydraCode } from '../hydraCompiler'
+import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { getVizConfig } from '../vizConfig'
 import {
   isControlMessage,
@@ -130,6 +131,38 @@ export function hostVizWorker(scope: WorkerScope): void {
     }
   }
 
+  // #257 — surface viz runtime errors that are otherwise SWALLOWED in the worker.
+  // p5Compiler wraps each user lifecycle hook (draw/setup) in a try/catch that
+  // reports to the worker-LOCAL engineLog (emitLog) and SWALLOWS the throw — so it
+  // never reaches the host's synchronous catch, and the worker engineLog isn't
+  // wired to the main console → a per-frame draw() typo = silent blank. We RE-EMIT
+  // those entries into the MAIN engineLog (`vizlog` → Console panel + squiggle,
+  // like the main-thread path), NOT via `diag`/onError (a post-ready user typo must
+  // surface WITHOUT tearing the worker down). Hydra's tick() is NOT emitLog-wrapped
+  // → its sync throws come through the s.draw() catch below; both route to
+  // postVizLog, deduped to once per unique error so a throw-every-frame sketch
+  // reports once, not 60×/s.
+  const seenWorkerErrors = new Set<string>()
+  const currentRuntimeRef = { kind: 'p5' as LogEntry['runtime'] }
+  const postVizLog = (entry: Omit<LogEntry, 'id' | 'ts'>): void => {
+    const sig = `${entry.runtime}|${entry.message}|${entry.line ?? ''}`
+    if (seenWorkerErrors.has(sig)) return
+    if (seenWorkerErrors.size > 64) seenWorkerErrors.clear()
+    seenWorkerErrors.add(sig)
+    try {
+      scope.postMessage({ type: 'vizlog', entry })
+    } catch {
+      /* postMessage can fail late in teardown — ignore */
+    }
+  }
+  // Forward p5/hydra runtime errors the compiler routed to the worker engineLog.
+  subscribeLog((entry) => {
+    if (entry?.level === 'error') {
+      const { id: _id, ts: _ts, ...rest } = entry
+      postVizLog(rest)
+    }
+  })
+
   // #266 WebGL-context accounting + release. Stashed at first-draw so destroy() can
   // explicitly lose the context even after `state` is cleared. `glLoseExt` holds the
   // WEBGL_lose_context extension; `glAccounted` guards the one-shot `glctx+` report
@@ -197,6 +230,7 @@ export function hostVizWorker(scope: WorkerScope): void {
     // for the one-shot worker).
     if (state) destroy()
 
+    currentRuntimeRef.kind = msg.kind // #257 — attribute sync draw throws to the kind
     const dpr = msg.dpr > 0 ? msg.dpr : 1
     const feed = new WorkerBusFeed()
     if (msg.aliases) feed.setAliases(msg.aliases)
@@ -301,7 +335,8 @@ export function hostVizWorker(scope: WorkerScope): void {
       // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
       gl: () => (inst?.drawingContext as GLLoseCtx | undefined) ?? null,
       draw: () => {
-        inst.redraw() // exactly one draw, 1:1 with this frame (throws → caught)
+        inst.redraw() // 1:1 with this frame. User-draw throws are swallowed by
+        // p5Compiler's lifecycle wrap → forwarded via the engineLog subscription (#257).
         // Blit p5's worker-local render canvas → the presenting canvas (zero-copy).
         if (!present) return
         const src: OffscreenCanvas | undefined = inst?.drawingContext?.canvas
@@ -463,7 +498,8 @@ export function hostVizWorker(scope: WorkerScope): void {
     try {
       s.draw() // kind-specific (p5 redraw+blit | hydra fft+tick)
     } catch (e) {
-      diag('error', `draw threw: ${errMsg(e)}`, errStack(e))
+      // #257 — sync throws (hydra tick, blit). p5's are emitLog-routed above.
+      postVizLog({ level: 'error', runtime: currentRuntimeRef.kind, message: `draw(): ${errMsg(e)}`, stack: errStack(e) })
       return
     }
     // First successful frame → one-shot liveness signal (#247 fallback gate).
