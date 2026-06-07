@@ -69,8 +69,8 @@ export {
   listNamedVizEntries,
   onNamedVizChanged,
 } from './visualizers/namedVizRegistry'
-export type { VizConfig } from './visualizers/vizConfig'
-export { DEFAULT_VIZ_CONFIG, createVizConfig, getVizConfig, setVizConfig } from './visualizers/vizConfig'
+export type { VizConfig, VizQualityLevel, VizQualitySettings, WorkerVizConfig } from './visualizers/vizConfig'
+export { DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_QUALITY, createVizConfig, getVizConfig, setVizConfig, updateVizConfig, deriveVizQuality } from './visualizers/vizConfig'
 // Phase B — worker-viz capability detection / transport degrade scaffold (B-1 #239)
 export { detectWorkerVizCapabilities } from './visualizers/worker/capabilities'
 export type { VizTransport, WorkerVizCapabilities, CapabilityEnv } from './visualizers/worker/capabilities'
@@ -244,6 +244,14 @@ export {
   getInlineVizResolution,
   setInlineVizResolution,
   onInlineVizResolutionChange,
+  getVizQuality,
+  setVizQuality,
+  onVizQualityChange,
+  applyPersistedVizQuality,
+  getInlineVizTeardownEnabled,
+  setInlineVizTeardownEnabled,
+  onInlineVizTeardownChange,
+  getInlineVizTeardownMs,
   getMusicalTimelineSubRowHeight,
   setMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,

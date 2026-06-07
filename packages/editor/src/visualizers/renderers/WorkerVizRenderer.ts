@@ -35,15 +35,18 @@ import type { IRPattern } from '../../ir/IRPattern'
 import { MainSignalSampler } from '../worker/signalSampler'
 import { createPostMessageWriter, type SignalTransportWriter } from '../worker/signalTransport'
 import { getVizWorkerFactory } from '../vizWorkerFactory'
-import { getVizConfig } from '../vizConfig'
+import { acquireVizWorker, releaseVizWorker, isVizWorkerPoolEnabled } from '../vizWorkerPool'
+import { getVizConfig, onVizConfigChange, pickWorkerVizConfig } from '../vizConfig'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
+import { emitLog } from '../../engine/engineLog'
 import type {
   MountMessage,
   WorkerDiagMessage,
   WorkerReadyMessage,
   WorkerFrameAckMessage,
+  WorkerVizLogMessage,
 } from '../worker/workerMessages'
 
 let workerPerfSeq = 0
@@ -100,6 +103,22 @@ export class WorkerVizRenderer implements VizRenderer {
   /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
    *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
   private onReady: (() => void) | null = null
+  /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
+   *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
+   *  doesn't post to a terminated worker. */
+  private configUnsub: (() => void) | null = null
+  /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+   *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+   *  terminated, so the next mount reuses the thread (no fresh allocation). */
+  private pooled = false
+  /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+   *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+   *  is terminated so it can't poison a future acquire. */
+  private ready = false
+  /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
+   *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
+   *  happens after we've detached its listener, so we account it main-side). */
+  private glAccounted = false
 
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
    *  sketch source. @param name workspace path (error attribution). */
@@ -131,6 +150,7 @@ export class WorkerVizRenderer implements VizRenderer {
       onError(new Error('WorkerVizRenderer: no viz-worker factory registered'))
       return
     }
+    this.pooled = isVizWorkerPoolEnabled()
 
     try {
       // ── presenting canvas: the worker owns it via transferControlToOffscreen;
@@ -146,7 +166,10 @@ export class WorkerVizRenderer implements VizRenderer {
       this.canvasEl = canvas
       const offscreen = canvas.transferControlToOffscreen()
 
-      const worker = make()
+      // Reuse a warm parked worker when the pool is on (#263 A) — else spawn a
+      // fresh one. acquireVizWorker falls back to the factory when no parked
+      // worker is free, so it never returns null while `make` exists.
+      const worker = this.pooled ? (acquireVizWorker() ?? make()) : make()
       this.worker = worker
       this.writer = createPostMessageWriter(worker)
 
@@ -157,6 +180,7 @@ export class WorkerVizRenderer implements VizRenderer {
           | WorkerDiagMessage
           | WorkerReadyMessage
           | WorkerFrameAckMessage
+          | WorkerVizLogMessage
           | undefined
         if (!d) return
         if (d.type === 'frameAck') {
@@ -168,12 +192,32 @@ export class WorkerVizRenderer implements VizRenderer {
           if (typeof d.drawMs === 'number') perf.record('viz.worker.draw', d.drawMs)
           return
         }
+        if (d.type === 'vizlog') {
+          // #257 — a worker viz RUNTIME error (p5/hydra draw/setup throw). Re-emit
+          // into the MAIN engineLog so it surfaces in the Console panel + squiggle
+          // like the main-thread path. NOT onError → no fallback (post-ready user
+          // typo must not tear the worker down). Worker already deduped per error.
+          emitLog(d.entry)
+          return
+        }
         if (d.type === 'ready') {
-          // First successful worker frame — end the fallback probation (#247).
+          // First successful worker frame — end the fallback probation (#247) and
+          // mark the worker HEALTHY so destroy() may pool it (#263 A). A worker
+          // that never reaches ready (broken/fallback path) is NEVER pooled — else
+          // the next acquire would reuse a broken worker and fail again.
+          this.ready = true
           this.onReady?.()
           return
         }
         if (d.type !== 'diag') return
+        if (d.message === 'glctx+') {
+          // Worker created a WebGL context (#266). Track the live count via a gauge
+          // mirroring `viz.worker`; decremented main-side in destroy() (the worker's
+          // own release fires after we detach this listener, so we can't rely on it).
+          this.glAccounted = true
+          perf.gauge('viz.glctx', 1)
+          return
+        }
         if (d.level === 'error') {
           // Surface the WORKER-side stack (the throw site) — the forwarded Error
           // only carries the message, so the worker stack would otherwise be lost.
@@ -196,8 +240,17 @@ export class WorkerVizRenderer implements VizRenderer {
         size: { w: size.w, h: size.h },
         dpr,
         aliases,
+        // Marshal the worker-relevant vizConfig subset (#269) so the worker's own
+        // singleton reflects the user's quality/LOD settings, not the bundle default.
+        config: pickWorkerVizConfig(),
       }
       worker.postMessage(mountMsg, [offscreen])
+
+      // Re-marshal on any later quality/LOD change so the worker sketch updates
+      // live (e.g. dragging the performance-mode setting) without a remount (#269).
+      this.configUnsub = onVizConfigChange(() => {
+        this.worker?.postMessage({ type: 'config', patch: pickWorkerVizConfig() })
+      })
 
       this.start()
     } catch (e) {
@@ -228,8 +281,15 @@ export class WorkerVizRenderer implements VizRenderer {
 
   destroy(): void {
     perf.gauge('viz.worker', -1)
+    if (this.glAccounted) {
+      perf.gauge('viz.glctx', -1) // #266 — releases the WebGL-context slot count
+      this.glAccounted = false
+    }
     perf.dropFrames(this.perfId)
     this.stop()
+    // Stop re-marshalling config to a worker that's about to be terminated (#269).
+    this.configUnsub?.()
+    this.configUnsub = null
     const worker = this.worker
     this.worker = null
     if (worker) {
@@ -239,13 +299,26 @@ export class WorkerVizRenderer implements VizRenderer {
         /* ignore */
       }
       if (this.diagHandler) worker.removeEventListener('message', this.diagHandler)
-      // Terminate after a microtask so the destroy message is delivered first
-      // (terminate is immediate; the message would otherwise be dropped). The
-      // worker's own teardown also runs on destroy, so this is belt-and-braces.
-      try {
-        worker.terminate()
-      } catch {
-        /* ignore */
+      if (this.pooled && this.ready) {
+        // Keep the HEALTHY thread WARM for reuse (#263 A): the `destroy` message
+        // above frees the worker's p5/hydra instance AND explicitly loses its WebGL
+        // context (#266 — p5/hydra never call loseContext, so without that the
+        // parked worker would retain the context toward Chrome's ~16-context cap
+        // until lazy GC). So the parked worker holds no live context — only its
+        // warm isolate + imported modules, which the next mount re-mounts onto a
+        // new OffscreenCanvas. NO terminate → no fresh-thread allocation on reuse.
+        // A never-ready worker (broken / fell back to main) is NOT pooled — it's
+        // terminated below so a future acquire can't reuse a poisoned worker.
+        releaseVizWorker(worker)
+      } else {
+        // Terminate after the destroy message is delivered (terminate is
+        // immediate; the message would otherwise be dropped). The worker's own
+        // teardown also runs on destroy, so this is belt-and-braces.
+        try {
+          worker.terminate()
+        } catch {
+          /* ignore */
+        }
       }
     }
     this.diagHandler = null

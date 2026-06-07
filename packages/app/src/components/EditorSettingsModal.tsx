@@ -12,6 +12,11 @@ import {
   setInlineVizActionSize,
   getInlineVizResolution,
   setInlineVizResolution,
+  getVizQuality,
+  setVizQuality,
+  type VizQualityLevel,
+  getInlineVizTeardownEnabled,
+  setInlineVizTeardownEnabled,
   getMusicalTimelineSubRowHeight,
   setMusicalTimelineSubRowHeight,
   getEditorTheme,
@@ -49,6 +54,16 @@ const THEME_OPTIONS: { value: EditorTheme; label: string }[] = [
 // HEIGHT (px); width is aspect-preserved per viz. Lower = cheaper blit / softer,
 // higher = crisper / costlier. "Custom" reveals a free-entry number input.
 const VIZ_RES_PRESETS = [256, 512, 768, 1024];
+
+// Viz quality / "performance mode" (Phase D, #269). A single level scales BOTH
+// render resolution AND sketch density (segment count) — the latter is the only
+// lever that helps CPU-tessellation line meshes (#232). Selecting a level also
+// updates the resolution shown below (it's the advanced per-knob override).
+const VIZ_QUALITY_OPTIONS: { value: VizQualityLevel; label: string }[] = [
+  { value: "high", label: "High" },
+  { value: "balanced", label: "Balanced" },
+  { value: "performance", label: "Performance" },
+];
 
 // Phase 20-14 β-3 — Strudel modules tier UI. Only MIDI is wired today
 // (β-4 calls `enableWebMidi()` based on `tierFlags.midi`). The other 7
@@ -165,6 +180,8 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   // "Custom"), so a custom value stays editable instead of snapping to a preset.
   const [vizRes, setVizRes] = useState(512);
   const [vizResCustom, setVizResCustom] = useState(false);
+  const [vizQuality, setVizQualityState] = useState<VizQualityLevel>("balanced");
+  const [vizTeardown, setVizTeardown] = useState(true);
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
   const [perfEnabled, setPerfEnabledState] = useState(false);
@@ -200,6 +217,8 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     const res = getInlineVizResolution();
     setVizRes(res);
     setVizResCustom(!VIZ_RES_PRESETS.includes(res));
+    setVizQualityState(getVizQuality());
+    setVizTeardown(getInlineVizTeardownEnabled());
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
     setPerfEnabledState(getPerfEnabled());
@@ -292,6 +311,27 @@ export function EditorSettingsModal({ open, onClose }: Props) {
             />
             <span style={s.value}>{vizActionSize}px</span>
           </Row>
+          <Row label="Viz quality">
+            <select
+              style={s.select}
+              value={vizQuality}
+              aria-label="Viz quality (performance mode)"
+              onChange={(e) => {
+                const level = e.target.value as VizQualityLevel;
+                setVizQuality(level);
+                setVizQualityState(level);
+                // setVizQuality also writes the resolution — reflect it in the
+                // advanced row below so the two controls stay in sync (#269).
+                const res = getInlineVizResolution();
+                setVizRes(res);
+                setVizResCustom(!VIZ_RES_PRESETS.includes(res));
+              }}
+            >
+              {VIZ_QUALITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </Row>
           <Row label="Inline viz res">
             <select
               style={s.select}
@@ -330,6 +370,20 @@ export function EditorSettingsModal({ open, onClose }: Props) {
                 style={s.numberInput}
               />
             ) : null}
+          </Row>
+          <Row label="Off-screen viz teardown">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={vizTeardown}
+                onChange={() => {
+                  const next = !vizTeardown;
+                  setInlineVizTeardownEnabled(next);
+                  setVizTeardown(next);
+                }}
+              />
+              <span>{vizTeardown ? "On (frees memory + GPU contexts after 60s off-screen)" : "Off (stay resident)"}</span>
+            </label>
           </Row>
           <Row label="Timeline sub-row">
             <input

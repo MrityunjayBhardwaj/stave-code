@@ -866,6 +866,72 @@ function createPostMessageReader(channel) {
 }
 __name(createPostMessageReader, "createPostMessageReader");
 
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
+  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
+  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
+  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
+  // composite wall measured for multi-instance inline viz.
+  maxFps: 60,
+  maxDpr: 1,
+  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
+  // values are opted into via "performance mode" (deriveVizQuality) and read by
+  // sketches as `u.density`. Marshalled to the worker via the config channel.
+  density: 1,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+var _active = { ...DEFAULT_VIZ_CONFIG };
+var _listeners = /* @__PURE__ */ new Set();
+function notify() {
+  for (const cb of Array.from(_listeners)) cb(_active);
+}
+__name(notify, "notify");
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function updateVizConfig(patch) {
+  _active = { ..._active, ...patch };
+  notify();
+}
+__name(updateVizConfig, "updateVizConfig");
+
 // src/visualizers/signals/staveUniforms.ts
 function buildStaveUniforms(bus, onTick) {
   const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
@@ -878,6 +944,7 @@ function buildStaveUniforms(bus, onTick) {
   Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
   Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
   Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  Object.defineProperty(u, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
   const uniforms = {
     get uKick() {
       return bus.envValue("uKick");
@@ -1059,6 +1126,13 @@ function emitLog(partial) {
   return entry;
 }
 __name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
@@ -5524,58 +5598,6 @@ function compileHydraCode(code) {
 }
 __name(compileHydraCode, "compileHydraCode");
 
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
-  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
-  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
-  // automatic fallback when a browser can't offload (no OffscreenCanvas /
-  // transferControlToOffscreen / worker factory). Opt OUT per project via
-  // localStorage['stave.viz.worker'] = '0'.
-  workerRenderer: true,
-  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
-  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
-  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
-  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
-  // composite wall measured for multi-instance inline viz.
-  maxFps: 60,
-  maxDpr: 1,
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-var _active = { ...DEFAULT_VIZ_CONFIG };
-function getVizConfig() {
-  return _active;
-}
-__name(getVizConfig, "getVizConfig");
-
 // src/visualizers/worker/workerMessages.ts
 function isControlMessage(data) {
   return typeof data === "object" && data !== null && typeof data.type === "string";
@@ -5585,6 +5607,8 @@ __name(isControlMessage, "isControlMessage");
 // src/visualizers/worker/hostP5Worker.ts
 var P5ctor = null;
 var Hydractor = null;
+var GLCTX_UP = "glctx+";
+var GLCTX_RELEASE = true;
 function hostVizWorker(scope) {
   let state = null;
   let lastDrawMs;
@@ -5600,6 +5624,49 @@ function hostVizWorker(scope) {
     } catch {
     }
   }, "signalReady");
+  const seenWorkerErrors = /* @__PURE__ */ new Set();
+  const currentRuntimeRef = { kind: "p5" };
+  const postVizLog = /* @__PURE__ */ __name((entry) => {
+    const sig = `${entry.runtime}|${entry.message}|${entry.line ?? ""}`;
+    if (seenWorkerErrors.has(sig)) return;
+    if (seenWorkerErrors.size > 64) seenWorkerErrors.clear();
+    seenWorkerErrors.add(sig);
+    try {
+      scope.postMessage({ type: "vizlog", entry });
+    } catch {
+    }
+  }, "postVizLog");
+  subscribeLog((entry) => {
+    if (entry?.level === "error") {
+      const { id: _id, ts: _ts, ...rest } = entry;
+      postVizLog(rest);
+    }
+  });
+  let glLoseExt = null;
+  let glAccounted = false;
+  const accountGL = /* @__PURE__ */ __name(() => {
+    if (glAccounted || !state) return;
+    try {
+      const ctx = state.gl?.() ?? null;
+      const ext = ctx?.getExtension?.("WEBGL_lose_context") ?? null;
+      if (ext) {
+        glLoseExt = ext;
+        glAccounted = true;
+        diag("info", GLCTX_UP);
+      }
+    } catch {
+    }
+  }, "accountGL");
+  const releaseGL = /* @__PURE__ */ __name(() => {
+    if (!glAccounted) return;
+    glAccounted = false;
+    const ext = glLoseExt;
+    glLoseExt = null;
+    try {
+      if (GLCTX_RELEASE) ext?.loseContext?.();
+    } catch {
+    }
+  }, "releaseGL");
   scope.addEventListener("message", (ev) => {
     const data = ev.data;
     if (!isControlMessage(data)) return;
@@ -5624,11 +5691,16 @@ function hostVizWorker(scope) {
       case "destroy":
         destroy();
         break;
+      case "config":
+        updateVizConfig(msg.patch);
+        break;
     }
   }
   __name(handleControl, "handleControl");
   async function mount(msg) {
     if (state) destroy();
+    if (msg.config) updateVizConfig(msg.config);
+    currentRuntimeRef.kind = msg.kind;
     const dpr = msg.dpr > 0 ? msg.dpr : 1;
     const feed = new WorkerBusFeed();
     if (msg.aliases) feed.setAliases(msg.aliases);
@@ -5699,6 +5771,9 @@ function hostVizWorker(scope) {
     }
     return {
       setupDone: /* @__PURE__ */ __name(() => setup, "setupDone"),
+      // #266 — p5's WEBGL context lives on its internal render canvas (drawingContext);
+      // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
+      gl: /* @__PURE__ */ __name(() => inst?.drawingContext ?? null, "gl"),
       draw: /* @__PURE__ */ __name(() => {
         inst.redraw();
         if (!present) return;
@@ -5776,6 +5851,9 @@ function hostVizWorker(scope) {
     return {
       setupDone: /* @__PURE__ */ __name(() => true, "setupDone"),
       // pattern ran synchronously above; frames arrive after
+      // #266 — hydra renders directly into the presenting canvas (regl owns its
+      // WebGL context); re-getContext returns that same context for release.
+      gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2") ?? msg.canvas.getContext("webgl"), "gl"),
       draw: /* @__PURE__ */ __name(() => {
         const a = hydra?.synth?.a;
         if (a?.fft) {
@@ -5824,13 +5902,14 @@ function hostVizWorker(scope) {
     try {
       s.draw();
     } catch (e) {
-      diag("error", `draw threw: ${errMsg(e)}`, errStack(e));
+      postVizLog({ level: "error", runtime: currentRuntimeRef.kind, message: `draw(): ${errMsg(e)}`, stack: errStack(e) });
       return;
     }
     lastDrawMs = (globalThis.performance?.now?.() ?? 0) - drawT0;
     if (!s.readySent) {
       s.readySent = true;
       signalReady();
+      accountGL();
     }
   }
   __name(applyAndDraw, "applyAndDraw");
@@ -5859,6 +5938,7 @@ function hostVizWorker(scope) {
       s.teardown();
     } catch {
     }
+    releaseGL();
   }
   __name(destroy, "destroy");
 }

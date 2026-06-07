@@ -5225,6 +5225,109 @@ function meanSlice(arr, from, to) {
 }
 __name(meanSlice, "meanSlice");
 
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
+  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
+  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
+  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
+  // composite wall measured for multi-instance inline viz.
+  maxFps: 60,
+  maxDpr: 1,
+  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
+  // values are opted into via "performance mode" (deriveVizQuality) and read by
+  // sketches as `u.density`. Marshalled to the worker via the config channel.
+  density: 1,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+}
+__name(createVizConfig, "createVizConfig");
+var DEFAULT_VIZ_QUALITY = "balanced";
+function deriveVizQuality(level) {
+  switch (level) {
+    case "high":
+      return { resolution: 1024, density: 1 };
+    case "performance":
+      return { resolution: 256, density: 0.5 };
+    case "balanced":
+    default:
+      return { resolution: 512, density: 1 };
+  }
+}
+__name(deriveVizQuality, "deriveVizQuality");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+var _listeners = /* @__PURE__ */ new Set();
+function notify() {
+  for (const cb of Array.from(_listeners)) cb(_active);
+}
+__name(notify, "notify");
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+  notify();
+}
+__name(setVizConfig, "setVizConfig");
+function updateVizConfig(patch) {
+  _active = { ..._active, ...patch };
+  notify();
+}
+__name(updateVizConfig, "updateVizConfig");
+function onVizConfigChange(cb) {
+  _listeners.add(cb);
+  return () => {
+    _listeners.delete(cb);
+  };
+}
+__name(onVizConfigChange, "onVizConfigChange");
+var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
+function pickWorkerVizConfig(config = _active) {
+  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
+    acc[k] = config[k];
+    return acc;
+  }, {});
+}
+__name(pickWorkerVizConfig, "pickWorkerVizConfig");
+
 // src/visualizers/signals/staveUniforms.ts
 function buildStaveUniforms(bus, onTick) {
   const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
@@ -5237,6 +5340,7 @@ function buildStaveUniforms(bus, onTick) {
   Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
   Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
   Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  Object.defineProperty(u, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
   const uniforms = {
     get uKick() {
       return bus.envValue("uKick");
@@ -5515,6 +5619,90 @@ function onInlineVizResolutionChange(cb) {
   };
 }
 __name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
+var VIZ_QUALITY_STORAGE = "stave:vizQuality";
+var VIZ_QUALITY_LEVELS = ["high", "balanced", "performance"];
+var vizQualityListeners = /* @__PURE__ */ new Set();
+function readVizQuality() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_VIZ_QUALITY;
+  const saved = ls.getItem(VIZ_QUALITY_STORAGE);
+  return VIZ_QUALITY_LEVELS.includes(saved) ? saved : DEFAULT_VIZ_QUALITY;
+}
+__name(readVizQuality, "readVizQuality");
+function writeVizQuality(level) {
+  safeLocalStorage2()?.setItem(VIZ_QUALITY_STORAGE, level);
+}
+__name(writeVizQuality, "writeVizQuality");
+function applyVizQuality(level) {
+  const { resolution, density } = deriveVizQuality(level);
+  setInlineVizResolution(resolution);
+  updateVizConfig({ density });
+}
+__name(applyVizQuality, "applyVizQuality");
+function getVizQuality() {
+  return readVizQuality();
+}
+__name(getVizQuality, "getVizQuality");
+function setVizQuality(level) {
+  const safe = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY;
+  writeVizQuality(safe);
+  applyVizQuality(safe);
+  for (const cb of Array.from(vizQualityListeners)) cb(safe);
+}
+__name(setVizQuality, "setVizQuality");
+function onVizQualityChange(cb) {
+  vizQualityListeners.add(cb);
+  return () => {
+    vizQualityListeners.delete(cb);
+  };
+}
+__name(onVizQualityChange, "onVizQualityChange");
+function applyPersistedVizQuality() {
+  const { density } = deriveVizQuality(readVizQuality());
+  updateVizConfig({ density });
+}
+__name(applyPersistedVizQuality, "applyPersistedVizQuality");
+var INLINE_VIZ_TEARDOWN_MS = 6e4;
+var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
+var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
+var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
+function readInlineVizTeardownEnabled() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE);
+  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  return saved === "1";
+}
+__name(readInlineVizTeardownEnabled, "readInlineVizTeardownEnabled");
+function getInlineVizTeardownEnabled() {
+  return readInlineVizTeardownEnabled();
+}
+__name(getInlineVizTeardownEnabled, "getInlineVizTeardownEnabled");
+function setInlineVizTeardownEnabled(on) {
+  safeLocalStorage2()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on);
+}
+__name(setInlineVizTeardownEnabled, "setInlineVizTeardownEnabled");
+function onInlineVizTeardownChange(cb) {
+  inlineVizTeardownListeners.add(cb);
+  return () => {
+    inlineVizTeardownListeners.delete(cb);
+  };
+}
+__name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
+function getInlineVizTeardownMs() {
+  if (!readInlineVizTeardownEnabled()) return 0;
+  try {
+    const raw = safeLocalStorage2()?.getItem("stave:inlineVizTeardownMs");
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1e3) return n;
+    }
+  } catch {
+  }
+  return INLINE_VIZ_TEARDOWN_MS;
+}
+__name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
@@ -6258,65 +6446,39 @@ function getVizWorkerFactory() {
 }
 __name(getVizWorkerFactory, "getVizWorkerFactory");
 
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
-  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
-  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
-  // automatic fallback when a browser can't offload (no OffscreenCanvas /
-  // transferControlToOffscreen / worker factory). Opt OUT per project via
-  // localStorage['stave.viz.worker'] = '0'.
-  workerRenderer: true,
-  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
-  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
-  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
-  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
-  // composite wall measured for multi-instance inline viz.
-  maxFps: 60,
-  maxDpr: 1,
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+// src/visualizers/vizWorkerPool.ts
+function poolCap() {
+  const hc = typeof navigator !== "undefined" && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
+  return Math.max(2, hc - 2);
 }
-__name(createVizConfig, "createVizConfig");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-function getVizConfig() {
-  return _active;
+__name(poolCap, "poolCap");
+function isVizWorkerPoolEnabled() {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.pool") === "1";
+  } catch {
+    return false;
+  }
 }
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+var parked = [];
+function acquireVizWorker() {
+  const reused = parked.pop();
+  if (reused) return reused;
+  const make = getVizWorkerFactory();
+  return make ? make() : null;
 }
-__name(setVizConfig, "setVizConfig");
+__name(acquireVizWorker, "acquireVizWorker");
+function releaseVizWorker(worker) {
+  if (parked.length < poolCap()) {
+    parked.push(worker);
+  } else {
+    try {
+      worker.terminate();
+    } catch {
+    }
+  }
+}
+__name(releaseVizWorker, "releaseVizWorker");
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
@@ -6363,6 +6525,22 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
      *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
     this.onReady = null;
+    /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
+     *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
+     *  doesn't post to a terminated worker. */
+    this.configUnsub = null;
+    /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+     *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+     *  terminated, so the next mount reuses the thread (no fresh allocation). */
+    this.pooled = false;
+    /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+     *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+     *  is terminated so it can't poison a future acquire. */
+    this.ready = false;
+    /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
+     *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
+     *  happens after we've detached its listener, so we account it main-side). */
+    this.glAccounted = false;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -6379,6 +6557,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       onError(new Error("WorkerVizRenderer: no viz-worker factory registered"));
       return;
     }
+    this.pooled = isVizWorkerPoolEnabled();
     try {
       const dpr = effectiveDpr();
       const canvas = document.createElement("canvas");
@@ -6390,7 +6569,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       container.appendChild(canvas);
       this.canvasEl = canvas;
       const offscreen = canvas.transferControlToOffscreen();
-      const worker = make();
+      const worker = this.pooled ? acquireVizWorker() ?? make() : make();
       this.worker = worker;
       this.writer = createPostMessageWriter(worker);
       this.diagHandler = (ev) => {
@@ -6401,11 +6580,21 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
           if (typeof d.drawMs === "number") perf.record("viz.worker.draw", d.drawMs);
           return;
         }
+        if (d.type === "vizlog") {
+          emitLog(d.entry);
+          return;
+        }
         if (d.type === "ready") {
+          this.ready = true;
           this.onReady?.();
           return;
         }
         if (d.type !== "diag") return;
+        if (d.message === "glctx+") {
+          this.glAccounted = true;
+          perf.gauge("viz.glctx", 1);
+          return;
+        }
         if (d.level === "error") {
           console.error(`[viz worker ${this.name}] ${d.message}`, d.stack ? `
 ${d.stack}` : "");
@@ -6423,9 +6612,15 @@ ${d.stack}` : "");
         canvas: offscreen,
         size: { w: size.w, h: size.h },
         dpr,
-        aliases
+        aliases,
+        // Marshal the worker-relevant vizConfig subset (#269) so the worker's own
+        // singleton reflects the user's quality/LOD settings, not the bundle default.
+        config: pickWorkerVizConfig()
       };
       worker.postMessage(mountMsg, [offscreen]);
+      this.configUnsub = onVizConfigChange(() => {
+        this.worker?.postMessage({ type: "config", patch: pickWorkerVizConfig() });
+      });
       this.start();
     } catch (e) {
       onError(e);
@@ -6450,8 +6645,14 @@ ${d.stack}` : "");
   }
   destroy() {
     perf.gauge("viz.worker", -1);
+    if (this.glAccounted) {
+      perf.gauge("viz.glctx", -1);
+      this.glAccounted = false;
+    }
     perf.dropFrames(this.perfId);
     this.stop();
+    this.configUnsub?.();
+    this.configUnsub = null;
     const worker = this.worker;
     this.worker = null;
     if (worker) {
@@ -6460,9 +6661,13 @@ ${d.stack}` : "");
       } catch {
       }
       if (this.diagHandler) worker.removeEventListener("message", this.diagHandler);
-      try {
-        worker.terminate();
-      } catch {
+      if (this.pooled && this.ready) {
+        releaseVizWorker(worker);
+      } else {
+        try {
+          worker.terminate();
+        } catch {
+        }
       }
     }
     this.diagHandler = null;
@@ -12664,12 +12869,12 @@ function ensureUndoManager() {
   }, "filesObserver");
   files.observe(filesObserver);
   const listeners9 = /* @__PURE__ */ new Set();
-  const notify4 = /* @__PURE__ */ __name(() => {
+  const notify5 = /* @__PURE__ */ __name(() => {
     for (const l of listeners9) l();
   }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify4(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify4(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify4(), "onStackCleared");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify5(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify5(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify5(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
@@ -12751,7 +12956,7 @@ function wireTextObserver(id, ytext) {
   unwireTextObserver(id);
   const handler = /* @__PURE__ */ __name(() => {
     rebuildSnapshot(id);
-    notify(id);
+    notify2(id);
   }, "handler");
   ytext.observe(handler);
   textObservers.set(id, { ytext, handler });
@@ -12810,12 +13015,12 @@ function ensureFilesMapObserver() {
             const ytext = fileMap.get("content");
             rebuildSnapshot(key);
             wireTextObserver(key, ytext);
-            notify(key);
+            notify2(key);
             anyStructuralChange = true;
           } else if (change.action === "delete") {
             unwireTextObserver(key);
             cachedSnapshots.delete(key);
-            notify(key);
+            notify2(key);
             anyStructuralChange = true;
           }
         }
@@ -12827,7 +13032,7 @@ function ensureFilesMapObserver() {
       if (!ownerId) continue;
       if (filesMap.has(ownerId)) {
         rebuildSnapshot(ownerId);
-        notify(ownerId);
+        notify2(ownerId);
         anyStructuralChange = true;
       }
     }
@@ -12959,7 +13164,7 @@ function renameWorkspaceFile(id, newPath) {
     fileMap.set("path", newPath);
   }, STRUCT_ORIGIN);
   rebuildSnapshot(id);
-  notify(id);
+  notify2(id);
   notifyFileList();
 }
 __name(renameWorkspaceFile, "renameWorkspaceFile");
@@ -13031,13 +13236,13 @@ function setChildOrder(parentPath, entries3) {
   }, STRUCT_ORIGIN);
 }
 __name(setChildOrder, "setChildOrder");
-function notify(id) {
+function notify2(id) {
   const set = subscribersByFile.get(id);
   if (!set) return;
   const snapshot = Array.from(set);
   for (const cb of snapshot) cb();
 }
-__name(notify, "notify");
+__name(notify2, "notify");
 var zoneOverrideSubscribers = /* @__PURE__ */ new Map();
 var wiredZoneObservers = /* @__PURE__ */ new Set();
 var PRUNE_ZONE_OVERRIDES_ORIGIN = /* @__PURE__ */ Symbol("prune-zone-overrides");
@@ -18334,6 +18539,17 @@ var entries2 = /* @__PURE__ */ new Set();
 var tabVisible = true;
 var visibilityWired = false;
 function syncEntry(e) {
+  if (e.teardownMs > 0 && e.renderer.teardown) {
+    if (!e.onScreen && e.teardownTimer === null) {
+      e.teardownTimer = setTimeout(() => {
+        e.teardownTimer = null;
+        if (!e.onScreen) e.renderer.teardown?.();
+      }, e.teardownMs);
+    } else if (e.onScreen && e.teardownTimer !== null) {
+      clearTimeout(e.teardownTimer);
+      e.teardownTimer = null;
+    }
+  }
   const desired = e.onScreen && tabVisible;
   if (desired === e.running) return;
   e.running = desired;
@@ -18359,12 +18575,19 @@ function unwireVisibility() {
   document.removeEventListener("visibilitychange", onVisibilityChange);
 }
 __name(unwireVisibility, "unwireVisibility");
-function registerVizVisibility(renderer, container) {
+function registerVizVisibility(renderer, container, opts) {
   if (typeof IntersectionObserver === "undefined" || typeof document === "undefined") {
     return () => {
     };
   }
-  const entry = { renderer, onScreen: true, running: true, io: null };
+  const entry = {
+    renderer,
+    onScreen: true,
+    running: true,
+    io: null,
+    teardownMs: opts?.teardownMs ?? 0,
+    teardownTimer: null
+  };
   wireVisibility();
   entries2.add(entry);
   syncEntry(entry);
@@ -18380,6 +18603,10 @@ function registerVizVisibility(renderer, container) {
   return () => {
     entry.io?.disconnect();
     entry.io = null;
+    if (entry.teardownTimer !== null) {
+      clearTimeout(entry.teardownTimer);
+      entry.teardownTimer = null;
+    }
     entries2.delete(entry);
     unwireVisibility();
   };
@@ -18534,6 +18761,67 @@ var VizPresetStore = {
     await wrap(tx(db, "readwrite").delete(id));
   }
 };
+
+// src/visualizers/renderers/TeardownOnPauseRenderer.ts
+var _TeardownOnPauseRenderer = class _TeardownOnPauseRenderer {
+  constructor(factory2, hooks = {}) {
+    this.factory = factory2;
+    this.hooks = hooks;
+    this.inner = null;
+    this.args = null;
+    this.tornDown = false;
+  }
+  /** True while reclaimed (inner destroyed). Exposed for tests/observation. */
+  get isTornDown() {
+    return this.tornDown;
+  }
+  mount(container, components, size, onError) {
+    this.args = { container, components, size, onError };
+    this.inner = this.factory();
+    this.inner.mount(container, components, size, onError);
+  }
+  update(components) {
+    if (this.args) this.args.components = components;
+    this.inner?.update(components);
+  }
+  resize(w, h) {
+    if (this.args) this.args.size = { w, h };
+    this.inner?.resize(w, h);
+  }
+  pause() {
+    this.inner?.pause();
+  }
+  resume() {
+    if (this.tornDown) {
+      this.reinit();
+      return;
+    }
+    this.inner?.resume();
+  }
+  destroy() {
+    this.inner?.destroy();
+    this.inner = null;
+  }
+  /** Reclaim: destroy the inner renderer (frees its worker/GL context + memory).
+   *  Idempotent + safe to call while already torn down. */
+  teardown() {
+    if (this.tornDown || !this.inner) return;
+    this.inner.destroy();
+    this.inner = null;
+    this.tornDown = true;
+    this.hooks.onAfterTeardown?.();
+  }
+  reinit() {
+    if (!this.args) return;
+    const { container, components, size, onError } = this.args;
+    this.inner = this.factory();
+    this.inner.mount(container, components, size, onError);
+    this.tornDown = false;
+    this.hooks.onAfterReinit?.();
+  }
+};
+__name(_TeardownOnPauseRenderer, "TeardownOnPauseRenderer");
+var TeardownOnPauseRenderer = _TeardownOnPauseRenderer;
 
 // src/visualizers/viewZones.ts
 var DEFAULT_NATIVE = { w: 1200, h: 600 };
@@ -18746,14 +19034,23 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         suppressMouseDown: true
       };
       const zoneId = accessor.addZone(zoneDesc);
-      const renderer = typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory;
+      const makeInner = /* @__PURE__ */ __name(() => typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory, "makeInner");
+      let relayout = /* @__PURE__ */ __name(() => {
+      }, "relayout");
+      const teardownMs = getInlineVizTeardownMs();
+      const renderer = teardownMs > 0 ? new TeardownOnPauseRenderer(makeInner, {
+        // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
+        // (applyLayout only creates+fills the wrapper when none exists).
+        onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
+        onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
+      }) : makeInner();
       try {
         renderer.mount(container, zoneComponents, renderSizeFor(native), console.error);
       } catch (e) {
         console.error("[stave] viz mount failed:", e);
       }
       renderers.push(renderer);
-      visibilityCleanups.push(registerVizVisibility(renderer, container));
+      visibilityCleanups.push(registerVizVisibility(renderer, container, { teardownMs }));
       const canvas = container.querySelector("canvas");
       applyLayout(container, canvas, layout);
       requestAnimationFrame(() => {
@@ -18797,6 +19094,19 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         vizDecoration
       };
       zoneEntries.push(entry);
+      relayout = /* @__PURE__ */ __name(() => {
+        const cw = editor.getLayoutInfo().contentWidth || 400;
+        const nw = entry.native.w, nh = entry.native.h;
+        const cropW = Math.max(0.01, entry.crop.w);
+        const cropH = Math.max(0.01, entry.crop.h);
+        const scale = Math.min(cw / (cropW * nw), entry.zoneDesc.heightInPx / (cropH * nh));
+        const tx3 = -entry.crop.x * nw * scale;
+        const ty = -entry.crop.y * nh * scale;
+        applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
+        requestAnimationFrame(
+          () => applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty })
+        );
+      }, "relayout");
       const resizeHandle = document.createElement("div");
       resizeHandle.style.cssText = `
         position:absolute;bottom:0;left:0;right:0;height:6px;
@@ -19121,7 +19431,7 @@ __name(addInlineViewZones, "addInlineViewZones");
 // src/workspace/history/historyViewing.ts
 var state = null;
 var listeners5 = /* @__PURE__ */ new Set();
-function notify2() {
+function notify3() {
   for (const l of listeners5) {
     try {
       l();
@@ -19129,16 +19439,16 @@ function notify2() {
     }
   }
 }
-__name(notify2, "notify");
+__name(notify3, "notify");
 function enterRuntimeView(commitId, files) {
   state = { commitId, files: { ...files } };
-  notify2();
+  notify3();
 }
 __name(enterRuntimeView, "enterRuntimeView");
 function exitRuntimeView() {
   if (state === null) return;
   state = null;
-  notify2();
+  notify3();
 }
 __name(exitRuntimeView, "exitRuntimeView");
 function getViewedContent(fileId) {
@@ -21585,7 +21895,7 @@ __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
 var listeners8 = /* @__PURE__ */ new Set();
-function notify3() {
+function notify4() {
   for (const l of listeners8) {
     try {
       l();
@@ -21593,21 +21903,21 @@ function notify3() {
     }
   }
 }
-__name(notify3, "notify");
+__name(notify4, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
-  notify3();
+  notify4();
   return () => {
     if (tabs.get(tab.id) === tab) {
       tabs.delete(tab.id);
-      notify3();
+      notify4();
     }
   };
 }
 __name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
-    notify3();
+    notify4();
   }
 }
 __name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
@@ -27728,6 +28038,7 @@ exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
 exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
 exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
 exports.DEFAULT_VIZ_ENGINE = DEFAULT_VIZ_ENGINE;
+exports.DEFAULT_VIZ_QUALITY = DEFAULT_VIZ_QUALITY;
 exports.DemoEngine = DemoEngine;
 exports.EditorView = EditorView;
 exports.ErrorBoundary = ErrorBoundary;
@@ -27790,6 +28101,7 @@ exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
 exports.applyPersistedPerfEnabled = applyPersistedPerfEnabled;
 exports.applyPersistedTheme = applyPersistedTheme;
 exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
+exports.applyPersistedVizQuality = applyPersistedVizQuality;
 exports.applyTheme = applyTheme;
 exports.backdropQualityFactor = backdropQualityFactor;
 exports.buildAliasSuffix = buildAliasSuffix;
@@ -27818,6 +28130,7 @@ exports.cycleEditorTheme = cycleEditorTheme;
 exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
+exports.deriveVizQuality = deriveVizQuality;
 exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
 exports.duplicateProject = duplicateProject;
 exports.emitFixed = emitFixed;
@@ -27857,6 +28170,8 @@ exports.getFolderOrder = getFolderOrder;
 exports.getIRSnapshot = getIRSnapshot;
 exports.getInlineVizActionSize = getInlineVizActionSize;
 exports.getInlineVizResolution = getInlineVizResolution;
+exports.getInlineVizTeardownEnabled = getInlineVizTeardownEnabled;
+exports.getInlineVizTeardownMs = getInlineVizTeardownMs;
 exports.getLastOpenedProject = getLastOpenedProject;
 exports.getLogHistory = getLogHistory;
 exports.getModifiedFileIdsSinceHead = getModifiedFileIdsSinceHead;
@@ -27879,6 +28194,7 @@ exports.getViewedCommit = getViewedCommit;
 exports.getViewedContent = getViewedContent;
 exports.getViewedFileIds = getViewedFileIds;
 exports.getVizConfig = getVizConfig;
+exports.getVizQuality = getVizQuality;
 exports.getVizWorkerFactory = getVizWorkerFactory;
 exports.getZoneCropOverride = getZoneCropOverride;
 exports.getZoneHeightOverride = getZoneHeightOverride;
@@ -27917,12 +28233,14 @@ exports.onBackdropOpacityChange = onBackdropOpacityChange;
 exports.onBackdropQualityChange = onBackdropQualityChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
 exports.onInlineVizResolutionChange = onInlineVizResolutionChange;
+exports.onInlineVizTeardownChange = onInlineVizTeardownChange;
 exports.onMusicalTimelineSubRowHeightChange = onMusicalTimelineSubRowHeightChange;
 exports.onNamedVizChanged = onNamedVizChanged;
 exports.onPerfEnabledChange = onPerfEnabledChange;
 exports.onSignalAliasesChange = onSignalAliasesChange;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
+exports.onVizQualityChange = onVizQualityChange;
 exports.parseMini = parseMini;
 exports.parseStackLocation = parseStackLocation;
 exports.parseStrudel = parseStrudel;
@@ -27981,6 +28299,7 @@ exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
 exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setInlineVizResolution = setInlineVizResolution;
+exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
@@ -27990,6 +28309,7 @@ exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
 exports.setTrackMeta = setTrackMeta;
 exports.setVizConfig = setVizConfig;
+exports.setVizQuality = setVizQuality;
 exports.setVizWorkerFactory = setVizWorkerFactory;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
@@ -28022,6 +28342,7 @@ exports.transpose = transpose;
 exports.undo = undo;
 exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
+exports.updateVizConfig = updateVizConfig;
 exports.useTrackMeta = useTrackMeta;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;

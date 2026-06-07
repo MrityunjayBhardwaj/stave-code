@@ -47,6 +47,7 @@ import {
   applyPersistedTheme,
   applyPersistedUiIconSize,
   applyPersistedInlineVizActionSize,
+  applyPersistedVizQuality,
 } from "@stave/editor";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 import { EditorSettingsModal } from "./EditorSettingsModal";
@@ -82,6 +83,7 @@ import {
   applyPersistedPerfEnabled,
   togglePerfEnabled,
 } from "@stave/editor";
+import { getLogHistory } from "@stave/editor";
 import { PerfOverlay } from "./PerfOverlay";
 
 interface StaveAppProps {
@@ -139,6 +141,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     applyPersistedTheme();
     applyPersistedUiIconSize();
     applyPersistedInlineVizActionSize();
+    applyPersistedVizQuality();
   }, []);
 
   // Monaco marker bridge — engineLog entries that carry a `source` +
@@ -430,6 +433,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       handleSetAsBackground(id);
       return true;
     };
+    // #257 — expose the engine log so e2e can observe worker viz runtime errors
+    // re-emitted into the main engineLog (Console/issues panel).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveGetLog = () => getLogHistory();
     // Override an EXISTING workspace viz file's code (e.g. the bundled
     // `preset/viz/spectrum.p5`) so a real non-underscore method (`.spectrum()`)
     // pins it through the production code-driven backdrop path — which is the

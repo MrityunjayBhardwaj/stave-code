@@ -138,3 +138,88 @@ describe('vizVisibility (#258)', () => {
     off()
   })
 })
+
+/** A renderer that can also be reclaimed (TeardownOnPauseRenderer shape). */
+function makeTeardownRenderer() {
+  return { pause: vi.fn(), resume: vi.fn(), teardown: vi.fn() }
+}
+
+describe('vizVisibility off-screen teardown (#263 B)', () => {
+  beforeEach(() => {
+    FakeIO.instances = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(globalThis as any).IntersectionObserver = FakeIO
+    setTabVisible(true)
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (globalThis as any).IntersectionObserver
+  })
+
+  it('off-screen past the threshold → teardown(); back on-screen → resume (re-create)', () => {
+    const r = makeTeardownRenderer()
+    const off = registerVizVisibility(r, document.createElement('div'), { teardownMs: 60_000 })
+    const io = FakeIO.instances[0]
+
+    io.emit(false) // off-screen → pause + arm timer
+    expect(r.pause).toHaveBeenCalledTimes(1)
+    expect(r.teardown).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(60_000) // threshold elapsed, still off-screen
+    expect(r.teardown).toHaveBeenCalledTimes(1)
+
+    io.emit(true) // back on-screen → resume (TeardownOnPauseRenderer re-creates)
+    expect(r.resume).toHaveBeenCalledTimes(1)
+    off()
+  })
+
+  it('returns BEFORE the threshold → no teardown', () => {
+    const r = makeTeardownRenderer()
+    const off = registerVizVisibility(r, document.createElement('div'), { teardownMs: 60_000 })
+    const io = FakeIO.instances[0]
+
+    io.emit(false)
+    vi.advanceTimersByTime(59_000)
+    io.emit(true) // back on-screen before the timer fires → timer cleared
+    vi.advanceTimersByTime(60_000)
+    expect(r.teardown).not.toHaveBeenCalled()
+    expect(r.resume).toHaveBeenCalledTimes(1)
+    off()
+  })
+
+  it('teardownMs = 0 (default) → never tears down, even off-screen indefinitely', () => {
+    const r = makeTeardownRenderer()
+    const off = registerVizVisibility(r, document.createElement('div')) // no opts
+    const io = FakeIO.instances[0]
+
+    io.emit(false)
+    vi.advanceTimersByTime(10 * 60_000)
+    expect(r.teardown).not.toHaveBeenCalled()
+    expect(r.pause).toHaveBeenCalledTimes(1)
+    off()
+  })
+
+  it('tab hidden while ON-screen → pause but NEVER teardown (off-screen only)', () => {
+    const r = makeTeardownRenderer()
+    const off = registerVizVisibility(r, document.createElement('div'), { teardownMs: 60_000 })
+
+    setTabVisible(false) // hidden but still on-screen
+    vi.advanceTimersByTime(10 * 60_000)
+    expect(r.pause).toHaveBeenCalledTimes(1)
+    expect(r.teardown).not.toHaveBeenCalled()
+    off()
+  })
+
+  it('unregister clears a pending teardown timer (no teardown after off())', () => {
+    const r = makeTeardownRenderer()
+    const off = registerVizVisibility(r, document.createElement('div'), { teardownMs: 60_000 })
+    const io = FakeIO.instances[0]
+
+    io.emit(false) // arm timer
+    off() // unregister before it fires
+    vi.advanceTimersByTime(60_000)
+    expect(r.teardown).not.toHaveBeenCalled()
+  })
+})

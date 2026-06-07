@@ -6,6 +6,8 @@
  * frames carry the `__staveSignalFrame` envelope tag and NO `type` (signalTransport.ts).
  * So each side ignores the other's messages by checking for `.type`.
  */
+import type { WorkerVizConfig } from '../vizConfig'
+import type { LogEntry } from '../../engine/engineLog'
 
 /** MAIN → WORKER: create the renderer instance against a transferred OffscreenCanvas. */
 export interface MountMessage {
@@ -26,6 +28,13 @@ export interface MountMessage {
   /** Merged signal-alias map (built on main from impure settings — the worker
    *  bus stays pure, mirrors P5VizRenderer). */
   aliases?: Record<string, string | string[]>
+  /** Worker-relevant vizConfig subset marshalled from main (#269). The worker
+   *  bundle has its OWN vizConfig singleton (P105) that otherwise stays at
+   *  DEFAULT_VIZ_CONFIG; this carries main's effective values (`density` for the
+   *  `u.density` LOD getter, `hydraAudioBins` — closes #253) so the worker sketch
+   *  reads the user's settings, not the bundle default. Applied via
+   *  `updateVizConfig` (merge) before the first draw. */
+  config?: WorkerVizConfig
 }
 
 /** MAIN → WORKER: the preview pane resized / DPR changed. */
@@ -49,12 +58,22 @@ export interface DestroyMessage {
   type: 'destroy'
 }
 
+/** MAIN → WORKER: live update of the marshalled vizConfig subset (#269). Posted
+ *  when the user changes a quality / LOD setting. Applied via `updateVizConfig`
+ *  (MERGE, not reset — so a `{ density }` patch can't wipe `hydraAudioBins`), so
+ *  the worker sketch's next frame reads the new value WITHOUT a remount. */
+export interface ConfigMessage {
+  type: 'config'
+  patch: Partial<WorkerVizConfig>
+}
+
 export type WorkerControlMessage =
   | MountMessage
   | ResizeMessage
   | PauseMessage
   | ResumeMessage
   | DestroyMessage
+  | ConfigMessage
 
 /** WORKER → MAIN: diagnostics (sketch compile/runtime error, first-frame ready).
  *  B-3 forwards worker errors to the main console; richer engineLog bridging is
@@ -65,6 +84,18 @@ export interface WorkerDiagMessage {
   message: string
   /** Optional stack (first frames) for an error. */
   stack?: string
+}
+
+/** WORKER → MAIN: a viz RUNTIME log entry (a p5/hydra draw/setup error) to
+ *  RE-EMIT into the MAIN engineLog (#257). p5Compiler wraps user lifecycle hooks
+ *  and routes throws to the worker-LOCAL engineLog, which isn't wired to the main
+ *  console — so a per-frame draw() typo was a silent blank. Re-emitting on main
+ *  surfaces it in the Console panel + squiggle EXACTLY like the main-thread path,
+ *  WITHOUT the `onError`/fallback semantics (a post-ready user typo must not tear
+ *  the worker down). Distinct from `diag` (level:error) which IS fatal/fallback. */
+export interface WorkerVizLogMessage {
+  type: 'vizlog'
+  entry: Omit<LogEntry, 'id' | 'ts'>
 }
 
 /** WORKER → MAIN: the worker drew its FIRST frame successfully (B-5 / #247). One-
