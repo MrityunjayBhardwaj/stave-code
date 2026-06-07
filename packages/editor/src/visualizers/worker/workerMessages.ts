@@ -6,6 +6,7 @@
  * frames carry the `__staveSignalFrame` envelope tag and NO `type` (signalTransport.ts).
  * So each side ignores the other's messages by checking for `.type`.
  */
+import type { WorkerVizConfig } from '../vizConfig'
 
 /** MAIN → WORKER: create the renderer instance against a transferred OffscreenCanvas. */
 export interface MountMessage {
@@ -26,6 +27,13 @@ export interface MountMessage {
   /** Merged signal-alias map (built on main from impure settings — the worker
    *  bus stays pure, mirrors P5VizRenderer). */
   aliases?: Record<string, string | string[]>
+  /** Worker-relevant vizConfig subset marshalled from main (#269). The worker
+   *  bundle has its OWN vizConfig singleton (P105) that otherwise stays at
+   *  DEFAULT_VIZ_CONFIG; this carries main's effective values (`density` for the
+   *  `u.density` LOD getter, `hydraAudioBins` — closes #253) so the worker sketch
+   *  reads the user's settings, not the bundle default. Applied via
+   *  `updateVizConfig` (merge) before the first draw. */
+  config?: WorkerVizConfig
 }
 
 /** MAIN → WORKER: the preview pane resized / DPR changed. */
@@ -49,12 +57,22 @@ export interface DestroyMessage {
   type: 'destroy'
 }
 
+/** MAIN → WORKER: live update of the marshalled vizConfig subset (#269). Posted
+ *  when the user changes a quality / LOD setting. Applied via `updateVizConfig`
+ *  (MERGE, not reset — so a `{ density }` patch can't wipe `hydraAudioBins`), so
+ *  the worker sketch's next frame reads the new value WITHOUT a remount. */
+export interface ConfigMessage {
+  type: 'config'
+  patch: Partial<WorkerVizConfig>
+}
+
 export type WorkerControlMessage =
   | MountMessage
   | ResizeMessage
   | PauseMessage
   | ResumeMessage
   | DestroyMessage
+  | ConfigMessage
 
 /** WORKER → MAIN: diagnostics (sketch compile/runtime error, first-frame ready).
  *  B-3 forwards worker errors to the main console; richer engineLog bridging is

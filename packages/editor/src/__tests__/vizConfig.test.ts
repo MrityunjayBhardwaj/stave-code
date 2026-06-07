@@ -2,10 +2,14 @@ import { describe, it, expect, afterEach } from 'vitest'
 import {
   DEFAULT_VIZ_CONFIG,
   DEFAULT_VIZ_QUALITY,
+  WORKER_VIZ_CONFIG_KEYS,
   createVizConfig,
   deriveVizQuality,
   getVizConfig,
+  onVizConfigChange,
+  pickWorkerVizConfig,
   setVizConfig,
+  updateVizConfig,
 } from '../visualizers/vizConfig'
 
 afterEach(() => {
@@ -94,5 +98,40 @@ describe('deriveVizQuality (#269 — performance mode)', () => {
 
   it('performance mode drops both knobs (the worst-case lever)', () => {
     expect(deriveVizQuality('performance')).toEqual({ resolution: 256, density: 0.5 })
+  })
+})
+
+describe('worker config-marshal (#269 — closes #253)', () => {
+  it('updateVizConfig MERGES onto active (does NOT reset like setVizConfig)', () => {
+    setVizConfig({ hydraAudioBins: 8 })
+    updateVizConfig({ density: 0.5 })
+    // The density patch must NOT wipe the prior hydraAudioBins (the #253 bug).
+    expect(getVizConfig().hydraAudioBins).toBe(8)
+    expect(getVizConfig().density).toBe(0.5)
+    // ...and unrelated fields stay put.
+    expect(getVizConfig().fftSize).toBe(2048)
+  })
+
+  it('pickWorkerVizConfig projects only the worker-read subset', () => {
+    setVizConfig({ density: 0.4, hydraAudioBins: 6, maxFps: 30, maxDpr: 2 })
+    const picked = pickWorkerVizConfig()
+    expect(picked).toEqual({ density: 0.4, hydraAudioBins: 6 })
+    // maxFps/maxDpr are main-side only — they must NOT cross the boundary.
+    expect('maxFps' in picked).toBe(false)
+    expect('maxDpr' in picked).toBe(false)
+  })
+
+  it('the marshalled subset is exactly the keys the worker reads', () => {
+    expect([...WORKER_VIZ_CONFIG_KEYS].sort()).toEqual(['density', 'hydraAudioBins'])
+  })
+
+  it('onVizConfigChange fires for set AND update, and unsubscribes', () => {
+    const seen: number[] = []
+    const unsub = onVizConfigChange((c) => seen.push(c.density))
+    updateVizConfig({ density: 0.7 })
+    setVizConfig({ density: 0.3 })
+    unsub()
+    updateVizConfig({ density: 0.9 }) // after unsub → not observed
+    expect(seen).toEqual([0.7, 0.3])
   })
 })

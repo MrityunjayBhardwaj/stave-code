@@ -5577,10 +5577,20 @@ var DEFAULT_VIZ_CONFIG = {
   playheadColor: "rgba(255,255,255,0.5)"
 };
 var _active = { ...DEFAULT_VIZ_CONFIG };
+var _listeners = /* @__PURE__ */ new Set();
+function notify() {
+  for (const cb of Array.from(_listeners)) cb(_active);
+}
+__name(notify, "notify");
 function getVizConfig() {
   return _active;
 }
 __name(getVizConfig, "getVizConfig");
+function updateVizConfig(patch) {
+  _active = { ..._active, ...patch };
+  notify();
+}
+__name(updateVizConfig, "updateVizConfig");
 
 // src/visualizers/worker/workerMessages.ts
 function isControlMessage(data) {
@@ -5629,11 +5639,15 @@ function hostVizWorker(scope) {
       case "destroy":
         destroy();
         break;
+      case "config":
+        updateVizConfig(msg.patch);
+        break;
     }
   }
   __name(handleControl, "handleControl");
   async function mount(msg) {
     if (state) destroy();
+    if (msg.config) updateVizConfig(msg.config);
     const dpr = msg.dpr > 0 ? msg.dpr : 1;
     const feed = new WorkerBusFeed();
     if (msg.aliases) feed.setAliases(msg.aliases);

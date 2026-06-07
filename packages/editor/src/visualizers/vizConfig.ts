@@ -291,6 +291,12 @@ export function deriveVizQuality(level: VizQualityLevel): VizQualitySettings {
 
 let _active: VizConfig = { ...DEFAULT_VIZ_CONFIG }
 
+const _listeners = new Set<(config: Readonly<VizConfig>) => void>()
+
+function notify(): void {
+  for (const cb of Array.from(_listeners)) cb(_active)
+}
+
 /** Returns the active viz configuration. */
 export function getVizConfig(): Readonly<VizConfig> {
   return _active
@@ -299,7 +305,64 @@ export function getVizConfig(): Readonly<VizConfig> {
 /**
  * Replaces the active viz configuration.
  * Call early (before any engine.init / editor mount) for consistent behavior.
+ * Unspecified fields RESET to defaults (see `updateVizConfig` to merge instead).
  */
 export function setVizConfig(config: Partial<VizConfig>): void {
   _active = { ...DEFAULT_VIZ_CONFIG, ...config }
+  notify()
+}
+
+/**
+ * MERGES a partial patch onto the ACTIVE config — unlike `setVizConfig`, which
+ * resets unspecified fields to defaults. Used by the worker config-marshal
+ * channel (#269): an incremental `{ density }` patch must NOT wipe a prior
+ * `hydraAudioBins`. Notifies listeners so the marshal channel can re-ship.
+ */
+export function updateVizConfig(patch: Partial<VizConfig>): void {
+  _active = { ..._active, ...patch }
+  notify()
+}
+
+/**
+ * Subscribe to active-config changes (`setVizConfig` / `updateVizConfig`).
+ * Returns an unsubscribe fn. The `WorkerVizRenderer` uses this to re-marshal the
+ * worker-relevant subset to its worker when a quality/LOD setting changes (#269).
+ */
+export function onVizConfigChange(
+  cb: (config: Readonly<VizConfig>) => void,
+): () => void {
+  _listeners.add(cb)
+  return () => { _listeners.delete(cb) }
+}
+
+// ---------------------------------------------------------------------------
+// Worker config-marshal subset (#269) — the boundary, single source of truth
+// ---------------------------------------------------------------------------
+
+/**
+ * The ONLY vizConfig fields the WORKER bundle reads. The worker has its own
+ * `vizConfig` singleton (it's a separate bundle — P105) that otherwise stays at
+ * `DEFAULT_VIZ_CONFIG`; these are marshalled across the thread boundary so the
+ * worker sketch sees the user's effective settings:
+ *   - `hydraAudioBins` — hydra fft bin count (hostP5Worker; closes #253)
+ *   - `density`        — the `u.density` LOD multiplier (staveUniforms)
+ * `maxFps`/`maxDpr` are deliberately EXCLUDED: the main `WorkerVizRenderer` paces
+ * frame production and sizes the presenting canvas, so the worker never reads
+ * them. Adding a key here is the one place to extend what crosses the boundary.
+ */
+export const WORKER_VIZ_CONFIG_KEYS = ['hydraAudioBins', 'density'] as const
+
+export type WorkerVizConfig = Pick<
+  VizConfig,
+  (typeof WORKER_VIZ_CONFIG_KEYS)[number]
+>
+
+/** Project the active config (or a given one) down to the worker-marshalled subset. */
+export function pickWorkerVizConfig(
+  config: Readonly<VizConfig> = _active,
+): WorkerVizConfig {
+  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
+    ;(acc as Record<string, unknown>)[k] = config[k]
+    return acc
+  }, {} as WorkerVizConfig)
 }

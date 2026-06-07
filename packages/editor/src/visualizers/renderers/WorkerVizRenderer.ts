@@ -35,7 +35,7 @@ import type { IRPattern } from '../../ir/IRPattern'
 import { MainSignalSampler } from '../worker/signalSampler'
 import { createPostMessageWriter, type SignalTransportWriter } from '../worker/signalTransport'
 import { getVizWorkerFactory } from '../vizWorkerFactory'
-import { getVizConfig } from '../vizConfig'
+import { getVizConfig, onVizConfigChange, pickWorkerVizConfig } from '../vizConfig'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
@@ -100,6 +100,10 @@ export class WorkerVizRenderer implements VizRenderer {
   /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
    *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
   private onReady: (() => void) | null = null
+  /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
+   *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
+   *  doesn't post to a terminated worker. */
+  private configUnsub: (() => void) | null = null
 
   /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
    *  sketch source. @param name workspace path (error attribution). */
@@ -192,8 +196,17 @@ export class WorkerVizRenderer implements VizRenderer {
         size: { w: size.w, h: size.h },
         dpr,
         aliases,
+        // Marshal the worker-relevant vizConfig subset (#269) so the worker's own
+        // singleton reflects the user's quality/LOD settings, not the bundle default.
+        config: pickWorkerVizConfig(),
       }
       worker.postMessage(mountMsg, [offscreen])
+
+      // Re-marshal on any later quality/LOD change so the worker sketch updates
+      // live (e.g. dragging the performance-mode setting) without a remount (#269).
+      this.configUnsub = onVizConfigChange(() => {
+        this.worker?.postMessage({ type: 'config', patch: pickWorkerVizConfig() })
+      })
 
       this.start()
     } catch (e) {
@@ -226,6 +239,9 @@ export class WorkerVizRenderer implements VizRenderer {
     perf.gauge('viz.worker', -1)
     perf.dropFrames(this.perfId)
     this.stop()
+    // Stop re-marshalling config to a worker that's about to be terminated (#269).
+    this.configUnsub?.()
+    this.configUnsub = null
     const worker = this.worker
     this.worker = null
     if (worker) {

@@ -6306,14 +6306,35 @@ function createVizConfig(overrides) {
 }
 __name(createVizConfig, "createVizConfig");
 var _active = { ...DEFAULT_VIZ_CONFIG };
+var _listeners = /* @__PURE__ */ new Set();
+function notify() {
+  for (const cb of Array.from(_listeners)) cb(_active);
+}
+__name(notify, "notify");
 function getVizConfig() {
   return _active;
 }
 __name(getVizConfig, "getVizConfig");
 function setVizConfig(config) {
   _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+  notify();
 }
 __name(setVizConfig, "setVizConfig");
+function onVizConfigChange(cb) {
+  _listeners.add(cb);
+  return () => {
+    _listeners.delete(cb);
+  };
+}
+__name(onVizConfigChange, "onVizConfigChange");
+var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
+function pickWorkerVizConfig(config = _active) {
+  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
+    acc[k] = config[k];
+    return acc;
+  }, {});
+}
+__name(pickWorkerVizConfig, "pickWorkerVizConfig");
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
@@ -6360,6 +6381,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
      *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
     this.onReady = null;
+    /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
+     *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
+     *  doesn't post to a terminated worker. */
+    this.configUnsub = null;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -6419,9 +6444,15 @@ ${d.stack}` : "");
         canvas: offscreen,
         size: { w: size.w, h: size.h },
         dpr,
-        aliases
+        aliases,
+        // Marshal the worker-relevant vizConfig subset (#269) so the worker's own
+        // singleton reflects the user's quality/LOD settings, not the bundle default.
+        config: pickWorkerVizConfig()
       };
       worker.postMessage(mountMsg, [offscreen]);
+      this.configUnsub = onVizConfigChange(() => {
+        this.worker?.postMessage({ type: "config", patch: pickWorkerVizConfig() });
+      });
       this.start();
     } catch (e) {
       onError(e);
@@ -6448,6 +6479,8 @@ ${d.stack}` : "");
     perf.gauge("viz.worker", -1);
     perf.dropFrames(this.perfId);
     this.stop();
+    this.configUnsub?.();
+    this.configUnsub = null;
     const worker = this.worker;
     this.worker = null;
     if (worker) {
@@ -12660,12 +12693,12 @@ function ensureUndoManager() {
   }, "filesObserver");
   files.observe(filesObserver);
   const listeners9 = /* @__PURE__ */ new Set();
-  const notify4 = /* @__PURE__ */ __name(() => {
+  const notify5 = /* @__PURE__ */ __name(() => {
     for (const l of listeners9) l();
   }, "notify");
-  const onStackItemAdded = /* @__PURE__ */ __name(() => notify4(), "onStackItemAdded");
-  const onStackItemPopped = /* @__PURE__ */ __name(() => notify4(), "onStackItemPopped");
-  const onStackCleared = /* @__PURE__ */ __name(() => notify4(), "onStackCleared");
+  const onStackItemAdded = /* @__PURE__ */ __name(() => notify5(), "onStackItemAdded");
+  const onStackItemPopped = /* @__PURE__ */ __name(() => notify5(), "onStackItemPopped");
+  const onStackCleared = /* @__PURE__ */ __name(() => notify5(), "onStackCleared");
   um.on("stack-item-added", onStackItemAdded);
   um.on("stack-item-popped", onStackItemPopped);
   um.on("stack-cleared", onStackCleared);
@@ -12747,7 +12780,7 @@ function wireTextObserver(id, ytext) {
   unwireTextObserver(id);
   const handler = /* @__PURE__ */ __name(() => {
     rebuildSnapshot(id);
-    notify(id);
+    notify2(id);
   }, "handler");
   ytext.observe(handler);
   textObservers.set(id, { ytext, handler });
@@ -12806,12 +12839,12 @@ function ensureFilesMapObserver() {
             const ytext = fileMap.get("content");
             rebuildSnapshot(key);
             wireTextObserver(key, ytext);
-            notify(key);
+            notify2(key);
             anyStructuralChange = true;
           } else if (change.action === "delete") {
             unwireTextObserver(key);
             cachedSnapshots.delete(key);
-            notify(key);
+            notify2(key);
             anyStructuralChange = true;
           }
         }
@@ -12823,7 +12856,7 @@ function ensureFilesMapObserver() {
       if (!ownerId) continue;
       if (filesMap.has(ownerId)) {
         rebuildSnapshot(ownerId);
-        notify(ownerId);
+        notify2(ownerId);
         anyStructuralChange = true;
       }
     }
@@ -12955,7 +12988,7 @@ function renameWorkspaceFile(id, newPath) {
     fileMap.set("path", newPath);
   }, STRUCT_ORIGIN);
   rebuildSnapshot(id);
-  notify(id);
+  notify2(id);
   notifyFileList();
 }
 __name(renameWorkspaceFile, "renameWorkspaceFile");
@@ -13027,13 +13060,13 @@ function setChildOrder(parentPath, entries3) {
   }, STRUCT_ORIGIN);
 }
 __name(setChildOrder, "setChildOrder");
-function notify(id) {
+function notify2(id) {
   const set = subscribersByFile.get(id);
   if (!set) return;
   const snapshot = Array.from(set);
   for (const cb of snapshot) cb();
 }
-__name(notify, "notify");
+__name(notify2, "notify");
 var zoneOverrideSubscribers = /* @__PURE__ */ new Map();
 var wiredZoneObservers = /* @__PURE__ */ new Set();
 var PRUNE_ZONE_OVERRIDES_ORIGIN = /* @__PURE__ */ Symbol("prune-zone-overrides");
@@ -19117,7 +19150,7 @@ __name(addInlineViewZones, "addInlineViewZones");
 // src/workspace/history/historyViewing.ts
 var state = null;
 var listeners5 = /* @__PURE__ */ new Set();
-function notify2() {
+function notify3() {
   for (const l of listeners5) {
     try {
       l();
@@ -19125,16 +19158,16 @@ function notify2() {
     }
   }
 }
-__name(notify2, "notify");
+__name(notify3, "notify");
 function enterRuntimeView(commitId, files) {
   state = { commitId, files: { ...files } };
-  notify2();
+  notify3();
 }
 __name(enterRuntimeView, "enterRuntimeView");
 function exitRuntimeView() {
   if (state === null) return;
   state = null;
-  notify2();
+  notify3();
 }
 __name(exitRuntimeView, "exitRuntimeView");
 function getViewedContent(fileId) {
@@ -21581,7 +21614,7 @@ __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
 var listeners8 = /* @__PURE__ */ new Set();
-function notify3() {
+function notify4() {
   for (const l of listeners8) {
     try {
       l();
@@ -21589,21 +21622,21 @@ function notify3() {
     }
   }
 }
-__name(notify3, "notify");
+__name(notify4, "notify");
 function registerBottomPanelTab(tab) {
   tabs.set(tab.id, tab);
-  notify3();
+  notify4();
   return () => {
     if (tabs.get(tab.id) === tab) {
       tabs.delete(tab.id);
-      notify3();
+      notify4();
     }
   };
 }
 __name(registerBottomPanelTab, "registerBottomPanelTab");
 function unregisterBottomPanelTab(id) {
   if (tabs.delete(id)) {
-    notify3();
+    notify4();
   }
 }
 __name(unregisterBottomPanelTab, "unregisterBottomPanelTab");
