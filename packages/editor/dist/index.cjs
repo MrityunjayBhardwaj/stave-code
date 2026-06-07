@@ -5511,6 +5511,47 @@ function onInlineVizResolutionChange(cb) {
   };
 }
 __name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
+var INLINE_VIZ_TEARDOWN_MS = 6e4;
+var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
+var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
+var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
+function readInlineVizTeardownEnabled() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE);
+  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  return saved === "1";
+}
+__name(readInlineVizTeardownEnabled, "readInlineVizTeardownEnabled");
+function getInlineVizTeardownEnabled() {
+  return readInlineVizTeardownEnabled();
+}
+__name(getInlineVizTeardownEnabled, "getInlineVizTeardownEnabled");
+function setInlineVizTeardownEnabled(on) {
+  safeLocalStorage2()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on);
+}
+__name(setInlineVizTeardownEnabled, "setInlineVizTeardownEnabled");
+function onInlineVizTeardownChange(cb) {
+  inlineVizTeardownListeners.add(cb);
+  return () => {
+    inlineVizTeardownListeners.delete(cb);
+  };
+}
+__name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
+function getInlineVizTeardownMs() {
+  if (!readInlineVizTeardownEnabled()) return 0;
+  try {
+    const raw = safeLocalStorage2()?.getItem("stave:inlineVizTeardownMs");
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1e3) return n;
+    }
+  } catch {
+  }
+  return INLINE_VIZ_TEARDOWN_MS;
+}
+__name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
@@ -6251,6 +6292,40 @@ function getVizWorkerFactory() {
 }
 __name(getVizWorkerFactory, "getVizWorkerFactory");
 
+// src/visualizers/vizWorkerPool.ts
+function poolCap() {
+  const hc = typeof navigator !== "undefined" && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
+  return Math.max(2, hc - 2);
+}
+__name(poolCap, "poolCap");
+function isVizWorkerPoolEnabled() {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.pool") === "1";
+  } catch {
+    return false;
+  }
+}
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+var parked = [];
+function acquireVizWorker() {
+  const reused = parked.pop();
+  if (reused) return reused;
+  const make = getVizWorkerFactory();
+  return make ? make() : null;
+}
+__name(acquireVizWorker, "acquireVizWorker");
+function releaseVizWorker(worker) {
+  if (parked.length < poolCap()) {
+    parked.push(worker);
+  } else {
+    try {
+      worker.terminate();
+    } catch {
+    }
+  }
+}
+__name(releaseVizWorker, "releaseVizWorker");
+
 // src/visualizers/vizConfig.ts
 var DEFAULT_VIZ_CONFIG = {
   // Resolver
@@ -6356,6 +6431,14 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
      *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
     this.onReady = null;
+    /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+     *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+     *  terminated, so the next mount reuses the thread (no fresh allocation). */
+    this.pooled = false;
+    /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+     *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+     *  is terminated so it can't poison a future acquire. */
+    this.ready = false;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -6372,6 +6455,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       onError(new Error("WorkerVizRenderer: no viz-worker factory registered"));
       return;
     }
+    this.pooled = isVizWorkerPoolEnabled();
     try {
       const dpr = effectiveDpr();
       const canvas = document.createElement("canvas");
@@ -6383,7 +6467,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       container.appendChild(canvas);
       this.canvasEl = canvas;
       const offscreen = canvas.transferControlToOffscreen();
-      const worker = make();
+      const worker = this.pooled ? acquireVizWorker() ?? make() : make();
       this.worker = worker;
       this.writer = createPostMessageWriter(worker);
       this.diagHandler = (ev) => {
@@ -6394,6 +6478,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
           return;
         }
         if (d.type === "ready") {
+          this.ready = true;
           this.onReady?.();
           return;
         }
@@ -6452,9 +6537,13 @@ ${d.stack}` : "");
       } catch {
       }
       if (this.diagHandler) worker.removeEventListener("message", this.diagHandler);
-      try {
-        worker.terminate();
-      } catch {
+      if (this.pooled && this.ready) {
+        releaseVizWorker(worker);
+      } else {
+        try {
+          worker.terminate();
+        } catch {
+        }
       }
     }
     this.diagHandler = null;
@@ -18326,6 +18415,17 @@ var entries2 = /* @__PURE__ */ new Set();
 var tabVisible = true;
 var visibilityWired = false;
 function syncEntry(e) {
+  if (e.teardownMs > 0 && e.renderer.teardown) {
+    if (!e.onScreen && e.teardownTimer === null) {
+      e.teardownTimer = setTimeout(() => {
+        e.teardownTimer = null;
+        if (!e.onScreen) e.renderer.teardown?.();
+      }, e.teardownMs);
+    } else if (e.onScreen && e.teardownTimer !== null) {
+      clearTimeout(e.teardownTimer);
+      e.teardownTimer = null;
+    }
+  }
   const desired = e.onScreen && tabVisible;
   if (desired === e.running) return;
   e.running = desired;
@@ -18351,12 +18451,19 @@ function unwireVisibility() {
   document.removeEventListener("visibilitychange", onVisibilityChange);
 }
 __name(unwireVisibility, "unwireVisibility");
-function registerVizVisibility(renderer, container) {
+function registerVizVisibility(renderer, container, opts) {
   if (typeof IntersectionObserver === "undefined" || typeof document === "undefined") {
     return () => {
     };
   }
-  const entry = { renderer, onScreen: true, running: true, io: null };
+  const entry = {
+    renderer,
+    onScreen: true,
+    running: true,
+    io: null,
+    teardownMs: opts?.teardownMs ?? 0,
+    teardownTimer: null
+  };
   wireVisibility();
   entries2.add(entry);
   syncEntry(entry);
@@ -18372,6 +18479,10 @@ function registerVizVisibility(renderer, container) {
   return () => {
     entry.io?.disconnect();
     entry.io = null;
+    if (entry.teardownTimer !== null) {
+      clearTimeout(entry.teardownTimer);
+      entry.teardownTimer = null;
+    }
     entries2.delete(entry);
     unwireVisibility();
   };
@@ -18526,6 +18637,67 @@ var VizPresetStore = {
     await wrap(tx(db, "readwrite").delete(id));
   }
 };
+
+// src/visualizers/renderers/TeardownOnPauseRenderer.ts
+var _TeardownOnPauseRenderer = class _TeardownOnPauseRenderer {
+  constructor(factory2, hooks = {}) {
+    this.factory = factory2;
+    this.hooks = hooks;
+    this.inner = null;
+    this.args = null;
+    this.tornDown = false;
+  }
+  /** True while reclaimed (inner destroyed). Exposed for tests/observation. */
+  get isTornDown() {
+    return this.tornDown;
+  }
+  mount(container, components, size, onError) {
+    this.args = { container, components, size, onError };
+    this.inner = this.factory();
+    this.inner.mount(container, components, size, onError);
+  }
+  update(components) {
+    if (this.args) this.args.components = components;
+    this.inner?.update(components);
+  }
+  resize(w, h) {
+    if (this.args) this.args.size = { w, h };
+    this.inner?.resize(w, h);
+  }
+  pause() {
+    this.inner?.pause();
+  }
+  resume() {
+    if (this.tornDown) {
+      this.reinit();
+      return;
+    }
+    this.inner?.resume();
+  }
+  destroy() {
+    this.inner?.destroy();
+    this.inner = null;
+  }
+  /** Reclaim: destroy the inner renderer (frees its worker/GL context + memory).
+   *  Idempotent + safe to call while already torn down. */
+  teardown() {
+    if (this.tornDown || !this.inner) return;
+    this.inner.destroy();
+    this.inner = null;
+    this.tornDown = true;
+    this.hooks.onAfterTeardown?.();
+  }
+  reinit() {
+    if (!this.args) return;
+    const { container, components, size, onError } = this.args;
+    this.inner = this.factory();
+    this.inner.mount(container, components, size, onError);
+    this.tornDown = false;
+    this.hooks.onAfterReinit?.();
+  }
+};
+__name(_TeardownOnPauseRenderer, "TeardownOnPauseRenderer");
+var TeardownOnPauseRenderer = _TeardownOnPauseRenderer;
 
 // src/visualizers/viewZones.ts
 var DEFAULT_NATIVE = { w: 1200, h: 600 };
@@ -18738,14 +18910,23 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         suppressMouseDown: true
       };
       const zoneId = accessor.addZone(zoneDesc);
-      const renderer = typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory;
+      const makeInner = /* @__PURE__ */ __name(() => typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory, "makeInner");
+      let relayout = /* @__PURE__ */ __name(() => {
+      }, "relayout");
+      const teardownMs = getInlineVizTeardownMs();
+      const renderer = teardownMs > 0 ? new TeardownOnPauseRenderer(makeInner, {
+        // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
+        // (applyLayout only creates+fills the wrapper when none exists).
+        onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
+        onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
+      }) : makeInner();
       try {
         renderer.mount(container, zoneComponents, renderSizeFor(native), console.error);
       } catch (e) {
         console.error("[stave] viz mount failed:", e);
       }
       renderers.push(renderer);
-      visibilityCleanups.push(registerVizVisibility(renderer, container));
+      visibilityCleanups.push(registerVizVisibility(renderer, container, { teardownMs }));
       const canvas = container.querySelector("canvas");
       applyLayout(container, canvas, layout);
       requestAnimationFrame(() => {
@@ -18789,6 +18970,19 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         vizDecoration
       };
       zoneEntries.push(entry);
+      relayout = /* @__PURE__ */ __name(() => {
+        const cw = editor.getLayoutInfo().contentWidth || 400;
+        const nw = entry.native.w, nh = entry.native.h;
+        const cropW = Math.max(0.01, entry.crop.w);
+        const cropH = Math.max(0.01, entry.crop.h);
+        const scale = Math.min(cw / (cropW * nw), entry.zoneDesc.heightInPx / (cropH * nh));
+        const tx3 = -entry.crop.x * nw * scale;
+        const ty = -entry.crop.y * nh * scale;
+        applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
+        requestAnimationFrame(
+          () => applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty })
+        );
+      }, "relayout");
       const resizeHandle = document.createElement("div");
       resizeHandle.style.cssText = `
         position:absolute;bottom:0;left:0;right:0;height:6px;
@@ -27849,6 +28043,8 @@ exports.getFolderOrder = getFolderOrder;
 exports.getIRSnapshot = getIRSnapshot;
 exports.getInlineVizActionSize = getInlineVizActionSize;
 exports.getInlineVizResolution = getInlineVizResolution;
+exports.getInlineVizTeardownEnabled = getInlineVizTeardownEnabled;
+exports.getInlineVizTeardownMs = getInlineVizTeardownMs;
 exports.getLastOpenedProject = getLastOpenedProject;
 exports.getLogHistory = getLogHistory;
 exports.getModifiedFileIdsSinceHead = getModifiedFileIdsSinceHead;
@@ -27909,6 +28105,7 @@ exports.onBackdropOpacityChange = onBackdropOpacityChange;
 exports.onBackdropQualityChange = onBackdropQualityChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
 exports.onInlineVizResolutionChange = onInlineVizResolutionChange;
+exports.onInlineVizTeardownChange = onInlineVizTeardownChange;
 exports.onMusicalTimelineSubRowHeightChange = onMusicalTimelineSubRowHeightChange;
 exports.onNamedVizChanged = onNamedVizChanged;
 exports.onPerfEnabledChange = onPerfEnabledChange;
@@ -27973,6 +28170,7 @@ exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
 exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setInlineVizResolution = setInlineVizResolution;
+exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;

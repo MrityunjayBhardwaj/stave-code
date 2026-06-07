@@ -12,6 +12,8 @@ import {
   setInlineVizActionSize,
   getInlineVizResolution,
   setInlineVizResolution,
+  getInlineVizTeardownEnabled,
+  setInlineVizTeardownEnabled,
   getMusicalTimelineSubRowHeight,
   setMusicalTimelineSubRowHeight,
   getEditorTheme,
@@ -165,6 +167,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   // "Custom"), so a custom value stays editable instead of snapping to a preset.
   const [vizRes, setVizRes] = useState(512);
   const [vizResCustom, setVizResCustom] = useState(false);
+  const [vizTeardown, setVizTeardown] = useState(true);
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
   const [perfEnabled, setPerfEnabledState] = useState(false);
@@ -200,6 +203,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     const res = getInlineVizResolution();
     setVizRes(res);
     setVizResCustom(!VIZ_RES_PRESETS.includes(res));
+    setVizTeardown(getInlineVizTeardownEnabled());
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
     setPerfEnabledState(getPerfEnabled());
@@ -330,6 +334,20 @@ export function EditorSettingsModal({ open, onClose }: Props) {
                 style={s.numberInput}
               />
             ) : null}
+          </Row>
+          <Row label="Off-screen viz teardown">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={vizTeardown}
+                onChange={() => {
+                  const next = !vizTeardown;
+                  setInlineVizTeardownEnabled(next);
+                  setVizTeardown(next);
+                }}
+              />
+              <span>{vizTeardown ? "On (frees memory + GPU contexts after 60s off-screen)" : "Off (stay resident)"}</span>
+            </label>
           </Row>
           <Row label="Timeline sub-row">
             <input
