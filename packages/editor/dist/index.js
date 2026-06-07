@@ -5632,6 +5632,47 @@ function applyPersistedVizQuality() {
   updateVizConfig({ density });
 }
 __name(applyPersistedVizQuality, "applyPersistedVizQuality");
+var INLINE_VIZ_TEARDOWN_MS = 6e4;
+var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
+var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
+var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
+function readInlineVizTeardownEnabled() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE);
+  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  return saved === "1";
+}
+__name(readInlineVizTeardownEnabled, "readInlineVizTeardownEnabled");
+function getInlineVizTeardownEnabled() {
+  return readInlineVizTeardownEnabled();
+}
+__name(getInlineVizTeardownEnabled, "getInlineVizTeardownEnabled");
+function setInlineVizTeardownEnabled(on) {
+  safeLocalStorage2()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on);
+}
+__name(setInlineVizTeardownEnabled, "setInlineVizTeardownEnabled");
+function onInlineVizTeardownChange(cb) {
+  inlineVizTeardownListeners.add(cb);
+  return () => {
+    inlineVizTeardownListeners.delete(cb);
+  };
+}
+__name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
+function getInlineVizTeardownMs() {
+  if (!readInlineVizTeardownEnabled()) return 0;
+  try {
+    const raw = safeLocalStorage2()?.getItem("stave:inlineVizTeardownMs");
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1e3) return n;
+    }
+  } catch {
+  }
+  return INLINE_VIZ_TEARDOWN_MS;
+}
+__name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
@@ -6372,6 +6413,40 @@ function getVizWorkerFactory() {
 }
 __name(getVizWorkerFactory, "getVizWorkerFactory");
 
+// src/visualizers/vizWorkerPool.ts
+function poolCap() {
+  const hc = typeof navigator !== "undefined" && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
+  return Math.max(2, hc - 2);
+}
+__name(poolCap, "poolCap");
+function isVizWorkerPoolEnabled() {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.pool") === "1";
+  } catch {
+    return false;
+  }
+}
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+var parked = [];
+function acquireVizWorker() {
+  const reused = parked.pop();
+  if (reused) return reused;
+  const make = getVizWorkerFactory();
+  return make ? make() : null;
+}
+__name(acquireVizWorker, "acquireVizWorker");
+function releaseVizWorker(worker) {
+  if (parked.length < poolCap()) {
+    parked.push(worker);
+  } else {
+    try {
+      worker.terminate();
+    } catch {
+    }
+  }
+}
+__name(releaseVizWorker, "releaseVizWorker");
+
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
 var MAX_FRAMES_IN_FLIGHT = 2;
@@ -6421,6 +6496,18 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
      *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
      *  doesn't post to a terminated worker. */
     this.configUnsub = null;
+    /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+     *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+     *  terminated, so the next mount reuses the thread (no fresh allocation). */
+    this.pooled = false;
+    /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+     *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+     *  is terminated so it can't poison a future acquire. */
+    this.ready = false;
+    /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
+     *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
+     *  happens after we've detached its listener, so we account it main-side). */
+    this.glAccounted = false;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -6437,6 +6524,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       onError(new Error("WorkerVizRenderer: no viz-worker factory registered"));
       return;
     }
+    this.pooled = isVizWorkerPoolEnabled();
     try {
       const dpr = effectiveDpr();
       const canvas = document.createElement("canvas");
@@ -6448,7 +6536,7 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
       container.appendChild(canvas);
       this.canvasEl = canvas;
       const offscreen = canvas.transferControlToOffscreen();
-      const worker = make();
+      const worker = this.pooled ? acquireVizWorker() ?? make() : make();
       this.worker = worker;
       this.writer = createPostMessageWriter(worker);
       this.diagHandler = (ev) => {
@@ -6458,11 +6546,21 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
           if (this.inFlight > 0) this.inFlight--;
           return;
         }
+        if (d.type === "vizlog") {
+          emitLog(d.entry);
+          return;
+        }
         if (d.type === "ready") {
+          this.ready = true;
           this.onReady?.();
           return;
         }
         if (d.type !== "diag") return;
+        if (d.message === "glctx+") {
+          this.glAccounted = true;
+          perf.gauge("viz.glctx", 1);
+          return;
+        }
         if (d.level === "error") {
           console.error(`[viz worker ${this.name}] ${d.message}`, d.stack ? `
 ${d.stack}` : "");
@@ -6513,6 +6611,10 @@ ${d.stack}` : "");
   }
   destroy() {
     perf.gauge("viz.worker", -1);
+    if (this.glAccounted) {
+      perf.gauge("viz.glctx", -1);
+      this.glAccounted = false;
+    }
     perf.dropFrames(this.perfId);
     this.stop();
     this.configUnsub?.();
@@ -6525,9 +6627,13 @@ ${d.stack}` : "");
       } catch {
       }
       if (this.diagHandler) worker.removeEventListener("message", this.diagHandler);
-      try {
-        worker.terminate();
-      } catch {
+      if (this.pooled && this.ready) {
+        releaseVizWorker(worker);
+      } else {
+        try {
+          worker.terminate();
+        } catch {
+        }
       }
     }
     this.diagHandler = null;
@@ -18399,6 +18505,17 @@ var entries2 = /* @__PURE__ */ new Set();
 var tabVisible = true;
 var visibilityWired = false;
 function syncEntry(e) {
+  if (e.teardownMs > 0 && e.renderer.teardown) {
+    if (!e.onScreen && e.teardownTimer === null) {
+      e.teardownTimer = setTimeout(() => {
+        e.teardownTimer = null;
+        if (!e.onScreen) e.renderer.teardown?.();
+      }, e.teardownMs);
+    } else if (e.onScreen && e.teardownTimer !== null) {
+      clearTimeout(e.teardownTimer);
+      e.teardownTimer = null;
+    }
+  }
   const desired = e.onScreen && tabVisible;
   if (desired === e.running) return;
   e.running = desired;
@@ -18424,12 +18541,19 @@ function unwireVisibility() {
   document.removeEventListener("visibilitychange", onVisibilityChange);
 }
 __name(unwireVisibility, "unwireVisibility");
-function registerVizVisibility(renderer, container) {
+function registerVizVisibility(renderer, container, opts) {
   if (typeof IntersectionObserver === "undefined" || typeof document === "undefined") {
     return () => {
     };
   }
-  const entry = { renderer, onScreen: true, running: true, io: null };
+  const entry = {
+    renderer,
+    onScreen: true,
+    running: true,
+    io: null,
+    teardownMs: opts?.teardownMs ?? 0,
+    teardownTimer: null
+  };
   wireVisibility();
   entries2.add(entry);
   syncEntry(entry);
@@ -18445,6 +18569,10 @@ function registerVizVisibility(renderer, container) {
   return () => {
     entry.io?.disconnect();
     entry.io = null;
+    if (entry.teardownTimer !== null) {
+      clearTimeout(entry.teardownTimer);
+      entry.teardownTimer = null;
+    }
     entries2.delete(entry);
     unwireVisibility();
   };
@@ -18599,6 +18727,67 @@ var VizPresetStore = {
     await wrap(tx(db, "readwrite").delete(id));
   }
 };
+
+// src/visualizers/renderers/TeardownOnPauseRenderer.ts
+var _TeardownOnPauseRenderer = class _TeardownOnPauseRenderer {
+  constructor(factory2, hooks = {}) {
+    this.factory = factory2;
+    this.hooks = hooks;
+    this.inner = null;
+    this.args = null;
+    this.tornDown = false;
+  }
+  /** True while reclaimed (inner destroyed). Exposed for tests/observation. */
+  get isTornDown() {
+    return this.tornDown;
+  }
+  mount(container, components, size, onError) {
+    this.args = { container, components, size, onError };
+    this.inner = this.factory();
+    this.inner.mount(container, components, size, onError);
+  }
+  update(components) {
+    if (this.args) this.args.components = components;
+    this.inner?.update(components);
+  }
+  resize(w, h) {
+    if (this.args) this.args.size = { w, h };
+    this.inner?.resize(w, h);
+  }
+  pause() {
+    this.inner?.pause();
+  }
+  resume() {
+    if (this.tornDown) {
+      this.reinit();
+      return;
+    }
+    this.inner?.resume();
+  }
+  destroy() {
+    this.inner?.destroy();
+    this.inner = null;
+  }
+  /** Reclaim: destroy the inner renderer (frees its worker/GL context + memory).
+   *  Idempotent + safe to call while already torn down. */
+  teardown() {
+    if (this.tornDown || !this.inner) return;
+    this.inner.destroy();
+    this.inner = null;
+    this.tornDown = true;
+    this.hooks.onAfterTeardown?.();
+  }
+  reinit() {
+    if (!this.args) return;
+    const { container, components, size, onError } = this.args;
+    this.inner = this.factory();
+    this.inner.mount(container, components, size, onError);
+    this.tornDown = false;
+    this.hooks.onAfterReinit?.();
+  }
+};
+__name(_TeardownOnPauseRenderer, "TeardownOnPauseRenderer");
+var TeardownOnPauseRenderer = _TeardownOnPauseRenderer;
 
 // src/visualizers/viewZones.ts
 var DEFAULT_NATIVE = { w: 1200, h: 600 };
@@ -18811,14 +19000,23 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         suppressMouseDown: true
       };
       const zoneId = accessor.addZone(zoneDesc);
-      const renderer = typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory;
+      const makeInner = /* @__PURE__ */ __name(() => typeof descriptor.factory === "function" ? descriptor.factory() : descriptor.factory, "makeInner");
+      let relayout = /* @__PURE__ */ __name(() => {
+      }, "relayout");
+      const teardownMs = getInlineVizTeardownMs();
+      const renderer = teardownMs > 0 ? new TeardownOnPauseRenderer(makeInner, {
+        // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
+        // (applyLayout only creates+fills the wrapper when none exists).
+        onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
+        onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
+      }) : makeInner();
       try {
         renderer.mount(container, zoneComponents, renderSizeFor(native), console.error);
       } catch (e) {
         console.error("[stave] viz mount failed:", e);
       }
       renderers.push(renderer);
-      visibilityCleanups.push(registerVizVisibility(renderer, container));
+      visibilityCleanups.push(registerVizVisibility(renderer, container, { teardownMs }));
       const canvas = container.querySelector("canvas");
       applyLayout(container, canvas, layout);
       requestAnimationFrame(() => {
@@ -18862,6 +19060,19 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         vizDecoration
       };
       zoneEntries.push(entry);
+      relayout = /* @__PURE__ */ __name(() => {
+        const cw = editor.getLayoutInfo().contentWidth || 400;
+        const nw = entry.native.w, nh = entry.native.h;
+        const cropW = Math.max(0.01, entry.crop.w);
+        const cropH = Math.max(0.01, entry.crop.h);
+        const scale = Math.min(cw / (cropW * nw), entry.zoneDesc.heightInPx / (cropH * nh));
+        const tx3 = -entry.crop.x * nw * scale;
+        const ty = -entry.crop.y * nh * scale;
+        applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
+        requestAnimationFrame(
+          () => applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty })
+        );
+      }, "relayout");
       const resizeHandle = document.createElement("div");
       resizeHandle.style.cssText = `
         position:absolute;bottom:0;left:0;right:0;height:6px;
@@ -27775,6 +27986,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizQuality, getVizWorkerFactory, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizQuality, getVizWorkerFactory, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

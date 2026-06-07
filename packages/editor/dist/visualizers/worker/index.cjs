@@ -1128,6 +1128,13 @@ function emitLog(partial) {
   return entry;
 }
 __name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
@@ -5602,6 +5609,8 @@ __name(isControlMessage, "isControlMessage");
 // src/visualizers/worker/hostP5Worker.ts
 var P5ctor = null;
 var Hydractor = null;
+var GLCTX_UP = "glctx+";
+var GLCTX_RELEASE = true;
 function hostVizWorker(scope) {
   let state = null;
   const diag = /* @__PURE__ */ __name((level, message, stack) => {
@@ -5616,6 +5625,49 @@ function hostVizWorker(scope) {
     } catch {
     }
   }, "signalReady");
+  const seenWorkerErrors = /* @__PURE__ */ new Set();
+  const currentRuntimeRef = { kind: "p5" };
+  const postVizLog = /* @__PURE__ */ __name((entry) => {
+    const sig = `${entry.runtime}|${entry.message}|${entry.line ?? ""}`;
+    if (seenWorkerErrors.has(sig)) return;
+    if (seenWorkerErrors.size > 64) seenWorkerErrors.clear();
+    seenWorkerErrors.add(sig);
+    try {
+      scope.postMessage({ type: "vizlog", entry });
+    } catch {
+    }
+  }, "postVizLog");
+  subscribeLog((entry) => {
+    if (entry?.level === "error") {
+      const { id: _id, ts: _ts, ...rest } = entry;
+      postVizLog(rest);
+    }
+  });
+  let glLoseExt = null;
+  let glAccounted = false;
+  const accountGL = /* @__PURE__ */ __name(() => {
+    if (glAccounted || !state) return;
+    try {
+      const ctx = state.gl?.() ?? null;
+      const ext = ctx?.getExtension?.("WEBGL_lose_context") ?? null;
+      if (ext) {
+        glLoseExt = ext;
+        glAccounted = true;
+        diag("info", GLCTX_UP);
+      }
+    } catch {
+    }
+  }, "accountGL");
+  const releaseGL = /* @__PURE__ */ __name(() => {
+    if (!glAccounted) return;
+    glAccounted = false;
+    const ext = glLoseExt;
+    glLoseExt = null;
+    try {
+      if (GLCTX_RELEASE) ext?.loseContext?.();
+    } catch {
+    }
+  }, "releaseGL");
   scope.addEventListener("message", (ev) => {
     const data = ev.data;
     if (!isControlMessage(data)) return;
@@ -5649,6 +5701,7 @@ function hostVizWorker(scope) {
   async function mount(msg) {
     if (state) destroy();
     if (msg.config) updateVizConfig(msg.config);
+    currentRuntimeRef.kind = msg.kind;
     const dpr = msg.dpr > 0 ? msg.dpr : 1;
     const feed = new WorkerBusFeed();
     if (msg.aliases) feed.setAliases(msg.aliases);
@@ -5719,6 +5772,9 @@ function hostVizWorker(scope) {
     }
     return {
       setupDone: /* @__PURE__ */ __name(() => setup, "setupDone"),
+      // #266 — p5's WEBGL context lives on its internal render canvas (drawingContext);
+      // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
+      gl: /* @__PURE__ */ __name(() => inst?.drawingContext ?? null, "gl"),
       draw: /* @__PURE__ */ __name(() => {
         inst.redraw();
         if (!present) return;
@@ -5796,6 +5852,9 @@ function hostVizWorker(scope) {
     return {
       setupDone: /* @__PURE__ */ __name(() => true, "setupDone"),
       // pattern ran synchronously above; frames arrive after
+      // #266 — hydra renders directly into the presenting canvas (regl owns its
+      // WebGL context); re-getContext returns that same context for release.
+      gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2") ?? msg.canvas.getContext("webgl"), "gl"),
       draw: /* @__PURE__ */ __name(() => {
         const a = hydra?.synth?.a;
         if (a?.fft) {
@@ -5843,12 +5902,13 @@ function hostVizWorker(scope) {
     try {
       s.draw();
     } catch (e) {
-      diag("error", `draw threw: ${errMsg(e)}`, errStack(e));
+      postVizLog({ level: "error", runtime: currentRuntimeRef.kind, message: `draw(): ${errMsg(e)}`, stack: errStack(e) });
       return;
     }
     if (!s.readySent) {
       s.readySent = true;
       signalReady();
+      accountGL();
     }
   }
   __name(applyAndDraw, "applyAndDraw");
@@ -5876,6 +5936,7 @@ function hostVizWorker(scope) {
       s.teardown();
     } catch {
     }
+    releaseGL();
   }
   __name(destroy, "destroy");
 }

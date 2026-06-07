@@ -7,6 +7,7 @@
  * So each side ignores the other's messages by checking for `.type`.
  */
 import type { WorkerVizConfig } from '../vizConfig'
+import type { LogEntry } from '../../engine/engineLog'
 
 /** MAIN → WORKER: create the renderer instance against a transferred OffscreenCanvas. */
 export interface MountMessage {
@@ -83,6 +84,18 @@ export interface WorkerDiagMessage {
   message: string
   /** Optional stack (first frames) for an error. */
   stack?: string
+}
+
+/** WORKER → MAIN: a viz RUNTIME log entry (a p5/hydra draw/setup error) to
+ *  RE-EMIT into the MAIN engineLog (#257). p5Compiler wraps user lifecycle hooks
+ *  and routes throws to the worker-LOCAL engineLog, which isn't wired to the main
+ *  console — so a per-frame draw() typo was a silent blank. Re-emitting on main
+ *  surfaces it in the Console panel + squiggle EXACTLY like the main-thread path,
+ *  WITHOUT the `onError`/fallback semantics (a post-ready user typo must not tear
+ *  the worker down). Distinct from `diag` (level:error) which IS fatal/fallback. */
+export interface WorkerVizLogMessage {
+  type: 'vizlog'
+  entry: Omit<LogEntry, 'id' | 'ts'>
 }
 
 /** WORKER → MAIN: the worker drew its FIRST frame successfully (B-5 / #247). One-
