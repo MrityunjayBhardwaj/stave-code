@@ -5044,9 +5044,17 @@ declare function getVizQuality(): VizQualityLevel;
  *  channels (the density marshals live to worker viz), and notifies listeners. */
 declare function setVizQuality(level: VizQualityLevel): void;
 declare function onVizQualityChange(cb: (level: VizQualityLevel) => void): () => void;
-/** Apply the persisted quality on startup so resolution + density reflect the
- *  saved level before any viz mounts (call once at app init, like
- *  `applyPersistedInlineVizActionSize`). */
+/** Restore the persisted quality's DENSITY into the vizConfig singleton on
+ *  startup (call once at app init, like `applyPersistedInlineVizActionSize`).
+ *
+ *  Density ONLY — deliberately NOT resolution. Resolution is pull-model (read
+ *  fresh from its own `stave:inlineVizResolution` setting when a zone mounts),
+ *  and `setVizQuality` already writes that setting at set-time, so a chosen
+ *  level's resolution persists through that channel. Re-applying resolution here
+ *  would CLOBBER a user's standalone render-resolution override on every reload
+ *  (it would force the default level's 512 whenever quality was never changed).
+ *  Density, by contrast, lives in the in-memory vizConfig singleton that resets
+ *  to default(1) per page load, so it's the only knob that needs restoring. */
 declare function applyPersistedVizQuality(): void;
 declare function getMusicalTimelineSubRowHeight(): number;
 declare function setMusicalTimelineSubRowHeight(h: number): void;

@@ -5628,7 +5628,8 @@ function onVizQualityChange(cb) {
 }
 __name(onVizQualityChange, "onVizQualityChange");
 function applyPersistedVizQuality() {
-  applyVizQuality(readVizQuality());
+  const { density } = deriveVizQuality(readVizQuality());
+  updateVizConfig({ density });
 }
 __name(applyPersistedVizQuality, "applyPersistedVizQuality");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;

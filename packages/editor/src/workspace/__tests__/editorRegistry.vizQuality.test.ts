@@ -22,6 +22,8 @@ import {
   setVizQuality,
   onVizQualityChange,
   getInlineVizResolution,
+  setInlineVizResolution,
+  applyPersistedVizQuality,
 } from '../editorRegistry'
 import {
   DEFAULT_VIZ_CONFIG,
@@ -102,6 +104,24 @@ describe('vizQuality — drives BOTH knobs (#232)', () => {
     // The density write must NOT wipe hydraAudioBins (the #253 merge bug).
     expect(getVizConfig().hydraAudioBins).toBe(8)
     expect(getVizConfig().density).toBe(deriveVizQuality('performance').density)
+  })
+})
+
+describe('vizQuality — startup restore (density only, no resolution clobber)', () => {
+  it('applyPersistedVizQuality restores density from the stored level', () => {
+    store.set(VIZ_QUALITY_STORAGE, 'performance')
+    applyPersistedVizQuality()
+    expect(getVizConfig().density).toBe(deriveVizQuality('performance').density)
+  })
+
+  it('does NOT clobber a standalone render-resolution override on startup', () => {
+    // User set a custom resolution via the #261 control, never touched quality
+    // (stored quality absent → defaults to balanced). Startup must leave their
+    // resolution alone — only density is restored (the bug this guards against).
+    setInlineVizResolution(768)
+    applyPersistedVizQuality()
+    expect(getInlineVizResolution()).toBe(768) // survived
+    expect(getVizConfig().density).toBe(1) // balanced default density restored
   })
 })
 
