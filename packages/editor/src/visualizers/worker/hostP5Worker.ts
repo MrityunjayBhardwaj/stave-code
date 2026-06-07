@@ -45,7 +45,7 @@ import { buildHydraStaveBag } from '../renderers/hydraStaveBag'
 import { compileP5Code } from '../p5Compiler'
 import { compileHydraCode } from '../hydraCompiler'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
-import { getVizConfig } from '../vizConfig'
+import { getVizConfig, updateVizConfig } from '../vizConfig'
 import {
   isControlMessage,
   type MountMessage,
@@ -222,6 +222,11 @@ export function hostVizWorker(scope: WorkerScope): void {
       case 'destroy':
         destroy()
         break
+      case 'config':
+        // Live quality/LOD update (#269) — MERGE onto the worker's own vizConfig
+        // singleton so the next draw reads it (e.g. `u.density`) without remount.
+        updateVizConfig(msg.patch)
+        break
     }
   }
 
@@ -229,6 +234,11 @@ export function hostVizWorker(scope: WorkerScope): void {
     // Tear down a previous mount (a pooled/shared worker re-mount — B-6; harmless
     // for the one-shot worker).
     if (state) destroy()
+
+    // Apply the marshalled vizConfig subset BEFORE building the sketch, so the
+    // first frame's `getVizConfig()` reads (u.density, hydra bins) see the user's
+    // settings rather than the worker bundle's DEFAULT_VIZ_CONFIG (#269 / #253).
+    if (msg.config) updateVizConfig(msg.config)
 
     currentRuntimeRef.kind = msg.kind // #257 — attribute sync draw throws to the kind
     const dpr = msg.dpr > 0 ? msg.dpr : 1

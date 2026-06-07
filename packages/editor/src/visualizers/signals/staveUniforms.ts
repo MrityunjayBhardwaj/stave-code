@@ -32,6 +32,7 @@ import type {
   P5SignalAccessor,
   P5SignalReading,
 } from '../p5Compiler'
+import { getVizConfig } from '../vizConfig'
 
 /**
  * Build the live uniform object from a bus.
@@ -61,6 +62,11 @@ export function buildStaveUniforms(
   Object.defineProperty(u, 'treble', { get: () => bus.master().treble, enumerable: true })
   Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
   Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
+  // Quality / LOD multiplier (#269) — NOT a bus signal but a live config read, so
+  // a sketch reads the user's current "performance mode" per frame (worker: the
+  // marshalled singleton, fed by the config channel). Mesh sketches scale segment
+  // count by this; fill sketches ride render-resolution instead (#232).
+  Object.defineProperty(u, 'density', { get: () => getVizConfig().density, enumerable: true })
 
   // The uniform object — bare `uKick…uTom` / `uKeyVelocity` are GETTERS
   // (D-01 p5 shape: live numbers). `__tick` is a non-enumerable per-frame hook.

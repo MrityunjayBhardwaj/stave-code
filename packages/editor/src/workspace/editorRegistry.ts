@@ -17,6 +17,12 @@ import type {
   StoredSignalAliases,
 } from '../visualizers/signals/aliasMap'
 import { perf } from '../perf/profiler'
+import {
+  DEFAULT_VIZ_QUALITY,
+  deriveVizQuality,
+  updateVizConfig,
+  type VizQualityLevel,
+} from '../visualizers/vizConfig'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
@@ -288,6 +294,78 @@ export function setInlineVizResolution(n: number): void {
 export function onInlineVizResolutionChange(cb: (n: number) => void): () => void {
   inlineVizResolutionListeners.add(cb)
   return () => { inlineVizResolutionListeners.delete(cb) }
+}
+
+// ── Viz quality / "performance mode" (Phase D, #269) ────────────────
+// The headline quality knob. A single level scales BOTH the inline-viz render
+// RESOLUTION (above — composite/fill cost) AND the sketch LOD `density`
+// (vizConfig — segment count for CPU-tessellation meshes), because the winning
+// lever differs by sketch class (#232). `deriveVizQuality` maps the level to
+// both; this setter applies each to its own channel:
+//   resolution → setInlineVizResolution (applies on next (re)mount)
+//   density    → updateVizConfig (MERGE — marshalled live to the worker via the
+//                config channel, so a worker sketch's next frame reads u.density)
+// `balanced` is the default and maps to today's values (512 / 1) → no regression.
+// The standalone render-resolution setting remains an advanced override; quality
+// is a preset over it (last-write-wins on resolution).
+const VIZ_QUALITY_STORAGE = 'stave:vizQuality'
+const VIZ_QUALITY_LEVELS: readonly VizQualityLevel[] = ['high', 'balanced', 'performance']
+const vizQualityListeners = new Set<(level: VizQualityLevel) => void>()
+
+function readVizQuality(): VizQualityLevel {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_VIZ_QUALITY
+  const saved = ls.getItem(VIZ_QUALITY_STORAGE)
+  return VIZ_QUALITY_LEVELS.includes(saved as VizQualityLevel)
+    ? (saved as VizQualityLevel)
+    : DEFAULT_VIZ_QUALITY
+}
+
+function writeVizQuality(level: VizQualityLevel): void {
+  safeLocalStorage()?.setItem(VIZ_QUALITY_STORAGE, level)
+}
+
+/** Push a quality level's two knobs onto their channels. Shared by the setter
+ *  and the startup `applyPersistedVizQuality` so persistence and live-set agree. */
+function applyVizQuality(level: VizQualityLevel): void {
+  const { resolution, density } = deriveVizQuality(level)
+  setInlineVizResolution(resolution)
+  updateVizConfig({ density })
+}
+
+/** Current viz quality level ("performance mode"). */
+export function getVizQuality(): VizQualityLevel {
+  return readVizQuality()
+}
+
+/** Set the viz quality level — persists, applies resolution + density to their
+ *  channels (the density marshals live to worker viz), and notifies listeners. */
+export function setVizQuality(level: VizQualityLevel): void {
+  const safe = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY
+  writeVizQuality(safe)
+  applyVizQuality(safe)
+  for (const cb of Array.from(vizQualityListeners)) cb(safe)
+}
+
+export function onVizQualityChange(cb: (level: VizQualityLevel) => void): () => void {
+  vizQualityListeners.add(cb)
+  return () => { vizQualityListeners.delete(cb) }
+}
+
+/** Restore the persisted quality's DENSITY into the vizConfig singleton on
+ *  startup (call once at app init, like `applyPersistedInlineVizActionSize`).
+ *
+ *  Density ONLY — deliberately NOT resolution. Resolution is pull-model (read
+ *  fresh from its own `stave:inlineVizResolution` setting when a zone mounts),
+ *  and `setVizQuality` already writes that setting at set-time, so a chosen
+ *  level's resolution persists through that channel. Re-applying resolution here
+ *  would CLOBBER a user's standalone render-resolution override on every reload
+ *  (it would force the default level's 512 whenever quality was never changed).
+ *  Density, by contrast, lives in the in-memory vizConfig singleton that resets
+ *  to default(1) per page load, so it's the only knob that needs restoring. */
+export function applyPersistedVizQuality(): void {
+  const { density } = deriveVizQuality(readVizQuality())
+  updateVizConfig({ density })
 }
 
 // ── Off-screen inline-viz teardown (#263 / Phase B-teardown) ─────────────────

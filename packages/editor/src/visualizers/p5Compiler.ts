@@ -103,6 +103,16 @@ export interface P5SignalAccessor {
   fft: number[]
   /** Live master-mix waveform -1..1, `number[]`. */
   wave: number[]
+  /**
+   * Quality / level-of-detail multiplier in `(0, 1]`, live (#269). `1` = full
+   * detail (default); "performance mode" lowers it. A CPU-tessellation-bound
+   * sketch (line meshes — the class a resolution drop does NOT help, #232)
+   * should scale its segment / history COUNT by this, e.g.
+   * `Math.max(2, Math.round(BASE_SEGMENTS * u.density))`. Fill/fragment-bound
+   * sketches gain nothing here and instead ride the render-resolution knob the
+   * renderer applies composite-side. Reads `vizConfig.density` fresh each access
+   * (worker: its marshalled singleton — the config-marshal channel feeds it). */
+  density: number
 }
 
 /**

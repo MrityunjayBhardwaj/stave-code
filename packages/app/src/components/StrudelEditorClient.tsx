@@ -64,6 +64,8 @@ import {
   hydrateSnapshot,
   type ShellSnapshot,
   PIANOROLL_P5_CODE,
+  setVizQuality,
+  type VizQualityLevel,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -353,6 +355,12 @@ export default function StrudelEditorClient({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__staveRegisterViz = (preset: VizPreset): boolean =>
       registerPresetAsNamedViz(preset);
+    // #269 — drive the real quality-setting path from E2E so the density-LOD
+    // proof exercises setVizQuality (→ resolution + density marshal), not a
+    // test-only config poke. Same E2E gate as above.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveSetVizQuality = (level: VizQualityLevel): void =>
+      setVizQuality(level);
   }, []);
 
   // Persist bundled presets to IndexedDB on FIRST seed only — never

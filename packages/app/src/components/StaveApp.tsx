@@ -47,6 +47,7 @@ import {
   applyPersistedTheme,
   applyPersistedUiIconSize,
   applyPersistedInlineVizActionSize,
+  applyPersistedVizQuality,
 } from "@stave/editor";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 import { EditorSettingsModal } from "./EditorSettingsModal";
@@ -140,6 +141,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     applyPersistedTheme();
     applyPersistedUiIconSize();
     applyPersistedInlineVizActionSize();
+    applyPersistedVizQuality();
   }, []);
 
   // Monaco marker bridge — engineLog entries that carry a `source` +
