@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import { addInlineViewZones } from '../visualizers/viewZones'
-import { mountVizRenderer } from '../visualizers/mountVizRenderer'
+import { attachVizLifecycle } from '../visualizers/attachVizLifecycle'
 import { getInlineVizResolution } from '../workspace/editorRegistry'
 
 // Mock p5 to avoid canvas/DOM side-effects in tests
@@ -14,13 +14,16 @@ vi.mock('p5', () => {
   }
 })
 
-// Mock mountVizRenderer to avoid DOM/canvas side-effects
-vi.mock('../visualizers/mountVizRenderer', () => ({
-  mountVizRenderer: vi.fn(() => ({
-    renderer: { mount: vi.fn(), update: vi.fn(), resize: vi.fn(), pause: vi.fn(), resume: vi.fn(), destroy: vi.fn() },
-    disconnect: vi.fn(),
-  })),
-}))
+// Spy on the SHARED per-mount lifecycle choke point (#260) while keeping its real
+// behaviour (it calls renderer.mount + registerVizVisibility; the latter noops
+// under jsdom — no IntersectionObserver). Asserting addInlineViewZones routes
+// through it LOCKS the inline seam to the choke point — the PV74/P107 regression
+// (a per-mount concern wired into only one seam, or the inline path quietly
+// bypassing the shared core).
+vi.mock('../visualizers/attachVizLifecycle', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../visualizers/attachVizLifecycle')>()
+  return { attachVizLifecycle: vi.fn(actual.attachVizLifecycle) }
+})
 
 // Shared mock renderer so tests can assert pause/resume calls across
 // all instances produced by the factory.
@@ -266,6 +269,29 @@ describe('addInlineViewZones', () => {
 
     expect(mockPianorollFactory).toHaveBeenCalled()
     expect(mockRenderer.mount).toHaveBeenCalled()
+  })
+
+  it('routes the inline mount through attachVizLifecycle (the #260 choke point)', () => {
+    const { editor } = makeEditor()
+    const components = makeComponents(
+      new Map([['$0', { vizId: 'pianoroll', afterLine: 1 }]])
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addInlineViewZones(editor as any, components, mockVizDescriptors as any)
+
+    // The inline seam shares the mount+visibility core via attachVizLifecycle (not
+    // its own renderer.mount + registerVizVisibility). If a future change makes the
+    // inline path bypass it, this fails (PV74/P107 regression lock).
+    expect(attachVizLifecycle).toHaveBeenCalled()
+    const call = (attachVizLifecycle as ReturnType<typeof vi.fn>).mock.calls[0]
+    // The renderer passed in is the (teardown-wrapped, #263) VizRenderer — assert
+    // the contract shape, not identity (the wrapper delegates to mockRenderer,
+    // whose .mount is separately asserted above).
+    expect(typeof call[0].mount).toBe('function')
+    expect(call[1]).toBeInstanceOf(HTMLElement) // container
+    // teardownMs + onMountError opts carried (inline-only error swallow).
+    expect(typeof call[5].onMountError).toBe('function')
   })
 
   it('resolves track-scoped scheduler from trackSchedulers', () => {

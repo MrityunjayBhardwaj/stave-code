@@ -2879,14 +2879,20 @@ declare function VizEditor({ components: _components, hapStream: _hapStream, ana
 declare function compilePreset(preset: VizPreset): VizDescriptor;
 
 /**
- * Shared imperative utility that creates/resolves a VizRenderer, calls mount(),
- * and wires a ResizeObserver + visibility pausing. Used by both useVizRenderer
- * (React hook) and viewZones.ts (imperative) — so inline, backdrop, and picker
- * all get off-screen/collapsed/background-tab pausing (Phase C, #258) from one
- * place.
+ * Shared imperative utility for the PICKER (`useVizRenderer`/`VizPanel`), BACKDROP
+ * (`compiledVizProvider`) and CROP preview (`CropPopup`) seams: resolves a
+ * VizRenderer, runs the shared per-mount lifecycle (mount + visibility pausing) via
+ * `attachVizLifecycle`, and ADDS a ResizeObserver (this seam's container is sized
+ * by CSS/layout, so a generic ResizeObserver is the right resize trigger here).
  *
- * Returns the renderer instance and a disconnect function that tears down BOTH
- * the ResizeObserver and the visibility registration.
+ * NOT the inline `.viz()` path — `viewZones.ts` does its OWN mount (Monaco-layout
+ * reflow, teardown-wrap, crop, decorations) and calls `attachVizLifecycle`
+ * DIRECTLY. The single shared choke point for the mount+visibility concern-class
+ * is `attachVizLifecycle`, NOT this function (P107: don't claim callers you don't
+ * have — `viewZones` is not one).
+ *
+ * Returns the renderer instance and a disconnect function that tears down BOTH the
+ * ResizeObserver and the visibility registration.
  */
 declare function mountVizRenderer(container: HTMLDivElement, source: VizRendererSource, components: Partial<EngineComponents>, size: {
     w: number;
