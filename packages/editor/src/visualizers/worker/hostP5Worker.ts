@@ -58,6 +58,13 @@ interface WorkerScope {
   postMessage(message: unknown): void
 }
 
+/** A WebGL context viewed only through the `WEBGL_lose_context` extension — enough
+ *  to release the GPU context (#266). A 2D context's `getExtension` returns null. */
+interface GLLoseCtx {
+  getExtension(name: string): { loseContext?: () => void } | null
+  isContextLost?: () => boolean
+}
+
 /** The kind-specific half of a mount — the shared scaffolding wraps these. */
 interface RendererStrategy {
   /** True once the renderer can draw (p5 setup is async; hydra is sync). */
@@ -69,6 +76,11 @@ interface RendererStrategy {
   resizeKind: (w: number, h: number, dpr: number) => void
   /** Belt-and-suspenders teardown of the renderer instance. */
   teardown: () => void
+  /** The kind's live WebGL context, or null for a 2D / no-GL sketch (#266). The
+   *  host accounts it (`glctx+`) and explicitly loses it on teardown so a POOLED
+   *  warm worker doesn't retain the context past Chrome's ~16-context cap. p5:
+   *  `inst.drawingContext`; hydra: the presenting canvas context. */
+  gl?: () => GLLoseCtx | null
 }
 
 interface MountState extends RendererStrategy {
@@ -89,6 +101,17 @@ interface MountState extends RendererStrategy {
 let P5ctor: any = null
 let Hydractor: any = null
 
+/** #266 diag messages — the worker reports WebGL-context lifecycle so the main
+ *  thread can drive a `viz.glctx` gauge (live GL contexts), mirroring `viz.worker`. */
+const GLCTX_UP = 'glctx+'
+/** #266 fix toggle: when true, teardown explicitly loses the kind's WebGL context
+ *  (`WEBGL_lose_context`) so a POOLED warm worker frees the context slot instead of
+ *  leaving it to the idle worker's lazy GC. p5/hydra never call loseContext (p5
+ *  2.2.3 source has no such call; hydra teardown only hush()es), so without this a
+ *  parked worker retains its context toward Chrome's ~16-context cap. Flipped to
+ *  false ONLY for the throwaway A/B that demonstrates the leak. */
+const GLCTX_RELEASE = true
+
 export function hostVizWorker(scope: WorkerScope): void {
   let state: MountState | null = null
 
@@ -104,6 +127,38 @@ export function hostVizWorker(scope: WorkerScope): void {
       scope.postMessage({ type: 'ready' })
     } catch {
       /* ignore */
+    }
+  }
+
+  // #266 WebGL-context accounting + release. Stashed at first-draw so destroy() can
+  // explicitly lose the context even after `state` is cleared. `glLoseExt` holds the
+  // WEBGL_lose_context extension; `glAccounted` guards the one-shot `glctx+` report
+  // and the matching loseContext on teardown.
+  let glLoseExt: { loseContext?: () => void } | null = null
+  let glAccounted = false
+  const accountGL = (): void => {
+    if (glAccounted || !state) return
+    try {
+      const ctx = state.gl?.() ?? null
+      const ext = ctx?.getExtension?.('WEBGL_lose_context') ?? null
+      if (ext) {
+        glLoseExt = ext
+        glAccounted = true
+        diag('info', GLCTX_UP) // main → perf.gauge('viz.glctx', +1)
+      }
+    } catch {
+      /* best-effort accounting — never break the draw loop */
+    }
+  }
+  const releaseGL = (): void => {
+    if (!glAccounted) return
+    glAccounted = false
+    const ext = glLoseExt
+    glLoseExt = null
+    try {
+      if (GLCTX_RELEASE) ext?.loseContext?.() // #266 fix — free the context slot
+    } catch {
+      /* already lost / unsupported — ignore */
     }
   }
 
@@ -242,6 +297,9 @@ export function hostVizWorker(scope: WorkerScope): void {
 
     return {
       setupDone: () => setup,
+      // #266 — p5's WEBGL context lives on its internal render canvas (drawingContext);
+      // 2D sketches return a CanvasRenderingContext2D whose getExtension yields null.
+      gl: () => (inst?.drawingContext as GLLoseCtx | undefined) ?? null,
       draw: () => {
         inst.redraw() // exactly one draw, 1:1 with this frame (throws → caught)
         // Blit p5's worker-local render canvas → the presenting canvas (zero-copy).
@@ -343,6 +401,11 @@ export function hostVizWorker(scope: WorkerScope): void {
 
     return {
       setupDone: () => true, // pattern ran synchronously above; frames arrive after
+      // #266 — hydra renders directly into the presenting canvas (regl owns its
+      // WebGL context); re-getContext returns that same context for release.
+      gl: () =>
+        ((msg.canvas.getContext('webgl2') as GLLoseCtx | null) ??
+          (msg.canvas.getContext('webgl') as GLLoseCtx | null)),
       draw: () => {
         // Feed s.a.fft[] from the master analyser bytes (mirror pumpAudio 590-600).
         const a = hydra?.synth?.a
@@ -407,6 +470,7 @@ export function hostVizWorker(scope: WorkerScope): void {
     if (!s.readySent) {
       s.readySent = true
       signalReady()
+      accountGL() // #266 — the GL context exists once a frame has drawn
     }
   }
 
@@ -436,6 +500,11 @@ export function hostVizWorker(scope: WorkerScope): void {
     } catch {
       /* ignore */
     }
+    // #266 — after the kind has neutralised its instance, explicitly lose the
+    // (now-orphaned) WebGL context so a POOLED warm worker frees the slot. On the
+    // terminate path this is harmless; on reuse the next mount creates a fresh
+    // canvas+context, so losing the old one can't affect it.
+    releaseGL()
   }
 }
 

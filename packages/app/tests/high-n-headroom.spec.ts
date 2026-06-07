@@ -711,4 +711,110 @@ test.describe('#263 spike — high-N viz memory + WebGL ~16-context cap (worker 
     expect(pageErrors, 'no uncaught page errors through the chain').toHaveLength(0)
     await context.close()
   })
+
+  // ── #266: pool-churn WebGL-context SAFETY gate ──────────────────────────────
+  // p5.remove()/hydra teardown never call loseContext (verified p5 2.2.3 source),
+  // so on the warm POOL path the orphaned context lingers until the idle worker's
+  // lazy GC. #266's going-in fear was that this exhausts Chrome's ~16-context cap
+  // and blacks out live viz. OBSERVED (A/B, fix on vs off): it does NOT, in-range.
+  // With teardown ON the live on-screen set stays ~6 (≪ cap); the churn creates
+  // >16 total contexts across cycles, yet Chrome's oldest-first eviction (and/or
+  // GC of the orphaned inst) reclaims the OLDER orphans before the freshly
+  // re-mounted live ones — so live viz is protected with or without the fix. The
+  // explicit WEBGL_lose_context fix (hostP5Worker, GLCTX_RELEASE) is therefore
+  // HYGIENE + out-of-range safety (frees the slot/GPU memory deterministically for
+  // multi-surface scenarios that push live count toward the cap), not the in-range
+  // black-out fix #266 assumed. This test is the SAFETY GATE that lets the pool go
+  // default-on: pool ON + aggressive churn keeps every on-screen zone LIVE, zero
+  // context-lost logs, and the `viz.glctx` gauge bounded (no runaway count).
+  // HEADED (the GPU context cap is faithful only headed — spec header / P108).
+  test('pool ON: churn keeps on-screen viz live + GL-context count bounded (#266)', async ({ browser }) => {
+    test.skip(!process.env.HIGHN, 'spike harness — set HIGHN=1')
+    const N = 10
+    const CYCLES = 8
+    const context = await browser.newContext({ viewport: { width: 1500, height: 1500 } })
+    const page = await context.newPage()
+    let contextLostLogs = 0
+    page.on('console', (m) => {
+      const t = m.text().toLowerCase()
+      if (t.includes('context lost') || t.includes('contextlost') || (t.includes('webgl') && t.includes('lost'))) {
+        contextLostLogs++
+      }
+    })
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_PERF__ = true
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__STAVE_E2E__ = true
+      try {
+        localStorage.setItem('stave.viz.worker', '1')
+        localStorage.setItem('stave.viz.pool', '1') // worker REUSE pool ON — the #266 path
+        localStorage.setItem('stave:inlineVizTeardown', '1')
+        localStorage.setItem('stave:inlineVizTeardownMs', '4000') // fast churn
+      } catch { /* ignore */ }
+    })
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
+    await page.waitForTimeout(1200)
+    await page.evaluate((code) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(window as any).__staveRegisterViz?.({
+        id: 'swr', name: 'swr', renderer: 'p5', code,
+        requires: ['streaming'], nativeSize: { w: 1100, h: 200 }, createdAt: 1, updatedAt: 1,
+      })
+    }, SYNTHWAVE)
+    await press(page, `${MOD}+Period`)
+    await page.waitForTimeout(400)
+    await setCode(page, codeFor(N))
+    await press(page, `${MOD}+Enter`)
+    await page.waitForTimeout(3000)
+
+    const gauges = async (): Promise<{ worker: number; glctx: number }> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = await page.evaluate(() => (window as any).__stavePerf?.snapshot?.())
+      return { worker: s?.gauges?.['viz.worker'] ?? 0, glctx: s?.gauges?.['viz.glctx'] ?? 0 }
+    }
+    await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.setScrollTop(0)) // eslint-disable-line @typescript-eslint/no-explicit-any
+    await page.waitForTimeout(SETTLE_MS)
+    const gMount = await gauges()
+    // The instrument is wired: a WEBGL viz reports its context (glctx+ → gauge).
+    expect(gMount.glctx, 'viz.glctx gauge wired (glctx+ received)').toBeGreaterThan(0)
+
+    // Aggressive churn: each cycle a different ~4 of N scroll off-screen → tear down
+    // (park) past the 4s threshold, then back → reinit (REUSE a parked worker, a new
+    // re-mount). Without the fix each re-mount leaks the previous context.
+    let glHigh = gMount.glctx
+    for (let i = 0; i < CYCLES; i++) {
+      await page.evaluate((toTop) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const e = (window as any).monaco?.editor?.getEditors?.()?.[0]
+        e?.setScrollTop(toTop ? 0 : (e?.getScrollHeight?.() ?? 999_999))
+      }, i % 2 === 0)
+      await page.waitForTimeout(6000) // > teardown threshold → tear down + reinit
+      const g = await gauges()
+      glHigh = Math.max(glHigh, g.glctx)
+    }
+
+    // Settle on-screen and scan every visible zone for black-out.
+    await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.setScrollTop(0)) // eslint-disable-line @typescript-eslint/no-explicit-any
+    await page.waitForTimeout(SETTLE_MS)
+    const zones = await scanZones(page)
+    const lost = zones.filter((z) => z.distinct <= 1).length
+    const live = zones.filter((z) => z.distinct >= 4).length
+    const gEnd = await gauges()
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n[#266] pool churn ${CYCLES}× · scanned ${zones.length} on-screen: ${live} live / ${lost} black · ` +
+      `ctxLostLogs ${contextLostLogs} · viz.glctx high ${glHigh} (end ${gEnd.glctx}) vs viz.worker ${gEnd.worker}\n`,
+    )
+
+    // The fix's payoff: the cap is NOT exhausted by parked/orphaned contexts.
+    expect(lost, 'no on-screen zone blacked out (context cap not exhausted)').toBe(0)
+    expect(live, 'on-screen zones still rendering after churn').toBeGreaterThan(0)
+    expect(contextLostLogs, 'no WebGL context-lost logs under pool churn').toBe(0)
+    // The live-context gauge never runs away above the live worker count + a small
+    // transient (a re-mount can briefly overlap old+new before destroy decrements).
+    expect(glHigh, 'live GL-context count stays bounded near N (no leak accumulation)').toBeLessThanOrEqual(N + 2)
+    await context.close()
+  })
 })

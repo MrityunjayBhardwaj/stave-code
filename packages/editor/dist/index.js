@@ -6413,6 +6413,10 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
      *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
      *  is terminated so it can't poison a future acquire. */
     this.ready = false;
+    /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
+     *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
+     *  happens after we've detached its listener, so we account it main-side). */
+    this.glAccounted = false;
   }
   /** Register a callback fired once when the worker reports its first successful
    *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
@@ -6457,6 +6461,11 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
           return;
         }
         if (d.type !== "diag") return;
+        if (d.message === "glctx+") {
+          this.glAccounted = true;
+          perf.gauge("viz.glctx", 1);
+          return;
+        }
         if (d.level === "error") {
           console.error(`[viz worker ${this.name}] ${d.message}`, d.stack ? `
 ${d.stack}` : "");
@@ -6501,6 +6510,10 @@ ${d.stack}` : "");
   }
   destroy() {
     perf.gauge("viz.worker", -1);
+    if (this.glAccounted) {
+      perf.gauge("viz.glctx", -1);
+      this.glAccounted = false;
+    }
     perf.dropFrames(this.perfId);
     this.stop();
     const worker = this.worker;
