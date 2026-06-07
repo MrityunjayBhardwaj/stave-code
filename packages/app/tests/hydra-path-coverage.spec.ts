@@ -255,13 +255,21 @@ test.describe('#274 hydra worker path coverage', () => {
   })
 
   test('(c) #270/#253 — the live config-marshal channel reaches the hydra worker', async ({ browser }) => {
-    // SCOPE: hydra renders DIRECTLY to the transferred canvas (Tier 1, no blit/
-    // readback) and `tick()` only DISPATCHES the GPU work, so `viz.worker.draw`
-    // (CPU dispatch wall-time) is RESOLUTION-INDEPENDENT — a resolution→cost assert
-    // is physically not observable via this section (the GPU fill is async). What
-    // IS observable, and is the integration this gap is about, is that the live
-    // config message (#270's channel, which carries `hydraAudioBins` → closes #253)
-    // reaches the MOUNTED hydra worker and is applied WITHOUT remount or fallback.
+    // SCOPE (honest split):
+    //  - The config VALUE marshal — that the worker subset carries `hydraAudioBins`
+    //    and a `{density}` patch doesn't wipe it (the #253 bug) — is UNIT-covered in
+    //    editor `vizConfig.test.ts` (pickWorkerVizConfig + merge-not-reset). Not
+    //    re-asserted here.
+    //  - A resolution→cost assert is physically UNOBSERVABLE via `viz.worker.draw`:
+    //    hydra renders DIRECTLY to the transferred canvas (Tier 1, no blit/readback)
+    //    and `tick()` only DISPATCHES GPU work, so the CPU dispatch wall-time this
+    //    section measures is resolution-independent (the GPU fill is async). P117.
+    //  - What THIS e2e adds is CHANNEL LIVENESS: a live config message (setVizQuality
+    //    → ConfigMessage, the #270 channel) posted to a MOUNTED hydra worker does not
+    //    disrupt it (no remount/teardown/fallback; it keeps drawing). The marshalled
+    //    config has no externally-observable effect on a running hydra (density is
+    //    p5-only, hydraAudioBins is visual, resolution is remount-pull), so liveness
+    //    is the strongest e2e signal — value correctness lives in the unit test.
     const { ctx, page } = await open(browser)
     try {
       await registerHydra(page, 'hy-cfg', HYDRA_HEAVY)
