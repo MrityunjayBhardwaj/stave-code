@@ -2,7 +2,7 @@ import type * as Monaco from 'monaco-editor'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizRenderer, VizDescriptor } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
-import { registerVizVisibility } from './vizVisibility'
+import { attachVizLifecycle } from './attachVizLifecycle'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
@@ -295,9 +295,11 @@ export function addInlineViewZones(
   }
 
   const renderers: VizRenderer[] = []
-  // Phase C (#258): one unregister fn per zone — pauses the renderer while its
-  // zone is scrolled off-screen / collapsed or the tab is hidden. (viewZones
-  // mounts renderers DIRECTLY, NOT via mountVizRenderer, so it wires its own.)
+  // Phase C (#258): one detach fn per zone — pauses the renderer while its zone is
+  // scrolled off-screen / collapsed or the tab is hidden. The inline path does its
+  // OWN mount (Monaco-layout reflow, teardown-wrap, crop, decorations) so it can't
+  // route through mountVizRenderer; it shares the mount+visibility core via
+  // `attachVizLifecycle` (the #260 choke point), then adds the inline-only bits.
   const visibilityCleanups: Array<() => void> = []
   const bufferedSchedulers: BufferedScheduler[] = []
   const zoneEntries: ZoneEntry[] = []
@@ -399,13 +401,16 @@ export function addInlineViewZones(
             onAfterReinit: () => relayout(),
           })
         : makeInner()
-      try {
-        renderer.mount(container, zoneComponents, renderSizeFor(native), console.error)
-      } catch (e) {
-        console.error('[stave] viz mount failed:', e)
-      }
       renderers.push(renderer)
-      visibilityCleanups.push(registerVizVisibility(renderer, container, { teardownMs }))
+      // Shared per-mount lifecycle (#260): mount + visibility pausing via the one
+      // choke point. `onMountError` keeps the prior inline behaviour — log + carry
+      // on (one bad zone must not abort the others) and still wire visibility.
+      visibilityCleanups.push(
+        attachVizLifecycle(renderer, container, zoneComponents, renderSizeFor(native), console.error, {
+          teardownMs,
+          onMountError: (e) => console.error('[stave] viz mount failed:', e),
+        }),
+      )
 
       // The renderer may create the canvas asynchronously (p5 defers
       // to rAF). Apply layout now if the canvas is already present,

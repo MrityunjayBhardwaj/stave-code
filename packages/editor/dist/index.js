@@ -18587,6 +18587,22 @@ function registerVizVisibility(renderer, container, opts) {
 }
 __name(registerVizVisibility, "registerVizVisibility");
 
+// src/visualizers/attachVizLifecycle.ts
+function attachVizLifecycle(renderer, container, components, size, onError, opts = {}) {
+  try {
+    renderer.mount(container, components, size, onError);
+  } catch (e) {
+    if (opts.onMountError) opts.onMountError(e);
+    else throw e;
+  }
+  return registerVizVisibility(
+    renderer,
+    container,
+    opts.teardownMs ? { teardownMs: opts.teardownMs } : void 0
+  );
+}
+__name(attachVizLifecycle, "attachVizLifecycle");
+
 // src/engine/BufferedScheduler.ts
 var _BufferedScheduler = class _BufferedScheduler {
   constructor(hapStream, audioCtx, maxAge = 10) {
@@ -19018,13 +19034,13 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
         onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
       }) : makeInner();
-      try {
-        renderer.mount(container, zoneComponents, renderSizeFor(native), console.error);
-      } catch (e) {
-        console.error("[stave] viz mount failed:", e);
-      }
       renderers.push(renderer);
-      visibilityCleanups.push(registerVizVisibility(renderer, container, { teardownMs }));
+      visibilityCleanups.push(
+        attachVizLifecycle(renderer, container, zoneComponents, renderSizeFor(native), console.error, {
+          teardownMs,
+          onMountError: /* @__PURE__ */ __name((e) => console.error("[stave] viz mount failed:", e), "onMountError")
+        })
+      );
       const canvas = container.querySelector("canvas");
       applyLayout(container, canvas, layout);
       requestAnimationFrame(() => {
@@ -25562,7 +25578,7 @@ var WorkerBusFeed = _WorkerBusFeed;
 // src/visualizers/mountVizRenderer.ts
 function mountVizRenderer(container, source, components, size, onError) {
   const renderer = typeof source === "function" ? source() : source;
-  renderer.mount(container, components, size, onError);
+  const detachLifecycle = attachVizLifecycle(renderer, container, components, size, onError);
   let lastW = size.w;
   let lastH = size.h;
   const ro = new ResizeObserver((entries3) => {
@@ -25574,12 +25590,11 @@ function mountVizRenderer(container, source, components, size, onError) {
     }
   });
   ro.observe(container);
-  const unregisterVisibility = registerVizVisibility(renderer, container);
   return {
     renderer,
     disconnect: /* @__PURE__ */ __name(() => {
       ro.disconnect();
-      unregisterVisibility();
+      detachLifecycle();
     }, "disconnect")
   };
 }
