@@ -3405,6 +3405,7 @@ var LiveRecorder = _LiveRecorder;
 // src/perf/profiler.ts
 var RING = 240;
 var DROP_FACTOR = 2;
+var SLOW_FRAME_MS = 1e3 / 30;
 function nowMs() {
   return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : 0;
 }
@@ -3470,6 +3471,7 @@ var _FrameTracker = class _FrameTracker {
     this.intervals = new Ring();
     this.lastTs = null;
     this.dropCount = 0;
+    this.slowCount = 0;
     this.frameCount = 0;
   }
   tick(ts) {
@@ -3478,6 +3480,7 @@ var _FrameTracker = class _FrameTracker {
       const dt = ts - this.lastTs;
       const med = this.intervals.median();
       if (med > 0 && dt > med * DROP_FACTOR) this.dropCount++;
+      if (dt > SLOW_FRAME_MS) this.slowCount++;
       this.intervals.push(dt);
     }
     this.lastTs = ts;
@@ -3489,7 +3492,8 @@ var _FrameTracker = class _FrameTracker {
       fps: s.p50 > 0 ? 1e3 / s.p50 : 0,
       p50: s.p50,
       p95: s.p95,
-      drops: this.dropCount
+      drops: this.dropCount,
+      slowFrames: this.slowCount
     };
   }
 };
@@ -3627,7 +3631,7 @@ var _Profiler = class _Profiler {
     const counters = {};
     for (const [name, v] of this.counters) counters[name] = v;
     const gauges = {};
-    for (const [name, v] of this.gauges) gauges[name] = v;
+    for (const [name, v] of this.gauges) gauges[name] = Math.max(0, v);
     return {
       enabled: this._enabled,
       uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
@@ -5913,10 +5917,13 @@ var _P5VizRenderer = class _P5VizRenderer {
       current: buildStaveUniforms(bus, () => {
         perf.frame(this.perfId);
         perf.begin("p5.bus");
-        bus.tick();
-        bus.refreshActive(bus.now());
-        bus.readAudio();
-        perf.end("p5.bus");
+        try {
+          bus.tick();
+          bus.refreshActive(bus.now());
+          bus.readAudio();
+        } finally {
+          perf.end("p5.bus");
+        }
       })
     };
   }

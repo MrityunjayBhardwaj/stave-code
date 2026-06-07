@@ -3136,8 +3136,12 @@ interface FrameStats {
     p50: number;
     /** 95th-percentile inter-frame interval (ms) — the stutter tail. */
     p95: number;
-    /** Frames whose interval exceeded DROP_FACTOR × running median. */
+    /** Frames whose interval exceeded DROP_FACTOR × running median (VARIANCE). */
     drops: number;
+    /** Frames whose interval exceeded SLOW_FRAME_MS (<30fps) — the ABSOLUTE floor.
+     *  Catches a uniformly-slow cadence that `drops` misses (every frame equally
+     *  slow ⇒ 0 drops but many slowFrames). */
+    slowFrames: number;
 }
 /** A full point-in-time read of the profiler. */
 interface PerfSnapshot {
