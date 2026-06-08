@@ -397,6 +397,13 @@ export {
   registerPresetAsNamedViz,
   workspaceFileIdForPreset,
 } from './workspace/preview'
+export {
+  VIZ_LANGUAGES,
+  isVizLanguage,
+  rendererForLanguage,
+  languageForRenderer,
+} from './workspace/vizLanguages'
+export type { VizRendererKind, VizLanguage } from './workspace/vizLanguages'
 
 // Shell types
 export type {

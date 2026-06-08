@@ -34,6 +34,7 @@ import {
   bundledPresetId,
   flushToPreset,
   getPresetIdForFile,
+  isVizLanguage,
   registerPresetAsNamedViz,
   emitLog,
   emitFixed,
@@ -246,12 +247,7 @@ export default function StrudelEditorClient({
   const registerAllVizFiles = useCallback(async () => {
     const viewing = isViewing();
     const allFiles = listWorkspaceFiles();
-    const vizFiles = allFiles.filter(
-      (f) =>
-        f.language === "p5js" ||
-        f.language === "hydra" ||
-        f.language === "glsl",
-    );
+    const vizFiles = allFiles.filter((f) => isVizLanguage(f.language));
     // Basename (sans extension) of every p5 viz file. When a hydra file
     // shares a basename with a p5 file (e.g. scope.p5 + scope.hydra), the
     // bare mode name belongs to the p5 default renderer — register the
@@ -734,9 +730,8 @@ export default function StrudelEditorClient({
       const file = getFile(tab.fileId);
       if (!file) return;
 
-      // Only viz files (.p5 / .hydra) get flushed to a preset.
-      const isVizFile = file.language === "p5js" || file.language === "hydra";
-      if (!isVizFile) return;
+      // Only viz files (.p5 / .hydra / .glsl) get flushed to a preset.
+      if (!isVizLanguage(file.language)) return;
 
       // Use existing presetId, or auto-generate one for manually created
       // viz files so they become available to `.viz("name")`.
@@ -757,6 +752,26 @@ export default function StrudelEditorClient({
     },
     [],
   );
+
+  // E2E hook (dev/test only) — fire the REAL save for a viz file by id WITHOUT a
+  // tab switch, so the inline-viz hot-reload gate (viz-hot-reload.spec.ts) can
+  // exercise the save→repaint path with the pattern editor MOUNTED throughout
+  // (PV89). Mirrors the WorkspaceShell Cmd+S → onSaveFile(tab) path. Same
+  // dead-code-eliminated gate as the other `__stave*` hooks.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (process.env.NODE_ENV === "production") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(window as any).__STAVE_E2E__) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveSaveVizFileById = (fileId: string): boolean => {
+      if (!getFile(fileId)) return false;
+      handleSaveFile({ kind: "editor", fileId } as WorkspaceTab & {
+        kind: "editor";
+      });
+      return true;
+    };
+  }, [handleSaveFile]);
 
   // editorExtrasForTab: play/stop keybindings + error squiggles
   const editorExtrasForTab = useCallback((tab: WorkspaceTab & { kind: "editor" }) => {

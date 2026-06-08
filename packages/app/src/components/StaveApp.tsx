@@ -84,6 +84,7 @@ import {
   togglePerfEnabled,
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
+import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { PerfOverlay } from "./PerfOverlay";
 
 interface StaveAppProps {
@@ -426,8 +427,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       renderer: "p5" | "hydra" | "glsl",
       code: string,
     ): boolean => {
-      const lang =
-        renderer === "hydra" ? "hydra" : renderer === "glsl" ? "glsl" : "p5js";
+      const lang = languageForRenderer(renderer);
       seedWorkspaceFile(id, `preset/viz/${name}.${renderer}`, code, lang, {
         presetId: id,
       });
@@ -454,7 +454,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       const target = norm(basename);
       const f = listWorkspaceFiles().find(
         (wf) =>
-          (wf.language === "p5js" || wf.language === "hydra") &&
+          isVizLanguage(wf.language) &&
           norm(wf.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
       );
       if (!f) return null;
@@ -491,7 +491,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       const target = norm(vizId);
       const matches = listWorkspaceFiles().filter(
         (f) =>
-          (f.language === "p5js" || f.language === "hydra") &&
+          isVizLanguage(f.language) &&
           norm(f.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
       );
       if (matches.length === 0) return; // no viz file — leave backdrop as-is
@@ -1007,7 +1007,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         })()}
         backgroundFileId={backgroundFileId}
         vizFiles={listWorkspaceFiles()
-          .filter((f) => f.language === "hydra" || f.language === "p5js")
+          .filter((f) => isVizLanguage(f.language))
           .map((f) => ({
             id: f.id,
             name: f.path
@@ -1206,16 +1206,20 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                   let resolvedPresetId = presetId;
                   if (!resolvedPresetId) {
                     const norm = (s: string) => s.toLowerCase().replace(/[\s\-_:]/g, "");
-                    const wantHydra = /:hydra$/i.test(vizId);
-                    const target = norm(vizId.replace(/:hydra$/i, ""));
+                    // vizId may carry a renderer qualifier (`name:hydra` /
+                    // `name:glsl`) mirroring registerAllVizFiles; a bare name
+                    // defaults to the p5 renderer (p5 wins on basename collision).
+                    const qual = /:(hydra|glsl)$/i.exec(vizId)?.[1]?.toLowerCase();
+                    const wantLang = qual === "hydra" ? "hydra" : qual === "glsl" ? "glsl" : "p5js";
+                    const target = norm(vizId.replace(/:(hydra|glsl)$/i, ""));
                     const allFiles = listWorkspaceFiles();
                     const matches = allFiles.filter(f => {
-                      if (f.language !== "p5js" && f.language !== "hydra") return false;
+                      if (!isVizLanguage(f.language)) return false;
                       const base = f.path.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
                       return norm(base) === target;
                     });
                     const vizFile =
-                      matches.find(f => (f.language === "hydra") === wantHydra) ??
+                      matches.find(f => f.language === wantLang) ??
                       matches[0];
                     if (vizFile?.meta?.presetId) {
                       resolvedPresetId = vizFile.meta.presetId as string;
