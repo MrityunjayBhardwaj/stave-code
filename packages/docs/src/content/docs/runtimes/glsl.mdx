@@ -97,9 +97,16 @@ on ShaderToy. v1 is **single-pass only**: no multi-buffer / feedback / cubemap /
 mic channels yet.
 </Aside>
 
-<Aside type="note" title="Custom shader files are coming">
-Today GLSL ships as the four built-in visuals above. A dedicated editor for your
-own `.glsl` shader files — with syntax highlighting and a live preview — is on the
-way. Until then, p5.js and Hydra are the runtimes for fully custom visuals (see
-[p5.js](/runtimes/p5/) and [Hydra](/runtimes/hydra/)).
-</Aside>
+## Write your own
+
+Beyond the built-ins, you can author your own shaders as `.glsl` files:
+
+1. In the file tree, **New file** → name it `something.glsl`.
+2. Paste a ShaderToy `mainImage` (or write a raw `void main()`). You get GLSL
+   syntax highlighting and a **live preview** that recompiles as you type.
+3. Attach it to a pattern with `.viz('something')`, exactly like the built-ins.
+
+A `.glsl` file reads the same uniforms documented above — `iChannel0` for the
+spectrum/waveform and `uKick`/`uSnare`/… for pattern events — so your shader is
+audio- and event-reactive with no extra wiring. New projects ship two examples to
+start from: **Prism** and **Pulse Grid**.
