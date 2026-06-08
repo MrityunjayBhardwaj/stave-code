@@ -1,0 +1,52 @@
+---
+title: Sonic Pi
+description: Ruby-flavoured imperative live-coding — Sam Aaron's Sonic Pi, running in Stave's browser sandbox.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Sonic Pi is the **imperative** sibling to Strudel — thread-based, linear, explicit timing via `sleep`.
+
+```ruby
+use_bpm 120
+
+live_loop :drums do
+  sample :bd_haus
+  sleep 0.5
+  sample :sn_dub
+  sleep 0.5
+end
+
+live_loop :bass do
+  with_fx :reverb do
+    play chord(:c3, :minor).choose, release: 0.3
+    sleep 0.25
+  end
+end
+```
+
+<Aside type="caution">
+Stave runs a **browser port** of Sonic Pi, not the native desktop app. Some features that depend on OSC or the SuperCollider server aren't yet wired. Synths, samples, FX, language helpers, and the time model all work.
+</Aside>
+
+## What Stave adds
+
+- **`.viz("name")`** — attach an inline viz to a `live_loop`, same model as Strudel.
+- **Ctrl+Enter** evaluates the buffer. Changes to a named `live_loop` take effect on its next iteration.
+- **`:symbol` autocomplete** — synth names, sample names, FX names, and note symbols all have hover + completion coverage.
+
+## Two-axis language
+
+**DSL flow** (coloured one way in the editor) — the imperative orchestration:
+`play`, `sleep`, `live_loop`, `sample`, `synth`, `with_fx`, `use_bpm`, `use_synth`, `in_thread`, `cue`, `sync`.
+
+**Music helpers** (coloured differently) — the mathy / pitch / randomness toolkit:
+`chord`, `scale`, `note`, `rrand`, `choose`, `ring`, `tick`, `look`, `spread`, `line`.
+
+## Synths and FX
+
+Every `:dull_bell`, `:prophet`, `:tb303` symbol hovers to reveal its documentation. Full list in the [reference](/reference/sonicpi/).
+
+## Full function reference
+
+[Sonic Pi reference](/reference/sonicpi/) — 313 entries covering language, sound, MIDI, western-theory helpers, synths, and FX.

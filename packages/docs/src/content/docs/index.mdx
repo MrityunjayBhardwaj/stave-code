@@ -1,0 +1,45 @@
+---
+title: Stave Code
+description: Browser-native live-coding editor for music and visuals — one workspace, four runtimes.
+template: splash
+hero:
+  tagline: Live-code music and visuals side-by-side. No install, no toolchain — it's a URL.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/MrityunjayBhardwaj/stave-code
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What Stave is
+
+Stave is a browser IDE for **live-coded music and visuals**. It runs four runtimes in one workspace — patterns (Strudel, Sonic Pi) and graphics (p5.js, Hydra) — so a piece of music and the visual that reacts to it can live in adjacent tabs and talk to each other through a shared event stream.
+
+Everything runs locally. Projects are stored in your browser (IndexedDB + CRDT), and a share link is a fragment URL you can drop into chat.
+
+<CardGrid>
+  <Card title="Pattern runtimes" icon="pencil">
+    **Strudel** — concise JavaScript pattern algebra. **Sonic Pi** — Ruby-flavoured imperative sound.
+  </Card>
+  <Card title="Visual runtimes" icon="seti:tsconfig">
+    **p5.js** — full creative-coding surface with Stave host globals injected. **Hydra** — chainable video synth.
+  </Card>
+  <Card title="Named viz attachments" icon="setting">
+    `.viz("name")` at the end of a pattern attaches a visualizer. Renders inline beneath the code or fullscreen as a backdrop.
+  </Card>
+  <Card title="Share + save" icon="rocket">
+    Auto-snapshots every minute. Manual named snapshots. Share link fits in a chat message. No account required.
+  </Card>
+</CardGrid>
+
+## Next steps
+
+- **[Getting started](/getting-started/)** — five minutes, from URL to sound.
+- **[Runtimes](/runtimes/strudel/)** — tutorials per language.
+- **[API reference](/reference/strudel/)** — every symbol Stave recognises.

@@ -1,0 +1,75 @@
+---
+title: Getting started
+description: From URL to sound in five minutes.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+## Open Stave
+
+Visit **[stave.live](https://stave.live)** in a Chromium-based browser. A fresh project opens with one Strudel pattern, one Sonic Pi pattern, and a handful of viz presets already loaded.
+
+<Aside type="caution">
+Safari works for pattern audio but Hydra requires WebGL2 which Safari enables behind a flag. Chrome, Edge, Arc, or Brave are the path of least resistance.
+</Aside>
+
+## Play something
+
+<Steps>
+
+1. Click anywhere inside **pattern.strudel**.
+
+2. Press **Ctrl+Enter** (or **⌘+Enter** on macOS).
+
+   The pattern starts playing. You should hear a looping phrase.
+
+3. Edit a line — for example change `"c4 e4 g4 b4"` to `"c4 e4 g4 c5"`. Press **Ctrl+Enter** again. The change is live on the next cycle boundary.
+
+4. Press **Ctrl+.** (or **⌘+.**) to stop.
+
+</Steps>
+
+## Switch runtimes
+
+The tab bar across the top shows every file in the current project. Click **pattern.sonicpi** to switch to Sonic Pi; click **Piano Roll.p5** to view the p5.js source of the default inline viz; click **scope.hydra** for Hydra.
+
+Each file is its own runtime with its own Play button. Running multiple at once is fine — they share the same WebAudio context.
+
+## Attach a viz to a pattern
+
+Stave's signature move. At the end of any Strudel `$:` block, append `.viz("name")`:
+
+```js
+$: note("c4 e4 g4").s("sawtooth").viz("pianoroll")
+```
+
+On your next evaluate, an inline viz zone opens beneath that line, rendering the `pianoroll` preset driven by the live hap stream. Drag the bottom edge to resize. Click the crop button to reframe. Any viz file in the project (`preset/viz/*.p5`, `preset/viz/*.hydra`) is addressable by name.
+
+## Make a viz the backdrop
+
+For fullscreen work, promote any viz to the editor background:
+
+<Steps>
+
+1. Right-click a `.p5` or `.hydra` file in the sidebar → **Set as Background**.
+
+2. The code panel becomes translucent; the viz renders full-viewport behind it.
+
+3. Use the **set bg ▾** button in the top bar to swap, crop, or clear the backdrop.
+
+</Steps>
+
+## Where your work lives
+
+Stave is local-first. Projects are stored in IndexedDB, synced across tabs via CRDT. The File menu gives you:
+
+- **New / Open / Rename / Delete project**
+- **Import / Export .zip**
+- **Copy share link** — produces a `#share=…` URL that reconstructs the project on any machine
+- **Version History** — auto-snapshot every 60s idle, plus named snapshots on demand
+
+## Next
+
+- Language-specific tutorials: [Strudel](/runtimes/strudel/), [Sonic Pi](/runtimes/sonicpi/), [p5.js](/runtimes/p5/), [Hydra](/runtimes/hydra/)
+- Concepts: [Projects](/concepts/projects/), [Tabs and groups](/concepts/tabs-and-groups/), [Inline viz](/concepts/viz/)
+- [API reference](/reference/strudel/) — every symbol, with upstream links
