@@ -5598,6 +5598,277 @@ function compileHydraCode(code) {
 }
 __name(compileHydraCode, "compileHydraCode");
 
+// src/visualizers/renderers/glslShaderSource.ts
+var GLSL_FULLSCREEN_VERT = `#version 300 es
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
+var VERSION = "#version 300 es";
+var PRECISION = "precision highp float;\nprecision highp int;";
+var UNIFORMS = `uniform vec3 iResolution;
+uniform float iTime;
+uniform vec4 iMouse;
+uniform sampler2D iChannel0;
+uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
+uniform float uRms, uBass, uMid, uTreble;`;
+var SHADERTOY_OUT = "out vec4 stave_FragColor;";
+var SHADERTOY_ENTRY = `
+void main() {
+  vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+  mainImage(color, gl_FragCoord.xy);
+  stave_FragColor = color;
+}
+`;
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+}
+__name(stripComments, "stripComments");
+function stripVersion(src) {
+  return src.replace(/^[ \t]*#version[^\n]*\r?\n?/m, "");
+}
+__name(stripVersion, "stripVersion");
+function buildGLSLFragmentSource(userSource) {
+  const probe = stripComments(userSource);
+  const hasMainImage = /\bmainImage\s*\(/.test(probe);
+  const hasMain = /\bvoid\s+main\s*\(/.test(probe);
+  if (hasMainImage && hasMain) {
+    throw new Error(
+      "GLSL: found both mainImage() and main(). For a ShaderToy shader, remove your main() \u2014 Stave provides it. For a raw GLSL shader, remove mainImage()."
+    );
+  }
+  if (hasMainImage) {
+    return `${VERSION}
+${PRECISION}
+${UNIFORMS}
+${SHADERTOY_OUT}
+${userSource}
+${SHADERTOY_ENTRY}`;
+  }
+  if (hasMain) {
+    return `${VERSION}
+${PRECISION}
+${UNIFORMS}
+${stripVersion(userSource)}
+`;
+  }
+  throw new Error(
+    "GLSL: no entry point. Define `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for a ShaderToy shader, or `void main()` for a raw GLSL shader."
+  );
+}
+__name(buildGLSLFragmentSource, "buildGLSLFragmentSource");
+
+// src/visualizers/renderers/glslCore.ts
+var GLSL_EVENT_NAMES = [
+  "uKick",
+  "uSnare",
+  "uHat",
+  "uOpenHat",
+  "uClap",
+  "uRim",
+  "uTom",
+  "uVelocity",
+  "uRms",
+  "uBass",
+  "uMid",
+  "uTreble"
+];
+var ZERO_GLSL_EVENTS = Object.fromEntries(
+  GLSL_EVENT_NAMES.map((n) => [n, 0])
+);
+var AUDIO_TEX_W = 512;
+var AUDIO_TEX_H = 2;
+function compileShader(gl, type, src, label) {
+  const sh = gl.createShader(type);
+  if (!sh) throw new Error(`glsl: could not create ${label} shader`);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(sh) ?? "";
+    gl.deleteShader(sh);
+    throw new Error(`glsl ${label} compile error:
+${log.trim()}`);
+  }
+  return sh;
+}
+__name(compileShader, "compileShader");
+function resampleByteRow(src, srcLen, dst, dstLen) {
+  if (srcLen <= 0) {
+    dst.fill(0, 0, dstLen);
+    return;
+  }
+  const bucket = srcLen / dstLen;
+  for (let i = 0; i < dstLen; i++) {
+    const start = Math.floor(i * bucket);
+    const end = Math.max(start + 1, Math.floor((i + 1) * bucket));
+    let sum = 0;
+    let n = 0;
+    for (let j = start; j < end && j < srcLen; j++) {
+      sum += src[j];
+      n++;
+    }
+    dst[i] = n > 0 ? Math.round(sum / n) : 0;
+  }
+}
+__name(resampleByteRow, "resampleByteRow");
+var _GLSLProgram = class _GLSLProgram {
+  constructor(gl, userSource) {
+    this.gl = gl;
+    /** Scratch buffers, allocated once (no per-frame alloc). */
+    this.freqScratch = new Uint8Array(AUDIO_TEX_W * 4);
+    this.waveScratch = new Uint8Array(AUDIO_TEX_W * 4);
+    /** The 2-row texel buffer uploaded each frame (row 0 FFT, row 1 wave). */
+    this.texRows = new Uint8Array(AUDIO_TEX_W * AUDIO_TEX_H);
+    this.disposed = false;
+    const vert = compileShader(gl, gl.VERTEX_SHADER, GLSL_FULLSCREEN_VERT, "vertex");
+    const frag = compileShader(
+      gl,
+      gl.FRAGMENT_SHADER,
+      buildGLSLFragmentSource(userSource),
+      "fragment"
+    );
+    const program = gl.createProgram();
+    if (!program) throw new Error("glsl: could not create program");
+    gl.attachShader(program, vert);
+    gl.attachShader(program, frag);
+    gl.linkProgram(program);
+    gl.deleteShader(vert);
+    gl.deleteShader(frag);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(program) ?? "";
+      gl.deleteProgram(program);
+      throw new Error(`glsl link error:
+${log.trim()}`);
+    }
+    this.program = program;
+    this.uResolution = gl.getUniformLocation(program, "iResolution");
+    this.uTime = gl.getUniformLocation(program, "iTime");
+    this.uMouse = gl.getUniformLocation(program, "iMouse");
+    this.uChannel0 = gl.getUniformLocation(program, "iChannel0");
+    this.uEvents = GLSL_EVENT_NAMES.map(
+      (n) => [n, gl.getUniformLocation(program, n)]
+    );
+    const vao = gl.createVertexArray();
+    if (!vao) throw new Error("glsl: could not create VAO");
+    this.vao = vao;
+    const tex = gl.createTexture();
+    if (!tex) throw new Error("glsl: could not create audio texture");
+    this.audioTex = tex;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R8,
+      AUDIO_TEX_W,
+      AUDIO_TEX_H,
+      0,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      null
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+  /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
+   *  at its current contents (or zero) and the shader still animates off iTime.
+   *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0. */
+  draw(audio, state, events) {
+    if (this.disposed) return;
+    const gl = this.gl;
+    const w = Math.max(1, Math.round(state.width));
+    const h = Math.max(1, Math.round(state.height));
+    if (audio) {
+      const bins = Math.min(audio.frequencyBinCount, this.freqScratch.length);
+      const freq = this.freqScratch.subarray(0, bins);
+      const wave = this.waveScratch.subarray(0, bins);
+      audio.getByteFrequencyData(freq);
+      audio.getByteTimeDomainData(wave);
+      resampleByteRow(freq, bins, this.texRows.subarray(0, AUDIO_TEX_W), AUDIO_TEX_W);
+      resampleByteRow(wave, bins, this.texRows.subarray(AUDIO_TEX_W), AUDIO_TEX_W);
+      gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        AUDIO_TEX_W,
+        AUDIO_TEX_H,
+        gl.RED,
+        gl.UNSIGNED_BYTE,
+        this.texRows
+      );
+    }
+    gl.viewport(0, 0, w, h);
+    gl.useProgram(this.program);
+    gl.bindVertexArray(this.vao);
+    if (this.uResolution) gl.uniform3f(this.uResolution, w, h, 1);
+    if (this.uTime) gl.uniform1f(this.uTime, state.timeMs / 1e3);
+    if (this.uMouse) {
+      const m = state.mouse ?? [0, 0, 0, 0];
+      gl.uniform4f(this.uMouse, m[0], m[1], m[2], m[3]);
+    }
+    if (this.uChannel0) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
+      gl.uniform1i(this.uChannel0, 0);
+    }
+    const ev = events ?? ZERO_GLSL_EVENTS;
+    for (const [name, loc] of this.uEvents) {
+      if (loc) gl.uniform1f(loc, ev[name]);
+    }
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+  }
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    const gl = this.gl;
+    try {
+      gl.deleteProgram(this.program);
+      gl.deleteVertexArray(this.vao);
+      gl.deleteTexture(this.audioTex);
+    } catch {
+    }
+  }
+};
+__name(_GLSLProgram, "GLSLProgram");
+var GLSLProgram = _GLSLProgram;
+function createGLSLProgram(gl, userSource) {
+  return new GLSLProgram(gl, userSource);
+}
+__name(createGLSLProgram, "createGLSLProgram");
+
+// src/visualizers/renderers/glslEvents.ts
+function readGLSLEvents(bus) {
+  const m = bus.master();
+  let vel = 0;
+  for (const s of bus.sounds) {
+    const v = bus.sound(s).velocity;
+    if (v > vel) vel = v;
+  }
+  return {
+    uKick: bus.envValue("uKick"),
+    uSnare: bus.envValue("uSnare"),
+    uHat: bus.envValue("uHat"),
+    uOpenHat: bus.envValue("uOpenHat"),
+    uClap: bus.envValue("uClap"),
+    uRim: bus.envValue("uRim"),
+    uTom: bus.envValue("uTom"),
+    uVelocity: vel,
+    uRms: m.rms,
+    uBass: m.bass,
+    uMid: m.mid,
+    uTreble: m.treble
+  };
+}
+__name(readGLSLEvents, "readGLSLEvents");
+
 // src/visualizers/worker/workerMessages.ts
 function isControlMessage(data) {
   return typeof data === "object" && data !== null && typeof data.type === "string";
@@ -5707,7 +5978,7 @@ function hostVizWorker(scope) {
     const rawAnalyser = new RawAnalyserShim();
     const rawScheduler = new RawSchedulerShim();
     const containerSizeRef = { current: { w: msg.size.w, h: msg.size.h } };
-    const strategy = msg.kind === "hydra" ? await mountHydra(msg, feed, rawAnalyser, rawScheduler) : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr);
+    const strategy = msg.kind === "hydra" ? await mountHydra(msg, feed, rawAnalyser, rawScheduler) : msg.kind === "glsl" ? mountGLSL(msg, rawAnalyser, feed) : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr);
     const reader = createPostMessageReader(scope);
     state = {
       feed,
@@ -5885,6 +6156,40 @@ function hostVizWorker(scope) {
     };
   }
   __name(mountHydra, "mountHydra");
+  function mountGLSL(msg, rawAnalyser, feed) {
+    msg.canvas.width = Math.max(1, Math.round(msg.size.w));
+    msg.canvas.height = Math.max(1, Math.round(msg.size.h));
+    const gl = msg.canvas.getContext("webgl2");
+    if (!gl) throw new Error("glsl: WebGL2 unavailable in worker");
+    const program = createGLSLProgram(gl, msg.code);
+    const startMs = globalThis.performance?.now?.() ?? 0;
+    return {
+      setupDone: /* @__PURE__ */ __name(() => true, "setupDone"),
+      // program built synchronously above; draw on first frame
+      // #266 — raw WebGL2 context we own; re-get returns the same context for the
+      // host's accountGL/releaseGL. The EASIEST gl() of the three kinds (no search).
+      gl: /* @__PURE__ */ __name(() => msg.canvas.getContext("webgl2"), "gl"),
+      draw: /* @__PURE__ */ __name(() => {
+        const timeMs = (globalThis.performance?.now?.() ?? 0) - startMs;
+        program.draw(
+          rawAnalyser,
+          { width: msg.canvas.width, height: msg.canvas.height, timeMs },
+          readGLSLEvents(feed.bus)
+        );
+      }, "draw"),
+      resizeKind: /* @__PURE__ */ __name((w, h) => {
+        msg.canvas.width = Math.max(1, Math.round(w));
+        msg.canvas.height = Math.max(1, Math.round(h));
+      }, "resizeKind"),
+      teardown: /* @__PURE__ */ __name(() => {
+        try {
+          program.dispose();
+        } catch {
+        }
+      }, "teardown")
+    };
+  }
+  __name(mountGLSL, "mountGLSL");
   function applyAndDraw(frame) {
     const s = state;
     if (!s) return;
