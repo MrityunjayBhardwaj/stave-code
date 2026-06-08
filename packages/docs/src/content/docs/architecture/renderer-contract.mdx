@@ -401,14 +401,42 @@ Everything in [The kind-agnostic seams](#the-kind-agnostic-seams) — backpressu
 fallback, profiler bridge, config marshal, visibility, GL accounting — then
 applies automatically.
 
-<Aside type="tip" title="The GLSL renderer is the proof">
-The next renderer added against this contract is a single-pass GLSL/ShaderToy
-renderer (raw WebGL2, fullscreen quad + fragment shader, Tier-1 direct-to-canvas,
-zero library). It is deliberately the *simplest possible* instance — if it slots
-into the seams above with **no new seam**, the contract is genuinely
-engine-agnostic (proven, not just claimed). If it needs a new seam, that gap is a
-finding: it gets catalogued and this chapter is amended. Either way the docs and
-the code close the loop. The audio-feed seam (hydra downsamples the master
-analyser bytes; p5 reads the named-signal bus; GLSL will upload `u.fft` to a
-texture) is the most likely place the contract needs generalizing — watch it.
+The three kinds that exist each have their own developer chapter detailing how
+they fill in the contract:
+[GLSL](/architecture/glsl/) (the Tier-1 zero-library reference),
+[Hydra](/architecture/hydra/) (Tier-1, library), and
+[p5.js](/architecture/p5/) (Tier-2 blit, the hardest case).
+
+## Validated by the GLSL renderer
+
+This chapter was written **before** the GLSL renderer existed — as a spec, to be
+tested. The test: implement the *simplest possible* kind (single-pass GLSL/
+ShaderToy — raw WebGL2, fullscreen triangle + fragment shader, Tier-1
+direct-to-canvas, zero library) against the contract and see whether it slots in
+with **no new shared seam**, or exposes a gap. It slotted in. The result (PV87,
+PK31 OUTCOME):
+
+- **All five `RendererStrategy` members + all seven kind-agnostic seams were
+  satisfied with zero change to the shared host.** A new worker renderer really
+  is *just* a new strategy. GLSL's `gl()` is the most trivial of the three (the
+  raw context it created); `setupDone()` is synchronous; and because a GPU
+  `draw()` runs no per-frame user JS, the #257 draw-error seam is satisfied with
+  nothing to catch.
+- **The audio-feed seam — flagged above as the most likely place to need
+  generalizing — held.** `mountGLSL` reads the **same** already-refreshed
+  `rawAnalyser` hydra reads and uploads it to an `iChannel0` texture *internally*
+  (`hostP5Worker.ts:517`). The kind-agnostic `AudioByteSource` interface
+  (`glslCore.ts:32`) covered it; no host change.
+
+<Aside type="note" title="The one new thing was kind-specific, not shared (PV87 addendum)">
+The GLSL renderer also added **pattern-event uniforms** (`uKick`, `uSnare`, …,
+#284) — turning named-signal-bus values into shader uniforms. This is genuinely
+new work, but it lives **entirely inside the strategy's `draw()`**
+(`readGLSLEvents`, `glslEvents.ts:21`), exactly like p5's blit or hydra's
+`s.a.fft` fill. It is a *kind-specific marshal*, **not** a new shared-host seam —
+sourced from data the host already prepares (the ticked `feed.bus`). So the
+generalization the contract anticipated turned out to be the right shape: the
+shared seam is "the host hands you refreshed feeds and calls `draw()` once"; what
+each kind *does* with those feeds is its own business. Contract confirmed, not
+amended. See [Renderer: GLSL](/architecture/glsl/) for the detail.
 </Aside>

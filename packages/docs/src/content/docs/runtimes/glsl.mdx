@@ -1,0 +1,112 @@
+---
+title: GLSL / ShaderToy
+description: Run GPU fragment shaders as Stave visualizers — audio-reactive plasma, spectrum bars, and pattern-event shaders, attached to any pattern with .viz().
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Stave runs **single-pass fragment shaders** as visualizers — the same kind of
+shader you'd write on [ShaderToy](https://www.shadertoy.com). They're the
+lightest, fastest visual option: pure GPU, no library. Four are built in, and
+each reacts to your music.
+
+## The built-in shaders
+
+Attach any of these to a pattern with `.viz('…')`:
+
+| `.viz('…')` | What you see | Reacts to |
+| --- | --- | --- |
+| `glsl` | audio-reactive plasma with a waveform line | the spectrum (bass warps + brightens, treble sparkles) |
+| `spectrum:glsl` | classic FFT spectrum bars | each column = one frequency bin |
+| `creation` | the iconic "Creation" shader, made audio-reactive | bass drives the zoom + glow, treble ripples |
+| `pulse` | a red flash on every kick, blue rings on snare | **pattern events**, not the raw spectrum |
+
+```js
+// Attach a shader to a pattern — it lights up as the pattern plays.
+sound("bd sd bd sd").viz('creation')
+
+// 'pulse' reacts to the individual drums, not just the mixed sound:
+sound("bd*4, ~ sd ~ sd, hh*8").viz('pulse')
+```
+
+<Aside type="tip">
+Shaders run on the GPU and barely touch your CPU, so they're a great choice when
+you want a rich full-screen backdrop without slowing the audio. See
+[Writing fast viz sketches](/guides/viz-performance/) for when each viz type costs
+what.
+</Aside>
+
+## What a shader can read
+
+The built-in shaders react to your music through a few inputs. If you're reading
+or learning from them, here's what each name means.
+
+### The audio texture — `iChannel0`
+
+The live audio is uploaded every frame to `iChannel0`, exactly as on ShaderToy:
+
+- **row 0** (`texture(iChannel0, vec2(x, 0.0)).x`) — the **FFT spectrum**
+  (`x` from 0 = low frequencies to 1 = high);
+- **row 1** (`texture(iChannel0, vec2(x, 1.0)).x`) — the **waveform**.
+
+```glsl
+float bass   = texture(iChannel0, vec2(0.03, 0.0)).x;  // low FFT bin
+float treble = texture(iChannel0, vec2(0.70, 0.0)).x;  // high FFT bin
+```
+
+### Pattern events — the `u*` uniforms
+
+Beyond the mixed spectrum, a shader can react to the **individual drums and
+dynamics** of the pattern through these `float` uniforms (all `0.0`–`1.0`):
+
+| Uniform | Fires on |
+| --- | --- |
+| `uKick` `uSnare` `uHat` `uOpenHat` `uClap` `uRim` `uTom` | that drum hitting (envelope level) |
+| `uVelocity` | the loudest current hit — a general "something just played" |
+| `uRms` | overall loudness |
+| `uBass` `uMid` `uTreble` | energy in each band |
+
+```glsl
+// A kick punches the screen red:
+col += vec3(1.0, 0.2, 0.15) * uKick;
+```
+
+This is why `pulse` reacts to each drum separately while `glsl` reacts to the
+overall sound — `pulse` reads `uKick`/`uSnare`/`uHat`, `glsl` reads `iChannel0`.
+
+### The standard uniforms
+
+`iResolution` (viewport size), `iTime` (seconds since the viz started), and
+`iMouse` — the usual ShaderToy set, so a shader animates on its own even in
+silence.
+
+## Two shader styles
+
+Stave accepts both conventions, and figures out which you wrote:
+
+- **ShaderToy style** — write `void mainImage(out vec4 fragColor, in vec2
+  fragCoord)`; Stave supplies the rest. Paste most single-pass ShaderToy shaders
+  as-is.
+- **Raw GLSL style** — write your own `void main()` and `out` color; Stave only
+  prepends the version, precision, and the uniforms above.
+
+<Aside type="caution">
+Don't write *both* a `mainImage` and a `main` (Stave will ask you to pick one),
+and don't redeclare the built-in uniforms — they're already provided, the same as
+on ShaderToy. v1 is **single-pass only**: no multi-buffer / feedback / cubemap /
+mic channels yet.
+</Aside>
+
+## Write your own
+
+Beyond the built-ins, you can author your own shaders as `.glsl` files:
+
+1. In the file tree, **New file** → name it `something.glsl`.
+2. Paste a ShaderToy `mainImage` (or write a raw `void main()`). You get GLSL
+   syntax highlighting and a **live preview** that recompiles as you type.
+3. Attach it to a pattern with `.viz('something')`, exactly like the built-ins.
+
+A `.glsl` file reads the same uniforms documented above — `iChannel0` for the
+spectrum/waveform and `uKick`/`uSnare`/… for pattern events — so your shader is
+audio- and event-reactive with no extra wiring. New projects ship two examples to
+start from: **Prism** and **Pulse Grid**.

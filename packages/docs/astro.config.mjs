@@ -44,6 +44,7 @@ export default defineConfig({
             { label: 'Sonic Pi', link: '/runtimes/sonicpi/' },
             { label: 'p5.js', link: '/runtimes/p5/' },
             { label: 'Hydra', link: '/runtimes/hydra/' },
+            { label: 'GLSL / ShaderToy', link: '/runtimes/glsl/' },
           ],
         },
         {
@@ -54,6 +55,9 @@ export default defineConfig({
           label: 'Architecture',
           items: [
             { label: 'The viz renderer contract', link: '/architecture/renderer-contract/' },
+            { label: 'Renderer: GLSL', link: '/architecture/glsl/' },
+            { label: 'Renderer: Hydra', link: '/architecture/hydra/' },
+            { label: 'Renderer: p5.js', link: '/architecture/p5/' },
           ],
         },
         {
