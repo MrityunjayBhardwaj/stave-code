@@ -50,3 +50,50 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(col, 1.0);
 }
 `
+
+/** Event-reactive demo (#284) — reacts to PATTERN EVENTS via the u* uniforms, not
+ *  the FFT: a red flash on every kick, blue rings on snare, white edge sparkle on
+ *  hat. The clearest "events, not just FFT" reference. */
+export const GLSL_PULSE_CODE = `// Stave GLSL — pattern-event reactive (uKick/uSnare/uHat).
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  vec2 p = uv - 0.5;
+  p.x *= iResolution.x / iResolution.y;
+  float r = length(p);
+  float ring = abs(sin(r * 40.0 - iTime * 3.0));
+  vec3 col = vec3(0.02, 0.02, 0.04);
+  col += vec3(1.0, 0.25, 0.15) * uKick * smoothstep(0.5, 0.0, r);   // kick → red core
+  col += vec3(0.2, 0.6, 1.0) * uSnare * ring * 0.9;                 // snare → blue rings
+  col += vec3(1.0) * uHat * step(0.46, r) * 0.7;                    // hat  → white rim
+  fragColor = vec4(col, 1.0);
+}
+`
+
+/** "Creation" by Silexars/Danguafer (shadertoy.com/view/XsXXDn) — the iconic
+ *  ~10-line single-pass shader, here made AUDIO-REACTIVE against Stave's iChannel0:
+ *  bass (low FFT) drives the warp SPEED + brightness; treble (high FFT) drives the
+ *  ripple amplitude. A real ShaderToy ported to the v1 contract (GLSL ES 3.00 +
+ *  iResolution/iTime/iChannel0) — the worked example for the engine-specific docs. */
+export const GLSL_CREATION_CODE = `// "Creation" by Silexars/Danguafer — audio-reactive port.
+// iChannel0: row 0 (y=0.0) = FFT magnitude.
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 r = iResolution.xy;
+  float bass = texture(iChannel0, vec2(0.04, 0.0)).x;
+  float treble = texture(iChannel0, vec2(0.60, 0.0)).x;
+  float t = iTime;
+  vec3 c;
+  float l, z = t;
+  for (int i = 0; i < 3; i++) {
+    vec2 uv, p = fragCoord.xy / r;
+    uv = p;
+    p -= 0.5;
+    p.x *= r.x / r.y;
+    z += 0.07 + bass * 0.06;                       // bass speeds the zoom
+    l = length(p);
+    uv += p / l * (sin(z) + 1.0)
+        * abs(sin(l * 9.0 - z * 2.0)) * (1.0 + treble * 1.6); // treble ripples
+    c[i] = 0.01 / length(mod(uv, 1.0) - 0.5);
+  }
+  fragColor = vec4(c / l * (0.7 + bass * 1.8), 1.0); // bass brightens
+}
+`

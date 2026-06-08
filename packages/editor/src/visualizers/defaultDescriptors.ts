@@ -17,7 +17,7 @@ import {
   HYDRA_KALEID_CODE,
 } from './renderers/builtinHydraCode'
 import { makeGLSLRenderer } from './renderers/makeGLSLRenderer'
-import { GLSL_DEFAULT_CODE, GLSL_SPECTRUM_CODE } from './renderers/builtinGLSLCode'
+import { GLSL_DEFAULT_CODE, GLSL_SPECTRUM_CODE, GLSL_CREATION_CODE, GLSL_PULSE_CODE } from './renderers/builtinGLSLCode'
 
 /**
  * All built-in visualization modes.
@@ -66,4 +66,6 @@ export const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[] = [
   // the fallback. Built against the renderer contract (architecture/renderer-contract).
   { id: 'glsl',          label: 'GLSL',          renderer: 'glsl', requires: ['audio'], factory: () => makeGLSLRenderer(GLSL_DEFAULT_CODE, 'glsl') },
   { id: 'spectrum:glsl', label: 'Spectrum (GLSL)', renderer: 'glsl', requires: ['audio'], factory: () => makeGLSLRenderer(GLSL_SPECTRUM_CODE, 'spectrum:glsl') },
+  { id: 'creation',      label: 'Creation',      renderer: 'glsl', requires: ['audio'], factory: () => makeGLSLRenderer(GLSL_CREATION_CODE, 'creation') },
+  { id: 'pulse',         label: 'Pulse',         renderer: 'glsl', requires: ['streaming'], factory: () => makeGLSLRenderer(GLSL_PULSE_CODE, 'pulse') },
 ]

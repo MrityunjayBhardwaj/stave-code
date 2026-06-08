@@ -6495,8 +6495,8 @@ function minFrameMs() {
 }
 __name(minFrameMs, "minFrameMs");
 var _WorkerVizRenderer = class _WorkerVizRenderer {
-  /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
-   *  sketch source. @param name workspace path (error attribution). */
+  /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
+   *  @param code raw sketch source. @param name workspace path (error attribution). */
   constructor(kind, code, name) {
     this.kind = kind;
     this.code = code;
@@ -12486,6 +12486,495 @@ var HYDRA_KALEID_CODE = `s.osc(6, 0.1, () => s.a.fft[0] * 3)
   .modulate(s.noise(3), () => s.a.fft[0] * 0.05)
   .out()`;
 
+// src/visualizers/renderers/glslShaderSource.ts
+var GLSL_FULLSCREEN_VERT = `#version 300 es
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
+var VERSION = "#version 300 es";
+var PRECISION = "precision highp float;\nprecision highp int;";
+var UNIFORMS = `uniform vec3 iResolution;
+uniform float iTime;
+uniform vec4 iMouse;
+uniform sampler2D iChannel0;
+uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
+uniform float uRms, uBass, uMid, uTreble;`;
+var SHADERTOY_OUT = "out vec4 stave_FragColor;";
+var SHADERTOY_ENTRY = `
+void main() {
+  vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+  mainImage(color, gl_FragCoord.xy);
+  stave_FragColor = color;
+}
+`;
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+}
+__name(stripComments, "stripComments");
+function stripVersion(src) {
+  return src.replace(/^[ \t]*#version[^\n]*\r?\n?/m, "");
+}
+__name(stripVersion, "stripVersion");
+function buildGLSLFragmentSource(userSource) {
+  const probe = stripComments(userSource);
+  const hasMainImage = /\bmainImage\s*\(/.test(probe);
+  const hasMain = /\bvoid\s+main\s*\(/.test(probe);
+  if (hasMainImage && hasMain) {
+    throw new Error(
+      "GLSL: found both mainImage() and main(). For a ShaderToy shader, remove your main() \u2014 Stave provides it. For a raw GLSL shader, remove mainImage()."
+    );
+  }
+  if (hasMainImage) {
+    return `${VERSION}
+${PRECISION}
+${UNIFORMS}
+${SHADERTOY_OUT}
+${userSource}
+${SHADERTOY_ENTRY}`;
+  }
+  if (hasMain) {
+    return `${VERSION}
+${PRECISION}
+${UNIFORMS}
+${stripVersion(userSource)}
+`;
+  }
+  throw new Error(
+    "GLSL: no entry point. Define `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for a ShaderToy shader, or `void main()` for a raw GLSL shader."
+  );
+}
+__name(buildGLSLFragmentSource, "buildGLSLFragmentSource");
+
+// src/visualizers/renderers/glslCore.ts
+var GLSL_EVENT_NAMES = [
+  "uKick",
+  "uSnare",
+  "uHat",
+  "uOpenHat",
+  "uClap",
+  "uRim",
+  "uTom",
+  "uVelocity",
+  "uRms",
+  "uBass",
+  "uMid",
+  "uTreble"
+];
+var ZERO_GLSL_EVENTS = Object.fromEntries(
+  GLSL_EVENT_NAMES.map((n) => [n, 0])
+);
+var AUDIO_TEX_W = 512;
+var AUDIO_TEX_H = 2;
+function compileShader(gl, type, src, label) {
+  const sh = gl.createShader(type);
+  if (!sh) throw new Error(`glsl: could not create ${label} shader`);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(sh) ?? "";
+    gl.deleteShader(sh);
+    throw new Error(`glsl ${label} compile error:
+${log.trim()}`);
+  }
+  return sh;
+}
+__name(compileShader, "compileShader");
+function resampleByteRow(src, srcLen, dst, dstLen) {
+  if (srcLen <= 0) {
+    dst.fill(0, 0, dstLen);
+    return;
+  }
+  const bucket = srcLen / dstLen;
+  for (let i = 0; i < dstLen; i++) {
+    const start = Math.floor(i * bucket);
+    const end = Math.max(start + 1, Math.floor((i + 1) * bucket));
+    let sum = 0;
+    let n = 0;
+    for (let j = start; j < end && j < srcLen; j++) {
+      sum += src[j];
+      n++;
+    }
+    dst[i] = n > 0 ? Math.round(sum / n) : 0;
+  }
+}
+__name(resampleByteRow, "resampleByteRow");
+var _GLSLProgram = class _GLSLProgram {
+  constructor(gl, userSource) {
+    this.gl = gl;
+    /** Scratch buffers, allocated once (no per-frame alloc). */
+    this.freqScratch = new Uint8Array(AUDIO_TEX_W * 4);
+    this.waveScratch = new Uint8Array(AUDIO_TEX_W * 4);
+    /** The 2-row texel buffer uploaded each frame (row 0 FFT, row 1 wave). */
+    this.texRows = new Uint8Array(AUDIO_TEX_W * AUDIO_TEX_H);
+    this.disposed = false;
+    const vert = compileShader(gl, gl.VERTEX_SHADER, GLSL_FULLSCREEN_VERT, "vertex");
+    const frag = compileShader(
+      gl,
+      gl.FRAGMENT_SHADER,
+      buildGLSLFragmentSource(userSource),
+      "fragment"
+    );
+    const program = gl.createProgram();
+    if (!program) throw new Error("glsl: could not create program");
+    gl.attachShader(program, vert);
+    gl.attachShader(program, frag);
+    gl.linkProgram(program);
+    gl.deleteShader(vert);
+    gl.deleteShader(frag);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(program) ?? "";
+      gl.deleteProgram(program);
+      throw new Error(`glsl link error:
+${log.trim()}`);
+    }
+    this.program = program;
+    this.uResolution = gl.getUniformLocation(program, "iResolution");
+    this.uTime = gl.getUniformLocation(program, "iTime");
+    this.uMouse = gl.getUniformLocation(program, "iMouse");
+    this.uChannel0 = gl.getUniformLocation(program, "iChannel0");
+    this.uEvents = GLSL_EVENT_NAMES.map(
+      (n) => [n, gl.getUniformLocation(program, n)]
+    );
+    const vao = gl.createVertexArray();
+    if (!vao) throw new Error("glsl: could not create VAO");
+    this.vao = vao;
+    const tex = gl.createTexture();
+    if (!tex) throw new Error("glsl: could not create audio texture");
+    this.audioTex = tex;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R8,
+      AUDIO_TEX_W,
+      AUDIO_TEX_H,
+      0,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      null
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+  /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
+   *  at its current contents (or zero) and the shader still animates off iTime.
+   *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0. */
+  draw(audio, state5, events) {
+    if (this.disposed) return;
+    const gl = this.gl;
+    const w = Math.max(1, Math.round(state5.width));
+    const h = Math.max(1, Math.round(state5.height));
+    if (audio) {
+      const bins = Math.min(audio.frequencyBinCount, this.freqScratch.length);
+      const freq = this.freqScratch.subarray(0, bins);
+      const wave = this.waveScratch.subarray(0, bins);
+      audio.getByteFrequencyData(freq);
+      audio.getByteTimeDomainData(wave);
+      resampleByteRow(freq, bins, this.texRows.subarray(0, AUDIO_TEX_W), AUDIO_TEX_W);
+      resampleByteRow(wave, bins, this.texRows.subarray(AUDIO_TEX_W), AUDIO_TEX_W);
+      gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        AUDIO_TEX_W,
+        AUDIO_TEX_H,
+        gl.RED,
+        gl.UNSIGNED_BYTE,
+        this.texRows
+      );
+    }
+    gl.viewport(0, 0, w, h);
+    gl.useProgram(this.program);
+    gl.bindVertexArray(this.vao);
+    if (this.uResolution) gl.uniform3f(this.uResolution, w, h, 1);
+    if (this.uTime) gl.uniform1f(this.uTime, state5.timeMs / 1e3);
+    if (this.uMouse) {
+      const m = state5.mouse ?? [0, 0, 0, 0];
+      gl.uniform4f(this.uMouse, m[0], m[1], m[2], m[3]);
+    }
+    if (this.uChannel0) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
+      gl.uniform1i(this.uChannel0, 0);
+    }
+    const ev = events ?? ZERO_GLSL_EVENTS;
+    for (const [name, loc] of this.uEvents) {
+      if (loc) gl.uniform1f(loc, ev[name]);
+    }
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+  }
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    const gl = this.gl;
+    try {
+      gl.deleteProgram(this.program);
+      gl.deleteVertexArray(this.vao);
+      gl.deleteTexture(this.audioTex);
+    } catch {
+    }
+  }
+};
+__name(_GLSLProgram, "GLSLProgram");
+var GLSLProgram = _GLSLProgram;
+function createGLSLProgram(gl, userSource) {
+  return new GLSLProgram(gl, userSource);
+}
+__name(createGLSLProgram, "createGLSLProgram");
+
+// src/visualizers/renderers/glslEvents.ts
+function readGLSLEvents(bus) {
+  const m = bus.master();
+  let vel = 0;
+  for (const s of bus.sounds) {
+    const v = bus.sound(s).velocity;
+    if (v > vel) vel = v;
+  }
+  return {
+    uKick: bus.envValue("uKick"),
+    uSnare: bus.envValue("uSnare"),
+    uHat: bus.envValue("uHat"),
+    uOpenHat: bus.envValue("uOpenHat"),
+    uClap: bus.envValue("uClap"),
+    uRim: bus.envValue("uRim"),
+    uTom: bus.envValue("uTom"),
+    uVelocity: vel,
+    uRms: m.rms,
+    uBass: m.bass,
+    uMid: m.mid,
+    uTreble: m.treble
+  };
+}
+__name(readGLSLEvents, "readGLSLEvents");
+
+// src/visualizers/renderers/GLSLVizRenderer.ts
+var glslPerfSeq = 0;
+var _GLSLVizRenderer = class _GLSLVizRenderer {
+  constructor(code) {
+    this.code = code;
+    this.canvas = null;
+    this.gl = null;
+    this.program = null;
+    this.analyser = null;
+    this.rafId = null;
+    this.paused = false;
+    this.destroyed = false;
+    this.startMs = 0;
+    this.size = { w: 400, h: 300 };
+    this.perfId = `glsl#${++glslPerfSeq}`;
+    /** Named-signal bus → the `u*` event uniforms (#284), same as hydra/p5. Fed
+     *  unconditionally (BLOCK-1 discipline mirrored from HydraVizRenderer). */
+    this.bus = new SignalBus();
+    this.hapStream = null;
+    this.busHapHandler = null;
+    this.loop = /* @__PURE__ */ __name((now2) => {
+      if (this.paused || this.destroyed || !this.program) {
+        this.rafId = null;
+        return;
+      }
+      perf.frame(this.perfId);
+      perf.begin("glsl.draw");
+      try {
+        let events;
+        if (this.bus) {
+          this.bus.tick();
+          this.bus.refreshActive(this.bus.now());
+          this.bus.readAudio();
+          events = readGLSLEvents(this.bus);
+        }
+        this.program.draw(
+          this.analyser,
+          { width: this.size.w, height: this.size.h, timeMs: now2 - this.startMs },
+          events
+        );
+      } finally {
+        perf.end("glsl.draw");
+      }
+      this.rafId = requestAnimationFrame(this.loop);
+    }, "loop");
+  }
+  mount(container, components, size, onError) {
+    perf.gauge("viz.glsl", 1);
+    try {
+      this.size = { w: size.w, h: size.h };
+      this.analyser = components.audio?.analyser ?? null;
+      this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers);
+      this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers);
+      this.bus?.setAliases(resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE));
+      this.hapStream = components.streaming?.hapStream ?? null;
+      if (this.hapStream && this.bus) {
+        this.busHapHandler = (e) => this.bus?.bump(e);
+        this.hapStream.on(this.busHapHandler);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(size.w));
+      canvas.height = Math.max(1, Math.round(size.h));
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      canvas.style.display = "block";
+      container.appendChild(canvas);
+      this.canvas = canvas;
+      const gl = canvas.getContext("webgl2");
+      if (!gl) throw new Error("GLSLVizRenderer: WebGL2 not available");
+      this.gl = gl;
+      this.program = createGLSLProgram(gl, this.code);
+      this.startMs = performance.now();
+      if (!this.paused && !this.destroyed && this.rafId == null) {
+        this.rafId = requestAnimationFrame(this.loop);
+      }
+    } catch (e) {
+      onError(e);
+    }
+  }
+  update(components) {
+    this.analyser = components.audio?.analyser ?? null;
+    this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers);
+    this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers);
+  }
+  resize(w, h) {
+    this.size = { w, h };
+    if (this.canvas) {
+      this.canvas.width = Math.max(1, Math.round(w));
+      this.canvas.height = Math.max(1, Math.round(h));
+    }
+  }
+  pause() {
+    this.paused = true;
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+  resume() {
+    this.paused = false;
+    if (this.rafId == null && !this.destroyed) {
+      this.rafId = requestAnimationFrame(this.loop);
+    }
+  }
+  destroy() {
+    this.destroyed = true;
+    perf.gauge("viz.glsl", -1);
+    perf.dropFrames(this.perfId);
+    if (this.rafId != null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.program?.dispose();
+    this.program = null;
+    try {
+      this.gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    } catch {
+    }
+    this.gl = null;
+    this.canvas?.remove();
+    this.canvas = null;
+    this.analyser = null;
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler);
+      this.busHapHandler = null;
+    }
+    this.hapStream = null;
+    this.bus = null;
+  }
+};
+__name(_GLSLVizRenderer, "GLSLVizRenderer");
+var GLSLVizRenderer = _GLSLVizRenderer;
+
+// src/visualizers/renderers/makeGLSLRenderer.ts
+function makeGLSLRenderer(code, name) {
+  return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
+    () => new WorkerVizRenderer("glsl", code, name),
+    () => new GLSLVizRenderer(code)
+  ) : new GLSLVizRenderer(code);
+}
+__name(makeGLSLRenderer, "makeGLSLRenderer");
+
+// src/visualizers/renderers/builtinGLSLCode.ts
+var GLSL_DEFAULT_CODE = `// Stave GLSL \u2014 audio-reactive plasma.
+// iChannel0: row 0 (y\u22480.0) = FFT, row 1 (y\u22481.0) = waveform.
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  vec2 p = (uv - 0.5) * vec2(iResolution.x / iResolution.y, 1.0);
+
+  // Audio: bass from low FFT, treble from high FFT.
+  float bass = texture(iChannel0, vec2(0.03, 0.0)).x;
+  float treble = texture(iChannel0, vec2(0.7, 0.0)).x;
+
+  float t = iTime * 0.3;
+  float v = 0.0;
+  v += sin(p.x * 6.0 + t + bass * 6.0);
+  v += sin((p.y * 6.0 + t) + cos(p.x * 4.0));
+  v += sin(length(p) * 10.0 - t * 2.0 - bass * 8.0);
+  v *= 0.5;
+
+  vec3 col = 0.5 + 0.5 * cos(vec3(0.0, 2.1, 4.2) + v * 3.1416 + iTime * 0.2);
+  col *= 0.6 + 0.8 * bass;
+
+  // Waveform line across the middle.
+  float wave = texture(iChannel0, vec2(uv.x, 1.0)).x * 2.0 - 1.0;
+  float d = abs((uv.y - 0.5) - wave * 0.25);
+  col += smoothstep(0.02, 0.0, d) * vec3(1.0, 0.9, 0.7) * (0.5 + treble);
+
+  fragColor = vec4(col, 1.0);
+}
+`;
+var GLSL_SPECTRUM_CODE = `// Stave GLSL \u2014 FFT spectrum bars.
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  float mag = texture(iChannel0, vec2(uv.x, 0.0)).x;
+  float bar = step(uv.y, mag);
+  vec3 col = mix(vec3(0.04, 0.05, 0.1), vec3(0.2 + uv.x, 0.8, 1.0 - uv.x), bar);
+  fragColor = vec4(col, 1.0);
+}
+`;
+var GLSL_PULSE_CODE = `// Stave GLSL \u2014 pattern-event reactive (uKick/uSnare/uHat).
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  vec2 p = uv - 0.5;
+  p.x *= iResolution.x / iResolution.y;
+  float r = length(p);
+  float ring = abs(sin(r * 40.0 - iTime * 3.0));
+  vec3 col = vec3(0.02, 0.02, 0.04);
+  col += vec3(1.0, 0.25, 0.15) * uKick * smoothstep(0.5, 0.0, r);   // kick \u2192 red core
+  col += vec3(0.2, 0.6, 1.0) * uSnare * ring * 0.9;                 // snare \u2192 blue rings
+  col += vec3(1.0) * uHat * step(0.46, r) * 0.7;                    // hat  \u2192 white rim
+  fragColor = vec4(col, 1.0);
+}
+`;
+var GLSL_CREATION_CODE = `// "Creation" by Silexars/Danguafer \u2014 audio-reactive port.
+// iChannel0: row 0 (y=0.0) = FFT magnitude.
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 r = iResolution.xy;
+  float bass = texture(iChannel0, vec2(0.04, 0.0)).x;
+  float treble = texture(iChannel0, vec2(0.60, 0.0)).x;
+  float t = iTime;
+  vec3 c;
+  float l, z = t;
+  for (int i = 0; i < 3; i++) {
+    vec2 uv, p = fragCoord.xy / r;
+    uv = p;
+    p -= 0.5;
+    p.x *= r.x / r.y;
+    z += 0.07 + bass * 0.06;                       // bass speeds the zoom
+    l = length(p);
+    uv += p / l * (sin(z) + 1.0)
+        * abs(sin(l * 9.0 - z * 2.0)) * (1.0 + treble * 1.6); // treble ripples
+    c[i] = 0.01 / length(mod(uv, 1.0) - 0.5);
+  }
+  fragColor = vec4(c / l * (0.7 + bass * 1.8), 1.0); // bass brightens
+}
+`;
+
 // src/visualizers/defaultDescriptors.ts
 var DEFAULT_VIZ_DESCRIPTORS = [
   // p5 renderers (default for each mode) — compiled from bundled source.
@@ -12506,7 +12995,16 @@ var DEFAULT_VIZ_DESCRIPTORS = [
   { id: "hydra", label: "Hydra", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_DEFAULT_CODE, "hydra"), "factory") },
   { id: "pianoroll:hydra", label: "Piano Roll (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_PIANOROLL_CODE, "pianoroll:hydra"), "factory") },
   { id: "scope:hydra", label: "Scope (Hydra)", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_SCOPE_CODE, "scope:hydra"), "factory") },
-  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_KALEID_CODE, "kaleidoscope:hydra"), "factory") }
+  { id: "kaleidoscope:hydra", label: "Kaleidoscope", renderer: "hydra", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeHydraRenderer(HYDRA_KALEID_CODE, "kaleidoscope:hydra"), "factory") },
+  // GLSL renderers (#281) — single-pass ShaderToy `mainImage`, raw WebGL2, the
+  // Tier-1 ZERO-library reference + perf floor. The wrapped fragment source is a
+  // plain transferable string, so `makeGLSLRenderer` offloads it to the worker
+  // (direct-to-OffscreenCanvas, no blit) with the main-thread GLSLVizRenderer as
+  // the fallback. Built against the renderer contract (architecture/renderer-contract).
+  { id: "glsl", label: "GLSL", renderer: "glsl", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(GLSL_DEFAULT_CODE, "glsl"), "factory") },
+  { id: "spectrum:glsl", label: "Spectrum (GLSL)", renderer: "glsl", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(GLSL_SPECTRUM_CODE, "spectrum:glsl"), "factory") },
+  { id: "creation", label: "Creation", renderer: "glsl", requires: ["audio"], factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(GLSL_CREATION_CODE, "creation"), "factory") },
+  { id: "pulse", label: "Pulse", renderer: "glsl", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(GLSL_PULSE_CODE, "pulse"), "factory") }
 ];
 function SplitPane({
   direction,
@@ -20948,6 +21446,8 @@ function extensionToLanguage(ext) {
       return "hydra";
     case ".p5":
       return "p5js";
+    case ".glsl":
+      return "glsl";
     case ".md":
       return "markdown";
     default:
@@ -26161,6 +26661,20 @@ function compilePreset(preset) {
       // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
       // string, so it can cross to the worker (built-in hydra closures can't yet).
       factory: /* @__PURE__ */ __name(() => makeHydraRenderer(code, name), "factory")
+    };
+  }
+  if (renderer === "glsl") {
+    return {
+      id,
+      label: name,
+      renderer: "glsl",
+      requires,
+      ...preset.nativeSize ? { nativeSize: preset.nativeSize } : {},
+      // #281: `makeGLSLRenderer` returns a worker-offloaded renderer (with
+      // main-thread fallback) when the flag is on + the browser is capable, else
+      // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
+      // source — a plain transferable string, so it crosses to the worker cleanly.
+      factory: /* @__PURE__ */ __name(() => makeGLSLRenderer(code, name), "factory")
     };
   }
   if (renderer === "p5") {
