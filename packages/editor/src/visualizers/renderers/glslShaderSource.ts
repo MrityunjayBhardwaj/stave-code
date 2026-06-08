@@ -38,11 +38,16 @@ void main() {
 const VERSION = '#version 300 es'
 const PRECISION = 'precision highp float;\nprecision highp int;'
 /** The v1 uniforms, declared for BOTH modes. A user shader must NOT redeclare
- *  these (same rule as ShaderToy, where the user never declares uniforms). */
+ *  these (same rule as ShaderToy, where the user never declares uniforms).
+ *  The `u*` block (#284) carries PATTERN EVENTS — per-drum envelope levels +
+ *  master DSP — from the named-signal bus, so a shader reacts to kicks/snares/
+ *  velocity, not just the mixed FFT in iChannel0. All 0..1. */
 const UNIFORMS = `uniform vec3 iResolution;
 uniform float iTime;
 uniform vec4 iMouse;
-uniform sampler2D iChannel0;`
+uniform sampler2D iChannel0;
+uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
+uniform float uRms, uBass, uMid, uTreble;`
 
 /** ShaderToy-mode output + entry: we own `main()`, it calls the user's mainImage. */
 const SHADERTOY_OUT = 'out vec4 stave_FragColor;'

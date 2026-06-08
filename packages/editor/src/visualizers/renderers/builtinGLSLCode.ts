@@ -51,6 +51,24 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 `
 
+/** Event-reactive demo (#284) — reacts to PATTERN EVENTS via the u* uniforms, not
+ *  the FFT: a red flash on every kick, blue rings on snare, white edge sparkle on
+ *  hat. The clearest "events, not just FFT" reference. */
+export const GLSL_PULSE_CODE = `// Stave GLSL — pattern-event reactive (uKick/uSnare/uHat).
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  vec2 p = uv - 0.5;
+  p.x *= iResolution.x / iResolution.y;
+  float r = length(p);
+  float ring = abs(sin(r * 40.0 - iTime * 3.0));
+  vec3 col = vec3(0.02, 0.02, 0.04);
+  col += vec3(1.0, 0.25, 0.15) * uKick * smoothstep(0.5, 0.0, r);   // kick → red core
+  col += vec3(0.2, 0.6, 1.0) * uSnare * ring * 0.9;                 // snare → blue rings
+  col += vec3(1.0) * uHat * step(0.46, r) * 0.7;                    // hat  → white rim
+  fragColor = vec4(col, 1.0);
+}
+`
+
 /** "Creation" by Silexars/Danguafer (shadertoy.com/view/XsXXDn) — the iconic
  *  ~10-line single-pass shader, here made AUDIO-REACTIVE against Stave's iChannel0:
  *  bass (low FFT) drives the warp SPEED + brightness; treble (high FFT) drives the

@@ -45,6 +45,7 @@ import { buildHydraStaveBag } from '../renderers/hydraStaveBag'
 import { compileP5Code } from '../p5Compiler'
 import { compileHydraCode } from '../hydraCompiler'
 import { createGLSLProgram, type GLSLProgram } from '../renderers/glslCore'
+import { readGLSLEvents } from '../renderers/glslEvents'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { getVizConfig, updateVizConfig } from '../vizConfig'
 import {
@@ -257,7 +258,7 @@ export function hostVizWorker(scope: WorkerScope): void {
       msg.kind === 'hydra'
         ? await mountHydra(msg, feed, rawAnalyser, rawScheduler, dpr)
         : msg.kind === 'glsl'
-          ? mountGLSL(msg, rawAnalyser)
+          ? mountGLSL(msg, rawAnalyser, feed)
           : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
 
     const reader = createPostMessageReader(scope as any)
@@ -493,7 +494,7 @@ export function hostVizWorker(scope: WorkerScope): void {
   }
 
   // ── glsl (Tier 1: raw WebGL2 on the canvas → render direct, no blit, no lib) ──
-  function mountGLSL(msg: MountMessage, rawAnalyser: RawAnalyserShim): RendererStrategy {
+  function mountGLSL(msg: MountMessage, rawAnalyser: RawAnalyserShim, feed: WorkerBusFeed): RendererStrategy {
     // Size the presenting canvas to CSS px (match HydraVizRenderer / mountHydra —
     // the Tier-1 direct-render sibling; maxDpr is 1 so backing == CSS anyway).
     msg.canvas.width = Math.max(1, Math.round(msg.size.w))
@@ -516,12 +517,16 @@ export function hostVizWorker(scope: WorkerScope): void {
         // Feed the master analyser straight into the core (it uploads it to the
         // iChannel0 audio texture). rawAnalyser is refreshed by applyAndDraw before
         // this runs — the SAME already-refreshed shim mountHydra reads. No new seam.
+        // Pattern EVENTS (#284): feed.bus is already ticked by applyAndDraw (PK22) —
+        // read its named-signal levels into the u* uniforms (the SAME bus reads
+        // hydra/p5 use). This is the contract's predicted generalization point: the
+        // event feed is kind-specific (a uniform marshal), unlike the audio texture.
         const timeMs = (globalThis.performance?.now?.() ?? 0) - startMs
-        program.draw(rawAnalyser, {
-          width: msg.canvas.width,
-          height: msg.canvas.height,
-          timeMs,
-        })
+        program.draw(
+          rawAnalyser,
+          { width: msg.canvas.width, height: msg.canvas.height, timeMs },
+          readGLSLEvents(feed.bus),
+        )
       },
       resizeKind: (w, h) => {
         msg.canvas.width = Math.max(1, Math.round(w))
