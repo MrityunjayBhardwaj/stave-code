@@ -26,6 +26,7 @@
  *   E2E_VERIFY=1 pnpm --filter @stave/app exec playwright test hydra-path-coverage.spec.ts --headed --timeout=180000 --workers=1
  */
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { createHash } from 'node:crypto'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
@@ -322,6 +323,49 @@ test.describe('#274 hydra worker path coverage', () => {
       expect(m.draw, 'viz.worker.draw section must exist for hydra (the bridge fired)').not.toBeNull()
       expect(m.draw!.count, 'hydra draw samples recorded from the worker').toBeGreaterThan(0)
       expect(m.draw!.p95, 'a sensible non-negative hydra draw time').toBeGreaterThanOrEqual(0)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('(e) VISUAL — the worker hydra canvas actually PAINTS audio-reactive frames (not black, not frozen)', async ({ browser }) => {
+    // The gauge tests (a)-(d) prove the worker MOUNTED + the bridge fired, but a
+    // worker can report viz.worker=1 while the transferred canvas shows nothing
+    // (GL context lost, blit broken, shader no-op). This is the LOKAYATA gate: the
+    // rendered artifact itself. Decode-free (high-n-headroom technique): screenshot
+    // the inline canvas N× ~0.6s apart → md5 each. A LIVE hydra animates (≥3/5
+    // distinct frames) and fills pixels (large PNG); a black/frozen canvas is 1
+    // distinct + a tiny PNG (a flat image compresses to ~nothing).
+    const { ctx, page } = await open(browser)
+    try {
+      await registerHydra(page, 'hy-visual', HYDRA_OK)
+      await remount(page, `$: s("bd*4, ~ sd, hh*8").bank("RolandTR909").viz('hy-visual')`)
+
+      // Control probe: it IS the worker hydra path (not main, not blank-fallback).
+      const g = await snap(page)
+      expect(g.worker, 'worker hydra viz live (control probe)').toBeGreaterThanOrEqual(1)
+      expect(g.hydra, 'no main-thread fallback').toBe(0)
+
+      const canvas = page.locator('[data-viz-zone] canvas').first()
+      await canvas.waitFor({ timeout: 15000 })
+
+      const shots: { hash: string; bytes: number }[] = []
+      for (let i = 0; i < 5; i++) {
+        const buf = await canvas.screenshot({
+          path: i === 0 || i === 4 ? `test-results/hydra-visual-${i}.png` : undefined,
+        })
+        shots.push({ hash: createHash('md5').update(buf).digest('hex').slice(0, 8), bytes: buf.length })
+        if (i < 4) await page.waitForTimeout(600)
+      }
+      const distinct = new Set(shots.map((s) => s.hash)).size
+      const maxBytes = Math.max(...shots.map((s) => s.bytes))
+      console.log(`[#274 e] distinct frames=${distinct}/5  maxPNG=${maxBytes}B  hashes=${shots.map((s) => s.hash).join(',')}`)
+
+      // ANIMATING: a frozen/black canvas yields 1 distinct hash across the window.
+      expect(distinct, 'the hydra canvas must change frame-to-frame (animating, not frozen)').toBeGreaterThanOrEqual(3)
+      // NON-BLACK: a flat/black PNG compresses to a few hundred bytes; a real
+      // shader frame is many KB. Generous floor keeps it off the noise.
+      expect(maxBytes, 'the hydra canvas must paint pixels (not a black/empty surface)').toBeGreaterThan(3000)
     } finally {
       await ctx.close()
     }
