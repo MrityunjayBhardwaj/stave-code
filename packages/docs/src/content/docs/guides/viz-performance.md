@@ -3,11 +3,16 @@ title: Writing fast viz sketches
 description: How to keep p5/hydra visualizers smooth — grounded in measured Stave profiler data, not folklore.
 ---
 
-Visualizers run on the **main thread**, the same thread as the audio scheduler.
-A heavy `draw()` doesn't just drop viz frames — it can **starve the scheduler**
-and put audio timing at risk. This guide is the short, *measured* version of how
-to keep a sketch fast. Every number here came from the Stave profiler
-(`Alt+P`) and the cost-curve matrix harness — not from intuition.
+By default Stave renders each visualizer in an **OffscreenCanvas Web Worker**,
+off the main thread — so a heavy `draw()` no longer starves the audio scheduler.
+But the cost doesn't vanish: a slow sketch still drops its own frames, and on a
+browser that can't offload (or when the worker path is off) the visualizer falls
+back to the **main thread**, where a heavy `draw()` *can* starve the scheduler
+and put audio timing at risk. Either way, the segment budget below is what keeps
+a sketch smooth. This guide is the short, *measured* version. Every number here
+came from the Stave profiler (`Alt+P`) and the cost-curve matrix harness — not
+from intuition. (For how the worker path works under the hood, see
+[The viz renderer contract](/architecture/renderer-contract/).)
 
 ## The one rule that matters: count your line segments
 
@@ -76,11 +81,23 @@ The only sketch-level lever is **drawing fewer segments**.
    0 dropped frames but still janks). If **`trig/s`** falls as you add viz, your
    sketch is choking the audio scheduler — decimate until it recovers.
 
-## Why the main thread, and what's coming
+## Where the work runs, and why the budget still holds
 
-Audio DSP already runs off-thread (Web Audio / AudioWorklet). The *scheduler*
-and *viz* share the main thread, and the scheduler tolerates jank only up to its
-look-ahead margin — a `draw()` that blocks longer than that drops audio events.
-Decimation reduces the main-thread cost; moving the renderer to an
-**OffscreenCanvas worker** (in progress) relocates it off the main thread
-entirely. Until then, the segment budget above is your safety margin.
+Audio DSP already runs off-thread (Web Audio / AudioWorklet). The renderer now
+runs in an **OffscreenCanvas worker** by default, so viz `draw()` no longer
+shares the main thread with the scheduler — that's the big win. Two reasons the
+segment budget still matters:
+
+- **Fallback.** On a browser that can't offload (no OffscreenCanvas /
+  `transferControlToOffscreen`), or with the worker path disabled, the visualizer
+  runs on the **main thread** — and there the scheduler tolerates jank only up to
+  its look-ahead margin, so a `draw()` that blocks longer drops audio events.
+- **The cost doesn't disappear off-thread.** A worker sketch over budget simply
+  drops its own frames (under backpressure the worker's effective rate *is* its
+  draw rate). The profiler bridges that cost back as the `viz.worker.draw`
+  section — so `Alt+P` shows it whether the sketch runs on the worker or the main
+  thread.
+
+Decimate to the budget and the sketch is smooth on both paths. For the worker
+architecture itself, see
+[The viz renderer contract](/architecture/renderer-contract/).

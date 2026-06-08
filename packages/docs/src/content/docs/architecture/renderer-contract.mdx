@@ -269,7 +269,7 @@ At mount the subset ships in the `MountMessage` (`WorkerVizRenderer.ts:245`,
 (`hostP5Worker.ts:245`) so the first frame already sees the user's settings. A
 later quality/LOD change re-ships via a `config` message
 (`WorkerVizRenderer.ts:251`) and the worker **merges** it onto its singleton
-(`hostP5Worker.ts:230` → `updateVizConfig`, `vizConfig.ts:321`) — no remount.
+(`hostP5Worker.ts:232` → `updateVizConfig`, `vizConfig.ts:321`) — no remount.
 
 <Aside type="caution" title="Merge, never reset (PV81)">
 `updateVizConfig` takes a *partial* patch and merges. An incremental `{ density }`
@@ -337,7 +337,7 @@ its whole pipeline for output nobody sees. `registerVizVisibility`
 (`vizVisibility.ts:98`) pauses a renderer when it's **not** (on-screen AND
 tab-visible) and resumes on return — firing only on a state transition
 (`vizVisibility.ts:66`). `pause()` stops the main sample loop and tells the
-worker (`WorkerVizRenderer.ts:272`); the worker just sets `paused`
+worker (`WorkerVizRenderer.ts:274`); the worker just sets `paused`
 (`hostP5Worker.ts:221`) and the `applyAndDraw` gate (`hostP5Worker.ts:513`) skips
 the draw.
 
