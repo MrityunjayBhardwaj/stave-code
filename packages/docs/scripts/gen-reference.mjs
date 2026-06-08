@@ -48,8 +48,20 @@ function escapeCode(s) {
 
 async function readIndex(runtimeKey) {
   const p = path.join(DATA_DIR, `${runtimeKey}.json`)
-  const raw = await fs.readFile(p, 'utf8')
-  return JSON.parse(raw)
+  try {
+    const raw = await fs.readFile(p, 'utf8')
+    return JSON.parse(raw)
+  } catch (e) {
+    // A runtime's vendored DocsIndex may be absent on a given branch (e.g.
+    // `strudel.json` is a docs-site-only refactor not yet on this base). Skip it
+    // — generate reference pages for the runtimes that DO have data rather than
+    // failing the whole site build for one missing index.
+    if (e?.code === 'ENOENT') {
+      console.warn(`  (skip) no DocsIndex for '${runtimeKey}' at ${p}`)
+      return null
+    }
+    throw e
+  }
 }
 
 function kindBadge(kind) {
@@ -117,6 +129,7 @@ async function writeSearchIndex(indexes) {
   // Consumed by the in-editor Cmd+K D search (phase 2).
   const rows = []
   for (const [rtKey, index] of Object.entries(indexes)) {
+    if (!index) continue // runtime skipped (no DocsIndex on this branch)
     const fallback = index.meta?.docsBaseUrl
     for (const [name, doc] of Object.entries(index.docs ?? {})) {
       const firstSentence = (doc.description ?? '')
@@ -144,15 +157,17 @@ async function main() {
   for (const rt of RUNTIMES) {
     loaded[rt.key] = await readIndex(rt.key)
   }
+  // Only generate pages for runtimes whose DocsIndex was found.
+  const available = RUNTIMES.filter((rt) => loaded[rt.key])
   let total = 0
-  for (const rt of RUNTIMES) {
+  for (const rt of available) {
     const n = await writeRuntimePage(rt, loaded[rt.key])
     console.log(`  ${rt.label}: ${n} entries → src/content/docs/reference/${rt.key}.mdx`)
     total += n
   }
   const searchRows = await writeSearchIndex(loaded)
   console.log(
-    `docs gen: ${total} reference entries across ${RUNTIMES.length} runtimes · ${searchRows} search rows`,
+    `docs gen: ${total} reference entries across ${available.length}/${RUNTIMES.length} runtimes · ${searchRows} search rows`,
   )
 }
 
