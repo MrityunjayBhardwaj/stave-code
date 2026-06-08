@@ -1,0 +1,125 @@
+---
+title: 'Renderer: p5.js'
+description: How the p5.js renderer satisfies the viz contract — Tier-2 blit, the worker DOM shim, host-driven redraw(), the density LOD lever, and the double-swallowed-error gotcha.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This is the **developer** chapter for the p5.js renderer. Read
+[The viz renderer contract](/architecture/renderer-contract/) first — this page
+covers only the kind-specific half. p5 is the **hardest** kind: it makes its own
+canvases, needs a DOM shim to run in a worker at all, and its `draw()` can throw
+user code. Every claim cites `file:line` in
+`packages/editor/src/visualizers/`.
+
+## Canvas tier — Tier-2 blit (PV73)
+
+Unlike hydra/GLSL, p5 does not render into the transferred canvas — it creates its
+**own** worker-local canvas and we **blit** its output onto the presenting canvas
+each frame. The presenting surface is sized to **device** pixels (`size × dpr`,
+`hostP5Worker.ts:340`) and gets a `bitmaprenderer` context
+(`hostP5Worker.ts:344`); `draw()` copies p5's render canvas across zero-copy with
+`transferFromImageBitmap(src.transferToImageBitmap())` (`hostP5Worker.ts:362`).
+
+The blit *is* what p5's `draw()` does — it's not a new seam, just this kind's
+implementation of the `draw()` contract.
+
+## The worker DOM shim (PV70, P105)
+
+p5 v2 **can** render WEBGL to an `OffscreenCanvas` in a worker — given a small,
+fixed DOM shim installed **before** the import (`hostP5Worker.ts:293`,
+`installWorkerDomShim`). The shim has six conditions; the load-bearing ones:
+
+1. **shim before import** — `installWorkerDomShim` runs before `await import('p5')`
+   (`hostP5Worker.ts:293`);
+3. **`disableFriendlyErrors = true`** — p5's FES reads `location`/`document.lang`
+   at import; disabling it sidesteps the i18n path (`hostP5Worker.ts:296`);
+5. **a fresh wrapped `OffscreenCanvas` per `createElement('canvas')`**
+   (`hostP5Worker.ts:293`, `makeCanvasEl`) — all worker-local, since we blit
+   rather than transfer.
+
+<Aside type="caution" title="A library's worker-DOM shim is BUILD-specific (P105)">
+The shim surface a prebuilt/minified POC needs can differ from the **bundled prod
+build** — the Next-bundled p5 re-runs i18next FES code that reads
+`location.search` / `documentElement.lang` at import. Harden the shim against the
+build that actually ships, not the POC min. The `@stave/editor/worker` subpath +
+DI + `app new Worker(new URL(...))` wiring exists for exactly this reason.
+</Aside>
+
+## The audio + signal feed
+
+The compiler reads `stave.analyser` / `stave.scheduler` off ref cells
+(`hostP5Worker.ts:304`) — the **same** contract `P5VizRenderer` uses on the main
+thread, so the sketch can't tell it's in a worker. The named-signal `u.*` bus is
+built with `buildStaveUniforms(feed.bus)` (`hostP5Worker.ts:300`); the bus is
+ticked once by `feed.applyFrame` (PK22), and `onTick`/`__tick` is a no-op so the
+sketch never double-ticks. Raw `hapStream` access isn't marshalled (no built-in
+needs it) → `null`.
+
+## Draw cadence — host-driven `redraw()`, p5 on `noLoop()`
+
+After the user's `setup()` runs, the host wraps it to call `p.noLoop()`
+(`hostP5Worker.ts:330`) so p5's auto-loop is off and **we** drive one
+`inst.redraw()` per frame (`hostP5Worker.ts:355`) — 1:1 with the host's signal
+frame (PK22). `setupDone()` flips `true` only after that wrapped setup runs
+(`hostP5Worker.ts:334`), so the contract gate holds frames until p5's async setup
+completes.
+
+## The density LOD lever (#232 / #269)
+
+For CPU-tessellated line meshes, frame cost is **linear in segment count** and
+almost nothing else — p5 builds quad geometry per thick-line segment on the CPU.
+That makes `u.density` the one effective quality lever (a sketch reads
+`u.density` to scale its segment/grid count). It crosses the worker boundary in
+the marshalled config subset (`density` ∈ `WORKER_VIZ_CONFIG_KEYS`,
+`vizConfig.ts:353`), applied with **merge** at mount and on every quality change
+— no remount.
+
+<Aside type="tip" title="Resolution doesn't help line meshes; density does">
+Lower resolution / smaller canvas has *no effect* on a CPU-tessellation-bound line
+mesh — that cost is CPU, not pixels (the inverse of hydra's GPU-fill case, P117).
+`density` does move `viz.worker.draw` because it changes how many segments p5
+tessellates (`viz-density-lod.spec.ts`). The user-facing version of this budget is
+[Writing fast viz sketches](/guides/viz-performance/).
+</Aside>
+
+## The five strategy members for p5
+
+| Member | p5 implementation | Where |
+| --- | --- | --- |
+| `setupDone()` | `true` after the wrapped `setup()` runs (async) | `hostP5Worker.ts:350` |
+| `draw()` | `inst.redraw()` then blit the render canvas → presenting canvas | `hostP5Worker.ts:354` |
+| `resizeKind(w,h,dpr)` | resize the presenting canvas (×dpr) + `inst.resizeCanvas(w,h)` | `hostP5Worker.ts:367` |
+| `teardown()` | neutralize p5's async `#_setup` chain so a destroy mid-flight can't paint | `hostP5Worker.ts:374` |
+| `gl?()` | `inst.drawingContext` — WEBGL context, or a 2D context whose `getExtension` yields null (not accounted) | `hostP5Worker.ts:353` |
+
+## Gotcha — a user `draw()` throw is double-swallowed (P114, #257)
+
+A `draw()` typo in the worker (e.g. `stave.fft.length` — wrong namespace) gives a
+silent blank canvas: no console error, no diag, only the first draw statement
+painted. The obvious hypothesis ("the host's `try { s.draw() } catch` reports it")
+is wrong **twice**:
+
+1. **Upstream catch beats the host catch.** `p5Compiler` wraps each user lifecycle
+   hook in its *own* try/catch that reports to `engineLog` and swallows the throw
+   — so it never reaches the host's `s.draw()` catch. (And p5's `redraw()` is
+   `async`, so even unwrapped the throw is a rejected promise the *synchronous*
+   host catch can't see.)
+2. **A module singleton doesn't cross the worker boundary.** That wrap reported to
+   `engineLog` — but `engineLog` is a module-level pub/sub, and the **worker
+   bundle has its own instance**, disconnected from the main `engineLog` that
+   feeds the Console. "It's reported" was true *in the worker*, invisible on main.
+
+<Aside type="caution" title="The fix: re-emit across the boundary, and split the channels (#257)">
+The worker subscribes to its local `engineLog` and posts each error across to the
+main `emitLog` (`vizlog`). Crucially the channels are separate: **fatal/mount**
+errors → `diag`→`onError`→fallback (tear the worker down); **runtime** draw/setup
+errors → `vizlog`→main `emitLog` (surface, do **not** fall back — a post-`ready`
+user typo must not kill the worker). Verified by `worker-draw-error.spec.ts` (one
+error surfaced, no fallback). This is the P105 family — a per-thread channel is
+invisible until explicitly bridged (PV83).
+</Aside>
+
+**Verified by** `worker-draw-error.spec.ts` (#257 user-throw surfacing),
+`viz-density-lod.spec.ts` (#232 density moves the cost curve, no remount), and the
+p5 worker-path coverage gates.
