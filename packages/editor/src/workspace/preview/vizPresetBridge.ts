@@ -97,7 +97,9 @@ export function workspaceFileIdForPreset(presetId: string): string {
 export function languageForPresetRenderer(
   renderer: VizPreset['renderer'],
 ): WorkspaceLanguage {
-  return renderer === 'hydra' ? 'hydra' : 'p5js'
+  if (renderer === 'hydra') return 'hydra'
+  if (renderer === 'glsl') return 'glsl'
+  return 'p5js'
 }
 
 /**
@@ -190,7 +192,7 @@ export async function flushToPreset(
   // Infer renderer from the file's language so a flush preserves the
   // original renderer even if no preset existed (first-save case).
   const renderer: VizPreset['renderer'] =
-    file.language === 'hydra' ? 'hydra' : 'p5'
+    file.language === 'hydra' ? 'hydra' : file.language === 'glsl' ? 'glsl' : 'p5'
 
   const preset: VizPreset = {
     ...existing,               // preserve cropRegion + any future fields

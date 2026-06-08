@@ -26,7 +26,8 @@ export function presetToTab(preset: VizPreset): VizTab {
   return {
     id: preset.id,
     label: `${preset.name}.${preset.renderer}`,
-    language: preset.renderer === 'hydra' ? 'hydra' : 'p5js',
+    language:
+      preset.renderer === 'hydra' ? 'hydra' : preset.renderer === 'glsl' ? 'glsl' : 'p5js',
     preset,
     dirty: false,
   }
