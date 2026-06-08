@@ -14,7 +14,7 @@
  *      SignalBus.ts (envValue/master/sound/sounds), architecture/renderer-contract.
  */
 import type { SignalBus } from '../signals/SignalBus'
-import { type GLSLEvents, type GLSLTracks, MAX_GLSL_TRACKS } from './glslCore'
+import { type GLSLEvents, type GLSLTracks, MAX_GLSL_TRACKS, GLSL_TRACK_FIELDS } from './glslCore'
 
 /** Snapshot the per-drum envelope levels + master DSP from `bus` as GLSL uniforms.
  *  `uVelocity` is the loudest active sound's velocity (a global "something hit"). */
@@ -61,12 +61,14 @@ export function readGLSLTracks(bus: SignalBus): GLSLTracks {
   const b = new Float32Array(MAX_GLSL_TRACKS * 3)
   for (let i = 0; i < count; i++) {
     const t = bus.track(keys[i])
-    a[i * 3] = t.env
-    a[i * 3 + 1] = t.velocity
-    a[i * 3 + 2] = t.rms
-    b[i * 3] = t.bass
-    b[i * 3 + 1] = t.mid
-    b[i * 3 + 2] = t.treble
+    // GLSL_TRACK_FIELDS is the single source of field order: 0..2 → vec3 `a`
+    // (env/velocity/rms), 3..5 → vec3 `b` (bass/mid/treble), matching the
+    // `StaveTrack` struct + the `uTrackA`/`uTrackB` uniforms.
+    for (let f = 0; f < GLSL_TRACK_FIELDS.length; f++) {
+      const value = t[GLSL_TRACK_FIELDS[f]]
+      const target = f < 3 ? a : b
+      target[i * 3 + (f % 3)] = value
+    }
   }
   return { count, a, b }
 }

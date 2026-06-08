@@ -5696,6 +5696,7 @@ var GLSL_EVENT_NAMES = [
 var ZERO_GLSL_EVENTS = Object.fromEntries(
   GLSL_EVENT_NAMES.map((n) => [n, 0])
 );
+var GLSL_TRACK_FIELDS = ["env", "velocity", "rms", "bass", "mid", "treble"];
 var ZERO_GLSL_TRACKS = {
   count: 0,
   a: new Float32Array(MAX_GLSL_TRACKS * 3),
@@ -5907,12 +5908,11 @@ function readGLSLTracks(bus) {
   const b = new Float32Array(MAX_GLSL_TRACKS * 3);
   for (let i = 0; i < count; i++) {
     const t = bus.track(keys[i]);
-    a[i * 3] = t.env;
-    a[i * 3 + 1] = t.velocity;
-    a[i * 3 + 2] = t.rms;
-    b[i * 3] = t.bass;
-    b[i * 3 + 1] = t.mid;
-    b[i * 3 + 2] = t.treble;
+    for (let f = 0; f < GLSL_TRACK_FIELDS.length; f++) {
+      const value = t[GLSL_TRACK_FIELDS[f]];
+      const target = f < 3 ? a : b;
+      target[i * 3 + f % 3] = value;
+    }
   }
   return { count, a, b };
 }
