@@ -133,7 +133,7 @@ export function createBackdropCropAdapter(opts: {
       const file = getFile(fileId);
       if (!file) return null;
       const renderer: VizPreset["renderer"] =
-        file.language === "hydra" ? "hydra" : "p5";
+        file.language === "hydra" ? "hydra" : file.language === "glsl" ? "glsl" : "p5";
       return {
         id: file.id,
         name: file.path,

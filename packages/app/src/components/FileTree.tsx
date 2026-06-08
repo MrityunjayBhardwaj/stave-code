@@ -597,7 +597,7 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
   const handleNewFile = useCallback(async (folderPath = "") => {
     const name = await showPrompt({
       title: "New file",
-      description: "Include an extension — .strudel, .sonicpi, .hydra, .p5, or .md.",
+      description: "Include an extension — .strudel, .sonicpi, .hydra, .p5, .glsl, or .md.",
       placeholder: "sketch.strudel",
       confirmLabel: "Create",
     });
@@ -608,7 +608,7 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     const language = extensionToLanguage(ext);
     if (!language) {
       showToast(
-        `Unknown file extension ".${ext}". Supported: .strudel, .sonicpi, .hydra, .p5, .md`,
+        `Unknown file extension ".${ext}". Supported: .strudel, .sonicpi, .hydra, .p5, .glsl, .md`,
         "error",
       );
       return;
@@ -1561,6 +1561,9 @@ function extensionToLanguage(ext: string): WorkspaceFile["language"] | null {
     case "p5":
     case "p5js":
     case "js": return "p5js";
+    case "glsl":
+    case "frag":
+    case "shader": return "glsl";
     case "md": return "markdown";
     default: return null;
   }
@@ -1574,6 +1577,7 @@ function fileIconFor(name: string): string {
     case "hydra": return "✴️";
     case "p5":
     case "p5js": return "✨";
+    case "glsl": return "🌈";
     case "md": return "📝";
     default: return "📄";
   }

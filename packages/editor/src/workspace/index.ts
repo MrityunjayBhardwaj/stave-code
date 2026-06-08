@@ -139,6 +139,7 @@ export {
   createCompiledVizProvider,
   HYDRA_VIZ,
   P5_VIZ,
+  GLSL_VIZ,
   seedFromPreset,
   seedFromPresetId,
   flushToPreset,

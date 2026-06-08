@@ -423,10 +423,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     (window as any).__staveSeedAndPinBackdrop = (
       id: string,
       name: string,
-      renderer: "p5" | "hydra",
+      renderer: "p5" | "hydra" | "glsl",
       code: string,
     ): boolean => {
-      const lang = renderer === "hydra" ? "hydra" : "p5js";
+      const lang =
+        renderer === "hydra" ? "hydra" : renderer === "glsl" ? "glsl" : "p5js";
       seedWorkspaceFile(id, `preset/viz/${name}.${renderer}`, code, lang, {
         presetId: id,
       });

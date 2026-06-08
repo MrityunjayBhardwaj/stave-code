@@ -28,6 +28,7 @@ import {
   SONICPI_RUNTIME,
   HYDRA_VIZ,
   P5_VIZ,
+  GLSL_VIZ,
   LiveCodingRuntime,
   VizPresetStore,
   bundledPresetId,
@@ -112,6 +113,7 @@ function ensureProviders() {
   registerRuntimeProvider(SONICPI_RUNTIME);
   registerPreviewProvider(HYDRA_VIZ);
   registerPreviewProvider(P5_VIZ);
+  registerPreviewProvider(GLSL_VIZ);
 }
 
 // ---------------------------------------------------------------------------

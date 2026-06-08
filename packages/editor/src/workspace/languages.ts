@@ -71,6 +71,7 @@ import type { WorkspaceLanguage } from './types'
  */
 let hydraRegistered = false
 let p5jsRegistered = false
+let glslRegistered = false
 
 function registerHydraLanguage(monaco: typeof Monaco): void {
   if (hydraRegistered) return
@@ -311,6 +312,109 @@ function registerP5JsLanguage(monaco: typeof Monaco): void {
 }
 
 /**
+ * GLSL ES 3.00 — the language of `.glsl` viz files (issue #287). Unlike the
+ * `hydra` / `p5js` languages (which are JavaScript dialects), GLSL is C-like:
+ * its own type system (`vec3`, `mat4`, `sampler2D`), qualifiers (`uniform`,
+ * `in`/`out`), and a `#`-preprocessor. The tokenizer also highlights the Stave
+ * host uniforms (`iResolution`, `iTime`, `iChannel0`, and the `u*` pattern-event
+ * uniforms) as predefined so a user sees what the runtime injects — mirroring how
+ * `p5js` colours `stave`/`scheduler`/`analyser`.
+ */
+function registerGLSLLanguage(monaco: typeof Monaco): void {
+  if (glslRegistered) return
+  const langs = monaco.languages.getLanguages()
+  if (langs.some((l) => l.id === 'glsl')) {
+    glslRegistered = true
+    return
+  }
+  glslRegistered = true
+  monaco.languages.register({ id: 'glsl' })
+  monaco.languages.setMonarchTokensProvider('glsl', {
+    defaultToken: '',
+    tokenPostfix: '.glsl',
+    // GLSL keywords / types / qualifiers / builtins, split so each colours
+    // distinctly. `staveUniforms` are the host-injected uniforms (#281/#284).
+    keywords: [
+      'if', 'else', 'for', 'while', 'do', 'return', 'break', 'continue',
+      'discard', 'switch', 'case', 'default', 'struct', 'true', 'false',
+    ],
+    typeKeywords: [
+      'void', 'bool', 'int', 'uint', 'float', 'double',
+      'vec2', 'vec3', 'vec4', 'ivec2', 'ivec3', 'ivec4',
+      'uvec2', 'uvec3', 'uvec4', 'bvec2', 'bvec3', 'bvec4',
+      'mat2', 'mat3', 'mat4', 'mat2x2', 'mat3x3', 'mat4x4',
+      'sampler2D', 'sampler3D', 'samplerCube', 'sampler2DArray',
+    ],
+    qualifiers: [
+      'uniform', 'in', 'out', 'inout', 'const', 'attribute', 'varying',
+      'precision', 'highp', 'mediump', 'lowp', 'layout', 'flat', 'smooth',
+      'centroid', 'invariant',
+    ],
+    builtins: [
+      // GLSL builtin functions + variables a shader commonly uses.
+      'texture', 'textureLod', 'texelFetch', 'sin', 'cos', 'tan', 'asin',
+      'acos', 'atan', 'pow', 'exp', 'log', 'exp2', 'log2', 'sqrt', 'inversesqrt',
+      'abs', 'sign', 'floor', 'ceil', 'fract', 'mod', 'min', 'max', 'clamp',
+      'mix', 'step', 'smoothstep', 'length', 'distance', 'dot', 'cross',
+      'normalize', 'reflect', 'refract', 'radians', 'degrees',
+      'gl_FragCoord', 'gl_Position', 'gl_VertexID', 'gl_FragColor',
+    ],
+    staveUniforms: [
+      'iResolution', 'iTime', 'iMouse', 'iChannel0',
+      'uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom',
+      'uVelocity', 'uRms', 'uBass', 'uMid', 'uTreble', 'mainImage',
+    ],
+    tokenizer: {
+      root: [
+        [/\/\/.*$/, 'comment'],
+        [/\/\*/, 'comment', '@comment'],
+        [/^[ \t]*#\w+/, 'keyword.directive'], // #version, #define, #ifdef…
+        // `.xyz` / `.rgba` swizzle or member access.
+        [/\.([a-zA-Z_]\w*)/, 'identifier.property'],
+        [
+          /[a-zA-Z_]\w*/,
+          {
+            cases: {
+              '@typeKeywords': 'type',
+              '@qualifiers': 'keyword',
+              '@keywords': 'keyword',
+              '@staveUniforms': 'variable.predefined',
+              '@builtins': 'support.function',
+              '@default': 'identifier',
+            },
+          },
+        ],
+        [/\d*\.\d+([eE][+-]?\d+)?[fF]?/, 'number.float'],
+        [/\d+[fFuU]?/, 'number'],
+        [/0[xX][0-9a-fA-F]+/, 'number.hex'],
+        [/[{}()[\]]/, '@brackets'],
+        [/[<>]=?|[!=]=?|&&|\|\||[-+*/%]=?|[?:]/, 'keyword.operator'],
+        [/[;,.]/, 'delimiter'],
+      ],
+      comment: [
+        [/[^/*]+/, 'comment'],
+        [/\*\//, 'comment', '@pop'],
+        [/./, 'comment'],
+      ],
+    },
+  })
+  monaco.languages.setLanguageConfiguration('glsl', {
+    comments: { lineComment: '//', blockComment: ['/*', '*/'] },
+    brackets: [['{', '}'], ['[', ']'], ['(', ')']],
+    autoClosingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+    ],
+    surroundingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+    ],
+  })
+}
+
+/**
  * Ensure every workspace-supported Monaco language is registered on the
  * provided Monaco instance. Safe to call on every `EditorView` mount —
  * unregistered languages are registered, already-registered languages are
@@ -328,6 +432,7 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
   registerSonicPiLanguage(monaco)
   registerHydraLanguage(monaco)
   registerP5JsLanguage(monaco)
+  registerGLSLLanguage(monaco)
   ensureProviders('strudel', monaco, (m) => {
     registerStrudelDotCompletions(m)
     registerStrudelNoteCompletions(m)
@@ -397,6 +502,8 @@ export function toMonacoLanguage(lang: WorkspaceLanguage): string {
       return 'hydra'
     case 'p5js':
       return 'p5js'
+    case 'glsl':
+      return 'glsl'
     case 'markdown':
       return 'markdown'
   }
@@ -412,6 +519,7 @@ export function toMonacoLanguage(lang: WorkspaceLanguage): string {
 export function __resetWorkspaceLanguagesForTests(): void {
   hydraRegistered = false
   p5jsRegistered = false
+  glslRegistered = false
   for (const k of Object.keys(providersRegistered)) {
     providersRegistered[k] = false
   }

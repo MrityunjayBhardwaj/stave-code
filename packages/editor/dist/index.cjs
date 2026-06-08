@@ -18134,6 +18134,7 @@ __name(registerSignalBusProviders, "registerSignalBusProviders");
 // src/workspace/languages.ts
 var hydraRegistered = false;
 var p5jsRegistered = false;
+var glslRegistered = false;
 function registerHydraLanguage(monaco) {
   if (hydraRegistered) return;
   const langs = monaco.languages.getLanguages();
@@ -18345,11 +18346,205 @@ function registerP5JsLanguage(monaco) {
   });
 }
 __name(registerP5JsLanguage, "registerP5JsLanguage");
+function registerGLSLLanguage(monaco) {
+  if (glslRegistered) return;
+  const langs = monaco.languages.getLanguages();
+  if (langs.some((l) => l.id === "glsl")) {
+    glslRegistered = true;
+    return;
+  }
+  glslRegistered = true;
+  monaco.languages.register({ id: "glsl" });
+  monaco.languages.setMonarchTokensProvider("glsl", {
+    defaultToken: "",
+    tokenPostfix: ".glsl",
+    // GLSL keywords / types / qualifiers / builtins, split so each colours
+    // distinctly. `staveUniforms` are the host-injected uniforms (#281/#284).
+    keywords: [
+      "if",
+      "else",
+      "for",
+      "while",
+      "do",
+      "return",
+      "break",
+      "continue",
+      "discard",
+      "switch",
+      "case",
+      "default",
+      "struct",
+      "true",
+      "false"
+    ],
+    typeKeywords: [
+      "void",
+      "bool",
+      "int",
+      "uint",
+      "float",
+      "double",
+      "vec2",
+      "vec3",
+      "vec4",
+      "ivec2",
+      "ivec3",
+      "ivec4",
+      "uvec2",
+      "uvec3",
+      "uvec4",
+      "bvec2",
+      "bvec3",
+      "bvec4",
+      "mat2",
+      "mat3",
+      "mat4",
+      "mat2x2",
+      "mat3x3",
+      "mat4x4",
+      "sampler2D",
+      "sampler3D",
+      "samplerCube",
+      "sampler2DArray"
+    ],
+    qualifiers: [
+      "uniform",
+      "in",
+      "out",
+      "inout",
+      "const",
+      "attribute",
+      "varying",
+      "precision",
+      "highp",
+      "mediump",
+      "lowp",
+      "layout",
+      "flat",
+      "smooth",
+      "centroid",
+      "invariant"
+    ],
+    builtins: [
+      // GLSL builtin functions + variables a shader commonly uses.
+      "texture",
+      "textureLod",
+      "texelFetch",
+      "sin",
+      "cos",
+      "tan",
+      "asin",
+      "acos",
+      "atan",
+      "pow",
+      "exp",
+      "log",
+      "exp2",
+      "log2",
+      "sqrt",
+      "inversesqrt",
+      "abs",
+      "sign",
+      "floor",
+      "ceil",
+      "fract",
+      "mod",
+      "min",
+      "max",
+      "clamp",
+      "mix",
+      "step",
+      "smoothstep",
+      "length",
+      "distance",
+      "dot",
+      "cross",
+      "normalize",
+      "reflect",
+      "refract",
+      "radians",
+      "degrees",
+      "gl_FragCoord",
+      "gl_Position",
+      "gl_VertexID",
+      "gl_FragColor"
+    ],
+    staveUniforms: [
+      "iResolution",
+      "iTime",
+      "iMouse",
+      "iChannel0",
+      "uKick",
+      "uSnare",
+      "uHat",
+      "uOpenHat",
+      "uClap",
+      "uRim",
+      "uTom",
+      "uVelocity",
+      "uRms",
+      "uBass",
+      "uMid",
+      "uTreble",
+      "mainImage"
+    ],
+    tokenizer: {
+      root: [
+        [/\/\/.*$/, "comment"],
+        [/\/\*/, "comment", "@comment"],
+        [/^[ \t]*#\w+/, "keyword.directive"],
+        // #version, #define, #ifdef…
+        // `.xyz` / `.rgba` swizzle or member access.
+        [/\.([a-zA-Z_]\w*)/, "identifier.property"],
+        [
+          /[a-zA-Z_]\w*/,
+          {
+            cases: {
+              "@typeKeywords": "type",
+              "@qualifiers": "keyword",
+              "@keywords": "keyword",
+              "@staveUniforms": "variable.predefined",
+              "@builtins": "support.function",
+              "@default": "identifier"
+            }
+          }
+        ],
+        [/\d*\.\d+([eE][+-]?\d+)?[fF]?/, "number.float"],
+        [/\d+[fFuU]?/, "number"],
+        [/0[xX][0-9a-fA-F]+/, "number.hex"],
+        [/[{}()[\]]/, "@brackets"],
+        [/[<>]=?|[!=]=?|&&|\|\||[-+*/%]=?|[?:]/, "keyword.operator"],
+        [/[;,.]/, "delimiter"]
+      ],
+      comment: [
+        [/[^/*]+/, "comment"],
+        [/\*\//, "comment", "@pop"],
+        [/./, "comment"]
+      ]
+    }
+  });
+  monaco.languages.setLanguageConfiguration("glsl", {
+    comments: { lineComment: "//", blockComment: ["/*", "*/"] },
+    brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
+    autoClosingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" }
+    ],
+    surroundingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" }
+    ]
+  });
+}
+__name(registerGLSLLanguage, "registerGLSLLanguage");
 function ensureWorkspaceLanguages(monaco) {
   registerStrudelLanguage(monaco);
   registerSonicPiLanguage(monaco);
   registerHydraLanguage(monaco);
   registerP5JsLanguage(monaco);
+  registerGLSLLanguage(monaco);
   ensureProviders("strudel", monaco, (m) => {
     registerStrudelDotCompletions(m);
     registerStrudelNoteCompletions(m);
@@ -18389,6 +18584,8 @@ function toMonacoLanguage(lang) {
       return "hydra";
     case "p5js":
       return "p5js";
+    case "glsl":
+      return "glsl";
     case "markdown":
       return "markdown";
   }
@@ -26517,7 +26714,9 @@ function workspaceFileIdForPreset(presetId) {
 }
 __name(workspaceFileIdForPreset, "workspaceFileIdForPreset");
 function languageForPresetRenderer(renderer) {
-  return renderer === "hydra" ? "hydra" : "p5js";
+  if (renderer === "hydra") return "hydra";
+  if (renderer === "glsl") return "glsl";
+  return "p5js";
 }
 __name(languageForPresetRenderer, "languageForPresetRenderer");
 function seedFromPreset(preset) {
@@ -26541,7 +26740,7 @@ async function flushToPreset(fileId, presetId) {
   if (!file) return;
   const existing = await VizPresetStore.get(presetId);
   const now2 = Date.now();
-  const renderer = file.language === "hydra" ? "hydra" : "p5";
+  const renderer = file.language === "hydra" ? "hydra" : file.language === "glsl" ? "glsl" : "p5";
   const preset = {
     ...existing,
     // preserve cropRegion + any future fields
@@ -28225,6 +28424,13 @@ var P5_VIZ = createCompiledVizProvider({
   renderer: "p5"
 });
 
+// src/workspace/preview/glslViz.tsx
+var GLSL_VIZ = createCompiledVizProvider({
+  extensions: ["glsl"],
+  label: "GLSL Visualization",
+  renderer: "glsl"
+});
+
 // src/workspace/preview/namedVizBridge.ts
 function registerPresetAsNamedViz(preset, name = preset.name) {
   try {
@@ -28572,6 +28778,7 @@ exports.DemoEngine = DemoEngine;
 exports.EditorView = EditorView;
 exports.ErrorBoundary = ErrorBoundary;
 exports.FSCOPE_P5_CODE = FSCOPE_P5_CODE;
+exports.GLSL_VIZ = GLSL_VIZ;
 exports.HYDRA_DOCS_INDEX = HYDRA_DOCS_INDEX;
 exports.HYDRA_VIZ = HYDRA_VIZ;
 exports.HapStream = HapStream;
