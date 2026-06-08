@@ -247,7 +247,10 @@ export default function StrudelEditorClient({
     const viewing = isViewing();
     const allFiles = listWorkspaceFiles();
     const vizFiles = allFiles.filter(
-      (f) => f.language === "p5js" || f.language === "hydra",
+      (f) =>
+        f.language === "p5js" ||
+        f.language === "hydra" ||
+        f.language === "glsl",
     );
     // Basename (sans extension) of every p5 viz file. When a hydra file
     // shares a basename with a p5 file (e.g. scope.p5 + scope.hydra), the
@@ -289,9 +292,12 @@ export default function StrudelEditorClient({
         ? { ...effective0, nativeSize: bundledNative }
         : effective0;
       const base = baseOf(f.path);
+      // A non-p5 file sharing a basename with a p5 file registers under a
+      // renderer-qualified name (`<name>:hydra` / `<name>:glsl`) so bare
+      // `.viz("<name>")` deterministically resolves to the p5 preset (#181).
       const name =
-        f.language === "hydra" && p5Basenames.has(base)
-          ? `${base}:hydra`
+        f.language !== "p5js" && p5Basenames.has(base)
+          ? `${base}:${f.language === "hydra" ? "hydra" : "glsl"}`
           : preset.name;
       registerPresetAsNamedViz(effective, name);
     }
