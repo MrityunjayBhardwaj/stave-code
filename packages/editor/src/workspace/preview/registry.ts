@@ -79,6 +79,8 @@ function extensionToLanguage(ext: string): string | undefined {
       return 'hydra'
     case '.p5':
       return 'p5js'
+    case '.glsl':
+      return 'glsl'
     case '.md':
       return 'markdown'
     default:

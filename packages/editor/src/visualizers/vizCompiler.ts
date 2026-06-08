@@ -2,6 +2,7 @@ import type { VizDescriptor } from './types'
 import type { VizPreset } from './vizPreset'
 import { makeP5Renderer } from './renderers/makeP5Renderer'
 import { makeHydraRenderer } from './renderers/makeHydraRenderer'
+import { makeGLSLRenderer } from './renderers/makeGLSLRenderer'
 import { compileP5Code, isFullLifecycleSketch } from './p5Compiler'
 import { compileHydraCode } from './hydraCompiler'
 
@@ -46,6 +47,21 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
       // string, so it can cross to the worker (built-in hydra closures can't yet).
       factory: () => makeHydraRenderer(code, name),
+    }
+  }
+
+  if (renderer === 'glsl') {
+    return {
+      id,
+      label: name,
+      renderer: 'glsl',
+      requires,
+      ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
+      // #281: `makeGLSLRenderer` returns a worker-offloaded renderer (with
+      // main-thread fallback) when the flag is on + the browser is capable, else
+      // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
+      // source — a plain transferable string, so it crosses to the worker cleanly.
+      factory: () => makeGLSLRenderer(code, name),
     }
   }
 

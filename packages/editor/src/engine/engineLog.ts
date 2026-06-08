@@ -21,6 +21,7 @@ export type RuntimeId =
   | 'sonicpi'
   | 'p5'
   | 'hydra'
+  | 'glsl'
   /** Stave-itself errors (engine init, host-side failures). */
   | 'stave'
 
