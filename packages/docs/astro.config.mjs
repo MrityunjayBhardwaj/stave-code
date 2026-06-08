@@ -47,9 +47,20 @@ export default defineConfig({
           ],
         },
         {
-          label: 'API reference',
+          label: 'Guides',
+          autogenerate: { directory: 'guides' },
+        },
+        {
+          label: 'Architecture',
           items: [
-            { label: 'Strudel', link: '/reference/strudel/' },
+            { label: 'The viz renderer contract', link: '/architecture/renderer-contract/' },
+          ],
+        },
+        {
+          label: 'API reference',
+          // Strudel reference omitted on this base — its vendored DocsIndex
+          // (`strudel.json`) is a docs-site-only refactor not yet on `performance`.
+          items: [
             { label: 'Sonic Pi', link: '/reference/sonicpi/' },
             { label: 'p5.js', link: '/reference/p5/' },
             { label: 'Hydra', link: '/reference/hydra/' },
