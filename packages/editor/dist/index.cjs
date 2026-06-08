@@ -12495,12 +12495,29 @@ void main() {
 `;
 var VERSION = "#version 300 es";
 var PRECISION = "precision highp float;\nprecision highp int;";
+var MAX_GLSL_TRACKS = 16;
 var UNIFORMS = `uniform vec3 iResolution;
 uniform float iTime;
 uniform vec4 iMouse;
 uniform sampler2D iChannel0;
 uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
-uniform float uRms, uBass, uMid, uTreble;`;
+uniform float uRms, uBass, uMid, uTreble;
+uniform int uTrackCount;
+uniform vec3 uTrackA[${MAX_GLSL_TRACKS}];
+uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];`;
+var STAVE_TRACK_API = `struct StaveTrack {
+  float env;
+  float velocity;
+  float rms;
+  float bass;
+  float mid;
+  float treble;
+};
+StaveTrack staveTrack(int i) {
+  vec3 a = uTrackA[i];
+  vec3 b = uTrackB[i];
+  return StaveTrack(a.x, a.y, a.z, b.x, b.y, b.z);
+}`;
 var SHADERTOY_OUT = "out vec4 stave_FragColor;";
 var SHADERTOY_ENTRY = `
 void main() {
@@ -12530,6 +12547,7 @@ function buildGLSLFragmentSource(userSource) {
     return `${VERSION}
 ${PRECISION}
 ${UNIFORMS}
+${STAVE_TRACK_API}
 ${SHADERTOY_OUT}
 ${userSource}
 ${SHADERTOY_ENTRY}`;
@@ -12538,6 +12556,7 @@ ${SHADERTOY_ENTRY}`;
     return `${VERSION}
 ${PRECISION}
 ${UNIFORMS}
+${STAVE_TRACK_API}
 ${stripVersion(userSource)}
 `;
   }
@@ -12565,6 +12584,11 @@ var GLSL_EVENT_NAMES = [
 var ZERO_GLSL_EVENTS = Object.fromEntries(
   GLSL_EVENT_NAMES.map((n) => [n, 0])
 );
+var ZERO_GLSL_TRACKS = {
+  count: 0,
+  a: new Float32Array(MAX_GLSL_TRACKS * 3),
+  b: new Float32Array(MAX_GLSL_TRACKS * 3)
+};
 var AUDIO_TEX_W = 512;
 var AUDIO_TEX_H = 2;
 function compileShader(gl, type, src, label) {
@@ -12637,6 +12661,9 @@ ${log.trim()}`);
     this.uEvents = GLSL_EVENT_NAMES.map(
       (n) => [n, gl.getUniformLocation(program, n)]
     );
+    this.uTrackCount = gl.getUniformLocation(program, "uTrackCount");
+    this.uTrackA = gl.getUniformLocation(program, "uTrackA");
+    this.uTrackB = gl.getUniformLocation(program, "uTrackB");
     const vao = gl.createVertexArray();
     if (!vao) throw new Error("glsl: could not create VAO");
     this.vao = vao;
@@ -12664,8 +12691,9 @@ ${log.trim()}`);
   }
   /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
    *  at its current contents (or zero) and the shader still animates off iTime.
-   *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0. */
-  draw(audio, state5, events) {
+   *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0.
+   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks. */
+  draw(audio, state5, events, tracks) {
     if (this.disposed) return;
     const gl = this.gl;
     const w = Math.max(1, Math.round(state5.width));
@@ -12710,6 +12738,10 @@ ${log.trim()}`);
     for (const [name, loc] of this.uEvents) {
       if (loc) gl.uniform1f(loc, ev[name]);
     }
+    const tr = tracks ?? ZERO_GLSL_TRACKS;
+    if (this.uTrackCount) gl.uniform1i(this.uTrackCount, tr.count);
+    if (this.uTrackA) gl.uniform3fv(this.uTrackA, tr.a);
+    if (this.uTrackB) gl.uniform3fv(this.uTrackB, tr.b);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
   }
@@ -12756,6 +12788,23 @@ function readGLSLEvents(bus) {
   };
 }
 __name(readGLSLEvents, "readGLSLEvents");
+function readGLSLTracks(bus) {
+  const keys = bus.tracks;
+  const count = Math.min(keys.length, MAX_GLSL_TRACKS);
+  const a = new Float32Array(MAX_GLSL_TRACKS * 3);
+  const b = new Float32Array(MAX_GLSL_TRACKS * 3);
+  for (let i = 0; i < count; i++) {
+    const t = bus.track(keys[i]);
+    a[i * 3] = t.env;
+    a[i * 3 + 1] = t.velocity;
+    a[i * 3 + 2] = t.rms;
+    b[i * 3] = t.bass;
+    b[i * 3 + 1] = t.mid;
+    b[i * 3 + 2] = t.treble;
+  }
+  return { count, a, b };
+}
+__name(readGLSLTracks, "readGLSLTracks");
 
 // src/visualizers/renderers/GLSLVizRenderer.ts
 var glslPerfSeq = 0;
@@ -12786,16 +12835,19 @@ var _GLSLVizRenderer = class _GLSLVizRenderer {
       perf.begin("glsl.draw");
       try {
         let events;
+        let tracks;
         if (this.bus) {
           this.bus.tick();
           this.bus.refreshActive(this.bus.now());
           this.bus.readAudio();
           events = readGLSLEvents(this.bus);
+          tracks = readGLSLTracks(this.bus);
         }
         this.program.draw(
           this.analyser,
           { width: this.size.w, height: this.size.h, timeMs: now2 - this.startMs },
-          events
+          events,
+          tracks
         );
       } finally {
         perf.end("glsl.draw");

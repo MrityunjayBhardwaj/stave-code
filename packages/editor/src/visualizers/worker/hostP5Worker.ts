@@ -45,7 +45,7 @@ import { buildHydraStaveBag } from '../renderers/hydraStaveBag'
 import { compileP5Code } from '../p5Compiler'
 import { compileHydraCode } from '../hydraCompiler'
 import { createGLSLProgram, type GLSLProgram } from '../renderers/glslCore'
-import { readGLSLEvents } from '../renderers/glslEvents'
+import { readGLSLEvents, readGLSLTracks } from '../renderers/glslEvents'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { getVizConfig, updateVizConfig } from '../vizConfig'
 import {
@@ -526,6 +526,7 @@ export function hostVizWorker(scope: WorkerScope): void {
           rawAnalyser,
           { width: msg.canvas.width, height: msg.canvas.height, timeMs },
           readGLSLEvents(feed.bus),
+          readGLSLTracks(feed.bus), // #297 per-track signals (same already-ticked bus)
         )
       },
       resizeKind: (w, h) => {

@@ -24,7 +24,7 @@ import { SignalBus } from '../signals/SignalBus'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { createGLSLProgram, type GLSLProgram, type AudioByteSource, type GL2 } from './glslCore'
-import { readGLSLEvents } from './glslEvents'
+import { readGLSLEvents, readGLSLTracks } from './glslEvents'
 
 /** Monotone id source for a stable per-instance profiler key (`glsl#N`). */
 let glslPerfSeq = 0
@@ -106,16 +106,19 @@ export class GLSLVizRenderer implements VizRenderer {
       // Tick the bus ONCE per frame (decay → scheduler snapshot → DSP), in the
       // same order as HydraVizRenderer, then read its named signals into events.
       let events
+      let tracks
       if (this.bus) {
         this.bus.tick()
         this.bus.refreshActive(this.bus.now())
         this.bus.readAudio()
         events = readGLSLEvents(this.bus)
+        tracks = readGLSLTracks(this.bus) // #297 per-track signals (same tick)
       }
       this.program.draw(
         this.analyser as AudioByteSource | null,
         { width: this.size.w, height: this.size.h, timeMs: now - this.startMs },
         events,
+        tracks,
       )
     } finally {
       perf.end('glsl.draw')
