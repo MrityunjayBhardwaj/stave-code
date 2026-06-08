@@ -6,8 +6,8 @@ vi.mock('p5', () => ({ default: vi.fn() }))
 import { DEFAULT_VIZ_DESCRIPTORS } from '../visualizers/defaultDescriptors'
 
 describe('DEFAULT_VIZ_DESCRIPTORS', () => {
-  it('has exactly 11 entries', () => {
-    expect(DEFAULT_VIZ_DESCRIPTORS).toHaveLength(11)
+  it('has exactly 15 entries', () => {
+    expect(DEFAULT_VIZ_DESCRIPTORS).toHaveLength(15)
   })
 
   it('each entry has id, label, and factory', () => {
@@ -35,6 +35,11 @@ describe('DEFAULT_VIZ_DESCRIPTORS', () => {
     expect(ids).toContain('pianoroll:hydra')
     expect(ids).toContain('scope:hydra')
     expect(ids).toContain('kaleidoscope:hydra')
+    // glsl renderers (#281/#287)
+    expect(ids).toContain('glsl')
+    expect(ids).toContain('spectrum:glsl')
+    expect(ids).toContain('creation')
+    expect(ids).toContain('pulse')
   })
 
   it('factory returns a VizRenderer with all 5 methods', () => {
