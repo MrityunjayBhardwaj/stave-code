@@ -1,0 +1,32 @@
+/* Stave docs theme overrides — align the purple accent with the editor. */
+
+:root {
+  --sl-color-accent-low: #2e1a5a;
+  --sl-color-accent: #8b5cf6;
+  --sl-color-accent-high: #c4b5fd;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ede9fe;
+  --sl-color-accent: #6d28d9;
+  --sl-color-accent-high: #4c1d95;
+}
+
+/* Tighten the auto-generated reference pages so 500+ entries remain
+   scannable. Each entry's `### name` heading and its following content
+   get a slim divider. */
+.sl-markdown-content h3 {
+  border-top: 1px solid var(--sl-color-gray-5);
+  padding-top: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.sl-markdown-content h3:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Reference code blocks default to plaintext; keep them compact. */
+.sl-markdown-content pre {
+  font-size: 0.9rem;
+}

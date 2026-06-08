@@ -1,0 +1,66 @@
+---
+title: Strudel
+description: Strudel is a JavaScript port of TidalCycles — concise pattern algebra for live-coded music.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Strudel is the **pattern algebra** runtime. Each `$:` block declares one independent pattern; stack multiple blocks to layer parts.
+
+```js
+setcps(130/240)
+
+$: note("c4 e4 g4 b4 c5 b4 g4 e4")
+   .s("sawtooth").gain(0.3).lpf(2400)
+   .viz("pianoroll")
+
+$: stack(
+  s("hh*8").gain(0.3),
+  s("bd [~ bd] ~ bd").gain(0.5),
+).viz("wordfall")
+```
+
+## What Stave adds
+
+- **Multi-block files** — any number of `$:` lines. Each block is independently evaluated.
+- **`.viz("name")`** — attach a named inline visualizer from the project's viz files (see [Inline viz](/concepts/viz/)).
+- **Structured zones** — an inline viz zone lives between the end of a block and the start of the next. Dragging to resize persists in the project doc.
+- **Ctrl+Enter** — evaluates the whole file, scheduling any changes to the next cycle boundary.
+
+## Mini-notation quick reference
+
+| Syntax | Meaning |
+|---|---|
+| `"c4 e4 g4"` | Three events in a cycle |
+| `"c4 [e4 g4]"` | Subdivision — `e4 g4` shares one event slot |
+| `"c4*3"` | Repeat three times |
+| `"c4/2"` | Half-speed |
+| `"c4 ~"` | Rest |
+| `"<c4 d4 e4>"` | One of these per cycle |
+| `"c4(3,8)"` | Euclidean rhythm — 3 hits distributed over 8 steps |
+
+## Common effects (chainable)
+
+```js
+.gain(0.5)    // amplitude
+.lpf(1200)    // low-pass filter cutoff (Hz)
+.hpf(80)      // high-pass
+.room(0.3)    // reverb send
+.delay(0.25)  // delay send
+.pan(0.3)     // stereo pan (-1..1)
+.orbit(1)     // route to effect bus N
+```
+
+## Setting tempo
+
+```js
+setcps(130/240)  // 130 BPM assuming 4 beats per cycle
+```
+
+## Full function reference
+
+Every Strudel symbol Stave recognises appears in the [Strudel reference](/reference/strudel/). Signatures, descriptions, examples, and a link to upstream `strudel.cc`.
+
+<Aside title="Upstream project">
+Strudel lives at [codeberg.org/uzu/strudel](https://codeberg.org/uzu/strudel). When the upstream surface grows, Stave's reference can be re-synced.
+</Aside>
