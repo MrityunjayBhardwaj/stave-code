@@ -120,10 +120,10 @@ export class WorkerVizRenderer implements VizRenderer {
    *  happens after we've detached its listener, so we account it main-side). */
   private glAccounted = false
 
-  /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5). @param code raw
-   *  sketch source. @param name workspace path (error attribution). */
+  /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
+   *  @param code raw sketch source. @param name workspace path (error attribution). */
   constructor(
-    private readonly kind: 'p5' | 'hydra',
+    private readonly kind: 'p5' | 'hydra' | 'glsl',
     private readonly code: string,
     private readonly name: string,
   ) {}

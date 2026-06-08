@@ -44,6 +44,7 @@ import { buildStaveUniforms } from '../signals/staveUniforms'
 import { buildHydraStaveBag } from '../renderers/hydraStaveBag'
 import { compileP5Code } from '../p5Compiler'
 import { compileHydraCode } from '../hydraCompiler'
+import { createGLSLProgram, type GLSLProgram } from '../renderers/glslCore'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
 import { getVizConfig, updateVizConfig } from '../vizConfig'
 import {
@@ -255,7 +256,9 @@ export function hostVizWorker(scope: WorkerScope): void {
     const strategy =
       msg.kind === 'hydra'
         ? await mountHydra(msg, feed, rawAnalyser, rawScheduler, dpr)
-        : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
+        : msg.kind === 'glsl'
+          ? mountGLSL(msg, rawAnalyser)
+          : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
 
     const reader = createPostMessageReader(scope as any)
     state = {
@@ -482,6 +485,51 @@ export function hostVizWorker(scope: WorkerScope): void {
       teardown: () => {
         try {
           hydra?.synth?.hush?.()
+        } catch {
+          /* ignore */
+        }
+      },
+    }
+  }
+
+  // ── glsl (Tier 1: raw WebGL2 on the canvas → render direct, no blit, no lib) ──
+  function mountGLSL(msg: MountMessage, rawAnalyser: RawAnalyserShim): RendererStrategy {
+    // Size the presenting canvas to CSS px (match HydraVizRenderer / mountHydra —
+    // the Tier-1 direct-render sibling; maxDpr is 1 so backing == CSS anyway).
+    msg.canvas.width = Math.max(1, Math.round(msg.size.w))
+    msg.canvas.height = Math.max(1, Math.round(msg.size.h))
+
+    const gl = msg.canvas.getContext('webgl2') as WebGL2RenderingContext | null
+    if (!gl) throw new Error('glsl: WebGL2 unavailable in worker')
+    // Compile/link NOW (sync) — a shader error throws here, propagates to mount's
+    // caller → diag('error') → main onError → FallbackVizRenderer degrades to the
+    // main-thread GLSLVizRenderer (#247), exactly like a p5/hydra compile error.
+    const program: GLSLProgram = createGLSLProgram(gl, msg.code)
+    const startMs = globalThis.performance?.now?.() ?? 0
+
+    return {
+      setupDone: () => true, // program built synchronously above; draw on first frame
+      // #266 — raw WebGL2 context we own; re-get returns the same context for the
+      // host's accountGL/releaseGL. The EASIEST gl() of the three kinds (no search).
+      gl: () => (msg.canvas.getContext('webgl2') as GLLoseCtx | null),
+      draw: () => {
+        // Feed the master analyser straight into the core (it uploads it to the
+        // iChannel0 audio texture). rawAnalyser is refreshed by applyAndDraw before
+        // this runs — the SAME already-refreshed shim mountHydra reads. No new seam.
+        const timeMs = (globalThis.performance?.now?.() ?? 0) - startMs
+        program.draw(rawAnalyser, {
+          width: msg.canvas.width,
+          height: msg.canvas.height,
+          timeMs,
+        })
+      },
+      resizeKind: (w, h) => {
+        msg.canvas.width = Math.max(1, Math.round(w))
+        msg.canvas.height = Math.max(1, Math.round(h))
+      },
+      teardown: () => {
+        try {
+          program.dispose()
         } catch {
           /* ignore */
         }

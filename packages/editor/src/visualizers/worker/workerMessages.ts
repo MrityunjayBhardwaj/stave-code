@@ -12,9 +12,10 @@ import type { LogEntry } from '../../engine/engineLog'
 /** MAIN → WORKER: create the renderer instance against a transferred OffscreenCanvas. */
 export interface MountMessage {
   type: 'mount'
-  /** Renderer kind — `'p5'` (B-3) or `'hydra'` (B-5). The host installs the
-   *  matching DOM shim + imports the matching library + drives the matching draw. */
-  kind: 'p5' | 'hydra'
+  /** Renderer kind — `'p5'` (B-3), `'hydra'` (B-5), or `'glsl'` (#281). The host
+   *  installs the matching shim (none for glsl — raw WebGL2) + imports the matching
+   *  library (none for glsl) + drives the matching draw. */
+  kind: 'p5' | 'hydra' | 'glsl'
   /** The sketch source (a transferable string, compiled in-worker — PLAN §7.3). */
   code: string
   /** Source label for error attribution (the workspace path). */

@@ -16,6 +16,8 @@ import {
   HYDRA_SCOPE_CODE,
   HYDRA_KALEID_CODE,
 } from './renderers/builtinHydraCode'
+import { makeGLSLRenderer } from './renderers/makeGLSLRenderer'
+import { GLSL_DEFAULT_CODE, GLSL_SPECTRUM_CODE } from './renderers/builtinGLSLCode'
 
 /**
  * All built-in visualization modes.
@@ -56,4 +58,12 @@ export const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[] = [
   { id: 'pianoroll:hydra',    label: 'Piano Roll (Hydra)', renderer: 'hydra', requires: ['audio'], factory: () => makeHydraRenderer(HYDRA_PIANOROLL_CODE, 'pianoroll:hydra') },
   { id: 'scope:hydra',        label: 'Scope (Hydra)',      renderer: 'hydra', requires: ['audio'], factory: () => makeHydraRenderer(HYDRA_SCOPE_CODE, 'scope:hydra') },
   { id: 'kaleidoscope:hydra', label: 'Kaleidoscope',       renderer: 'hydra', requires: ['audio'], factory: () => makeHydraRenderer(HYDRA_KALEID_CODE, 'kaleidoscope:hydra') },
+
+  // GLSL renderers (#281) — single-pass ShaderToy `mainImage`, raw WebGL2, the
+  // Tier-1 ZERO-library reference + perf floor. The wrapped fragment source is a
+  // plain transferable string, so `makeGLSLRenderer` offloads it to the worker
+  // (direct-to-OffscreenCanvas, no blit) with the main-thread GLSLVizRenderer as
+  // the fallback. Built against the renderer contract (architecture/renderer-contract).
+  { id: 'glsl',          label: 'GLSL',          renderer: 'glsl', requires: ['audio'], factory: () => makeGLSLRenderer(GLSL_DEFAULT_CODE, 'glsl') },
+  { id: 'spectrum:glsl', label: 'Spectrum (GLSL)', renderer: 'glsl', requires: ['audio'], factory: () => makeGLSLRenderer(GLSL_SPECTRUM_CODE, 'spectrum:glsl') },
 ]
