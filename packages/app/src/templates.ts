@@ -165,26 +165,33 @@ const hydraPresetId = () => bundledPresetId("Piano Roll Hydra", "hydra");
 // Bundled GLSL example shaders (issue #287). "Pulse Grid" is an original Stave
 // shader; "Prism" is the classic "Creation" demo by Danilo Guanabara, included
 // with author credit. Both are single-pass ShaderToy-style `mainImage`.
-const PRISM_GLSL_CODE = `// "Prism" — "Creation" by Danilo Guanabara.
+const PRISM_GLSL_CODE = `// "Prism" — after "Creation" by Danilo Guanabara, made audio-reactive for Stave.
 // http://www.pouet.net/prod.php?which=57245
 // If you intend to reuse this shader, please add credits to 'Danilo Guanabara'.
+// iChannel0: row 0 (y=0.0) = FFT magnitude.
 #define t iTime
 #define r iResolution.xy
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord ){
+    float bass   = texture(iChannel0, vec2(0.03, 0.0)).x;
+    float mid    = texture(iChannel0, vec2(0.30, 0.0)).x;
+    float treble = texture(iChannel0, vec2(0.65, 0.0)).x;
     vec3 c;
-    float l,z=t;
-    for(int i=0;i<3;i++) {
-        vec2 uv,p=fragCoord.xy/r;
-        uv=p;
-        p-=.5;
-        p.x*=r.x/r.y;
-        z+=.07;
-        l=length(p);
-        uv+=p/l*(sin(z)+1.)*abs(sin(l*9.-z-z));
-        c[i]=.01/length(mod(uv,1.)-.5);
+    float l, z = t;
+    for (int i = 0; i < 3; i++) {
+        vec2 uv, p = fragCoord.xy / r;
+        uv = p;
+        p -= .5;
+        p.x *= r.x / r.y;
+        z += .07 + bass * .08;                                  // bass drives the zoom
+        l = length(p);
+        uv += p / l * (sin(z) + 1.) * abs(sin(l * 9. - z - z))
+            * (1. + treble * 1.4);                              // treble ripples the warp
+        c[i] = .01 / length(mod(uv, 1.) - .5);
     }
-    fragColor=vec4(c/l,t);
+    vec3 col = c / l;
+    col = mix(col, col.gbr, mid * .6);                          // mids swirl the hue
+    fragColor = vec4(col * (.6 + bass * 1.7), 1.0);             // bass brightens
 }
 `;
 
