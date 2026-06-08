@@ -26708,15 +26708,38 @@ function VizDropdown({
 }
 __name(VizDropdown, "VizDropdown");
 
+// src/workspace/vizLanguages.ts
+var VIZ_LANGUAGES = ["p5js", "hydra", "glsl"];
+var LANGUAGE_TO_RENDERER = {
+  p5js: "p5",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+var RENDERER_TO_LANGUAGE = {
+  p5: "p5js",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+function isVizLanguage(lang) {
+  return VIZ_LANGUAGES.includes(lang);
+}
+__name(isVizLanguage, "isVizLanguage");
+function rendererForLanguage(lang) {
+  return isVizLanguage(lang) ? LANGUAGE_TO_RENDERER[lang] : null;
+}
+__name(rendererForLanguage, "rendererForLanguage");
+function languageForRenderer(renderer) {
+  return RENDERER_TO_LANGUAGE[renderer];
+}
+__name(languageForRenderer, "languageForRenderer");
+
 // src/workspace/preview/vizPresetBridge.ts
 function workspaceFileIdForPreset(presetId) {
   return `viz:${presetId}`;
 }
 __name(workspaceFileIdForPreset, "workspaceFileIdForPreset");
 function languageForPresetRenderer(renderer) {
-  if (renderer === "hydra") return "hydra";
-  if (renderer === "glsl") return "glsl";
-  return "p5js";
+  return languageForRenderer(renderer);
 }
 __name(languageForPresetRenderer, "languageForPresetRenderer");
 function seedFromPreset(preset) {
@@ -26740,7 +26763,7 @@ async function flushToPreset(fileId, presetId) {
   if (!file) return;
   const existing = await VizPresetStore.get(presetId);
   const now2 = Date.now();
-  const renderer = file.language === "hydra" ? "hydra" : file.language === "glsl" ? "glsl" : "p5";
+  const renderer = rendererForLanguage(file.language) ?? "p5";
   const preset = {
     ...existing,
     // preserve cropRegion + any future fields
@@ -28822,6 +28845,7 @@ exports.StrudelEditor = StrudelEditor;
 exports.StrudelEngine = StrudelEngine;
 exports.StrudelParseSystem = StrudelParseSystem;
 exports.UI_ICON_SIZE_VAR = UI_ICON_SIZE_VAR;
+exports.VIZ_LANGUAGES = VIZ_LANGUAGES;
 exports.VizDropdown = VizDropdown;
 exports.VizEditor = VizEditor;
 exports.VizPanel = VizPanel;
@@ -28948,6 +28972,8 @@ exports.isDocReady = isDocReady;
 exports.isFileModifiedSinceHead = isFileModifiedSinceHead;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
 exports.isViewing = isViewing;
+exports.isVizLanguage = isVizLanguage;
+exports.languageForRenderer = languageForRenderer;
 exports.levenshtein = levenshtein;
 exports.listBottomPanelTabs = listBottomPanelTabs;
 exports.listBranches = listBranches;
@@ -28997,6 +29023,7 @@ exports.registerPreviewProvider = registerPreviewProvider;
 exports.registerRuntimeProvider = registerRuntimeProvider;
 exports.renameProject = renameProject;
 exports.renameWorkspaceFile = renameWorkspaceFile;
+exports.rendererForLanguage = rendererForLanguage;
 exports.resetFileStore = resetFileStore;
 exports.resetHistoryState = resetHistoryState;
 exports.resetUndoManager = resetUndoManager;

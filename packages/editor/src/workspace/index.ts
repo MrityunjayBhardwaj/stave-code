@@ -151,6 +151,13 @@ export {
   ensureWorkspaceLanguages,
   toMonacoLanguage,
 } from './languages'
+export {
+  VIZ_LANGUAGES,
+  isVizLanguage,
+  rendererForLanguage,
+  languageForRenderer,
+} from './vizLanguages'
+export type { VizRendererKind, VizLanguage } from './vizLanguages'
 
 // Task 08 — Command registry + Cmd+K V/B/W
 export type {

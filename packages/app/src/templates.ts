@@ -10,6 +10,7 @@ import {
   seedWorkspaceFile,
   bundledPresetId,
   workspaceFileIdForPreset,
+  isVizLanguage,
   type WorkspaceLanguage,
   // Bundled p5 viz source — moved into @stave/editor in #184 so the
   // viz picker (compiled from DEFAULT_VIZ_DESCRIPTORS) and these
@@ -398,7 +399,7 @@ export function seedProjectFromTemplate(templateId: string): void {
 export function seedMissingPresetFiles(): void {
   const starterFiles = makeStarterFiles();
   for (const f of starterFiles) {
-    if (f.language === "p5js" || f.language === "hydra") {
+    if (isVizLanguage(f.language)) {
       seedWorkspaceFile(f.id, f.path, f.content, f.language, f.meta);
     }
   }
