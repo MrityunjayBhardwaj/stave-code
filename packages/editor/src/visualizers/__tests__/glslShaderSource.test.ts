@@ -33,6 +33,16 @@ describe('buildGLSLFragmentSource — common preamble', () => {
     }
   })
 
+  it('declares the pattern-EVENT uniforms (#284) in BOTH modes', () => {
+    for (const src of [SHADERTOY, RAW]) {
+      const out = buildGLSLFragmentSource(src)
+      expect(out).toContain('uKick')
+      expect(out).toContain('uSnare')
+      expect(out).toContain('uHat')
+      expect(out).toContain('uVelocity')
+    }
+  })
+
   it('the fullscreen vertex shader needs no attribute buffer (gl_VertexID)', () => {
     expect(GLSL_FULLSCREEN_VERT).toContain('gl_VertexID')
     expect(GLSL_FULLSCREEN_VERT.startsWith('#version 300 es')).toBe(true)

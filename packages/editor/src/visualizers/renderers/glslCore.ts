@@ -50,6 +50,23 @@ export interface GLSLDrawState {
   mouse?: readonly [number, number, number, number]
 }
 
+/** The PATTERN-EVENT uniform names (#284) — per-drum envelope levels + master DSP,
+ *  all `float` 0..1, fed from the named-signal bus. The single source of truth for
+ *  BOTH the cached uniform locations here AND the shader preamble declarations
+ *  (glslShaderSource.ts) AND the bus reader (glslEvents.ts). */
+export const GLSL_EVENT_NAMES = [
+  'uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom', 'uVelocity',
+  'uRms', 'uBass', 'uMid', 'uTreble',
+] as const
+
+/** Per-frame event uniform values — one number per GLSL_EVENT_NAMES entry. */
+export type GLSLEvents = Record<(typeof GLSL_EVENT_NAMES)[number], number>
+
+/** All-zero events (no bus / silence) — the default when `draw` gets no events. */
+export const ZERO_GLSL_EVENTS: GLSLEvents = Object.fromEntries(
+  GLSL_EVENT_NAMES.map((n) => [n, 0]),
+) as GLSLEvents
+
 /** Width (texels) of each row of the `iChannel0` audio texture. */
 const AUDIO_TEX_W = 512
 const AUDIO_TEX_H = 2
@@ -104,6 +121,8 @@ export class GLSLProgram {
   private readonly uTime: WebGLUniformLocation | null
   private readonly uMouse: WebGLUniformLocation | null
   private readonly uChannel0: WebGLUniformLocation | null
+  /** Cached locations for the pattern-event uniforms (#284), by name. */
+  private readonly uEvents: Array<readonly [keyof GLSLEvents, WebGLUniformLocation | null]>
   /** Scratch buffers, allocated once (no per-frame alloc). */
   private readonly freqScratch = new Uint8Array(AUDIO_TEX_W * 4)
   private readonly waveScratch = new Uint8Array(AUDIO_TEX_W * 4)
@@ -140,6 +159,11 @@ export class GLSLProgram {
     this.uTime = gl.getUniformLocation(program, 'iTime')
     this.uMouse = gl.getUniformLocation(program, 'iMouse')
     this.uChannel0 = gl.getUniformLocation(program, 'iChannel0')
+    // Event uniforms (#284) — null when the shader doesn't reference one (GLSL
+    // strips unused uniforms), in which case the set is a cheap no-op.
+    this.uEvents = GLSL_EVENT_NAMES.map(
+      (n) => [n, gl.getUniformLocation(program, n)] as const,
+    )
 
     // WebGL2 core requires a bound VAO for drawArrays, even with no attributes.
     const vao = gl.createVertexArray()
@@ -163,8 +187,9 @@ export class GLSLProgram {
   }
 
   /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
-   *  at its current contents (or zero) and the shader still animates off iTime. */
-  draw(audio: AudioByteSource | null, state: GLSLDrawState): void {
+   *  at its current contents (or zero) and the shader still animates off iTime.
+   *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0. */
+  draw(audio: AudioByteSource | null, state: GLSLDrawState, events?: GLSLEvents): void {
     if (this.disposed) return
     const gl = this.gl
     const w = Math.max(1, Math.round(state.width))
@@ -200,6 +225,12 @@ export class GLSLProgram {
       gl.activeTexture(gl.TEXTURE0)
       gl.bindTexture(gl.TEXTURE_2D, this.audioTex)
       gl.uniform1i(this.uChannel0, 0)
+    }
+    // Pattern-event uniforms (#284) — set only the ones the shader actually uses
+    // (others have a null location, GLSL stripped them). Default 0 in silence.
+    const ev = events ?? ZERO_GLSL_EVENTS
+    for (const [name, loc] of this.uEvents) {
+      if (loc) gl.uniform1f(loc, ev[name])
     }
 
     gl.drawArrays(gl.TRIANGLES, 0, 3)

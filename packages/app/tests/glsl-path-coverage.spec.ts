@@ -43,6 +43,15 @@ const GLSL_BROKEN = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(definitely_not_a_real_symbol, 0.0, 0.0, 1.0);
 }`
 
+/** A PURE-EVENT shader (#284) — NO iTime, NO iChannel0: its ONLY input is the
+ *  `uKick` pattern-event uniform. So if the canvas changes frame-to-frame, that
+ *  change can ONLY come from kick events reaching the shader (without #284 wiring,
+ *  uKick is always 0 → a constant black frame → distinct === 1). The cleanest
+ *  proof that EVENTS (not just FFT) drive the shader. */
+const GLSL_EVENT_OK = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  fragColor = vec4(vec3(uKick), 1.0);
+}`
+
 /** A RAW GLSL fragment shader (#283) — the user owns `out` + `void main()`, NOT
  *  the ShaderToy `mainImage` convention. Uses the same Stave uniforms; animates
  *  off iTime + reads the iChannel0 FFT. Proves the dual-mode wrapper end to end. */
@@ -276,6 +285,36 @@ test.describe('#281 GLSL worker path — contract validation', () => {
       console.log(`[#281 e] raw distinct=${distinct}/5 maxPNG=${maxBytes}B`)
       expect(distinct, 'the raw GLSL canvas animates').toBeGreaterThanOrEqual(3)
       expect(maxBytes, 'the raw GLSL canvas paints pixels').toBeGreaterThan(3000)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('(f) #284 — pattern EVENTS reach the shader: a pure uKick shader pulses with the kick', async ({ browser }) => {
+    const { ctx, page } = await open(browser)
+    try {
+      await registerGLSL(page, 'gl-event', GLSL_EVENT_OK)
+      // bd*4 → 4 kicks per cycle; uKick bumps + decays → brightness oscillates.
+      await remount(page, `$: s("bd*4").bank("RolandTR909").gain(1.0).viz('gl-event')`)
+
+      const g = await snap(page)
+      console.log(`[#281 f] ${JSON.stringify(g)}`)
+      expect(g.worker, 'event GLSL worker viz live (control probe)').toBeGreaterThanOrEqual(1)
+      expect(g.glsl, 'no main-thread fallback').toBe(0)
+
+      const canvas = page.locator('[data-viz-zone] canvas').first()
+      await canvas.waitFor({ timeout: 15000 })
+      const hashes: string[] = []
+      for (let i = 0; i < 6; i++) {
+        const buf = await canvas.screenshot()
+        hashes.push(createHash('md5').update(buf).digest('hex').slice(0, 8))
+        if (i < 5) await page.waitForTimeout(400)
+      }
+      const distinct = new Set(hashes).size
+      console.log(`[#281 f] uKick-only distinct=${distinct}/6 hashes=${hashes.join(',')}`)
+      // The shader has NO iTime/iChannel0 — frame-to-frame change PROVES uKick
+      // (a pattern event) is reaching the shader. A dead feed → 1 distinct (black).
+      expect(distinct, 'a pure-uKick shader must change as kicks fire (events reach GLSL)').toBeGreaterThanOrEqual(3)
     } finally {
       await ctx.close()
     }

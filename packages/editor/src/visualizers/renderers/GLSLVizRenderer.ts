@@ -16,9 +16,15 @@
  */
 
 import type { EngineComponents } from '../../engine/LiveCodingEngine'
+import type { HapEvent } from '../../engine/HapStream'
+import type { HapStream } from '../../engine/HapStream'
 import type { VizRenderer } from '../types'
 import { perf } from '../../perf/profiler'
+import { SignalBus } from '../signals/SignalBus'
+import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
+import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { createGLSLProgram, type GLSLProgram, type AudioByteSource, type GL2 } from './glslCore'
+import { readGLSLEvents } from './glslEvents'
 
 /** Monotone id source for a stable per-instance profiler key (`glsl#N`). */
 let glslPerfSeq = 0
@@ -34,6 +40,11 @@ export class GLSLVizRenderer implements VizRenderer {
   private startMs = 0
   private size = { w: 400, h: 300 }
   private readonly perfId = `glsl#${++glslPerfSeq}`
+  /** Named-signal bus → the `u*` event uniforms (#284), same as hydra/p5. Fed
+   *  unconditionally (BLOCK-1 discipline mirrored from HydraVizRenderer). */
+  private bus: SignalBus | null = new SignalBus()
+  private hapStream: HapStream | null = null
+  private busHapHandler: ((e: HapEvent) => void) | null = null
 
   constructor(private readonly code: string) {}
 
@@ -47,6 +58,18 @@ export class GLSLVizRenderer implements VizRenderer {
     try {
       this.size = { w: size.w, h: size.h }
       this.analyser = (components.audio?.analyser as AnalyserNode | undefined) ?? null
+
+      // Bind the named-signal bus for the u* event uniforms (#284) — same
+      // unconditional bind discipline as HydraVizRenderer (the bus degrades to 0
+      // absent feeds, so never gate the bind).
+      this.bus?.bindScheduler(components.queryable?.scheduler, components.queryable?.trackSchedulers)
+      this.bus?.bindAnalysers(components.audio?.analyser, components.audio?.trackAnalysers)
+      this.bus?.setAliases(resolveAliasesForEngine(getStoredSignalAliases(), DEFAULT_VIZ_ENGINE))
+      this.hapStream = components.streaming?.hapStream ?? null
+      if (this.hapStream && this.bus) {
+        this.busHapHandler = (e: HapEvent) => this.bus?.bump(e)
+        this.hapStream.on(this.busHapHandler)
+      }
 
       const canvas = document.createElement('canvas')
       canvas.width = Math.max(1, Math.round(size.w))
@@ -80,11 +103,20 @@ export class GLSLVizRenderer implements VizRenderer {
     perf.frame(this.perfId)
     perf.begin('glsl.draw')
     try {
-      this.program.draw(this.analyser as AudioByteSource | null, {
-        width: this.size.w,
-        height: this.size.h,
-        timeMs: now - this.startMs,
-      })
+      // Tick the bus ONCE per frame (decay → scheduler snapshot → DSP), in the
+      // same order as HydraVizRenderer, then read its named signals into events.
+      let events
+      if (this.bus) {
+        this.bus.tick()
+        this.bus.refreshActive(this.bus.now())
+        this.bus.readAudio()
+        events = readGLSLEvents(this.bus)
+      }
+      this.program.draw(
+        this.analyser as AudioByteSource | null,
+        { width: this.size.w, height: this.size.h, timeMs: now - this.startMs },
+        events,
+      )
     } finally {
       perf.end('glsl.draw')
     }
@@ -92,9 +124,12 @@ export class GLSLVizRenderer implements VizRenderer {
   }
 
   update(components: Partial<EngineComponents>): void {
-    // Only the analyser is live data for GLSL; rebind it so a re-evaluate that
-    // swaps the audio node keeps the shader reactive (mirror HydraVizRenderer).
+    // Rebind the analyser (iChannel0) AND the bus's live scheduler/analyser refs
+    // in place (the u* events) so a re-evaluate keeps the shader reactive — same
+    // live-ref discipline as HydraVizRenderer.
     this.analyser = (components.audio?.analyser as AnalyserNode | undefined) ?? null
+    this.bus?.bindScheduler(components.queryable?.scheduler ?? null, components.queryable?.trackSchedulers)
+    this.bus?.bindAnalysers(components.audio?.analyser ?? null, components.audio?.trackAnalysers)
   }
 
   resize(w: number, h: number): void {
@@ -143,5 +178,12 @@ export class GLSLVizRenderer implements VizRenderer {
     this.canvas?.remove()
     this.canvas = null
     this.analyser = null
+    // Unsubscribe the bus feed + drop the bus (#284).
+    if (this.hapStream && this.busHapHandler) {
+      this.hapStream.off(this.busHapHandler)
+      this.busHapHandler = null
+    }
+    this.hapStream = null
+    this.bus = null
   }
 }
