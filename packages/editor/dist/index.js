@@ -12500,11 +12500,28 @@ function draw() {
   }
 }`;
 var SPECTRUM_P5_CODE = `// Stave p5 viz \u2014 Spectrum (scrolling waterfall)
-// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().
+// The waterfall scrolls by reading back the PREVIOUS frame (getImageData \u2192
+// putImageData(-2,0)). That needs the drawing surface to PERSIST across frames \u2014
+// but in the worker the Tier-2 present transferToImageBitmap()s (and CLEARS) the
+// main canvas every frame, so reading the MAIN canvas back yields nothing (#306).
+// Own a persistent OffscreenCanvas buffer (_wf) instead: scroll it (cheap, one
+// column/frame), then blit it to the main canvas each frame. _wf is never
+// transferred, so history accumulates. OffscreenCanvas is native in the worker AND
+// on the main thread, so this renders identically on both (no p5.Graphics, whose
+// HTMLCanvasElement instanceof checks are undefined in the worker shim).
 let _freq = null
+let _wf = null, _wctx = null
+function _ensureBuf(w, h) {
+  if (_wf && _wf.width === w && _wf.height === h) return
+  const old = _wf
+  _wf = new OffscreenCanvas(max(1, w), max(1, h))
+  _wctx = _wf.getContext('2d')
+  if (old && _wctx) { try { _wctx.drawImage(old, 0, 0) } catch (e) {} }
+}
 function setup() {
   createCanvas(stave.width, stave.height)
   pixelDensity(1); noStroke()
+  _ensureBuf(width, height)
 }
 // Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until
 // superdough renders, so parse the note name to MIDI ourselves.
@@ -12521,7 +12538,9 @@ function hapFreq(h) {
   return 440 * pow(2, (n - 69) / 12)
 }
 function draw() {
-  const ctx = drawingContext
+  _ensureBuf(width, height)
+  const ctx = _wctx
+  if (!ctx) { clear(); return }
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
     if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)
@@ -12558,7 +12577,12 @@ function draw() {
       ctx.fillRect(width - 2, y - 2, 2, max(4, height * 0.03))
     }
     ctx.globalAlpha = 1
-  } else { clear() }
+  } else { ctx.clearRect(0, 0, width, height) }
+  // Present the persistent buffer to the main canvas (which the worker clears
+  // every frame via transferToImageBitmap). drawImage accepts an OffscreenCanvas
+  // source on both the worker and the main-thread 2D context.
+  clear()
+  drawingContext.drawImage(_wf, 0, 0)
 }`;
 var SPIRAL_P5_CODE = `// Stave p5 viz \u2014 Spiral
 function setup() {
