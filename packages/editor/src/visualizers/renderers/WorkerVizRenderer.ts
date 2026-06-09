@@ -37,6 +37,7 @@ import { createPostMessageWriter, type SignalTransportWriter } from '../worker/s
 import { getVizWorkerFactory } from '../vizWorkerFactory'
 import { acquireVizWorker, releaseVizWorker, isVizWorkerPoolEnabled } from '../vizWorkerPool'
 import { getVizConfig, onVizConfigChange, pickWorkerVizConfig } from '../vizConfig'
+import { vizGovernor } from '../vizGovernor'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
@@ -358,8 +359,12 @@ export class WorkerVizRenderer implements VizRenderer {
     this.running = true
     this.inFlight = 0 // fresh pipeline on (re)start — drop any owed acks (#261)
     this.lastProduceTs = 0 // fresh fps-cap clock
+    vizGovernor.register(this.perfId) // join the global GPU-budget pool
     const tick = (ts: number): void => {
       if (!this.running || !this.writer) return
+      // Feed the global cadence monitor every rAF (even when backpressured —
+      // a stalled worker IS the jank signal we want to measure).
+      vizGovernor.observeFrame(ts)
       // #261 backpressure: only produce while the worker hasn't fallen `cap`
       // frames behind. The rAF keeps ticking (so we resume the instant an ack
       // frees a slot), but we skip sample()+writeFrame() when the pipeline is
@@ -376,7 +381,12 @@ export class WorkerVizRenderer implements VizRenderer {
       // only lower the rate, never exceed the cap). Composed with backpressure.
       const gap = minFrameMs()
       const due = gap <= 0 || this.lastProduceTs === 0 || ts - this.lastProduceTs >= gap - 1
-      if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due) {
+      // Global GPU-budget gate: under sustained jank the governor throttles this
+      // viz's rate + round-robins which viz draw each frame, so N heavy viz can't
+      // co-saturate the shared GPU and starve the editor's compositing. A total
+      // no-op when frames are healthy (stress 0 → always true), so it never
+      // touches the smooth common case or the reactivity contract (PV75).
+      if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due && vizGovernor.mayProduce(this.perfId, ts)) {
         this.lastProduceTs = ts
         perf.frame(this.perfId)
         // Decompose the per-frame main cost into its two parts so the matrix can
@@ -401,5 +411,6 @@ export class WorkerVizRenderer implements VizRenderer {
     this.running = false
     if (this.rafId) cancelAnimationFrame(this.rafId)
     this.rafId = 0
+    vizGovernor.unregister(this.perfId) // leave the GPU-budget pool (pause/destroy)
   }
 }

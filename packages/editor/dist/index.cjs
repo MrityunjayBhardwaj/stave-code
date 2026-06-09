@@ -6480,6 +6480,127 @@ function releaseVizWorker(worker) {
 }
 __name(releaseVizWorker, "releaseVizWorker");
 
+// src/visualizers/vizGovernor.ts
+var HEALTHY_MS = 20;
+var JANK_MS = 45;
+var MIN_FPS = 10;
+var EMA_ALPHA = 0.25;
+var STRESS_RAMP_DOWN = 0.012;
+var IDLE_GAP_MS = 400;
+function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
+  if (emaMs <= healthy) return 0;
+  if (emaMs >= jank) return 1;
+  return (emaMs - healthy) / (jank - healthy);
+}
+__name(computeStress, "computeStress");
+function maxPerFrame(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.round(n * (1 - stress)));
+}
+__name(maxPerFrame, "maxPerFrame");
+function periodFor(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
+}
+__name(periodFor, "periodFor");
+function minGapMs(stress) {
+  if (stress <= 0) return 0;
+  return stress * (1e3 / MIN_FPS);
+}
+__name(minGapMs, "minGapMs");
+var _VizGovernor = class _VizGovernor {
+  constructor() {
+    this.enabled = true;
+    /** Active (looping) renderer id → its stable round-robin offset. */
+    this.registered = /* @__PURE__ */ new Map();
+    this.lastProduce = /* @__PURE__ */ new Map();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+    try {
+      if (typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.governor") === "0") {
+        this.enabled = false;
+      }
+    } catch {
+    }
+  }
+  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
+  register(id) {
+    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
+  }
+  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
+   *  viz leaves so a fresh mount starts from a healthy baseline. */
+  unregister(id) {
+    this.registered.delete(id);
+    this.lastProduce.delete(id);
+    if (this.registered.size === 0) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
+   *  (idempotent per timestamp: only the first call for a new `ts` advances the
+   *  frame + updates stress, so N renderers calling with the same ts is fine). */
+  observeFrame(ts) {
+    if (!this.enabled || this.registered.size === 0) return;
+    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
+      const d = ts - this.lastObserveTs;
+      if (d > IDLE_GAP_MS) {
+        this.emaMs = HEALTHY_MS;
+      } else {
+        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
+      }
+      const target = computeStress(this.emaMs);
+      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
+      this.frameIndex++;
+      perf.record("viz.governor.stress", Math.round(this.stress * 100));
+    }
+    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
+  }
+  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
+   *  after) the renderer's own backpressure + maxFps checks. */
+  mayProduce(id, ts) {
+    if (!this.enabled) return true;
+    const n = this.registered.size;
+    if (n === 0 || this.stress <= 0) return true;
+    const gap = minGapMs(this.stress);
+    if (gap > 0) {
+      const last = this.lastProduce.get(id) ?? 0;
+      if (last > 0 && ts - last < gap - 1) return false;
+    }
+    if (n > 1) {
+      const period = periodFor(n, this.stress);
+      if (period > 1) {
+        const offset = this.registered.get(id) ?? 0;
+        if ((this.frameIndex + offset) % period !== 0) return false;
+      }
+    }
+    this.lastProduce.set(id, ts);
+    return true;
+  }
+  /** Observability / test hook. */
+  state() {
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex };
+  }
+  /** Test helper — force enabled state (and reset) deterministically. */
+  _setEnabledForTest(on) {
+    this.enabled = on;
+    this.registered.clear();
+    this.lastProduce.clear();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+  }
+};
+__name(_VizGovernor, "VizGovernor");
+var VizGovernor = _VizGovernor;
+var vizGovernor = new VizGovernor();
+
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
 var MAX_FRAMES_IN_FLIGHT = 2;
@@ -6700,11 +6821,13 @@ ${d.stack}` : "");
     this.running = true;
     this.inFlight = 0;
     this.lastProduceTs = 0;
+    vizGovernor.register(this.perfId);
     const tick = /* @__PURE__ */ __name((ts) => {
       if (!this.running || !this.writer) return;
+      vizGovernor.observeFrame(ts);
       const gap = minFrameMs();
       const due = gap <= 0 || this.lastProduceTs === 0 || ts - this.lastProduceTs >= gap - 1;
-      if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due) {
+      if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due && vizGovernor.mayProduce(this.perfId, ts)) {
         this.lastProduceTs = ts;
         perf.frame(this.perfId);
         perf.begin("viz.worker.sample");
@@ -6723,6 +6846,7 @@ ${d.stack}` : "");
     this.running = false;
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.rafId = 0;
+    vizGovernor.unregister(this.perfId);
   }
 };
 __name(_WorkerVizRenderer, "WorkerVizRenderer");
