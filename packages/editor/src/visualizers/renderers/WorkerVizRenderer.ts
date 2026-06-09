@@ -93,6 +93,11 @@ export class WorkerVizRenderer implements VizRenderer {
   /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
    *  (#261). Reset on (re)start. */
   private lastProduceTs = 0
+  /** Governor render-resolution scale currently applied to the backing store
+   *  (lever 3, P122/PV91). 1 = full (the no-op common case). The tick re-posts a
+   *  scaled `resize` only when `vizGovernor.resolutionScale()` crosses a quantized
+   *  step, so the (relatively expensive) backing-store realloc fires rarely. */
+  private govResScale = 1
   private size = { w: 400, h: 300 }
   private onError: ((e: Error) => void) | null = null
   private readonly perfId = `worker#${++workerPerfSeq}`
@@ -266,8 +271,22 @@ export class WorkerVizRenderer implements VizRenderer {
 
   resize(w: number, h: number): void {
     this.size = { w, h }
-    const dpr = effectiveDpr()
-    this.worker?.postMessage({ type: 'resize', w, h, dpr })
+    this.postBackingSize()
+  }
+
+  /** Post a `resize` sizing the worker backing store to the CSS size scaled by the
+   *  governor's render-resolution lever (P122/PV91). At scale 1 (disabled/smooth)
+   *  this is byte-identical to posting the raw CSS size — transparent. Under stress
+   *  it shrinks the backing store (smaller buffer, CSS size unchanged → stretched to
+   *  fill, aspect-preserved PV76); ¼ the fragment work at scale 0.5. We scale `w,h`,
+   *  NOT `dpr`, because the GLSL + hydra worker `resizeKind` IGNORE dpr (size to CSS
+   *  px directly) — and those are exactly the heavy GPU-bound kinds this targets. */
+  private postBackingSize(): void {
+    if (!this.worker) return
+    const s = this.govResScale
+    const w = Math.max(1, Math.round(this.size.w * s))
+    const h = Math.max(1, Math.round(this.size.h * s))
+    this.worker.postMessage({ type: 'resize', w, h, dpr: effectiveDpr() })
   }
 
   pause(): void {
@@ -365,6 +384,14 @@ export class WorkerVizRenderer implements VizRenderer {
       // Feed the global cadence monitor every rAF (even when backpressured —
       // a stalled worker IS the jank signal we want to measure).
       vizGovernor.observeFrame(ts)
+      // Governor resolution lever (P122/PV91): under sustained stress shrink the
+      // worker backing store. Re-post a scaled resize ONLY when the quantized step
+      // changes (rare) — the realloc isn't free. No-op at scale 1 (smooth/disabled).
+      const rs = vizGovernor.resolutionScale()
+      if (rs !== this.govResScale) {
+        this.govResScale = rs
+        this.postBackingSize()
+      }
       // #261 backpressure: only produce while the worker hasn't fallen `cap`
       // frames behind. The rAF keeps ticking (so we resume the instant an ack
       // frees a slot), but we skip sample()+writeFrame() when the pipeline is

@@ -1932,6 +1932,11 @@ declare class WorkerVizRenderer implements VizRenderer {
     /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
      *  (#261). Reset on (re)start. */
     private lastProduceTs;
+    /** Governor render-resolution scale currently applied to the backing store
+     *  (lever 3, P122/PV91). 1 = full (the no-op common case). The tick re-posts a
+     *  scaled `resize` only when `vizGovernor.resolutionScale()` crosses a quantized
+     *  step, so the (relatively expensive) backing-store realloc fires rarely. */
+    private govResScale;
     private size;
     private onError;
     private readonly perfId;
@@ -1972,6 +1977,14 @@ declare class WorkerVizRenderer implements VizRenderer {
     }, onError: (e: Error) => void): void;
     update(components: Partial<EngineComponents>): void;
     resize(w: number, h: number): void;
+    /** Post a `resize` sizing the worker backing store to the CSS size scaled by the
+     *  governor's render-resolution lever (P122/PV91). At scale 1 (disabled/smooth)
+     *  this is byte-identical to posting the raw CSS size — transparent. Under stress
+     *  it shrinks the backing store (smaller buffer, CSS size unchanged → stretched to
+     *  fill, aspect-preserved PV76); ¼ the fragment work at scale 0.5. We scale `w,h`,
+     *  NOT `dpr`, because the GLSL + hydra worker `resizeKind` IGNORE dpr (size to CSS
+     *  px directly) — and those are exactly the heavy GPU-bound kinds this targets. */
+    private postBackingSize;
     pause(): void;
     resume(): void;
     destroy(): void;

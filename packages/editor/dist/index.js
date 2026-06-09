@@ -6461,6 +6461,8 @@ var MIN_FPS = 10;
 var EMA_ALPHA = 0.25;
 var STRESS_RAMP_DOWN = 0.012;
 var IDLE_GAP_MS = 400;
+var RES_MIN_SCALE = 0.5;
+var RES_STRESS_ON = 0.5;
 function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
   if (emaMs <= healthy) return 0;
   if (emaMs >= jank) return 1;
@@ -6482,6 +6484,13 @@ function minGapMs(stress) {
   return stress * (1e3 / MIN_FPS);
 }
 __name(minGapMs, "minGapMs");
+function resolutionScaleFor(stress) {
+  if (stress < RES_STRESS_ON) return 1;
+  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
+  const raw = 1 - t * (1 - RES_MIN_SCALE);
+  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
+}
+__name(resolutionScaleFor, "resolutionScaleFor");
 var _VizGovernor = class _VizGovernor {
   constructor() {
     this.enabled = true;
@@ -6555,9 +6564,19 @@ var _VizGovernor = class _VizGovernor {
     this.lastProduce.set(id, ts);
     return true;
   }
+  /** Render-resolution scale (lever 3) the renderer should apply to its backing
+   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
+   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
+   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
+   *  this each rAF and re-posts a scaled `resize` only when the quantized step
+   *  changes (the backing-store realloc is relatively expensive). */
+  resolutionScale() {
+    if (!this.enabled || this.stress <= 0) return 1;
+    return resolutionScaleFor(this.stress);
+  }
   /** Observability / test hook. */
   state() {
-    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex };
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
   }
   /** Test helper — force enabled state (and reset) deterministically. */
   _setEnabledForTest(on) {
@@ -6609,6 +6628,11 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
      *  (#261). Reset on (re)start. */
     this.lastProduceTs = 0;
+    /** Governor render-resolution scale currently applied to the backing store
+     *  (lever 3, P122/PV91). 1 = full (the no-op common case). The tick re-posts a
+     *  scaled `resize` only when `vizGovernor.resolutionScale()` crosses a quantized
+     *  step, so the (relatively expensive) backing-store realloc fires rarely. */
+    this.govResScale = 1;
     this.size = { w: 400, h: 300 };
     this.onError = null;
     this.perfId = `worker#${++workerPerfSeq}`;
@@ -6727,8 +6751,21 @@ ${d.stack}` : "");
   }
   resize(w, h) {
     this.size = { w, h };
-    const dpr = effectiveDpr();
-    this.worker?.postMessage({ type: "resize", w, h, dpr });
+    this.postBackingSize();
+  }
+  /** Post a `resize` sizing the worker backing store to the CSS size scaled by the
+   *  governor's render-resolution lever (P122/PV91). At scale 1 (disabled/smooth)
+   *  this is byte-identical to posting the raw CSS size — transparent. Under stress
+   *  it shrinks the backing store (smaller buffer, CSS size unchanged → stretched to
+   *  fill, aspect-preserved PV76); ¼ the fragment work at scale 0.5. We scale `w,h`,
+   *  NOT `dpr`, because the GLSL + hydra worker `resizeKind` IGNORE dpr (size to CSS
+   *  px directly) — and those are exactly the heavy GPU-bound kinds this targets. */
+  postBackingSize() {
+    if (!this.worker) return;
+    const s = this.govResScale;
+    const w = Math.max(1, Math.round(this.size.w * s));
+    const h = Math.max(1, Math.round(this.size.h * s));
+    this.worker.postMessage({ type: "resize", w, h, dpr: effectiveDpr() });
   }
   pause() {
     this.stop();
@@ -6799,6 +6836,11 @@ ${d.stack}` : "");
     const tick = /* @__PURE__ */ __name((ts) => {
       if (!this.running || !this.writer) return;
       vizGovernor.observeFrame(ts);
+      const rs = vizGovernor.resolutionScale();
+      if (rs !== this.govResScale) {
+        this.govResScale = rs;
+        this.postBackingSize();
+      }
       const gap = minFrameMs();
       const due = gap <= 0 || this.lastProduceTs === 0 || ts - this.lastProduceTs >= gap - 1;
       if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due && vizGovernor.mayProduce(this.perfId, ts)) {

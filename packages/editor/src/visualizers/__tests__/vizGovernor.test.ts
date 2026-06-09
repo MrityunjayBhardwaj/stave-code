@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { computeStress, maxPerFrame, periodFor, minGapMs, vizGovernor } from '../vizGovernor'
+import { computeStress, maxPerFrame, periodFor, minGapMs, resolutionScaleFor, vizGovernor } from '../vizGovernor'
 
 describe('vizGovernor — pure helpers', () => {
   it('computeStress: 0 when smooth, 1 when janky, ramps between', () => {
@@ -30,6 +30,23 @@ describe('vizGovernor — pure helpers', () => {
     expect(minGapMs(1)).toBe(100) // 1000/MIN_FPS(10)
     expect(minGapMs(0.5)).toBe(50)
   })
+
+  it('resolutionScaleFor: full until sustained stress, then quantized down to 0.5', () => {
+    expect(resolutionScaleFor(0)).toBe(1) // smooth → full res
+    expect(resolutionScaleFor(0.4)).toBe(1) // below RES_STRESS_ON → fps-throttle handles it
+    expect(resolutionScaleFor(1)).toBe(0.5) // fully janky → half res (≈¼ fragment work)
+    // Quantized to 0.25 steps — only ever 1.0 / 0.75 / 0.5, never an arbitrary fraction.
+    for (let s = 0; s <= 1.0001; s += 0.05) {
+      expect([1, 0.75, 0.5]).toContain(resolutionScaleFor(s))
+    }
+    // Monotonic non-increasing in stress (more jank never RAISES resolution).
+    let prev = resolutionScaleFor(0)
+    for (let s = 0; s <= 1.0001; s += 0.02) {
+      const cur = resolutionScaleFor(s)
+      expect(cur).toBeLessThanOrEqual(prev)
+      prev = cur
+    }
+  })
 })
 
 describe('vizGovernor — transparency when smooth', () => {
@@ -53,6 +70,22 @@ describe('vizGovernor — transparency when smooth', () => {
     let ts = 1000
     for (let i = 0; i < 8; i++) { ts += 100; vizGovernor.observeFrame(ts) }
     expect(['a', 'b'].every((id) => vizGovernor.mayProduce(id, ts))).toBe(true)
+  })
+
+  it('resolutionScale is full (1) when smooth — the backing-store lever is a no-op', () => {
+    for (const id of ['a', 'b']) vizGovernor.register(id)
+    let ts = 1000
+    for (let i = 0; i < 6; i++) { ts += 8; vizGovernor.observeFrame(ts) } // healthy
+    expect(vizGovernor.state().stress).toBe(0)
+    expect(vizGovernor.resolutionScale()).toBe(1)
+  })
+
+  it('resolutionScale stays full (1) when disabled, even under jank', () => {
+    vizGovernor._setEnabledForTest(false)
+    vizGovernor.register('a')
+    let ts = 1000
+    for (let i = 0; i < 8; i++) { ts += 100; vizGovernor.observeFrame(ts) }
+    expect(vizGovernor.resolutionScale()).toBe(1)
   })
 })
 
@@ -109,6 +142,13 @@ describe('vizGovernor — throttles under sustained jank', () => {
     const eased = vizGovernor.state().stress
     expect(eased).toBeLessThan(peak)
     expect(eased).toBeGreaterThan(0) // slow release, not instant
+  })
+
+  it('drops render resolution under sustained jank (lever 3)', () => {
+    warmJank(['a', 'b'])
+    expect(vizGovernor.state().stress).toBeGreaterThan(0.9)
+    // Fully janky → backing store shrinks to the floor (0.5 = ¼ the fragment work).
+    expect(vizGovernor.resolutionScale()).toBe(0.5)
   })
 
   it('resets to healthy when the last viz unregisters', () => {

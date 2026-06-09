@@ -22,9 +22,20 @@
  *   2. CONCURRENCY CAP — round-robin which viz may produce on each animation
  *      frame, so N heavy viz don't all hit the GPU on the same frame. Spreads
  *      the load AND reduces each viz's rate by 1/period in one mechanism.
+ *   3. RESOLUTION DROP — under SUSTAINED stress, shrink each viz's render
+ *      backing store (the `WorkerVizRenderer` scales the `w,h` it posts in the
+ *      worker `resize`; CSS size is unchanged → the smaller buffer is stretched
+ *      to fill, aspect-preserved, PV76). This is the FILL-bound lever: a heavy
+ *      raymarcher's cost is per-pixel, so halving the resolution ≈ quarters the
+ *      fragment work — what the fps-throttle alone can't reach (it measured a
+ *      ~80% compositor-drop tail at ocean-class N=5). It scales `w,h` rather than
+ *      `dpr` because the GLSL + hydra worker `resizeKind` IGNORE dpr (they size
+ *      the backing store to CSS px directly) — exactly the heavy GPU-bound kinds.
+ *      Quantized to coarse steps so the (relatively expensive) backing-store
+ *      reallocation fires only at thresholds, not every frame.
  *
- * Both scale with a `stress` signal (0 = smooth, 1 = badly janking) derived from
- * the actual rAF inter-frame interval — an ABSOLUTE floor, not variance (PV83b).
+ * All three scale with a `stress` signal (0 = smooth, 1 = badly janking) derived
+ * from the actual rAF inter-frame interval — an ABSOLUTE floor, not variance (PV83b).
  *
  * ── Transparency guarantee ──
  * At `stress === 0` (the smooth common case — 1–2 light viz) the governor is a
@@ -56,6 +67,14 @@ const STRESS_RAMP_DOWN = 0.012
 /** A gap larger than this since the last observed frame = the loop was idle
  *  (paused / tab hidden); reset the EMA instead of spiking stress on resume. */
 const IDLE_GAP_MS = 400
+/** Hardest render-resolution downscale (lever 3): the backing store never shrinks
+ *  below this fraction of CSS size. 0.5 = half-res (≈¼ the fragment work) — below
+ *  that quality is unacceptable and the throttle + round-robin carry the rest. */
+const RES_MIN_SCALE = 0.5
+/** Stress below this leaves resolution at full (1.0). The fps-throttle handles
+ *  mild jank cheaply; the resolution lever (an expensive backing-store realloc)
+ *  only engages under SUSTAINED, higher stress. */
+const RES_STRESS_ON = 0.5
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
@@ -87,6 +106,18 @@ export function periodFor(n: number, stress: number): number {
 export function minGapMs(stress: number): number {
   if (stress <= 0) return 0
   return stress * (1000 / MIN_FPS)
+}
+
+/** Render-resolution scale (lever 3) for the current stress, in `[RES_MIN_SCALE, 1]`.
+ *  Full (1) below `RES_STRESS_ON` (the cheap fps-throttle covers mild jank); above
+ *  it, ramps DOWN to `RES_MIN_SCALE` at stress 1, QUANTIZED to 0.25 steps so the
+ *  `WorkerVizRenderer` only reallocates the backing store at coarse thresholds
+ *  (1.0 → 0.75 → 0.5) instead of every frame as stress micro-oscillates. */
+export function resolutionScaleFor(stress: number): number {
+  if (stress < RES_STRESS_ON) return 1
+  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON) // 0..1 across the active band
+  const raw = 1 - t * (1 - RES_MIN_SCALE)
+  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4) // quantize to 0.25 steps
 }
 
 // ── The governor singleton ──────────────────────────────────────────────────
@@ -177,9 +208,20 @@ class VizGovernor {
     return true
   }
 
+  /** Render-resolution scale (lever 3) the renderer should apply to its backing
+   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
+   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
+   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
+   *  this each rAF and re-posts a scaled `resize` only when the quantized step
+   *  changes (the backing-store realloc is relatively expensive). */
+  resolutionScale(): number {
+    if (!this.enabled || this.stress <= 0) return 1
+    return resolutionScaleFor(this.stress)
+  }
+
   /** Observability / test hook. */
-  state(): { enabled: boolean; n: number; stress: number; emaMs: number; frameIndex: number } {
-    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex }
+  state(): { enabled: boolean; n: number; stress: number; emaMs: number; frameIndex: number; resScale: number } {
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() }
   }
 
   /** Test helper — force enabled state (and reset) deterministically. */
