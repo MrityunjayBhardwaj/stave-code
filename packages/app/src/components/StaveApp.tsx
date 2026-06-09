@@ -82,6 +82,7 @@ import {
 import {
   applyPersistedPerfEnabled,
   togglePerfEnabled,
+  applyPersistedAdaptivePerf,
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
@@ -348,6 +349,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // window.__stavePerf hook). The profiler is inert when disabled.
   useEffect(() => {
     applyPersistedPerfEnabled();
+    // Adaptive performance (the viz GPU-budget governor, P122/PV91) — restore the
+    // persisted preference (ON by default) so the governor's live gate agrees.
+    applyPersistedAdaptivePerf();
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "p" || e.key === "P")) {
         e.preventDefault();
