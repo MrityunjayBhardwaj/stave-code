@@ -1886,369 +1886,6 @@ declare class HydraVizRenderer implements VizRenderer {
 }
 
 /**
- * WorkerVizRenderer — a `VizRenderer` that runs the p5 sketch in an
- * OffscreenCanvas Web Worker, off the main thread (Phase B / B-3, epic #228).
- *
- * It is the MAIN-side counterpart to `hostP5Worker`:
- *   - `mount`   — create a `<canvas>`, `transferControlToOffscreen()`, spawn a
- *     worker (via the app-injected factory), post a `mount` with the sketch CODE
- *     STRING + transferred canvas, and start ONE main `requestAnimationFrame`
- *     loop that `sample()`s the live signal feed + `writeFrame()`s it to the
- *     worker. That rAF is the single clock — the worker draws exactly one frame
- *     per `writeFrame` (1:1 → cadence can't drift; PK22).
- *   - `update`  — rebind the sampler's live inputs (re-evaluate swaps analysers /
- *     scheduler / hap stream), mirroring P5VizRenderer.update.
- *   - `resize`  — forward the new size + DPR to the worker.
- *   - `pause`/`resume` — stop/start the sampling loop + tell the worker.
- *   - `destroy` — stop the loop, tell the worker to tear down, terminate it.
- *
- * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + ONE
- * wide scheduler query + now) + a transferable `postMessage` — the heavy
- * `draw()` is gone from main. That residual is what the matrix measures (PLAN §8).
- *
- * Falls back is NOT handled here: `makeRenderer` only constructs a
- * WorkerVizRenderer when a worker factory is registered AND the transport is
- * worker-capable; otherwise it builds a `P5VizRenderer`. If the factory is
- * somehow absent at mount, `mount` reports via `onError` so the host can recover.
- *
- * REF: hostP5Worker.ts, signalSampler.ts, signalTransport.ts, vizWorkerFactory.ts,
- *      P5VizRenderer.ts (the lifecycle + alias contract mirrored here), PK22.
- */
-
-declare class WorkerVizRenderer implements VizRenderer {
-    private readonly kind;
-    private readonly code;
-    private readonly name;
-    private worker;
-    private writer;
-    private readonly sampler;
-    private rafId;
-    private running;
-    /** Frames written but not yet acked by the worker (#261 backpressure). The
-     *  sampler skips producing while this is at the cap so a slow worker can't be
-     *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
-     *  wedged by acks owed for frames written before a pause. */
-    private inFlight;
-    /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
-     *  (#261). Reset on (re)start. */
-    private lastProduceTs;
-    /** Governor render-resolution scale currently applied to the backing store
-     *  (lever 3, P122/PV91). 1 = full (the no-op common case). The tick re-posts a
-     *  scaled `resize` only when `vizGovernor.resolutionScale()` crosses a quantized
-     *  step, so the (relatively expensive) backing-store realloc fires rarely. */
-    private govResScale;
-    private size;
-    private onError;
-    private readonly perfId;
-    private diagHandler;
-    /** The presenting <canvas> this renderer appended (transferred to the worker).
-     *  Tracked so destroy() removes it — else a fallback to the main-thread renderer
-     *  would leave a dead, frozen canvas behind it (#247). */
-    private canvasEl;
-    /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
-     *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
-    private onReady;
-    /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
-     *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
-     *  doesn't post to a terminated worker. */
-    private configUnsub;
-    /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
-     *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
-     *  terminated, so the next mount reuses the thread (no fresh allocation). */
-    private pooled;
-    /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
-     *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
-     *  is terminated so it can't poison a future acquire. */
-    private ready;
-    /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
-     *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
-     *  happens after we've detached its listener, so we account it main-side). */
-    private glAccounted;
-    /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
-     *  @param code raw sketch source. @param name workspace path (error attribution). */
-    constructor(kind: 'p5' | 'hydra' | 'glsl', code: string, name: string);
-    /** Register a callback fired once when the worker reports its first successful
-     *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
-     *  must be set BEFORE `mount`. */
-    whenReady(cb: () => void): void;
-    mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
-        w: number;
-        h: number;
-    }, onError: (e: Error) => void): void;
-    update(components: Partial<EngineComponents>): void;
-    resize(w: number, h: number): void;
-    /** Post a `resize` sizing the worker backing store to the CSS size scaled by the
-     *  governor's render-resolution lever (P122/PV91). At scale 1 (disabled/smooth)
-     *  this is byte-identical to posting the raw CSS size — transparent. Under stress
-     *  it shrinks the backing store (smaller buffer, CSS size unchanged → stretched to
-     *  fill, aspect-preserved PV76); ¼ the fragment work at scale 0.5. We scale `w,h`,
-     *  NOT `dpr`, because the GLSL + hydra worker `resizeKind` IGNORE dpr (size to CSS
-     *  px directly) — and those are exactly the heavy GPU-bound kinds this targets. */
-    private postBackingSize;
-    pause(): void;
-    resume(): void;
-    destroy(): void;
-    /** Bind the sampler's live inputs from the component bag (mirror P5VizRenderer:
-     *  scheduler + per-track schedulers, master + per-track analysers, hap stream). */
-    private bindSampler;
-    /** Start the main rAF sample→writeFrame loop (the single cadence clock). */
-    private start;
-    private stop;
-}
-
-/**
- * Viz-worker factory DI seam (Phase B / B-3).
- *
- * The worker MUST be constructed where the bundler can statically see
- * `new Worker(new URL('./viz-worker.ts', import.meta.url))` — that's the APP
- * (Next/Turbopack), not this tsup-built package. So the editor stays
- * bundler-agnostic: the app registers a factory at startup, and
- * `WorkerVizRenderer` reads it here. When no factory is registered (e.g. a host
- * that hasn't wired the worker, or the flag is off), `makeRenderer` falls back to
- * the main-thread `P5VizRenderer`.
- *
- * REF: PHASE-B-PLAN §4 (transport/bundling), vizCompiler.makeRenderer.
- */
-/** Constructs a fresh viz worker. The app provides
- *  `() => new Worker(new URL('./viz-worker.ts', import.meta.url), { type: 'module' })`. */
-type VizWorkerFactory = () => Worker;
-/** Register (or clear with `null`) the app's worker constructor. Idempotent. */
-declare function setVizWorkerFactory(f: VizWorkerFactory | null): void;
-/** The registered factory, or `null` if the host hasn't wired worker rendering. */
-declare function getVizWorkerFactory(): VizWorkerFactory | null;
-
-/**
- * Hydra shader presets for audio-reactive visualization — `HydraPatternFn`
- * closures (the public `@stave/editor` API; re-exported from index.ts).
- *
- * These are now DERIVED from the canonical code STRINGS in `builtinHydraCode.ts`
- * (B-5 #252): the strings are the single source of truth so the built-in hydra
- * descriptors can compile in a worker (a closure can't cross to one). Deriving
- * the closures from the same strings keeps the public API AND avoids the
- * picker-vs-source divergence the p5 path hit (PV56/#184). `compileHydraCode`
- * returns a `HydraPatternFn` that runs the string via `new Function('s','stave')`
- * — `s` = the hydra synth, `s.a.fft[0..3]` = the master audio bins.
- */
-/** Scrolling frequency bands — hydra's take on a pianoroll. */
-declare const hydraPianoroll: HydraPatternFn;
-/** Audio-reactive oscilloscope — smooth waveform with frequency modulation. */
-declare const hydraScope: HydraPatternFn;
-/** Kaleidoscope — mirrored fractal patterns driven by audio energy. */
-declare const hydraKaleidoscope: HydraPatternFn;
-
-/**
- * All built-in visualization modes.
- *
- * IDs follow the "mode:renderer" convention when multiple renderers offer
- * the same concept. Bare "mode" is the default renderer for that concept.
- *
- * The 7 p5 entries compile their factories from the bundled source code
- * strings — the SAME strings the workspace `preset/viz/*.p5` files carry.
- * Previously the picker mounted 7 hand-written TypeScript sketch classes
- * that had diverged from the preset code; per #184 (PV56) the picker and
- * the preset file share one code path.
- *
- * Each factory creates a NEW renderer instance per mount — never share
- * a single instance across multiple mounts.
- *
- * Consumers extend via spread:
- *   vizDescriptors={[...DEFAULT_VIZ_DESCRIPTORS, myCustomDescriptor]}
- */
-declare const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[];
-
-/**
- * Resolves a viz ID to a VizDescriptor using the "mode:renderer" convention.
- *
- * Resolution order:
- *   1. User-named viz registry — exact name match first, then a
- *      NORMALIZED match (case/space/hyphen/underscore insensitive) in the
- *      runtime `namedVizRegistry` (populated by saved viz presets). User
- *      intent wins over built-ins, so a user-saved preset named
- *      `"pianoroll"` shadows the built-in `"pianoroll:hydra"`. The
- *      normalized hop is what lets inline `.viz("pianoroll")` reach the
- *      bundled `"Piano Roll"` preset — the SAME preset the `.pianoroll()`
- *      backdrop renders — instead of falling through to the built-in
- *      sketch (P73 / PV56).
- *   2. Exact match on `descriptor.id`
- *      e.g. "pianoroll:hydra" → "pianoroll:hydra"
- *   3. Default renderer — append `":${defaultRenderer}"` from config and retry
- *      e.g. "pianoroll" + defaultRenderer="hydra" → "pianoroll:hydra"
- *   4. Prefix fallback — bare mode matches first descriptor whose id starts
- *      with `vizId + ":"` (catches renderer variants not matching the default)
- *
- * Returns undefined if no match is found.
- */
-declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]): VizDescriptor | undefined;
-
-/**
- * namedVizRegistry — runtime map of user-chosen viz names → descriptors.
- *
- * Lets users reference their own viz files from inline patterns by the
- * `VizPreset.name` they chose, alongside the built-in descriptors:
- *
- *     $: note("c e g").viz("Piano Roll")   // user-named preset
- *     $: note("c e g").viz("pianoroll")    // built-in descriptor
- *
- * @remarks
- * ## How it plugs into the resolver
- *
- * `resolveDescriptor` checks this registry first (exact-name match),
- * then falls through to the passed-in descriptor list (`DEFAULT_VIZ_
- * DESCRIPTORS` or any embedder override) and runs its existing
- * "append default renderer" / "prefix" fallbacks. Names registered
- * here shadow built-ins — if a user saves a preset literally called
- * `"pianoroll"`, their version wins inside `.viz("pianoroll")`.
- * That's the right default: user intent is closer to what the user
- * controls than what ships in the library.
- *
- * ## Who writes to the registry
- *
- * `vizPresetBridge.seedFromPreset` and `flushToPreset` compile the
- * preset via `compilePreset()` and call `registerNamedViz(preset.name,
- * descriptor)` — so every viz file the user opens or saves is
- * automatically available to inline `.viz("name")` without any manual
- * registration step.
- *
- * If the user renames a preset (future save-as UI), the old name is
- * unregistered and the new name is registered in the same transaction.
- * Until that UI lands, a preset rename is a no-op at the registry
- * level; the stale name keeps working until page reload. Acceptable
- * for Phase 10.2 MVP — there's no rename UI yet.
- *
- * ## Change notifications
- *
- * `onNamedVizChanged` lets consumers subscribe to register/unregister
- * events. Phase 10.2 doesn't wire this to anything, but it's in place
- * so a future Monaco completion provider can invalidate its suggestion
- * cache when the registry mutates.
- */
-
-type Listener$6 = () => void;
-/**
- * Register a descriptor under a user-chosen name. Idempotent — calling
- * twice with the same name + descriptor is a no-op and does not fire
- * listeners. Calling with a new descriptor for an existing name
- * replaces the entry (and fires listeners) so saves can update a
- * previously-registered viz in place.
- */
-declare function registerNamedViz(name: string, descriptor: VizDescriptor): void;
-/**
- * Unregister a name. Idempotent — unknown names are silent no-ops.
- * Fires listeners only when an entry is actually removed.
- */
-declare function unregisterNamedViz(name: string): void;
-/**
- * Look up a descriptor by name. Returns `undefined` if the name is not
- * registered. The resolver falls through to the built-in descriptor
- * list in that case.
- */
-declare function getNamedViz(name: string): VizDescriptor | undefined;
-/**
- * List every registered name in insertion order. Used by tests and by
- * a future Monaco completion provider that wants to surface every
- * user-defined viz name inside `.viz("...")` autocomplete.
- */
-declare function listNamedVizNames(): string[];
-/**
- * List every (name, descriptor) pair. Mostly useful for debugging and
- * for tests that want to assert the full registry contents.
- */
-declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
-/**
- * Subscribe to registry changes. Fires on any register/unregister
- * transition. Returns an idempotent unsubscribe function. Does not
- * fire synchronously on subscription — subscribers receive only
- * future changes.
- */
-declare function onNamedVizChanged(cb: Listener$6): () => void;
-
-/**
- * Worker-viz capability detection — the degrade-path scaffold for Phase B.
- *
- * Phase B moves viz `draw()` off the main thread into an OffscreenCanvas worker
- * (epic #228). Whether that is possible — and *how* the per-frame signal data
- * reaches the worker — depends on browser capabilities that vary by environment:
- *
- *   - `Worker` + `OffscreenCanvas` + `HTMLCanvasElement.transferControlToOffscreen`
- *     → worker rendering is possible at all.
- *   - `crossOriginIsolated` + `SharedArrayBuffer`
- *     → the zero-copy SAB signal transport is available (the measured optimization,
- *       gated behind the COOP/COEP header — see B-1 #239 / Q2 #237).
- *
- * B-1 (#239) confirmed by observation that the live COOP=same-origin +
- * COEP=credentialless header yields `crossOriginIsolated === true` (and that a
- * `window.open` popup inherits it). This module turns that runtime truth into a
- * single capability snapshot + a sensible default transport choice, so B-2/B-3
- * can pick SAB vs postMessage vs main-thread without re-probing globals ad hoc.
- *
- * Pure + environment-injectable → plain unit tests (no IDB/DOM — see the editor
- * "split pure logic from I/O" rule). The live app passes nothing and reads
- * `globalThis`.
- */
-/**
- * How per-frame viz signal data crosses to the renderer.
- *
- * - `'sab'`         — worker render + zero-copy SharedArrayBuffer transport
- *                     (requires cross-origin isolation; the primary path).
- * - `'postmessage'` — worker render + transferable-ArrayBuffer postMessage
- *                     transport (no isolation needed; the required fallback for
- *                     non-isolated browsers, e.g. Safari).
- * - `'main-thread'` — no worker offload possible; render on the main thread with
- *                     today's `P5VizRenderer` / `HydraVizRenderer`.
- */
-type VizTransport = 'sab' | 'postmessage' | 'main-thread';
-interface WorkerVizCapabilities {
-    /** COOP/COEP cross-origin isolation is active (gates SharedArrayBuffer). */
-    crossOriginIsolated: boolean;
-    /** `OffscreenCanvas` constructor exists. */
-    hasOffscreenCanvas: boolean;
-    /** `SharedArrayBuffer` constructor exists (still needs isolation to be useful). */
-    hasSharedArrayBuffer: boolean;
-    /** `HTMLCanvasElement.prototype.transferControlToOffscreen` exists. */
-    canTransferControl: boolean;
-    /** `Worker` constructor exists. */
-    hasWorker: boolean;
-    /** Worker rendering is possible at all (worker + offscreen + transfer). */
-    canUseWorker: boolean;
-    /** The default transport given these capabilities (see {@link VizTransport}). */
-    transport: VizTransport;
-}
-/**
- * The subset of the global environment this module reads. Injectable so the
- * selection logic can be unit-tested across capability matrices without touching
- * the real `globalThis`.
- */
-interface CapabilityEnv {
-    crossOriginIsolated?: boolean;
-    OffscreenCanvas?: unknown;
-    SharedArrayBuffer?: unknown;
-    Worker?: unknown;
-    /** Stand-in for `HTMLCanvasElement` — we only probe for the transfer method. */
-    HTMLCanvasElement?: {
-        prototype?: {
-            transferControlToOffscreen?: unknown;
-        };
-    };
-}
-/**
- * Derive worker-viz capabilities + the default transport from an environment.
- *
- * Transport policy (capability-derived, deliberately separate from any
- * load/quality policy B-6 may add):
- *   1. Can't offload (no worker / offscreen / transferControl) → `'main-thread'`.
- *   2. Isolated + SharedArrayBuffer                            → `'sab'`.
- *   3. Worker-capable but not isolated                         → `'postmessage'`.
- *
- * Note: PHASE-B-PLAN §4's conservative line ("fallback to main if
- * !crossOriginIsolated") collapses cases 2+3; the plan's transport section +
- * decision §1 are the refined intent — worker rendering works without isolation,
- * only SAB needs it, so a non-isolated browser still offloads via postMessage.
- * This function encodes the refined three-tier truth; a consumer that wants the
- * conservative behaviour can treat anything but `'sab'` as main-thread.
- */
-declare function detectWorkerVizCapabilities(env?: CapabilityEnv): WorkerVizCapabilities;
-
-/**
  * SignalBus — renderer-agnostic per-sound / per-track musical-signal bus.
  *
  * PURE module (P12): imports ONLY types + `noteToMidi`. NO p5 / hydra /
@@ -2602,6 +2239,489 @@ declare function frameTransferables(frame: SignalFrame): ArrayBuffer[];
 declare function emptyFrame(seq?: number): SignalFrame;
 
 /**
+ * FrameSampleCache — the per-rAF-tick memo that makes the shared frame pump a win
+ * (PV72, #302). It collapses the work that N worker viz duplicate every frame when
+ * they read the SAME live input object:
+ *
+ *   - ANALYSER READS — the expensive `getByteFrequencyData` (an FFT magnitude
+ *     recompute + dB + byte quantize, O(fftSize)) on a SHARED master analyser runs
+ *     ONCE per tick; each consumer gets its own TRANSFER-SAFE copy (a cheap slice),
+ *     because `frameTransferables` detaches the buffer on postMessage (a single read
+ *     could only be transferred to one worker). 1 FFT + k slices ≪ k FFTs.
+ *   - SCHEDULER QUERIES — a `query(a,b)` over the SAME (scheduler, window) runs ONCE;
+ *     the result is shared BY REFERENCE across consumers (each `.map`s it read-only,
+ *     and postMessage structured-clones it per worker), so there is no per-consumer
+ *     cost beyond the one query. Distinct schedulers (per-track binding,
+ *     viewZones.ts:341) key separately → no false sharing.
+ *
+ * Constructed fresh by `vizFramePump` each tick and discarded after the tick — so it
+ * can never serve a stale read across frames. Keyed by INPUT-OBJECT IDENTITY (not a
+ * string key): two viz sharing the master analyser object hit the cache; two viz on
+ * different track analysers don't (their data genuinely differs).
+ *
+ * Generic over the read/query implementations (injected by the caller) so this module
+ * imports no sampler internals and stays DOM-free / plain-object testable.
+ *
+ * REF: PV72, signalSampler.ts (the injector), signalFrame.ts:frameTransferables (why
+ *      copies are needed), viewZones.ts:341 (per-track binding → identity keys), #302.
+ */
+
+declare class FrameSampleCache {
+    /** Raw read per analyser object (key-independent bytes). `null` = a zero-bin
+     *  analyser already attempted (so we don't re-attempt). `.has()` distinguishes
+     *  "not read yet" from "read → null". The stored arrays are NEVER transferred —
+     *  only the per-call slices are — so they stay intact for the whole tick. */
+    private readonly analyserReads;
+    /** Query results per (scheduler object → `"a:b"` window). Shared by reference. */
+    private readonly queries;
+    /**
+     * Read `an` at most once this tick; return a TRANSFER-SAFE copy stamped with
+     * `key`. The first caller for a given analyser runs `read` (the FFT); later
+     * callers (a shared master, or the same node read under both `'master'` and its
+     * track key) get a fresh-buffer slice of the cached bytes — no second FFT.
+     */
+    readAnalyser(key: string, an: BusAnalyser, read: (a: BusAnalyser) => AnalyserBytes | null): AnalyserBytes | null;
+    /**
+     * Run `scheduler.query(a, b)` at most once this tick per (scheduler, window).
+     * Returns the SHARED result array (callers must treat it read-only — they
+     * `.map`/summarise it into their own frame). `run` is the actual query closure.
+     */
+    query<T>(scheduler: IRPattern, a: number, b: number, run: () => T[]): T[];
+}
+
+/**
+ * vizFramePump — the single rAF clock + shared sampler for ALL worker viz (PV72,
+ * #302). The MAIN-THREAD-side partner to `vizGovernor`: the governor coordinates the
+ * TOTAL GPU frame budget (the GPU-bound heavy-viz case, P122); this pump collapses the
+ * duplicated MAIN-THREAD per-frame SAMPLE work (the many-LIGHT-viz case).
+ *
+ * ── Why this exists ──
+ * Before this, each `WorkerVizRenderer` ran its OWN `requestAnimationFrame` loop and
+ * its OWN `MainSignalSampler.sample()`. With N worker viz the per-frame analyser
+ * reads + scheduler queries ran N times — B-4 (#249) measured `viz.worker.sample`
+ * ≈0.33ms per call, FLAT in N → the duplicated read is the only per-viz main cost
+ * that scales. The frame is NOT shareable wholesale (the analyser buffers are
+ * transfer-detached, and inline zones bind PER-TRACK so the scheduler/bumps/seq are
+ * genuinely per-viz, viewZones.ts:341). So the pump shares the EXPENSIVE READ, not the
+ * frame: one rAF, one `FrameSampleCache` per tick that dedups analyser reads +
+ * shared-scheduler queries by input-object identity. Each renderer still builds its
+ * OWN frame (own sampler/bumps/seq → byte-identical reactivity, PV75).
+ *
+ * ── What it owns ──
+ *   - ONE `requestAnimationFrame` loop, alive only while ≥1 renderer is registered.
+ *   - ONE `vizGovernor.observeFrame(ts)` per tick (was per-renderer; idempotent per
+ *     ts, so this is equivalent — and now there's exactly one caller).
+ *   - A fresh `FrameSampleCache` per tick, passed to every registered renderer.
+ *
+ * Each registered renderer (`PumpDriven`) keeps ALL its existing per-viz gates
+ * (#261 backpressure, maxFps cap, `governor.mayProduce`, resolution lever, paused) —
+ * the pump just calls `pumpTick(ts, cache)` instead of the renderer self-scheduling.
+ * Registration is on the renderer's start (mount/resume); unregister on stop
+ * (pause/destroy) — mirrors `vizGovernor.register`/`unregister` exactly so the two
+ * stay in lockstep.
+ *
+ * The main-thread `P5VizRenderer` / `HydraVizRenderer` / `GLSLVizRenderer` fallback
+ * paths are NOT driven here — they keep their own draw loops; only worker renderers
+ * (whose sample work is the duplicated cost) join the pump.
+ *
+ * REF: PV72, vizGovernor.ts (the sibling cadence owner + observeFrame), PV80/#261
+ *      (the per-viz backpressure this preserves), PK22 (1:1 cadence), frameSampleCache.ts,
+ *      WorkerVizRenderer.pumpTick (the gate sequence), #302.
+ */
+
+/** A renderer the pump drives once per rAF tick. Implemented by `WorkerVizRenderer`. */
+interface PumpDriven {
+    /** Stable id for the registry (the renderer's `perfId`). */
+    readonly perfId: string;
+    /** Run this renderer's per-frame produce gates + sample(cache)+writeFrame. Called
+     *  once per tick while registered. `cache` is the shared per-tick sampler memo
+     *  (PV72) — `undefined` when the shared cache is disabled (A/B / escape hatch), in
+     *  which case the renderer samples without dedup (every read runs locally). MUST
+     *  NOT throw (the pump drives every renderer; one throw would skip the rest) — the
+     *  renderer guards its own body. */
+    pumpTick(ts: number, cache: FrameSampleCache | undefined): void;
+}
+
+/**
+ * WorkerVizRenderer — a `VizRenderer` that runs the p5 sketch in an
+ * OffscreenCanvas Web Worker, off the main thread (Phase B / B-3, epic #228).
+ *
+ * It is the MAIN-side counterpart to `hostP5Worker`:
+ *   - `mount`   — create a `<canvas>`, `transferControlToOffscreen()`, spawn a
+ *     worker (via the app-injected factory), post a `mount` with the sketch CODE
+ *     STRING + transferred canvas, and start ONE main `requestAnimationFrame`
+ *     loop that `sample()`s the live signal feed + `writeFrame()`s it to the
+ *     worker. That rAF is the single clock — the worker draws exactly one frame
+ *     per `writeFrame` (1:1 → cadence can't drift; PK22).
+ *   - `update`  — rebind the sampler's live inputs (re-evaluate swaps analysers /
+ *     scheduler / hap stream), mirroring P5VizRenderer.update.
+ *   - `resize`  — forward the new size + DPR to the worker.
+ *   - `pause`/`resume` — stop/start the sampling loop + tell the worker.
+ *   - `destroy` — stop the loop, tell the worker to tear down, terminate it.
+ *
+ * The ONLY per-frame main-thread cost is `sample()` (read analyser bytes + ONE
+ * wide scheduler query + now) + a transferable `postMessage` — the heavy
+ * `draw()` is gone from main. That residual is what the matrix measures (PLAN §8).
+ *
+ * Falls back is NOT handled here: `makeRenderer` only constructs a
+ * WorkerVizRenderer when a worker factory is registered AND the transport is
+ * worker-capable; otherwise it builds a `P5VizRenderer`. If the factory is
+ * somehow absent at mount, `mount` reports via `onError` so the host can recover.
+ *
+ * REF: hostP5Worker.ts, signalSampler.ts, signalTransport.ts, vizWorkerFactory.ts,
+ *      P5VizRenderer.ts (the lifecycle + alias contract mirrored here), PK22.
+ */
+
+declare class WorkerVizRenderer implements VizRenderer, PumpDriven {
+    private readonly kind;
+    private readonly code;
+    private readonly name;
+    private worker;
+    private writer;
+    private readonly sampler;
+    private running;
+    /** Frames written but not yet acked by the worker (#261 backpressure). The
+     *  sampler skips producing while this is at the cap so a slow worker can't be
+     *  flooded into a stale backlog. Reset to 0 on (re)start so a resume can't be
+     *  wedged by acks owed for frames written before a pause. */
+    private inFlight;
+    /** rAF timestamp of the last produced frame — the `vizConfig.maxFps` cap clock
+     *  (#261). Reset on (re)start. */
+    private lastProduceTs;
+    /** Governor render-resolution scale currently applied to the backing store
+     *  (lever 3, P122/PV91). 1 = full (the no-op common case). The tick re-posts a
+     *  scaled `resize` only when `vizGovernor.resolutionScale()` crosses a quantized
+     *  step, so the (relatively expensive) backing-store realloc fires rarely. */
+    private govResScale;
+    private size;
+    private onError;
+    /** Stable id — the `vizGovernor` round-robin key AND the `vizFramePump` registry
+     *  key (public for the `PumpDriven` contract). */
+    readonly perfId: string;
+    private diagHandler;
+    /** The presenting <canvas> this renderer appended (transferred to the worker).
+     *  Tracked so destroy() removes it — else a fallback to the main-thread renderer
+     *  would leave a dead, frozen canvas behind it (#247). */
+    private canvasEl;
+    /** Fired ONCE when the worker posts its first-frame `ready` (#247). The
+     *  `FallbackVizRenderer` sets this to learn the worker is healthy. */
+    private onReady;
+    /** Unsubscribe from vizConfig changes — re-marshals the worker subset on a
+     *  quality/LOD change (#269). Cleared in destroy() so a torn-down renderer
+     *  doesn't post to a terminated worker. */
+    private configUnsub;
+    /** Whether this renderer drew its worker from the reuse POOL (#263 A). Decided
+     *  at mount; on destroy a pooled worker is PARKED (kept warm) instead of
+     *  terminated, so the next mount reuses the thread (no fresh allocation). */
+    private pooled;
+    /** Set once the worker reports its first `ready` frame. Only a HEALTHY worker
+     *  is returned to the pool on destroy — a never-ready (broken/fallback) worker
+     *  is terminated so it can't poison a future acquire. */
+    private ready;
+    /** Set when the worker reports it created a WebGL context (`glctx+`, #266) — so
+     *  destroy() can decrement the `viz.glctx` gauge reliably (the worker's release
+     *  happens after we've detached its listener, so we account it main-side). */
+    private glAccounted;
+    /** @param kind renderer kind (`'p5'` B-3 / `'hydra'` B-5 / `'glsl'` #281).
+     *  @param code raw sketch source. @param name workspace path (error attribution). */
+    constructor(kind: 'p5' | 'hydra' | 'glsl', code: string, name: string);
+    /** Register a callback fired once when the worker reports its first successful
+     *  frame (`ready`). Used by `FallbackVizRenderer` to end the startup probation;
+     *  must be set BEFORE `mount`. */
+    whenReady(cb: () => void): void;
+    mount(container: HTMLDivElement, components: Partial<EngineComponents>, size: {
+        w: number;
+        h: number;
+    }, onError: (e: Error) => void): void;
+    update(components: Partial<EngineComponents>): void;
+    resize(w: number, h: number): void;
+    /** Post a `resize` sizing the worker backing store to the CSS size scaled by the
+     *  governor's render-resolution lever (P122/PV91). At scale 1 (disabled/smooth)
+     *  this is byte-identical to posting the raw CSS size — transparent. Under stress
+     *  it shrinks the backing store (smaller buffer, CSS size unchanged → stretched to
+     *  fill, aspect-preserved PV76); ¼ the fragment work at scale 0.5. We scale `w,h`,
+     *  NOT `dpr`, because the GLSL + hydra worker `resizeKind` IGNORE dpr (size to CSS
+     *  px directly) — and those are exactly the heavy GPU-bound kinds this targets. */
+    private postBackingSize;
+    pause(): void;
+    resume(): void;
+    destroy(): void;
+    /** Bind the sampler's live inputs from the component bag (mirror P5VizRenderer:
+     *  scheduler + per-track schedulers, master + per-track analysers, hap stream). */
+    private bindSampler;
+    /** Join the shared frame pump — the SINGLE rAF + shared sampler now drives this
+     *  renderer's per-frame produce via `pumpTick` (PV72), instead of each renderer
+     *  owning its own rAF. Still registers with the governor for the GPU-budget pool. */
+    private start;
+    /**
+     * One produce step, called by `vizFramePump` once per rAF tick while registered
+     * (PumpDriven). This is the EXACT gate sequence the old per-renderer rAF ran —
+     * resolution lever → #261 backpressure → maxFps cap → governor concurrency gate
+     * → sample+write — moved verbatim, with two differences: the pump owns the rAF
+     * (no self-reschedule) and calls `vizGovernor.observeFrame` once for all viz (it
+     * was idempotent per ts, so equivalent); and `sample(cache)` routes the analyser
+     * read + scheduler query through the SHARED per-tick cache, so N viz on the same
+     * input collapse N reads → 1 (the PV72 win). The frame is still per-viz (own
+     * sampler/bumps/seq) → byte-identical reactivity (PV75). Guarded so a throw can't
+     * stall the pump's other renderers (PumpDriven contract).
+     */
+    pumpTick(ts: number, cache: FrameSampleCache | undefined): void;
+    private stop;
+}
+
+/**
+ * Viz-worker factory DI seam (Phase B / B-3).
+ *
+ * The worker MUST be constructed where the bundler can statically see
+ * `new Worker(new URL('./viz-worker.ts', import.meta.url))` — that's the APP
+ * (Next/Turbopack), not this tsup-built package. So the editor stays
+ * bundler-agnostic: the app registers a factory at startup, and
+ * `WorkerVizRenderer` reads it here. When no factory is registered (e.g. a host
+ * that hasn't wired the worker, or the flag is off), `makeRenderer` falls back to
+ * the main-thread `P5VizRenderer`.
+ *
+ * REF: PHASE-B-PLAN §4 (transport/bundling), vizCompiler.makeRenderer.
+ */
+/** Constructs a fresh viz worker. The app provides
+ *  `() => new Worker(new URL('./viz-worker.ts', import.meta.url), { type: 'module' })`. */
+type VizWorkerFactory = () => Worker;
+/** Register (or clear with `null`) the app's worker constructor. Idempotent. */
+declare function setVizWorkerFactory(f: VizWorkerFactory | null): void;
+/** The registered factory, or `null` if the host hasn't wired worker rendering. */
+declare function getVizWorkerFactory(): VizWorkerFactory | null;
+
+/**
+ * Hydra shader presets for audio-reactive visualization — `HydraPatternFn`
+ * closures (the public `@stave/editor` API; re-exported from index.ts).
+ *
+ * These are now DERIVED from the canonical code STRINGS in `builtinHydraCode.ts`
+ * (B-5 #252): the strings are the single source of truth so the built-in hydra
+ * descriptors can compile in a worker (a closure can't cross to one). Deriving
+ * the closures from the same strings keeps the public API AND avoids the
+ * picker-vs-source divergence the p5 path hit (PV56/#184). `compileHydraCode`
+ * returns a `HydraPatternFn` that runs the string via `new Function('s','stave')`
+ * — `s` = the hydra synth, `s.a.fft[0..3]` = the master audio bins.
+ */
+/** Scrolling frequency bands — hydra's take on a pianoroll. */
+declare const hydraPianoroll: HydraPatternFn;
+/** Audio-reactive oscilloscope — smooth waveform with frequency modulation. */
+declare const hydraScope: HydraPatternFn;
+/** Kaleidoscope — mirrored fractal patterns driven by audio energy. */
+declare const hydraKaleidoscope: HydraPatternFn;
+
+/**
+ * All built-in visualization modes.
+ *
+ * IDs follow the "mode:renderer" convention when multiple renderers offer
+ * the same concept. Bare "mode" is the default renderer for that concept.
+ *
+ * The 7 p5 entries compile their factories from the bundled source code
+ * strings — the SAME strings the workspace `preset/viz/*.p5` files carry.
+ * Previously the picker mounted 7 hand-written TypeScript sketch classes
+ * that had diverged from the preset code; per #184 (PV56) the picker and
+ * the preset file share one code path.
+ *
+ * Each factory creates a NEW renderer instance per mount — never share
+ * a single instance across multiple mounts.
+ *
+ * Consumers extend via spread:
+ *   vizDescriptors={[...DEFAULT_VIZ_DESCRIPTORS, myCustomDescriptor]}
+ */
+declare const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[];
+
+/**
+ * Resolves a viz ID to a VizDescriptor using the "mode:renderer" convention.
+ *
+ * Resolution order:
+ *   1. User-named viz registry — exact name match first, then a
+ *      NORMALIZED match (case/space/hyphen/underscore insensitive) in the
+ *      runtime `namedVizRegistry` (populated by saved viz presets). User
+ *      intent wins over built-ins, so a user-saved preset named
+ *      `"pianoroll"` shadows the built-in `"pianoroll:hydra"`. The
+ *      normalized hop is what lets inline `.viz("pianoroll")` reach the
+ *      bundled `"Piano Roll"` preset — the SAME preset the `.pianoroll()`
+ *      backdrop renders — instead of falling through to the built-in
+ *      sketch (P73 / PV56).
+ *   2. Exact match on `descriptor.id`
+ *      e.g. "pianoroll:hydra" → "pianoroll:hydra"
+ *   3. Default renderer — append `":${defaultRenderer}"` from config and retry
+ *      e.g. "pianoroll" + defaultRenderer="hydra" → "pianoroll:hydra"
+ *   4. Prefix fallback — bare mode matches first descriptor whose id starts
+ *      with `vizId + ":"` (catches renderer variants not matching the default)
+ *
+ * Returns undefined if no match is found.
+ */
+declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]): VizDescriptor | undefined;
+
+/**
+ * namedVizRegistry — runtime map of user-chosen viz names → descriptors.
+ *
+ * Lets users reference their own viz files from inline patterns by the
+ * `VizPreset.name` they chose, alongside the built-in descriptors:
+ *
+ *     $: note("c e g").viz("Piano Roll")   // user-named preset
+ *     $: note("c e g").viz("pianoroll")    // built-in descriptor
+ *
+ * @remarks
+ * ## How it plugs into the resolver
+ *
+ * `resolveDescriptor` checks this registry first (exact-name match),
+ * then falls through to the passed-in descriptor list (`DEFAULT_VIZ_
+ * DESCRIPTORS` or any embedder override) and runs its existing
+ * "append default renderer" / "prefix" fallbacks. Names registered
+ * here shadow built-ins — if a user saves a preset literally called
+ * `"pianoroll"`, their version wins inside `.viz("pianoroll")`.
+ * That's the right default: user intent is closer to what the user
+ * controls than what ships in the library.
+ *
+ * ## Who writes to the registry
+ *
+ * `vizPresetBridge.seedFromPreset` and `flushToPreset` compile the
+ * preset via `compilePreset()` and call `registerNamedViz(preset.name,
+ * descriptor)` — so every viz file the user opens or saves is
+ * automatically available to inline `.viz("name")` without any manual
+ * registration step.
+ *
+ * If the user renames a preset (future save-as UI), the old name is
+ * unregistered and the new name is registered in the same transaction.
+ * Until that UI lands, a preset rename is a no-op at the registry
+ * level; the stale name keeps working until page reload. Acceptable
+ * for Phase 10.2 MVP — there's no rename UI yet.
+ *
+ * ## Change notifications
+ *
+ * `onNamedVizChanged` lets consumers subscribe to register/unregister
+ * events. Phase 10.2 doesn't wire this to anything, but it's in place
+ * so a future Monaco completion provider can invalidate its suggestion
+ * cache when the registry mutates.
+ */
+
+type Listener$6 = () => void;
+/**
+ * Register a descriptor under a user-chosen name. Idempotent — calling
+ * twice with the same name + descriptor is a no-op and does not fire
+ * listeners. Calling with a new descriptor for an existing name
+ * replaces the entry (and fires listeners) so saves can update a
+ * previously-registered viz in place.
+ */
+declare function registerNamedViz(name: string, descriptor: VizDescriptor): void;
+/**
+ * Unregister a name. Idempotent — unknown names are silent no-ops.
+ * Fires listeners only when an entry is actually removed.
+ */
+declare function unregisterNamedViz(name: string): void;
+/**
+ * Look up a descriptor by name. Returns `undefined` if the name is not
+ * registered. The resolver falls through to the built-in descriptor
+ * list in that case.
+ */
+declare function getNamedViz(name: string): VizDescriptor | undefined;
+/**
+ * List every registered name in insertion order. Used by tests and by
+ * a future Monaco completion provider that wants to surface every
+ * user-defined viz name inside `.viz("...")` autocomplete.
+ */
+declare function listNamedVizNames(): string[];
+/**
+ * List every (name, descriptor) pair. Mostly useful for debugging and
+ * for tests that want to assert the full registry contents.
+ */
+declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
+/**
+ * Subscribe to registry changes. Fires on any register/unregister
+ * transition. Returns an idempotent unsubscribe function. Does not
+ * fire synchronously on subscription — subscribers receive only
+ * future changes.
+ */
+declare function onNamedVizChanged(cb: Listener$6): () => void;
+
+/**
+ * Worker-viz capability detection — the degrade-path scaffold for Phase B.
+ *
+ * Phase B moves viz `draw()` off the main thread into an OffscreenCanvas worker
+ * (epic #228). Whether that is possible — and *how* the per-frame signal data
+ * reaches the worker — depends on browser capabilities that vary by environment:
+ *
+ *   - `Worker` + `OffscreenCanvas` + `HTMLCanvasElement.transferControlToOffscreen`
+ *     → worker rendering is possible at all.
+ *   - `crossOriginIsolated` + `SharedArrayBuffer`
+ *     → the zero-copy SAB signal transport is available (the measured optimization,
+ *       gated behind the COOP/COEP header — see B-1 #239 / Q2 #237).
+ *
+ * B-1 (#239) confirmed by observation that the live COOP=same-origin +
+ * COEP=credentialless header yields `crossOriginIsolated === true` (and that a
+ * `window.open` popup inherits it). This module turns that runtime truth into a
+ * single capability snapshot + a sensible default transport choice, so B-2/B-3
+ * can pick SAB vs postMessage vs main-thread without re-probing globals ad hoc.
+ *
+ * Pure + environment-injectable → plain unit tests (no IDB/DOM — see the editor
+ * "split pure logic from I/O" rule). The live app passes nothing and reads
+ * `globalThis`.
+ */
+/**
+ * How per-frame viz signal data crosses to the renderer.
+ *
+ * - `'sab'`         — worker render + zero-copy SharedArrayBuffer transport
+ *                     (requires cross-origin isolation; the primary path).
+ * - `'postmessage'` — worker render + transferable-ArrayBuffer postMessage
+ *                     transport (no isolation needed; the required fallback for
+ *                     non-isolated browsers, e.g. Safari).
+ * - `'main-thread'` — no worker offload possible; render on the main thread with
+ *                     today's `P5VizRenderer` / `HydraVizRenderer`.
+ */
+type VizTransport = 'sab' | 'postmessage' | 'main-thread';
+interface WorkerVizCapabilities {
+    /** COOP/COEP cross-origin isolation is active (gates SharedArrayBuffer). */
+    crossOriginIsolated: boolean;
+    /** `OffscreenCanvas` constructor exists. */
+    hasOffscreenCanvas: boolean;
+    /** `SharedArrayBuffer` constructor exists (still needs isolation to be useful). */
+    hasSharedArrayBuffer: boolean;
+    /** `HTMLCanvasElement.prototype.transferControlToOffscreen` exists. */
+    canTransferControl: boolean;
+    /** `Worker` constructor exists. */
+    hasWorker: boolean;
+    /** Worker rendering is possible at all (worker + offscreen + transfer). */
+    canUseWorker: boolean;
+    /** The default transport given these capabilities (see {@link VizTransport}). */
+    transport: VizTransport;
+}
+/**
+ * The subset of the global environment this module reads. Injectable so the
+ * selection logic can be unit-tested across capability matrices without touching
+ * the real `globalThis`.
+ */
+interface CapabilityEnv {
+    crossOriginIsolated?: boolean;
+    OffscreenCanvas?: unknown;
+    SharedArrayBuffer?: unknown;
+    Worker?: unknown;
+    /** Stand-in for `HTMLCanvasElement` — we only probe for the transfer method. */
+    HTMLCanvasElement?: {
+        prototype?: {
+            transferControlToOffscreen?: unknown;
+        };
+    };
+}
+/**
+ * Derive worker-viz capabilities + the default transport from an environment.
+ *
+ * Transport policy (capability-derived, deliberately separate from any
+ * load/quality policy B-6 may add):
+ *   1. Can't offload (no worker / offscreen / transferControl) → `'main-thread'`.
+ *   2. Isolated + SharedArrayBuffer                            → `'sab'`.
+ *   3. Worker-capable but not isolated                         → `'postmessage'`.
+ *
+ * Note: PHASE-B-PLAN §4's conservative line ("fallback to main if
+ * !crossOriginIsolated") collapses cases 2+3; the plan's transport section +
+ * decision §1 are the refined intent — worker rendering works without isolation,
+ * only SAB needs it, so a non-isolated browser still offloads via postMessage.
+ * This function encodes the refined three-tier truth; a consumer that wants the
+ * conservative behaviour can treat anything but `'sab'` as main-thread.
+ */
+declare function detectWorkerVizCapabilities(env?: CapabilityEnv): WorkerVizCapabilities;
+
+/**
  * MainSignalSampler — samples the main-thread signal feed into a `SignalFrame`
  * each frame (Phase B / B-2). It is the MAIN-side half of the marshalling: it
  * does the work that is main-thread-bound (read `AnalyserNode` bytes, query the
@@ -2649,9 +2769,18 @@ declare class MainSignalSampler {
      *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
      *  P5VizRenderer.update). A partial stream (no `.on`) degrades to no feed. */
     bindHapStream(stream: HapSubscribable | null): void;
-    /** Produce one frame from the current inputs + the haps since the last call.
-     *  Drains the pending bumps (so each hap ships exactly once). */
-    sample(): SignalFrame;
+    /**
+     * Produce one frame from the current inputs + the haps since the last call.
+     * Drains the pending bumps (so each hap ships exactly once).
+     *
+     * `cache` (the shared frame pump, PV72) deduplicates the EXPENSIVE per-frame
+     * work across every viz sampling in the same rAF tick: the analyser FFT read and
+     * the scheduler query run ONCE per shared input object, not once per viz. It is
+     * keyed by input-object IDENTITY, so two viz on DIFFERENT tracks (distinct
+     * scheduler/analyser, viewZones.ts:341) don't false-share. Absent (unit tests /
+     * pre-pump path) → every read runs locally, byte-identical to before.
+     */
+    sample(cache?: FrameSampleCache): SignalFrame;
     /** Unsubscribe + reset (renderer destroy). */
     dispose(): void;
     /** The next seq an `emptyFrame` should carry (test/demo helper). */

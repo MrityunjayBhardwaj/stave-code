@@ -38,6 +38,8 @@ import { getVizWorkerFactory } from '../vizWorkerFactory'
 import { acquireVizWorker, releaseVizWorker, isVizWorkerPoolEnabled } from '../vizWorkerPool'
 import { getVizConfig, onVizConfigChange, pickWorkerVizConfig } from '../vizConfig'
 import { vizGovernor } from '../vizGovernor'
+import { vizFramePump, type PumpDriven } from '../vizFramePump'
+import type { FrameSampleCache } from '../worker/frameSampleCache'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
@@ -79,11 +81,10 @@ function minFrameMs(): number {
   return fps > 0 ? 1000 / fps : 0
 }
 
-export class WorkerVizRenderer implements VizRenderer {
+export class WorkerVizRenderer implements VizRenderer, PumpDriven {
   private worker: Worker | null = null
   private writer: SignalTransportWriter | null = null
   private readonly sampler = new MainSignalSampler()
-  private rafId = 0
   private running = false
   /** Frames written but not yet acked by the worker (#261 backpressure). The
    *  sampler skips producing while this is at the cap so a slow worker can't be
@@ -100,7 +101,9 @@ export class WorkerVizRenderer implements VizRenderer {
   private govResScale = 1
   private size = { w: 400, h: 300 }
   private onError: ((e: Error) => void) | null = null
-  private readonly perfId = `worker#${++workerPerfSeq}`
+  /** Stable id — the `vizGovernor` round-robin key AND the `vizFramePump` registry
+   *  key (public for the `PumpDriven` contract). */
+  readonly perfId = `worker#${++workerPerfSeq}`
   private diagHandler: ((ev: MessageEvent) => void) | null = null
   /** The presenting <canvas> this renderer appended (transferred to the worker).
    *  Tracked so destroy() removes it — else a fallback to the main-thread renderer
@@ -372,18 +375,33 @@ export class WorkerVizRenderer implements VizRenderer {
     this.sampler.bindHapStream(components.streaming?.hapStream ?? null)
   }
 
-  /** Start the main rAF sample→writeFrame loop (the single cadence clock). */
+  /** Join the shared frame pump — the SINGLE rAF + shared sampler now drives this
+   *  renderer's per-frame produce via `pumpTick` (PV72), instead of each renderer
+   *  owning its own rAF. Still registers with the governor for the GPU-budget pool. */
   private start(): void {
     if (this.running) return
     this.running = true
     this.inFlight = 0 // fresh pipeline on (re)start — drop any owed acks (#261)
     this.lastProduceTs = 0 // fresh fps-cap clock
     vizGovernor.register(this.perfId) // join the global GPU-budget pool
-    const tick = (ts: number): void => {
-      if (!this.running || !this.writer) return
-      // Feed the global cadence monitor every rAF (even when backpressured —
-      // a stalled worker IS the jank signal we want to measure).
-      vizGovernor.observeFrame(ts)
+    vizFramePump.register(this) // join the single-rAF shared sampler (PV72, #302)
+  }
+
+  /**
+   * One produce step, called by `vizFramePump` once per rAF tick while registered
+   * (PumpDriven). This is the EXACT gate sequence the old per-renderer rAF ran —
+   * resolution lever → #261 backpressure → maxFps cap → governor concurrency gate
+   * → sample+write — moved verbatim, with two differences: the pump owns the rAF
+   * (no self-reschedule) and calls `vizGovernor.observeFrame` once for all viz (it
+   * was idempotent per ts, so equivalent); and `sample(cache)` routes the analyser
+   * read + scheduler query through the SHARED per-tick cache, so N viz on the same
+   * input collapse N reads → 1 (the PV72 win). The frame is still per-viz (own
+   * sampler/bumps/seq) → byte-identical reactivity (PV75). Guarded so a throw can't
+   * stall the pump's other renderers (PumpDriven contract).
+   */
+  pumpTick(ts: number, cache: FrameSampleCache | undefined): void {
+    if (!this.running || !this.writer) return
+    try {
       // Governor resolution lever (P122/PV91): under sustained stress shrink the
       // worker backing store. Re-post a scaled resize ONLY when the quantized step
       // changes (rare) — the realloc isn't free. No-op at scale 1 (smooth/disabled).
@@ -392,18 +410,18 @@ export class WorkerVizRenderer implements VizRenderer {
         this.govResScale = rs
         this.postBackingSize()
       }
-      // #261 backpressure: only produce while the worker hasn't fallen `cap`
-      // frames behind. The rAF keeps ticking (so we resume the instant an ack
-      // frees a slot), but we skip sample()+writeFrame() when the pipeline is
-      // full — this paces main's output to the worker's actual draw rate, so the
-      // worker always draws the freshest frame instead of a stale backlog. NOT
-      // sampling when skipped is deliberate: it lets the hap bumps accumulate
-      // into the NEXT produced frame (envelope energy preserved, PK22) and saves
-      // the duplicated main sample work when the worker is the bottleneck.
+      // #261 backpressure: only produce while the worker hasn't fallen `cap` frames
+      // behind. The pump keeps ticking (so we resume the instant an ack frees a
+      // slot), but we skip sample()+writeFrame() when the pipeline is full — this
+      // paces main's output to the worker's actual draw rate, so the worker always
+      // draws the freshest frame instead of a stale backlog. NOT sampling when
+      // skipped is deliberate: hap bumps accumulate into the NEXT produced frame
+      // (envelope energy preserved, PK22) and it saves the duplicated main sample
+      // work when the worker is the bottleneck.
       //
-      // #261 fps cap: also skip if we produced a frame less than minFrameMs ago,
-      // so a 120fps display doesn't blit/composite/sample twice as often as a
-      // music viz can use. The `- 1` biases toward hitting the target rather than
+      // #261 fps cap: also skip if we produced a frame less than minFrameMs ago, so
+      // a 120fps display doesn't blit/composite/sample twice as often as a music
+      // viz can use. The `- 1` biases toward hitting the target rather than
       // undershooting on a high-refresh display (skipping is always safe — it can
       // only lower the rate, never exceed the cap). Composed with backpressure.
       const gap = minFrameMs()
@@ -411,33 +429,34 @@ export class WorkerVizRenderer implements VizRenderer {
       // Global GPU-budget gate: under sustained jank the governor throttles this
       // viz's rate + round-robins which viz draw each frame, so N heavy viz can't
       // co-saturate the shared GPU and starve the editor's compositing. A total
-      // no-op when frames are healthy (stress 0 → always true), so it never
-      // touches the smooth common case or the reactivity contract (PV75).
+      // no-op when frames are healthy (stress 0 → always true), so it never touches
+      // the smooth common case or the reactivity contract (PV75).
       if (this.inFlight < MAX_FRAMES_IN_FLIGHT && due && vizGovernor.mayProduce(this.perfId, ts)) {
         this.lastProduceTs = ts
         perf.frame(this.perfId)
         // Decompose the per-frame main cost into its two parts so the matrix can
         // attribute it (B-4 decision gate, #249): `sample` = analyser reads + the
-        // wide scheduler query (duplicated work, only a SHARED sampler removes the
-        // N×); `write` = transport (envelope structured-clone + postMessage —
-        // bytes already transferred zero-copy; this is the slice SAB removes).
+        // wide scheduler query (duplicated work — the shared `cache` removes the N×,
+        // PV72); `write` = transport (envelope structured-clone + postMessage —
+        // bytes already transferred zero-copy).
         perf.begin('viz.worker.sample')
-        const frame = this.sampler.sample()
+        const frame = this.sampler.sample(cache)
         perf.end('viz.worker.sample')
         perf.begin('viz.worker.write')
         this.writer.writeFrame(frame)
         perf.end('viz.worker.write')
         this.inFlight++
       }
-      this.rafId = requestAnimationFrame(tick)
+    } catch (e) {
+      // A produce-step throw must not stall the pump's other renderers. Surface it
+      // through the host error path (post-ready → Console; pre-ready → fallback).
+      this.onError?.(e as Error)
     }
-    this.rafId = requestAnimationFrame(tick)
   }
 
   private stop(): void {
     this.running = false
-    if (this.rafId) cancelAnimationFrame(this.rafId)
-    this.rafId = 0
+    vizFramePump.unregister(this.perfId) // leave the single-rAF shared sampler
     vizGovernor.unregister(this.perfId) // leave the GPU-budget pool (pause/destroy)
   }
 }

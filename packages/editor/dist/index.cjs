@@ -6486,6 +6486,7 @@ __name(summariseEvent, "summariseEvent");
 function readAnalyserBytes(key, an) {
   const n = an.frequencyBinCount | 0;
   if (n <= 0) return null;
+  perf.inc("viz.sample.analyserReads");
   const node = an;
   const fftSize = node.fftSize && node.fftSize > 0 ? node.fftSize : n * 2;
   const freq = new Uint8Array(n);
@@ -6538,29 +6539,40 @@ var _MainSignalSampler = class _MainSignalSampler {
       this.boundStream = stream;
     }
   }
-  /** Produce one frame from the current inputs + the haps since the last call.
-   *  Drains the pending bumps (so each hap ships exactly once). */
-  sample() {
+  /**
+   * Produce one frame from the current inputs + the haps since the last call.
+   * Drains the pending bumps (so each hap ships exactly once).
+   *
+   * `cache` (the shared frame pump, PV72) deduplicates the EXPENSIVE per-frame
+   * work across every viz sampling in the same rAF tick: the analyser FFT read and
+   * the scheduler query run ONCE per shared input object, not once per viz. It is
+   * keyed by input-object IDENTITY, so two viz on DIFFERENT tracks (distinct
+   * scheduler/analyser, viewZones.ts:341) don't false-share. Absent (unit tests /
+   * pre-pump path) → every read runs locally, byte-identical to before.
+   */
+  sample(cache) {
     const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } = this.inputs;
     const seq = ++this.seq;
     const now2 = scheduler ? scheduler.now() : 0;
     const begin = now2;
     const end = now2 + EPSILON2;
-    const activeEvents = scheduler ? scheduler.query(begin, end).map(summariseEvent) : [];
+    const queryAt = /* @__PURE__ */ __name((sched, a, b) => cache ? cache.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b), "queryAt");
+    const activeEvents = scheduler ? queryAt(scheduler, begin, end).map(summariseEvent) : [];
     const activeByTrack = [];
     if (trackSchedulers) {
       for (const [key, sched] of trackSchedulers) {
-        activeByTrack.push([key, sched.query(begin, end).map(summariseEvent)]);
+        activeByTrack.push([key, queryAt(sched, begin, end).map(summariseEvent)]);
       }
     }
+    const readBytes = /* @__PURE__ */ __name((key, an) => cache ? cache.readAnalyser(key, an, (a) => readAnalyserBytes(key, a)) : readAnalyserBytes(key, an), "readBytes");
     const analysers = [];
     if (masterAnalyser) {
-      const b = readAnalyserBytes(MASTER_KEY, masterAnalyser);
+      const b = readBytes(MASTER_KEY, masterAnalyser);
       if (b) analysers.push(b);
     }
     if (trackAnalysers) {
       for (const [key, an] of trackAnalysers) {
-        const b = readAnalyserBytes(key, an);
+        const b = readBytes(key, an);
         if (b) analysers.push(b);
       }
     }
@@ -6568,7 +6580,7 @@ var _MainSignalSampler = class _MainSignalSampler {
     this.pendingBumps = [];
     const rawScheduler = {
       now: now2,
-      events: scheduler ? scheduler.query(now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
+      events: scheduler ? queryAt(scheduler, now2 - RAW_QUERY_BACK, now2 + RAW_QUERY_FWD).map(summariseRawHap) : []
     };
     return { seq, now: now2, analysers, activeEvents, activeByTrack, bumps, rawScheduler };
   }
@@ -6672,6 +6684,129 @@ function releaseVizWorker(worker) {
 }
 __name(releaseVizWorker, "releaseVizWorker");
 
+// src/visualizers/worker/frameSampleCache.ts
+var _FrameSampleCache = class _FrameSampleCache {
+  constructor() {
+    /** Raw read per analyser object (key-independent bytes). `null` = a zero-bin
+     *  analyser already attempted (so we don't re-attempt). `.has()` distinguishes
+     *  "not read yet" from "read → null". The stored arrays are NEVER transferred —
+     *  only the per-call slices are — so they stay intact for the whole tick. */
+    this.analyserReads = /* @__PURE__ */ new Map();
+    /** Query results per (scheduler object → `"a:b"` window). Shared by reference. */
+    this.queries = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Read `an` at most once this tick; return a TRANSFER-SAFE copy stamped with
+   * `key`. The first caller for a given analyser runs `read` (the FFT); later
+   * callers (a shared master, or the same node read under both `'master'` and its
+   * track key) get a fresh-buffer slice of the cached bytes — no second FFT.
+   */
+  readAnalyser(key, an, read) {
+    let raw;
+    if (this.analyserReads.has(an)) {
+      raw = this.analyserReads.get(an) ?? null;
+    } else {
+      raw = read(an);
+      this.analyserReads.set(an, raw);
+    }
+    if (raw === null) return null;
+    return { ...raw, key, freq: raw.freq.slice(), time: raw.time.slice() };
+  }
+  /**
+   * Run `scheduler.query(a, b)` at most once this tick per (scheduler, window).
+   * Returns the SHARED result array (callers must treat it read-only — they
+   * `.map`/summarise it into their own frame). `run` is the actual query closure.
+   */
+  query(scheduler, a, b, run) {
+    let windows = this.queries.get(scheduler);
+    if (!windows) {
+      windows = /* @__PURE__ */ new Map();
+      this.queries.set(scheduler, windows);
+    }
+    const k = `${a}:${b}`;
+    let result = windows.get(k);
+    if (!result) {
+      result = run();
+      windows.set(k, result);
+    }
+    return result;
+  }
+};
+__name(_FrameSampleCache, "FrameSampleCache");
+var FrameSampleCache = _FrameSampleCache;
+
+// src/visualizers/vizFramePump.ts
+var _VizFramePump = class _VizFramePump {
+  constructor() {
+    this.driven = /* @__PURE__ */ new Map();
+    this.rafId = 0;
+    this.running = false;
+    /** Whether the per-tick shared sampler cache is active (the PV72 dedup). On by
+     *  default; `localStorage['stave.viz.pump'] === '0'` disables it — the pump still
+     *  runs its single rAF, but each viz samples WITHOUT the shared cache (every
+     *  analyser read + query runs per-viz, the pre-pump behaviour). The A/B lever for
+     *  the matrix gate + an escape hatch (mirrors `stave.viz.governor`). */
+    this.sharedCache = true;
+    this.tick = /* @__PURE__ */ __name((ts) => {
+      if (!this.running) return;
+      vizGovernor.observeFrame(ts);
+      const cache = this.sharedCache ? new FrameSampleCache() : void 0;
+      for (const d of [...this.driven.values()]) {
+        try {
+          d.pumpTick(ts, cache);
+        } catch {
+        }
+      }
+      this.rafId = requestAnimationFrame(this.tick);
+    }, "tick");
+    try {
+      if (typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.pump") === "0") {
+        this.sharedCache = false;
+      }
+    } catch {
+    }
+  }
+  /** Join the pump (renderer loop START — mount/resume). Idempotent. Starts the
+   *  single rAF if it wasn't already running. */
+  register(d) {
+    this.driven.set(d.perfId, d);
+    this.ensureLoop();
+  }
+  /** Leave the pump (renderer loop STOP — pause/destroy). Stops the rAF when the
+   *  last renderer leaves so an idle app holds no animation callback. */
+  unregister(id) {
+    this.driven.delete(id);
+    if (this.driven.size === 0) this.stopLoop();
+  }
+  ensureLoop() {
+    if (this.running) return;
+    if (typeof requestAnimationFrame !== "function") return;
+    this.running = true;
+    this.rafId = requestAnimationFrame(this.tick);
+  }
+  stopLoop() {
+    this.running = false;
+    if (this.rafId && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(this.rafId);
+    }
+    this.rafId = 0;
+  }
+  /** Observability / test hook. */
+  state() {
+    return { running: this.running, n: this.driven.size, sharedCache: this.sharedCache };
+  }
+  /** Test helper — force-clear the registry + stop the loop deterministically.
+   *  `sharedCache` defaults back ON unless overridden (matches the constructor). */
+  _resetForTest(sharedCache = true) {
+    this.driven.clear();
+    this.stopLoop();
+    this.sharedCache = sharedCache;
+  }
+};
+__name(_VizFramePump, "VizFramePump");
+var VizFramePump = _VizFramePump;
+var vizFramePump = new VizFramePump();
+
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
 var MAX_FRAMES_IN_FLIGHT = 2;
@@ -6696,7 +6831,6 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     this.worker = null;
     this.writer = null;
     this.sampler = new MainSignalSampler();
-    this.rafId = 0;
     this.running = false;
     /** Frames written but not yet acked by the worker (#261 backpressure). The
      *  sampler skips producing while this is at the cap so a slow worker can't be
@@ -6713,6 +6847,8 @@ var _WorkerVizRenderer = class _WorkerVizRenderer {
     this.govResScale = 1;
     this.size = { w: 400, h: 300 };
     this.onError = null;
+    /** Stable id — the `vizGovernor` round-robin key AND the `vizFramePump` registry
+     *  key (public for the `PumpDriven` contract). */
     this.perfId = `worker#${++workerPerfSeq}`;
     this.diagHandler = null;
     /** The presenting <canvas> this renderer appended (transferred to the worker).
@@ -6904,16 +7040,32 @@ ${d.stack}` : "");
     });
     this.sampler.bindHapStream(components.streaming?.hapStream ?? null);
   }
-  /** Start the main rAF sample→writeFrame loop (the single cadence clock). */
+  /** Join the shared frame pump — the SINGLE rAF + shared sampler now drives this
+   *  renderer's per-frame produce via `pumpTick` (PV72), instead of each renderer
+   *  owning its own rAF. Still registers with the governor for the GPU-budget pool. */
   start() {
     if (this.running) return;
     this.running = true;
     this.inFlight = 0;
     this.lastProduceTs = 0;
     vizGovernor.register(this.perfId);
-    const tick = /* @__PURE__ */ __name((ts) => {
-      if (!this.running || !this.writer) return;
-      vizGovernor.observeFrame(ts);
+    vizFramePump.register(this);
+  }
+  /**
+   * One produce step, called by `vizFramePump` once per rAF tick while registered
+   * (PumpDriven). This is the EXACT gate sequence the old per-renderer rAF ran —
+   * resolution lever → #261 backpressure → maxFps cap → governor concurrency gate
+   * → sample+write — moved verbatim, with two differences: the pump owns the rAF
+   * (no self-reschedule) and calls `vizGovernor.observeFrame` once for all viz (it
+   * was idempotent per ts, so equivalent); and `sample(cache)` routes the analyser
+   * read + scheduler query through the SHARED per-tick cache, so N viz on the same
+   * input collapse N reads → 1 (the PV72 win). The frame is still per-viz (own
+   * sampler/bumps/seq) → byte-identical reactivity (PV75). Guarded so a throw can't
+   * stall the pump's other renderers (PumpDriven contract).
+   */
+  pumpTick(ts, cache) {
+    if (!this.running || !this.writer) return;
+    try {
       const rs = vizGovernor.resolutionScale();
       if (rs !== this.govResScale) {
         this.govResScale = rs;
@@ -6925,21 +7077,20 @@ ${d.stack}` : "");
         this.lastProduceTs = ts;
         perf.frame(this.perfId);
         perf.begin("viz.worker.sample");
-        const frame = this.sampler.sample();
+        const frame = this.sampler.sample(cache);
         perf.end("viz.worker.sample");
         perf.begin("viz.worker.write");
         this.writer.writeFrame(frame);
         perf.end("viz.worker.write");
         this.inFlight++;
       }
-      this.rafId = requestAnimationFrame(tick);
-    }, "tick");
-    this.rafId = requestAnimationFrame(tick);
+    } catch (e) {
+      this.onError?.(e);
+    }
   }
   stop() {
     this.running = false;
-    if (this.rafId) cancelAnimationFrame(this.rafId);
-    this.rafId = 0;
+    vizFramePump.unregister(this.perfId);
     vizGovernor.unregister(this.perfId);
   }
 };
