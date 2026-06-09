@@ -74,6 +74,36 @@ col += vec3(1.0, 0.2, 0.15) * uKick;
 This is why `pulse` reacts to each drum separately while `glsl` reacts to the
 overall sound — `pulse` reads `uKick`/`uSnare`/`uHat`, `glsl` reads `iChannel0`.
 
+### Per-track signals — `staveTrack(i)`
+
+The `u*` uniforms above are fixed named drums. To react to **your own tracks** —
+whatever patterns your program runs, in order — a shader reads `uTrackCount` and
+calls `staveTrack(i)`. This is the GLSL equivalent of `u.track(id)` in the p5 and
+hydra runtimes:
+
+```glsl
+struct StaveTrack { float env, velocity, rms, bass, mid, treble; };
+uniform int uTrackCount;        // how many tracks are live (≤ 16)
+StaveTrack staveTrack(int i);   // track i's signals — i in [0, uTrackCount)
+```
+
+Each field is `0.0`–`1.0`: `env` (decaying hit envelope), `velocity` (the current
+note's velocity), `rms` (loudness), and `bass`/`mid`/`treble` (per-track spectrum).
+Tracks come in program order — track `0` is your first `$:` line, and so on.
+
+```glsl
+// Each track lights its own horizontal band, brightness = its envelope:
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  int band = int(uv.y * float(uTrackCount));
+  float e = staveTrack(band).env;
+  fragColor = vec4(vec3(e), 1.0);
+}
+```
+
+`uTrackCount` is capped at 16 tracks. `staveTrack`/`uTrackCount` are reserved —
+don't redeclare them (same rule as the other built-in uniforms).
+
 ### The standard uniforms
 
 `iResolution` (viewport size), `iTime` (seconds since the viz started), and

@@ -37,17 +37,52 @@ void main() {
 
 const VERSION = '#version 300 es'
 const PRECISION = 'precision highp float;\nprecision highp int;'
+
+/** Max tracks a shader can address (#297) — the uniform-array bound shared by the
+ *  preamble declarations below AND the cached uniform locations in glslCore
+ *  (`uTrackA`/`uTrackB` are declared `[MAX_GLSL_TRACKS]`). `uTrackCount` is clamped
+ *  to this; extra tracks are dropped (Vairagya — bounded; 16 is plenty for music).
+ *  Lives here (not glslCore) so the string preamble can reference it WITHOUT a
+ *  glslCore→glslShaderSource→glslCore import cycle. */
+export const MAX_GLSL_TRACKS = 16
+
 /** The v1 uniforms, declared for BOTH modes. A user shader must NOT redeclare
  *  these (same rule as ShaderToy, where the user never declares uniforms).
  *  The `u*` block (#284) carries PATTERN EVENTS — per-drum envelope levels +
  *  master DSP — from the named-signal bus, so a shader reacts to kicks/snares/
- *  velocity, not just the mixed FFT in iChannel0. All 0..1. */
+ *  velocity, not just the mixed FFT in iChannel0. All 0..1.
+ *  The `uTrack*` block (#297) carries PER-TRACK signals: `uTrackCount` is how many
+ *  tracks are live, and `staveTrack(i)` reads track `i`'s scalars (env/velocity/
+ *  rms/bass/mid/treble) — the GLSL analog of p5/hydra's `u.track(id)`. Packed as
+ *  two vec3 arrays (a = env/velocity/rms, b = bass/mid/treble) to halve uniform
+ *  declarations; authors use `staveTrack(i)`, never the raw arrays. */
 const UNIFORMS = `uniform vec3 iResolution;
 uniform float iTime;
 uniform vec4 iMouse;
 uniform sampler2D iChannel0;
 uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
-uniform float uRms, uBass, uMid, uTreble;`
+uniform float uRms, uBass, uMid, uTreble;
+uniform int uTrackCount;
+uniform vec3 uTrackA[${MAX_GLSL_TRACKS}];
+uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];`
+
+/** Per-track accessor (#297) injected for BOTH modes, after the uniforms. The
+ *  struct + `staveTrack(i)` are the author-facing API (reserved names — a user
+ *  shader must not redeclare them). Unused → GLSL strips them (zero cost). Field
+ *  order MUST match `GLSL_TRACK_FIELDS` + the `a`/`b` packing in glslEvents. */
+const STAVE_TRACK_API = `struct StaveTrack {
+  float env;
+  float velocity;
+  float rms;
+  float bass;
+  float mid;
+  float treble;
+};
+StaveTrack staveTrack(int i) {
+  vec3 a = uTrackA[i];
+  vec3 b = uTrackB[i];
+  return StaveTrack(a.x, a.y, a.z, b.x, b.y, b.z);
+}`
 
 /** ShaderToy-mode output + entry: we own `main()`, it calls the user's mainImage. */
 const SHADERTOY_OUT = 'out vec4 stave_FragColor;'
@@ -91,12 +126,12 @@ export function buildGLSLFragmentSource(userSource: string): string {
   }
   if (hasMainImage) {
     // ShaderToy mode — Stave owns the entry point + the fragment output.
-    return `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${SHADERTOY_OUT}\n${userSource}\n${SHADERTOY_ENTRY}`
+    return `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n${SHADERTOY_OUT}\n${userSource}\n${SHADERTOY_ENTRY}`
   }
   if (hasMain) {
     // Raw GLSL mode — the user owns `out` + `main()`; Stave provides only the
     // version, precision, and uniforms. Strip a user `#version` (ours is first).
-    return `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${stripVersion(userSource)}\n`
+    return `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n${stripVersion(userSource)}\n`
   }
   throw new Error(
     'GLSL: no entry point. Define `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for a ShaderToy shader, or `void main()` for a raw GLSL shader.',

@@ -14,7 +14,7 @@
  *      SignalBus.ts (envValue/master/sound/sounds), architecture/renderer-contract.
  */
 import type { SignalBus } from '../signals/SignalBus'
-import type { GLSLEvents } from './glslCore'
+import { type GLSLEvents, type GLSLTracks, MAX_GLSL_TRACKS, GLSL_TRACK_FIELDS } from './glslCore'
 
 /** Snapshot the per-drum envelope levels + master DSP from `bus` as GLSL uniforms.
  *  `uVelocity` is the loudest active sound's velocity (a global "something hit"). */
@@ -39,4 +39,36 @@ export function readGLSLEvents(bus: SignalBus): GLSLEvents {
     uMid: m.mid,
     uTreble: m.treble,
   }
+}
+
+/**
+ * Snapshot the PER-TRACK signals (#297) from `bus` for the GLSL `staveTrack(i)`
+ * uniforms — the GLSL analog of p5/hydra's `u.track(id)` / `u.tracks`. Reads
+ * `bus.tracks` (stable SCHEDULER-key-space order, capped at `MAX_GLSL_TRACKS`) and,
+ * per track, `bus.track(key)`'s scalar half. Packed two-vec3-per-track so the core
+ * sets two `vec3[]` uniforms: `a = (env, velocity, rms)`, `b = (bass, mid, treble)`.
+ * Field order MUST match `GLSL_TRACK_FIELDS` + the `StaveTrack` struct.
+ *
+ * The bus must be TICKED for this frame before calling (same precondition as
+ * `readGLSLEvents`) — this only READS. The same bus reads identically on the main
+ * thread (`GLSLVizRenderer`) and in the worker (`mountGLSL`, off `WorkerBusFeed`),
+ * so per-track GLSL reactivity is engine-path-agnostic.
+ */
+export function readGLSLTracks(bus: SignalBus): GLSLTracks {
+  const keys = bus.tracks
+  const count = Math.min(keys.length, MAX_GLSL_TRACKS)
+  const a = new Float32Array(MAX_GLSL_TRACKS * 3)
+  const b = new Float32Array(MAX_GLSL_TRACKS * 3)
+  for (let i = 0; i < count; i++) {
+    const t = bus.track(keys[i])
+    // GLSL_TRACK_FIELDS is the single source of field order: 0..2 → vec3 `a`
+    // (env/velocity/rms), 3..5 → vec3 `b` (bass/mid/treble), matching the
+    // `StaveTrack` struct + the `uTrackA`/`uTrackB` uniforms.
+    for (let f = 0; f < GLSL_TRACK_FIELDS.length; f++) {
+      const value = t[GLSL_TRACK_FIELDS[f]]
+      const target = f < 3 ? a : b
+      target[i * 3 + (f % 3)] = value
+    }
+  }
+  return { count, a, b }
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildGLSLFragmentSource,
   GLSL_FULLSCREEN_VERT,
+  MAX_GLSL_TRACKS,
 } from '../renderers/glslShaderSource'
 
 /**
@@ -40,6 +41,27 @@ describe('buildGLSLFragmentSource — common preamble', () => {
       expect(out).toContain('uSnare')
       expect(out).toContain('uHat')
       expect(out).toContain('uVelocity')
+    }
+  })
+
+  it('declares the per-TRACK API (#297) in BOTH modes', () => {
+    for (const src of [SHADERTOY, RAW]) {
+      const out = buildGLSLFragmentSource(src)
+      // uniforms
+      expect(out).toContain('uniform int uTrackCount;')
+      expect(out).toContain(`uniform vec3 uTrackA[${MAX_GLSL_TRACKS}];`)
+      expect(out).toContain(`uniform vec3 uTrackB[${MAX_GLSL_TRACKS}];`)
+      // author-facing accessor
+      expect(out).toContain('struct StaveTrack')
+      expect(out).toContain('StaveTrack staveTrack(int i)')
+      // the helper must come AFTER the uniforms it reads (so it compiles)
+      expect(out.indexOf('uniform vec3 uTrackA')).toBeLessThan(
+        out.indexOf('StaveTrack staveTrack(int i)'),
+      )
+      // ...and BEFORE the user body that calls it
+      expect(out.indexOf('StaveTrack staveTrack(int i)')).toBeLessThan(
+        out.indexOf(src.slice(0, 12)),
+      )
     }
   })
 

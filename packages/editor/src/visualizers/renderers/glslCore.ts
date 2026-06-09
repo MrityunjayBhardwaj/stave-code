@@ -24,7 +24,9 @@
  *      (the main-thread analyser source — same getByte* surface).
  */
 
-import { GLSL_FULLSCREEN_VERT, buildGLSLFragmentSource } from './glslShaderSource'
+import { GLSL_FULLSCREEN_VERT, buildGLSLFragmentSource, MAX_GLSL_TRACKS } from './glslShaderSource'
+
+export { MAX_GLSL_TRACKS }
 
 /** The per-frame audio surface — the SAME shape exposed by the worker's
  *  `RawAnalyserShim` AND a Web Audio `AnalyserNode`, so the core feeds from
@@ -66,6 +68,28 @@ export type GLSLEvents = Record<(typeof GLSL_EVENT_NAMES)[number], number>
 export const ZERO_GLSL_EVENTS: GLSLEvents = Object.fromEntries(
   GLSL_EVENT_NAMES.map((n) => [n, 0]),
 ) as GLSLEvents
+
+/** The per-track signal fields exposed to GLSL, in `StaveTrack` struct order
+ *  (#297). Packed two-vec3-per-track: `uTrackA = (env, velocity, rms)`,
+ *  `uTrackB = (bass, mid, treble)` — the scalar half of a bus `SignalReading`. */
+export const GLSL_TRACK_FIELDS = ['env', 'velocity', 'rms', 'bass', 'mid', 'treble'] as const
+
+/** Per-frame per-track signal block (#297). `a`/`b` are flat `vec3` uniform
+ *  payloads of length `MAX_GLSL_TRACKS * 3` (track i at `[i*3 .. i*3+3)`): `a` =
+ *  (env, velocity, rms), `b` = (bass, mid, treble). `count` is the number of real
+ *  tracks (≤ MAX_GLSL_TRACKS); slots past `count` stay zero. */
+export interface GLSLTracks {
+  count: number
+  a: Float32Array
+  b: Float32Array
+}
+
+/** No tracks (no bus / demo) — the default when `draw` gets no track block. */
+export const ZERO_GLSL_TRACKS: GLSLTracks = {
+  count: 0,
+  a: new Float32Array(MAX_GLSL_TRACKS * 3),
+  b: new Float32Array(MAX_GLSL_TRACKS * 3),
+}
 
 /** Width (texels) of each row of the `iChannel0` audio texture. */
 const AUDIO_TEX_W = 512
@@ -123,6 +147,11 @@ export class GLSLProgram {
   private readonly uChannel0: WebGLUniformLocation | null
   /** Cached locations for the pattern-event uniforms (#284), by name. */
   private readonly uEvents: Array<readonly [keyof GLSLEvents, WebGLUniformLocation | null]>
+  /** Cached locations for the per-track signal uniforms (#297) — null when the
+   *  shader references none (GLSL strips them), making the set a cheap no-op. */
+  private readonly uTrackCount: WebGLUniformLocation | null
+  private readonly uTrackA: WebGLUniformLocation | null
+  private readonly uTrackB: WebGLUniformLocation | null
   /** Scratch buffers, allocated once (no per-frame alloc). */
   private readonly freqScratch = new Uint8Array(AUDIO_TEX_W * 4)
   private readonly waveScratch = new Uint8Array(AUDIO_TEX_W * 4)
@@ -164,6 +193,10 @@ export class GLSLProgram {
     this.uEvents = GLSL_EVENT_NAMES.map(
       (n) => [n, gl.getUniformLocation(program, n)] as const,
     )
+    // Per-track signal uniforms (#297) — null when the shader uses none (stripped).
+    this.uTrackCount = gl.getUniformLocation(program, 'uTrackCount')
+    this.uTrackA = gl.getUniformLocation(program, 'uTrackA')
+    this.uTrackB = gl.getUniformLocation(program, 'uTrackB')
 
     // WebGL2 core requires a bound VAO for drawArrays, even with no attributes.
     const vao = gl.createVertexArray()
@@ -188,8 +221,14 @@ export class GLSLProgram {
 
   /** Render one frame. `audio` may be null (no analyser yet) → the texture stays
    *  at its current contents (or zero) and the shader still animates off iTime.
-   *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0. */
-  draw(audio: AudioByteSource | null, state: GLSLDrawState, events?: GLSLEvents): void {
+   *  `events` carries the per-frame pattern-event uniforms (#284); omit → all 0.
+   *  `tracks` carries the per-track signal uniforms (#297); omit → no tracks. */
+  draw(
+    audio: AudioByteSource | null,
+    state: GLSLDrawState,
+    events?: GLSLEvents,
+    tracks?: GLSLTracks,
+  ): void {
     if (this.disposed) return
     const gl = this.gl
     const w = Math.max(1, Math.round(state.width))
@@ -232,6 +271,13 @@ export class GLSLProgram {
     for (const [name, loc] of this.uEvents) {
       if (loc) gl.uniform1f(loc, ev[name])
     }
+    // Per-track signal uniforms (#297) — set only when the shader references them
+    // (locations null otherwise). `a`/`b` are full MAX_GLSL_TRACKS*3 vec3 payloads
+    // (zero past `count`), so the array uniform is always fully written.
+    const tr = tracks ?? ZERO_GLSL_TRACKS
+    if (this.uTrackCount) gl.uniform1i(this.uTrackCount, tr.count)
+    if (this.uTrackA) gl.uniform3fv(this.uTrackA, tr.a)
+    if (this.uTrackB) gl.uniform3fv(this.uTrackB, tr.b)
 
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     gl.bindVertexArray(null)
