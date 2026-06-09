@@ -151,6 +151,25 @@ describe('vizGovernor — throttles under sustained jank', () => {
     expect(vizGovernor.resolutionScale()).toBe(0.5)
   })
 
+  it('setEnabled(false) releases the levers live (the "Adaptive performance" toggle off)', () => {
+    const ids = ['a', 'b']
+    warmJank(ids)
+    expect(vizGovernor.state().stress).toBeGreaterThan(0.9)
+    expect(vizGovernor.resolutionScale()).toBe(0.5) // engaged
+    // Turning the toggle OFF mid-jank must release every lever immediately:
+    vizGovernor.setEnabled(false)
+    expect(vizGovernor.resolutionScale()).toBe(1) // full resolution restored
+    expect(ids.every((id) => vizGovernor.mayProduce(id, 9999))).toBe(true) // no throttle
+    expect(vizGovernor.state().stress).toBe(0)
+    // The viz stay registered (live) — only the gate flipped.
+    expect(vizGovernor.state().n).toBe(2)
+    // Re-enabling lets stress rebuild from the live cadence again.
+    vizGovernor.setEnabled(true)
+    let ts = 5000
+    for (let i = 0; i < 10; i++) { ts += 100; vizGovernor.observeFrame(ts) }
+    expect(vizGovernor.state().stress).toBeGreaterThan(0.9)
+  })
+
   it('resets to healthy when the last viz unregisters', () => {
     const ids = ['a', 'b']
     warmJank(ids)

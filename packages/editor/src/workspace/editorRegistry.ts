@@ -17,6 +17,7 @@ import type {
   StoredSignalAliases,
 } from '../visualizers/signals/aliasMap'
 import { perf } from '../perf/profiler'
+import { vizGovernor } from '../visualizers/vizGovernor'
 import {
   DEFAULT_VIZ_QUALITY,
   deriveVizQuality,
@@ -899,4 +900,57 @@ export function onPerfEnabledChange(cb: (on: boolean) => void): () => void {
  *  app start so a reload restores an enabled overlay. */
 export function applyPersistedPerfEnabled(): void {
   perf.setEnabled(readPerfEnabled())
+}
+
+// ── Adaptive performance toggle (the GPU-budget governor, P122/PV91) ─────────
+// "Adaptive performance" = the global viz governor that throttles + round-robins
+// + drops render resolution of worker viz under sustained GPU/scroll jank, and is
+// a total no-op when frames are smooth. ON by default. Persisted under the SAME
+// `stave.viz.governor` key the governor reads at construction (single source of
+// truth — only the explicit string '0' disables, so a fresh user gets it on).
+const ADAPTIVE_PERF_STORAGE = 'stave.viz.governor'
+const adaptivePerfListeners = new Set<(on: boolean) => void>()
+
+function readAdaptivePerf(): boolean {
+  // Default ON: anything but the explicit '0' (incl. absent) = enabled. Mirrors
+  // vizGovernor's own constructor read so the two never disagree.
+  return safeLocalStorage()?.getItem(ADAPTIVE_PERF_STORAGE) !== '0'
+}
+
+/** Whether adaptive performance (the viz governor) is enabled (persisted; ON by default). */
+export function getAdaptivePerfEnabled(): boolean {
+  return readAdaptivePerf()
+}
+
+/** Enable/disable adaptive performance. Persists, flips the governor's live gate
+ *  (disabling releases the levers immediately — full resolution, no throttle),
+ *  and notifies listeners. */
+export function setAdaptivePerfEnabled(on: boolean): void {
+  try {
+    safeLocalStorage()?.setItem(ADAPTIVE_PERF_STORAGE, on ? '1' : '0')
+  } catch {
+    /* quota — non-fatal */
+  }
+  vizGovernor.setEnabled(on)
+  for (const cb of Array.from(adaptivePerfListeners)) cb(on)
+}
+
+/** Toggle adaptive performance; returns the new state. */
+export function toggleAdaptivePerfEnabled(): boolean {
+  const next = !readAdaptivePerf()
+  setAdaptivePerfEnabled(next)
+  return next
+}
+
+/** Subscribe to adaptive-performance changes (fires on set/toggle). */
+export function onAdaptivePerfChange(cb: (on: boolean) => void): () => void {
+  adaptivePerfListeners.add(cb)
+  return () => { adaptivePerfListeners.delete(cb) }
+}
+
+/** Apply the persisted adaptive-performance preference to the governor. Call once
+ *  at app start (like applyPersistedPerfEnabled) so the governor's live flag agrees
+ *  with the stored preference regardless of module-load ordering. */
+export function applyPersistedAdaptivePerf(): void {
+  vizGovernor.setEnabled(readAdaptivePerf())
 }

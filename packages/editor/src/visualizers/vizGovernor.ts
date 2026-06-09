@@ -224,6 +224,23 @@ class VizGovernor {
     return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() }
   }
 
+  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
+   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
+   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
+   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
+   *  the levers release immediately: `mayProduce` returns true and
+   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
+   *  full-resolution resize and stops being throttled. Re-enabling lets stress
+   *  rebuild from the live rAF cadence via observeFrame. */
+  setEnabled(on: boolean): void {
+    this.enabled = on
+    if (!on) {
+      this.stress = 0
+      this.emaMs = HEALTHY_MS
+      this.lastObserveTs = 0
+    }
+  }
+
   /** Test helper — force enabled state (and reset) deterministically. */
   _setEnabledForTest(on: boolean): void {
     this.enabled = on

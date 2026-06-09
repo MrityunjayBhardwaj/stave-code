@@ -28,6 +28,8 @@ import {
   setSignalAliases,
   getPerfEnabled,
   setPerfEnabled,
+  getAdaptivePerfEnabled,
+  setAdaptivePerfEnabled,
   type EditorTheme,
   type TierFlags,
   type TierName,
@@ -185,6 +187,8 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
   const [perfEnabled, setPerfEnabledState] = useState(false);
+  // Adaptive performance = the viz GPU-budget governor (P122/PV91). ON by default.
+  const [adaptivePerf, setAdaptivePerfState] = useState(true);
   // Phase 20-14 β-3 — Strudel tier flags. Mid-session toggle changes are
   // NOT observed by the engine until reload (the engine reads tierFlags
   // ONCE at init per α-5); the caption below the section makes that
@@ -222,6 +226,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
     setPerfEnabledState(getPerfEnabled());
+    setAdaptivePerfState(getAdaptivePerfEnabled());
     setTierFlagsState(getTierFlags());
     const seeded = rowsFromAliasMap(getSignalAliases());
     setAliasRows(seeded);
@@ -310,6 +315,21 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               style={s.range}
             />
             <span style={s.value}>{vizActionSize}px</span>
+          </Row>
+          <Row label="Adaptive performance">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={adaptivePerf}
+                aria-label="Adaptive performance (viz GPU governor)"
+                onChange={() => {
+                  const next = !adaptivePerf;
+                  setAdaptivePerfEnabled(next);
+                  setAdaptivePerfState(next);
+                }}
+              />
+              <span>{adaptivePerf ? "On" : "Off"}</span>
+            </label>
           </Row>
           <Row label="Viz quality">
             <select

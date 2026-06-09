@@ -5397,6 +5397,162 @@ function buildStaveUniforms(bus, onTick) {
 }
 __name(buildStaveUniforms, "buildStaveUniforms");
 
+// src/visualizers/vizGovernor.ts
+var HEALTHY_MS = 20;
+var JANK_MS = 45;
+var MIN_FPS = 10;
+var EMA_ALPHA = 0.25;
+var STRESS_RAMP_DOWN = 0.012;
+var IDLE_GAP_MS = 400;
+var RES_MIN_SCALE = 0.5;
+var RES_STRESS_ON = 0.5;
+function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
+  if (emaMs <= healthy) return 0;
+  if (emaMs >= jank) return 1;
+  return (emaMs - healthy) / (jank - healthy);
+}
+__name(computeStress, "computeStress");
+function maxPerFrame(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.round(n * (1 - stress)));
+}
+__name(maxPerFrame, "maxPerFrame");
+function periodFor(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
+}
+__name(periodFor, "periodFor");
+function minGapMs(stress) {
+  if (stress <= 0) return 0;
+  return stress * (1e3 / MIN_FPS);
+}
+__name(minGapMs, "minGapMs");
+function resolutionScaleFor(stress) {
+  if (stress < RES_STRESS_ON) return 1;
+  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
+  const raw = 1 - t * (1 - RES_MIN_SCALE);
+  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
+}
+__name(resolutionScaleFor, "resolutionScaleFor");
+var _VizGovernor = class _VizGovernor {
+  constructor() {
+    this.enabled = true;
+    /** Active (looping) renderer id → its stable round-robin offset. */
+    this.registered = /* @__PURE__ */ new Map();
+    this.lastProduce = /* @__PURE__ */ new Map();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+    try {
+      if (typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.governor") === "0") {
+        this.enabled = false;
+      }
+    } catch {
+    }
+  }
+  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
+  register(id) {
+    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
+  }
+  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
+   *  viz leaves so a fresh mount starts from a healthy baseline. */
+  unregister(id) {
+    this.registered.delete(id);
+    this.lastProduce.delete(id);
+    if (this.registered.size === 0) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
+   *  (idempotent per timestamp: only the first call for a new `ts` advances the
+   *  frame + updates stress, so N renderers calling with the same ts is fine). */
+  observeFrame(ts) {
+    if (!this.enabled || this.registered.size === 0) return;
+    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
+      const d = ts - this.lastObserveTs;
+      if (d > IDLE_GAP_MS) {
+        this.emaMs = HEALTHY_MS;
+      } else {
+        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
+      }
+      const target = computeStress(this.emaMs);
+      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
+      this.frameIndex++;
+      perf.record("viz.governor.stress", Math.round(this.stress * 100));
+    }
+    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
+  }
+  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
+   *  after) the renderer's own backpressure + maxFps checks. */
+  mayProduce(id, ts) {
+    if (!this.enabled) return true;
+    const n = this.registered.size;
+    if (n === 0 || this.stress <= 0) return true;
+    const gap = minGapMs(this.stress);
+    if (gap > 0) {
+      const last = this.lastProduce.get(id) ?? 0;
+      if (last > 0 && ts - last < gap - 1) return false;
+    }
+    if (n > 1) {
+      const period = periodFor(n, this.stress);
+      if (period > 1) {
+        const offset = this.registered.get(id) ?? 0;
+        if ((this.frameIndex + offset) % period !== 0) return false;
+      }
+    }
+    this.lastProduce.set(id, ts);
+    return true;
+  }
+  /** Render-resolution scale (lever 3) the renderer should apply to its backing
+   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
+   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
+   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
+   *  this each rAF and re-posts a scaled `resize` only when the quantized step
+   *  changes (the backing-store realloc is relatively expensive). */
+  resolutionScale() {
+    if (!this.enabled || this.stress <= 0) return 1;
+    return resolutionScaleFor(this.stress);
+  }
+  /** Observability / test hook. */
+  state() {
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
+  }
+  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
+   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
+   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
+   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
+   *  the levers release immediately: `mayProduce` returns true and
+   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
+   *  full-resolution resize and stops being throttled. Re-enabling lets stress
+   *  rebuild from the live rAF cadence via observeFrame. */
+  setEnabled(on) {
+    this.enabled = on;
+    if (!on) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Test helper — force enabled state (and reset) deterministically. */
+  _setEnabledForTest(on) {
+    this.enabled = on;
+    this.registered.clear();
+    this.lastProduce.clear();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+  }
+};
+__name(_VizGovernor, "VizGovernor");
+var VizGovernor = _VizGovernor;
+var vizGovernor = new VizGovernor();
+
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
 var monacoNs = null;
@@ -6065,6 +6221,42 @@ function applyPersistedPerfEnabled() {
   perf.setEnabled(readPerfEnabled());
 }
 __name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
+var ADAPTIVE_PERF_STORAGE = "stave.viz.governor";
+var adaptivePerfListeners = /* @__PURE__ */ new Set();
+function readAdaptivePerf() {
+  return safeLocalStorage2()?.getItem(ADAPTIVE_PERF_STORAGE) !== "0";
+}
+__name(readAdaptivePerf, "readAdaptivePerf");
+function getAdaptivePerfEnabled() {
+  return readAdaptivePerf();
+}
+__name(getAdaptivePerfEnabled, "getAdaptivePerfEnabled");
+function setAdaptivePerfEnabled(on) {
+  try {
+    safeLocalStorage2()?.setItem(ADAPTIVE_PERF_STORAGE, on ? "1" : "0");
+  } catch {
+  }
+  vizGovernor.setEnabled(on);
+  for (const cb of Array.from(adaptivePerfListeners)) cb(on);
+}
+__name(setAdaptivePerfEnabled, "setAdaptivePerfEnabled");
+function toggleAdaptivePerfEnabled() {
+  const next = !readAdaptivePerf();
+  setAdaptivePerfEnabled(next);
+  return next;
+}
+__name(toggleAdaptivePerfEnabled, "toggleAdaptivePerfEnabled");
+function onAdaptivePerfChange(cb) {
+  adaptivePerfListeners.add(cb);
+  return () => {
+    adaptivePerfListeners.delete(cb);
+  };
+}
+__name(onAdaptivePerfChange, "onAdaptivePerfChange");
+function applyPersistedAdaptivePerf() {
+  vizGovernor.setEnabled(readAdaptivePerf());
+}
+__name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
 
 // src/visualizers/renderers/P5VizRenderer.ts
 var p5PerfSeq = 0;
@@ -6479,146 +6671,6 @@ function releaseVizWorker(worker) {
   }
 }
 __name(releaseVizWorker, "releaseVizWorker");
-
-// src/visualizers/vizGovernor.ts
-var HEALTHY_MS = 20;
-var JANK_MS = 45;
-var MIN_FPS = 10;
-var EMA_ALPHA = 0.25;
-var STRESS_RAMP_DOWN = 0.012;
-var IDLE_GAP_MS = 400;
-var RES_MIN_SCALE = 0.5;
-var RES_STRESS_ON = 0.5;
-function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
-  if (emaMs <= healthy) return 0;
-  if (emaMs >= jank) return 1;
-  return (emaMs - healthy) / (jank - healthy);
-}
-__name(computeStress, "computeStress");
-function maxPerFrame(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.round(n * (1 - stress)));
-}
-__name(maxPerFrame, "maxPerFrame");
-function periodFor(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
-}
-__name(periodFor, "periodFor");
-function minGapMs(stress) {
-  if (stress <= 0) return 0;
-  return stress * (1e3 / MIN_FPS);
-}
-__name(minGapMs, "minGapMs");
-function resolutionScaleFor(stress) {
-  if (stress < RES_STRESS_ON) return 1;
-  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
-  const raw = 1 - t * (1 - RES_MIN_SCALE);
-  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
-}
-__name(resolutionScaleFor, "resolutionScaleFor");
-var _VizGovernor = class _VizGovernor {
-  constructor() {
-    this.enabled = true;
-    /** Active (looping) renderer id → its stable round-robin offset. */
-    this.registered = /* @__PURE__ */ new Map();
-    this.lastProduce = /* @__PURE__ */ new Map();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-    try {
-      if (typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.governor") === "0") {
-        this.enabled = false;
-      }
-    } catch {
-    }
-  }
-  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
-  register(id) {
-    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
-  }
-  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
-   *  viz leaves so a fresh mount starts from a healthy baseline. */
-  unregister(id) {
-    this.registered.delete(id);
-    this.lastProduce.delete(id);
-    if (this.registered.size === 0) {
-      this.stress = 0;
-      this.emaMs = HEALTHY_MS;
-      this.lastObserveTs = 0;
-    }
-  }
-  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
-   *  (idempotent per timestamp: only the first call for a new `ts` advances the
-   *  frame + updates stress, so N renderers calling with the same ts is fine). */
-  observeFrame(ts) {
-    if (!this.enabled || this.registered.size === 0) return;
-    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
-      const d = ts - this.lastObserveTs;
-      if (d > IDLE_GAP_MS) {
-        this.emaMs = HEALTHY_MS;
-      } else {
-        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
-      }
-      const target = computeStress(this.emaMs);
-      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
-      this.frameIndex++;
-      perf.record("viz.governor.stress", Math.round(this.stress * 100));
-    }
-    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
-  }
-  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
-   *  after) the renderer's own backpressure + maxFps checks. */
-  mayProduce(id, ts) {
-    if (!this.enabled) return true;
-    const n = this.registered.size;
-    if (n === 0 || this.stress <= 0) return true;
-    const gap = minGapMs(this.stress);
-    if (gap > 0) {
-      const last = this.lastProduce.get(id) ?? 0;
-      if (last > 0 && ts - last < gap - 1) return false;
-    }
-    if (n > 1) {
-      const period = periodFor(n, this.stress);
-      if (period > 1) {
-        const offset = this.registered.get(id) ?? 0;
-        if ((this.frameIndex + offset) % period !== 0) return false;
-      }
-    }
-    this.lastProduce.set(id, ts);
-    return true;
-  }
-  /** Render-resolution scale (lever 3) the renderer should apply to its backing
-   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
-   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
-   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
-   *  this each rAF and re-posts a scaled `resize` only when the quantized step
-   *  changes (the backing-store realloc is relatively expensive). */
-  resolutionScale() {
-    if (!this.enabled || this.stress <= 0) return 1;
-    return resolutionScaleFor(this.stress);
-  }
-  /** Observability / test hook. */
-  state() {
-    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
-  }
-  /** Test helper — force enabled state (and reset) deterministically. */
-  _setEnabledForTest(on) {
-    this.enabled = on;
-    this.registered.clear();
-    this.lastProduce.clear();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-  }
-};
-__name(_VizGovernor, "VizGovernor");
-var VizGovernor = _VizGovernor;
-var vizGovernor = new VizGovernor();
 
 // src/visualizers/renderers/WorkerVizRenderer.ts
 var workerPerfSeq = 0;
@@ -29074,6 +29126,7 @@ exports.WavEncoder = WavEncoder;
 exports.WorkerBusFeed = WorkerBusFeed;
 exports.WorkerVizRenderer = WorkerVizRenderer;
 exports.WorkspaceShell = WorkspaceShell;
+exports.applyPersistedAdaptivePerf = applyPersistedAdaptivePerf;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;
 exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
 exports.applyPersistedPerfEnabled = applyPersistedPerfEnabled;
@@ -29126,6 +29179,7 @@ exports.fuzzyMatch = fuzzyMatch;
 exports.generateUniquePresetId = generateUniquePresetId;
 exports.getActiveHistoryFile = getActiveHistoryFile;
 exports.getActiveProjectId = getActiveProjectId;
+exports.getAdaptivePerfEnabled = getAdaptivePerfEnabled;
 exports.getBackdropOpacity = getBackdropOpacity;
 exports.getBackdropQuality = getBackdropQuality;
 exports.getBottomPanelTab = getBottomPanelTab;
@@ -29209,6 +29263,7 @@ exports.merge = merge;
 exports.mountVizRenderer = mountVizRenderer;
 exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
+exports.onAdaptivePerfChange = onAdaptivePerfChange;
 exports.onBackdropOpacityChange = onBackdropOpacityChange;
 exports.onBackdropQualityChange = onBackdropQualityChange;
 exports.onInlineVizActionSizeChange = onInlineVizActionSizeChange;
@@ -29267,6 +29322,7 @@ exports.seedFromPresetId = seedFromPresetId;
 exports.seedWorkspaceFile = seedWorkspaceFile;
 exports.serializeShellState = serializeShellState;
 exports.setActiveHistoryFile = setActiveHistoryFile;
+exports.setAdaptivePerfEnabled = setAdaptivePerfEnabled;
 exports.setBackdropOpacity = setBackdropOpacity;
 exports.setBackdropQuality = setBackdropQuality;
 exports.setCaptureCapacity = setCaptureCapacity;
@@ -29316,6 +29372,7 @@ exports.switchProject = switchProject;
 exports.switchToBranch = switchToBranch;
 exports.timestretch = timestretch;
 exports.toStrudel = toStrudel;
+exports.toggleAdaptivePerfEnabled = toggleAdaptivePerfEnabled;
 exports.toggleEditorMinimap = toggleEditorMinimap;
 exports.togglePerfEnabled = togglePerfEnabled;
 exports.touchProject = touchProject;
