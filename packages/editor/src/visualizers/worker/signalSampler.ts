@@ -17,6 +17,8 @@
 import type { BusAnalyser } from '../signals/SignalBus'
 import type { IRPattern } from '../../ir/IRPattern'
 import type { HapEvent } from '../../engine/HapStream'
+import type { FrameSampleCache } from './frameSampleCache'
+import { perf } from '../../perf/profiler'
 import {
   MASTER_KEY,
   emptyFrame,
@@ -108,6 +110,11 @@ function summariseEvent(e: {
 function readAnalyserBytes(key: string, an: BusAnalyser): AnalyserBytes | null {
   const n = an.frequencyBinCount | 0
   if (n <= 0) return null
+  // Count ACTUAL analyser reads (the FFT-bearing getByteFrequencyData) — fires once
+  // per real read in BOTH the cached and uncached paths (the cache's `read` closure
+  // only runs on a miss). reads/frame = this ÷ produced frames: the direct PV72 gate
+  // (N before the shared pump, ~1 after when N viz share the master). Zero-cost off.
+  perf.inc('viz.sample.analyserReads')
   // Read the EXTRA AnalyserNode fields a raw `stave.analyser` shim needs (B-3).
   // `BusAnalyser` is structural (bus needs only binCount + getByte*), but the
   // real input is an `AnalyserNode` carrying `fftSize`/`min|maxDecibels`. Read
@@ -172,9 +179,18 @@ export class MainSignalSampler {
     }
   }
 
-  /** Produce one frame from the current inputs + the haps since the last call.
-   *  Drains the pending bumps (so each hap ships exactly once). */
-  sample(): SignalFrame {
+  /**
+   * Produce one frame from the current inputs + the haps since the last call.
+   * Drains the pending bumps (so each hap ships exactly once).
+   *
+   * `cache` (the shared frame pump, PV72) deduplicates the EXPENSIVE per-frame
+   * work across every viz sampling in the same rAF tick: the analyser FFT read and
+   * the scheduler query run ONCE per shared input object, not once per viz. It is
+   * keyed by input-object IDENTITY, so two viz on DIFFERENT tracks (distinct
+   * scheduler/analyser, viewZones.ts:341) don't false-share. Absent (unit tests /
+   * pre-pump path) → every read runs locally, byte-identical to before.
+   */
+  sample(cache?: FrameSampleCache): SignalFrame {
     const { scheduler, trackSchedulers, masterAnalyser, trackAnalysers } =
       this.inputs
     const seq = ++this.seq
@@ -182,25 +198,36 @@ export class MainSignalSampler {
     const begin = now
     const end = now + EPSILON
 
+    // Query helper — routes through the per-tick cache when present (one query per
+    // shared (scheduler, window); shared by reference, summarised per-viz below).
+    const queryAt = (sched: IRPattern, a: number, b: number) =>
+      cache ? cache.query(sched, a, b, () => sched.query(a, b)) : sched.query(a, b)
+
     const activeEvents: ActiveEventSummary[] = scheduler
-      ? scheduler.query(begin, end).map(summariseEvent)
+      ? queryAt(scheduler, begin, end).map(summariseEvent)
       : []
 
     const activeByTrack: Array<[string, ActiveEventSummary[]]> = []
     if (trackSchedulers) {
       for (const [key, sched] of trackSchedulers) {
-        activeByTrack.push([key, sched.query(begin, end).map(summariseEvent)])
+        activeByTrack.push([key, queryAt(sched, begin, end).map(summariseEvent)])
       }
     }
 
+    // Analyser reads — the shared FFT (the duplicated cost PV72 targets). Through
+    // the cache: one getByteFrequencyData per analyser object, a fresh transferable
+    // slice per consumer (the bytes are transfer-detached, so each viz needs its own).
+    const readBytes = (key: string, an: BusAnalyser): AnalyserBytes | null =>
+      cache ? cache.readAnalyser(key, an, (a) => readAnalyserBytes(key, a)) : readAnalyserBytes(key, an)
+
     const analysers: AnalyserBytes[] = []
     if (masterAnalyser) {
-      const b = readAnalyserBytes(MASTER_KEY, masterAnalyser)
+      const b = readBytes(MASTER_KEY, masterAnalyser)
       if (b) analysers.push(b)
     }
     if (trackAnalysers) {
       for (const [key, an] of trackAnalysers) {
-        const b = readAnalyserBytes(key, an)
+        const b = readBytes(key, an)
         if (b) analysers.push(b)
       }
     }
@@ -214,9 +241,7 @@ export class MainSignalSampler {
     const rawScheduler: RawSchedulerFrame = {
       now,
       events: scheduler
-        ? scheduler
-            .query(now - RAW_QUERY_BACK, now + RAW_QUERY_FWD)
-            .map(summariseRawHap)
+        ? queryAt(scheduler, now - RAW_QUERY_BACK, now + RAW_QUERY_FWD).map(summariseRawHap)
         : [],
     }
 

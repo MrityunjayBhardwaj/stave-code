@@ -14,6 +14,32 @@ came from the Stave profiler (`Alt+P`) and the cost-curve matrix harness — not
 from intuition. (For how the worker path works under the hood, see
 [The viz renderer contract](/architecture/renderer-contract/).)
 
+## What Stave handles for you (and what it can't)
+
+The runtime now degrades **gracefully** under load, so a momentarily heavy scene
+doesn't have to mean a janky editor or dropped audio. Three protections run
+automatically:
+
+- **Adaptive performance** (on by default — *Settings → Adaptive performance*).
+  When frames actually start dropping, Stave's GPU-budget governor throttles each
+  visualizer's rate, round-robins which ones draw on a given frame, and — under
+  sustained pressure — drops their render resolution. It's a **no-op until things
+  actually jank**, so a smooth 1–2 viz scene is untouched. This protects the
+  *editor's* smoothness when many heavy viz saturate the GPU.
+- **Quality mode** (*Settings → Viz quality*: High / Balanced / Performance) lets
+  you trade fidelity for headroom up front — it scales both render resolution
+  **and** sketch density (segment count), the only lever that helps the
+  CPU-tessellation line meshes below.
+- **Shared sampling.** Many *light* visualizers no longer each re-read the audio
+  analyser on the main thread — they share one read per frame, which keeps the
+  audio scheduler healthy when you stack a lot of small viz.
+
+What none of these can do is make a **single** sketch that draws too much per frame
+cheap — the governor can only thin an already-overloaded scene, and quality mode
+trades away fidelity. For a sketch that's heavy on its own, the segment budget below
+is still the rule. Think of it as: *write to the budget; let Adaptive performance
+catch the overflow.*
+
 ## The one rule that matters: count your line segments
 
 For a sketch that draws a wireframe / mesh / many strokes, frame cost is

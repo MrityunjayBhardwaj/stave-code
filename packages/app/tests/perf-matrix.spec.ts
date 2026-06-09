@@ -232,6 +232,15 @@ interface Row {
    *  analyser reads + wide scheduler query (duplicated work; shared sampler
    *  removes the N×). Only present in the VIZ_WORKER=1 run. */
   wkSampleP95: number
+  /** MEAN per-call `sample()` ms — the PV72 (#302) shared-pump gate. With the
+   *  shared frame cache, only ~1 call per frame pays the analyser FFT and the rest
+   *  hit the cache, so the MEAN drops ~1/N as N grows (p95 stays ~flat because the
+   *  tail still catches the 1/N full reads). */
+  wkSampleMean: number
+  /** Actual analyser READS per produced frame (`viz.sample.analyserReads` ÷ total
+   *  worker frames) — the DIRECT PV72 signal: ≈N before the shared pump (each viz
+   *  reads the shared master itself), ≈1 after (one read fanned out). */
+  analyserReadsPerFrame: number
   /** Worker `writeFrame()` = transport (envelope clone + postMessage; bytes
    *  already transferred). The slice SAB removes. */
   wkWriteP95: number
@@ -255,8 +264,13 @@ async function measure(page: Page, scenario: string): Promise<Row> {
   const busSections = Object.keys(snap.sections).filter((n) => n.endsWith('.bus'))
   const busP95 = busSections.reduce((m, n) => Math.max(m, snap.sections[n].p95), 0)
   const wkSampleP95 = snap.sections['viz.worker.sample']?.p95 ?? 0
+  const wkSampleMean = snap.sections['viz.worker.sample']?.mean ?? 0
   const wkWriteP95 = snap.sections['viz.worker.write']?.p95 ?? 0
   const triggers = snap.counters['audio.triggers'] ?? 0
+  // reads/frame = actual analyser reads ÷ total produced worker frames (PV72 gate).
+  const analyserReads = snap.counters['viz.sample.analyserReads'] ?? 0
+  const totalFrames = frameIds.reduce((a, id) => a + (snap.frames[id].count ?? 0), 0)
+  const analyserReadsPerFrame = totalFrames > 0 ? analyserReads / totalFrames : 0
 
   return {
     scenario,
@@ -267,6 +281,8 @@ async function measure(page: Page, scenario: string): Promise<Row> {
     totalDrops: drops,
     busP95,
     wkSampleP95,
+    wkSampleMean,
+    analyserReadsPerFrame,
     wkWriteP95,
     longtasks: snap.longtasks.count,
     longtaskMax: snap.longtasks.maxMs,
@@ -358,7 +374,8 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     // eslint-disable-next-line no-console
     console.log(
       pad('scenario', 18) + pad('viz', 5) + pad('minFps', 8) + pad('frameP95ms', 12) +
-        pad('drops', 7) + pad('busP95ms', 10) + pad('wkSampleP95', 13) + pad('wkWriteP95', 12) +
+        pad('drops', 7) + pad('busP95ms', 10) + pad('wkSampP95', 11) + pad('wkSampMean', 12) +
+        pad('reads/frame', 12) + pad('wkWriteP95', 12) +
         pad('longtask(n/max)', 18) + 'trig/s',
     )
     for (const r of rows) {
@@ -366,7 +383,8 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
       console.log(
         pad(r.scenario, 18) + pad(r.vizGauge, 5) + pad(fix(r.minFps), 8) +
           pad(fix(r.maxP95), 12) + pad(r.totalDrops, 7) + pad(fix(r.busP95, 2), 10) +
-          pad(fix(r.wkSampleP95, 3), 13) + pad(fix(r.wkWriteP95, 3), 12) +
+          pad(fix(r.wkSampleP95, 3), 11) + pad(fix(r.wkSampleMean, 3), 12) +
+          pad(fix(r.analyserReadsPerFrame, 2), 12) + pad(fix(r.wkWriteP95, 3), 12) +
           pad(`${r.longtasks} / ${fix(r.longtaskMax)}`, 18) + fix(r.triggersPerSec),
       )
     }

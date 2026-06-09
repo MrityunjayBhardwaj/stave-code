@@ -144,25 +144,33 @@ not the union (PV85).
 ## The signal feed — one clock, 1:1 cadence (PK22)
 
 The worker draws **exactly one frame per signal frame it receives**. There is a
-single clock: the main-side `requestAnimationFrame` loop in
-`WorkerVizRenderer.start()` (`WorkerVizRenderer.ts:356`). Each tick samples the
-live signal feed and writes a frame to the worker; the worker draws once per
-frame. Cadence cannot drift because the worker never has its own loop — p5 is set
-to `noLoop()` (`hostP5Worker.ts:327`) and hydra to `autoLoop:false`
-(`hostP5Worker.ts:425`); the GLSL renderer will likewise draw only when called.
+single clock — and as of the shared frame pump (PV72) it is *one* clock for **all**
+worker viz, not one per renderer: the single `requestAnimationFrame` loop in the
+`vizFramePump` singleton (`vizFramePump.ts:107`). Each `WorkerVizRenderer` no longer
+runs its own loop — `start()` just **registers** it with the pump
+(`WorkerVizRenderer.ts:387`); the pump drives each registered renderer's
+`pumpTick(ts, cache)` (`WorkerVizRenderer.ts:402`) once per tick, which samples the
+live feed and writes a frame to the worker. The worker draws once per frame. Cadence
+cannot drift because the worker never has its own loop — p5 is set to `noLoop()`
+(`hostP5Worker.ts:327`) and hydra to `autoLoop:false` (`hostP5Worker.ts:425`); the
+GLSL renderer likewise draws only when called.
 
 ```
-main rAF (the ONE clock)            worker
-─────────────────────────           ──────────────────────────────
+vizFramePump — ONE rAF for ALL worker viz        each registered WorkerVizRenderer
+──────────────────────────────────────           (per pumpTick, in registry order)
 tick(ts)
-  sample() ─ analyser + 1 wide
-            scheduler query
-  writeFrame(frame) ───────────────► applyAndDraw(frame)
-                                        frameAck ◄─────── (#261 backpressure)
-                                        feed.applyFrame(frame)  // bus tick, PK22
-                                        refresh raw shims
-                                        if setupDone && !paused:
-                                          s.draw()   ← the ONLY kind-specific call
+  vizGovernor.observeFrame(ts)   // once
+  cache = new FrameSampleCache() // once/tick      worker
+  for r of registered:                             ──────────────────────────────
+    r.pumpTick(ts, cache) ─────► gates (backpressure + maxFps + governor.mayProduce)
+                                 sample(cache) ─ analyser read + scheduler query,
+                                                 deduped across viz by the shared cache
+                                 writeFrame(frame) ─► applyAndDraw(frame)
+                                   frameAck ◄────────── (#261 backpressure)
+                                   feed.applyFrame(frame)  // bus tick, PK22
+                                   refresh raw shims
+                                   if setupDone && !paused:
+                                     s.draw()   ← the ONLY kind-specific call
 ```
 
 Inside the worker, `applyAndDraw` (`hostP5Worker.ts:492`) is the shared per-frame
@@ -186,6 +194,73 @@ a shader frame but explicitly does *not* re-tick the bus (`hostP5Worker.ts:474`)
 Double-ticking desyncs the named-signal uniforms (`u.fft`, `uKick`, …) from the
 audio. Read your audio from the already-refreshed shims; draw; return.
 </Aside>
+
+## Global produce-loop coordination — the pump and the governor
+
+The per-renderer seams below run *inside* one viz. Two **main-thread singletons**
+coordinate the produce loop **across all** worker viz at once. Neither is a renderer
+concern — a `RendererStrategy` is oblivious to both — but they shape the cadence that
+drives every `pumpTick`, so they belong in the same picture. Both are transparent
+no-ops in the common case and only engage under their respective pressure.
+
+### The frame pump — shared cadence + a shared sampler (PV72)
+
+`vizFramePump` (`vizFramePump.ts`) owns the single rAF (above). Its second job is to
+**collapse duplicated sampling**. Each renderer used to read the analyser bytes and
+run the wide `scheduler.query` itself, every frame — so N viz reading the *same*
+master analyser ran N identical reads. The pump builds **one `FrameSampleCache` per
+tick** (`vizFramePump.ts:115`) and passes it to every `pumpTick`; the sampler routes
+its reads through it (`signalSampler.ts:221`), so a read keyed by an analyser **object
+identity** runs once and each consumer gets a transfer-safe slice
+(`frameSampleCache.ts:48`). Scheduler queries dedupe the same way, by
+`(scheduler, window)` (`frameSampleCache.ts:70`).
+
+<Aside type="note" title="Why a per-tick cache, not a fanned-out frame (PV72)">
+The obvious design — sample once, send one `SignalFrame` to all N workers — is
+**impossible**: `frameTransferables` *detaches* the byte buffers on transfer, so only
+the first `writeFrame` would get real bytes; and inline zones bind **per-track**
+(`viewZones.ts:341`), so each viz's scheduler / bumps / seq are genuinely its own. So
+the shared unit is the *read*, not the *frame*: each renderer still builds its own
+frame (own sampler/bumps/seq → byte-identical reactivity, PV75), and only the
+expensive shared read is deduped. The win is **regime-scoped**: it only fires when viz
+sample on the *same* tick, which heavy (backpressure-paced) viz rarely do — so the
+cache mostly helps the **many-light-viz** case (measured: reads/frame 11→5, scheduler
+trig/s 5.0→8.5 at N=8). Disable for A/B with `localStorage['stave.viz.pump']='0'`.
+</Aside>
+
+### The GPU-budget governor — degrade under jank (P122)
+
+Per-viz backpressure (#261) bounds each viz to its *own* worker's draw rate, but N viz
+each pacing independently still **sum** to total GPU saturation — 5 heavy GLSL viz drove
+the compositor to ~95% dropped frames, janking the whole editor while the main thread
+sat *idle* (GPU-bound, not main-bound — PV92). `vizGovernor` (`vizGovernor.ts`) is the
+global frame-budget coordinator. Every `pumpTick` feeds it the rAF cadence
+(`observeFrame`, `vizGovernor.ts:168`), from which it derives a `stress` 0..1, and gates
+each viz's produce (`mayProduce`, `vizGovernor.ts:188`) with three levers that scale
+with stress:
+
+1. **Adaptive fps floor** — raise each viz's minimum frame gap (catches even one heavy viz).
+2. **Round-robin concurrency** — spread which viz may produce on each frame, so N heavy
+   viz don't all hit the GPU on the same one.
+3. **Resolution drop** — under sustained stress shrink each worker's backing store
+   (`resolutionScale`, `vizGovernor.ts:217`; the renderer re-posts a scaled `resize`,
+   `WorkerVizRenderer.ts:287`) — the fill-bound lever the fps throttle can't reach.
+
+<Aside type="caution" title="The governor is a no-op until frames actually drop">
+At `stress === 0` (the smooth common case — 1–2 light viz) `mayProduce` always returns
+true, the gap is 0, and resolution is full. So the governor cannot regress the
+reactivity gate (PV75) or any steady-state behavior; it engages **only** once frames are
+dropping. It's the **"Adaptive performance"** settings toggle (default on, persisted
+under `stave.viz.governor`). Known limit (#301): `stress` is derived from the
+main-thread rAF, which stays nominal under *moderate* compositor saturation (PV92), so
+the levers under-engage there until rAF itself degrades — blend in a GPU-load proxy to
+sharpen it. Orthogonal to the pump: the governor cuts **GPU** load (heavy viz); the pump
+cuts **main-thread** sample cost (many light viz).
+</Aside>
+
+**Verified by** `viz-scroll-jank-governor.spec.ts` (governor ON drops fewer compositor
+frames than OFF under 5 heavy GLSL viz) and `viz-shared-pump-observe.spec.ts` (the
+shared cache recovers scheduler headroom under many light viz).
 
 ## The kind-agnostic seams
 
@@ -234,7 +309,7 @@ lastDrawMs = performance.now() - drawT0      // hostP5Worker.ts:523
 scope.postMessage({ type: 'frameAck', drawMs: lastDrawMs })
 ```
 
-Main side (`WorkerVizRenderer.ts:192`): `if (typeof d.drawMs === 'number')
+Main side (`WorkerVizRenderer.ts:201`): `if (typeof d.drawMs === 'number')
 perf.record('viz.worker.draw', d.drawMs)`. Because the timing wraps the
 *contract's* `draw()` and not any kind-specific internals, it is automatically
 kind-agnostic — `s.draw()` for GLSL is timed exactly the same.
@@ -264,11 +339,11 @@ later change:
 export const WORKER_VIZ_CONFIG_KEYS = ['hydraAudioBins', 'density'] as const
 ```
 
-At mount the subset ships in the `MountMessage` (`WorkerVizRenderer.ts:245`,
+At mount the subset ships in the `MountMessage` (`WorkerVizRenderer.ts:254`,
 `pickWorkerVizConfig()`), and the worker applies it *before* building the sketch
 (`hostP5Worker.ts:245`) so the first frame already sees the user's settings. A
 later quality/LOD change re-ships via a `config` message
-(`WorkerVizRenderer.ts:251`) and the worker **merges** it onto its singleton
+(`WorkerVizRenderer.ts:261`) and the worker **merges** it onto its singleton
 (`hostP5Worker.ts:232` → `updateVizConfig`, `vizConfig.ts:321`) — no remount.
 
 <Aside type="caution" title="Merge, never reset (PV81)">
@@ -292,14 +367,14 @@ Without a bound the surplus backlogs in the worker's message queue and it render
 seconds-stale data (looks "static"). The fix is a small cap on unacked frames:
 
 ```ts
-// WorkerVizRenderer.ts:63
+// WorkerVizRenderer.ts:66
 const MAX_FRAMES_IN_FLIGHT = 2
 ```
 
 The worker acks **every** received frame on receipt (`hostP5Worker.ts:502`), even
 a pre-setup frame that doesn't draw — otherwise the bounded pipeline deadlocks
 before p5's async setup completes. The main side only produces while
-`inFlight < MAX_FRAMES_IN_FLIGHT` (`WorkerVizRenderer.ts:379`), so the worker's
+`inFlight < MAX_FRAMES_IN_FLIGHT` (`WorkerVizRenderer.ts:434`), so the worker's
 queue stays ~1 frame deep and it always draws the freshest sampled frame.
 
 <Aside type="note" title="The fps cap is downstream of backpressure (PV80)">
@@ -337,7 +412,7 @@ its whole pipeline for output nobody sees. `registerVizVisibility`
 (`vizVisibility.ts:98`) pauses a renderer when it's **not** (on-screen AND
 tab-visible) and resumes on return — firing only on a state transition
 (`vizVisibility.ts:66`). `pause()` stops the main sample loop and tells the
-worker (`WorkerVizRenderer.ts:274`); the worker just sets `paused`
+worker (`WorkerVizRenderer.ts:297`); the worker just sets `paused`
 (`hostP5Worker.ts:221`) and the `applyAndDraw` gate (`hostP5Worker.ts:513`) skips
 the draw.
 
