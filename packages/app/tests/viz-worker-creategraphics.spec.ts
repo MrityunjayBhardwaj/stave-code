@@ -11,8 +11,10 @@
  *
  * Verdict = COMPOSITOR pixel coverage over a musical cycle (PV90/PV94 — never the
  * worker canvas buffer, never the gauge). The sketch is identical on both paths,
- * so worker-vs-main is the controlled comparison: main lights, worker is blank
- * (RED) until the HTMLCanvasElement shim lands (then both light — GREEN).
+ * so worker-vs-main is the controlled comparison. The HTMLCanvasElement worker
+ * shim (dom-shim.ts) makes both light identically; this gate guards that fix —
+ * before it, the worker was blank (peakLit 0.0098 + "HTMLCanvasElement is not
+ * defined"), after it both read ~0.79.
  *
  * Run: E2E_VERIFY=1 pnpm --filter @stave/app exec playwright test \
  *        viz-worker-creategraphics.spec.ts --timeout=300000 --workers=1
@@ -203,9 +205,9 @@ test.describe('#308 — user createGraphics() in the worker', () => {
     expect(peak, 'createGraphics sketch paints on the main thread').toBeGreaterThan(0.15)
   })
 
-  // THE BUG (#308): same sketch in the worker. RED today (createGraphics throws →
-  // blank); GREEN once the HTMLCanvasElement shim lands.
-  test('worker — createGraphics feedback sketch paints (RED until the shim)', async ({ page }) => {
+  // THE FIX (#308): same sketch in the worker. The HTMLCanvasElement shim makes
+  // createGraphics() resolve; without it this is blank (ReferenceError in setup()).
+  test('worker — createGraphics feedback sketch paints (the shim works)', async ({ page }) => {
     await boot(page, true)
     await registerSketch(page)
     await setCode(page, `${AUDIO}.viz('cgtest')`)
