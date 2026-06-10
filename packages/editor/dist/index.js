@@ -26603,6 +26603,132 @@ var hydraPianoroll = compileHydraCode(HYDRA_PIANOROLL_CODE);
 var hydraScope = compileHydraCode(HYDRA_SCOPE_CODE);
 var hydraKaleidoscope = compileHydraCode(HYDRA_KALEID_CODE);
 
+// src/visualizers/injectedGlobals.ts
+var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
+var GLSL_GLOBALS = [
+  { decl: "uniform vec3      iResolution;", comment: "viewport resolution (in pixels)", tokens: ["iResolution"] },
+  { decl: "uniform float     iTime;", comment: "playback time (in seconds)", tokens: ["iTime"], live: { iTime: { kind: "time" } } },
+  { decl: "uniform vec4      iMouse;", comment: "mouse pixel coords (zero in worker)", tokens: ["iMouse"] },
+  { decl: "uniform sampler2D iChannel0;", comment: "analyser \u2014 row 0 = FFT, row 1 = waveform", tokens: ["iChannel0"] },
+  {
+    decl: "uniform float     uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;",
+    comment: "per-drum envelope 0..1",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom")
+    }
+  },
+  { decl: "uniform float     uVelocity;", comment: "loudest active hit 0..1", tokens: ["uVelocity"], live: { uVelocity: { kind: "scalar", read: "keyVelocity" } } },
+  {
+    decl: "uniform float     uRms, uBass, uMid, uTreble;",
+    comment: "master-mix DSP 0..1",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { decl: "uniform int       uTrackCount;", comment: "live track count", tokens: ["uTrackCount"] },
+  { decl: "StaveTrack        staveTrack(int i);", comment: "{ env, velocity, rms, bass, mid, treble } \u2014 per track i", tokens: ["staveTrack", "StaveTrack"] }
+];
+var P5_GLOBALS = [
+  { decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] },
+  { decl: "AnalyserNode      stave.analyser;", comment: "raw getFloat{Time,Frequency}Data", tokens: ["analyser"] },
+  { decl: "HapStream         stave.hapStream;", comment: "active note events", tokens: ["hapStream"] },
+  { decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
+  {
+    decl: "number            uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;",
+    comment: "per-drum envelope 0..1",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom")
+    }
+  },
+  { decl: "number            uKeyVelocity;", comment: "loudest active hit 0..1", tokens: ["uKeyVelocity"], live: { uKeyVelocity: { kind: "scalar", read: "keyVelocity" } } },
+  {
+    decl: "number            uRms, uBass, uMid, uTreble;",
+    comment: "master-mix DSP 0..1",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { decl: "number[]          u.fft, u.wave;", comment: "master spectrum / waveform", tokens: ["fft", "wave"], live: { fft: { kind: "array", read: "fft" }, wave: { kind: "array", read: "wave" } } },
+  { decl: "number            u.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] },
+  { decl: "Reading           u('bd'), u.track('$0');", comment: "{ env, velocity, note, color, rms, bass, mid, treble, fft[], wave[] }", tokens: ["u", "track"] },
+  { decl: "string[]          u.tracks, u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] }
+];
+var HYDRA_GLOBALS = [
+  {
+    decl: "() => number      stave.uKick, stave.uSnare, stave.uHat, stave.uOpenHat,\n                  stave.uClap, stave.uRim, stave.uTom, stave.uKeyVelocity;",
+    comment: "per-drum envelope thunks \u2192 call them",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom", "uKeyVelocity"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom"),
+      uKeyVelocity: { kind: "scalar", read: "keyVelocity" }
+    }
+  },
+  {
+    decl: "() => number      stave.uRms, stave.uBass, stave.uMid, stave.uTreble;",
+    comment: "master-mix DSP thunks",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { decl: "Thunks            stave.u('bd'), stave.u.track('$0');", comment: ".env() .rms() .fft[i] \u2026 per sound / track", tokens: ["u", "track"] },
+  { decl: "() => number      stave.H(trackId, field = 'gain');", comment: "raw event field reader", tokens: ["H"] },
+  { decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] },
+  { decl: "string[]          stave.u.tracks, stave.u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] }
+];
+var CATALOGUE = {
+  p5: P5_GLOBALS,
+  hydra: HYDRA_GLOBALS,
+  glsl: GLSL_GLOBALS
+};
+function injectedGlobals(kind) {
+  return CATALOGUE[kind];
+}
+__name(injectedGlobals, "injectedGlobals");
+function formatStaveInputs(kind) {
+  const rows = injectedGlobals(kind);
+  const lastLineLen = /* @__PURE__ */ __name((decl) => {
+    const lines2 = decl.split("\n");
+    return lines2[lines2.length - 1].length;
+  }, "lastLineLen");
+  const width = Math.min(64, Math.max(...rows.map((r) => lastLineLen(r.decl)))) + 2;
+  const lines = rows.map((r) => {
+    const declLines = r.decl.split("\n");
+    const last = declLines[declLines.length - 1];
+    const pad = " ".repeat(Math.max(1, width - last.length));
+    declLines[declLines.length - 1] = `${last}${pad}// ${r.comment}`;
+    return declLines.join("\n");
+  });
+  return ["// Stave Inputs", ...lines].join("\n");
+}
+__name(formatStaveInputs, "formatStaveInputs");
+function injectedGlobalByToken(kind, word) {
+  for (const entry of injectedGlobals(kind)) {
+    if (entry.tokens.includes(word)) {
+      const live = entry.live?.[word] ?? null;
+      return { entry, token: word, live };
+    }
+  }
+  return null;
+}
+__name(injectedGlobalByToken, "injectedGlobalByToken");
+
 // src/visualizers/worker/workerBusFeed.ts
 var _FrameAnalyser = class _FrameAnalyser {
   constructor() {
@@ -28390,6 +28516,84 @@ var SONICPI_RUNTIME = {
   createEngine: /* @__PURE__ */ __name(() => new SonicPiEngine(), "createEngine"),
   renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsx(SonicPiChrome, { ...ctx }), "renderChrome")
 };
+var KIND_LABEL2 = {
+  p5: "p5",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+function StaveInputsPanel({ kind }) {
+  const [open, setOpen] = useState(false);
+  const block = formatStaveInputs(kind);
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-workspace-chrome": "viz-inputs",
+      style: {
+        flexShrink: 0,
+        background: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
+        fontSize: 11
+      },
+      children: [
+        /* @__PURE__ */ jsxs(
+          "button",
+          {
+            "data-testid": "viz-inputs-toggle",
+            "data-open": open ? "on" : "off",
+            onClick: () => setOpen((v) => !v),
+            title: open ? "Hide injected globals" : "Show the Stave globals injected into this viz",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              width: "100%",
+              height: 26,
+              padding: "0 12px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--foreground-muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              textAlign: "left"
+            },
+            children: [
+              /* @__PURE__ */ jsx("span", { style: { width: 9, display: "inline-block" }, children: open ? "\u25BE" : "\u25B8" }),
+              /* @__PURE__ */ jsx("span", { style: { color: "var(--accent-strong, var(--accent))" }, children: "\u26A1" }),
+              /* @__PURE__ */ jsx("span", { children: "Stave Inputs" }),
+              /* @__PURE__ */ jsxs("span", { style: { opacity: 0.6 }, children: [
+                "\xB7 ",
+                KIND_LABEL2[kind],
+                " injected globals"
+              ] }),
+              !open && /* @__PURE__ */ jsx("span", { style: { marginLeft: "auto", opacity: 0.5 }, children: "hover a token in your code for live values" })
+            ]
+          }
+        ),
+        open && /* @__PURE__ */ jsx(
+          "pre",
+          {
+            "data-testid": "viz-inputs-block",
+            style: {
+              margin: 0,
+              padding: "4px 14px 10px 30px",
+              maxHeight: 220,
+              overflow: "auto",
+              color: "var(--foreground-muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              lineHeight: 1.5,
+              whiteSpace: "pre",
+              userSelect: "text"
+            },
+            children: block
+          }
+        )
+      ]
+    }
+  );
+}
+__name(StaveInputsPanel, "StaveInputsPanel");
 function refToString(ref) {
   if (ref.kind === "default") return "default";
   if (ref.kind === "none") return "none";
@@ -28474,125 +28678,129 @@ function VizEditorChrome({
   const buttonState = !previewOpen ? "closed" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "closed" ? "\u25B6 Preview" : buttonState === "paused" ? "\u25B6 Play" : "\u25A0 Stop";
   const buttonTitle = buttonState === "closed" ? "Open preview to side (Cmd+K V)" : buttonState === "paused" ? "Resume preview rendering" : "Pause preview rendering (tab stays open)";
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      "data-workspace-chrome": "viz",
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        height: 40,
-        padding: "0 12px",
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
-        fontSize: 11,
-        flexShrink: 0
-      },
-      children: [
-        /* @__PURE__ */ jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-open-preview",
-            "data-button-state": buttonState,
-            onClick: handlePrimaryButtonClick,
-            title: buttonTitle,
-            style: primaryBtnStyle,
-            children: buttonLabel
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          "label",
-          {
-            htmlFor: `viz-chrome-source-${file.id}`,
-            style: { color: "var(--foreground-muted)", fontSize: 10 },
-            children: "source:"
-          }
-        ),
-        /* @__PURE__ */ jsxs(
-          "select",
-          {
-            id: `viz-chrome-source-${file.id}`,
-            "data-testid": "viz-chrome-source",
-            value: refToString(selectedSource),
-            onChange: handleSourceChange,
-            style: {
-              background: "var(--surface-elevated)",
-              color: "var(--foreground)",
-              border: "1px solid var(--border)",
-              borderRadius: 3,
-              padding: "2px 6px",
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
-              /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
-              (() => {
-                const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
-                if (patternSources.length === 0) return null;
-                return /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
-                  source.playing ? "\u25CF " : "\u25CB ",
-                  source.label
-                ] }, source.sourceId)) });
-              })(),
-              /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsx("div", { style: { flex: 1 } }),
-        /* @__PURE__ */ jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-bg-toggle",
-            "data-bg-mode": isBackground ? "on" : "off",
-            onClick: onToggleBackground,
-            title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 3,
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              userSelect: "none",
-              background: isBackground ? "var(--accent-dim)" : "none",
-              color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-              border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
-            },
-            children: isBackground ? "\u25A0 bg" : "\u25A0"
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-live-toggle",
-            "data-live-mode": liveOn ? "on" : "off",
-            onClick: () => toggleVizLive(file.id),
-            title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 3,
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              userSelect: "none",
-              background: liveOn ? "var(--accent-dim)" : "none",
-              color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-              border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
-            },
-            children: liveOn ? "\u27F3 live" : "\u27F3"
-          }
-        )
-      ]
-    }
-  );
+  const vizKind = rendererForLanguage(file.language);
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    /* @__PURE__ */ jsxs(
+      "div",
+      {
+        "data-workspace-chrome": "viz",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          height: 40,
+          padding: "0 12px",
+          background: "var(--surface)",
+          borderBottom: "1px solid var(--border)",
+          fontSize: 11,
+          flexShrink: 0
+        },
+        children: [
+          /* @__PURE__ */ jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-open-preview",
+              "data-button-state": buttonState,
+              onClick: handlePrimaryButtonClick,
+              title: buttonTitle,
+              style: primaryBtnStyle,
+              children: buttonLabel
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            "label",
+            {
+              htmlFor: `viz-chrome-source-${file.id}`,
+              style: { color: "var(--foreground-muted)", fontSize: 10 },
+              children: "source:"
+            }
+          ),
+          /* @__PURE__ */ jsxs(
+            "select",
+            {
+              id: `viz-chrome-source-${file.id}`,
+              "data-testid": "viz-chrome-source",
+              value: refToString(selectedSource),
+              onChange: handleSourceChange,
+              style: {
+                background: "var(--surface-elevated)",
+                color: "var(--foreground)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "2px 6px",
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer"
+              },
+              children: [
+                /* @__PURE__ */ jsx("option", { value: "default", children: "default (follow most recent)" }),
+                /* @__PURE__ */ jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
+                (() => {
+                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
+                  if (patternSources.length === 0) return null;
+                  return /* @__PURE__ */ jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxs("option", { value: `file:${source.sourceId}`, children: [
+                    source.playing ? "\u25CF " : "\u25CB ",
+                    source.label
+                  ] }, source.sourceId)) });
+                })(),
+                /* @__PURE__ */ jsx("option", { value: "none", children: "none (demo mode)" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsx("div", { style: { flex: 1 } }),
+          /* @__PURE__ */ jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-bg-toggle",
+              "data-bg-mode": isBackground ? "on" : "off",
+              onClick: onToggleBackground,
+              title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: isBackground ? "var(--accent-dim)" : "none",
+                color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
+              },
+              children: isBackground ? "\u25A0 bg" : "\u25A0"
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-live-toggle",
+              "data-live-mode": liveOn ? "on" : "off",
+              onClick: () => toggleVizLive(file.id),
+              title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: liveOn ? "var(--accent-dim)" : "none",
+                color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
+              },
+              children: liveOn ? "\u27F3 live" : "\u27F3"
+            }
+          )
+        ]
+      }
+    ),
+    vizKind && /* @__PURE__ */ jsx(StaveInputsPanel, { kind: vizKind })
+  ] });
 }
 __name(VizEditorChrome, "VizEditorChrome");
 function createCompiledVizProvider(opts) {
@@ -29173,6 +29381,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VIZ_LANGUAGES, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizQuality, getVizWorkerFactory, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, isVizLanguage, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VIZ_LANGUAGES, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizQuality, getVizWorkerFactory, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, isVizLanguage, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

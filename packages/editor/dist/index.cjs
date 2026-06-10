@@ -26629,6 +26629,132 @@ var hydraPianoroll = compileHydraCode(HYDRA_PIANOROLL_CODE);
 var hydraScope = compileHydraCode(HYDRA_SCOPE_CODE);
 var hydraKaleidoscope = compileHydraCode(HYDRA_KALEID_CODE);
 
+// src/visualizers/injectedGlobals.ts
+var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
+var GLSL_GLOBALS = [
+  { decl: "uniform vec3      iResolution;", comment: "viewport resolution (in pixels)", tokens: ["iResolution"] },
+  { decl: "uniform float     iTime;", comment: "playback time (in seconds)", tokens: ["iTime"], live: { iTime: { kind: "time" } } },
+  { decl: "uniform vec4      iMouse;", comment: "mouse pixel coords (zero in worker)", tokens: ["iMouse"] },
+  { decl: "uniform sampler2D iChannel0;", comment: "analyser \u2014 row 0 = FFT, row 1 = waveform", tokens: ["iChannel0"] },
+  {
+    decl: "uniform float     uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;",
+    comment: "per-drum envelope 0..1",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom")
+    }
+  },
+  { decl: "uniform float     uVelocity;", comment: "loudest active hit 0..1", tokens: ["uVelocity"], live: { uVelocity: { kind: "scalar", read: "keyVelocity" } } },
+  {
+    decl: "uniform float     uRms, uBass, uMid, uTreble;",
+    comment: "master-mix DSP 0..1",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { decl: "uniform int       uTrackCount;", comment: "live track count", tokens: ["uTrackCount"] },
+  { decl: "StaveTrack        staveTrack(int i);", comment: "{ env, velocity, rms, bass, mid, treble } \u2014 per track i", tokens: ["staveTrack", "StaveTrack"] }
+];
+var P5_GLOBALS = [
+  { decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] },
+  { decl: "AnalyserNode      stave.analyser;", comment: "raw getFloat{Time,Frequency}Data", tokens: ["analyser"] },
+  { decl: "HapStream         stave.hapStream;", comment: "active note events", tokens: ["hapStream"] },
+  { decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
+  {
+    decl: "number            uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;",
+    comment: "per-drum envelope 0..1",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom")
+    }
+  },
+  { decl: "number            uKeyVelocity;", comment: "loudest active hit 0..1", tokens: ["uKeyVelocity"], live: { uKeyVelocity: { kind: "scalar", read: "keyVelocity" } } },
+  {
+    decl: "number            uRms, uBass, uMid, uTreble;",
+    comment: "master-mix DSP 0..1",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { decl: "number[]          u.fft, u.wave;", comment: "master spectrum / waveform", tokens: ["fft", "wave"], live: { fft: { kind: "array", read: "fft" }, wave: { kind: "array", read: "wave" } } },
+  { decl: "number            u.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] },
+  { decl: "Reading           u('bd'), u.track('$0');", comment: "{ env, velocity, note, color, rms, bass, mid, treble, fft[], wave[] }", tokens: ["u", "track"] },
+  { decl: "string[]          u.tracks, u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] }
+];
+var HYDRA_GLOBALS = [
+  {
+    decl: "() => number      stave.uKick, stave.uSnare, stave.uHat, stave.uOpenHat,\n                  stave.uClap, stave.uRim, stave.uTom, stave.uKeyVelocity;",
+    comment: "per-drum envelope thunks \u2192 call them",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom", "uKeyVelocity"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom"),
+      uKeyVelocity: { kind: "scalar", read: "keyVelocity" }
+    }
+  },
+  {
+    decl: "() => number      stave.uRms, stave.uBass, stave.uMid, stave.uTreble;",
+    comment: "master-mix DSP thunks",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { decl: "Thunks            stave.u('bd'), stave.u.track('$0');", comment: ".env() .rms() .fft[i] \u2026 per sound / track", tokens: ["u", "track"] },
+  { decl: "() => number      stave.H(trackId, field = 'gain');", comment: "raw event field reader", tokens: ["H"] },
+  { decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] },
+  { decl: "string[]          stave.u.tracks, stave.u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] }
+];
+var CATALOGUE = {
+  p5: P5_GLOBALS,
+  hydra: HYDRA_GLOBALS,
+  glsl: GLSL_GLOBALS
+};
+function injectedGlobals(kind) {
+  return CATALOGUE[kind];
+}
+__name(injectedGlobals, "injectedGlobals");
+function formatStaveInputs(kind) {
+  const rows = injectedGlobals(kind);
+  const lastLineLen = /* @__PURE__ */ __name((decl) => {
+    const lines2 = decl.split("\n");
+    return lines2[lines2.length - 1].length;
+  }, "lastLineLen");
+  const width = Math.min(64, Math.max(...rows.map((r) => lastLineLen(r.decl)))) + 2;
+  const lines = rows.map((r) => {
+    const declLines = r.decl.split("\n");
+    const last = declLines[declLines.length - 1];
+    const pad = " ".repeat(Math.max(1, width - last.length));
+    declLines[declLines.length - 1] = `${last}${pad}// ${r.comment}`;
+    return declLines.join("\n");
+  });
+  return ["// Stave Inputs", ...lines].join("\n");
+}
+__name(formatStaveInputs, "formatStaveInputs");
+function injectedGlobalByToken(kind, word) {
+  for (const entry of injectedGlobals(kind)) {
+    if (entry.tokens.includes(word)) {
+      const live = entry.live?.[word] ?? null;
+      return { entry, token: word, live };
+    }
+  }
+  return null;
+}
+__name(injectedGlobalByToken, "injectedGlobalByToken");
+
 // src/visualizers/worker/workerBusFeed.ts
 var _FrameAnalyser = class _FrameAnalyser {
   constructor() {
@@ -28416,6 +28542,84 @@ var SONICPI_RUNTIME = {
   createEngine: /* @__PURE__ */ __name(() => new SonicPiEngine(), "createEngine"),
   renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsxRuntime.jsx(SonicPiChrome, { ...ctx }), "renderChrome")
 };
+var KIND_LABEL2 = {
+  p5: "p5",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+function StaveInputsPanel({ kind }) {
+  const [open, setOpen] = React8.useState(false);
+  const block = formatStaveInputs(kind);
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-workspace-chrome": "viz-inputs",
+      style: {
+        flexShrink: 0,
+        background: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
+        fontSize: 11
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "button",
+          {
+            "data-testid": "viz-inputs-toggle",
+            "data-open": open ? "on" : "off",
+            onClick: () => setOpen((v) => !v),
+            title: open ? "Hide injected globals" : "Show the Stave globals injected into this viz",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              width: "100%",
+              height: 26,
+              padding: "0 12px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--foreground-muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              textAlign: "left"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { width: 9, display: "inline-block" }, children: open ? "\u25BE" : "\u25B8" }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--accent-strong, var(--accent))" }, children: "\u26A1" }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { children: "Stave Inputs" }),
+              /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { opacity: 0.6 }, children: [
+                "\xB7 ",
+                KIND_LABEL2[kind],
+                " injected globals"
+              ] }),
+              !open && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { marginLeft: "auto", opacity: 0.5 }, children: "hover a token in your code for live values" })
+            ]
+          }
+        ),
+        open && /* @__PURE__ */ jsxRuntime.jsx(
+          "pre",
+          {
+            "data-testid": "viz-inputs-block",
+            style: {
+              margin: 0,
+              padding: "4px 14px 10px 30px",
+              maxHeight: 220,
+              overflow: "auto",
+              color: "var(--foreground-muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              lineHeight: 1.5,
+              whiteSpace: "pre",
+              userSelect: "text"
+            },
+            children: block
+          }
+        )
+      ]
+    }
+  );
+}
+__name(StaveInputsPanel, "StaveInputsPanel");
 function refToString(ref) {
   if (ref.kind === "default") return "default";
   if (ref.kind === "none") return "none";
@@ -28500,125 +28704,129 @@ function VizEditorChrome({
   const buttonState = !previewOpen ? "closed" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "closed" ? "\u25B6 Preview" : buttonState === "paused" ? "\u25B6 Play" : "\u25A0 Stop";
   const buttonTitle = buttonState === "closed" ? "Open preview to side (Cmd+K V)" : buttonState === "paused" ? "Resume preview rendering" : "Pause preview rendering (tab stays open)";
-  return /* @__PURE__ */ jsxRuntime.jsxs(
-    "div",
-    {
-      "data-workspace-chrome": "viz",
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        height: 40,
-        padding: "0 12px",
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
-        fontSize: 11,
-        flexShrink: 0
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-open-preview",
-            "data-button-state": buttonState,
-            onClick: handlePrimaryButtonClick,
-            title: buttonTitle,
-            style: primaryBtnStyle,
-            children: buttonLabel
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "label",
-          {
-            htmlFor: `viz-chrome-source-${file.id}`,
-            style: { color: "var(--foreground-muted)", fontSize: 10 },
-            children: "source:"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsxs(
-          "select",
-          {
-            id: `viz-chrome-source-${file.id}`,
-            "data-testid": "viz-chrome-source",
-            value: refToString(selectedSource),
-            onChange: handleSourceChange,
-            style: {
-              background: "var(--surface-elevated)",
-              color: "var(--foreground)",
-              border: "1px solid var(--border)",
-              borderRadius: 3,
-              padding: "2px 6px",
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "default", children: "default (follow most recent)" }),
-              /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
-              (() => {
-                const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
-                if (patternSources.length === 0) return null;
-                return /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxRuntime.jsxs("option", { value: `file:${source.sourceId}`, children: [
-                  source.playing ? "\u25CF " : "\u25CB ",
-                  source.label
-                ] }, source.sourceId)) });
-              })(),
-              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "none", children: "none (demo mode)" })
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } }),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-bg-toggle",
-            "data-bg-mode": isBackground ? "on" : "off",
-            onClick: onToggleBackground,
-            title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 3,
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              userSelect: "none",
-              background: isBackground ? "var(--accent-dim)" : "none",
-              color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-              border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
-            },
-            children: isBackground ? "\u25A0 bg" : "\u25A0"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-live-toggle",
-            "data-live-mode": liveOn ? "on" : "off",
-            onClick: () => toggleVizLive(file.id),
-            title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 3,
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              userSelect: "none",
-              background: liveOn ? "var(--accent-dim)" : "none",
-              color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-              border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
-            },
-            children: liveOn ? "\u27F3 live" : "\u27F3"
-          }
-        )
-      ]
-    }
-  );
+  const vizKind = rendererForLanguage(file.language);
+  return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-workspace-chrome": "viz",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          height: 40,
+          padding: "0 12px",
+          background: "var(--surface)",
+          borderBottom: "1px solid var(--border)",
+          fontSize: 11,
+          flexShrink: 0
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-open-preview",
+              "data-button-state": buttonState,
+              onClick: handlePrimaryButtonClick,
+              title: buttonTitle,
+              style: primaryBtnStyle,
+              children: buttonLabel
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "label",
+            {
+              htmlFor: `viz-chrome-source-${file.id}`,
+              style: { color: "var(--foreground-muted)", fontSize: 10 },
+              children: "source:"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsxs(
+            "select",
+            {
+              id: `viz-chrome-source-${file.id}`,
+              "data-testid": "viz-chrome-source",
+              value: refToString(selectedSource),
+              onChange: handleSourceChange,
+              style: {
+                background: "var(--surface-elevated)",
+                color: "var(--foreground)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "2px 6px",
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer"
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "default", children: "default (follow most recent)" }),
+                /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
+                (() => {
+                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
+                  if (patternSources.length === 0) return null;
+                  return /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxRuntime.jsxs("option", { value: `file:${source.sourceId}`, children: [
+                    source.playing ? "\u25CF " : "\u25CB ",
+                    source.label
+                  ] }, source.sourceId)) });
+                })(),
+                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "none", children: "none (demo mode)" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } }),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-bg-toggle",
+              "data-bg-mode": isBackground ? "on" : "off",
+              onClick: onToggleBackground,
+              title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: isBackground ? "var(--accent-dim)" : "none",
+                color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
+              },
+              children: isBackground ? "\u25A0 bg" : "\u25A0"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-live-toggle",
+              "data-live-mode": liveOn ? "on" : "off",
+              onClick: () => toggleVizLive(file.id),
+              title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: liveOn ? "var(--accent-dim)" : "none",
+                color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
+              },
+              children: liveOn ? "\u27F3 live" : "\u27F3"
+            }
+          )
+        ]
+      }
+    ),
+    vizKind && /* @__PURE__ */ jsxRuntime.jsx(StaveInputsPanel, { kind: vizKind })
+  ] });
 }
 __name(VizEditorChrome, "VizEditorChrome");
 function createCompiledVizProvider(opts) {
@@ -29325,6 +29533,7 @@ exports.fileHistory = fileHistory;
 exports.filter = filter;
 exports.flushToPreset = flushToPreset;
 exports.formatFriendlyError = formatFriendlyError;
+exports.formatStaveInputs = formatStaveInputs;
 exports.frameTransferables = frameTransferables;
 exports.fuzzyMatch = fuzzyMatch;
 exports.generateUniquePresetId = generateUniquePresetId;
@@ -29388,6 +29597,8 @@ exports.hydrateSnapshot = hydrateSnapshot;
 exports.initHistory = initHistory;
 exports.initProjectDoc = initProjectDoc;
 exports.initProjectDocSync = initProjectDocSync;
+exports.injectedGlobalByToken = injectedGlobalByToken;
+exports.injectedGlobals = injectedGlobals;
 exports.installEngineLogMarkers = installEngineLogMarkers;
 exports.installGlobalErrorCatch = installGlobalErrorCatch;
 exports.isBundledPresetId = isBundledPresetId;
