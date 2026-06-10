@@ -3936,6 +3936,13 @@ interface InjectedGlobal {
     readonly comment: string;
     /** Identifiers under this entry, for hover word-match. */
     readonly tokens: readonly string[];
+    /**
+     * Section the entry belongs to in the reference block. Entries are listed in
+     * group order; {@link formatStaveInputs} emits a `// — <group> —` header when
+     * the group changes. Makes the scalar-vs-accessor rule visible at a glance
+     * (bare `uXxx` = a single number; arrays/lookups live on `u`).
+     */
+    readonly group: string;
     /** Live-value source on the master bus, when the token carries one. */
     readonly live?: Partial<Record<string, LiveSpec>>;
 }
