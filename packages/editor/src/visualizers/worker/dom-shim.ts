@@ -329,6 +329,38 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
       }
     }
   }
+  // p5's storeItem/getItem/removeItem/clearStorage reference the bare global
+  // `localStorage` (data/local_storage.js:151/262/347/423) — absent in a Worker,
+  // so the identifier raises a ReferenceError ("localStorage is not defined") on
+  // the first storage call, logged every frame (#308 follow-up, same PV95 class as
+  // HTMLCanvasElement above). Provide an in-memory Storage. The DATA keys are own
+  // ENUMERABLE props (clearStorage does `Object.keys(localStorage)` at :347 — a
+  // Map-backed object would make it silently no-op); the methods are NON-enumerable
+  // so they don't leak into that enumeration. Per-worker + ephemeral (no cross-
+  // session persistence off-main), which is the honest semantic here.
+  if (typeof self.localStorage === 'undefined') {
+    const store: Record<string, string> = {}
+    const def = (k: string, v: unknown) =>
+      Object.defineProperty(store, k, { value: v, enumerable: false, configurable: true, writable: true })
+    def('getItem', (k: string) =>
+      Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null)
+    def('setItem', (k: string, v: unknown) => {
+      store[String(k)] = String(v)
+    })
+    def('removeItem', (k: string) => {
+      delete store[k]
+    })
+    def('clear', () => {
+      for (const k of Object.keys(store)) delete store[k]
+    })
+    def('key', (i: number) => Object.keys(store)[i] ?? null)
+    Object.defineProperty(store, 'length', {
+      get: () => Object.keys(store).length,
+      enumerable: false,
+      configurable: true,
+    })
+    self.localStorage = store
+  }
   if (!('devicePixelRatio' in self)) self.devicePixelRatio = 1
   // Worker rAF shim (condition 2) — both bare `requestAnimationFrame` and
   // `window.requestAnimationFrame` must resolve so p5's loop ticks (~60fps).
