@@ -162,6 +162,7 @@ function wrapCanvas(offscreen) {
 }
 __name(wrapCanvas, "wrapCanvas");
 function installWorkerDomShim(makeCanvasEl) {
+  var _a;
   const self = globalThis;
   const doc = {
     nodeType: 9,
@@ -258,6 +259,13 @@ function installWorkerDomShim(makeCanvasEl) {
   self.window = winProxy;
   self.document = doc;
   self.screen = win.screen;
+  if (typeof self.HTMLCanvasElement === "undefined") {
+    self.HTMLCanvasElement = (_a = class {
+      static [Symbol.hasInstance](x) {
+        return typeof OffscreenCanvas !== "undefined" && x instanceof OffscreenCanvas;
+      }
+    }, __name(_a, "HTMLCanvasElement"), _a);
+  }
   if (!("devicePixelRatio" in self)) self.devicePixelRatio = 1;
   if (typeof self.requestAnimationFrame !== "function") {
     self.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
