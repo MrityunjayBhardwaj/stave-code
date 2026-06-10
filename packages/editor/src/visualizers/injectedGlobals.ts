@@ -64,8 +64,32 @@ export interface InjectedGlobal {
   readonly comment: string
   /** Identifiers under this entry, for hover word-match. */
   readonly tokens: readonly string[]
+  /**
+   * Section the entry belongs to in the reference block. Entries are listed in
+   * group order; {@link formatStaveInputs} emits a `// — <group> —` header when
+   * the group changes. Makes the scalar-vs-accessor rule visible at a glance
+   * (bare `uXxx` = a single number; arrays/lookups live on `u`).
+   */
+  readonly group: string
   /** Live-value source on the master bus, when the token carries one. */
   readonly live?: Partial<Record<string, LiveSpec>>
+}
+
+// Section labels — shared so the formatter and the trailing rule line stay
+// consistent with the grouping.
+const G_CONTEXT = 'context'
+const G_SCALARS = 'signals · bare scalars (0..1)'
+const G_SCALARS_THUNK = 'signals · bare scalars (thunks, 0..1)'
+const G_STRUCTURED = 'signals · structured (on u)'
+const G_CORE = 'core'
+const G_GLSL_SCALARS = 'signals · scalars (0..1)'
+const G_GLSL_TRACK = 'signals · per-track'
+
+/** The trailing one-line rule per kind (the scalar-vs-accessor payoff). */
+const RULE: Record<VizRendererKind, string | null> = {
+  p5: 'rule: bare uXxx = a single number · arrays, lookups & lists live on u',
+  hydra: 'rule: bare stave.uXxx() = a single number · arrays, lookups & lists live on stave.u',
+  glsl: 'rule: scalars are floats · spectrum/waveform = iChannel0 texture · per-track via staveTrack(i)',
 }
 
 // ── per-kind catalogues ─────────────────────────────────────────────────────
@@ -76,11 +100,12 @@ export interface InjectedGlobal {
 const ENV_LIVE = (env: MasterScalar): LiveSpec => ({ kind: 'scalar', read: env })
 
 const GLSL_GLOBALS: readonly InjectedGlobal[] = [
-  { decl: 'uniform vec3      iResolution;', comment: 'viewport resolution (in pixels)', tokens: ['iResolution'] },
-  { decl: 'uniform float     iTime;', comment: 'playback time (in seconds)', tokens: ['iTime'], live: { iTime: { kind: 'time' } } },
-  { decl: 'uniform vec4      iMouse;', comment: 'mouse pixel coords (zero in worker)', tokens: ['iMouse'] },
-  { decl: 'uniform sampler2D iChannel0;', comment: 'analyser — row 0 = FFT, row 1 = waveform', tokens: ['iChannel0'] },
+  { group: G_CORE, decl: 'uniform vec3      iResolution;', comment: 'viewport resolution (in pixels)', tokens: ['iResolution'] },
+  { group: G_CORE, decl: 'uniform float     iTime;', comment: 'playback time (in seconds)', tokens: ['iTime'], live: { iTime: { kind: 'time' } } },
+  { group: G_CORE, decl: 'uniform vec4      iMouse;', comment: 'mouse pixel coords (zero in worker)', tokens: ['iMouse'] },
+  { group: G_CORE, decl: 'uniform sampler2D iChannel0;', comment: 'analyser — row 0 = FFT, row 1 = waveform', tokens: ['iChannel0'] },
   {
+    group: G_GLSL_SCALARS,
     decl: 'uniform float     uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;',
     comment: 'per-drum envelope 0..1',
     tokens: ['uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom'],
@@ -89,23 +114,25 @@ const GLSL_GLOBALS: readonly InjectedGlobal[] = [
       uOpenHat: ENV_LIVE('env:uOpenHat'), uClap: ENV_LIVE('env:uClap'), uRim: ENV_LIVE('env:uRim'), uTom: ENV_LIVE('env:uTom'),
     },
   },
-  { decl: 'uniform float     uVelocity;', comment: 'loudest active hit 0..1', tokens: ['uVelocity'], live: { uVelocity: { kind: 'scalar', read: 'keyVelocity' } } },
+  { group: G_GLSL_SCALARS, decl: 'uniform float     uVelocity;', comment: 'loudest active hit 0..1', tokens: ['uVelocity'], live: { uVelocity: { kind: 'scalar', read: 'keyVelocity' } } },
   {
+    group: G_GLSL_SCALARS,
     decl: 'uniform float     uRms, uBass, uMid, uTreble;',
     comment: 'master-mix DSP 0..1',
     tokens: ['uRms', 'uBass', 'uMid', 'uTreble'],
     live: { uRms: { kind: 'scalar', read: 'rms' }, uBass: { kind: 'scalar', read: 'bass' }, uMid: { kind: 'scalar', read: 'mid' }, uTreble: { kind: 'scalar', read: 'treble' } },
   },
-  { decl: 'uniform int       uTrackCount;', comment: 'live track count', tokens: ['uTrackCount'] },
-  { decl: 'StaveTrack        staveTrack(int i);', comment: '{ env, velocity, rms, bass, mid, treble } — per track i', tokens: ['staveTrack', 'StaveTrack'] },
+  { group: G_GLSL_TRACK, decl: 'uniform int       uTrackCount;', comment: 'live track count', tokens: ['uTrackCount'] },
+  { group: G_GLSL_TRACK, decl: 'StaveTrack        staveTrack(int i);', comment: '{ env, velocity, rms, bass, mid, treble } — per track i', tokens: ['staveTrack', 'StaveTrack'] },
 ]
 
 const P5_GLOBALS: readonly InjectedGlobal[] = [
-  { decl: 'PatternScheduler  stave.scheduler;', comment: '.now(), .query(begin, end)', tokens: ['scheduler'] },
-  { decl: 'AnalyserNode      stave.analyser;', comment: 'raw getFloat{Time,Frequency}Data', tokens: ['analyser'] },
-  { decl: 'HapStream         stave.hapStream;', comment: 'active note events', tokens: ['hapStream'] },
-  { decl: 'object            stave.options;', comment: 'the .viz({ ... }) argument', tokens: ['options'] },
+  { group: G_CONTEXT, decl: 'PatternScheduler  stave.scheduler;', comment: '.now(), .query(begin, end)', tokens: ['scheduler'] },
+  { group: G_CONTEXT, decl: 'AnalyserNode      stave.analyser;', comment: 'raw getFloat{Time,Frequency}Data', tokens: ['analyser'] },
+  { group: G_CONTEXT, decl: 'HapStream         stave.hapStream;', comment: 'active note events', tokens: ['hapStream'] },
+  { group: G_CONTEXT, decl: 'object            stave.options;', comment: 'the .viz({ ... }) argument', tokens: ['options'] },
   {
+    group: G_SCALARS,
     decl: 'number            uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;',
     comment: 'per-drum envelope 0..1',
     tokens: ['uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom'],
@@ -114,21 +141,23 @@ const P5_GLOBALS: readonly InjectedGlobal[] = [
       uOpenHat: ENV_LIVE('env:uOpenHat'), uClap: ENV_LIVE('env:uClap'), uRim: ENV_LIVE('env:uRim'), uTom: ENV_LIVE('env:uTom'),
     },
   },
-  { decl: 'number            uKeyVelocity;', comment: 'loudest active hit 0..1', tokens: ['uKeyVelocity'], live: { uKeyVelocity: { kind: 'scalar', read: 'keyVelocity' } } },
+  { group: G_SCALARS, decl: 'number            uKeyVelocity;', comment: 'loudest active hit 0..1', tokens: ['uKeyVelocity'], live: { uKeyVelocity: { kind: 'scalar', read: 'keyVelocity' } } },
   {
+    group: G_SCALARS,
     decl: 'number            uRms, uBass, uMid, uTreble;',
     comment: 'master-mix DSP 0..1',
     tokens: ['uRms', 'uBass', 'uMid', 'uTreble'],
     live: { uRms: { kind: 'scalar', read: 'rms' }, uBass: { kind: 'scalar', read: 'bass' }, uMid: { kind: 'scalar', read: 'mid' }, uTreble: { kind: 'scalar', read: 'treble' } },
   },
-  { decl: 'number[]          u.fft, u.wave;', comment: 'master spectrum / waveform', tokens: ['fft', 'wave'], live: { fft: { kind: 'array', read: 'fft' }, wave: { kind: 'array', read: 'wave' } } },
-  { decl: 'number            u.density;', comment: 'quality LOD multiplier (1 = full)', tokens: ['density'] },
-  { decl: "Reading           u('bd'), u.track('$0');", comment: '{ env, velocity, note, color, rms, bass, mid, treble, fft[], wave[] }', tokens: ['u', 'track'] },
-  { decl: 'string[]          u.tracks, u.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
+  { group: G_STRUCTURED, decl: 'number[]          u.fft, u.wave;', comment: 'master spectrum / waveform (arrays)', tokens: ['fft', 'wave'], live: { fft: { kind: 'array', read: 'fft' }, wave: { kind: 'array', read: 'wave' } } },
+  { group: G_STRUCTURED, decl: "Reading           u('bd'), u.track('$0');", comment: 'one sound / track → { env, rms, fft[], … }', tokens: ['u', 'track'] },
+  { group: G_STRUCTURED, decl: 'string[]          u.tracks, u.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
+  { group: G_STRUCTURED, decl: 'number            u.density;', comment: 'quality LOD multiplier (1 = full)', tokens: ['density'] },
 ]
 
 const HYDRA_GLOBALS: readonly InjectedGlobal[] = [
   {
+    group: G_SCALARS_THUNK,
     decl: '() => number      stave.uKick, stave.uSnare, stave.uHat, stave.uOpenHat,\n                  stave.uClap, stave.uRim, stave.uTom, stave.uKeyVelocity;',
     comment: 'per-drum envelope thunks → call them',
     tokens: ['uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom', 'uKeyVelocity'],
@@ -139,15 +168,16 @@ const HYDRA_GLOBALS: readonly InjectedGlobal[] = [
     },
   },
   {
+    group: G_SCALARS_THUNK,
     decl: '() => number      stave.uRms, stave.uBass, stave.uMid, stave.uTreble;',
     comment: 'master-mix DSP thunks',
     tokens: ['uRms', 'uBass', 'uMid', 'uTreble'],
     live: { uRms: { kind: 'scalar', read: 'rms' }, uBass: { kind: 'scalar', read: 'bass' }, uMid: { kind: 'scalar', read: 'mid' }, uTreble: { kind: 'scalar', read: 'treble' } },
   },
-  { decl: "Thunks            stave.u('bd'), stave.u.track('$0');", comment: '.env() .rms() .fft[i] … per sound / track', tokens: ['u', 'track'] },
-  { decl: "() => number      stave.H(trackId, field = 'gain');", comment: 'raw event field reader', tokens: ['H'] },
-  { decl: 'PatternScheduler  stave.scheduler;', comment: '.now(), .query(begin, end)', tokens: ['scheduler'] },
-  { decl: 'string[]          stave.u.tracks, stave.u.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
+  { group: G_STRUCTURED, decl: "Thunks            stave.u('bd'), stave.u.track('$0');", comment: '.env() .rms() .fft[i] … per sound / track', tokens: ['u', 'track'] },
+  { group: G_STRUCTURED, decl: 'string[]          stave.u.tracks, stave.u.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
+  { group: G_STRUCTURED, decl: "() => number      stave.H(trackId, field = 'gain');", comment: 'raw event field reader', tokens: ['H'] },
+  { group: G_CONTEXT, decl: 'PatternScheduler  stave.scheduler;', comment: '.now(), .query(begin, end)', tokens: ['scheduler'] },
 ]
 
 const CATALOGUE: Record<VizRendererKind, readonly InjectedGlobal[]> = {
@@ -176,14 +206,22 @@ export function formatStaveInputs(kind: VizRendererKind): string {
     return lines[lines.length - 1].length
   }
   const width = Math.min(64, Math.max(...rows.map((r) => lastLineLen(r.decl)))) + 2
-  const lines = rows.map((r) => {
+  const out: string[] = ['// Stave Inputs']
+  let group: string | null = null
+  for (const r of rows) {
+    if (r.group !== group) {
+      out.push('', `// — ${r.group} —`) // blank line + section header on change
+      group = r.group
+    }
     const declLines = r.decl.split('\n')
     const last = declLines[declLines.length - 1]
     const pad = ' '.repeat(Math.max(1, width - last.length))
     declLines[declLines.length - 1] = `${last}${pad}// ${r.comment}`
-    return declLines.join('\n')
-  })
-  return ['// Stave Inputs', ...lines].join('\n')
+    out.push(declLines.join('\n'))
+  }
+  const rule = RULE[kind]
+  if (rule) out.push('', `// ${rule}`)
+  return out.join('\n')
 }
 
 /**

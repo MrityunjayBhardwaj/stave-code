@@ -71,6 +71,30 @@ describe('formatStaveInputs', () => {
     // the first physical line of the multi-line decl has no comment
     expect(block).toContain('stave.uKick, stave.uSnare')
   })
+
+  it('groups entries under section headers (scalar-vs-accessor visible)', () => {
+    const p5 = formatStaveInputs('p5')
+    expect(p5).toContain('// — context —')
+    expect(p5).toContain('// — signals · bare scalars (0..1) —')
+    expect(p5).toContain('// — signals · structured (on u) —')
+    // order: the bare-scalar header precedes the structured header, and uKick
+    // (bare) lands in scalars while u.fft lands in structured.
+    expect(p5.indexOf('bare scalars')).toBeLessThan(p5.indexOf('structured (on u)'))
+    expect(p5.indexOf('uKick')).toBeLessThan(p5.indexOf('u.fft'))
+    expect(p5.indexOf('u.fft')).toBeGreaterThan(p5.indexOf('structured (on u)'))
+  })
+
+  it('ends with the scalar-vs-accessor rule line per kind', () => {
+    expect(formatStaveInputs('p5')).toContain('// rule: bare uXxx = a single number')
+    expect(formatStaveInputs('hydra')).toContain('// rule: bare stave.uXxx() = a single number')
+    expect(formatStaveInputs('glsl')).toContain('// rule: scalars are floats')
+  })
+
+  it('every catalogued entry carries a group', () => {
+    for (const k of KINDS) {
+      for (const g of injectedGlobals(k)) expect(g.group, `${k} entry ${g.tokens[0]}`).toBeTruthy()
+    }
+  })
 })
 
 describe('injectedGlobalByToken', () => {

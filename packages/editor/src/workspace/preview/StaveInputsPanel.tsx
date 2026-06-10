@@ -77,7 +77,7 @@ export function StaveInputsPanel({ kind }: { kind: VizRendererKind }): React.Rea
           style={{
             margin: 0,
             padding: '4px 14px 10px 30px',
-            maxHeight: 220,
+            maxHeight: 320,
             overflow: 'auto',
             color: 'var(--foreground-muted)',
             fontFamily: 'var(--font-mono)',
