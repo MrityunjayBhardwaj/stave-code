@@ -264,6 +264,27 @@ function installWorkerDomShim(makeCanvasEl) {
       }
     }, __name(_a, "HTMLCanvasElement"), _a);
   }
+  if (typeof self.localStorage === "undefined") {
+    const store = {};
+    const def = /* @__PURE__ */ __name((k, v) => Object.defineProperty(store, k, { value: v, enumerable: false, configurable: true, writable: true }), "def");
+    def("getItem", (k) => Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null);
+    def("setItem", (k, v) => {
+      store[String(k)] = String(v);
+    });
+    def("removeItem", (k) => {
+      delete store[k];
+    });
+    def("clear", () => {
+      for (const k of Object.keys(store)) delete store[k];
+    });
+    def("key", (i) => Object.keys(store)[i] ?? null);
+    Object.defineProperty(store, "length", {
+      get: /* @__PURE__ */ __name(() => Object.keys(store).length, "get"),
+      enumerable: false,
+      configurable: true
+    });
+    self.localStorage = store;
+  }
   if (!("devicePixelRatio" in self)) self.devicePixelRatio = 1;
   if (typeof self.requestAnimationFrame !== "function") {
     self.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
