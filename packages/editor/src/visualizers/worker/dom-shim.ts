@@ -311,6 +311,24 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
   self.window = winProxy
   self.document = doc
   self.screen = win.screen
+  // p5's `createGraphics()` and p5.Element resize/cleanup test `x instanceof
+  // HTMLCanvasElement` (rendering-CC8JNTwG.js:21561, dom/p5.Element.js:957,
+  // dom/dom.js:361). The worker has no such global, so the bare identifier raises
+  // a ReferenceError in setup() — every createGraphics()/readback sketch renders
+  // BLANK with no signal while the viz.worker gauge still lights (#308 / PV94).
+  // Define it so the identifier resolves AND matches our canvases: every surface
+  // the shim mints is a REAL OffscreenCanvas (wrapCanvas augments, never replaces),
+  // so `instanceof OffscreenCanvas` is the exact predicate — and `undefined
+  // instanceof` → false, so createGraphics's no-renderer branch still falls through
+  // to P2D. A custom Symbol.hasInstance leaves the native OffscreenCanvas binding
+  // untouched, so WebGL's own `instanceof OffscreenCanvas` stays true (P102).
+  if (typeof self.HTMLCanvasElement === 'undefined') {
+    self.HTMLCanvasElement = class HTMLCanvasElement {
+      static [Symbol.hasInstance](x: unknown): boolean {
+        return typeof OffscreenCanvas !== 'undefined' && x instanceof OffscreenCanvas
+      }
+    }
+  }
   if (!('devicePixelRatio' in self)) self.devicePixelRatio = 1
   // Worker rAF shim (condition 2) — both bare `requestAnimationFrame` and
   // `window.requestAnimationFrame` must resolve so p5's loop ticks (~60fps).
