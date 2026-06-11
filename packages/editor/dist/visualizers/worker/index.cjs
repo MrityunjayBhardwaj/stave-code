@@ -6149,12 +6149,12 @@ function hostVizWorker(scope) {
     );
     const directCanvas = msg.p5DirectCanvas === true;
     const RENDERER_CONSTS = /* @__PURE__ */ new Set(["p2d", "p2d-hdr", "webgl", "webgl2", "webgpu"]);
+    let adopted = false;
     let setup = false;
     const sketchFn = /* @__PURE__ */ __name((p) => {
       if (directCanvas) {
         const displayEl = wrapCanvas(msg.canvas);
         let ccCalls = 0;
-        let adopted = false;
         const origCreate = p.createCanvas.bind(p);
         p.createCanvas = function(w, h, renderer, ...rest) {
           ccCalls += 1;
@@ -6193,7 +6193,16 @@ function hostVizWorker(scope) {
       gl: /* @__PURE__ */ __name(() => inst?.drawingContext ?? null, "gl"),
       draw: /* @__PURE__ */ __name(() => {
         inst.redraw();
-        if (directCanvas) return;
+        if (directCanvas && adopted) return;
+        if (directCanvas && !present) {
+          msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr));
+          msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr));
+          try {
+            present = msg.canvas.getContext("bitmaprenderer");
+          } catch (e) {
+            diag("error", `bitmaprenderer unavailable: ${errMsg(e)}`);
+          }
+        }
         if (!present) return;
         const src = inst?.drawingContext?.canvas;
         if (!src) return;

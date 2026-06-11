@@ -2,24 +2,22 @@ import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 /**
- * #316 — raw MAIN-canvas readback (getImageData/putImageData) blanks in the worker.
+ * #316 → #325 — raw MAIN-canvas readback (getImageData/putImageData) in the worker.
  *
- * The remaining member of the #306/P126 worker-readback class. A USER `.viz()` sketch
- * that builds a scrolling waterfall / trails by reading back the MAIN p5 canvas —
- * `drawingContext.getImageData(...)` + `putImageData(...)` — goes BLANK in the worker:
- * the Tier-2 blit `transferToImageBitmap()`s (and CLEARS) the main canvas every frame,
- * so there is nothing to read back. The author gets NO signal (gauge stays `viz.worker:1`).
+ * HISTORY: this was the remaining member of the #306/P126 worker-readback class — a USER
+ * `.viz()` sketch building a scrolling waterfall / trails by reading back the MAIN p5
+ * canvas (`drawingContext.getImageData` + `putImageData`) went BLANK in the worker,
+ * because the Tier-2 blit `transferToImageBitmap()`d (and CLEARED) the main canvas every
+ * frame → nothing to read back, no signal (gauge stayed `viz.worker:1`). #316 shipped
+ * docs + this gate asserting the worker BLANK.
  *
- * This is NOT fixable in the shim (it's the transfer-clear architecture). The supported
- * pattern is to OWN a `createGraphics()` buffer and accumulate there (the buffer is not
- * transferred/cleared — proven by viz-worker-creategraphics.spec.ts). See the p5 runtime
- * doc's "Worker renderer caveats".
- *
- * This gate generalises viz-worker-pixels.spec.ts (#307, spectrum-specific) to the CLASS:
- * the SAME raw-readback sketch paints on the main thread but blanks in the worker. The
- * main-thread arm guards that the fixture is a genuine readback sketch (so the worker
- * blank assertion can't pass trivially); a future change that made worker readback work —
- * or regressed the main-thread path — trips this gate and prompts a docs update.
+ * NOW FIXED at the root by #325 Tier A: p5 renders DIRECTLY into the transferred display
+ * canvas (like hydra/glsl), so there is no transfer/clear and the canvas persists — raw
+ * main-canvas readback WORKS in the worker, worker == main (proven end-to-end by
+ * viz-worker-p5-direct.spec.ts). This gate's worker arm therefore now asserts the SAME
+ * readback PAINTS in the worker (it used to assert blank). The main-thread arm still
+ * guards that the fixture is a genuine readback sketch (so the worker assertion can't pass
+ * trivially). The escape-hatch (`stave.viz.p5direct='0'` → old blit path) reverts to blank.
  */
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
@@ -83,7 +81,7 @@ async function mountAndPeak(page: Page): Promise<number> {
   return peak
 }
 
-test.describe('#316 — raw main-canvas readback class (blank in worker, works on main)', () => {
+test.describe('#316 → #325 — raw main-canvas readback (now works in worker == main)', () => {
   test.skip(!process.env.E2E_VERIFY, 'set E2E_VERIFY=1 to run (drives the live worker path)')
 
   test('main thread — getImageData/putImageData waterfall fills the canvas (control)', async ({ page }) => {
@@ -95,17 +93,17 @@ test.describe('#316 — raw main-canvas readback class (blank in worker, works o
     expect(peak, 'raw main-canvas readback accumulates a filled waterfall on the main thread').toBeGreaterThan(0.5)
   })
 
-  test('worker — the SAME readback goes blank (transfer-clear; gauge still lights)', async ({ page }) => {
+  test('worker — the SAME readback now PAINTS (#325 Tier A: p5 owns the display canvas)', async ({ page }) => {
     await boot(page, true)
     await page.evaluate((c) => { (window as any).__RB_CODE = c }, MAIN_READBACK)
     const peak = await mountAndPeak(page)
     const g = await gauges(page)
     // eslint-disable-next-line no-console
     console.log(`[readback worker] litPeak=${peak.toFixed(4)} gauges=${JSON.stringify(g)}`)
-    // The viz DID mount (no fallback) — the failure is silent: gauge lights, canvas blank.
     expect(g['viz.worker'], 'mounted in the worker (no fallback)').toBeGreaterThanOrEqual(1)
-    // The #306/P126 limitation: nothing to read back → essentially blank. If this ever
-    // rises, the transfer-clear behaviour changed — re-verify and update the p5 doc caveat.
-    expect(peak, 'raw main-canvas readback is blank in the worker (own a createGraphics buffer instead)').toBeLessThan(0.05)
+    // #325: p5 renders direct into the transferred canvas → it persists → readback fills,
+    // worker == main. If this ever drops back to blank, the direct path regressed (or the
+    // escape hatch is forcing the old blit) — re-verify against viz-worker-p5-direct.spec.ts.
+    expect(peak, 'raw main-canvas readback fills in the worker (#325 — no longer the transfer-clear limitation)').toBeGreaterThan(0.5)
   })
 })

@@ -332,6 +332,13 @@ export function hostVizWorker(scope: WorkerScope): void {
     // frame, so readback/trails work like hydra/glsl. Gated behind msg.p5DirectCanvas.
     const directCanvas = msg.p5DirectCanvas === true
     const RENDERER_CONSTS = new Set(['p2d', 'p2d-hdr', 'webgl', 'webgl2', 'webgpu'])
+    // True once the user's main createCanvas has adopted msg.canvas (call #2). Lifted
+    // to mount scope so draw() can branch: adopted → blit-free (canvas persists);
+    // NOT adopted → a sketch that never called createCanvas (only p5's 100×100 default
+    // exists, on a throwaway) — fall back to the blit so it still presents (parity with
+    // the pre-#325 path; never a silent blank). The flag is final by the first draw
+    // (createCanvas runs in setup, draws start after setupDone).
+    let adopted = false
 
     let setup = false
     // Wrap the sketch: after the user's setup runs, stop p5's auto-loop so WE drive
@@ -344,7 +351,6 @@ export function hostVizWorker(scope: WorkerScope): void {
         // time — p5's internal `this.createCanvas` does too).
         const displayEl = wrapCanvas(msg.canvas)
         let ccCalls = 0
-        let adopted = false
         const origCreate = p.createCanvas.bind(p)
         p.createCanvas = function (w: number, h: number, renderer?: unknown, ...rest: unknown[]) {
           ccCalls += 1
@@ -396,11 +402,24 @@ export function hostVizWorker(scope: WorkerScope): void {
       draw: () => {
         inst.redraw() // 1:1 with this frame. User-draw throws are swallowed by
         // p5Compiler's lifecycle wrap → forwarded via the engineLog subscription (#257).
-        // #325 SPIKE direct path: p5 drew STRAIGHT into msg.canvas — nothing to blit,
-        // and crucially nothing CLEARS the canvas (no transferToImageBitmap) → readback
-        // and skip-background() trails persist exactly like the main thread.
-        if (directCanvas) return
-        // Blit p5's worker-local render canvas → the presenting canvas (zero-copy).
+        // #325 Tier A: p5 drew STRAIGHT into msg.canvas (adopted) — nothing to blit, and
+        // crucially nothing CLEARS the canvas (no transferToImageBitmap) → readback and
+        // skip-background() trails persist exactly like the main thread.
+        if (directCanvas && adopted) return
+        // Otherwise blit p5's worker-local render canvas → the presenting canvas. This is
+        // the blit path (flag off) AND the direct-path fallback for a sketch that never
+        // called createCanvas (only p5's 100×100 default exists → never adopted msg.canvas;
+        // present it instead of blanking). The direct path skipped the eager bitmaprenderer
+        // claim, so claim it lazily here (msg.canvas is untouched in the un-adopted case).
+        if (directCanvas && !present) {
+          msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr))
+          msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr))
+          try {
+            present = msg.canvas.getContext('bitmaprenderer')
+          } catch (e) {
+            diag('error', `bitmaprenderer unavailable: ${errMsg(e)}`)
+          }
+        }
         if (!present) return
         const src: OffscreenCanvas | undefined = inst?.drawingContext?.canvas
         if (!src) return
