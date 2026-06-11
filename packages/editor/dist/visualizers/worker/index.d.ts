@@ -83,15 +83,14 @@ interface MountMessage {
      *  reads the user's settings, not the bundle default. Applied via
      *  `updateVizConfig` (merge) before the first draw. */
     config?: WorkerVizConfig;
-    /** #325 Phase-1 SPIKE flag (p5 only) — render p5 DIRECTLY into the transferred
+    /** #325 Tier A (p5 only, DEFAULT ON) — render p5 DIRECTLY into the transferred
      *  display canvas (`canvas`) instead of into a private worker-local canvas we
      *  blit from. When true the host adopts `canvas` as p5's MAIN canvas (skipping
      *  the internal default P2D + injecting it as the user createCanvas `elt`), takes
      *  NO `bitmaprenderer` context, and the draw path does NOT `transferToImageBitmap`
      *  → the canvas persists frame-to-frame, so readback/trails work like hydra/GLSL.
-     *  Gated behind `localStorage['stave.viz.p5direct']='1'` on the main side so a
-     *  single build can A/B the blit path vs the direct path. Removed (made the
-     *  default) when the spike passes (#325 Phase 2). */
+     *  The main side sets this from `isP5DirectCanvasEnabled()` (default ON; escape
+     *  hatch `localStorage['stave.viz.p5direct']='0'` reverts to the blit path). */
     p5DirectCanvas?: boolean;
 }
 /** MAIN → WORKER: the preview pane resized / DPR changed. */

@@ -318,7 +318,7 @@ export function hostVizWorker(scope: WorkerScope): void {
       staveUniformsRef as any,
     )
 
-    // #325 Phase-1 SPIKE — p5 owns the transferred display canvas (no blit). p5 v2's
+    // #325 Tier A — p5 owns the transferred display canvas (no blit). p5 v2's
     // #_setup ALWAYS creates an internal default `createCanvas(100,100,P2D)` BEFORE the
     // user's setup, which the user's createCanvas then REPLACES (p5.esm.js:72541 + the
     // `if(this._renderer) this._renderer.remove()` in createCanvas:68303). So the FIRST
@@ -387,7 +387,7 @@ export function hostVizWorker(scope: WorkerScope): void {
     }
     const inst = new P5ctor(sketchFn)
 
-    // Presenting surface. #325 SPIKE direct path: p5 OWNS msg.canvas (adopted as its
+    // Presenting surface. #325 Tier A direct path: p5 OWNS msg.canvas (adopted as its
     // main canvas above) and sizes it itself via createCanvas/pixelDensity — the host
     // takes NO context and does NO blit, so the canvas persists frame-to-frame. Blit
     // path (default): size the backing store to device pixels + claim a bitmaprenderer.
