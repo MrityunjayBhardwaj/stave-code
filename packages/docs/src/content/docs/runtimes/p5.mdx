@@ -47,6 +47,39 @@ When a `.p5` sketch is opened as a standalone preview tab (not attached via `.vi
 
 Any `.p5` file whose name matches the string passed to `.viz("…")` is eligible. Name matching is case-insensitive and ignores spaces / dashes / underscores, so `Piano Roll.p5` matches `.viz("pianoroll")` or `.viz("piano-roll")`.
 
+## Worker renderer caveats
+
+By default a `.p5` viz runs in an **OffscreenCanvas Web Worker** (off the main thread, for performance). A few p5 patterns behave differently there:
+
+**Trails, feedback & pixel readback — own a `createGraphics()` buffer.**
+Each frame the worker transfers the main canvas to the compositor and **clears it**, so reading the main canvas back mid-sketch returns nothing:
+
+```js
+// ❌ Blanks in the worker — the main canvas is cleared every frame.
+function draw() {
+  const img = drawingContext.getImageData(4, 0, width - 4, height)
+  drawingContext.putImageData(img, 0, 0)   // nothing to shift — stays blank
+  fill(0, 230, 0); rect(width - 6, 0, 6, height)
+}
+```
+
+```js
+// ✅ Accumulate on an OWNED createGraphics buffer (not transferred/cleared), then draw it.
+let pg
+function setup() { createCanvas(stave.width, stave.height); pg = createGraphics(width, height) }
+function draw() {
+  pg.noStroke(); pg.fill(0, 0, 0, 8); pg.rect(0, 0, pg.width, pg.height) // fade (trail)
+  pg.fill(0, 230, 0); pg.rect(pg.width - 6, 0, 6, pg.height)             // stamp new
+  image(pg, 0, 0)
+}
+```
+
+<Aside type="caution">
+Reading back the main canvas (`drawingContext.getImageData`, scrolling waterfalls, trails that skip a full `background()`) goes **silently blank** in the worker — the viz still mounts, you just get an empty canvas. Always accumulate on a `createGraphics()` buffer. (Set `localStorage['stave.viz.worker'] = '0'` to force the main-thread renderer if you must.)
+</Aside>
+
+**`save()` / `saveCanvas()` / `saveGif()` are no-ops.** A worker can't trigger a browser download, so these calls do nothing (they no longer error — they just silently skip). Capture frames from the main-thread renderer if you need a file.
+
 ## Full function reference
 
 [p5.js reference](/reference/p5/) — 502 entries sourced from `p5js.org/reference/data.json`, kept in sync via `node packages/editor/scripts/fetch-docs/p5.mjs`.
