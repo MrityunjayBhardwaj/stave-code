@@ -252,6 +252,46 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
   // The same i18next detector reads `document.cookie` (cookie detector). A worker
   // has no cookies — an empty string keeps the detector's split/parse safe.
   doc.cookie = ''
+  // p5's loadFont does `document.fonts.add(face)` + `await document.fonts.ready`
+  // (type/p5.Font.js:1005,1008) unconditionally after fetching the font. Two worker
+  // gaps, both OBSERVED (#314, same PV95 class as the HTMLCanvasElement/localStorage
+  // ones): (1) the shim doc had no `fonts` → `TypeError: …reading 'add'`; (2) the
+  // Worker's native FontFaceSet (`self.fonts`) loads + adds a face fine, but its
+  // SET-LEVEL `ready` promise NEVER resolves off-main (no document/render lifecycle),
+  // so `await document.fonts.ready` hangs forever and loadFont never completes.
+  // Delegate every op to the real set so fonts truly REGISTER for OffscreenCanvas
+  // text, but resolve `ready` from the individual faces' own `.loaded` promises
+  // (which DO resolve in the worker) instead of the hanging set promise.
+  const realFonts = self.fonts as FontFaceSet | undefined
+  doc.fonts = realFonts
+    ? ({
+        add: (f: FontFace) => realFonts.add(f),
+        delete: (f: FontFace) => realFonts.delete(f),
+        has: (f: FontFace) => realFonts.has(f),
+        forEach: (cb: (f: FontFace) => void, thisArg?: unknown) => realFonts.forEach(cb, thisArg),
+        load: (font: string, text?: string) => realFonts.load(font, text),
+        values: () => realFonts.values(),
+        keys: () => realFonts.keys?.() ?? realFonts.values(),
+        [Symbol.iterator]: () => realFonts[Symbol.iterator](),
+        get size() {
+          return realFonts.size
+        },
+        get ready() {
+          // set-level ready hangs off-main; gate on the faces' own .loaded instead.
+          return Promise.all(Array.from(realFonts, (f) => f.loaded)).then(() => realFonts)
+        },
+      } as unknown as FontFaceSet)
+    : ({
+        add() {},
+        delete() {},
+        has: () => false,
+        ready: Promise.resolve(),
+        size: 0,
+        values: () => [][Symbol.iterator](),
+        [Symbol.iterator]() {
+          return [][Symbol.iterator]()
+        },
+      } as unknown as FontFaceSet)
 
   // Build a FULL location — p5 v2's i18next FES language-detector runs the
   // `querystring` detector FIRST: `window.location.search.substring(1)`. A bare
@@ -360,6 +400,14 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
       configurable: true,
     })
     self.localStorage = store
+  }
+  // p5's loadFont CSS-`@font-face` branch does `rule instanceof CSSFontFaceRule`
+  // (type/p5.Font.js:1428) — an undefined identifier in the worker → ReferenceError
+  // (same PV95 class). Define it so the identifier resolves; the worker has no real
+  // CSSOM font-face rules, so a never-matching stub is the correct behaviour (the
+  // common loadFont(ttf) path doesn't reach this — it's the @font-face/.css form).
+  if (typeof self.CSSFontFaceRule === 'undefined') {
+    self.CSSFontFaceRule = class CSSFontFaceRule {}
   }
   if (!('devicePixelRatio' in self)) self.devicePixelRatio = 1
   // Worker rAF shim (condition 2) — both bare `requestAnimationFrame` and
