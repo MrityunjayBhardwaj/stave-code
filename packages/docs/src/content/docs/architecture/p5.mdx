@@ -24,6 +24,19 @@ each frame. The presenting surface is sized to **device** pixels (`size × dpr`,
 The blit *is* what p5's `draw()` does — it's not a new seam, just this kind's
 implementation of the `draw()` contract.
 
+<Aside type="caution" title="The blit is destructive — main-canvas readback blanks (#306/#316, P126)">
+`transferToImageBitmap()` is zero-copy *because* it transfers the rendered bitmap
+**out** of p5's render canvas and leaves it **cleared**. So a user sketch that reads
+the main canvas back mid-`draw()` — `drawingContext.getImageData`, scrolling
+waterfalls, trails that skip a full `background()` — sees nothing, and the failure is
+**silent** (the `viz.worker` gauge still lights). The supported pattern is to
+accumulate on an **owned `createGraphics()` buffer**, which is never transferred or
+cleared (#308). Gate: `viz-worker-readback.spec.ts` (fills on the main thread, blanks
+in the worker). A conditional non-destructive present that retires the limitation —
+latch to a `createImageBitmap` copy on first readback, keeping zero-copy the default —
+is planned in **#324**.
+</Aside>
+
 ## The worker DOM shim (PV70, P105)
 
 p5 v2 **can** render WEBGL to an `OffscreenCanvas` in a worker — given a small,
@@ -45,6 +58,13 @@ build** — the Next-bundled p5 re-runs i18next FES code that reads
 build that actually ships, not the POC min. The `@stave/editor/worker` subpath +
 DI + `app new Worker(new URL(...))` wiring exists for exactly this reason.
 </Aside>
+
+The shim also degrades **`save()` / `saveCanvas()` / `saveGif()`** to a clean no-op
+(#315): p5's `saveCanvas` calls `htmlCanvas.toBlob(cb)` (an `OffscreenCanvas` only has
+`convertToBlob`) then `createElement('a').click()`. The shim bridges
+`wrapCanvas.toBlob`→`convertToBlob` and gives the anchor a no-op `click()`, so save()
+no longer throws `toBlob is not a function` — a worker can't trigger a browser download
+(that needs blob→postMessage→main), so it silently skips. Gate: `viz-worker-save.spec.ts`.
 
 ## The audio + signal feed
 
