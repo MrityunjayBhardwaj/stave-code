@@ -111,6 +111,13 @@ function makeElement(tag: string): any {
       return c
     },
     remove() {},
+    // p5's downloadFile (save/saveCanvas/saveGif, io/utilities.js) does
+    // `createElement('a').click()` to trigger a browser download (#315). A worker
+    // has no anchor/navigation, so a real download is architecturally impossible
+    // here (it needs postMessage→main). A no-op click lets save() complete cleanly
+    // instead of throwing `click is not a function` — paired with canvas.toBlob
+    // below, save() degrades to a silent no-op rather than a per-frame error.
+    click() {},
     addEventListener(type: string, fn: (...a: any[]) => void) {
       ;(listeners[type] ||= []).push(fn)
     },
@@ -178,6 +185,22 @@ export function wrapCanvas(offscreen: OffscreenCanvas): OffscreenCanvas {
     width: oc.width, height: oc.height,
   }))
   def('remove', () => {})
+  // p5's saveCanvas (#315) calls `htmlCanvas.toBlob(cb, type, quality)` — the
+  // HTMLCanvasElement sync-callback API. OffscreenCanvas only has `convertToBlob`
+  // (async, Promise). Without this shim, save() throws `toBlob is not a function`
+  // every call (observed: surfaced via the #257 draw-error path, doesn't blank but
+  // spams). Bridge toBlob→convertToBlob so the call resolves; the resulting <a>
+  // download is then a no-op (the shim anchor's click() above). Net: save()
+  // degrades to a clean silent no-op. A true worker download = blob→postMessage→main.
+  def('toBlob', (cb: (b: Blob | null) => void, type?: string, quality?: number) => {
+    try {
+      ;(oc.convertToBlob({ type, quality }) as Promise<Blob>)
+        .then((b) => cb && cb(b))
+        .catch(() => cb && cb(null))
+    } catch {
+      cb && cb(null)
+    }
+  })
   return offscreen
 }
 
