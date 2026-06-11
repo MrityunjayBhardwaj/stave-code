@@ -78,6 +78,14 @@ function makeElement(tag) {
     },
     remove() {
     },
+    // p5's downloadFile (save/saveCanvas/saveGif, io/utilities.js) does
+    // `createElement('a').click()` to trigger a browser download (#315). A worker
+    // has no anchor/navigation, so a real download is architecturally impossible
+    // here (it needs postMessage→main). A no-op click lets save() complete cleanly
+    // instead of throwing `click is not a function` — paired with canvas.toBlob
+    // below, save() degrades to a silent no-op rather than a per-frame error.
+    click() {
+    },
     addEventListener(type, fn) {
       (listeners2[type] || (listeners2[type] = [])).push(fn);
     },
@@ -157,6 +165,14 @@ function wrapCanvas(offscreen) {
     height: oc.height
   }));
   def("remove", () => {
+  });
+  def("toBlob", (cb, type, quality) => {
+    try {
+      ;
+      oc.convertToBlob({ type, quality }).then((b) => cb && cb(b)).catch(() => cb && cb(null));
+    } catch {
+      cb && cb(null);
+    }
   });
   return offscreen;
 }
