@@ -228,6 +228,22 @@ interface Row {
   maxP95: number
   totalDrops: number
   busP95: number
+  /** Worker per-frame main cost, decomposed (B-4 gate #249): `sample()` =
+   *  analyser reads + wide scheduler query (duplicated work; shared sampler
+   *  removes the N×). Only present in the VIZ_WORKER=1 run. */
+  wkSampleP95: number
+  /** MEAN per-call `sample()` ms — the PV72 (#302) shared-pump gate. With the
+   *  shared frame cache, only ~1 call per frame pays the analyser FFT and the rest
+   *  hit the cache, so the MEAN drops ~1/N as N grows (p95 stays ~flat because the
+   *  tail still catches the 1/N full reads). */
+  wkSampleMean: number
+  /** Actual analyser READS per produced frame (`viz.sample.analyserReads` ÷ total
+   *  worker frames) — the DIRECT PV72 signal: ≈N before the shared pump (each viz
+   *  reads the shared master itself), ≈1 after (one read fanned out). */
+  analyserReadsPerFrame: number
+  /** Worker `writeFrame()` = transport (envelope clone + postMessage; bytes
+   *  already transferred). The slice SAB removes. */
+  wkWriteP95: number
   longtasks: number
   longtaskMax: number
   triggersPerSec: number
@@ -247,16 +263,27 @@ async function measure(page: Page, scenario: string): Promise<Row> {
   const drops = frameIds.reduce((a, id) => a + snap.frames[id].drops, 0)
   const busSections = Object.keys(snap.sections).filter((n) => n.endsWith('.bus'))
   const busP95 = busSections.reduce((m, n) => Math.max(m, snap.sections[n].p95), 0)
+  const wkSampleP95 = snap.sections['viz.worker.sample']?.p95 ?? 0
+  const wkSampleMean = snap.sections['viz.worker.sample']?.mean ?? 0
+  const wkWriteP95 = snap.sections['viz.worker.write']?.p95 ?? 0
   const triggers = snap.counters['audio.triggers'] ?? 0
+  // reads/frame = actual analyser reads ÷ total produced worker frames (PV72 gate).
+  const analyserReads = snap.counters['viz.sample.analyserReads'] ?? 0
+  const totalFrames = frameIds.reduce((a, id) => a + (snap.frames[id].count ?? 0), 0)
+  const analyserReadsPerFrame = totalFrames > 0 ? analyserReads / totalFrames : 0
 
   return {
     scenario,
-    vizGauge: (snap.gauges['viz.p5'] ?? 0) + (snap.gauges['viz.hydra'] ?? 0),
+    vizGauge: (snap.gauges['viz.p5'] ?? 0) + (snap.gauges['viz.hydra'] ?? 0) + (snap.gauges['viz.worker'] ?? 0),
     instances: frameIds.length,
     minFps: fpsList.length ? Math.min(...fpsList) : 0,
     maxP95: p95List.length ? Math.max(...p95List) : 0,
     totalDrops: drops,
     busP95,
+    wkSampleP95,
+    wkSampleMean,
+    analyserReadsPerFrame,
+    wkWriteP95,
     longtasks: snap.longtasks.count,
     longtaskMax: snap.longtasks.maxMs,
     triggersPerSec: snap.uptimeMs > 0 ? (triggers / snap.uptimeMs) * 1000 : 0,
@@ -265,12 +292,22 @@ async function measure(page: Page, scenario: string): Promise<Row> {
 
 test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
+    // B-3 (#245): VIZ_WORKER=1 force-enables OffscreenCanvas-worker rendering via
+    // the localStorage override (registerVizWorker reads it at mount). Lets the
+    // SAME pristine synthterrain fixture run both ways — main-thread baseline
+    // (unset) vs worker (set) — so trig/s + longtasks are A/B comparable.
+    const vizWorker = !!process.env.VIZ_WORKER
+    await page.addInitScript((useWorker) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__STAVE_PERF__ = true
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__STAVE_E2E__ = true
-    })
+      try {
+        localStorage.setItem('stave.viz.worker', useWorker ? '1' : '0')
+      } catch {
+        /* private mode — ignore */
+      }
+    }, vizWorker)
     await page.goto('/', { waitUntil: 'domcontentloaded' })
     await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
     await page.waitForTimeout(1000)
@@ -308,8 +345,12 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     await play(page, AUDIO)
     rows.push(await measure(page, 'audio-only'))
 
-    // 3-5. audio + N inline WEBGL terrains
-    for (const n of [1, 2, 4]) {
+    // 3-7. audio + N inline WEBGL terrains. SCALE rungs (6, 8) added for the B-4
+    // gate (#249): the per-viz main cost (sample vs write) only separates as N
+    // grows — inline-4 wasn't enough to attribute the cost. Each rung is one
+    // more independent sampler+rAF reading the SAME master analyser, so the
+    // delta between rungs IS the per-viz main cost (duplicated work + transport).
+    for (const n of [1, 2, 4, 6, 8]) {
       await play(page, [AUDIO, ...Array(n).fill(vizLine)].join('\n'))
       rows.push(await measure(page, `inline-${n}`))
     }
@@ -333,13 +374,17 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     // eslint-disable-next-line no-console
     console.log(
       pad('scenario', 18) + pad('viz', 5) + pad('minFps', 8) + pad('frameP95ms', 12) +
-        pad('drops', 7) + pad('busP95ms', 10) + pad('longtask(n/max)', 18) + 'trig/s',
+        pad('drops', 7) + pad('busP95ms', 10) + pad('wkSampP95', 11) + pad('wkSampMean', 12) +
+        pad('reads/frame', 12) + pad('wkWriteP95', 12) +
+        pad('longtask(n/max)', 18) + 'trig/s',
     )
     for (const r of rows) {
       // eslint-disable-next-line no-console
       console.log(
         pad(r.scenario, 18) + pad(r.vizGauge, 5) + pad(fix(r.minFps), 8) +
           pad(fix(r.maxP95), 12) + pad(r.totalDrops, 7) + pad(fix(r.busP95, 2), 10) +
+          pad(fix(r.wkSampleP95, 3), 11) + pad(fix(r.wkSampleMean, 3), 12) +
+          pad(fix(r.analyserReadsPerFrame, 2), 12) + pad(fix(r.wkWriteP95, 3), 12) +
           pad(`${r.longtasks} / ${fix(r.longtaskMax)}`, 18) + fix(r.triggersPerSec),
       )
     }
@@ -347,7 +392,8 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     console.log('=== end matrix ===\n')
 
     // STRUCTURE assertions — data was produced, not env thresholds.
-    expect(rows.length).toBe(7)
+    // idle + audio-only + inline-{1,2,4,6,8} + backdrop-1 + mix = 9 rungs.
+    expect(rows.length).toBe(9)
     const audioOnly = rows.find((r) => r.scenario === 'audio-only')!
     expect(audioOnly.triggersPerSec).toBeGreaterThan(0) // scheduler running
     const inline4 = rows.find((r) => r.scenario === 'inline-4')!

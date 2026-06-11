@@ -224,6 +224,8 @@ function draw() {
 }`;
 
 export const SCOPE_P5_CODE = `// Stave p5 viz — Scope (oscilloscope / event pulses)
+// PERF: one reused buffer (re-alloc only on size change) — never allocate per draw().
+let _wave = null
 function setup() {
   createCanvas(stave.width, stave.height)
   noFill()
@@ -234,7 +236,8 @@ function draw() {
   line(0, height * 0.5, width, height * 0.5)
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
-    const data = new Float32Array(buf)
+    if (!_wave || _wave.length !== buf) _wave = new Float32Array(buf)
+    const data = _wave
     stave.analyser.getFloatTimeDomainData(data)
     let trig = 0
     for (let i = 1; i < buf; i++) { if (data[i-1] > 0 && data[i] <= 0) { trig = i; break } }
@@ -257,6 +260,8 @@ function draw() {
 }`;
 
 export const FSCOPE_P5_CODE = `// Stave p5 viz — Frequency Scope (FFT bars / note bars)
+// PERF: one reused buffer (re-alloc only on size change) — never allocate per draw().
+let _freq = null
 function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
@@ -281,7 +286,8 @@ function draw() {
   line(0, height * 0.75, width, height * 0.75); noStroke()
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
-    const data = new Float32Array(buf)
+    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)
+    const data = _freq
     stave.analyser.getFloatFrequencyData(data)
     fill('#75baff')
     const sw = width / buf
@@ -311,9 +317,28 @@ function draw() {
 }`;
 
 export const SPECTRUM_P5_CODE = `// Stave p5 viz — Spectrum (scrolling waterfall)
+// The waterfall scrolls by reading back the PREVIOUS frame (getImageData →
+// putImageData(-2,0)). That needs the drawing surface to PERSIST across frames —
+// but in the worker the Tier-2 present transferToImageBitmap()s (and CLEARS) the
+// main canvas every frame, so reading the MAIN canvas back yields nothing (#306).
+// Own a persistent OffscreenCanvas buffer (_wf) instead: scroll it (cheap, one
+// column/frame), then blit it to the main canvas each frame. _wf is never
+// transferred, so history accumulates. OffscreenCanvas is native in the worker AND
+// on the main thread, so this renders identically on both (no p5.Graphics, whose
+// HTMLCanvasElement instanceof checks are undefined in the worker shim).
+let _freq = null
+let _wf = null, _wctx = null
+function _ensureBuf(w, h) {
+  if (_wf && _wf.width === w && _wf.height === h) return
+  const old = _wf
+  _wf = new OffscreenCanvas(max(1, w), max(1, h))
+  _wctx = _wf.getContext('2d')
+  if (old && _wctx) { try { _wctx.drawImage(old, 0, 0) } catch (e) {} }
+}
 function setup() {
   createCanvas(stave.width, stave.height)
   pixelDensity(1); noStroke()
+  _ensureBuf(width, height)
 }
 // Hz from a hap — Strudel leaves note as a NAME string and freq null until
 // superdough renders, so parse the note name to MIDI ourselves.
@@ -330,10 +355,13 @@ function hapFreq(h) {
   return 440 * pow(2, (n - 69) / 12)
 }
 function draw() {
-  const ctx = drawingContext
+  _ensureBuf(width, height)
+  const ctx = _wctx
+  if (!ctx) { clear(); return }
   if (stave.analyser) {
     const buf = stave.analyser.frequencyBinCount
-    const data = new Float32Array(buf)
+    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)
+    const data = _freq
     stave.analyser.getFloatFrequencyData(data)
     const img = ctx.getImageData(0, 0, width, height)
     ctx.clearRect(0, 0, width, height)
@@ -366,7 +394,12 @@ function draw() {
       ctx.fillRect(width - 2, y - 2, 2, max(4, height * 0.03))
     }
     ctx.globalAlpha = 1
-  } else { clear() }
+  } else { ctx.clearRect(0, 0, width, height) }
+  // Present the persistent buffer to the main canvas (which the worker clears
+  // every frame via transferToImageBitmap). drawImage accepts an OffscreenCanvas
+  // source on both the worker and the main-thread 2D context.
+  clear()
+  drawingContext.drawImage(_wf, 0, 0)
 }`;
 
 export const SPIRAL_P5_CODE = `// Stave p5 viz — Spiral

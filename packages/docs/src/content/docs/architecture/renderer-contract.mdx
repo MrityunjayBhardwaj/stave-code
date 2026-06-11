@@ -1,0 +1,517 @@
+---
+title: The viz renderer contract
+description: The engine-agnostic seam every Stave visualizer renderer satisfies — the worker RendererStrategy, the mount lifecycle, the signal feed, and the kind-agnostic per-frame/per-mount concerns. This is the spec a new renderer (p5, hydra, GLSL, …) implements against.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This is the **developer** chapter for Stave's visualizer architecture. It
+describes the *engine-agnostic* contract: the seam that is identical for every
+renderer kind — p5, hydra, and the GLSL reference renderer — independent of how
+any one of them draws a pixel. Read it before adding a renderer, changing the
+worker boundary, or debugging a viz that mounts but doesn't paint.
+
+Every behavioral claim below cites `file:line` in
+`packages/editor/src/visualizers/`. When the code and this page disagree, the
+code wins — fix the page.
+
+<Aside type="note" title="Why a contract at all">
+Stave renders the same visualizer through **two host paths** (a main-thread
+renderer and an OffscreenCanvas Web Worker) and **multiple engines** (p5, hydra,
+GLSL). The only way that stays sane is a written contract: a small set of
+behaviors every renderer provides, so the per-frame and per-mount machinery
+(backpressure, fallback, visibility pausing, profiler bridging, GL-context
+accounting) is written **once**, kind-agnostically, and each new engine slots in
+by satisfying the contract rather than by re-implementing the machinery.
+</Aside>
+
+## Two contracts, two threads
+
+There are two interfaces. Keep them distinct.
+
+| Interface | Side | File | Who implements it |
+| --- | --- | --- | --- |
+| `VizRenderer` | **main thread** | `types.ts:25` | `P5VizRenderer`, `HydraVizRenderer`, `WorkerVizRenderer`, and the decorators (`FallbackVizRenderer`, `TeardownOnPauseRenderer`) |
+| `RendererStrategy` | **inside the worker** | `worker/hostP5Worker.ts:70` | the per-kind half of a worker mount — `mountP5`, `mountHydra` (and, next, `mountGLSL`) |
+
+`VizRenderer` is the lifecycle the rest of the app drives:
+
+```ts
+// types.ts:25
+export interface VizRenderer {
+  mount(container, components, size, onError): void
+  update(components): void   // re-bind live engine data each React render
+  resize(w, h): void
+  pause(): void
+  resume(): void
+  destroy(): void
+}
+```
+
+`RendererStrategy` is the *kind-specific half* of one worker mount — everything
+else in the worker host is shared scaffolding wrapped around it:
+
+```ts
+// hostP5Worker.ts:70
+interface RendererStrategy {
+  setupDone: () => boolean      // true once the renderer can draw
+  draw: () => void              // render exactly ONE frame; may throw
+  resizeKind: (w, h, dpr) => void
+  teardown: () => void          // belt-and-suspenders instance teardown
+  gl?: () => GLLoseCtx | null   // the kind's live WebGL context, or null (#266)
+}
+```
+
+**A new worker renderer is, by definition, a new `RendererStrategy`.** If you
+can fill in those five members against the shared host, every kind-agnostic seam
+below comes for free. That is the whole claim this page makes — and the GLSL
+renderer is the test of it.
+
+## The host: one worker, one kind, shared scaffolding
+
+`hostVizWorker(scope)` (`hostP5Worker.ts:116`) is the bundler-agnostic worker
+host. One worker hosts exactly one kind; `mount` branches on
+`MountMessage.kind` and builds the matching strategy
+(`hostP5Worker.ts:255`):
+
+```ts
+// hostP5Worker.ts:255
+const strategy =
+  msg.kind === 'hydra'
+    ? await mountHydra(msg, feed, rawAnalyser, rawScheduler, dpr)
+    : await mountP5(msg, feed, rawAnalyser, rawScheduler, containerSizeRef, dpr)
+```
+
+The returned strategy is spread into a `MountState` and the per-frame reader is
+wired to `applyAndDraw` (`hostP5Worker.ts:273`). From here on the host treats
+the renderer purely through the contract — it never knows whether it's driving
+p5, hydra, or GLSL.
+
+<Aside type="tip" title="Tier 1 vs Tier 2 (PV73)">
+The one place a kind's *nature* leaks into the host is the canvas tier:
+
+- **Tier 1** — the engine accepts the transferred `OffscreenCanvas` and renders
+  into it **directly, no blit**. Hydra does this (`new Hydra({ canvas })`,
+  `hostP5Worker.ts:419`); the GLSL renderer will too (raw WebGL2 on the
+  transferred canvas).
+- **Tier 2** — the engine makes its *own* canvases and we **blit** its output
+  onto the presenting canvas each frame. p5 is Tier 2: it draws to a worker-local
+  canvas, and `draw()` copies it across with
+  `transferFromImageBitmap(src.transferToImageBitmap())` (`hostP5Worker.ts:359`).
+
+Tier is a property of the engine, not a new seam — both tiers satisfy the same
+`draw()` contract. The blit is just what p5's `draw()` *does*.
+</Aside>
+
+## The mount lifecycle — one choke point, two seams
+
+On the main thread a viz attaches to the DOM at **two** seams, and there is no
+shared mount path between them (PV74):
+
+1. **`mountVizRenderer`** — the picker (`useVizRenderer`/`VizPanel`), the
+   backdrop (`compiledVizProvider`), and the crop preview (`CropPopup`).
+2. **`viewZones`** — the inline `.viz()` Monaco zones.
+
+The per-mount concerns that must attach to **every** renderer regardless of seam
+live in one function, `attachVizLifecycle` (`attachVizLifecycle.ts:34`):
+
+```ts
+// attachVizLifecycle.ts:42
+try {
+  renderer.mount(container, components, size, onError)
+} catch (e) {
+  if (opts.onMountError) opts.onMountError(e) // viewZones swallows; one bad zone ≠ all dead
+  else throw e                                // mountVizRenderer's contract: propagate
+}
+// visibility pausing wires even after a swallowed mount error
+return registerVizVisibility(renderer, container, opts.teardownMs ? { teardownMs } : undefined)
+```
+
+Both seams route through here: `mountVizRenderer.ts:32` calls it then adds a
+`ResizeObserver` (its container is CSS-sized); `viewZones` calls it directly and
+adds its Monaco-layout reflow, teardown-wrapper, crop, and decorations.
+
+<Aside type="caution" title="Per-mount concerns wire BOTH seams (PV74 / P107)">
+A per-mount concern wired into only one seam is **silently dead on the other** —
+that was the P107 footgun (#260). If you add a concern that must attach to every
+mounted renderer (a new gauge, a new lifecycle hook), it goes in
+`attachVizLifecycle`, not at a call site. Concerns that genuinely *diverge* by
+seam (resize: `ResizeObserver` vs Monaco-layout reflow; the inline crop wrapper)
+correctly stay at the call site — the module boundary is the **shared subset**,
+not the union (PV85).
+</Aside>
+
+## The signal feed — one clock, 1:1 cadence (PK22)
+
+The worker draws **exactly one frame per signal frame it receives**. There is a
+single clock — and as of the shared frame pump (PV72) it is *one* clock for **all**
+worker viz, not one per renderer: the single `requestAnimationFrame` loop in the
+`vizFramePump` singleton (`vizFramePump.ts:107`). Each `WorkerVizRenderer` no longer
+runs its own loop — `start()` just **registers** it with the pump
+(`WorkerVizRenderer.ts:387`); the pump drives each registered renderer's
+`pumpTick(ts, cache)` (`WorkerVizRenderer.ts:402`) once per tick, which samples the
+live feed and writes a frame to the worker. The worker draws once per frame. Cadence
+cannot drift because the worker never has its own loop — p5 is set to `noLoop()`
+(`hostP5Worker.ts:327`) and hydra to `autoLoop:false` (`hostP5Worker.ts:425`); the
+GLSL renderer likewise draws only when called.
+
+```
+vizFramePump — ONE rAF for ALL worker viz        each registered WorkerVizRenderer
+──────────────────────────────────────           (per pumpTick, in registry order)
+tick(ts)
+  vizGovernor.observeFrame(ts)   // once
+  cache = new FrameSampleCache() // once/tick      worker
+  for r of registered:                             ──────────────────────────────
+    r.pumpTick(ts, cache) ─────► gates (backpressure + maxFps + governor.mayProduce)
+                                 sample(cache) ─ analyser read + scheduler query,
+                                                 deduped across viz by the shared cache
+                                 writeFrame(frame) ─► applyAndDraw(frame)
+                                   frameAck ◄────────── (#261 backpressure)
+                                   feed.applyFrame(frame)  // bus tick, PK22
+                                   refresh raw shims
+                                   if setupDone && !paused:
+                                     s.draw()   ← the ONLY kind-specific call
+```
+
+Inside the worker, `applyAndDraw` (`hostP5Worker.ts:492`) is the shared per-frame
+body. It does everything **except** the actual draw, which is the one line of
+contract:
+
+```ts
+// hostP5Worker.ts:507  — shared: one bus tick (PK22) + refresh shims
+s.feed.applyFrame(frame)
+s.rawAnalyser.set(master)
+s.rawScheduler.set(frame.rawScheduler)
+if (!s.setupDone() || s.paused) return   // hostP5Worker.ts:513 — contract gate
+// hostP5Worker.ts:516
+s.draw()                                 // kind-specific; the only line that differs
+```
+
+<Aside type="note" title="The bus is ticked ONCE, by the feed (PK22)">
+`feed.applyFrame` owns the single per-frame bus tick. A renderer's `draw()` must
+**not** tick the bus again — note `mountHydra`'s `draw()` calls `hydra.tick()` for
+a shader frame but explicitly does *not* re-tick the bus (`hostP5Worker.ts:474`).
+Double-ticking desyncs the named-signal uniforms (`u.fft`, `uKick`, …) from the
+audio. Read your audio from the already-refreshed shims; draw; return.
+</Aside>
+
+## Global produce-loop coordination — the pump and the governor
+
+The per-renderer seams below run *inside* one viz. Two **main-thread singletons**
+coordinate the produce loop **across all** worker viz at once. Neither is a renderer
+concern — a `RendererStrategy` is oblivious to both — but they shape the cadence that
+drives every `pumpTick`, so they belong in the same picture. Both are transparent
+no-ops in the common case and only engage under their respective pressure.
+
+### The frame pump — shared cadence + a shared sampler (PV72)
+
+`vizFramePump` (`vizFramePump.ts`) owns the single rAF (above). Its second job is to
+**collapse duplicated sampling**. Each renderer used to read the analyser bytes and
+run the wide `scheduler.query` itself, every frame — so N viz reading the *same*
+master analyser ran N identical reads. The pump builds **one `FrameSampleCache` per
+tick** (`vizFramePump.ts:115`) and passes it to every `pumpTick`; the sampler routes
+its reads through it (`signalSampler.ts:221`), so a read keyed by an analyser **object
+identity** runs once and each consumer gets a transfer-safe slice
+(`frameSampleCache.ts:48`). Scheduler queries dedupe the same way, by
+`(scheduler, window)` (`frameSampleCache.ts:70`).
+
+<Aside type="note" title="Why a per-tick cache, not a fanned-out frame (PV72)">
+The obvious design — sample once, send one `SignalFrame` to all N workers — is
+**impossible**: `frameTransferables` *detaches* the byte buffers on transfer, so only
+the first `writeFrame` would get real bytes; and inline zones bind **per-track**
+(`viewZones.ts:341`), so each viz's scheduler / bumps / seq are genuinely its own. So
+the shared unit is the *read*, not the *frame*: each renderer still builds its own
+frame (own sampler/bumps/seq → byte-identical reactivity, PV75), and only the
+expensive shared read is deduped. The win is **regime-scoped**: it only fires when viz
+sample on the *same* tick, which heavy (backpressure-paced) viz rarely do — so the
+cache mostly helps the **many-light-viz** case (measured: reads/frame 11→5, scheduler
+trig/s 5.0→8.5 at N=8). Disable for A/B with `localStorage['stave.viz.pump']='0'`.
+</Aside>
+
+### The GPU-budget governor — degrade under jank (P122)
+
+Per-viz backpressure (#261) bounds each viz to its *own* worker's draw rate, but N viz
+each pacing independently still **sum** to total GPU saturation — 5 heavy GLSL viz drove
+the compositor to ~95% dropped frames, janking the whole editor while the main thread
+sat *idle* (GPU-bound, not main-bound — PV92). `vizGovernor` (`vizGovernor.ts`) is the
+global frame-budget coordinator. Every `pumpTick` feeds it the rAF cadence
+(`observeFrame`, `vizGovernor.ts:168`), from which it derives a `stress` 0..1, and gates
+each viz's produce (`mayProduce`, `vizGovernor.ts:188`) with three levers that scale
+with stress:
+
+1. **Adaptive fps floor** — raise each viz's minimum frame gap (catches even one heavy viz).
+2. **Round-robin concurrency** — spread which viz may produce on each frame, so N heavy
+   viz don't all hit the GPU on the same one.
+3. **Resolution drop** — under sustained stress shrink each worker's backing store
+   (`resolutionScale`, `vizGovernor.ts:217`; the renderer re-posts a scaled `resize`,
+   `WorkerVizRenderer.ts:287`) — the fill-bound lever the fps throttle can't reach.
+
+<Aside type="caution" title="The governor is a no-op until frames actually drop">
+At `stress === 0` (the smooth common case — 1–2 light viz) `mayProduce` always returns
+true, the gap is 0, and resolution is full. So the governor cannot regress the
+reactivity gate (PV75) or any steady-state behavior; it engages **only** once frames are
+dropping. It's the **"Adaptive performance"** settings toggle (default on, persisted
+under `stave.viz.governor`). Known limit (#301): `stress` is derived from the
+main-thread rAF, which stays nominal under *moderate* compositor saturation (PV92), so
+the levers under-engage there until rAF itself degrades — blend in a GPU-load proxy to
+sharpen it. Orthogonal to the pump: the governor cuts **GPU** load (heavy viz); the pump
+cuts **main-thread** sample cost (many light viz).
+</Aside>
+
+**Verified by** `viz-scroll-jank-governor.spec.ts` (governor ON drops fewer compositor
+frames than OFF under 5 heavy GLSL viz) and `viz-shared-pump-observe.spec.ts` (the
+shared cache recovers scheduler headroom under many light viz).
+
+## The kind-agnostic seams
+
+These are the behaviors the shared host applies to **every** strategy. A new
+renderer gets all of them for free *if* it honors the contract. Each is a thing
+to verify when you add a kind.
+
+### 1. GL-context accounting and release (#266)
+
+The worker reports its live WebGL contexts so the main thread can drive a
+`viz.glctx` gauge, and it **explicitly loses** the context on teardown so a
+pooled warm worker doesn't retain it toward Chrome's ~16-context cap.
+
+This is the entire reason `gl?()` exists on the contract. After the first
+successful frame the host calls `accountGL` (`hostP5Worker.ts:528`), which reads
+`strategy.gl()`, grabs the `WEBGL_lose_context` extension, and posts `glctx+`
+(`hostP5Worker.ts:176`). On `destroy`, `releaseGL` (`hostP5Worker.ts:190`) calls
+`loseContext()` (`hostP5Worker.ts:196`). p5 returns its WEBGL
+`drawingContext` (`hostP5Worker.ts:350`); hydra re-gets the presenting canvas's
+`webgl2`/`webgl` context (`hostP5Worker.ts:455`); a 2D sketch returns a context
+whose `getExtension` yields null and is simply not accounted.
+
+<Aside type="tip" title="A raw-WebGL renderer is the easy case">
+The GLSL renderer owns its `WebGLRenderingContext` directly, so its `gl()` is the
+most trivial of all three — just return the context it created. This seam is
+where p5 and hydra needed care (find the context p5/regl made internally); GLSL
+hands it back without a search.
+</Aside>
+
+**Verified by** `hydra-path-coverage.spec.ts` (#266 on the raw-WebGL `gl()`
+accessor) and `phase-b-verify.spec.ts`.
+
+### 2. The draw-cost profiler bridge (#230)
+
+The default viz path is the worker, whose bundle never imported the main
+`perf` profiler — so `s.draw()` cost was a profiler blind spot. The host times
+each draw and piggybacks the duration onto the **next** `frameAck`; the main side
+records it as the `viz.worker.draw` section.
+
+```ts
+// hostP5Worker.ts:514  — time the draw
+const drawT0 = performance.now()
+s.draw()
+lastDrawMs = performance.now() - drawT0      // hostP5Worker.ts:523
+// hostP5Worker.ts:502  — the NEXT ack carries it (sent on receipt, before this draw)
+scope.postMessage({ type: 'frameAck', drawMs: lastDrawMs })
+```
+
+Main side (`WorkerVizRenderer.ts:201`): `if (typeof d.drawMs === 'number')
+perf.record('viz.worker.draw', d.drawMs)`. Because the timing wraps the
+*contract's* `draw()` and not any kind-specific internals, it is automatically
+kind-agnostic — `s.draw()` for GLSL is timed exactly the same.
+
+<Aside type="caution" title="Per-thread metrics are invisible until bridged (PV83)">
+A metric measured on one thread does not appear in the other thread's snapshot
+until something explicitly carries it across. This is the P105 family — it has
+recurred for the worker draw cost (#230), worker errors (#257), and config
+(#253). When you add a renderer, any *new* worker-side number you care about
+needs its own bridge; the existing `drawMs` piggyback covers draw cost for any
+kind.
+</Aside>
+
+**Verified by** `viz-worker-draw-section.spec.ts` (#230 — the section populates
+from a live worker) and `hydra-path-coverage.spec.ts` (kind-agnostic `s.draw()`
+timing on hydra).
+
+### 3. Live config marshal (#270 / #253 / #269)
+
+The worker runs its **own** `vizConfig` singleton (the worker bundle can't share
+the main module instance). So the main thread marshals a **subset** of config
+across the boundary, applied with **merge** (never reset), at mount and on every
+later change:
+
+```ts
+// vizConfig.ts:353 — only these keys cross the boundary
+export const WORKER_VIZ_CONFIG_KEYS = ['hydraAudioBins', 'density'] as const
+```
+
+At mount the subset ships in the `MountMessage` (`WorkerVizRenderer.ts:254`,
+`pickWorkerVizConfig()`), and the worker applies it *before* building the sketch
+(`hostP5Worker.ts:245`) so the first frame already sees the user's settings. A
+later quality/LOD change re-ships via a `config` message
+(`WorkerVizRenderer.ts:261`) and the worker **merges** it onto its singleton
+(`hostP5Worker.ts:232` → `updateVizConfig`, `vizConfig.ts:321`) — no remount.
+
+<Aside type="caution" title="Merge, never reset (PV81)">
+`updateVizConfig` takes a *partial* patch and merges. An incremental `{ density }`
+patch must not wipe a prior `hydraAudioBins`. If a renderer adds a config key it
+reads in the worker, that key must be added to `WORKER_VIZ_CONFIG_KEYS` or the
+worker silently runs on the bundle default — the third recurrence of the
+per-thread-invisibility class (PV83). `maxFps`/`maxDpr` are deliberately
+*excluded* from the subset: the main `WorkerVizRenderer` paces and sizes, so the
+worker never needs them.
+</Aside>
+
+**Verified by** `viz-density-lod.spec.ts` (the live `density` marshal moves the
+cost curve with no remount) and `hydra-path-coverage.spec.ts` (`hydraAudioBins`
+read from the marshalled config).
+
+### 4. Backpressure — bounded frames in flight (#261)
+
+The main rAF can fire at 120fps while a heavy-WebGL worker draws at ~20fps.
+Without a bound the surplus backlogs in the worker's message queue and it renders
+seconds-stale data (looks "static"). The fix is a small cap on unacked frames:
+
+```ts
+// WorkerVizRenderer.ts:66
+const MAX_FRAMES_IN_FLIGHT = 2
+```
+
+The worker acks **every** received frame on receipt (`hostP5Worker.ts:502`), even
+a pre-setup frame that doesn't draw — otherwise the bounded pipeline deadlocks
+before p5's async setup completes. The main side only produces while
+`inFlight < MAX_FRAMES_IN_FLIGHT` (`WorkerVizRenderer.ts:434`), so the worker's
+queue stays ~1 frame deep and it always draws the freshest sampled frame.
+
+<Aside type="note" title="The fps cap is downstream of backpressure (PV80)">
+Because production is gated by acks, the worker's *effective* frame rate is its
+true draw rate, not the display rate or the `maxFps` cap. "Fast fps" before
+backpressure was a stale-frame artifact. A renderer doesn't implement
+backpressure — it just has to `draw()` once per `applyAndDraw` and let the ack
+flow.
+</Aside>
+
+### 5. Startup fallback to the main thread (#247)
+
+A worker that throws at import/compile/first-draw, or hangs, must not leave a
+blank pane. `FallbackVizRenderer` wraps the worker renderer with a startup
+probation:
+
+- mount the worker, arm `whenReady` + an 8s timer (`FallbackVizRenderer.ts:36`).
+- first successful worker frame posts `ready` (`hostP5Worker.ts:526`) → HEALTHY;
+  clear the timer. Later (user-sketch) errors surface normally — they do **not**
+  trigger fallback.
+- a fatal error *before* `ready`, or the timeout → tear down the worker attempt,
+  clear the container, mount the proven main-thread renderer with the same
+  components/size (`FallbackVizRenderer.ts:102`).
+
+This is why the contract's first successful `draw()` must post `ready`
+(`hostP5Worker.ts:525`) — it is the liveness signal the probation waits on. A
+renderer that can't reach a first frame correctly degrades to its main-thread
+twin. (Both factories wire this: `makeP5Renderer.ts:48`,
+`makeHydraRenderer.ts:32`.)
+
+### 6. Visibility pausing and off-screen teardown (#258 / #263)
+
+A viz that's scrolled off-screen, in a collapsed pane, or in a hidden tab runs
+its whole pipeline for output nobody sees. `registerVizVisibility`
+(`vizVisibility.ts:98`) pauses a renderer when it's **not** (on-screen AND
+tab-visible) and resumes on return — firing only on a state transition
+(`vizVisibility.ts:66`). `pause()` stops the main sample loop and tells the
+worker (`WorkerVizRenderer.ts:297`); the worker just sets `paused`
+(`hostP5Worker.ts:221`) and the `applyAndDraw` gate (`hostP5Worker.ts:513`) skips
+the draw.
+
+<Aside type="caution" title="Pause HOLDS the worker; only destroy reclaims it (PV77)">
+`pause()` halts the draw loop but **holds** the worker + GL context + ~100MB.
+For a zone left off-screen a long time that's pure waste, so `TeardownOnPauseRenderer`
+(`TeardownOnPauseRenderer.ts:106`) escalates a sustained *off-screen* pause into a
+real `destroy()` and transparently re-creates the inner renderer on return
+(`TeardownOnPauseRenderer.ts:114`). The timer is **off-screen-only** — a
+tab-hidden-but-on-screen viz pauses without tearing down (`vizVisibility.ts:54`).
+This is opt-in per seam via `teardownMs` (only the inline path passes it).
+</Aside>
+
+**Verified by** `phase-c-pause-observe.spec.ts` (the `viz.worker.sample` count
+freezes while paused, both off-screen and tab-hidden) and
+`high-n-headroom.spec.ts` (the memory/GL-context ceiling that motivates #263).
+
+### 7. The selection gate
+
+Whether the worker path is used at all is one shared decision
+(`makeP5Renderer.ts:36`), used by both the p5 and hydra factories so they choose
+identically:
+
+```ts
+// makeP5Renderer.ts:36
+export function shouldUseWorkerRenderer(): boolean {
+  return (
+    getVizConfig().workerRenderer &&            // flag on
+    getVizWorkerFactory() !== null &&           // app registered a worker factory
+    detectWorkerVizCapabilities().transport !== 'main-thread'  // browser can offload
+  )
+}
+```
+
+A new worker renderer's factory calls the same gate and wraps the worker
+renderer in `FallbackVizRenderer` when it passes, else builds the main-thread
+renderer directly. There is no kind-specific force-to-main.
+
+## What a new renderer must provide
+
+This is the spec. To add a renderer kind to the worker host, provide a
+`RendererStrategy` (`hostP5Worker.ts:70`) whose members satisfy:
+
+1. **`setupDone()`** — return true once a frame can be drawn (sync engines return
+   `true` immediately, as hydra does at `hostP5Worker.ts:452`; async engines flip
+   it when ready, as p5 does at `hostP5Worker.ts:331`).
+2. **`draw()`** — render **exactly one** frame from the already-refreshed shims.
+   Read audio from `rawAnalyser` / the named-signal bus; do **not** tick the bus
+   (PK22). May throw — the host catches, re-emits to the main log (#257,
+   `hostP5Worker.ts:519`), and suppresses `ready`.
+3. **`resizeKind(w, h, dpr)`** — apply a new size to the renderer and the
+   presenting canvas. Tier-1 sizes the transferred canvas directly; Tier-2 sizes
+   its blit target.
+4. **`teardown()`** — neutralize the instance so a destroy mid-flight can't paint.
+5. **`gl?()`** — return the live WebGL context (or null) so the host can account
+   and lose it (#266).
+
+Provide a `mountX` that builds the strategy, add `kind: 'x'` to `MountMessage`,
+and a `makeXRenderer` mirroring `makeHydraRenderer` (`makeHydraRenderer.ts:31`).
+Everything in [The kind-agnostic seams](#the-kind-agnostic-seams) — backpressure,
+fallback, profiler bridge, config marshal, visibility, GL accounting — then
+applies automatically.
+
+The three kinds that exist each have their own developer chapter detailing how
+they fill in the contract:
+[GLSL](/architecture/glsl/) (the Tier-1 zero-library reference),
+[Hydra](/architecture/hydra/) (Tier-1, library), and
+[p5.js](/architecture/p5/) (Tier-2 blit, the hardest case).
+
+## Validated by the GLSL renderer
+
+This chapter was written **before** the GLSL renderer existed — as a spec, to be
+tested. The test: implement the *simplest possible* kind (single-pass GLSL/
+ShaderToy — raw WebGL2, fullscreen triangle + fragment shader, Tier-1
+direct-to-canvas, zero library) against the contract and see whether it slots in
+with **no new shared seam**, or exposes a gap. It slotted in. The result (PV87,
+PK31 OUTCOME):
+
+- **All five `RendererStrategy` members + all seven kind-agnostic seams were
+  satisfied with zero change to the shared host.** A new worker renderer really
+  is *just* a new strategy. GLSL's `gl()` is the most trivial of the three (the
+  raw context it created); `setupDone()` is synchronous; and because a GPU
+  `draw()` runs no per-frame user JS, the #257 draw-error seam is satisfied with
+  nothing to catch.
+- **The audio-feed seam — flagged above as the most likely place to need
+  generalizing — held.** `mountGLSL` reads the **same** already-refreshed
+  `rawAnalyser` hydra reads and uploads it to an `iChannel0` texture *internally*
+  (`hostP5Worker.ts:517`). The kind-agnostic `AudioByteSource` interface
+  (`glslCore.ts:32`) covered it; no host change.
+
+<Aside type="note" title="The one new thing was kind-specific, not shared (PV87 addendum)">
+The GLSL renderer also added **pattern-event uniforms** (`uKick`, `uSnare`, …,
+#284) — turning named-signal-bus values into shader uniforms. This is genuinely
+new work, but it lives **entirely inside the strategy's `draw()`**
+(`readGLSLEvents`, `glslEvents.ts:21`), exactly like p5's blit or hydra's
+`s.a.fft` fill. It is a *kind-specific marshal*, **not** a new shared-host seam —
+sourced from data the host already prepares (the ticked `feed.bus`). So the
+generalization the contract anticipated turned out to be the right shape: the
+shared seam is "the host hands you refreshed feeds and calls `draw()` once"; what
+each kind *does* with those feeds is its own business. Contract confirmed, not
+amended. See [Renderer: GLSL](/architecture/glsl/) for the detail.
+</Aside>

@@ -95,14 +95,17 @@ export function PerfOverlay() {
         </span>
       </div>
 
-      {frameIds.length > 0 && <div style={styles.sub}>frames (fps · p95 · drop)</div>}
+      {frameIds.length > 0 && <div style={styles.sub}>frames (fps · p95 · drop · slow&lt;30)</div>}
       {frameIds.map((id) => {
         const f = snap.frames[id];
+        // Warn on low fps OR a uniformly-slow cadence (slowFrames) — the latter
+        // is the #230/PV80 case drops alone misses.
+        const warn = f.fps < 50 || f.slowFrames > 0;
         return (
           <div key={id} style={styles.row}>
             <span style={styles.k}>{id}</span>
-            <span style={f.fps < 50 ? styles.vWarn : styles.v}>
-              {f.fps.toFixed(0)} · {ms(f.p95)}ms · {f.drops}
+            <span style={warn ? styles.vWarn : styles.v}>
+              {f.fps.toFixed(0)} · {ms(f.p95)}ms · {f.drops} · {f.slowFrames}
             </span>
           </div>
         );

@@ -1,0 +1,206 @@
+---
+title: 'Renderer: GLSL'
+description: How the single-pass GLSL/ShaderToy renderer satisfies the viz contract — the Tier-1, zero-library reference. Raw WebGL2, the iChannel0 audio texture, and the u* pattern-event uniforms, shared by the worker and the main thread.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This is the **developer** chapter for the GLSL renderer. Read
+[The viz renderer contract](/architecture/renderer-contract/) first — this page
+only covers the *kind-specific* half: how a single-pass GLSL/ShaderToy shader
+fills in the five `RendererStrategy` members and where its audio and event feeds
+come from. Every claim cites `file:line` in
+`packages/editor/src/visualizers/`.
+
+<Aside type="tip" title="The reference renderer">
+GLSL is the **simplest possible** instance of the contract: raw WebGL2, a
+fullscreen triangle, one fragment shader, **zero library**, and Tier-1
+direct-to-canvas (no blit). That's why it was built to *test* the contract — if
+the simplest kind slots into every seam with no new shared machinery, the
+abstraction is genuinely engine-agnostic. It does (see
+[the validation result](/architecture/renderer-contract/#validated-by-the-glsl-renderer)).
+It is also the **performance floor**: no CPU tessellation (unlike p5) and no
+library overhead (unlike hydra) — just GPU fill.
+</Aside>
+
+## One core, two hosts
+
+Both host paths drive a single shared pipeline, `GLSLProgram` in
+`renderers/glslCore.ts` (`glslCore.ts:116`) — one concept, one implementation
+(PV56). Only the canvas type and the audio source differ:
+
+| Host | Canvas | Audio source | File |
+| --- | --- | --- | --- |
+| **Worker** (default) | the transferred `OffscreenCanvas` | `rawAnalyser` shim | `hostP5Worker.ts:497` (`mountGLSL`) |
+| **Main thread** (fallback / unsupported) | a `<canvas>` it creates | a Web Audio `AnalyserNode` | `GLSLVizRenderer.ts:32` |
+
+The two audio sources are structurally identical — both expose
+`AudioByteSource` (`glslCore.ts:32`: `frequencyBinCount` +
+`getByteFrequencyData` + `getByteTimeDomainData`) — so the core feeds from
+either with **no branch**. That shared interface is the audio-feed seam the
+contract was tested on, and it needed no generalizing.
+
+The main-thread factory chooses between them per mount with the same gate the
+other kinds use (`makeGLSLRenderer.ts:32`, `shouldUseWorkerRenderer()`), wrapping
+the worker renderer in a `FallbackVizRenderer` so a worker that can't compile the
+shader degrades to the proven `GLSLVizRenderer` (#247).
+
+## The pipeline — a fullscreen triangle + one fragment shader
+
+There is no geometry to manage. A single triangle covers the clip volume using
+`gl_VertexID` for its three positions, so the core needs **no VBO and no
+attributes** (`glslShaderSource.ts:31`). The whole draw is one
+`gl.drawArrays(TRIANGLES, 0, 3)` (`glslCore.ts:236`) with a bound (empty) VAO —
+WebGL2 core requires a VAO even with no attributes (`glslCore.ts:168`).
+
+The user controls only the **fragment** shader. There is no transpile — the
+program source is plain string composition (`buildGLSLFragmentSource`,
+`glslShaderSource.ts:82`), which is also why a `.glsl` sketch crosses to the
+worker as a plain transferable string (the same property that lets p5/hydra
+*source* cross — `MountMessage.code`), with none of the closure-serialization
+problem built-in hydra sketches have.
+
+### Two conventions, auto-detected (#283)
+
+`buildGLSLFragmentSource` supports both shapes, detected from the
+comment-stripped source (`glslShaderSource.ts:83`):
+
+- **ShaderToy** — the user writes only `void mainImage(out vec4 fragColor, in
+  vec2 fragCoord)`; Stave owns the `main()` entry and the fragment output
+  (`glslShaderSource.ts:92`).
+- **Raw GLSL** — the user writes their own `void main()` and their own `out`;
+  Stave prepends only the version, precision, and uniforms, and strips a user
+  `#version` so ours stays canonical first (`glslShaderSource.ts:96`).
+
+<Aside type="caution" title="Ambiguity and emptiness are friendly errors, not GLSL errors">
+Both-present (`mainImage` *and* `main`) and neither-present are caught with a
+human message *before* compilation (`glslShaderSource.ts:87`,
+`glslShaderSource.ts:101`) — not a cryptic duplicate-symbol or undefined-`main`
+link error. Detection runs on a comment-blanked copy
+(`stripComments`, `glslShaderSource.ts:64`) so a `// uses mainImage` line or a
+`/* main() */` block can't fool it.
+</Aside>
+
+## The audio feed — `iChannel0`, the ShaderToy convention
+
+The master analyser is uploaded each frame to a single-channel `R8` texture,
+512×2, bound as `iChannel0` (`glslCore.ts:71` sizes; `glslCore.ts:179` allocates;
+`glslCore.ts:209` uploads with `texSubImage2D`):
+
+- **row 0** (`y ≈ 0.0`) = FFT magnitude,
+- **row 1** (`y ≈ 1.0`) = waveform,
+
+matching ShaderToy's audio-texture convention, so an off-the-shelf shader reads
+`texture(iChannel0, vec2(uv.x, 0.0)).x` for the spectrum unchanged. The analyser
+buffer (1024 bins / 2048 samples) is box-averaged onto the 512-texel rows by
+`resampleByteRow` (`glslCore.ts:92`), into scratch buffers allocated **once**
+(`glslCore.ts:127`) — no per-frame allocation.
+
+The other v1 uniforms are `iResolution` (vec3, viewport px in `.xy`), `iTime`
+(seconds since mount), and `iMouse` (vec4, zero in the worker — no pointer
+events) (`glslShaderSource.ts:45`).
+
+## The event feed — `u*` uniforms (the kind-specific marshal, #284)
+
+This is the one seam GLSL adds. Beyond the mixed FFT in `iChannel0`, a shader can
+react to **pattern events** — per-drum envelope levels + master DSP — through
+`float` uniforms (`glslShaderSource.ts:49`):
+
+```glsl
+uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom, uVelocity;
+uniform float uRms, uBass, uMid, uTreble;
+```
+
+These are read from the named-signal bus once per frame by `readGLSLEvents`
+(`glslEvents.ts:21`) — the **same** `bus.envValue()` / `bus.master()` API that
+`hydraStaveBag` and the p5 `buildStaveUniforms` path use, so a kick is a kick in
+every engine. The values are set with `uniform1f` only for the uniforms the
+shader actually references; GLSL strips unused uniforms, so their location is
+`null` and the set is a cheap no-op (`glslCore.ts:162`, `glslCore.ts:232`).
+
+<Aside type="note" title="Audio feed: no new seam. Event feed: a kind-specific marshal (PV87 addendum)">
+The contract chapter predicted exactly this split, and the GLSL build confirmed
+it. The **audio** feed reused the existing kind-agnostic source — `mountGLSL`
+reads the same already-refreshed `rawAnalyser` hydra reads, and uploads it to a
+texture *internally* (`hostP5Worker.ts:517`). No host change. The **event** feed
+is genuinely kind-specific — turning bus signals into shader uniforms is GLSL's
+analog of p5's blit: it lives entirely inside the strategy's `draw()`, not in the
+shared host. Both feeds are sourced from data the host already prepares
+(`rawAnalyser` + the ticked `feed.bus`); neither required a new *shared* seam.
+</Aside>
+
+## Draw cadence — one frame per signal frame
+
+The worker draws only when the host calls `draw()` (PK22) — there is no internal
+loop. Inside `mountGLSL`'s `draw()` (`hostP5Worker.ts:516`), the audio shim is
+already refreshed and the bus already ticked by `applyAndDraw`
+(`hostP5Worker.ts:545`), so the strategy just reads and renders:
+
+```ts
+// hostP5Worker.ts:524 — read the already-prepared feeds; render one frame
+const timeMs = (globalThis.performance?.now?.() ?? 0) - startMs
+program.draw(
+  rawAnalyser,                                  // → iChannel0 texture (audio)
+  { width: msg.canvas.width, height: msg.canvas.height, timeMs },
+  readGLSLEvents(feed.bus),                      // → u* uniforms (events)
+)
+```
+
+On the main thread the loop is owned by `GLSLVizRenderer` and mirrors
+`HydraVizRenderer`: a single `requestAnimationFrame` that ticks the bus **once**
+per frame (`GLSLVizRenderer.ts:110`: `tick()` → `refreshActive()` → `readAudio()`)
+then reads the events and draws, so `pause()` (cancel the rAF) truly halts
+rendering.
+
+## The five strategy members for GLSL
+
+| Member | GLSL implementation | Where |
+| --- | --- | --- |
+| `setupDone()` | `true` immediately — the program is compiled+linked *synchronously* at mount | `hostP5Worker.ts:512` |
+| `draw()` | upload audio texture, set uniforms, draw 3 verts — **no per-frame user JS** | `hostP5Worker.ts:516` → `glslCore.ts:192` |
+| `resizeKind(w,h)` | resize the transferred canvas directly (Tier-1; `maxDpr` is 1 so backing == CSS) | `hostP5Worker.ts:531` |
+| `teardown()` | `program.dispose()` — delete program, VAO, texture | `hostP5Worker.ts:535` → `glslCore.ts:240` |
+| `gl?()` | re-get the WebGL2 context — **the easiest of all three kinds** (the context we created; no search) | `hostP5Worker.ts:515` |
+
+<Aside type="tip" title="GLSL satisfies #257 for free">
+Two seams are trivially satisfied by GLSL's nature. (1) `setupDone()` is
+synchronous because compile/link runs at mount — so there's no async-readiness
+dance. (2) `draw()` runs a GPU shader with **no per-frame user JavaScript**, so it
+cannot throw post-mount — the #257 draw-error surfacing seam has nothing to catch
+(`glslCore.ts:18`). The only failure point is shader compile/link, which throws
+at mount (`glslCore.ts:85`, `glslCore.ts:155`) → caught by the host → `onError` →
+`FallbackVizRenderer` degrades to main (#247). Contrast p5 (async setup, `draw()`
+can throw a user typo — P114) and hydra (library swallows user throws — P116).
+</Aside>
+
+## GL-context release (#266 hygiene)
+
+Because GLSL owns its `WebGLRenderingContext` directly, both paths release it
+explicitly on teardown rather than waiting for GC: the worker's `gl()` accessor
+feeds the host's `accountGL`/`releaseGL` (`hostP5Worker.ts:515`), and the
+main-thread renderer calls `WEBGL_lose_context.loseContext()` in `destroy()`
+(`GLSLVizRenderer.ts:173`). This keeps a pooled warm worker from retaining a
+context toward Chrome's ~16-context cap.
+
+## Built-in presets
+
+Four bundled shaders (`builtinGLSLCode.ts`), registered in
+`defaultDescriptors.ts`:
+
+| Preset | What it shows | Reads |
+| --- | --- | --- |
+| `glsl` | audio-reactive plasma + waveform line | `iChannel0` (FFT + wave) |
+| `spectrum:glsl` | FFT spectrum bars — the clearest "is audio reaching the shader?" | `iChannel0` row 0 |
+| `creation` | "Creation" by Silexars/Danguafer, ported audio-reactive | `iChannel0` (bass/treble) |
+| `pulse` | red flash on kick, blue rings on snare, white rim on hat | `u*` events |
+
+`pulse` is the clearest "events, not just FFT" reference — it reads **no**
+`iChannel0`, only `uKick`/`uSnare`/`uHat`.
+
+**Verified by** `glsl-path-coverage.spec.ts` (a–f) — a GLSL viz live in the
+*worker* (`viz.worker > 0 && viz.glsl === 0`) exercising each seam: (a) #266
+`glctx` accounting, (b) #230 `viz.worker.draw` timing, (c) #247 fallback on a
+broken shader, (d) a 5-frame visual-distinct gate, (e) raw `void main()` mode,
+(f) a **pure-`uKick`** shader (no `iTime`/`iChannel0`) proven distinct under
+`bd*4` — events reach the GPU. Plus `glsl-creation-4up.spec.ts` — four concurrent
+audio-reactive GLSL worker viz, all painting (PV86).

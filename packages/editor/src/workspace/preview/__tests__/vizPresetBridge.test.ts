@@ -100,6 +100,10 @@ describe('languageForPresetRenderer', () => {
   it('p5 → p5js (Monaco language id quirk)', () => {
     expect(languageForPresetRenderer('p5')).toBe('p5js')
   })
+
+  it('glsl → glsl (#287)', () => {
+    expect(languageForPresetRenderer('glsl')).toBe('glsl')
+  })
 })
 
 describe('seedFromPreset', () => {

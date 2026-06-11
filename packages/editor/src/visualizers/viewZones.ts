@@ -2,9 +2,12 @@ import type * as Monaco from 'monaco-editor'
 import type { EngineComponents } from '../engine/LiveCodingEngine'
 import type { VizRenderer, VizDescriptor } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
+import { attachVizLifecycle } from './attachVizLifecycle'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
+import { getInlineVizResolution, getInlineVizTeardownMs } from '../workspace/editorRegistry'
+import { TeardownOnPauseRenderer } from './renderers/TeardownOnPauseRenderer'
 
 export interface InlineZoneHandle {
   cleanup(): void
@@ -38,6 +41,38 @@ function nativeSizeFor(preset: VizPreset | null): { w: number; h: number } {
   const s = preset?.nativeSize
   if (s && s.w > 0 && s.h > 0) return { w: s.w, h: s.h }
   return DEFAULT_NATIVE
+}
+
+/** Max render width so a wide-short native scaled to a tall resolution can't
+ *  blow up the backing store (e.g. 1100×200 @ res 1024 → 5632 wide). */
+const MAX_RENDER_WIDTH = 4096
+
+/**
+ * The render backing-store size for an inline zone (#261 follow-up): the
+ * configured `inlineVizResolution` (project setting) is the render HEIGHT; width
+ * is derived to PRESERVE the native aspect. The renderer draws at this size and
+ * the existing layout STRETCHES it to the display rect (computeLayout uses the
+ * unchanged `native`, which has the same aspect → identical zone height, crop,
+ * and transform). So display/crop/drag are untouched; only the rendered pixel
+ * resolution changes — lower = cheaper blit, higher = crisper. Aspect-preserved
+ * is what guarantees "all current behaviours just work": render aspect == display
+ * aspect → uniform stretch, no distortion.
+ */
+function renderSizeFor(native: { w: number; h: number }): { w: number; h: number } {
+  const n = getInlineVizResolution()
+  const aspect = native.h > 0 ? native.w / native.h : 1
+  let h = n
+  let w = Math.round(n * aspect)
+  // Clamp the WIDE dimension while PRESERVING aspect (scale both) — capping width
+  // alone would distort a wide-short native (e.g. 1100×200 @ res 1024 → 5632 wide
+  // → clamped 4096 → 4:1, not 5.5:1), which changes the displayed zone height
+  // (the canvas displays at its backing aspect). Aspect-preserve is the whole
+  // contract: render aspect == native aspect → identical display/crop/zone.
+  if (w > MAX_RENDER_WIDTH) {
+    w = MAX_RENDER_WIDTH
+    h = Math.round(MAX_RENDER_WIDTH / aspect)
+  }
+  return { w: Math.max(1, w), h: Math.max(1, h) }
 }
 
 /**
@@ -260,6 +295,12 @@ export function addInlineViewZones(
   }
 
   const renderers: VizRenderer[] = []
+  // Phase C (#258): one detach fn per zone — pauses the renderer while its zone is
+  // scrolled off-screen / collapsed or the tab is hidden. The inline path does its
+  // OWN mount (Monaco-layout reflow, teardown-wrap, crop, decorations) so it can't
+  // route through mountVizRenderer; it shares the mount+visibility core via
+  // `attachVizLifecycle` (the #260 choke point), then adds the inline-only bits.
+  const visibilityCleanups: Array<() => void> = []
   const bufferedSchedulers: BufferedScheduler[] = []
   const zoneEntries: ZoneEntry[] = []
 
@@ -335,17 +376,41 @@ export function addInlineViewZones(
       }
       const zoneId = accessor.addZone(zoneDesc)
 
-      // Mount the renderer at native size. Canvas is created by the
-      // renderer as a direct child of container.
-      const renderer = typeof descriptor.factory === 'function'
-        ? descriptor.factory()
-        : descriptor.factory as VizRenderer
-      try {
-        renderer.mount(container, zoneComponents, { w: native.w, h: native.h }, console.error)
-      } catch (e) {
-        console.error('[stave] viz mount failed:', e)
-      }
+      // Mount the renderer at the configured render RESOLUTION (#261): height =
+      // inlineVizResolution, width = aspect-preserved from `native`. The canvas
+      // renders at this backing-store size; the layout below (computeLayout uses
+      // the unchanged `native`) stretches it to the display rect — so display,
+      // crop, and drag-resize are identical, only the rendered resolution changes.
+      const makeInner = (): VizRenderer =>
+        typeof descriptor.factory === 'function'
+          ? descriptor.factory()
+          : (descriptor.factory as VizRenderer)
+      // #263 B — off-screen teardown: when enabled, wrap the renderer so a zone
+      // left off-screen past the threshold is DESTROYED (reclaims ~60–110MB + a
+      // WebGL-context slot, PV77) and re-created on scroll-back. The wrapper is a
+      // STABLE VizRenderer (renderers[]/visibility ref never swap); it replays the
+      // mount and calls back here to fix the inline DOM. `relayout` is assigned
+      // after `entry` exists (it reads the zone's current native/crop/height).
+      let relayout: () => void = () => {}
+      const teardownMs = getInlineVizTeardownMs()
+      const renderer: VizRenderer = teardownMs > 0
+        ? new TeardownOnPauseRenderer(makeInner, {
+            // Drop the now-empty crop wrapper so reinit re-wraps the fresh canvas
+            // (applyLayout only creates+fills the wrapper when none exists).
+            onAfterTeardown: () => container.querySelector('[data-viz-canvas-wrap]')?.remove(),
+            onAfterReinit: () => relayout(),
+          })
+        : makeInner()
       renderers.push(renderer)
+      // Shared per-mount lifecycle (#260): mount + visibility pausing via the one
+      // choke point. `onMountError` keeps the prior inline behaviour — log + carry
+      // on (one bad zone must not abort the others) and still wire visibility.
+      visibilityCleanups.push(
+        attachVizLifecycle(renderer, container, zoneComponents, renderSizeFor(native), console.error, {
+          teardownMs,
+          onMountError: (e) => console.error('[stave] viz mount failed:', e),
+        }),
+      )
 
       // The renderer may create the canvas asynchronously (p5 defers
       // to rAF). Apply layout now if the canvas is already present,
@@ -390,6 +455,26 @@ export function addInlineViewZones(
         zoneId, zoneDesc, afterLine, container, canvas, trackKey, vizId, renderer: descriptor.renderer, presetId: null, native, crop, vizDecoration,
       }
       zoneEntries.push(entry)
+
+      // Re-apply the inline layout transform to the freshly-created canvas after
+      // an off-screen teardown→reinit (#263 B). Reads the zone's CURRENT
+      // native/crop/height from `entry`, so a crop or drag-resize done before the
+      // teardown is preserved on return — same math as the resize handler below
+      // (no zoneH → container height is left untouched, honouring any override).
+      relayout = () => {
+        const cw = editor.getLayoutInfo().contentWidth || 400
+        const nw = entry.native.w, nh = entry.native.h
+        const cropW = Math.max(0.01, entry.crop.w)
+        const cropH = Math.max(0.01, entry.crop.h)
+        const scale = Math.min(cw / (cropW * nw), entry.zoneDesc.heightInPx / (cropH * nh))
+        const tx = -entry.crop.x * nw * scale
+        const ty = -entry.crop.y * nh * scale
+        applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })
+        // p5 (main path) creates its canvas async — re-apply next frame to catch it.
+        requestAnimationFrame(() =>
+          applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty }),
+        )
+      }
 
       // ── Resize handle (bottom edge) ──
       // Thin strip at the bottom of the zone — reveals on hover, drag
@@ -781,6 +866,7 @@ export function addInlineViewZones(
       contentChangeDisposable?.dispose?.()
       editorDom?.removeEventListener('mouseleave', mouseLeaveHandler)
       floatingBar?.remove()
+      visibilityCleanups.forEach(fn => fn())
       renderers.forEach(r => r.destroy())
       bufferedSchedulers.forEach(s => s.dispose())
       editor.changeViewZones((accessor) => {

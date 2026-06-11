@@ -10,6 +10,7 @@ import {
   getZoneCropOverride,
   setProjectBackgroundCrop,
   getFile,
+  rendererForLanguage,
   type AudioSourceRef,
   type CropRegion,
   type EngineComponents,
@@ -133,7 +134,7 @@ export function createBackdropCropAdapter(opts: {
       const file = getFile(fileId);
       if (!file) return null;
       const renderer: VizPreset["renderer"] =
-        file.language === "hydra" ? "hydra" : "p5";
+        rendererForLanguage(file.language) ?? "p5";
       return {
         id: file.id,
         name: file.path,

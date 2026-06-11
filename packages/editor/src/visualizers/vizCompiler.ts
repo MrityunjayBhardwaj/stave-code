@@ -1,7 +1,8 @@
 import type { VizDescriptor } from './types'
 import type { VizPreset } from './vizPreset'
-import { P5VizRenderer } from './renderers/P5VizRenderer'
-import { HydraVizRenderer } from './renderers/HydraVizRenderer'
+import { makeP5Renderer } from './renderers/makeP5Renderer'
+import { makeHydraRenderer } from './renderers/makeHydraRenderer'
+import { makeGLSLRenderer } from './renderers/makeGLSLRenderer'
 import { compileP5Code, isFullLifecycleSketch } from './p5Compiler'
 import { compileHydraCode } from './hydraCompiler'
 
@@ -41,7 +42,26 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       renderer: 'hydra',
       requires,
       ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
-      factory: () => new HydraVizRenderer(compileHydraCode(code)),
+      // B-5: `makeHydraRenderer` returns a worker-offloaded renderer (with
+      // main-thread fallback) when the flag is on + the browser is capable, else
+      // the main-thread HydraVizRenderer. User `.hydra` code is a transferable
+      // string, so it can cross to the worker (built-in hydra closures can't yet).
+      factory: () => makeHydraRenderer(code, name),
+    }
+  }
+
+  if (renderer === 'glsl') {
+    return {
+      id,
+      label: name,
+      renderer: 'glsl',
+      requires,
+      ...(preset.nativeSize ? { nativeSize: preset.nativeSize } : {}),
+      // #281: `makeGLSLRenderer` returns a worker-offloaded renderer (with
+      // main-thread fallback) when the flag is on + the browser is capable, else
+      // the main-thread GLSLVizRenderer. A `.glsl` sketch is the wrapped fragment
+      // source — a plain transferable string, so it crosses to the worker cleanly.
+      factory: () => makeGLSLRenderer(code, name),
     }
   }
 
@@ -57,7 +77,9 @@ export function compilePreset(preset: VizPreset): VizDescriptor {
       // the file. Without it, a top-level `new Mp()` typo surfaced on
       // the preview canvas but nowhere else — no Console row, no
       // Monaco squiggle.
-      factory: () => new P5VizRenderer(compileP5Code(code, name)),
+      // B-3: `makeP5Renderer` returns a worker-offloaded renderer when the flag
+      // is on + the browser is capable, else the main-thread P5VizRenderer.
+      factory: () => makeP5Renderer(code, name),
     }
   }
 

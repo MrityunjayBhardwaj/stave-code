@@ -1,0 +1,7 @@
+dist/
+.astro/
+node_modules/
+
+# Auto-generated from packages/editor/src/monaco/docs/data/*.json
+src/content/docs/reference/*.mdx
+public/docs-search.json

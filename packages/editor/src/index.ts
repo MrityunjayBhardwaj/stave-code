@@ -52,10 +52,28 @@ export { DARK_THEME_TOKENS, LIGHT_THEME_TOKENS, applyTheme } from './theme/token
 export type { VizRenderer, VizRefs, VizRendererSource, VizDescriptor, PatternScheduler } from './visualizers/types'
 export { P5VizRenderer } from './visualizers/renderers/P5VizRenderer'
 export { HydraVizRenderer } from './visualizers/renderers/HydraVizRenderer'
+// Phase B / B-3 (#245) — OffscreenCanvas-worker p5 renderer + the DI seam the app
+// uses to register its Next-bundled worker constructor.
+export { WorkerVizRenderer } from './visualizers/renderers/WorkerVizRenderer'
+export { setVizWorkerFactory, getVizWorkerFactory } from './visualizers/vizWorkerFactory'
+export type { VizWorkerFactory } from './visualizers/vizWorkerFactory'
 export type { HydraPatternFn } from './visualizers/renderers/HydraVizRenderer'
 export { hydraPianoroll, hydraScope, hydraKaleidoscope } from './visualizers/renderers/hydraPresets'
 export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
 export { resolveDescriptor } from './visualizers/resolveDescriptor'
+// Stave-injected globals catalogue (#309) — the "Stave Inputs" reference block
+// + hover doc/live source, single source of truth for the viz-editor surfaces.
+export {
+  injectedGlobals,
+  formatStaveInputs,
+  injectedGlobalByToken,
+} from './visualizers/injectedGlobals'
+export type {
+  InjectedGlobal,
+  LiveSpec,
+  MasterScalar,
+  MasterArray,
+} from './visualizers/injectedGlobals'
 export {
   registerNamedViz,
   unregisterNamedViz,
@@ -64,8 +82,31 @@ export {
   listNamedVizEntries,
   onNamedVizChanged,
 } from './visualizers/namedVizRegistry'
-export type { VizConfig } from './visualizers/vizConfig'
-export { DEFAULT_VIZ_CONFIG, createVizConfig, getVizConfig, setVizConfig } from './visualizers/vizConfig'
+export type { VizConfig, VizQualityLevel, VizQualitySettings, WorkerVizConfig } from './visualizers/vizConfig'
+export { DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_QUALITY, createVizConfig, getVizConfig, setVizConfig, updateVizConfig, deriveVizQuality } from './visualizers/vizConfig'
+// Phase B — worker-viz capability detection / transport degrade scaffold (B-1 #239)
+export { detectWorkerVizCapabilities } from './visualizers/worker/capabilities'
+export type { VizTransport, WorkerVizCapabilities, CapabilityEnv } from './visualizers/worker/capabilities'
+// Phase B — signal-transport substrate (B-2 #242): main sampler, worker feed, transport
+export { MainSignalSampler } from './visualizers/worker/signalSampler'
+export type { SamplerInputs } from './visualizers/worker/signalSampler'
+export { WorkerBusFeed } from './visualizers/worker/workerBusFeed'
+export {
+  createPostMessageWriter,
+  createPostMessageReader,
+} from './visualizers/worker/signalTransport'
+export type {
+  SignalTransportWriter,
+  SignalTransportReader,
+  FrameChannel,
+} from './visualizers/worker/signalTransport'
+export { MASTER_KEY, emptyFrame, frameTransferables } from './visualizers/worker/signalFrame'
+export type {
+  SignalFrame,
+  AnalyserBytes,
+  ActiveEventSummary,
+  BumpSummary,
+} from './visualizers/worker/signalFrame'
 
 // Visualizers — components
 export { VizPanel } from './visualizers/VizPanel'
@@ -213,6 +254,17 @@ export {
   onInlineVizActionSizeChange,
   applyPersistedInlineVizActionSize,
   INLINE_VIZ_ACTION_SIZE_VAR,
+  getInlineVizResolution,
+  setInlineVizResolution,
+  onInlineVizResolutionChange,
+  getVizQuality,
+  setVizQuality,
+  onVizQualityChange,
+  applyPersistedVizQuality,
+  getInlineVizTeardownEnabled,
+  setInlineVizTeardownEnabled,
+  onInlineVizTeardownChange,
+  getInlineVizTeardownMs,
   getMusicalTimelineSubRowHeight,
   setMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
@@ -237,6 +289,11 @@ export {
   togglePerfEnabled,
   onPerfEnabledChange,
   applyPersistedPerfEnabled,
+  getAdaptivePerfEnabled,
+  setAdaptivePerfEnabled,
+  toggleAdaptivePerfEnabled,
+  onAdaptivePerfChange,
+  applyPersistedAdaptivePerf,
   getEditorTheme,
   getResolvedTheme,
   setEditorTheme,
@@ -350,6 +407,7 @@ export {
   getPreviewProviderForLanguage,
   HYDRA_VIZ,
   P5_VIZ,
+  GLSL_VIZ,
   seedFromPreset,
   seedFromPresetId,
   flushToPreset,
@@ -357,6 +415,13 @@ export {
   registerPresetAsNamedViz,
   workspaceFileIdForPreset,
 } from './workspace/preview'
+export {
+  VIZ_LANGUAGES,
+  isVizLanguage,
+  rendererForLanguage,
+  languageForRenderer,
+} from './workspace/vizLanguages'
+export type { VizRendererKind, VizLanguage } from './workspace/vizLanguages'
 
 // Shell types
 export type {

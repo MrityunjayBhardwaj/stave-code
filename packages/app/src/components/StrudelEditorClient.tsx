@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
+import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
   WorkspaceShell,
   getResolvedTheme,
@@ -27,11 +28,13 @@ import {
   SONICPI_RUNTIME,
   HYDRA_VIZ,
   P5_VIZ,
+  GLSL_VIZ,
   LiveCodingRuntime,
   VizPresetStore,
   bundledPresetId,
   flushToPreset,
   getPresetIdForFile,
+  isVizLanguage,
   registerPresetAsNamedViz,
   emitLog,
   emitFixed,
@@ -63,6 +66,8 @@ import {
   hydrateSnapshot,
   type ShellSnapshot,
   PIANOROLL_P5_CODE,
+  setVizQuality,
+  type VizQualityLevel,
 } from "@stave/editor";
 import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 
@@ -109,6 +114,7 @@ function ensureProviders() {
   registerRuntimeProvider(SONICPI_RUNTIME);
   registerPreviewProvider(HYDRA_VIZ);
   registerPreviewProvider(P5_VIZ);
+  registerPreviewProvider(GLSL_VIZ);
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +231,11 @@ export default function StrudelEditorClient({
   // projects get the full set of built-in viz workspace files.
   useEffect(() => { seedMissingPresetFiles(); }, []);
 
+  // Phase B / B-3 (#245) — register the Next-bundled viz-worker constructor with
+  // the editor's DI seam so `WorkerVizRenderer` can spawn it (gated behind the
+  // `workerRenderer` flag, OFF by default — this only wires the seam).
+  useEffect(() => { registerVizWorker(); }, []);
+
   // Register ALL .p5/.hydra workspace files as named viz presets so
   // `.viz("name")` works for user-created files, not just bundled ones.
   //
@@ -236,9 +247,7 @@ export default function StrudelEditorClient({
   const registerAllVizFiles = useCallback(async () => {
     const viewing = isViewing();
     const allFiles = listWorkspaceFiles();
-    const vizFiles = allFiles.filter(
-      (f) => f.language === "p5js" || f.language === "hydra",
-    );
+    const vizFiles = allFiles.filter((f) => isVizLanguage(f.language));
     // Basename (sans extension) of every p5 viz file. When a hydra file
     // shares a basename with a p5 file (e.g. scope.p5 + scope.hydra), the
     // bare mode name belongs to the p5 default renderer — register the
@@ -279,9 +288,12 @@ export default function StrudelEditorClient({
         ? { ...effective0, nativeSize: bundledNative }
         : effective0;
       const base = baseOf(f.path);
+      // A non-p5 file sharing a basename with a p5 file registers under a
+      // renderer-qualified name (`<name>:hydra` / `<name>:glsl`) so bare
+      // `.viz("<name>")` deterministically resolves to the p5 preset (#181).
       const name =
-        f.language === "hydra" && p5Basenames.has(base)
-          ? `${base}:hydra`
+        f.language !== "p5js" && p5Basenames.has(base)
+          ? `${base}:${f.language === "hydra" ? "hydra" : "glsl"}`
           : preset.name;
       registerPresetAsNamedViz(effective, name);
     }
@@ -347,6 +359,12 @@ export default function StrudelEditorClient({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__staveRegisterViz = (preset: VizPreset): boolean =>
       registerPresetAsNamedViz(preset);
+    // #269 — drive the real quality-setting path from E2E so the density-LOD
+    // proof exercises setVizQuality (→ resolution + density marshal), not a
+    // test-only config poke. Same E2E gate as above.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveSetVizQuality = (level: VizQualityLevel): void =>
+      setVizQuality(level);
   }, []);
 
   // Persist bundled presets to IndexedDB on FIRST seed only — never
@@ -712,9 +730,8 @@ export default function StrudelEditorClient({
       const file = getFile(tab.fileId);
       if (!file) return;
 
-      // Only viz files (.p5 / .hydra) get flushed to a preset.
-      const isVizFile = file.language === "p5js" || file.language === "hydra";
-      if (!isVizFile) return;
+      // Only viz files (.p5 / .hydra / .glsl) get flushed to a preset.
+      if (!isVizLanguage(file.language)) return;
 
       // Use existing presetId, or auto-generate one for manually created
       // viz files so they become available to `.viz("name")`.
@@ -735,6 +752,26 @@ export default function StrudelEditorClient({
     },
     [],
   );
+
+  // E2E hook (dev/test only) — fire the REAL save for a viz file by id WITHOUT a
+  // tab switch, so the inline-viz hot-reload gate (viz-hot-reload.spec.ts) can
+  // exercise the save→repaint path with the pattern editor MOUNTED throughout
+  // (PV89). Mirrors the WorkspaceShell Cmd+S → onSaveFile(tab) path. Same
+  // dead-code-eliminated gate as the other `__stave*` hooks.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (process.env.NODE_ENV === "production") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(window as any).__STAVE_E2E__) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveSaveVizFileById = (fileId: string): boolean => {
+      if (!getFile(fileId)) return false;
+      handleSaveFile({ kind: "editor", fileId } as WorkspaceTab & {
+        kind: "editor";
+      });
+      return true;
+    };
+  }, [handleSaveFile]);
 
   // editorExtrasForTab: play/stop keybindings + error squiggles
   const editorExtrasForTab = useCallback((tab: WorkspaceTab & { kind: "editor" }) => {

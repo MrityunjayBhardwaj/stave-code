@@ -12,6 +12,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./worker": {
+      "types": "./dist/visualizers/worker/index.d.ts",
+      "import": "./dist/visualizers/worker/index.js",
+      "require": "./dist/visualizers/worker/index.cjs"
     }
   },
   "files": [

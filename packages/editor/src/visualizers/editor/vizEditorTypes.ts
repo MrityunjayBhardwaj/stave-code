@@ -1,4 +1,5 @@
 import type { VizPreset } from '../vizPreset'
+import { languageForRenderer } from '../../workspace/vizLanguages'
 
 export interface VizTab {
   id: string
@@ -26,7 +27,7 @@ export function presetToTab(preset: VizPreset): VizTab {
   return {
     id: preset.id,
     label: `${preset.name}.${preset.renderer}`,
-    language: preset.renderer === 'hydra' ? 'hydra' : 'p5js',
+    language: languageForRenderer(preset.renderer),
     preset,
     dirty: false,
   }

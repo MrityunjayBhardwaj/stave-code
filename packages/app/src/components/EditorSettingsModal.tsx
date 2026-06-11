@@ -10,6 +10,13 @@ import {
   setEditorUiIconSize,
   getInlineVizActionSize,
   setInlineVizActionSize,
+  getInlineVizResolution,
+  setInlineVizResolution,
+  getVizQuality,
+  setVizQuality,
+  type VizQualityLevel,
+  getInlineVizTeardownEnabled,
+  setInlineVizTeardownEnabled,
   getMusicalTimelineSubRowHeight,
   setMusicalTimelineSubRowHeight,
   getEditorTheme,
@@ -21,6 +28,8 @@ import {
   setSignalAliases,
   getPerfEnabled,
   setPerfEnabled,
+  getAdaptivePerfEnabled,
+  setAdaptivePerfEnabled,
   type EditorTheme,
   type TierFlags,
   type TierName,
@@ -41,6 +50,21 @@ const THEME_OPTIONS: { value: EditorTheme; label: string }[] = [
   { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
   { value: "system", label: "System" },
+];
+
+// Inline-viz render-resolution presets (#261 follow-up). The value is the render
+// HEIGHT (px); width is aspect-preserved per viz. Lower = cheaper blit / softer,
+// higher = crisper / costlier. "Custom" reveals a free-entry number input.
+const VIZ_RES_PRESETS = [256, 512, 768, 1024];
+
+// Viz quality / "performance mode" (Phase D, #269). A single level scales BOTH
+// render resolution AND sketch density (segment count) — the latter is the only
+// lever that helps CPU-tessellation line meshes (#232). Selecting a level also
+// updates the resolution shown below (it's the advanced per-knob override).
+const VIZ_QUALITY_OPTIONS: { value: VizQualityLevel; label: string }[] = [
+  { value: "high", label: "High" },
+  { value: "balanced", label: "Balanced" },
+  { value: "performance", label: "Performance" },
 ];
 
 // Phase 20-14 β-3 — Strudel modules tier UI. Only MIDI is wired today
@@ -153,9 +177,18 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   const [minimap, setMinimap] = useState(false);
   const [iconSize, setIconSize] = useState(25);
   const [vizActionSize, setVizActionSize] = useState(11);
+  // Inline-viz render resolution (#261). `vizResCustom` sticks the row in
+  // free-entry mode when the value isn't one of the presets (or the user picks
+  // "Custom"), so a custom value stays editable instead of snapping to a preset.
+  const [vizRes, setVizRes] = useState(512);
+  const [vizResCustom, setVizResCustom] = useState(false);
+  const [vizQuality, setVizQualityState] = useState<VizQualityLevel>("balanced");
+  const [vizTeardown, setVizTeardown] = useState(true);
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
   const [perfEnabled, setPerfEnabledState] = useState(false);
+  // Adaptive performance = the viz GPU-budget governor (P122/PV91). ON by default.
+  const [adaptivePerf, setAdaptivePerfState] = useState(true);
   // Phase 20-14 β-3 — Strudel tier flags. Mid-session toggle changes are
   // NOT observed by the engine until reload (the engine reads tierFlags
   // ONCE at init per α-5); the caption below the section makes that
@@ -185,9 +218,15 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setMinimap(getEditorMinimap());
     setIconSize(getEditorUiIconSize());
     setVizActionSize(getInlineVizActionSize());
+    const res = getInlineVizResolution();
+    setVizRes(res);
+    setVizResCustom(!VIZ_RES_PRESETS.includes(res));
+    setVizQualityState(getVizQuality());
+    setVizTeardown(getInlineVizTeardownEnabled());
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
     setPerfEnabledState(getPerfEnabled());
+    setAdaptivePerfState(getAdaptivePerfEnabled());
     setTierFlagsState(getTierFlags());
     const seeded = rowsFromAliasMap(getSignalAliases());
     setAliasRows(seeded);
@@ -276,6 +315,95 @@ export function EditorSettingsModal({ open, onClose }: Props) {
               style={s.range}
             />
             <span style={s.value}>{vizActionSize}px</span>
+          </Row>
+          <Row label="Adaptive performance">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={adaptivePerf}
+                aria-label="Adaptive performance (viz GPU governor)"
+                onChange={() => {
+                  const next = !adaptivePerf;
+                  setAdaptivePerfEnabled(next);
+                  setAdaptivePerfState(next);
+                }}
+              />
+              <span>{adaptivePerf ? "On" : "Off"}</span>
+            </label>
+          </Row>
+          <Row label="Viz quality">
+            <select
+              style={s.select}
+              value={vizQuality}
+              aria-label="Viz quality (performance mode)"
+              onChange={(e) => {
+                const level = e.target.value as VizQualityLevel;
+                setVizQuality(level);
+                setVizQualityState(level);
+                // setVizQuality also writes the resolution — reflect it in the
+                // advanced row below so the two controls stay in sync (#269).
+                const res = getInlineVizResolution();
+                setVizRes(res);
+                setVizResCustom(!VIZ_RES_PRESETS.includes(res));
+              }}
+            >
+              {VIZ_QUALITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </Row>
+          <Row label="Inline viz res">
+            <select
+              style={s.select}
+              value={vizResCustom ? "custom" : String(vizRes)}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "custom") {
+                  setVizResCustom(true);
+                  return;
+                }
+                const n = Number(v);
+                setVizResCustom(false);
+                setVizRes(n);
+                setInlineVizResolution(n);
+              }}
+            >
+              {VIZ_RES_PRESETS.map((p) => (
+                <option key={p} value={p}>{p}px</option>
+              ))}
+              <option value="custom">Custom…</option>
+            </select>
+            {vizResCustom ? (
+              <input
+                type="number"
+                min={64}
+                max={2048}
+                value={vizRes}
+                aria-label="Custom inline viz resolution"
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setVizRes(n);
+                  if (Number.isFinite(n) && n >= 64 && n <= 2048) {
+                    setInlineVizResolution(n);
+                  }
+                }}
+                style={s.numberInput}
+              />
+            ) : null}
+          </Row>
+          <Row label="Off-screen viz teardown">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={vizTeardown}
+                onChange={() => {
+                  const next = !vizTeardown;
+                  setInlineVizTeardownEnabled(next);
+                  setVizTeardown(next);
+                }}
+              />
+              <span>{vizTeardown ? "On (frees memory + GPU contexts after 60s off-screen)" : "Off (stay resident)"}</span>
+            </label>
           </Row>
           <Row label="Timeline sub-row">
             <input
@@ -490,6 +618,12 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--bg-active)", border: "1px solid var(--border-strong)", borderRadius: 4,
     color: "var(--text-primary)", padding: "4px 10px", fontSize: 12,
     cursor: "pointer", fontFamily: "inherit", minWidth: 140,
+  },
+  numberInput: {
+    width: 72, background: "var(--bg-active)",
+    border: "1px solid var(--border-strong)", borderRadius: 4,
+    color: "var(--text-primary)", padding: "4px 8px", fontSize: 12,
+    fontFamily: "inherit",
   },
   // β-3 — tier UI styling.
   sectionDivider: {

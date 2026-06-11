@@ -17,6 +17,13 @@ import type {
   StoredSignalAliases,
 } from '../visualizers/signals/aliasMap'
 import { perf } from '../perf/profiler'
+import { vizGovernor } from '../visualizers/vizGovernor'
+import {
+  DEFAULT_VIZ_QUALITY,
+  deriveVizQuality,
+  updateVizConfig,
+  type VizQualityLevel,
+} from '../visualizers/vizConfig'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
@@ -238,6 +245,194 @@ export function onInlineVizActionSizeChange(
 
 export function applyPersistedInlineVizActionSize(): void {
   applyInlineVizActionSizeVar(readInlineVizActionSize())
+}
+
+// ── Inline-viz render resolution (#261 follow-up) ───────────────────
+// Project-wide render backing-store HEIGHT (px) for inline `.viz()` zones.
+// The zone renders at this resolution (width = aspect-preserved) and the
+// existing layout STRETCHES it to the computed display rect — so display
+// size, crop, and the drag-to-resize behaviour are all unchanged; only the
+// pixel resolution the sketch renders at changes. Lower = cheaper blit /
+// softer; higher = crisper / costlier (the per-instance blit is pixel-bound,
+// #261 profile). Applies to new/re-evaluated zones. Default 512.
+const DEFAULT_INLINE_VIZ_RESOLUTION = 512
+const MIN_INLINE_VIZ_RESOLUTION = 64
+const MAX_INLINE_VIZ_RESOLUTION = 2048
+const INLINE_VIZ_RESOLUTION_STORAGE = 'stave:inlineVizResolution'
+const inlineVizResolutionListeners = new Set<(n: number) => void>()
+
+function readInlineVizResolution(): number {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_INLINE_VIZ_RESOLUTION
+  const saved = Number(ls.getItem(INLINE_VIZ_RESOLUTION_STORAGE))
+  return Number.isFinite(saved) &&
+    saved >= MIN_INLINE_VIZ_RESOLUTION &&
+    saved <= MAX_INLINE_VIZ_RESOLUTION
+    ? saved
+    : DEFAULT_INLINE_VIZ_RESOLUTION
+}
+
+function writeInlineVizResolution(n: number): void {
+  safeLocalStorage()?.setItem(INLINE_VIZ_RESOLUTION_STORAGE, String(n))
+}
+
+/** Current inline-viz render resolution (height in px). */
+export function getInlineVizResolution(): number {
+  return readInlineVizResolution()
+}
+
+/** Set the inline-viz render resolution (clamped 64–2048). Notifies listeners;
+ *  takes effect on the next zone (re)mount / evaluate. */
+export function setInlineVizResolution(n: number): void {
+  const clamped = Math.max(
+    MIN_INLINE_VIZ_RESOLUTION,
+    Math.min(MAX_INLINE_VIZ_RESOLUTION, Math.round(n)),
+  )
+  writeInlineVizResolution(clamped)
+  for (const cb of Array.from(inlineVizResolutionListeners)) cb(clamped)
+}
+
+export function onInlineVizResolutionChange(cb: (n: number) => void): () => void {
+  inlineVizResolutionListeners.add(cb)
+  return () => { inlineVizResolutionListeners.delete(cb) }
+}
+
+// ── Viz quality / "performance mode" (Phase D, #269) ────────────────
+// The headline quality knob. A single level scales BOTH the inline-viz render
+// RESOLUTION (above — composite/fill cost) AND the sketch LOD `density`
+// (vizConfig — segment count for CPU-tessellation meshes), because the winning
+// lever differs by sketch class (#232). `deriveVizQuality` maps the level to
+// both; this setter applies each to its own channel:
+//   resolution → setInlineVizResolution (applies on next (re)mount)
+//   density    → updateVizConfig (MERGE — marshalled live to the worker via the
+//                config channel, so a worker sketch's next frame reads u.density)
+// `balanced` is the default and maps to today's values (512 / 1) → no regression.
+// The standalone render-resolution setting remains an advanced override; quality
+// is a preset over it (last-write-wins on resolution).
+const VIZ_QUALITY_STORAGE = 'stave:vizQuality'
+const VIZ_QUALITY_LEVELS: readonly VizQualityLevel[] = ['high', 'balanced', 'performance']
+const vizQualityListeners = new Set<(level: VizQualityLevel) => void>()
+
+function readVizQuality(): VizQualityLevel {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_VIZ_QUALITY
+  const saved = ls.getItem(VIZ_QUALITY_STORAGE)
+  return VIZ_QUALITY_LEVELS.includes(saved as VizQualityLevel)
+    ? (saved as VizQualityLevel)
+    : DEFAULT_VIZ_QUALITY
+}
+
+function writeVizQuality(level: VizQualityLevel): void {
+  safeLocalStorage()?.setItem(VIZ_QUALITY_STORAGE, level)
+}
+
+/** Push a quality level's two knobs onto their channels. Shared by the setter
+ *  and the startup `applyPersistedVizQuality` so persistence and live-set agree. */
+function applyVizQuality(level: VizQualityLevel): void {
+  const { resolution, density } = deriveVizQuality(level)
+  setInlineVizResolution(resolution)
+  updateVizConfig({ density })
+}
+
+/** Current viz quality level ("performance mode"). */
+export function getVizQuality(): VizQualityLevel {
+  return readVizQuality()
+}
+
+/** Set the viz quality level — persists, applies resolution + density to their
+ *  channels (the density marshals live to worker viz), and notifies listeners. */
+export function setVizQuality(level: VizQualityLevel): void {
+  const safe = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY
+  writeVizQuality(safe)
+  applyVizQuality(safe)
+  for (const cb of Array.from(vizQualityListeners)) cb(safe)
+}
+
+export function onVizQualityChange(cb: (level: VizQualityLevel) => void): () => void {
+  vizQualityListeners.add(cb)
+  return () => { vizQualityListeners.delete(cb) }
+}
+
+/** Restore the persisted quality's DENSITY into the vizConfig singleton on
+ *  startup (call once at app init, like `applyPersistedInlineVizActionSize`).
+ *
+ *  Density ONLY — deliberately NOT resolution. Resolution is pull-model (read
+ *  fresh from its own `stave:inlineVizResolution` setting when a zone mounts),
+ *  and `setVizQuality` already writes that setting at set-time, so a chosen
+ *  level's resolution persists through that channel. Re-applying resolution here
+ *  would CLOBBER a user's standalone render-resolution override on every reload
+ *  (it would force the default level's 512 whenever quality was never changed).
+ *  Density, by contrast, lives in the in-memory vizConfig singleton that resets
+ *  to default(1) per page load, so it's the only knob that needs restoring. */
+export function applyPersistedVizQuality(): void {
+  const { density } = deriveVizQuality(readVizQuality())
+  updateVizConfig({ density })
+}
+
+// ── Off-screen inline-viz teardown (#263 / Phase B-teardown) ─────────────────
+// Phase C (#259) PAUSES an off-screen inline viz but HOLDS its worker + GL
+// context + ~60–110MB (PV77). When a zone stays off-screen past this threshold
+// we DESTROY the renderer to reclaim that memory + a WebGL-context slot, and
+// re-create it when it scrolls back (the trade = a brief reinit on return).
+// Off-screen ONLY (a hidden tab stays paused-resident — user decision). A later
+// worker pool will reuse a parked warm worker instead of respawn (#263 part A).
+const INLINE_VIZ_TEARDOWN_MS = 60_000
+// Default ON — the validated memory/cap lever (#263). OBSERVED via the
+// multi-cycle A/B (high-n-headroom.spec.ts): destroying an off-screen inline viz
+// after this threshold bounds renderer RSS at a PLATEAU (it does NOT leak —
+// terminate settles ~2175MB over churn, LOWER than the worker pool) and frees a
+// WebGL-context slot, so a long scroll-through-many session holds only ~on-screen
+// viz live instead of all N (which would also hit Chrome's ~16-context cap →
+// black viz). The trade is a brief reinit when a long-gone zone scrolls back;
+// the opt-in worker pool (localStorage `stave.viz.pool`) smooths that at a memory
+// cost. (An earlier default-OFF was a reaction to a single-cycle RSS spike that
+// the multi-cycle plateau disproved.)
+const DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true
+const INLINE_VIZ_TEARDOWN_STORAGE = 'stave:inlineVizTeardown'
+const inlineVizTeardownListeners = new Set<(on: boolean) => void>()
+
+function readInlineVizTeardownEnabled(): boolean {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED
+  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE)
+  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED
+  return saved === '1'
+}
+
+/** Whether off-screen inline viz are torn down (destroyed to reclaim memory)
+ *  after the threshold. Default ON. */
+export function getInlineVizTeardownEnabled(): boolean {
+  return readInlineVizTeardownEnabled()
+}
+
+/** Enable/disable off-screen inline-viz teardown. Notifies listeners; takes
+ *  effect on the next zone (re)mount / evaluate. */
+export function setInlineVizTeardownEnabled(on: boolean): void {
+  safeLocalStorage()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? '1' : '0')
+  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on)
+}
+
+export function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void {
+  inlineVizTeardownListeners.add(cb)
+  return () => { inlineVizTeardownListeners.delete(cb) }
+}
+
+/** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
+ *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
+ *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
+ *  test churn harnesses) — clamped to ≥1000ms; absent → the 60s default. */
+export function getInlineVizTeardownMs(): number {
+  if (!readInlineVizTeardownEnabled()) return 0
+  try {
+    const raw = safeLocalStorage()?.getItem('stave:inlineVizTeardownMs')
+    if (raw != null) {
+      const n = Number(raw)
+      if (Number.isFinite(n) && n >= 1000) return n
+    }
+  } catch {
+    /* ignore */
+  }
+  return INLINE_VIZ_TEARDOWN_MS
 }
 
 // ── Musical Timeline sub-row height (Phase 20-12 wave-δ) ────────────
@@ -705,4 +900,57 @@ export function onPerfEnabledChange(cb: (on: boolean) => void): () => void {
  *  app start so a reload restores an enabled overlay. */
 export function applyPersistedPerfEnabled(): void {
   perf.setEnabled(readPerfEnabled())
+}
+
+// ── Adaptive performance toggle (the GPU-budget governor, P122/PV91) ─────────
+// "Adaptive performance" = the global viz governor that throttles + round-robins
+// + drops render resolution of worker viz under sustained GPU/scroll jank, and is
+// a total no-op when frames are smooth. ON by default. Persisted under the SAME
+// `stave.viz.governor` key the governor reads at construction (single source of
+// truth — only the explicit string '0' disables, so a fresh user gets it on).
+const ADAPTIVE_PERF_STORAGE = 'stave.viz.governor'
+const adaptivePerfListeners = new Set<(on: boolean) => void>()
+
+function readAdaptivePerf(): boolean {
+  // Default ON: anything but the explicit '0' (incl. absent) = enabled. Mirrors
+  // vizGovernor's own constructor read so the two never disagree.
+  return safeLocalStorage()?.getItem(ADAPTIVE_PERF_STORAGE) !== '0'
+}
+
+/** Whether adaptive performance (the viz governor) is enabled (persisted; ON by default). */
+export function getAdaptivePerfEnabled(): boolean {
+  return readAdaptivePerf()
+}
+
+/** Enable/disable adaptive performance. Persists, flips the governor's live gate
+ *  (disabling releases the levers immediately — full resolution, no throttle),
+ *  and notifies listeners. */
+export function setAdaptivePerfEnabled(on: boolean): void {
+  try {
+    safeLocalStorage()?.setItem(ADAPTIVE_PERF_STORAGE, on ? '1' : '0')
+  } catch {
+    /* quota — non-fatal */
+  }
+  vizGovernor.setEnabled(on)
+  for (const cb of Array.from(adaptivePerfListeners)) cb(on)
+}
+
+/** Toggle adaptive performance; returns the new state. */
+export function toggleAdaptivePerfEnabled(): boolean {
+  const next = !readAdaptivePerf()
+  setAdaptivePerfEnabled(next)
+  return next
+}
+
+/** Subscribe to adaptive-performance changes (fires on set/toggle). */
+export function onAdaptivePerfChange(cb: (on: boolean) => void): () => void {
+  adaptivePerfListeners.add(cb)
+  return () => { adaptivePerfListeners.delete(cb) }
+}
+
+/** Apply the persisted adaptive-performance preference to the governor. Call once
+ *  at app start (like applyPersistedPerfEnabled) so the governor's live flag agrees
+ *  with the stored preference regardless of module-load ordering. */
+export function applyPersistedAdaptivePerf(): void {
+  vizGovernor.setEnabled(readAdaptivePerf())
 }

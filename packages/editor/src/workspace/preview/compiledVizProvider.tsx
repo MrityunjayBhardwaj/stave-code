@@ -113,7 +113,7 @@ export interface CompiledVizProviderOptions {
   /** Display label used in dropdown tooltips / error messages. */
   readonly label: string
   /** Which concrete renderer `compilePreset` should produce. */
-  readonly renderer: 'hydra' | 'p5'
+  readonly renderer: 'hydra' | 'p5' | 'glsl'
 }
 
 /**
@@ -183,8 +183,8 @@ interface CompiledVizMountProps {
    * change.
    */
   readonly file: PreviewContext['file']
-  /** Which renderer the provider wraps ('hydra' | 'p5'). */
-  readonly rendererType: 'hydra' | 'p5'
+  /** Which renderer the provider wraps ('hydra' | 'p5' | 'glsl'). */
+  readonly rendererType: 'hydra' | 'p5' | 'glsl'
   readonly audioSource: PreviewContext['audioSource']
   readonly hidden: boolean
   /**

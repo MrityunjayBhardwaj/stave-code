@@ -5,6 +5,7 @@ import type { IREvent } from '../../ir/IREvent'
 import type { VizRenderer } from '../types'
 import { getVizConfig } from '../vizConfig'
 import { SignalBus } from '../signals/SignalBus'
+import { buildHydraStaveBag } from './hydraStaveBag'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { perf } from '../../perf/profiler'
@@ -296,115 +297,11 @@ export class HydraVizRenderer implements VizRenderer {
    */
   private staveBag: HydraStaveBag
   constructor(private pattern?: HydraPatternFn) {
-    // Bus is created at field-init; capture it for the bag thunks. Thunks
-    // close over `this.bus` indirectly via a stable local so they survive
-    // re-binds (the bus instance itself is stable for the renderer's life;
-    // only its scheduler refs swap, in-place, on `update()`).
-    const bus = this.bus as SignalBus
-
-    // The general `u(...)` accessor (D-03), with attached enumerators.
-    // DSP scalars (`rms`/`bass`/`mid`/`treble`) are thunks — same shape as
-    // `.env` — each re-reading `bus.sound(sound)` fresh. DSP arrays
-    // (`fft`/`wave`) are LIVE getter-backed `number[]` props (Slice 2, D-01):
-    // hydra indexes them natively (`() => u('bd').fft[i]`), so a thunk-of-number
-    // per element would break the idiom and a thunk-returning-an-array would not
-    // match the native `a.fft[i]` access. A getter re-reads the bus per access,
-    // keeping the array frame-fresh (mirror U2 — no compile-time capture).
-    const soundThunks = (sound: string): HydraSignalThunks => {
-      const t = {
-        env: () => bus.sound(sound).env,
-        velocity: () => bus.sound(sound).velocity,
-        note: () => bus.sound(sound).note,
-        color: () => bus.sound(sound).color,
-        rms: () => bus.sound(sound).rms,
-        bass: () => bus.sound(sound).bass,
-        mid: () => bus.sound(sound).mid,
-        treble: () => bus.sound(sound).treble,
-      } as HydraSignalThunks
-      Object.defineProperty(t, 'fft', { get: () => bus.sound(sound).fft, enumerable: true })
-      Object.defineProperty(t, 'wave', { get: () => bus.sound(sound).wave, enumerable: true })
-      return t
-    }
-    const u: HydraSignalAccessor = ((sound: string): HydraSignalThunks =>
-      soundThunks(sound)) as HydraSignalAccessor
-    u.track = (id: string): HydraSignalThunks => {
-      const t = {
-        env: () => bus.track(id).env,
-        velocity: () => bus.track(id).velocity,
-        note: () => bus.track(id).note,
-        color: () => bus.track(id).color,
-        rms: () => bus.track(id).rms,
-        bass: () => bus.track(id).bass,
-        mid: () => bus.track(id).mid,
-        treble: () => bus.track(id).treble,
-      } as HydraSignalThunks
-      Object.defineProperty(t, 'fft', { get: () => bus.track(id).fft, enumerable: true })
-      Object.defineProperty(t, 'wave', { get: () => bus.track(id).wave, enumerable: true })
-      return t
-    }
-    // `tracks`/`sounds` are getter-backed so they reflect live bus state
-    // every read (D-03 enumeration) rather than a frozen snapshot.
-    Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
-    Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
-    // Master-mix DSP on `u` itself (Slice 2): scalar thunks read `bus.master()`
-    // fresh; `u.fft`/`u.wave` are live getter-backed arrays (same frame-fresh
-    // discipline as the per-sound arrays above).
-    u.rms = () => bus.master().rms
-    u.bass = () => bus.master().bass
-    u.mid = () => bus.master().mid
-    u.treble = () => bus.master().treble
-    Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
-    Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
-
-    const bag: HydraStaveBag = {
-      scheduler: null,
-      tracks: new Map(),
-      // ── Named signal thunks (D-01 hydra shape — `() => number`) ──────────
-      uKick: () => bus.envValue('uKick'),
-      uSnare: () => bus.envValue('uSnare'),
-      uHat: () => bus.envValue('uHat'),
-      uOpenHat: () => bus.envValue('uOpenHat'),
-      uClap: () => bus.envValue('uClap'),
-      uRim: () => bus.envValue('uRim'),
-      uTom: () => bus.envValue('uTom'),
-      // `uKeyVelocity` is NOT a sound alias (PLAN T1 step 1) — it is the
-      // active event's velocity globally. Read the max velocity over every
-      // sound seen this frame; 0 when nothing is active.
-      uKeyVelocity: () => {
-        let max = 0
-        for (const s of bus.sounds) {
-          const v = bus.sound(s).velocity
-          if (v > max) max = v
-        }
-        return max
-      },
-      // Master-mix DSP sugar (Slice 2) — bare thunks mirroring uKick, reading
-      // `bus.master()` fresh each call. Parity with uKick/uSnare for audio.
-      uRms: () => bus.master().rms,
-      uBass: () => bus.master().bass,
-      uMid: () => bus.master().mid,
-      uTreble: () => bus.master().treble,
-      u,
-      H: (trackId, field = 'gain') => {
-        return () => {
-          const sched = bag.tracks.get(trackId) ?? bag.scheduler
-          if (!sched) return 0
-          const now = sched.now()
-          // Tight window — one event at or just past `now`. Patterns
-          // fire at discrete moments; a wider window risks grabbing
-          // the previous event after it's ended, producing a stepped
-          // "stale" read. 1ms matches typical FFT pump cadence and
-          // is below one audio sample at 48kHz, so a correctly
-          // scheduled event is caught at least once.
-          const events = sched.query(now, now + 0.001)
-          const ev = events[0]
-          if (!ev) return 0
-          const raw = ev[field]
-          return typeof raw === 'number' ? raw : 0
-        }
-      },
-    }
-    this.staveBag = bag
+    // The bag's signal thunks read `this.bus` LIVE each call (the bus instance is
+    // stable for the renderer's life; only its scheduler refs swap, in-place, on
+    // `update()`). Built by the shared pure builder so the worker host (kind
+    // 'hydra') produces the identical bag from its own bus — no fork (B-5).
+    this.staveBag = buildHydraStaveBag(this.bus as SignalBus)
   }
 
   mount(

@@ -51,6 +51,7 @@ export type WorkspaceLanguage =
   | 'sonicpi'
   | 'hydra'
   | 'p5js'
+  | 'glsl'
   | 'markdown'
 
 /**

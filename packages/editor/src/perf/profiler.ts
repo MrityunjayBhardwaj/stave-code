@@ -43,6 +43,13 @@ const RING = 240
  *  dropped frame (a stutter), not just a slow-but-steady cadence. */
 const DROP_FACTOR = 2
 
+/** Absolute slow-frame threshold (ms): a frame interval above this is below 30fps.
+ *  `drops` only catches VARIANCE (a frame ≫ the running median), so a uniformly
+ *  slow cadence — every frame ~97ms (≈10fps) — reads ZERO drops because nothing
+ *  exceeds 2× its own median. `slowFrames` is the absolute floor that catches
+ *  that "steadily bad" case (the #230 / PV80 blind spot). 1000/30 ≈ 33.34ms. */
+const SLOW_FRAME_MS = 1000 / 30
+
 /** Monotonic time source. `performance.now()` where available (sub-ms, immune to
  *  wall-clock changes), else a 0 stub so a non-DOM import (unit collect) is safe. */
 function nowMs(): number {
@@ -79,8 +86,12 @@ export interface FrameStats {
   p50: number
   /** 95th-percentile inter-frame interval (ms) — the stutter tail. */
   p95: number
-  /** Frames whose interval exceeded DROP_FACTOR × running median. */
+  /** Frames whose interval exceeded DROP_FACTOR × running median (VARIANCE). */
   drops: number
+  /** Frames whose interval exceeded SLOW_FRAME_MS (<30fps) — the ABSOLUTE floor.
+   *  Catches a uniformly-slow cadence that `drops` misses (every frame equally
+   *  slow ⇒ 0 drops but many slowFrames). */
+  slowFrames: number
 }
 
 /** A full point-in-time read of the profiler. */
@@ -164,6 +175,7 @@ class FrameTracker {
   private readonly intervals = new Ring()
   private lastTs: number | null = null
   private dropCount = 0
+  private slowCount = 0
   private frameCount = 0
 
   tick(ts: number): void {
@@ -174,6 +186,9 @@ class FrameTracker {
       // huge frame doesn't move its own threshold.
       const med = this.intervals.median()
       if (med > 0 && dt > med * DROP_FACTOR) this.dropCount++
+      // Absolute slow-frame check is median-independent — a uniformly slow
+      // cadence trips this even though it never trips the variance-based drop.
+      if (dt > SLOW_FRAME_MS) this.slowCount++
       this.intervals.push(dt)
     }
     this.lastTs = ts
@@ -187,6 +202,7 @@ class FrameTracker {
       p50: s.p50,
       p95: s.p95,
       drops: this.dropCount,
+      slowFrames: this.slowCount,
     }
   }
 }
@@ -340,7 +356,10 @@ class Profiler {
     const counters: Record<string, number> = {}
     for (const [name, v] of this.counters) counters[name] = v
     const gauges: Record<string, number> = {}
-    for (const [name, v] of this.gauges) gauges[name] = v
+    // Clamp ≥0 — a StrictMode construct→destroy (no mount) can dec a gauge below
+    // its incs, and a profiler enabled AFTER a viz mounted misses the inc; neither
+    // should surface a nonsensical negative live-count (#230 #3/#4). Cosmetic floor.
+    for (const [name, v] of this.gauges) gauges[name] = Math.max(0, v)
     return {
       enabled: this._enabled,
       uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
