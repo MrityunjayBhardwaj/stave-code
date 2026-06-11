@@ -162,7 +162,7 @@ function wrapCanvas(offscreen) {
 }
 __name(wrapCanvas, "wrapCanvas");
 function installWorkerDomShim(makeCanvasEl) {
-  var _a;
+  var _a, _b;
   const self = globalThis;
   const doc = {
     nodeType: 9,
@@ -209,6 +209,35 @@ function installWorkerDomShim(makeCanvasEl) {
   doc.head = makeElement("head");
   doc.readyState = "complete";
   doc.cookie = "";
+  const realFonts = self.fonts;
+  doc.fonts = realFonts ? {
+    add: /* @__PURE__ */ __name((f) => realFonts.add(f), "add"),
+    delete: /* @__PURE__ */ __name((f) => realFonts.delete(f), "delete"),
+    has: /* @__PURE__ */ __name((f) => realFonts.has(f), "has"),
+    forEach: /* @__PURE__ */ __name((cb, thisArg) => realFonts.forEach(cb, thisArg), "forEach"),
+    load: /* @__PURE__ */ __name((font, text) => realFonts.load(font, text), "load"),
+    values: /* @__PURE__ */ __name(() => realFonts.values(), "values"),
+    keys: /* @__PURE__ */ __name(() => realFonts.keys?.() ?? realFonts.values(), "keys"),
+    [Symbol.iterator]: () => realFonts[Symbol.iterator](),
+    get size() {
+      return realFonts.size;
+    },
+    get ready() {
+      return Promise.all(Array.from(realFonts, (f) => f.loaded)).then(() => realFonts);
+    }
+  } : {
+    add() {
+    },
+    delete() {
+    },
+    has: /* @__PURE__ */ __name(() => false, "has"),
+    ready: Promise.resolve(),
+    size: 0,
+    values: /* @__PURE__ */ __name(() => [][Symbol.iterator](), "values"),
+    [Symbol.iterator]() {
+      return [][Symbol.iterator]();
+    }
+  };
   const loc = self.location || {};
   const location = {
     href: loc.href ?? "about:blank",
@@ -286,6 +315,10 @@ function installWorkerDomShim(makeCanvasEl) {
       configurable: true
     });
     self.localStorage = store;
+  }
+  if (typeof self.CSSFontFaceRule === "undefined") {
+    self.CSSFontFaceRule = (_b = class {
+    }, __name(_b, "CSSFontFaceRule"), _b);
   }
   if (!("devicePixelRatio" in self)) self.devicePixelRatio = 1;
   if (typeof self.requestAnimationFrame !== "function") {
