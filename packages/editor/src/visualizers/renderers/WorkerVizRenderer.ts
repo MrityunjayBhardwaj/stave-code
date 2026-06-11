@@ -74,6 +74,19 @@ function effectiveDpr(): number {
   return cap > 0 ? Math.min(raw, cap) : raw
 }
 
+/** #325 Phase-1 SPIKE — is the "p5 owns the display canvas" direct-render path on?
+ *  Gated behind `localStorage['stave.viz.p5direct']='1'` so a single build can A/B
+ *  the blit path vs the direct path (the spike compares worker-direct == main). p5
+ *  ONLY (hydra/glsl already render direct). Removed when the spike promotes (#325
+ *  Phase 2 → direct becomes the default and the blit path is deleted). */
+function isP5DirectCanvasEnabled(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('stave.viz.p5direct') === '1'
+  } catch {
+    return false
+  }
+}
+
 /** Minimum ms between produced frames for the `vizConfig.maxFps` cap (#261).
  *  0 when uncapped (maxFps ≤ 0) → produce every rAF (subject to backpressure). */
 function minFrameMs(): number {
@@ -252,6 +265,8 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
         // Marshal the worker-relevant vizConfig subset (#269) so the worker's own
         // singleton reflects the user's quality/LOD settings, not the bundle default.
         config: pickWorkerVizConfig(),
+        // #325 Phase-1 SPIKE — p5 only; hydra/glsl already render direct into `canvas`.
+        p5DirectCanvas: this.kind === 'p5' && isP5DirectCanvasEnabled(),
       }
       worker.postMessage(mountMsg, [offscreen])
 
