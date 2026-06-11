@@ -61,6 +61,19 @@ export type { HydraPatternFn } from './visualizers/renderers/HydraVizRenderer'
 export { hydraPianoroll, hydraScope, hydraKaleidoscope } from './visualizers/renderers/hydraPresets'
 export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
 export { resolveDescriptor } from './visualizers/resolveDescriptor'
+// Stave-injected globals catalogue (#309) — the "Stave Inputs" reference block
+// + hover doc/live source, single source of truth for the viz-editor surfaces.
+export {
+  injectedGlobals,
+  formatStaveInputs,
+  injectedGlobalByToken,
+} from './visualizers/injectedGlobals'
+export type {
+  InjectedGlobal,
+  LiveSpec,
+  MasterScalar,
+  MasterArray,
+} from './visualizers/injectedGlobals'
 export {
   registerNamedViz,
   unregisterNamedViz,

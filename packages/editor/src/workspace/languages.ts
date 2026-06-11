@@ -55,6 +55,7 @@ import { ensureStrudelLintCodeActionProvider } from '../monaco/diagnostics'
 import { registerP5Providers, P5_DOCS_INDEX } from '../monaco/docs/p5'
 import { registerHydraProviders, HYDRA_DOCS_INDEX } from '../monaco/docs/hydra'
 import { registerSignalBusProviders } from '../monaco/docs/signals'
+import { registerVizInputsHover } from './vizInputsHover'
 import { registerSonicPiProviders } from '../monaco/docs/sonicpi'
 import {
   buildIdentifierAlternation,
@@ -459,6 +460,13 @@ export function ensureWorkspaceLanguages(monaco: typeof Monaco): void {
     registerSignalBusProviders(m, 'hydra')
   })
   ensureProviders('sonicpi', monaco, registerSonicPiProviders)
+
+  // #309 — injected-globals hover (doc + live master value) for the three viz
+  // languages. Separate keys so the dedupe guard is independent of the doc/
+  // signal-bus providers above; glsl has no other provider block of its own.
+  ensureProviders('viz-inputs-p5js', monaco, (m) => registerVizInputsHover(m, 'p5js', 'p5'))
+  ensureProviders('viz-inputs-hydra', monaco, (m) => registerVizInputsHover(m, 'hydra', 'hydra'))
+  ensureProviders('viz-inputs-glsl', monaco, (m) => registerVizInputsHover(m, 'glsl', 'glsl'))
 }
 
 // Per-runtime idempotency flags so `ensureWorkspaceLanguages` is safe on
