@@ -252,6 +252,46 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
   // The same i18next detector reads `document.cookie` (cookie detector). A worker
   // has no cookies — an empty string keeps the detector's split/parse safe.
   doc.cookie = ''
+  // p5's loadFont does `document.fonts.add(face)` + `await document.fonts.ready`
+  // (type/p5.Font.js:1005,1008) unconditionally after fetching the font. Two worker
+  // gaps, both OBSERVED (#314, same PV95 class as the HTMLCanvasElement/localStorage
+  // ones): (1) the shim doc had no `fonts` → `TypeError: …reading 'add'`; (2) the
+  // Worker's native FontFaceSet (`self.fonts`) loads + adds a face fine, but its
+  // SET-LEVEL `ready` promise NEVER resolves off-main (no document/render lifecycle),
+  // so `await document.fonts.ready` hangs forever and loadFont never completes.
+  // Delegate every op to the real set so fonts truly REGISTER for OffscreenCanvas
+  // text, but resolve `ready` from the individual faces' own `.loaded` promises
+  // (which DO resolve in the worker) instead of the hanging set promise.
+  const realFonts = self.fonts as FontFaceSet | undefined
+  doc.fonts = realFonts
+    ? ({
+        add: (f: FontFace) => realFonts.add(f),
+        delete: (f: FontFace) => realFonts.delete(f),
+        has: (f: FontFace) => realFonts.has(f),
+        forEach: (cb: (f: FontFace) => void, thisArg?: unknown) => realFonts.forEach(cb, thisArg),
+        load: (font: string, text?: string) => realFonts.load(font, text),
+        values: () => realFonts.values(),
+        keys: () => realFonts.keys?.() ?? realFonts.values(),
+        [Symbol.iterator]: () => realFonts[Symbol.iterator](),
+        get size() {
+          return realFonts.size
+        },
+        get ready() {
+          // set-level ready hangs off-main; gate on the faces' own .loaded instead.
+          return Promise.all(Array.from(realFonts, (f) => f.loaded)).then(() => realFonts)
+        },
+      } as unknown as FontFaceSet)
+    : ({
+        add() {},
+        delete() {},
+        has: () => false,
+        ready: Promise.resolve(),
+        size: 0,
+        values: () => [][Symbol.iterator](),
+        [Symbol.iterator]() {
+          return [][Symbol.iterator]()
+        },
+      } as unknown as FontFaceSet)
 
   // Build a FULL location — p5 v2's i18next FES language-detector runs the
   // `querystring` detector FIRST: `window.location.search.substring(1)`. A bare
@@ -311,6 +351,64 @@ export function installWorkerDomShim(makeCanvasEl: CanvasFactory): {
   self.window = winProxy
   self.document = doc
   self.screen = win.screen
+  // p5's `createGraphics()` and p5.Element resize/cleanup test `x instanceof
+  // HTMLCanvasElement` (rendering-CC8JNTwG.js:21561, dom/p5.Element.js:957,
+  // dom/dom.js:361). The worker has no such global, so the bare identifier raises
+  // a ReferenceError in setup() — every createGraphics()/readback sketch renders
+  // BLANK with no signal while the viz.worker gauge still lights (#308 / PV94).
+  // Define it so the identifier resolves AND matches our canvases: every surface
+  // the shim mints is a REAL OffscreenCanvas (wrapCanvas augments, never replaces),
+  // so `instanceof OffscreenCanvas` is the exact predicate — and `undefined
+  // instanceof` → false, so createGraphics's no-renderer branch still falls through
+  // to P2D. A custom Symbol.hasInstance leaves the native OffscreenCanvas binding
+  // untouched, so WebGL's own `instanceof OffscreenCanvas` stays true (P102).
+  if (typeof self.HTMLCanvasElement === 'undefined') {
+    self.HTMLCanvasElement = class HTMLCanvasElement {
+      static [Symbol.hasInstance](x: unknown): boolean {
+        return typeof OffscreenCanvas !== 'undefined' && x instanceof OffscreenCanvas
+      }
+    }
+  }
+  // p5's storeItem/getItem/removeItem/clearStorage reference the bare global
+  // `localStorage` (data/local_storage.js:151/262/347/423) — absent in a Worker,
+  // so the identifier raises a ReferenceError ("localStorage is not defined") on
+  // the first storage call, logged every frame (#308 follow-up, same PV95 class as
+  // HTMLCanvasElement above). Provide an in-memory Storage. The DATA keys are own
+  // ENUMERABLE props (clearStorage does `Object.keys(localStorage)` at :347 — a
+  // Map-backed object would make it silently no-op); the methods are NON-enumerable
+  // so they don't leak into that enumeration. Per-worker + ephemeral (no cross-
+  // session persistence off-main), which is the honest semantic here.
+  if (typeof self.localStorage === 'undefined') {
+    const store: Record<string, string> = {}
+    const def = (k: string, v: unknown) =>
+      Object.defineProperty(store, k, { value: v, enumerable: false, configurable: true, writable: true })
+    def('getItem', (k: string) =>
+      Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null)
+    def('setItem', (k: string, v: unknown) => {
+      store[String(k)] = String(v)
+    })
+    def('removeItem', (k: string) => {
+      delete store[k]
+    })
+    def('clear', () => {
+      for (const k of Object.keys(store)) delete store[k]
+    })
+    def('key', (i: number) => Object.keys(store)[i] ?? null)
+    Object.defineProperty(store, 'length', {
+      get: () => Object.keys(store).length,
+      enumerable: false,
+      configurable: true,
+    })
+    self.localStorage = store
+  }
+  // p5's loadFont CSS-`@font-face` branch does `rule instanceof CSSFontFaceRule`
+  // (type/p5.Font.js:1428) — an undefined identifier in the worker → ReferenceError
+  // (same PV95 class). Define it so the identifier resolves; the worker has no real
+  // CSSOM font-face rules, so a never-matching stub is the correct behaviour (the
+  // common loadFont(ttf) path doesn't reach this — it's the @font-face/.css form).
+  if (typeof self.CSSFontFaceRule === 'undefined') {
+    self.CSSFontFaceRule = class CSSFontFaceRule {}
+  }
   if (!('devicePixelRatio' in self)) self.devicePixelRatio = 1
   // Worker rAF shim (condition 2) — both bare `requestAnimationFrame` and
   // `window.requestAnimationFrame` must resolve so p5's loop ticks (~60fps).

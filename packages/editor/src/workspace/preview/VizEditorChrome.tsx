@@ -31,6 +31,8 @@ import {
   onVizLiveChange,
   toggleVizLive,
 } from './vizLiveToggle'
+import { rendererForLanguage } from '../vizLanguages'
+import { StaveInputsPanel } from './StaveInputsPanel'
 
 function refToString(ref: AudioSourceRef): string {
   if (ref.kind === 'default') return 'default'
@@ -182,7 +184,12 @@ export function VizEditorChrome({
         ? 'Resume preview rendering'
         : 'Pause preview rendering (tab stays open)'
 
+  // The renderer kind drives the "Stave Inputs" reference panel (#309). Non-null
+  // for every viz file; guard anyway so a non-viz tab never renders the panel.
+  const vizKind = rendererForLanguage(file.language)
+
   return (
+    <>
     <div
       data-workspace-chrome="viz"
       style={{
@@ -343,5 +350,7 @@ export function VizEditorChrome({
         {liveOn ? '\u27F3 live' : '\u27F3'}
       </button>
     </div>
+    {vizKind && <StaveInputsPanel kind={vizKind} />}
+    </>
   )
 }

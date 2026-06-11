@@ -18576,6 +18576,477 @@ function registerSignalBusProviders(monaco, runtime) {
 }
 __name(registerSignalBusProviders, "registerSignalBusProviders");
 
+// src/visualizers/injectedGlobals.ts
+var G_CONTEXT = "context";
+var G_SCALARS = "signals \xB7 bare scalars (0..1)";
+var G_SCALARS_THUNK = "signals \xB7 bare scalars (thunks, 0..1)";
+var G_STRUCTURED = "signals \xB7 structured (on u)";
+var G_CORE = "core";
+var G_GLSL_SCALARS = "signals \xB7 scalars (0..1)";
+var G_GLSL_TRACK = "signals \xB7 per-track";
+var RULE = {
+  p5: "rule: bare uXxx = a single number \xB7 arrays, lookups & lists live on u",
+  hydra: "rule: bare stave.uXxx() = a single number \xB7 arrays, lookups & lists live on stave.u",
+  glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)"
+};
+var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
+var GLSL_GLOBALS = [
+  { group: G_CORE, decl: "uniform vec3      iResolution;", comment: "viewport resolution (in pixels)", tokens: ["iResolution"] },
+  { group: G_CORE, decl: "uniform float     iTime;", comment: "playback time (in seconds)", tokens: ["iTime"], live: { iTime: { kind: "time" } } },
+  { group: G_CORE, decl: "uniform vec4      iMouse;", comment: "mouse pixel coords (zero in worker)", tokens: ["iMouse"] },
+  { group: G_CORE, decl: "uniform sampler2D iChannel0;", comment: "analyser \u2014 row 0 = FFT, row 1 = waveform", tokens: ["iChannel0"] },
+  {
+    group: G_GLSL_SCALARS,
+    decl: "uniform float     uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;",
+    comment: "per-drum envelope 0..1",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom")
+    }
+  },
+  { group: G_GLSL_SCALARS, decl: "uniform float     uVelocity;", comment: "loudest active hit 0..1", tokens: ["uVelocity"], live: { uVelocity: { kind: "scalar", read: "keyVelocity" } } },
+  {
+    group: G_GLSL_SCALARS,
+    decl: "uniform float     uRms, uBass, uMid, uTreble;",
+    comment: "master-mix DSP 0..1",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { group: G_GLSL_TRACK, decl: "uniform int       uTrackCount;", comment: "live track count", tokens: ["uTrackCount"] },
+  { group: G_GLSL_TRACK, decl: "StaveTrack        staveTrack(int i);", comment: "{ env, velocity, rms, bass, mid, treble } \u2014 per track i", tokens: ["staveTrack", "StaveTrack"] }
+];
+var P5_GLOBALS = [
+  { group: G_CONTEXT, decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] },
+  { group: G_CONTEXT, decl: "AnalyserNode      stave.analyser;", comment: "raw getFloat{Time,Frequency}Data", tokens: ["analyser"] },
+  { group: G_CONTEXT, decl: "HapStream         stave.hapStream;", comment: "active note events", tokens: ["hapStream"] },
+  { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
+  {
+    group: G_SCALARS,
+    decl: "number            uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;",
+    comment: "per-drum envelope 0..1",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom")
+    }
+  },
+  { group: G_SCALARS, decl: "number            uKeyVelocity;", comment: "loudest active hit 0..1", tokens: ["uKeyVelocity"], live: { uKeyVelocity: { kind: "scalar", read: "keyVelocity" } } },
+  {
+    group: G_SCALARS,
+    decl: "number            uRms, uBass, uMid, uTreble;",
+    comment: "master-mix DSP 0..1",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { group: G_STRUCTURED, decl: "number[]          u.fft, u.wave;", comment: "master spectrum / waveform (arrays)", tokens: ["fft", "wave"], live: { fft: { kind: "array", read: "fft" }, wave: { kind: "array", read: "wave" } } },
+  { group: G_STRUCTURED, decl: "Reading           u('bd'), u.track('$0');", comment: "one sound / track \u2192 { env, rms, fft[], \u2026 }", tokens: ["u", "track"] },
+  { group: G_STRUCTURED, decl: "string[]          u.tracks, u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
+  { group: G_STRUCTURED, decl: "number            u.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] }
+];
+var HYDRA_GLOBALS = [
+  {
+    group: G_SCALARS_THUNK,
+    decl: "() => number      stave.uKick, stave.uSnare, stave.uHat, stave.uOpenHat,\n                  stave.uClap, stave.uRim, stave.uTom, stave.uKeyVelocity;",
+    comment: "per-drum envelope thunks \u2192 call them",
+    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom", "uKeyVelocity"],
+    live: {
+      uKick: ENV_LIVE("env:uKick"),
+      uSnare: ENV_LIVE("env:uSnare"),
+      uHat: ENV_LIVE("env:uHat"),
+      uOpenHat: ENV_LIVE("env:uOpenHat"),
+      uClap: ENV_LIVE("env:uClap"),
+      uRim: ENV_LIVE("env:uRim"),
+      uTom: ENV_LIVE("env:uTom"),
+      uKeyVelocity: { kind: "scalar", read: "keyVelocity" }
+    }
+  },
+  {
+    group: G_SCALARS_THUNK,
+    decl: "() => number      stave.uRms, stave.uBass, stave.uMid, stave.uTreble;",
+    comment: "master-mix DSP thunks",
+    tokens: ["uRms", "uBass", "uMid", "uTreble"],
+    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+  },
+  { group: G_STRUCTURED, decl: "Thunks            stave.u('bd'), stave.u.track('$0');", comment: ".env() .rms() .fft[i] \u2026 per sound / track", tokens: ["u", "track"] },
+  { group: G_STRUCTURED, decl: "string[]          stave.u.tracks, stave.u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
+  { group: G_STRUCTURED, decl: "() => number      stave.H(trackId, field = 'gain');", comment: "raw event field reader", tokens: ["H"] },
+  { group: G_CONTEXT, decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] }
+];
+var CATALOGUE = {
+  p5: P5_GLOBALS,
+  hydra: HYDRA_GLOBALS,
+  glsl: GLSL_GLOBALS
+};
+function injectedGlobals(kind) {
+  return CATALOGUE[kind];
+}
+__name(injectedGlobals, "injectedGlobals");
+function formatStaveInputs(kind) {
+  const rows = injectedGlobals(kind);
+  const lastLineLen = /* @__PURE__ */ __name((decl) => {
+    const lines = decl.split("\n");
+    return lines[lines.length - 1].length;
+  }, "lastLineLen");
+  const width = Math.min(64, Math.max(...rows.map((r) => lastLineLen(r.decl)))) + 2;
+  const out = ["// Stave Inputs"];
+  let group = null;
+  for (const r of rows) {
+    if (r.group !== group) {
+      out.push("", `// \u2014 ${r.group} \u2014`);
+      group = r.group;
+    }
+    const declLines = r.decl.split("\n");
+    const last = declLines[declLines.length - 1];
+    const pad = " ".repeat(Math.max(1, width - last.length));
+    declLines[declLines.length - 1] = `${last}${pad}// ${r.comment}`;
+    out.push(declLines.join("\n"));
+  }
+  const rule = RULE[kind];
+  if (rule) out.push("", `// ${rule}`);
+  return out.join("\n");
+}
+__name(formatStaveInputs, "formatStaveInputs");
+function injectedGlobalByToken(kind, word) {
+  for (const entry of injectedGlobals(kind)) {
+    if (entry.tokens.includes(word)) {
+      const live = entry.live?.[word] ?? null;
+      return { entry, token: word, live };
+    }
+  }
+  return null;
+}
+__name(injectedGlobalByToken, "injectedGlobalByToken");
+
+// src/workspace/WorkspaceAudioBus.ts
+var payloads = /* @__PURE__ */ new Map();
+var recency = [];
+var pinnedSubscribers = /* @__PURE__ */ new Map();
+var defaultSubscribers = /* @__PURE__ */ new Set();
+var sourcesChangedListeners = /* @__PURE__ */ new Set();
+function defaultPayload() {
+  if (recency.length === 0) return null;
+  const id = recency[recency.length - 1];
+  return payloads.get(id) ?? null;
+}
+__name(defaultPayload, "defaultPayload");
+function payloadForRef(ref) {
+  switch (ref.kind) {
+    case "none":
+      return null;
+    case "default":
+      return defaultPayload();
+    case "file":
+      return payloads.get(ref.fileId) ?? null;
+  }
+}
+__name(payloadForRef, "payloadForRef");
+function payloadsEquivalent(prev, next) {
+  if (!prev) return false;
+  return prev.hapStream === next.hapStream && prev.analyser === next.analyser && prev.scheduler === next.scheduler && prev.inlineViz === next.inlineViz && prev.audio === next.audio && prev.breakpointStore === next.breakpointStore && prev.onResume === next.onResume;
+}
+__name(payloadsEquivalent, "payloadsEquivalent");
+function notifySourcesChanged() {
+  if (sourcesChangedListeners.size === 0) return;
+  const snapshot = Array.from(sourcesChangedListeners);
+  for (const cb of snapshot) cb();
+}
+__name(notifySourcesChanged, "notifySourcesChanged");
+function notifyPinned(sourceId, payload) {
+  const set = pinnedSubscribers.get(sourceId);
+  if (!set || set.size === 0) return;
+  const snapshot = Array.from(set);
+  for (const cb of snapshot) cb(payload);
+}
+__name(notifyPinned, "notifyPinned");
+function notifyDefault() {
+  if (defaultSubscribers.size === 0) return;
+  const payload = defaultPayload();
+  const snapshot = Array.from(defaultSubscribers);
+  for (const cb of snapshot) cb(payload);
+}
+__name(notifyDefault, "notifyDefault");
+function publish(sourceId, payload) {
+  const prev = payloads.get(sourceId);
+  if (payloadsEquivalent(prev, payload)) return;
+  payloads.set(sourceId, payload);
+  const isNewSource = prev === void 0;
+  if (isNewSource) {
+    recency.push(sourceId);
+  }
+  notifyPinned(sourceId, payload);
+  if (isNewSource || sourceId === recency[recency.length - 1]) {
+    notifyDefault();
+  }
+  if (isNewSource) {
+    notifySourcesChanged();
+  }
+}
+__name(publish, "publish");
+function unpublish(sourceId) {
+  const prev = payloads.get(sourceId);
+  if (!prev) return;
+  const wasMostRecent = recency[recency.length - 1] === sourceId;
+  payloads.delete(sourceId);
+  const idx = recency.indexOf(sourceId);
+  if (idx !== -1) recency.splice(idx, 1);
+  notifyPinned(sourceId, null);
+  if (wasMostRecent) {
+    notifyDefault();
+  }
+  notifySourcesChanged();
+}
+__name(unpublish, "unpublish");
+function subscribe2(ref, cb) {
+  cb(payloadForRef(ref));
+  if (ref.kind === "none") {
+    return () => {
+    };
+  }
+  if (ref.kind === "default") {
+    defaultSubscribers.add(cb);
+    let unsubscribed2 = false;
+    return () => {
+      if (unsubscribed2) return;
+      unsubscribed2 = true;
+      defaultSubscribers.delete(cb);
+    };
+  }
+  const fileId = ref.fileId;
+  let set = pinnedSubscribers.get(fileId);
+  if (!set) {
+    set = /* @__PURE__ */ new Set();
+    pinnedSubscribers.set(fileId, set);
+  }
+  set.add(cb);
+  let unsubscribed = false;
+  return () => {
+    if (unsubscribed) return;
+    unsubscribed = true;
+    const current3 = pinnedSubscribers.get(fileId);
+    if (!current3) return;
+    current3.delete(cb);
+    if (current3.size === 0) {
+      pinnedSubscribers.delete(fileId);
+    }
+  };
+}
+__name(subscribe2, "subscribe");
+function consume(ref) {
+  return payloadForRef(ref);
+}
+__name(consume, "consume");
+function listSources() {
+  const result = [];
+  for (const sourceId of recency) {
+    if (!payloads.has(sourceId)) continue;
+    result.push({
+      sourceId,
+      label: sourceId,
+      // Phase 10.2 only lists active publishers, so `playing` is always
+      // true. The field exists in the surface for forward-compat with
+      // Phase 10.3+ "stopped but recently active" entries.
+      playing: true
+    });
+  }
+  return result;
+}
+__name(listSources, "listSources");
+function onSourcesChanged(cb) {
+  sourcesChangedListeners.add(cb);
+  let unsubscribed = false;
+  return () => {
+    if (unsubscribed) return;
+    unsubscribed = true;
+    sourcesChangedListeners.delete(cb);
+  };
+}
+__name(onSourcesChanged, "onSourcesChanged");
+var workspaceAudioBus = {
+  publish,
+  unpublish,
+  subscribe: subscribe2,
+  consume,
+  listSources,
+  onSourcesChanged
+};
+
+// src/workspace/vizSignalProbe.ts
+function readMasterSignal(bus, spec) {
+  if (spec.kind === "time") return null;
+  if (spec.kind === "scalar" && spec.read.startsWith("env:")) {
+    return bus.envValue(spec.read.slice(4));
+  }
+  if (spec.kind === "scalar" && spec.read === "keyVelocity") return null;
+  bus.readAudio();
+  const m = bus.master();
+  if (spec.kind === "array") return spec.read === "fft" ? m.fft : m.wave;
+  switch (spec.read) {
+    case "rms":
+      return m.rms;
+    case "bass":
+      return m.bass;
+    case "mid":
+      return m.mid;
+    case "treble":
+      return m.treble;
+    default:
+      return null;
+  }
+}
+__name(readMasterSignal, "readMasterSignal");
+var _VizSignalProbe = class _VizSignalProbe {
+  constructor() {
+    this.bus = new SignalBus();
+    this.refs = 0;
+    this.unsubBus = null;
+    this.rafId = null;
+    this.boundHap = null;
+    this.hapHandler = null;
+    /** True when a publisher with a master analyser is bound (something to read). */
+    this.bound = false;
+    this.bus.setAliases(ALIAS_MAP);
+  }
+  /** Activate the probe; returns a release fn. First acquire starts it. */
+  acquire() {
+    this.refs += 1;
+    if (this.refs === 1) this.start();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.refs = Math.max(0, this.refs - 1);
+      if (this.refs === 0) this.stop();
+    };
+  }
+  /** Is a live audio source currently bound? (drives "show a number" vs doc-only) */
+  get playing() {
+    return this.bound;
+  }
+  /**
+   * Read a token's live value from the master bus, or `null` when there's no
+   * source bound or the spec isn't supported in v1.
+   */
+  read(spec) {
+    if (!this.bound) return null;
+    return readMasterSignal(this.bus, spec);
+  }
+  start() {
+    if (typeof requestAnimationFrame !== "function") return;
+    this.unsubBus = workspaceAudioBus.subscribe({ kind: "default" }, (p) => this.onPayload(p));
+    const loop = /* @__PURE__ */ __name(() => {
+      this.bus.tick();
+      this.rafId = requestAnimationFrame(loop);
+    }, "loop");
+    this.rafId = requestAnimationFrame(loop);
+  }
+  stop() {
+    this.unsubBus?.();
+    this.unsubBus = null;
+    this.detachHap();
+    if (this.rafId != null) cancelAnimationFrame(this.rafId);
+    this.rafId = null;
+    this.bound = false;
+  }
+  onPayload(p) {
+    const analyser = p?.audio?.analyser ?? p?.analyser ?? null;
+    const trackAnalysers = p?.audio?.trackAnalysers ?? null;
+    this.bus.bindAnalysers(analyser, trackAnalysers);
+    this.bound = !!analyser;
+    const hap = p?.hapStream ?? null;
+    if (hap !== this.boundHap) {
+      this.detachHap();
+      if (hap && typeof hap.on === "function") {
+        const handler = /* @__PURE__ */ __name((e) => this.bus.bump(e), "handler");
+        hap.on(handler);
+        this.boundHap = hap;
+        this.hapHandler = handler;
+      }
+    }
+  }
+  detachHap() {
+    if (this.boundHap && this.hapHandler && typeof this.boundHap.off === "function") {
+      this.boundHap.off(this.hapHandler);
+    }
+    this.boundHap = null;
+    this.hapHandler = null;
+  }
+};
+__name(_VizSignalProbe, "VizSignalProbe");
+var VizSignalProbe = _VizSignalProbe;
+var vizSignalProbe = new VizSignalProbe();
+
+// src/workspace/vizInputsHover.ts
+var FENCE_LANG = {
+  p5: "javascript",
+  hydra: "javascript",
+  glsl: "glsl"
+};
+function bar(v) {
+  const cells = 8;
+  const lit = Math.max(0, Math.min(cells, Math.round(v * cells)));
+  return "`\u2595" + "\u2588".repeat(lit) + "\u2591".repeat(cells - lit) + "\u258F`";
+}
+__name(bar, "bar");
+var SPARK = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588";
+function spark(arr, n = 28) {
+  if (arr.length === 0) return "`(empty)`";
+  const step = Math.max(1, Math.floor(arr.length / n));
+  let max = 1e-6;
+  const samples = [];
+  for (let i = 0; i < arr.length && samples.length < n; i += step) {
+    const v = Math.abs(arr[i]);
+    samples.push(v);
+    if (v > max) max = v;
+  }
+  return "`" + samples.map((v) => SPARK[Math.min(7, Math.floor(v / max * 7.999))]).join("") + "`";
+}
+__name(spark, "spark");
+function registerVizInputsHover(monaco, language, kind) {
+  return monaco.languages.registerHoverProvider(language, {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const hit = injectedGlobalByToken(kind, word.word);
+      if (!hit) return null;
+      const md = [
+        { value: "```" + FENCE_LANG[kind] + "\n" + hit.entry.decl + "\n```" },
+        { value: hit.entry.comment }
+      ];
+      if (hit.live) {
+        const v = vizSignalProbe.read(hit.live);
+        if (typeof v === "number") {
+          md.push({ value: `**live \xB7 master:** \`${v.toFixed(3)}\`  ${bar(v)}` });
+        } else if (Array.isArray(v)) {
+          md.push({ value: `**live \xB7 master:** ${spark(v)}` });
+        } else if (!vizSignalProbe.playing) {
+          md.push({ value: "_play a pattern to see the live master value_" });
+        }
+      }
+      return {
+        range: new monaco.Range(
+          position.lineNumber,
+          word.startColumn,
+          position.lineNumber,
+          word.endColumn
+        ),
+        contents: md
+      };
+    }
+  });
+}
+__name(registerVizInputsHover, "registerVizInputsHover");
+
 // src/workspace/languages.ts
 var hydraRegistered = false;
 var p5jsRegistered = false;
@@ -19007,6 +19478,9 @@ function ensureWorkspaceLanguages(monaco) {
     registerSignalBusProviders(m, "hydra");
   });
   ensureProviders("sonicpi", monaco, registerSonicPiProviders);
+  ensureProviders("viz-inputs-p5js", monaco, (m) => registerVizInputsHover(m, "p5js", "p5"));
+  ensureProviders("viz-inputs-hydra", monaco, (m) => registerVizInputsHover(m, "hydra", "hydra"));
+  ensureProviders("viz-inputs-glsl", monaco, (m) => registerVizInputsHover(m, "glsl", "glsl"));
 }
 __name(ensureWorkspaceLanguages, "ensureWorkspaceLanguages");
 var providersRegistered = {};
@@ -19036,159 +19510,6 @@ function toMonacoLanguage(lang) {
   }
 }
 __name(toMonacoLanguage, "toMonacoLanguage");
-
-// src/workspace/WorkspaceAudioBus.ts
-var payloads = /* @__PURE__ */ new Map();
-var recency = [];
-var pinnedSubscribers = /* @__PURE__ */ new Map();
-var defaultSubscribers = /* @__PURE__ */ new Set();
-var sourcesChangedListeners = /* @__PURE__ */ new Set();
-function defaultPayload() {
-  if (recency.length === 0) return null;
-  const id = recency[recency.length - 1];
-  return payloads.get(id) ?? null;
-}
-__name(defaultPayload, "defaultPayload");
-function payloadForRef(ref) {
-  switch (ref.kind) {
-    case "none":
-      return null;
-    case "default":
-      return defaultPayload();
-    case "file":
-      return payloads.get(ref.fileId) ?? null;
-  }
-}
-__name(payloadForRef, "payloadForRef");
-function payloadsEquivalent(prev, next) {
-  if (!prev) return false;
-  return prev.hapStream === next.hapStream && prev.analyser === next.analyser && prev.scheduler === next.scheduler && prev.inlineViz === next.inlineViz && prev.audio === next.audio && prev.breakpointStore === next.breakpointStore && prev.onResume === next.onResume;
-}
-__name(payloadsEquivalent, "payloadsEquivalent");
-function notifySourcesChanged() {
-  if (sourcesChangedListeners.size === 0) return;
-  const snapshot = Array.from(sourcesChangedListeners);
-  for (const cb of snapshot) cb();
-}
-__name(notifySourcesChanged, "notifySourcesChanged");
-function notifyPinned(sourceId, payload) {
-  const set = pinnedSubscribers.get(sourceId);
-  if (!set || set.size === 0) return;
-  const snapshot = Array.from(set);
-  for (const cb of snapshot) cb(payload);
-}
-__name(notifyPinned, "notifyPinned");
-function notifyDefault() {
-  if (defaultSubscribers.size === 0) return;
-  const payload = defaultPayload();
-  const snapshot = Array.from(defaultSubscribers);
-  for (const cb of snapshot) cb(payload);
-}
-__name(notifyDefault, "notifyDefault");
-function publish(sourceId, payload) {
-  const prev = payloads.get(sourceId);
-  if (payloadsEquivalent(prev, payload)) return;
-  payloads.set(sourceId, payload);
-  const isNewSource = prev === void 0;
-  if (isNewSource) {
-    recency.push(sourceId);
-  }
-  notifyPinned(sourceId, payload);
-  if (isNewSource || sourceId === recency[recency.length - 1]) {
-    notifyDefault();
-  }
-  if (isNewSource) {
-    notifySourcesChanged();
-  }
-}
-__name(publish, "publish");
-function unpublish(sourceId) {
-  const prev = payloads.get(sourceId);
-  if (!prev) return;
-  const wasMostRecent = recency[recency.length - 1] === sourceId;
-  payloads.delete(sourceId);
-  const idx = recency.indexOf(sourceId);
-  if (idx !== -1) recency.splice(idx, 1);
-  notifyPinned(sourceId, null);
-  if (wasMostRecent) {
-    notifyDefault();
-  }
-  notifySourcesChanged();
-}
-__name(unpublish, "unpublish");
-function subscribe2(ref, cb) {
-  cb(payloadForRef(ref));
-  if (ref.kind === "none") {
-    return () => {
-    };
-  }
-  if (ref.kind === "default") {
-    defaultSubscribers.add(cb);
-    let unsubscribed2 = false;
-    return () => {
-      if (unsubscribed2) return;
-      unsubscribed2 = true;
-      defaultSubscribers.delete(cb);
-    };
-  }
-  const fileId = ref.fileId;
-  let set = pinnedSubscribers.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    pinnedSubscribers.set(fileId, set);
-  }
-  set.add(cb);
-  let unsubscribed = false;
-  return () => {
-    if (unsubscribed) return;
-    unsubscribed = true;
-    const current3 = pinnedSubscribers.get(fileId);
-    if (!current3) return;
-    current3.delete(cb);
-    if (current3.size === 0) {
-      pinnedSubscribers.delete(fileId);
-    }
-  };
-}
-__name(subscribe2, "subscribe");
-function consume(ref) {
-  return payloadForRef(ref);
-}
-__name(consume, "consume");
-function listSources() {
-  const result = [];
-  for (const sourceId of recency) {
-    if (!payloads.has(sourceId)) continue;
-    result.push({
-      sourceId,
-      label: sourceId,
-      // Phase 10.2 only lists active publishers, so `playing` is always
-      // true. The field exists in the surface for forward-compat with
-      // Phase 10.3+ "stopped but recently active" entries.
-      playing: true
-    });
-  }
-  return result;
-}
-__name(listSources, "listSources");
-function onSourcesChanged(cb) {
-  sourcesChangedListeners.add(cb);
-  let unsubscribed = false;
-  return () => {
-    if (unsubscribed) return;
-    unsubscribed = true;
-    sourcesChangedListeners.delete(cb);
-  };
-}
-__name(onSourcesChanged, "onSourcesChanged");
-var workspaceAudioBus = {
-  publish,
-  unpublish,
-  subscribe: subscribe2,
-  consume,
-  listSources,
-  onSourcesChanged
-};
 var baseStyleInjected = false;
 function ensureBaseHighlightStyle() {
   if (baseStyleInjected || typeof document === "undefined") return;
@@ -20052,9 +20373,9 @@ function applyLayout(container, canvas, layout) {
 }
 __name(applyLayout, "applyLayout");
 function createFloatingActionBar(editorDom) {
-  const bar = document.createElement("div");
-  bar.setAttribute("data-viz-actions", "");
-  bar.style.cssText = `
+  const bar2 = document.createElement("div");
+  bar2.setAttribute("data-viz-actions", "");
+  bar2.style.cssText = `
     position:absolute;z-index:100;
     display:flex;gap:4px;
     opacity:0;transition:opacity 0.15s;
@@ -20092,16 +20413,16 @@ function createFloatingActionBar(editorDom) {
   editBtn.title = "Edit viz file";
   editBtn.style.cssText = btnCss;
   blockMonaco(editBtn);
-  bar.appendChild(editBtn);
+  bar2.appendChild(editBtn);
   const cropBtn = document.createElement("button");
   cropBtn.textContent = "\u2702";
   cropBtn.title = "Crop inline region";
   cropBtn.style.cssText = btnCss;
   blockMonaco(cropBtn);
-  bar.appendChild(cropBtn);
+  bar2.appendChild(cropBtn);
   const guard = editorDom.querySelector(".overflow-guard") || editorDom;
-  guard.appendChild(bar);
-  return bar;
+  guard.appendChild(bar2);
+  return bar2;
 }
 __name(createFloatingActionBar, "createFloatingActionBar");
 var FULL_CROP = { x: 0, y: 0, w: 1, h: 1 };
@@ -22654,8 +22975,8 @@ var _DrumPatternScheduler = class _DrumPatternScheduler {
     const events = [];
     const firstBar = Math.floor(begin / BAR_SECONDS);
     const lastBar = Math.floor(end / BAR_SECONDS);
-    for (let bar = firstBar; bar <= lastBar; bar++) {
-      const barStart = bar * BAR_SECONDS;
+    for (let bar2 = firstBar; bar2 <= lastBar; bar2++) {
+      const barStart = bar2 * BAR_SECONDS;
       for (const hit of DRUM_PATTERN) {
         for (const offset of hit.beatOffsets) {
           const noteBegin = barStart + offset;
@@ -28440,6 +28761,85 @@ var SONICPI_RUNTIME = {
   createEngine: /* @__PURE__ */ __name(() => new SonicPiEngine(), "createEngine"),
   renderChrome: /* @__PURE__ */ __name((ctx) => /* @__PURE__ */ jsxRuntime.jsx(SonicPiChrome, { ...ctx }), "renderChrome")
 };
+var KIND_LABEL2 = {
+  p5: "p5",
+  hydra: "hydra",
+  glsl: "glsl"
+};
+function StaveInputsPanel({ kind }) {
+  const [open, setOpen] = React8.useState(false);
+  const block = formatStaveInputs(kind);
+  React8.useEffect(() => vizSignalProbe.acquire(), []);
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-workspace-chrome": "viz-inputs",
+      style: {
+        flexShrink: 0,
+        background: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
+        fontSize: 11
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsxs(
+          "button",
+          {
+            "data-testid": "viz-inputs-toggle",
+            "data-open": open ? "on" : "off",
+            onClick: () => setOpen((v) => !v),
+            title: open ? "Hide injected globals" : "Show the Stave globals injected into this viz",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              width: "100%",
+              height: 26,
+              padding: "0 12px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--foreground-muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              textAlign: "left"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { width: 9, display: "inline-block" }, children: open ? "\u25BE" : "\u25B8" }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--accent-strong, var(--accent))" }, children: "\u26A1" }),
+              /* @__PURE__ */ jsxRuntime.jsx("span", { children: "Stave Inputs" }),
+              /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { opacity: 0.6 }, children: [
+                "\xB7 ",
+                KIND_LABEL2[kind],
+                " injected globals"
+              ] }),
+              !open && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { marginLeft: "auto", opacity: 0.5 }, children: "hover a token in your code for live values" })
+            ]
+          }
+        ),
+        open && /* @__PURE__ */ jsxRuntime.jsx(
+          "pre",
+          {
+            "data-testid": "viz-inputs-block",
+            style: {
+              margin: 0,
+              padding: "4px 14px 10px 30px",
+              maxHeight: 320,
+              overflow: "auto",
+              color: "var(--foreground-muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              lineHeight: 1.5,
+              whiteSpace: "pre",
+              userSelect: "text"
+            },
+            children: block
+          }
+        )
+      ]
+    }
+  );
+}
+__name(StaveInputsPanel, "StaveInputsPanel");
 function refToString(ref) {
   if (ref.kind === "default") return "default";
   if (ref.kind === "none") return "none";
@@ -28524,125 +28924,129 @@ function VizEditorChrome({
   const buttonState = !previewOpen ? "closed" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "closed" ? "\u25B6 Preview" : buttonState === "paused" ? "\u25B6 Play" : "\u25A0 Stop";
   const buttonTitle = buttonState === "closed" ? "Open preview to side (Cmd+K V)" : buttonState === "paused" ? "Resume preview rendering" : "Pause preview rendering (tab stays open)";
-  return /* @__PURE__ */ jsxRuntime.jsxs(
-    "div",
-    {
-      "data-workspace-chrome": "viz",
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        height: 40,
-        padding: "0 12px",
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
-        fontSize: 11,
-        flexShrink: 0
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-open-preview",
-            "data-button-state": buttonState,
-            onClick: handlePrimaryButtonClick,
-            title: buttonTitle,
-            style: primaryBtnStyle,
-            children: buttonLabel
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "label",
-          {
-            htmlFor: `viz-chrome-source-${file.id}`,
-            style: { color: "var(--foreground-muted)", fontSize: 10 },
-            children: "source:"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsxs(
-          "select",
-          {
-            id: `viz-chrome-source-${file.id}`,
-            "data-testid": "viz-chrome-source",
-            value: refToString(selectedSource),
-            onChange: handleSourceChange,
-            style: {
-              background: "var(--surface-elevated)",
-              color: "var(--foreground)",
-              border: "1px solid var(--border)",
-              borderRadius: 3,
-              padding: "2px 6px",
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "default", children: "default (follow most recent)" }),
-              /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
-              (() => {
-                const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
-                if (patternSources.length === 0) return null;
-                return /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxRuntime.jsxs("option", { value: `file:${source.sourceId}`, children: [
-                  source.playing ? "\u25CF " : "\u25CB ",
-                  source.label
-                ] }, source.sourceId)) });
-              })(),
-              /* @__PURE__ */ jsxRuntime.jsx("option", { value: "none", children: "none (demo mode)" })
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } }),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-bg-toggle",
-            "data-bg-mode": isBackground ? "on" : "off",
-            onClick: onToggleBackground,
-            title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 3,
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              userSelect: "none",
-              background: isBackground ? "var(--accent-dim)" : "none",
-              color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-              border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
-            },
-            children: isBackground ? "\u25A0 bg" : "\u25A0"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "button",
-          {
-            "data-testid": "viz-chrome-live-toggle",
-            "data-live-mode": liveOn ? "on" : "off",
-            onClick: () => toggleVizLive(file.id),
-            title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "3px 8px",
-              borderRadius: 3,
-              fontSize: 10,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              userSelect: "none",
-              background: liveOn ? "var(--accent-dim)" : "none",
-              color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
-              border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
-            },
-            children: liveOn ? "\u27F3 live" : "\u27F3"
-          }
-        )
-      ]
-    }
-  );
+  const vizKind = rendererForLanguage(file.language);
+  return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntime.jsxs(
+      "div",
+      {
+        "data-workspace-chrome": "viz",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          height: 40,
+          padding: "0 12px",
+          background: "var(--surface)",
+          borderBottom: "1px solid var(--border)",
+          fontSize: 11,
+          flexShrink: 0
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-open-preview",
+              "data-button-state": buttonState,
+              onClick: handlePrimaryButtonClick,
+              title: buttonTitle,
+              style: primaryBtnStyle,
+              children: buttonLabel
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "label",
+            {
+              htmlFor: `viz-chrome-source-${file.id}`,
+              style: { color: "var(--foreground-muted)", fontSize: 10 },
+              children: "source:"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsxs(
+            "select",
+            {
+              id: `viz-chrome-source-${file.id}`,
+              "data-testid": "viz-chrome-source",
+              value: refToString(selectedSource),
+              onChange: handleSourceChange,
+              style: {
+                background: "var(--surface-elevated)",
+                color: "var(--foreground)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "2px 6px",
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer"
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "default", children: "default (follow most recent)" }),
+                /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "built-in examples", children: BUILTIN_EXAMPLE_SOURCES.map((src) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: `file:${src.sourceId}`, children: src.label }, src.sourceId)) }),
+                (() => {
+                  const patternSources = workspaceAudioBus.listSources().filter((s) => !BUILTIN_SOURCE_IDS.has(s.sourceId));
+                  if (patternSources.length === 0) return null;
+                  return /* @__PURE__ */ jsxRuntime.jsx("optgroup", { label: "playing patterns", children: patternSources.map((source) => /* @__PURE__ */ jsxRuntime.jsxs("option", { value: `file:${source.sourceId}`, children: [
+                    source.playing ? "\u25CF " : "\u25CB ",
+                    source.label
+                  ] }, source.sourceId)) });
+                })(),
+                /* @__PURE__ */ jsxRuntime.jsx("option", { value: "none", children: "none (demo mode)" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1 } }),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-bg-toggle",
+              "data-bg-mode": isBackground ? "on" : "off",
+              onClick: onToggleBackground,
+              title: isBackground ? "This file is the group backdrop \u2014 click to clear (Cmd+K B)" : "Set as background for this group (Cmd+K B)",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: isBackground ? "var(--accent-dim)" : "none",
+                color: isBackground ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
+              },
+              children: isBackground ? "\u25A0 bg" : "\u25A0"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-live-toggle",
+              "data-live-mode": liveOn ? "on" : "off",
+              onClick: () => toggleVizLive(file.id),
+              title: liveOn ? "Live mode ON \u2014 preview re-renders on edit" : "Live mode OFF \u2014 click to resume live updates",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 3,
+                fontSize: 10,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: liveOn ? "var(--accent-dim)" : "none",
+                color: liveOn ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)",
+                border: `1px solid ${liveOn ? "var(--accent-dim)" : "var(--border)"}`
+              },
+              children: liveOn ? "\u27F3 live" : "\u27F3"
+            }
+          )
+        ]
+      }
+    ),
+    vizKind && /* @__PURE__ */ jsxRuntime.jsx(StaveInputsPanel, { kind: vizKind })
+  ] });
 }
 __name(VizEditorChrome, "VizEditorChrome");
 function createCompiledVizProvider(opts) {
@@ -29349,6 +29753,7 @@ exports.fileHistory = fileHistory;
 exports.filter = filter;
 exports.flushToPreset = flushToPreset;
 exports.formatFriendlyError = formatFriendlyError;
+exports.formatStaveInputs = formatStaveInputs;
 exports.frameTransferables = frameTransferables;
 exports.fuzzyMatch = fuzzyMatch;
 exports.generateUniquePresetId = generateUniquePresetId;
@@ -29412,6 +29817,8 @@ exports.hydrateSnapshot = hydrateSnapshot;
 exports.initHistory = initHistory;
 exports.initProjectDoc = initProjectDoc;
 exports.initProjectDocSync = initProjectDocSync;
+exports.injectedGlobalByToken = injectedGlobalByToken;
+exports.injectedGlobals = injectedGlobals;
 exports.installEngineLogMarkers = installEngineLogMarkers;
 exports.installGlobalErrorCatch = installGlobalErrorCatch;
 exports.isBundledPresetId = isBundledPresetId;

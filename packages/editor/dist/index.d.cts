@@ -2554,757 +2554,6 @@ declare const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[];
 declare function resolveDescriptor(vizId: string, descriptors: VizDescriptor[]): VizDescriptor | undefined;
 
 /**
- * namedVizRegistry — runtime map of user-chosen viz names → descriptors.
- *
- * Lets users reference their own viz files from inline patterns by the
- * `VizPreset.name` they chose, alongside the built-in descriptors:
- *
- *     $: note("c e g").viz("Piano Roll")   // user-named preset
- *     $: note("c e g").viz("pianoroll")    // built-in descriptor
- *
- * @remarks
- * ## How it plugs into the resolver
- *
- * `resolveDescriptor` checks this registry first (exact-name match),
- * then falls through to the passed-in descriptor list (`DEFAULT_VIZ_
- * DESCRIPTORS` or any embedder override) and runs its existing
- * "append default renderer" / "prefix" fallbacks. Names registered
- * here shadow built-ins — if a user saves a preset literally called
- * `"pianoroll"`, their version wins inside `.viz("pianoroll")`.
- * That's the right default: user intent is closer to what the user
- * controls than what ships in the library.
- *
- * ## Who writes to the registry
- *
- * `vizPresetBridge.seedFromPreset` and `flushToPreset` compile the
- * preset via `compilePreset()` and call `registerNamedViz(preset.name,
- * descriptor)` — so every viz file the user opens or saves is
- * automatically available to inline `.viz("name")` without any manual
- * registration step.
- *
- * If the user renames a preset (future save-as UI), the old name is
- * unregistered and the new name is registered in the same transaction.
- * Until that UI lands, a preset rename is a no-op at the registry
- * level; the stale name keeps working until page reload. Acceptable
- * for Phase 10.2 MVP — there's no rename UI yet.
- *
- * ## Change notifications
- *
- * `onNamedVizChanged` lets consumers subscribe to register/unregister
- * events. Phase 10.2 doesn't wire this to anything, but it's in place
- * so a future Monaco completion provider can invalidate its suggestion
- * cache when the registry mutates.
- */
-
-type Listener$6 = () => void;
-/**
- * Register a descriptor under a user-chosen name. Idempotent — calling
- * twice with the same name + descriptor is a no-op and does not fire
- * listeners. Calling with a new descriptor for an existing name
- * replaces the entry (and fires listeners) so saves can update a
- * previously-registered viz in place.
- */
-declare function registerNamedViz(name: string, descriptor: VizDescriptor): void;
-/**
- * Unregister a name. Idempotent — unknown names are silent no-ops.
- * Fires listeners only when an entry is actually removed.
- */
-declare function unregisterNamedViz(name: string): void;
-/**
- * Look up a descriptor by name. Returns `undefined` if the name is not
- * registered. The resolver falls through to the built-in descriptor
- * list in that case.
- */
-declare function getNamedViz(name: string): VizDescriptor | undefined;
-/**
- * List every registered name in insertion order. Used by tests and by
- * a future Monaco completion provider that wants to surface every
- * user-defined viz name inside `.viz("...")` autocomplete.
- */
-declare function listNamedVizNames(): string[];
-/**
- * List every (name, descriptor) pair. Mostly useful for debugging and
- * for tests that want to assert the full registry contents.
- */
-declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
-/**
- * Subscribe to registry changes. Fires on any register/unregister
- * transition. Returns an idempotent unsubscribe function. Does not
- * fire synchronously on subscription — subscribers receive only
- * future changes.
- */
-declare function onNamedVizChanged(cb: Listener$6): () => void;
-
-/**
- * Worker-viz capability detection — the degrade-path scaffold for Phase B.
- *
- * Phase B moves viz `draw()` off the main thread into an OffscreenCanvas worker
- * (epic #228). Whether that is possible — and *how* the per-frame signal data
- * reaches the worker — depends on browser capabilities that vary by environment:
- *
- *   - `Worker` + `OffscreenCanvas` + `HTMLCanvasElement.transferControlToOffscreen`
- *     → worker rendering is possible at all.
- *   - `crossOriginIsolated` + `SharedArrayBuffer`
- *     → the zero-copy SAB signal transport is available (the measured optimization,
- *       gated behind the COOP/COEP header — see B-1 #239 / Q2 #237).
- *
- * B-1 (#239) confirmed by observation that the live COOP=same-origin +
- * COEP=credentialless header yields `crossOriginIsolated === true` (and that a
- * `window.open` popup inherits it). This module turns that runtime truth into a
- * single capability snapshot + a sensible default transport choice, so B-2/B-3
- * can pick SAB vs postMessage vs main-thread without re-probing globals ad hoc.
- *
- * Pure + environment-injectable → plain unit tests (no IDB/DOM — see the editor
- * "split pure logic from I/O" rule). The live app passes nothing and reads
- * `globalThis`.
- */
-/**
- * How per-frame viz signal data crosses to the renderer.
- *
- * - `'sab'`         — worker render + zero-copy SharedArrayBuffer transport
- *                     (requires cross-origin isolation; the primary path).
- * - `'postmessage'` — worker render + transferable-ArrayBuffer postMessage
- *                     transport (no isolation needed; the required fallback for
- *                     non-isolated browsers, e.g. Safari).
- * - `'main-thread'` — no worker offload possible; render on the main thread with
- *                     today's `P5VizRenderer` / `HydraVizRenderer`.
- */
-type VizTransport = 'sab' | 'postmessage' | 'main-thread';
-interface WorkerVizCapabilities {
-    /** COOP/COEP cross-origin isolation is active (gates SharedArrayBuffer). */
-    crossOriginIsolated: boolean;
-    /** `OffscreenCanvas` constructor exists. */
-    hasOffscreenCanvas: boolean;
-    /** `SharedArrayBuffer` constructor exists (still needs isolation to be useful). */
-    hasSharedArrayBuffer: boolean;
-    /** `HTMLCanvasElement.prototype.transferControlToOffscreen` exists. */
-    canTransferControl: boolean;
-    /** `Worker` constructor exists. */
-    hasWorker: boolean;
-    /** Worker rendering is possible at all (worker + offscreen + transfer). */
-    canUseWorker: boolean;
-    /** The default transport given these capabilities (see {@link VizTransport}). */
-    transport: VizTransport;
-}
-/**
- * The subset of the global environment this module reads. Injectable so the
- * selection logic can be unit-tested across capability matrices without touching
- * the real `globalThis`.
- */
-interface CapabilityEnv {
-    crossOriginIsolated?: boolean;
-    OffscreenCanvas?: unknown;
-    SharedArrayBuffer?: unknown;
-    Worker?: unknown;
-    /** Stand-in for `HTMLCanvasElement` — we only probe for the transfer method. */
-    HTMLCanvasElement?: {
-        prototype?: {
-            transferControlToOffscreen?: unknown;
-        };
-    };
-}
-/**
- * Derive worker-viz capabilities + the default transport from an environment.
- *
- * Transport policy (capability-derived, deliberately separate from any
- * load/quality policy B-6 may add):
- *   1. Can't offload (no worker / offscreen / transferControl) → `'main-thread'`.
- *   2. Isolated + SharedArrayBuffer                            → `'sab'`.
- *   3. Worker-capable but not isolated                         → `'postmessage'`.
- *
- * Note: PHASE-B-PLAN §4's conservative line ("fallback to main if
- * !crossOriginIsolated") collapses cases 2+3; the plan's transport section +
- * decision §1 are the refined intent — worker rendering works without isolation,
- * only SAB needs it, so a non-isolated browser still offloads via postMessage.
- * This function encodes the refined three-tier truth; a consumer that wants the
- * conservative behaviour can treat anything but `'sab'` as main-thread.
- */
-declare function detectWorkerVizCapabilities(env?: CapabilityEnv): WorkerVizCapabilities;
-
-/**
- * MainSignalSampler — samples the main-thread signal feed into a `SignalFrame`
- * each frame (Phase B / B-2). It is the MAIN-side half of the marshalling: it
- * does the work that is main-thread-bound (read `AnalyserNode` bytes, query the
- * scheduler, collect haps) so a worker `SignalBus` can run off those values.
- *
- * It mirrors exactly what `SignalBus` does on main today (P5VizRenderer __tick):
- *   - `now = scheduler.now()`
- *   - active events = `scheduler.query(now, now + ε)` (combined + per-track)
- *   - analyser bytes = `getByte{Frequency,TimeDomain}Data` per bound analyser
- *   - bumps = the haps that fired since the previous `sample()`
- *
- * No DOM/worker — it consumes the same structural types the bus does
- * (`BusAnalyser`, `IRPattern`, `HapStream`), so it unit-tests with plain stubs.
- */
-
-/** The live inputs the sampler reads — the main-thread feed. All optional: any
- *  absent input degrades to the bus's zero (empty arrays / no events). */
-interface SamplerInputs {
-    /** Combined scheduler (`now()` + `query()`). */
-    scheduler?: IRPattern | null;
-    /** Per-track schedulers, SCHEDULER key space (`$0`/`d1` — TRAP §5). */
-    trackSchedulers?: Map<string, IRPattern> | null;
-    /** Master/combined-mix analyser. */
-    masterAnalyser?: BusAnalyser | null;
-    /** Per-track analysers, keyed the SAME as `trackSchedulers`. */
-    trackAnalysers?: Map<string, BusAnalyser> | null;
-}
-/** Minimal HapStream surface the sampler subscribes to (structural — the bus
- *  uses the same `.on`/`.off` guard discipline). */
-interface HapSubscribable {
-    on(handler: (e: HapEvent) => void): void;
-    off(handler: (e: HapEvent) => void): void;
-}
-declare class MainSignalSampler {
-    private inputs;
-    private seq;
-    /** Haps accumulated since the last `sample()` (the envelope feed). */
-    private pendingBumps;
-    private boundStream;
-    private readonly hapHandler;
-    /** Rebind the live inputs (mirror the renderer's in-place rebind on
-     *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
-    bind(inputs: SamplerInputs): void;
-    /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
-     *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
-     *  P5VizRenderer.update). A partial stream (no `.on`) degrades to no feed. */
-    bindHapStream(stream: HapSubscribable | null): void;
-    /**
-     * Produce one frame from the current inputs + the haps since the last call.
-     * Drains the pending bumps (so each hap ships exactly once).
-     *
-     * `cache` (the shared frame pump, PV72) deduplicates the EXPENSIVE per-frame
-     * work across every viz sampling in the same rAF tick: the analyser FFT read and
-     * the scheduler query run ONCE per shared input object, not once per viz. It is
-     * keyed by input-object IDENTITY, so two viz on DIFFERENT tracks (distinct
-     * scheduler/analyser, viewZones.ts:341) don't false-share. Absent (unit tests /
-     * pre-pump path) → every read runs locally, byte-identical to before.
-     */
-    sample(cache?: FrameSampleCache): SignalFrame;
-    /** Unsubscribe + reset (renderer destroy). */
-    dispose(): void;
-    /** The next seq an `emptyFrame` should carry (test/demo helper). */
-    emptyFrame(): SignalFrame;
-}
-
-/**
- * WorkerBusFeed — drives a (pure) `SignalBus` from `SignalFrame`s on the WORKER
- * side (Phase B / B-2). The worker bus is the SAME `SignalBus` class as on main;
- * this feed reconstructs the bus's three inputs from a transported frame and runs
- * the per-frame sequence, so `bus` yields the same readings as a main-fed bus.
- *
- * No DOM, no worker API, no transport — pure object plumbing over `SignalBus`'s
- * public seams. Lives equally happily in a unit test (parity gate) or the real
- * `viz-worker` (B-3).
- *
- *   analysers → byte-backed `BusAnalyser` stubs whose identity is STABLE across
- *               frames (keyed by analyser key) so `SignalBus`'s per-analyser
- *               scratch-buffer cache (WeakMap on the stub) keeps hitting.
- *   scheduler → a minimal `IRPattern` stub `{ now, query }` returning the frame's
- *               `now` + active events (the bus only calls those two — IRPattern.ts).
- *   bumps     → replayed into `bus.bump()` (the envelope feed).
- *
- * Per-frame order (the worker frame contract): replay bumps → `tick()` →
- * `refreshActive(now)` → `readAudio()`. `readAudio` MUST follow `refreshActive`
- * (SignalBus Slice-2 ordering — `audioFor` resolves a sound→track via the active
- * map). The reference main-bus in the parity gate is driven the same way.
- */
-
-declare class WorkerBusFeed {
-    readonly bus: SignalBus;
-    /** Stable analyser stubs by key (`'master'` + track keys). */
-    private readonly analysers;
-    private lastSeq;
-    constructor(aliasMap?: Record<string, string | string[]>);
-    /** Push the merged alias map (the renderer reads impure settings on main and
-     *  ships the map; the worker bus stays pure — mirrors P5VizRenderer). */
-    setAliases(map: Record<string, string | string[]>): void;
-    /**
-     * Apply one frame: rebuild the bus's inputs from `frame`, replay bumps, then
-     * run the per-frame sequence. Idempotent on a duplicate/stale `seq` (no-op) so
-     * a dropped or repeated transport frame can't double-decay the envelope.
-     * Returns `true` if the frame advanced state, `false` if skipped as stale.
-     */
-    applyFrame(frame: SignalFrame): boolean;
-}
-
-/**
- * SignalTransport — how a `SignalFrame` crosses main → worker each frame
- * (Phase B / B-2). Two interchangeable implementations behind one interface so
- * B-3 can render against the de-risked transport and B-4 can swap in SAB as the
- * measured optimization without touching the renderer:
- *
- *   - postMessage-transferable (THIS file) — the de-risked default + the required
- *     fallback for non-isolated browsers (Safari). Zero-copy for the analyser
- *     bytes via `transfer`; the small JSON envelope is structured-cloned.
- *   - SAB (B-2b) — zero-copy ring + double-buffer, gated on `crossOriginIsolated`.
- *
- * Structural over the channel (no `lib.dom` `Worker`/`Transferable` dependency —
- * the bus stays DOM-free, P12): a `FrameChannel` is anything with
- * postMessage/addEventListener, i.e. a `Worker` on main or `self`/`MessagePort`
- * in the worker.
- */
-
-/** The minimal channel surface a postMessage transport needs (structural — a
- *  `Worker` on main, `self`/`MessagePort` on the worker). */
-interface FrameChannel {
-    postMessage(message: unknown, transfer: ArrayBuffer[]): void;
-    addEventListener(type: 'message', handler: (ev: {
-        data: unknown;
-    }) => void): void;
-    removeEventListener(type: 'message', handler: (ev: {
-        data: unknown;
-    }) => void): void;
-}
-/** MAIN side — ships frames into the worker. */
-interface SignalTransportWriter {
-    /** Send one frame. The analyser byte buffers are TRANSFERRED (zero-copy), so
-     *  the frame is unusable on the sender afterwards (the sampler mints fresh
-     *  arrays each frame — safe). */
-    writeFrame(frame: SignalFrame): void;
-    dispose(): void;
-}
-/** WORKER side — delivers frames to a consumer (e.g. `WorkerBusFeed.applyFrame`). */
-interface SignalTransportReader {
-    /** Register the per-frame consumer. Replaces any previous one. */
-    onFrame(cb: (frame: SignalFrame) => void): void;
-    dispose(): void;
-}
-/** Build the MAIN-side writer over a channel (the `Worker`). */
-declare function createPostMessageWriter(channel: Pick<FrameChannel, 'postMessage'>): SignalTransportWriter;
-/** Build the WORKER-side reader over a channel (`self`/`MessagePort`). Ignores
- *  non-frame messages (B-3 control messages share the channel). */
-declare function createPostMessageReader(channel: Pick<FrameChannel, 'addEventListener' | 'removeEventListener'>): SignalTransportReader;
-
-interface VizPanelProps {
-    vizHeight?: number | string;
-    hapStream: HapStream | null;
-    analyser: AnalyserNode | null;
-    scheduler: PatternScheduler | null;
-    source: VizRendererSource;
-}
-declare function VizPanel({ vizHeight, hapStream, analyser, scheduler, source }: VizPanelProps): react_jsx_runtime.JSX.Element;
-
-interface VizPickerProps {
-    descriptors: VizDescriptor[];
-    activeId: string;
-    onIdChange: (id: string) => void;
-    showVizPicker?: boolean;
-    /** When provided, descriptors whose requires[] aren't met are disabled. */
-    availableComponents?: (keyof EngineComponents)[];
-}
-declare function VizPicker({ descriptors, activeId, onIdChange, showVizPicker, availableComponents }: VizPickerProps): react_jsx_runtime.JSX.Element | null;
-
-interface VizDropdownProps {
-    descriptors: VizDescriptor[];
-    activeId: string;
-    onIdChange: (id: string) => void;
-    onNewViz?: () => void;
-    availableComponents?: (keyof EngineComponents)[];
-}
-/**
- * Grouped dropdown picker for viz modes — replaces the icon button bar.
- * Groups descriptors by renderer field. Custom presets marked with ★.
- */
-declare function VizDropdown({ descriptors, activeId, onIdChange, onNewViz, availableComponents, }: VizDropdownProps): react_jsx_runtime.JSX.Element;
-
-/**
- * A user-authored visualization saved to IndexedDB.
- * Compiled to a VizDescriptor at runtime for use with .viz("name").
- */
-interface CropRegion {
-    /** Fractional offset from left (0–1). */
-    x: number;
-    /** Fractional offset from top (0–1). */
-    y: number;
-    /** Fractional width (0–1). */
-    w: number;
-    /** Fractional height (0–1). */
-    h: number;
-}
-interface VizPreset {
-    id: string;
-    name: string;
-    renderer: 'hydra' | 'p5' | 'glsl';
-    code: string;
-    requires: (keyof EngineComponents)[];
-    createdAt: number;
-    updatedAt: number;
-    /** Optional crop region for inline viz display. Fractional 0–1 coords
-     *  relative to the full canvas. When set, the inline zone shows only
-     *  this sub-region (scaled to fill). */
-    cropRegion?: CropRegion;
-    /** Native canvas dimensions the sketch renders at. If absent, the
-     *  default (1200×600) is used. Set this when your sketch calls
-     *  createCanvas(W, H) with specific values you want the inline viz
-     *  to respect — the crop region is interpreted in these coords. */
-    nativeSize?: {
-        w: number;
-        h: number;
-    };
-}
-/**
- * Reserved prefix for app-bundled demo presets. User-created IDs cannot
- * start with this — guaranteed by `generateUniquePresetId`'s sanitizer
- * which strips leading underscores.
- */
-declare const BUNDLED_PREFIX = "__bundled_";
-/**
- * Sanitize a display name into an ID-safe slug:
- *   "My Aurora!"  →  "my_aurora"
- *   "  spaces  "  →  "spaces"
- *   ""            →  "untitled"
- */
-declare function sanitizePresetName(name: string): string;
-/**
- * Build the ID for an app-bundled preset:
- *   bundledPresetId('Piano Roll', 'p5')  →  '__bundled_piano_roll_p5__'
- *
- * Bundled IDs never collide with user IDs because user IDs follow the
- * `<name>_<renderer>_v<N>` format and never start with `__`.
- */
-declare function bundledPresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl'): string;
-/** True if this id was generated by `bundledPresetId`. */
-declare function isBundledPresetId(id: string): boolean;
-/**
- * Generate a unique user preset ID in the format `<name>_<renderer>_v<N>`,
- * where N is the smallest positive integer such that the resulting id is
- * not present in `existingIds`.
- *
- * Examples (with no collisions):
- *   ('Piano Roll',  'p5',    [])  →  'piano_roll_p5_v1'
- *   ('Piano Roll',  'hydra', [])  →  'piano_roll_hydra_v1'
- *
- * With collisions:
- *   ('Piano Roll',  'p5',    ['piano_roll_p5_v1'])  →  'piano_roll_p5_v2'
- */
-declare function generateUniquePresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl', existingIds: Iterable<string>): string;
-declare const VizPresetStore: {
-    getAll(): Promise<VizPreset[]>;
-    get(id: string): Promise<VizPreset | undefined>;
-    put(preset: VizPreset): Promise<void>;
-    delete(id: string): Promise<void>;
-};
-
-interface VizEditorProps {
-    components: Partial<EngineComponents>;
-    hapStream: HapStream | null;
-    analyser: AnalyserNode | null;
-    scheduler: PatternScheduler | null;
-    onPresetSaved?: (preset: VizPreset) => void;
-    height?: number | string;
-    previewHeight?: number | string;
-    /** Theme applied to the container — defaults to 'dark'. */
-    theme?: 'dark' | 'light' | StrudelTheme;
-}
-declare function VizEditor({ components: _components, hapStream: _hapStream, analyser: _analyser, scheduler: _scheduler, onPresetSaved, height, previewHeight: _previewHeight, theme, }: VizEditorProps): react_jsx_runtime.JSX.Element | null;
-
-/**
- * Compiles user-authored viz code into a VizDescriptor.
- *
- * Hydra code: evaluated in a function scope with the hydra synth
- *   object as `s` and a `stave` namespace mirroring the p5 convention:
- *     - `stave.scheduler` — IRPattern | null (combined pattern scheduler)
- *     - `stave.tracks`    — Map<trackId, IRPattern> (per-track)
- *   Sketches that reference only `s` keep working — the `stave` arg
- *   is additive. Uses `new Function()`.
- *
- * p5 code: evaluated as a full p5 sketch script. Users write real
- *   `function preload/setup/draw` declarations and access injected
- *   Stave-specific inputs via a single `stave` namespace global:
- *     - `stave.scheduler`  — PatternScheduler | null
- *     - `stave.analyser`   — AnalyserNode | null
- *     - `stave.hapStream`  — HapStream | null
- *   Legacy draw-body snippets (no `function draw` declaration) are
- *   auto-wrapped for backwards compatibility.
- */
-declare function compilePreset(preset: VizPreset): VizDescriptor;
-
-/**
- * Shared imperative utility for the PICKER (`useVizRenderer`/`VizPanel`), BACKDROP
- * (`compiledVizProvider`) and CROP preview (`CropPopup`) seams: resolves a
- * VizRenderer, runs the shared per-mount lifecycle (mount + visibility pausing) via
- * `attachVizLifecycle`, and ADDS a ResizeObserver (this seam's container is sized
- * by CSS/layout, so a generic ResizeObserver is the right resize trigger here).
- *
- * NOT the inline `.viz()` path — `viewZones.ts` does its OWN mount (Monaco-layout
- * reflow, teardown-wrap, crop, decorations) and calls `attachVizLifecycle`
- * DIRECTLY. The single shared choke point for the mount+visibility concern-class
- * is `attachVizLifecycle`, NOT this function (P107: don't claim callers you don't
- * have — `viewZones` is not one).
- *
- * Returns the renderer instance and a disconnect function that tears down BOTH the
- * ResizeObserver and the visibility registration.
- */
-declare function mountVizRenderer(container: HTMLDivElement, source: VizRendererSource, components: Partial<EngineComponents>, size: {
-    w: number;
-    h: number;
-}, onError: (e: Error) => void): {
-    renderer: VizRenderer;
-    disconnect: () => void;
-};
-
-/**
- * aliasMap — built-in named-signal aliases for the SignalBus, plus the
- * engine-keyed model that lets one alias NAME carry per-engine sound lists.
- *
- * ## Why engine-keyed
- * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
- * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
- * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
- * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
- * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
- * :9609; every trigger resolves to a single `scsynth_name` string,
- * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
- * single STRING (or a list) — the alias VALUE type never needs to be richer,
- * only the values differ per engine. So an alias absorbs the leak: the NAME
- * (`kick`) stays unified across engines, only the sound list is per-engine.
- *
- *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
- *
- * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
- * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
- * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
- * storage + this resolver (PV12: the bus stays pure, never sees an engine).
- *
- * ## Array aliases
- * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
- * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
- * value as the MAX over members (any tom firing lights the alias).
- *
- * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
- * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
- */
-/** The live-coding engine a viz sketch is currently driven by. Strudel is the
- *  only engine wired today; `sonicpi` is reserved for Sonic Pi Web (a thesis,
- *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
- *  storage/sanitize keep ANY engine key with a valid value, so a future engine
- *  survives a round-trip through an older build. */
-type VizEngine = 'strudel' | 'sonicpi';
-/** A resolved alias value for one engine: a single sound name, or a list whose
- *  envelope reads as the MAX over members. */
-type EngineAliasValue = string | string[];
-/** One alias' per-engine sound lists. Partial: an alias may define a value for
- *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
- *  equivalent → silently inert under Sonic Pi, never a crash). */
-type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
-/** The persisted custom-alias shape: alias name → per-engine sound lists. This
- *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
- *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
-type StoredSignalAliases = Record<string, EngineAliasMap>;
-/** The active viz engine. Strudel is the only live engine today; this is the
- *  single wire-point — when Sonic Pi Web lands, source the active engine from
- *  the running `LiveCodingEngine` at the renderer mount and pass it to
- *  `resolveAliasesForEngine`. */
-declare const DEFAULT_VIZ_ENGINE: VizEngine;
-/**
- * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
- * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
- * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
- * signals work cross-engine the day Sonic Pi Web ships. Aliases with no
- * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
- * slot rather than guess — they stay Strudel-only until a user maps them.
- */
-declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
-/**
- * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
- * consumes for a single engine. Built-ins first, custom LAST so a user override
- * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
- * alias with no value for `engine` is omitted (its bare name stays unbound under
- * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
- * custom map as an arg, imports nothing impure (PV12).
- */
-declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
-/**
- * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
- * Kept as a derived view for back-compat: the bus' default constructor and the
- * renderers' bare-name injection consume this flat shape. Equivalent to the
- * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
- */
-declare const ALIAS_MAP: Record<string, EngineAliasValue>;
-
-/**
- * profiler — a zero-cost-when-disabled runtime performance profiler.
- *
- * WHY (issue #228): we want to optimize viz smoothness / main-thread budget /
- * scheduler latency, but had NO instrumentation — optimizing on inference, not
- * observation. This module measures the real per-frame cost so the next
- * optimization is chosen from data (OBSERVE before optimize).
- *
- * ## What it measures
- *   - SECTIONS: named timed spans (`p5.bus`, `hydra.draw`, …) → ring-buffer of
- *     the last N durations with count / mean / p50 / p95 / p99 / max / last.
- *   - FRAMES: per-instance inter-frame interval → fps + dropped-frame count
- *     (a frame > 2× the running median interval counts as a drop).
- *   - COUNTERS: monotone or live counts (`viz.p5` live instances,
- *     `audio.triggers` cumulative) — rate is derived in the snapshot.
- *   - LONGTASKS: `PerformanceObserver({entryTypes:['longtask']})` — main-thread
- *     blocks > 50ms the platform reports, which is exactly scheduler-vs-viz
- *     contention.
- *
- * ## Cost when disabled
- * Every hot-path method early-returns on `!this._enabled` BEFORE any allocation
- * or `performance.now()` call — the cost is one boolean branch. `enabled` is a
- * field read, not a getter, so it's a plain load. Instrumentation can therefore
- * live on the per-frame path unconditionally.
- *
- * ## Purity boundary
- * The SignalBus stays PURE (P12 / PV65) — it does NOT import this module.
- * Renderers (which already import settings/p5/hydra) call the profiler and wrap
- * the bus calls. The profiler itself imports nothing app-specific.
- *
- * ## Enabling
- *   - `globalThis.__STAVE_PERF__ === true` at module load (e2e / automation), OR
- *   - `Profiler.setEnabled(true)` at runtime (the overlay toggle / a setting).
- * When in a browser, `window.__stavePerf` exposes snapshot/reset/setEnabled so a
- * Playwright run can flip it on, drive a patch, and read the numbers.
- */
-/** Aggregated stats for one section over its ring buffer. */
-interface SectionStats {
-    /** Total samples recorded since reset (NOT capped at RING). */
-    count: number;
-    /** Mean of the retained ring (ms). */
-    mean: number;
-    /** Median of the retained ring (ms). */
-    p50: number;
-    /** 95th percentile of the retained ring (ms). */
-    p95: number;
-    /** 99th percentile of the retained ring (ms). */
-    p99: number;
-    /** Max of the retained ring (ms). */
-    max: number;
-    /** Most recent sample (ms). */
-    last: number;
-}
-/** Per-instance frame stats. */
-interface FrameStats {
-    /** Frames recorded since reset. */
-    count: number;
-    /** Frames/sec from the median inter-frame interval (0 if < 2 frames). */
-    fps: number;
-    /** Median inter-frame interval (ms). */
-    p50: number;
-    /** 95th-percentile inter-frame interval (ms) — the stutter tail. */
-    p95: number;
-    /** Frames whose interval exceeded DROP_FACTOR × running median (VARIANCE). */
-    drops: number;
-    /** Frames whose interval exceeded SLOW_FRAME_MS (<30fps) — the ABSOLUTE floor.
-     *  Catches a uniformly-slow cadence that `drops` misses (every frame equally
-     *  slow ⇒ 0 drops but many slowFrames). */
-    slowFrames: number;
-}
-/** A full point-in-time read of the profiler. */
-interface PerfSnapshot {
-    enabled: boolean;
-    /** ms since the profiler was first enabled / last reset. */
-    uptimeMs: number;
-    sections: Record<string, SectionStats>;
-    frames: Record<string, FrameStats>;
-    /** Cumulative counters since reset (e.g. `audio.triggers`) — rate = value/uptime. */
-    counters: Record<string, number>;
-    /** Live gauges — current state (e.g. `viz.p5` mounted instances). NOT cleared
-     *  by reset(), because they represent what's live NOW, not accumulated samples. */
-    gauges: Record<string, number>;
-    longtasks: {
-        count: number;
-        totalMs: number;
-        maxMs: number;
-    };
-}
-declare class Profiler {
-    /** Plain field (not a getter) so the hot-path branch is a bare load. */
-    private _enabled;
-    private startTs;
-    private readonly sections;
-    private readonly frames;
-    private readonly counters;
-    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
-    private readonly gauges;
-    /** Open spans for begin()/end() keyed by label — last-write-wins (a label
-     *  isn't expected to nest with itself within a frame). */
-    private readonly open;
-    private longtaskCount;
-    private longtaskTotalMs;
-    private longtaskMaxMs;
-    private ltObserver;
-    get enabled(): boolean;
-    /** Turn profiling on/off. Enabling (re)starts the longtask observer and
-     *  stamps the uptime origin; disabling tears the observer down so a disabled
-     *  profiler has no live platform hook. Idempotent. */
-    setEnabled(on: boolean): void;
-    private startLongtaskObserver;
-    /** Record a section duration directly (ms). Cheap no-op when disabled. */
-    record(name: string, ms: number): void;
-    /** Open a span. Pair with `end(name)`. No-op when disabled. */
-    begin(name: string): void;
-    /** Close a span opened by `begin(name)` and record its duration. No-op when
-     *  disabled or when no matching open span exists. */
-    end(name: string): void;
-    /** Time a synchronous function and record it under `name`. Returns the fn's
-     *  result. When disabled, calls the fn with no timing overhead. The fn runs
-     *  even if disabled (it's the real work, not just measurement). */
-    time<T>(name: string, fn: () => T): T;
-    /** Record a rendered frame for an instance (e.g. `'p5#3'`). No-op when
-     *  disabled. */
-    frame(instanceId: string): void;
-    /** Forget an instance's frame history (on renderer destroy) so a dead viz
-     *  doesn't linger in the snapshot. No-op when disabled. */
-    dropFrames(instanceId: string): void;
-    /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
-    inc(name: string, by?: number): void;
-    dec(name: string, by?: number): void;
-    /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
-     *  Gauges survive reset() — they reflect what's live now, not samples.
-     *  Use +1 on mount, -1 on destroy. */
-    gauge(name: string, delta: number): void;
-    snapshot(): PerfSnapshot;
-    /** Clear all samples/counters but keep the enabled state + observer. Use to
-     *  start a clean measurement window (e.g. before driving a heavy patch). */
-    reset(): void;
-}
-/** The process-wide profiler singleton. Import and call directly:
- *  `perf.frame('hydra#1')`, `perf.time('hydra.draw', () => hydra.tick())`. */
-declare const perf: Profiler;
-
-interface SplitPaneProps {
-    direction: 'horizontal' | 'vertical';
-    children: React__default.ReactNode[];
-    /** Initial sizes as percentages (must sum to 100). Defaults to equal splits. */
-    initialSizes?: number[];
-    /** Minimum size in pixels for each pane. */
-    minSize?: number;
-}
-/**
- * Zero-dependency resizable split pane. Supports N children with
- * draggable dividers between each pair.
- */
-declare function SplitPane({ direction, children, initialSizes, minSize, }: SplitPaneProps): react_jsx_runtime.JSX.Element;
-
-/**
- * Bundled p5 viz source code — single source of truth.
- *
- * These strings power both:
- *   - `DEFAULT_VIZ_DESCRIPTORS` (the viz picker / demo / standalone
- *     embedders), compiled via `compileP5Code`.
- *   - The bundled `preset/viz/*.p5` workspace files seeded by the app
- *     template, which re-export these constants for backwards-compat.
- *
- * Until #184 (PR retiring the 7 TS sketch classes that previously powered
- * the picker), the picker rendered a different — richer or poorer — copy
- * of each viz than what users edited in the preset file. PV56 demands the
- * picker code path === the preset file code path; this module is that path.
- */
-declare const PIANOROLL_P5_CODE = "// Stave p5 viz \u2014 Piano Roll\n// stave.scheduler, stave.analyser, stave.hapStream, stave.options are injected\n// globals. Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets\n// its own lane, sorted low\u2192high, so notes never overlap and the melodic\n// contour reads as a staircase. Notes scroll across a 4-cycle window; the\n// playhead sits at the half mark.\n//\n// Honours a subset of @strudel/draw's .pianoroll(options) vocabulary via\n// stave.options \u2014 defaults (no options) reproduce Stave's classic look:\n//   cycles, playhead, vertical, labels, flipTime, flipValues, fold,\n//   minMidi, maxMidi, autorange, fill, fillActive, strokeActive,\n//   active, inactive, background, playheadColor.\n\n// Drum/percussion sound-name prefixes for color classification.\nconst DRUM_PREFIXES = ['bd', 'sd', 'hh', 'rim', 'cp', 'cy', 'lt', 'mt', 'ht', 'oh', 'cl']\n\nfunction isDrum(s) {\n  return DRUM_PREFIXES.some(p => s === p || (s.startsWith(p) && /\\d/.test(s[p.length] || '')))\n}\n\n// Note NAME \u2192 MIDI. Returns null for unparseable names (octaveless or\n// sample names) \u2014 the caller folds those onto string lanes instead.\nfunction noteToMidi(n) {\n  if (typeof n === 'number') return Math.round(n)\n  if (typeof n !== 'string') return null\n  const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n  if (!m) return null\n  const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n  const acc = m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0\n  return (parseInt(m[3]) + 1) * 12 + base + acc\n}\n\n// Fold-grouping key: a MIDI number for pitched haps, a \"_sound\" string for\n// unpitched ones. Priority mirrors how Strudel fills a hap (freq is\n// pre-computed from note, so note(\"c e g\") resolves via freq, never NaN).\nfunction valueOf(h) {\n  if (typeof h.freq === 'number') return Math.round(12 * Math.log2(h.freq / 440) + 69)\n  if (typeof h.note === 'number') return h.note\n  if (typeof h.note === 'string') {\n    const mi = noteToMidi(h.note)\n    return mi !== null ? mi : '_' + h.note\n  }\n  if (h.s) return '_' + h.s\n  return 0\n}\n\n// Default label text for a hap (note name, else sound[:n]).\nfunction labelOf(h) {\n  if (typeof h.note === 'string') return h.note\n  if (typeof h.note === 'number') return String(h.note)\n  if (h.s) return h.s + (h.n != null ? ':' + h.n : '')\n  return ''\n}\n\nfunction parseHex(hex) {\n  const s = String(hex).replace('#', '')\n  if (s.length === 6) return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)]\n  if (s.length === 3) return [parseInt(s[0] + s[0], 16), parseInt(s[1] + s[1], 16), parseInt(s[2] + s[2], 16)]\n  return null\n}\n\n// Explicit hap color wins; else classify by sound family.\nfunction colorOf(h) {\n  if (h.color) { const c = parseHex(h.color); if (c) return c }\n  const s = h.s || ''\n  if (isDrum(s)) return [249, 115, 22]        // drums  \u2014 orange\n  if (s.startsWith('bass')) return [6, 182, 212]   // bass  \u2014 cyan\n  if (s.startsWith('pad')) return [16, 185, 129]   // pad   \u2014 green\n  return [139, 92, 246]                        // melody \u2014 purple\n}\n\nconst num = (v, d) => (typeof v === 'number' && !isNaN(v) ? v : d)\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\nfunction draw() {\n  const W = width, H = height\n  const O = (stave.options && typeof stave.options === 'object') ? stave.options : {}\n\n  // \u2500\u2500 options (defaults match @strudel/draw's pianoroll). fold defaults ON\n  // (strudel.cc's real default, __pianoroll fold=1): distinct pitches pack into\n  // CONTIGUOUS adjacent lanes \u2014 no empty rows between non-adjacent semitones.\n  // The landscape note look comes from the wide/short native surface (#214),\n  // NOT from fold:0. fold:0 (opt-in) spaces notes by absolute MIDI, which shows\n  // gaps at the missing semitones (use with autorange for a tight range). \u2500\u2500\n  const CYCLES = num(O.cycles, 4)\n  const PLAYHEAD = num(O.playhead, 0.5)\n  const vertical = !!O.vertical\n  const labels = !!O.labels\n  const flipTime = !!O.flipTime\n  const flipValues = !!O.flipValues\n  const useFold = O.fold == null ? true : !!O.fold\n  const autorange = !!O.autorange\n  const inactiveFilled = O.fill == null ? true : !!O.fill\n  const activeFilled = O.fillActive == null ? true : !!O.fillActive   // Stave default: filled glow\n  const activeStroked = O.strokeActive == null ? true : !!O.strokeActive\n  const activeOverride = typeof O.active === 'string' ? parseHex(O.active) : null\n  const inactiveOverride = typeof O.inactive === 'string' ? parseHex(O.inactive) : null\n  const bg = typeof O.background === 'string' ? parseHex(O.background) : null\n  const playheadCol = typeof O.playheadColor === 'string' ? parseHex(O.playheadColor) : null\n\n  if (bg) background(bg[0], bg[1], bg[2]); else clear()\n\n  const sched = stave.scheduler\n  if (!sched) return\n  let now\n  try { now = sched.now() } catch (e) { return }\n\n  const from = now - CYCLES * PLAYHEAD\n  const to = now + CYCLES * (1 - PLAYHEAD)\n  const ext = to - from\n  let haps\n  try { haps = sched.query(from, to) } catch (e) { haps = [] }\n\n  // Distinct values (for fold lanes / autorange), sorted low\u2192high.\n  const seen = new Set(), vals = []\n  for (const h of haps) { const v = valueOf(h); if (!seen.has(v)) { seen.add(v); vals.push(v) } }\n  vals.sort((a, b) => {\n    if (typeof a === 'number' && typeof b === 'number') return a - b\n    if (typeof a === 'number') return -1\n    if (typeof b === 'number') return 1\n    return String(a).localeCompare(String(b))\n  })\n\n  // Value-axis slotting: fold (one slot per distinct value) OR absolute MIDI\n  // range (minMidi..maxMidi, optionally autoranged from the numeric values).\n  const numericVals = vals.filter(v => typeof v === 'number')\n  let minMidi = num(O.minMidi, 10), maxMidi = num(O.maxMidi, 90)\n  if (autorange && numericVals.length) { minMidi = Math.min(...numericVals); maxMidi = Math.max(...numericVals) }\n  const foldCount = Math.max(1, vals.length)\n  const absExtent = Math.max(1, maxMidi - minMidi + 1)\n  const slotCount = useFold ? foldCount : absExtent\n\n  // slotFromTop: 0 = top of the value axis (high pitch up).\n  const slotFromTop = (h) => {\n    const v = valueOf(h)\n    let s\n    if (useFold) { const lane = vals.indexOf(v); s = lane < 0 ? -1 : foldCount - 1 - lane }\n    else if (typeof v === 'number') s = maxMidi - v\n    else s = absExtent - 1 // unpitched sounds sit at the bottom in absolute mode\n    if (s < 0 || s >= slotCount) return -1\n    return flipValues ? slotCount - 1 - s : s\n  }\n\n  const timeAxis = vertical ? H : W\n  const valueAxis = vertical ? W : H\n  const barSize = valueAxis / slotCount\n\n  noStroke()\n  for (const h of haps) {\n    const sft = slotFromTop(h)\n    if (sft < 0) continue\n    let tp = (h.begin - from) / ext            // 0..1 along the time axis\n    if (flipTime) tp = 1 - tp\n    const tPx = tp * timeAxis\n    const durPx = Math.max(2, ((h.end - h.begin) / ext) * timeAxis)\n    const vPx = (sft / slotCount) * valueAxis\n    const endC = h.endClipped != null ? h.endClipped : h.end\n    const active = h.begin <= now && endC > now\n    const gain = Math.min(1, Math.max(0.1, h.gain == null ? 1 : h.gain))\n    const vel = Math.min(1, Math.max(0.1, h.velocity == null ? 1 : h.velocity))\n    const alpha = gain * vel\n    let col = colorOf(h)\n    if (active && activeOverride) col = activeOverride\n    else if (!active && inactiveOverride) col = inactiveOverride\n    const [r, g, b] = col\n\n    // rect coords \u2014 horizontal: time\u2192x, value\u2192y; vertical: time\u2192y, value\u2192x.\n    const rx = vertical ? vPx : tPx - (flipTime ? durPx : 0)\n    const ry = vertical ? tPx - (flipTime ? 0 : durPx) : vPx\n    const rw = vertical ? barSize : durPx\n    const rh = vertical ? durPx : barSize\n\n    if (active) {\n      if (activeFilled) {\n        // Brightened toward white unless an explicit active color was given.\n        if (activeOverride) fill(r, g, b, alpha * 255)\n        else fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)\n        rect(rx, ry + 1, rw - 2, rh - 2)\n      }\n      if (activeStroked) {\n        noFill(); stroke(255, 255, 255, 220); strokeWeight(1)\n        rect(rx, ry + 1, rw - 2, rh - 2); noStroke()\n      }\n    } else if (inactiveFilled) {\n      fill(r, g, b, alpha * 180)\n      rect(rx, ry + 1, rw - 2, rh - 2)\n    }\n\n    if (labels) {\n      const txt = labelOf(h)\n      if (txt) {\n        const fs = Math.min(14, Math.max(7, rh * 0.7))\n        noStroke(); fill(active ? 255 : 230); textSize(fs); textAlign(LEFT, TOP)\n        text(txt, rx + 2, ry + 1)\n      }\n    }\n  }\n\n  // Playhead line at the PLAYHEAD mark of the time axis.\n  const phc = playheadCol || [255, 255, 255]\n  stroke(phc[0], phc[1], phc[2], 128); strokeWeight(1)\n  if (vertical) line(0, PLAYHEAD * H, W, PLAYHEAD * H)\n  else line(PLAYHEAD * W, 0, PLAYHEAD * W, H)\n  noStroke()\n}";
-declare const SCOPE_P5_CODE = "// Stave p5 viz \u2014 Scope (oscilloscope / event pulses)\n// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().\nlet _wave = null\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noFill()\n}\nfunction draw() {\n  clear()\n  stroke(40, 50, 70); strokeWeight(0.5)\n  line(0, height * 0.5, width, height * 0.5)\n  if (stave.analyser) {\n    const buf = stave.analyser.frequencyBinCount\n    if (!_wave || _wave.length !== buf) _wave = new Float32Array(buf)\n    const data = _wave\n    stave.analyser.getFloatTimeDomainData(data)\n    let trig = 0\n    for (let i = 1; i < buf; i++) { if (data[i-1] > 0 && data[i] <= 0) { trig = i; break } }\n    stroke('#75baff'); strokeWeight(2); beginShape()\n    for (let i = trig; i < buf; i++) vertex((i - trig) * width / (buf - trig), (0.5 - 0.25 * data[i]) * height)\n    endShape()\n  } else if (stave.scheduler) {\n    const now = stave.scheduler.now()\n    const haps = stave.scheduler.query(now - 4, now + 0.1)\n    noStroke()\n    for (const h of haps) {\n      const age = now - h.begin, decay = max(0, 1 - age / 4)\n      const x = ((h.begin - now + 4) / 4) * width\n      const w = max(3, ((h.end - h.begin) / 4) * width)\n      const pH = height * 0.6 * decay * (h.gain ?? 1)\n      fill(117, 186, 255, decay * 200)\n      rect(x, height * 0.5 - pH / 2, w, pH, 2)\n    }\n  }\n}";
-declare const FSCOPE_P5_CODE = "// Stave p5 viz \u2014 Frequency Scope (FFT bars / note bars)\n// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().\nlet _freq = null\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until\n// superdough renders, so parse the note name to MIDI ourselves.\nfunction hapFreq(h) {\n  if (typeof h.freq === 'number') return h.freq\n  let n = h.note\n  if (typeof n === 'string') {\n    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n    if (!m) return null\n    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)\n  }\n  if (typeof n !== 'number') return null\n  return 440 * pow(2, (n - 69) / 12)\n}\nfunction draw() {\n  clear()\n  stroke(40, 50, 70); strokeWeight(0.5); noFill()\n  line(0, height * 0.75, width, height * 0.75); noStroke()\n  if (stave.analyser) {\n    const buf = stave.analyser.frequencyBinCount\n    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)\n    const data = _freq\n    stave.analyser.getFloatFrequencyData(data)\n    fill('#75baff')\n    const sw = width / buf\n    for (let i = 0; i < buf; i++) {\n      const n = constrain((data[i] + 100) / 100, 0, 1), v = n * 0.25\n      rect(i * sw, (0.75 - v * 0.5) * height, max(sw, 1), v * height)\n    }\n  } else if (stave.scheduler) {\n    const now = stave.scheduler.now()\n    const haps = stave.scheduler.query(now - 0.2, now + 0.05)\n    const bins = new Float32Array(64)\n    for (const h of haps) {\n      const freq = hapFreq(h)\n      if (freq == null) continue\n      if (freq < 30) continue\n      const idx = constrain(floor(log(freq / 30) / log(4000 / 30) * 64), 0, 63)\n      bins[idx] = max(bins[idx], max(0, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1))\n    }\n    const sw = width / 64\n    for (let i = 0; i < 64; i++) {\n      if (bins[i] <= 0) continue\n      const v = bins[i] * 0.25\n      fill(117, 186, 255, bins[i] * 220)\n      rect(i * sw, (0.75 - v * 0.5) * height, max(sw - 1, 1), v * height)\n    }\n  }\n}";
-declare const SPECTRUM_P5_CODE = "// Stave p5 viz \u2014 Spectrum (scrolling waterfall)\n// The waterfall scrolls by reading back the PREVIOUS frame (getImageData \u2192\n// putImageData(-2,0)). That needs the drawing surface to PERSIST across frames \u2014\n// but in the worker the Tier-2 present transferToImageBitmap()s (and CLEARS) the\n// main canvas every frame, so reading the MAIN canvas back yields nothing (#306).\n// Own a persistent OffscreenCanvas buffer (_wf) instead: scroll it (cheap, one\n// column/frame), then blit it to the main canvas each frame. _wf is never\n// transferred, so history accumulates. OffscreenCanvas is native in the worker AND\n// on the main thread, so this renders identically on both (no p5.Graphics, whose\n// HTMLCanvasElement instanceof checks are undefined in the worker shim).\nlet _freq = null\nlet _wf = null, _wctx = null\nfunction _ensureBuf(w, h) {\n  if (_wf && _wf.width === w && _wf.height === h) return\n  const old = _wf\n  _wf = new OffscreenCanvas(max(1, w), max(1, h))\n  _wctx = _wf.getContext('2d')\n  if (old && _wctx) { try { _wctx.drawImage(old, 0, 0) } catch (e) {} }\n}\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  pixelDensity(1); noStroke()\n  _ensureBuf(width, height)\n}\n// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until\n// superdough renders, so parse the note name to MIDI ourselves.\nfunction hapFreq(h) {\n  if (typeof h.freq === 'number') return h.freq\n  let n = h.note\n  if (typeof n === 'string') {\n    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n    if (!m) return null\n    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)\n  }\n  if (typeof n !== 'number') return null\n  return 440 * pow(2, (n - 69) / 12)\n}\nfunction draw() {\n  _ensureBuf(width, height)\n  const ctx = _wctx\n  if (!ctx) { clear(); return }\n  if (stave.analyser) {\n    const buf = stave.analyser.frequencyBinCount\n    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)\n    const data = _freq\n    stave.analyser.getFloatFrequencyData(data)\n    const img = ctx.getImageData(0, 0, width, height)\n    ctx.clearRect(0, 0, width, height)\n    ctx.putImageData(img, -2, 0)\n    ctx.fillStyle = '#75baff'\n    for (let i = 0; i < buf; i++) {\n      const n = constrain((data[i] + 80) / 80, 0, 1)\n      if (n <= 0) continue\n      ctx.globalAlpha = n\n      const yEnd = (log(i + 1) / log(buf)) * height\n      const yStart = i > 0 ? (log(i) / log(buf)) * height : 0\n      ctx.fillRect(width - 2, height - yEnd, 2, max(2, yEnd - yStart))\n    }\n    ctx.globalAlpha = 1\n  } else if (stave.scheduler) {\n    const now = stave.scheduler.now()\n    const img = ctx.getImageData(0, 0, width, height)\n    ctx.clearRect(0, 0, width, height)\n    ctx.putImageData(img, -2, 0)\n    const haps = stave.scheduler.query(now - 0.3, now + 0.05)\n    for (const h of haps) {\n      const freq = hapFreq(h)\n      if (freq == null) continue\n      if (freq < 20) continue\n      const logPos = log(freq / 20) / log(4000 / 20)\n      const y = height - logPos * height\n      const alpha = max(0.1, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1)\n      ctx.fillStyle = h.color ?? '#75baff'\n      ctx.globalAlpha = alpha\n      ctx.fillRect(width - 2, y - 2, 2, max(4, height * 0.03))\n    }\n    ctx.globalAlpha = 1\n  } else { ctx.clearRect(0, 0, width, height) }\n  // Present the persistent buffer to the main canvas (which the worker clears\n  // every frame via transferToImageBitmap). drawImage accepts an OffscreenCanvas\n  // source on both the worker and the main-thread 2D context.\n  clear()\n  drawingContext.drawImage(_wf, 0, 0)\n}";
-declare const SPIRAL_P5_CODE = "// Stave p5 viz \u2014 Spiral\nfunction setup() {\n  createCanvas(300, 200)\n  pixelDensity(window.devicePixelRatio || 1)\n  noFill()\n}\nfunction xySpiral(rot, margin, cx, cy, rotate) {\n  const a = ((rot + rotate) * 360 - 90) * PI / 180\n  return [cx + cos(a) * margin * rot, cy + sin(a) * margin * rot]\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  const haps = stave.scheduler.query(now - 2, now + 1)\n  const cx = width / 2, cy = height / 2\n  const sz = min(width, height) * 0.38, mg = sz / 3\n  for (const h of haps) {\n    const active = h.begin <= now && h.end > now\n    const from = h.begin - now + 3, to = h.end - now + 3 - 0.005\n    const op = max(0, 1 - abs((h.begin - now) / 2))\n    const c = color(h.color ?? (active ? '#75baff' : '#8a919966'))\n    c.setAlpha(op * 255)\n    stroke(c); strokeWeight(mg / 2); strokeCap(ROUND)\n    beginShape()\n    for (let a = from; a <= to; a += 1/60) {\n      const [x, y] = xySpiral(a, mg, cx, cy, now)\n      vertex(x, y)\n    }\n    endShape()\n  }\n  stroke(255); strokeWeight(mg / 2)\n  beginShape()\n  for (let a = 2.98; a <= 3; a += 1/60) {\n    const [x, y] = xySpiral(a, mg, cx, cy, now)\n    vertex(x, y)\n  }\n  endShape()\n}";
-declare const PITCHWHEEL_P5_CODE = "// Stave p5 viz \u2014 Pitchwheel\nconst ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)\nfunction setup() {\n  createCanvas(300, 200)\n  pixelDensity(window.devicePixelRatio || 1)\n}\nfunction freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }\nfunction circPos(cx, cy, r, a) {\n  const rad = a * TWO_PI\n  return [sin(rad) * r + cx, cos(rad) * r + cy]\n}\n// Hz from a hap. Strudel leaves note as a NAME string and freq null until\n// superdough renders, so parse the note name to MIDI ourselves (h.freq is null\n// here \u2014 relying on it leaves every note stuck at the default pitch).\nfunction hapFreq(h) {\n  if (typeof h.freq === 'number') return h.freq\n  let n = h.note\n  if (typeof n === 'string') {\n    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n    if (!m) return null\n    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)\n  }\n  if (typeof n !== 'number') return null\n  return 440 * pow(2, (n - 69) / 12)\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  let haps = stave.scheduler.query(now - 0.01, now + 0.01)\n  haps = haps.filter(h => h.begin <= now && h.end > now)\n  const sz = min(width, height), r = sz / 2 - 12\n  const cx = width / 2, cy = height / 2\n  noStroke(); fill(117, 186, 255, 64)\n  for (let i = 0; i < 12; i++) {\n    const a = freq2angle(ROOT_FREQ * pow(2, i / 12))\n    const [x, y] = circPos(cx, cy, r, a)\n    circle(x, y, 7)\n  }\n  noFill(); stroke(117, 186, 255, 48); strokeWeight(1)\n  circle(cx, cy, r * 2)\n  for (const h of haps) {\n    const freq = hapFreq(h)\n    if (freq == null) continue\n    const a = freq2angle(freq)\n    const [x, y] = circPos(cx, cy, r, a)\n    const c = h.color ?? '#75baff'\n    stroke(c); strokeWeight(2)\n    line(cx, cy, x, y)\n    fill(c); noStroke()\n    circle(x, y, 12)\n  }\n}";
-declare const WORDFALL_P5_CODE = "// Stave p5 viz \u2014 Wordfall (vertical pianoroll with labels)\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  pixelDensity(window.devicePixelRatio || 1)\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  const CYCLES = 4, PH = 0.5\n  const haps = stave.scheduler.query(now - CYCLES * PH, now + CYCLES * (1 - PH))\n  const vals = [...new Set(haps.map(h => h.note ?? h.s ?? 0))].sort()\n  if (!vals.length) return\n  const bw = width / vals.length\n  for (const h of haps) {\n    const active = h.begin <= now && h.end > now\n    const dur = h.end - h.begin\n    const yOff = h.begin - now\n    const y = height * PH - (yOff / CYCLES) * height\n    const dH = (dur / CYCLES) * height\n    const v = h.note ?? h.s ?? 0\n    const x = vals.indexOf(v) * bw\n    noStroke()\n    if (active) fill(255)\n    else { const c = color(h.color ?? '#75baff'); c.setAlpha(160); fill(c) }\n    rect(x + 1, y + 1, bw - 2, dH - 2)\n    if (dH > 10 && bw > 16) {\n      const label = h.note != null ? String(h.note) : (h.s ?? '')\n      textSize(min(bw * 0.55, dH * 0.7, 11))\n      textAlign(LEFT, TOP); fill(active ? 0 : 255); noStroke()\n      text(label, x + 3, y + 3)\n    }\n  }\n  stroke(255, 255, 255, 128); strokeWeight(1)\n  line(0, height * PH, width, height * PH)\n}";
-declare const SIGNALS_SPECTRUM_P5_CODE = "// Stave p5 viz \u2014 Signals (Spectrum)\n// Showcases the named musical-signal bus. Try it over:  s(\"bd*4 hh*8\")\n//\n// The bus is exposed BARE in p5 (via the sketch's stave namespace), so you can\n// read these directly \u2014 they are LIVE NUMBERS / ARRAYS, refreshed every draw():\n//\n//   u('bd')        \u2014 the 'bd' (kick) sound's live signals (a SignalReading).\n//   u('bd').fft    \u2014 that sound's spectrum: a number[] of 32 buckets, each 0..1\n//                    (real audio off the kick's OWN analyser/orbit). [] if muted.\n//   u('bd').rms    \u2014 that sound's loudness 0..1. .bass/.mid/.treble also exist.\n//   uKick          \u2014 the kick ENVELOPE, 0..1, bumped on each hit, decaying ~0.92\n//                    per frame. uSnare / uHat / uClap / uTom \u2026 are siblings.\n//   u.fft          \u2014 the MASTER mix spectrum (combined audio), same shape.\n//\n// In hydra these same names are () => number THUNKS \u2014 see \"Signals (Bands)\".\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\nfunction draw() {\n  clear()\n\n  // \u2500\u2500 Spectrum bars from the kick's own audio: u('bd').fft is a number[] \u2500\u2500\u2500\u2500\u2500\u2500\n  // Each bucket is 0..1. We fall back to the master mix (u.fft) so the demo\n  // still moves before any 'bd' has fired its analyser.\n  const spectrum = (u('bd').fft.length ? u('bd').fft : u.fft) || []\n  const bw = width / Math.max(1, spectrum.length)\n  for (let i = 0; i < spectrum.length; i++) {\n    const v = spectrum[i]            // 0..1 magnitude for this band\n    const h = v * height\n    fill(117, 186, 255, 180 + v * 75)\n    rect(i * bw, height - h, bw - 1, h)\n  }\n\n  // \u2500\u2500 A circle pulsed by uKick (a live NUMBER 0..1 in p5) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  // uKick bumps to ~1 on each kick hit and decays each frame, so the circle\n  // punches outward on the beat. (hydra would call it: uKick().)\n  const base = min(width, height) * 0.18\n  const r = base + uKick * base * 1.6\n  noFill()\n  stroke(255, 255, 255, 120 + uKick * 135)\n  strokeWeight(2 + uKick * 4)\n  circle(width / 2, height / 2, r * 2)\n\n  // Inner dot brightens with overall loudness (master RMS, a number in p5).\n  noStroke()\n  fill(255, 255, 255, 60 + uRms * 195)\n  circle(width / 2, height / 2, base * 0.5)\n}";
-declare const SIGNALS_BACKDROP_P5_CODE = "// Stave p5 viz \u2014 Signals (Backdrop)\n// One color band per code block (track). Showcases the per-track side of the\n// bus: u.tracks enumerates the live track keys, and u.track(id).color is the\n// color that block declared in the music via .color() (e.g. in Strudel:\n//   $: s(\"bd*4\").color(\"#f97316\")\n//   $: s(\"hh*8\").color(\"#06b6d4\")\n// ). Each band's brightness follows that track's loudness (rms).\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\n// Parse a \"#rrggbb\" / \"#rgb\" hap color into [r,g,b]; null if unparseable.\nfunction parseHex(hex) {\n  const s = String(hex).replace('#', '')\n  if (s.length === 6) return [parseInt(s.slice(0,2),16), parseInt(s.slice(2,4),16), parseInt(s.slice(4,6),16)]\n  if (s.length === 3) return [parseInt(s[0]+s[0],16), parseInt(s[1]+s[1],16), parseInt(s[2]+s[2],16)]\n  return null\n}\n\nfunction draw() {\n  clear()\n\n  // u.tracks \u2014 the live track keys ('$0','$1',\u2026 anonymous, or 'd1','drums'\u2026).\n  const tracks = u.tracks || []\n  if (!tracks.length) {\n    fill(120); textAlign(CENTER, CENTER); textSize(13)\n    text('play a multi-block pattern\u2026', width / 2, height / 2)\n    return\n  }\n\n  const bandH = height / tracks.length\n  for (let i = 0; i < tracks.length; i++) {\n    const id = tracks[i]\n    const reading = u.track(id)            // this track's live SignalReading\n    // .color \u2014 the color this block set with .color() in the music. p5: a value\n    // (string|null). Fall back to a neutral blue if the block set none.\n    const rgb = parseHex(reading.color) || [117, 186, 255]\n    // .rms \u2014 this track's loudness 0..1 (own analyser; 0 if silent). Drives the\n    // band's brightness so the active block lights up.\n    const lvl = reading.rms\n    fill(rgb[0], rgb[1], rgb[2], 60 + lvl * 195)\n    rect(0, i * bandH, width, bandH)\n  }\n}";
-
-/**
  * groupLayout — pure functions for the 2D workspace group layout.
  *
  * The workspace shell arranges editor/preview groups into a two-level
@@ -4497,6 +3746,899 @@ interface WorkspaceShellProps {
      *  per-instance rationale. */
     readonly onCropViz?: (vizId: string, presetId: string | null, trackKey: string) => void;
 }
+
+/**
+ * A user-authored visualization saved to IndexedDB.
+ * Compiled to a VizDescriptor at runtime for use with .viz("name").
+ */
+interface CropRegion {
+    /** Fractional offset from left (0–1). */
+    x: number;
+    /** Fractional offset from top (0–1). */
+    y: number;
+    /** Fractional width (0–1). */
+    w: number;
+    /** Fractional height (0–1). */
+    h: number;
+}
+interface VizPreset {
+    id: string;
+    name: string;
+    renderer: 'hydra' | 'p5' | 'glsl';
+    code: string;
+    requires: (keyof EngineComponents)[];
+    createdAt: number;
+    updatedAt: number;
+    /** Optional crop region for inline viz display. Fractional 0–1 coords
+     *  relative to the full canvas. When set, the inline zone shows only
+     *  this sub-region (scaled to fill). */
+    cropRegion?: CropRegion;
+    /** Native canvas dimensions the sketch renders at. If absent, the
+     *  default (1200×600) is used. Set this when your sketch calls
+     *  createCanvas(W, H) with specific values you want the inline viz
+     *  to respect — the crop region is interpreted in these coords. */
+    nativeSize?: {
+        w: number;
+        h: number;
+    };
+}
+/**
+ * Reserved prefix for app-bundled demo presets. User-created IDs cannot
+ * start with this — guaranteed by `generateUniquePresetId`'s sanitizer
+ * which strips leading underscores.
+ */
+declare const BUNDLED_PREFIX = "__bundled_";
+/**
+ * Sanitize a display name into an ID-safe slug:
+ *   "My Aurora!"  →  "my_aurora"
+ *   "  spaces  "  →  "spaces"
+ *   ""            →  "untitled"
+ */
+declare function sanitizePresetName(name: string): string;
+/**
+ * Build the ID for an app-bundled preset:
+ *   bundledPresetId('Piano Roll', 'p5')  →  '__bundled_piano_roll_p5__'
+ *
+ * Bundled IDs never collide with user IDs because user IDs follow the
+ * `<name>_<renderer>_v<N>` format and never start with `__`.
+ */
+declare function bundledPresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl'): string;
+/** True if this id was generated by `bundledPresetId`. */
+declare function isBundledPresetId(id: string): boolean;
+/**
+ * Generate a unique user preset ID in the format `<name>_<renderer>_v<N>`,
+ * where N is the smallest positive integer such that the resulting id is
+ * not present in `existingIds`.
+ *
+ * Examples (with no collisions):
+ *   ('Piano Roll',  'p5',    [])  →  'piano_roll_p5_v1'
+ *   ('Piano Roll',  'hydra', [])  →  'piano_roll_hydra_v1'
+ *
+ * With collisions:
+ *   ('Piano Roll',  'p5',    ['piano_roll_p5_v1'])  →  'piano_roll_p5_v2'
+ */
+declare function generateUniquePresetId(name: string, renderer: 'hydra' | 'p5' | 'glsl', existingIds: Iterable<string>): string;
+declare const VizPresetStore: {
+    getAll(): Promise<VizPreset[]>;
+    get(id: string): Promise<VizPreset | undefined>;
+    put(preset: VizPreset): Promise<void>;
+    delete(id: string): Promise<void>;
+};
+
+/**
+ * vizLanguages — the single home for the viz `language` ↔ renderer `kind`
+ * correspondence.
+ *
+ * ## Why this module exists
+ *
+ * A workspace file's `language` (`'p5js' | 'hydra' | 'glsl'`) maps to a
+ * concrete renderer `kind` (`'p5' | 'hydra' | 'glsl'`), and the inverse.
+ * Before this module that correspondence was duplicated as inline ternaries
+ * and `language === 'p5js' || 'hydra'` allow-list filters across ~13 call
+ * sites in the editor and app packages. Adding the GLSL renderer kind (#287)
+ * meant threading `'glsl'` through every one of them — and the easily-missed
+ * sites were the **filters**: a union-widen forces the type system to make you
+ * add a ternary arm, but an allow-list filter compiles fine while silently
+ * excluding the new kind, so the feature just no-ops (P118 / PV88 — the
+ * named-viz registration filter and the backdrop filters dropped `'glsl'`
+ * invisibly to tsc + unit tests; found only by live observation).
+ *
+ * Consolidating into one helper means:
+ *   - the allow-list (`VIZ_LANGUAGES`) has ONE definition every filter calls,
+ *     so a new kind can't be silently dropped by a forgotten filter, and
+ *   - the maps are exhaustive `Record`s keyed by the renderer union, so a new
+ *     renderer kind is a compile error until every arm is added — the next
+ *     kind is a 1-line change, not a 13-site scavenger hunt.
+ *
+ * @see PV88 (the consolidation target), P118 (the silent-drop trap).
+ */
+
+/**
+ * The concrete renderer kind a viz file compiles to. Mirror of
+ * `VizPreset['renderer']` — kept as a named alias so call sites read
+ * intent rather than reaching into the preset shape.
+ */
+type VizRendererKind = VizPreset['renderer'];
+/**
+ * The workspace languages that compile to a viz renderer — THE single
+ * allow-list. Every "is this a viz file?" filter must derive from this
+ * (via {@link isVizLanguage}) so a new viz language can never be silently
+ * excluded by a forgotten filter site.
+ *
+ * `satisfies` (not `as`) keeps each entry checked against
+ * `WorkspaceLanguage` while preserving the literal tuple type.
+ */
+declare const VIZ_LANGUAGES: readonly ["p5js", "hydra", "glsl"];
+/** Narrowing of `WorkspaceLanguage` to the viz languages. */
+type VizLanguage = (typeof VIZ_LANGUAGES)[number];
+/** True when `lang` is a viz language (compiles to a renderer). */
+declare function isVizLanguage(lang: WorkspaceLanguage): lang is VizLanguage;
+/**
+ * The renderer kind a workspace `language` compiles to, or `null` when the
+ * language is not a viz language. Callers that have already established a
+ * viz file (e.g. via {@link isVizLanguage}) typically fall back to `'p5'`.
+ */
+declare function rendererForLanguage(lang: WorkspaceLanguage): VizRendererKind | null;
+/** The workspace language a renderer kind authors as. */
+declare function languageForRenderer(renderer: VizRendererKind): WorkspaceLanguage;
+
+/**
+ * injectedGlobals — the single, authoritative catalogue of the Stave-injected
+ * globals a viz sketch may read, per renderer kind (#309).
+ *
+ * This is the SOURCE OF TRUTH for two surfaces:
+ *   - the read-only "Stave Inputs" reference block shown above the viz editor
+ *     (ShaderToy-style — see {@link formatStaveInputs}); and
+ *   - the Monaco hover provider that shows a token's doc + live master value
+ *     (see {@link injectedGlobalByToken} + the `live` field).
+ *
+ * Keeping ONE list means the docs surfaced to authors cannot drift from what is
+ * actually injected by the compilers/builders (`buildStaveUniforms` for p5,
+ * `buildHydraStaveBag` for hydra, the `UNIFORMS` + `STAVE_TRACK_API` strings for
+ * glsl). When a new bus signal is added to those builders, add it here too — the
+ * same PV54 additive-floor obligation, applied to the doc surface (PV94).
+ *
+ * SCOPE (deliberate, issue #309): Stave-exclusive globals ONLY. The full p5 /
+ * hydra built-in API is NOT listed — authors know p5/hydra; what they can't
+ * discover is what STAVE injects on top.
+ *
+ * WORKER-SAFE: pure data + string formatting, no DOM / no renderer imports.
+ */
+
+/**
+ * How the hover provider reads a token's LIVE value from the GLOBAL MASTER bus
+ * (issue #309 — master-only, no per-instance focus). `null`/absent ⇒ no live
+ * value (structural handle like `stave.scheduler`, or a per-instance/non-numeric
+ * token) → hover shows the doc only.
+ */
+type LiveSpec = {
+    kind: 'scalar';
+    read: MasterScalar;
+} | {
+    kind: 'array';
+    read: MasterArray;
+} | {
+    kind: 'time';
+};
+/** Master-mix scalar signals readable live (all 0..1). */
+type MasterScalar = 'rms' | 'bass' | 'mid' | 'treble' | 'keyVelocity' | 'env:uKick' | 'env:uSnare' | 'env:uHat' | 'env:uOpenHat' | 'env:uClap' | 'env:uRim' | 'env:uTom';
+/** Master-mix array signals readable live. */
+type MasterArray = 'fft' | 'wave';
+/**
+ * One catalogued entry. `decl` is the human declaration line shown in the block
+ * (kind-specific syntax); `comment` is the trailing `// ...`; `tokens` are the
+ * individual identifiers the hover provider matches a hovered word against.
+ */
+interface InjectedGlobal {
+    /** Declaration as it reads in the block, e.g. `uniform float iTime;`. */
+    readonly decl: string;
+    /** Trailing comment (no leading `//`). */
+    readonly comment: string;
+    /** Identifiers under this entry, for hover word-match. */
+    readonly tokens: readonly string[];
+    /**
+     * Section the entry belongs to in the reference block. Entries are listed in
+     * group order; {@link formatStaveInputs} emits a `// — <group> —` header when
+     * the group changes. Makes the scalar-vs-accessor rule visible at a glance
+     * (bare `uXxx` = a single number; arrays/lookups live on `u`).
+     */
+    readonly group: string;
+    /** Live-value source on the master bus, when the token carries one. */
+    readonly live?: Partial<Record<string, LiveSpec>>;
+}
+/** The catalogue of Stave-injected globals for a renderer kind (issue #309). */
+declare function injectedGlobals(kind: VizRendererKind): readonly InjectedGlobal[];
+/**
+ * Render the read-only "Stave Inputs" reference block — a ShaderToy-style aligned
+ * `decl // comment` list. Comments are padded to a common column so the block
+ * reads like ShaderToy's "Shader Inputs". Multi-line decls (hydra) align each
+ * continuation line's comment too.
+ */
+declare function formatStaveInputs(kind: VizRendererKind): string;
+/**
+ * Look up the catalogue entry + the specific token a hovered WORD matches, for a
+ * renderer kind. Returns `null` when the word is not a Stave-injected token.
+ * (A bare word like `uKick` / `iTime` / `rms` is matched against every entry's
+ * `tokens`; the first match wins — token sets are disjoint within a kind.)
+ */
+declare function injectedGlobalByToken(kind: VizRendererKind, word: string): {
+    entry: InjectedGlobal;
+    token: string;
+    live: LiveSpec | null;
+} | null;
+
+/**
+ * namedVizRegistry — runtime map of user-chosen viz names → descriptors.
+ *
+ * Lets users reference their own viz files from inline patterns by the
+ * `VizPreset.name` they chose, alongside the built-in descriptors:
+ *
+ *     $: note("c e g").viz("Piano Roll")   // user-named preset
+ *     $: note("c e g").viz("pianoroll")    // built-in descriptor
+ *
+ * @remarks
+ * ## How it plugs into the resolver
+ *
+ * `resolveDescriptor` checks this registry first (exact-name match),
+ * then falls through to the passed-in descriptor list (`DEFAULT_VIZ_
+ * DESCRIPTORS` or any embedder override) and runs its existing
+ * "append default renderer" / "prefix" fallbacks. Names registered
+ * here shadow built-ins — if a user saves a preset literally called
+ * `"pianoroll"`, their version wins inside `.viz("pianoroll")`.
+ * That's the right default: user intent is closer to what the user
+ * controls than what ships in the library.
+ *
+ * ## Who writes to the registry
+ *
+ * `vizPresetBridge.seedFromPreset` and `flushToPreset` compile the
+ * preset via `compilePreset()` and call `registerNamedViz(preset.name,
+ * descriptor)` — so every viz file the user opens or saves is
+ * automatically available to inline `.viz("name")` without any manual
+ * registration step.
+ *
+ * If the user renames a preset (future save-as UI), the old name is
+ * unregistered and the new name is registered in the same transaction.
+ * Until that UI lands, a preset rename is a no-op at the registry
+ * level; the stale name keeps working until page reload. Acceptable
+ * for Phase 10.2 MVP — there's no rename UI yet.
+ *
+ * ## Change notifications
+ *
+ * `onNamedVizChanged` lets consumers subscribe to register/unregister
+ * events. Phase 10.2 doesn't wire this to anything, but it's in place
+ * so a future Monaco completion provider can invalidate its suggestion
+ * cache when the registry mutates.
+ */
+
+type Listener$6 = () => void;
+/**
+ * Register a descriptor under a user-chosen name. Idempotent — calling
+ * twice with the same name + descriptor is a no-op and does not fire
+ * listeners. Calling with a new descriptor for an existing name
+ * replaces the entry (and fires listeners) so saves can update a
+ * previously-registered viz in place.
+ */
+declare function registerNamedViz(name: string, descriptor: VizDescriptor): void;
+/**
+ * Unregister a name. Idempotent — unknown names are silent no-ops.
+ * Fires listeners only when an entry is actually removed.
+ */
+declare function unregisterNamedViz(name: string): void;
+/**
+ * Look up a descriptor by name. Returns `undefined` if the name is not
+ * registered. The resolver falls through to the built-in descriptor
+ * list in that case.
+ */
+declare function getNamedViz(name: string): VizDescriptor | undefined;
+/**
+ * List every registered name in insertion order. Used by tests and by
+ * a future Monaco completion provider that wants to surface every
+ * user-defined viz name inside `.viz("...")` autocomplete.
+ */
+declare function listNamedVizNames(): string[];
+/**
+ * List every (name, descriptor) pair. Mostly useful for debugging and
+ * for tests that want to assert the full registry contents.
+ */
+declare function listNamedVizEntries(): Array<[string, VizDescriptor]>;
+/**
+ * Subscribe to registry changes. Fires on any register/unregister
+ * transition. Returns an idempotent unsubscribe function. Does not
+ * fire synchronously on subscription — subscribers receive only
+ * future changes.
+ */
+declare function onNamedVizChanged(cb: Listener$6): () => void;
+
+/**
+ * Worker-viz capability detection — the degrade-path scaffold for Phase B.
+ *
+ * Phase B moves viz `draw()` off the main thread into an OffscreenCanvas worker
+ * (epic #228). Whether that is possible — and *how* the per-frame signal data
+ * reaches the worker — depends on browser capabilities that vary by environment:
+ *
+ *   - `Worker` + `OffscreenCanvas` + `HTMLCanvasElement.transferControlToOffscreen`
+ *     → worker rendering is possible at all.
+ *   - `crossOriginIsolated` + `SharedArrayBuffer`
+ *     → the zero-copy SAB signal transport is available (the measured optimization,
+ *       gated behind the COOP/COEP header — see B-1 #239 / Q2 #237).
+ *
+ * B-1 (#239) confirmed by observation that the live COOP=same-origin +
+ * COEP=credentialless header yields `crossOriginIsolated === true` (and that a
+ * `window.open` popup inherits it). This module turns that runtime truth into a
+ * single capability snapshot + a sensible default transport choice, so B-2/B-3
+ * can pick SAB vs postMessage vs main-thread without re-probing globals ad hoc.
+ *
+ * Pure + environment-injectable → plain unit tests (no IDB/DOM — see the editor
+ * "split pure logic from I/O" rule). The live app passes nothing and reads
+ * `globalThis`.
+ */
+/**
+ * How per-frame viz signal data crosses to the renderer.
+ *
+ * - `'sab'`         — worker render + zero-copy SharedArrayBuffer transport
+ *                     (requires cross-origin isolation; the primary path).
+ * - `'postmessage'` — worker render + transferable-ArrayBuffer postMessage
+ *                     transport (no isolation needed; the required fallback for
+ *                     non-isolated browsers, e.g. Safari).
+ * - `'main-thread'` — no worker offload possible; render on the main thread with
+ *                     today's `P5VizRenderer` / `HydraVizRenderer`.
+ */
+type VizTransport = 'sab' | 'postmessage' | 'main-thread';
+interface WorkerVizCapabilities {
+    /** COOP/COEP cross-origin isolation is active (gates SharedArrayBuffer). */
+    crossOriginIsolated: boolean;
+    /** `OffscreenCanvas` constructor exists. */
+    hasOffscreenCanvas: boolean;
+    /** `SharedArrayBuffer` constructor exists (still needs isolation to be useful). */
+    hasSharedArrayBuffer: boolean;
+    /** `HTMLCanvasElement.prototype.transferControlToOffscreen` exists. */
+    canTransferControl: boolean;
+    /** `Worker` constructor exists. */
+    hasWorker: boolean;
+    /** Worker rendering is possible at all (worker + offscreen + transfer). */
+    canUseWorker: boolean;
+    /** The default transport given these capabilities (see {@link VizTransport}). */
+    transport: VizTransport;
+}
+/**
+ * The subset of the global environment this module reads. Injectable so the
+ * selection logic can be unit-tested across capability matrices without touching
+ * the real `globalThis`.
+ */
+interface CapabilityEnv {
+    crossOriginIsolated?: boolean;
+    OffscreenCanvas?: unknown;
+    SharedArrayBuffer?: unknown;
+    Worker?: unknown;
+    /** Stand-in for `HTMLCanvasElement` — we only probe for the transfer method. */
+    HTMLCanvasElement?: {
+        prototype?: {
+            transferControlToOffscreen?: unknown;
+        };
+    };
+}
+/**
+ * Derive worker-viz capabilities + the default transport from an environment.
+ *
+ * Transport policy (capability-derived, deliberately separate from any
+ * load/quality policy B-6 may add):
+ *   1. Can't offload (no worker / offscreen / transferControl) → `'main-thread'`.
+ *   2. Isolated + SharedArrayBuffer                            → `'sab'`.
+ *   3. Worker-capable but not isolated                         → `'postmessage'`.
+ *
+ * Note: PHASE-B-PLAN §4's conservative line ("fallback to main if
+ * !crossOriginIsolated") collapses cases 2+3; the plan's transport section +
+ * decision §1 are the refined intent — worker rendering works without isolation,
+ * only SAB needs it, so a non-isolated browser still offloads via postMessage.
+ * This function encodes the refined three-tier truth; a consumer that wants the
+ * conservative behaviour can treat anything but `'sab'` as main-thread.
+ */
+declare function detectWorkerVizCapabilities(env?: CapabilityEnv): WorkerVizCapabilities;
+
+/**
+ * MainSignalSampler — samples the main-thread signal feed into a `SignalFrame`
+ * each frame (Phase B / B-2). It is the MAIN-side half of the marshalling: it
+ * does the work that is main-thread-bound (read `AnalyserNode` bytes, query the
+ * scheduler, collect haps) so a worker `SignalBus` can run off those values.
+ *
+ * It mirrors exactly what `SignalBus` does on main today (P5VizRenderer __tick):
+ *   - `now = scheduler.now()`
+ *   - active events = `scheduler.query(now, now + ε)` (combined + per-track)
+ *   - analyser bytes = `getByte{Frequency,TimeDomain}Data` per bound analyser
+ *   - bumps = the haps that fired since the previous `sample()`
+ *
+ * No DOM/worker — it consumes the same structural types the bus does
+ * (`BusAnalyser`, `IRPattern`, `HapStream`), so it unit-tests with plain stubs.
+ */
+
+/** The live inputs the sampler reads — the main-thread feed. All optional: any
+ *  absent input degrades to the bus's zero (empty arrays / no events). */
+interface SamplerInputs {
+    /** Combined scheduler (`now()` + `query()`). */
+    scheduler?: IRPattern | null;
+    /** Per-track schedulers, SCHEDULER key space (`$0`/`d1` — TRAP §5). */
+    trackSchedulers?: Map<string, IRPattern> | null;
+    /** Master/combined-mix analyser. */
+    masterAnalyser?: BusAnalyser | null;
+    /** Per-track analysers, keyed the SAME as `trackSchedulers`. */
+    trackAnalysers?: Map<string, BusAnalyser> | null;
+}
+/** Minimal HapStream surface the sampler subscribes to (structural — the bus
+ *  uses the same `.on`/`.off` guard discipline). */
+interface HapSubscribable {
+    on(handler: (e: HapEvent) => void): void;
+    off(handler: (e: HapEvent) => void): void;
+}
+declare class MainSignalSampler {
+    private inputs;
+    private seq;
+    /** Haps accumulated since the last `sample()` (the envelope feed). */
+    private pendingBumps;
+    private boundStream;
+    private readonly hapHandler;
+    /** Rebind the live inputs (mirror the renderer's in-place rebind on
+     *  re-evaluate). Pass `null`/absent for demo / IR-only mode. */
+    bind(inputs: SamplerInputs): void;
+    /** (Re)subscribe to a HapStream for the envelope feed. Off the old, on the new
+     *  — so the bump feed survives a re-evaluate that swaps the stream (mirror
+     *  P5VizRenderer.update). A partial stream (no `.on`) degrades to no feed. */
+    bindHapStream(stream: HapSubscribable | null): void;
+    /**
+     * Produce one frame from the current inputs + the haps since the last call.
+     * Drains the pending bumps (so each hap ships exactly once).
+     *
+     * `cache` (the shared frame pump, PV72) deduplicates the EXPENSIVE per-frame
+     * work across every viz sampling in the same rAF tick: the analyser FFT read and
+     * the scheduler query run ONCE per shared input object, not once per viz. It is
+     * keyed by input-object IDENTITY, so two viz on DIFFERENT tracks (distinct
+     * scheduler/analyser, viewZones.ts:341) don't false-share. Absent (unit tests /
+     * pre-pump path) → every read runs locally, byte-identical to before.
+     */
+    sample(cache?: FrameSampleCache): SignalFrame;
+    /** Unsubscribe + reset (renderer destroy). */
+    dispose(): void;
+    /** The next seq an `emptyFrame` should carry (test/demo helper). */
+    emptyFrame(): SignalFrame;
+}
+
+/**
+ * WorkerBusFeed — drives a (pure) `SignalBus` from `SignalFrame`s on the WORKER
+ * side (Phase B / B-2). The worker bus is the SAME `SignalBus` class as on main;
+ * this feed reconstructs the bus's three inputs from a transported frame and runs
+ * the per-frame sequence, so `bus` yields the same readings as a main-fed bus.
+ *
+ * No DOM, no worker API, no transport — pure object plumbing over `SignalBus`'s
+ * public seams. Lives equally happily in a unit test (parity gate) or the real
+ * `viz-worker` (B-3).
+ *
+ *   analysers → byte-backed `BusAnalyser` stubs whose identity is STABLE across
+ *               frames (keyed by analyser key) so `SignalBus`'s per-analyser
+ *               scratch-buffer cache (WeakMap on the stub) keeps hitting.
+ *   scheduler → a minimal `IRPattern` stub `{ now, query }` returning the frame's
+ *               `now` + active events (the bus only calls those two — IRPattern.ts).
+ *   bumps     → replayed into `bus.bump()` (the envelope feed).
+ *
+ * Per-frame order (the worker frame contract): replay bumps → `tick()` →
+ * `refreshActive(now)` → `readAudio()`. `readAudio` MUST follow `refreshActive`
+ * (SignalBus Slice-2 ordering — `audioFor` resolves a sound→track via the active
+ * map). The reference main-bus in the parity gate is driven the same way.
+ */
+
+declare class WorkerBusFeed {
+    readonly bus: SignalBus;
+    /** Stable analyser stubs by key (`'master'` + track keys). */
+    private readonly analysers;
+    private lastSeq;
+    constructor(aliasMap?: Record<string, string | string[]>);
+    /** Push the merged alias map (the renderer reads impure settings on main and
+     *  ships the map; the worker bus stays pure — mirrors P5VizRenderer). */
+    setAliases(map: Record<string, string | string[]>): void;
+    /**
+     * Apply one frame: rebuild the bus's inputs from `frame`, replay bumps, then
+     * run the per-frame sequence. Idempotent on a duplicate/stale `seq` (no-op) so
+     * a dropped or repeated transport frame can't double-decay the envelope.
+     * Returns `true` if the frame advanced state, `false` if skipped as stale.
+     */
+    applyFrame(frame: SignalFrame): boolean;
+}
+
+/**
+ * SignalTransport — how a `SignalFrame` crosses main → worker each frame
+ * (Phase B / B-2). Two interchangeable implementations behind one interface so
+ * B-3 can render against the de-risked transport and B-4 can swap in SAB as the
+ * measured optimization without touching the renderer:
+ *
+ *   - postMessage-transferable (THIS file) — the de-risked default + the required
+ *     fallback for non-isolated browsers (Safari). Zero-copy for the analyser
+ *     bytes via `transfer`; the small JSON envelope is structured-cloned.
+ *   - SAB (B-2b) — zero-copy ring + double-buffer, gated on `crossOriginIsolated`.
+ *
+ * Structural over the channel (no `lib.dom` `Worker`/`Transferable` dependency —
+ * the bus stays DOM-free, P12): a `FrameChannel` is anything with
+ * postMessage/addEventListener, i.e. a `Worker` on main or `self`/`MessagePort`
+ * in the worker.
+ */
+
+/** The minimal channel surface a postMessage transport needs (structural — a
+ *  `Worker` on main, `self`/`MessagePort` on the worker). */
+interface FrameChannel {
+    postMessage(message: unknown, transfer: ArrayBuffer[]): void;
+    addEventListener(type: 'message', handler: (ev: {
+        data: unknown;
+    }) => void): void;
+    removeEventListener(type: 'message', handler: (ev: {
+        data: unknown;
+    }) => void): void;
+}
+/** MAIN side — ships frames into the worker. */
+interface SignalTransportWriter {
+    /** Send one frame. The analyser byte buffers are TRANSFERRED (zero-copy), so
+     *  the frame is unusable on the sender afterwards (the sampler mints fresh
+     *  arrays each frame — safe). */
+    writeFrame(frame: SignalFrame): void;
+    dispose(): void;
+}
+/** WORKER side — delivers frames to a consumer (e.g. `WorkerBusFeed.applyFrame`). */
+interface SignalTransportReader {
+    /** Register the per-frame consumer. Replaces any previous one. */
+    onFrame(cb: (frame: SignalFrame) => void): void;
+    dispose(): void;
+}
+/** Build the MAIN-side writer over a channel (the `Worker`). */
+declare function createPostMessageWriter(channel: Pick<FrameChannel, 'postMessage'>): SignalTransportWriter;
+/** Build the WORKER-side reader over a channel (`self`/`MessagePort`). Ignores
+ *  non-frame messages (B-3 control messages share the channel). */
+declare function createPostMessageReader(channel: Pick<FrameChannel, 'addEventListener' | 'removeEventListener'>): SignalTransportReader;
+
+interface VizPanelProps {
+    vizHeight?: number | string;
+    hapStream: HapStream | null;
+    analyser: AnalyserNode | null;
+    scheduler: PatternScheduler | null;
+    source: VizRendererSource;
+}
+declare function VizPanel({ vizHeight, hapStream, analyser, scheduler, source }: VizPanelProps): react_jsx_runtime.JSX.Element;
+
+interface VizPickerProps {
+    descriptors: VizDescriptor[];
+    activeId: string;
+    onIdChange: (id: string) => void;
+    showVizPicker?: boolean;
+    /** When provided, descriptors whose requires[] aren't met are disabled. */
+    availableComponents?: (keyof EngineComponents)[];
+}
+declare function VizPicker({ descriptors, activeId, onIdChange, showVizPicker, availableComponents }: VizPickerProps): react_jsx_runtime.JSX.Element | null;
+
+interface VizDropdownProps {
+    descriptors: VizDescriptor[];
+    activeId: string;
+    onIdChange: (id: string) => void;
+    onNewViz?: () => void;
+    availableComponents?: (keyof EngineComponents)[];
+}
+/**
+ * Grouped dropdown picker for viz modes — replaces the icon button bar.
+ * Groups descriptors by renderer field. Custom presets marked with ★.
+ */
+declare function VizDropdown({ descriptors, activeId, onIdChange, onNewViz, availableComponents, }: VizDropdownProps): react_jsx_runtime.JSX.Element;
+
+interface VizEditorProps {
+    components: Partial<EngineComponents>;
+    hapStream: HapStream | null;
+    analyser: AnalyserNode | null;
+    scheduler: PatternScheduler | null;
+    onPresetSaved?: (preset: VizPreset) => void;
+    height?: number | string;
+    previewHeight?: number | string;
+    /** Theme applied to the container — defaults to 'dark'. */
+    theme?: 'dark' | 'light' | StrudelTheme;
+}
+declare function VizEditor({ components: _components, hapStream: _hapStream, analyser: _analyser, scheduler: _scheduler, onPresetSaved, height, previewHeight: _previewHeight, theme, }: VizEditorProps): react_jsx_runtime.JSX.Element | null;
+
+/**
+ * Compiles user-authored viz code into a VizDescriptor.
+ *
+ * Hydra code: evaluated in a function scope with the hydra synth
+ *   object as `s` and a `stave` namespace mirroring the p5 convention:
+ *     - `stave.scheduler` — IRPattern | null (combined pattern scheduler)
+ *     - `stave.tracks`    — Map<trackId, IRPattern> (per-track)
+ *   Sketches that reference only `s` keep working — the `stave` arg
+ *   is additive. Uses `new Function()`.
+ *
+ * p5 code: evaluated as a full p5 sketch script. Users write real
+ *   `function preload/setup/draw` declarations and access injected
+ *   Stave-specific inputs via a single `stave` namespace global:
+ *     - `stave.scheduler`  — PatternScheduler | null
+ *     - `stave.analyser`   — AnalyserNode | null
+ *     - `stave.hapStream`  — HapStream | null
+ *   Legacy draw-body snippets (no `function draw` declaration) are
+ *   auto-wrapped for backwards compatibility.
+ */
+declare function compilePreset(preset: VizPreset): VizDescriptor;
+
+/**
+ * Shared imperative utility for the PICKER (`useVizRenderer`/`VizPanel`), BACKDROP
+ * (`compiledVizProvider`) and CROP preview (`CropPopup`) seams: resolves a
+ * VizRenderer, runs the shared per-mount lifecycle (mount + visibility pausing) via
+ * `attachVizLifecycle`, and ADDS a ResizeObserver (this seam's container is sized
+ * by CSS/layout, so a generic ResizeObserver is the right resize trigger here).
+ *
+ * NOT the inline `.viz()` path — `viewZones.ts` does its OWN mount (Monaco-layout
+ * reflow, teardown-wrap, crop, decorations) and calls `attachVizLifecycle`
+ * DIRECTLY. The single shared choke point for the mount+visibility concern-class
+ * is `attachVizLifecycle`, NOT this function (P107: don't claim callers you don't
+ * have — `viewZones` is not one).
+ *
+ * Returns the renderer instance and a disconnect function that tears down BOTH the
+ * ResizeObserver and the visibility registration.
+ */
+declare function mountVizRenderer(container: HTMLDivElement, source: VizRendererSource, components: Partial<EngineComponents>, size: {
+    w: number;
+    h: number;
+}, onError: (e: Error) => void): {
+    renderer: VizRenderer;
+    disconnect: () => void;
+};
+
+/**
+ * aliasMap — built-in named-signal aliases for the SignalBus, plus the
+ * engine-keyed model that lets one alias NAME carry per-engine sound lists.
+ *
+ * ## Why engine-keyed
+ * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
+ * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
+ * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
+ * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
+ * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
+ * :9609; every trigger resolves to a single `scsynth_name` string,
+ * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
+ * single STRING (or a list) — the alias VALUE type never needs to be richer,
+ * only the values differ per engine. So an alias absorbs the leak: the NAME
+ * (`kick`) stays unified across engines, only the sound list is per-engine.
+ *
+ *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
+ *
+ * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
+ * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
+ * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
+ * storage + this resolver (PV12: the bus stays pure, never sees an engine).
+ *
+ * ## Array aliases
+ * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
+ * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
+ * value as the MAX over members (any tom firing lights the alias).
+ *
+ * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
+ * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
+ */
+/** The live-coding engine a viz sketch is currently driven by. Strudel is the
+ *  only engine wired today; `sonicpi` is reserved for Sonic Pi Web (a thesis,
+ *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
+ *  storage/sanitize keep ANY engine key with a valid value, so a future engine
+ *  survives a round-trip through an older build. */
+type VizEngine = 'strudel' | 'sonicpi';
+/** A resolved alias value for one engine: a single sound name, or a list whose
+ *  envelope reads as the MAX over members. */
+type EngineAliasValue = string | string[];
+/** One alias' per-engine sound lists. Partial: an alias may define a value for
+ *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
+ *  equivalent → silently inert under Sonic Pi, never a crash). */
+type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
+/** The persisted custom-alias shape: alias name → per-engine sound lists. This
+ *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
+ *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
+type StoredSignalAliases = Record<string, EngineAliasMap>;
+/** The active viz engine. Strudel is the only live engine today; this is the
+ *  single wire-point — when Sonic Pi Web lands, source the active engine from
+ *  the running `LiveCodingEngine` at the renderer mount and pass it to
+ *  `resolveAliasesForEngine`. */
+declare const DEFAULT_VIZ_ENGINE: VizEngine;
+/**
+ * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
+ * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
+ * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
+ * signals work cross-engine the day Sonic Pi Web ships. Aliases with no
+ * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
+ * slot rather than guess — they stay Strudel-only until a user maps them.
+ */
+declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
+/**
+ * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
+ * consumes for a single engine. Built-ins first, custom LAST so a user override
+ * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
+ * alias with no value for `engine` is omitted (its bare name stays unbound under
+ * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
+ * custom map as an arg, imports nothing impure (PV12).
+ */
+declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
+/**
+ * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
+ * Kept as a derived view for back-compat: the bus' default constructor and the
+ * renderers' bare-name injection consume this flat shape. Equivalent to the
+ * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
+ */
+declare const ALIAS_MAP: Record<string, EngineAliasValue>;
+
+/**
+ * profiler — a zero-cost-when-disabled runtime performance profiler.
+ *
+ * WHY (issue #228): we want to optimize viz smoothness / main-thread budget /
+ * scheduler latency, but had NO instrumentation — optimizing on inference, not
+ * observation. This module measures the real per-frame cost so the next
+ * optimization is chosen from data (OBSERVE before optimize).
+ *
+ * ## What it measures
+ *   - SECTIONS: named timed spans (`p5.bus`, `hydra.draw`, …) → ring-buffer of
+ *     the last N durations with count / mean / p50 / p95 / p99 / max / last.
+ *   - FRAMES: per-instance inter-frame interval → fps + dropped-frame count
+ *     (a frame > 2× the running median interval counts as a drop).
+ *   - COUNTERS: monotone or live counts (`viz.p5` live instances,
+ *     `audio.triggers` cumulative) — rate is derived in the snapshot.
+ *   - LONGTASKS: `PerformanceObserver({entryTypes:['longtask']})` — main-thread
+ *     blocks > 50ms the platform reports, which is exactly scheduler-vs-viz
+ *     contention.
+ *
+ * ## Cost when disabled
+ * Every hot-path method early-returns on `!this._enabled` BEFORE any allocation
+ * or `performance.now()` call — the cost is one boolean branch. `enabled` is a
+ * field read, not a getter, so it's a plain load. Instrumentation can therefore
+ * live on the per-frame path unconditionally.
+ *
+ * ## Purity boundary
+ * The SignalBus stays PURE (P12 / PV65) — it does NOT import this module.
+ * Renderers (which already import settings/p5/hydra) call the profiler and wrap
+ * the bus calls. The profiler itself imports nothing app-specific.
+ *
+ * ## Enabling
+ *   - `globalThis.__STAVE_PERF__ === true` at module load (e2e / automation), OR
+ *   - `Profiler.setEnabled(true)` at runtime (the overlay toggle / a setting).
+ * When in a browser, `window.__stavePerf` exposes snapshot/reset/setEnabled so a
+ * Playwright run can flip it on, drive a patch, and read the numbers.
+ */
+/** Aggregated stats for one section over its ring buffer. */
+interface SectionStats {
+    /** Total samples recorded since reset (NOT capped at RING). */
+    count: number;
+    /** Mean of the retained ring (ms). */
+    mean: number;
+    /** Median of the retained ring (ms). */
+    p50: number;
+    /** 95th percentile of the retained ring (ms). */
+    p95: number;
+    /** 99th percentile of the retained ring (ms). */
+    p99: number;
+    /** Max of the retained ring (ms). */
+    max: number;
+    /** Most recent sample (ms). */
+    last: number;
+}
+/** Per-instance frame stats. */
+interface FrameStats {
+    /** Frames recorded since reset. */
+    count: number;
+    /** Frames/sec from the median inter-frame interval (0 if < 2 frames). */
+    fps: number;
+    /** Median inter-frame interval (ms). */
+    p50: number;
+    /** 95th-percentile inter-frame interval (ms) — the stutter tail. */
+    p95: number;
+    /** Frames whose interval exceeded DROP_FACTOR × running median (VARIANCE). */
+    drops: number;
+    /** Frames whose interval exceeded SLOW_FRAME_MS (<30fps) — the ABSOLUTE floor.
+     *  Catches a uniformly-slow cadence that `drops` misses (every frame equally
+     *  slow ⇒ 0 drops but many slowFrames). */
+    slowFrames: number;
+}
+/** A full point-in-time read of the profiler. */
+interface PerfSnapshot {
+    enabled: boolean;
+    /** ms since the profiler was first enabled / last reset. */
+    uptimeMs: number;
+    sections: Record<string, SectionStats>;
+    frames: Record<string, FrameStats>;
+    /** Cumulative counters since reset (e.g. `audio.triggers`) — rate = value/uptime. */
+    counters: Record<string, number>;
+    /** Live gauges — current state (e.g. `viz.p5` mounted instances). NOT cleared
+     *  by reset(), because they represent what's live NOW, not accumulated samples. */
+    gauges: Record<string, number>;
+    longtasks: {
+        count: number;
+        totalMs: number;
+        maxMs: number;
+    };
+}
+declare class Profiler {
+    /** Plain field (not a getter) so the hot-path branch is a bare load. */
+    private _enabled;
+    private startTs;
+    private readonly sections;
+    private readonly frames;
+    private readonly counters;
+    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
+    private readonly gauges;
+    /** Open spans for begin()/end() keyed by label — last-write-wins (a label
+     *  isn't expected to nest with itself within a frame). */
+    private readonly open;
+    private longtaskCount;
+    private longtaskTotalMs;
+    private longtaskMaxMs;
+    private ltObserver;
+    get enabled(): boolean;
+    /** Turn profiling on/off. Enabling (re)starts the longtask observer and
+     *  stamps the uptime origin; disabling tears the observer down so a disabled
+     *  profiler has no live platform hook. Idempotent. */
+    setEnabled(on: boolean): void;
+    private startLongtaskObserver;
+    /** Record a section duration directly (ms). Cheap no-op when disabled. */
+    record(name: string, ms: number): void;
+    /** Open a span. Pair with `end(name)`. No-op when disabled. */
+    begin(name: string): void;
+    /** Close a span opened by `begin(name)` and record its duration. No-op when
+     *  disabled or when no matching open span exists. */
+    end(name: string): void;
+    /** Time a synchronous function and record it under `name`. Returns the fn's
+     *  result. When disabled, calls the fn with no timing overhead. The fn runs
+     *  even if disabled (it's the real work, not just measurement). */
+    time<T>(name: string, fn: () => T): T;
+    /** Record a rendered frame for an instance (e.g. `'p5#3'`). No-op when
+     *  disabled. */
+    frame(instanceId: string): void;
+    /** Forget an instance's frame history (on renderer destroy) so a dead viz
+     *  doesn't linger in the snapshot. No-op when disabled. */
+    dropFrames(instanceId: string): void;
+    /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
+    inc(name: string, by?: number): void;
+    dec(name: string, by?: number): void;
+    /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
+     *  Gauges survive reset() — they reflect what's live now, not samples.
+     *  Use +1 on mount, -1 on destroy. */
+    gauge(name: string, delta: number): void;
+    snapshot(): PerfSnapshot;
+    /** Clear all samples/counters but keep the enabled state + observer. Use to
+     *  start a clean measurement window (e.g. before driving a heavy patch). */
+    reset(): void;
+}
+/** The process-wide profiler singleton. Import and call directly:
+ *  `perf.frame('hydra#1')`, `perf.time('hydra.draw', () => hydra.tick())`. */
+declare const perf: Profiler;
+
+interface SplitPaneProps {
+    direction: 'horizontal' | 'vertical';
+    children: React__default.ReactNode[];
+    /** Initial sizes as percentages (must sum to 100). Defaults to equal splits. */
+    initialSizes?: number[];
+    /** Minimum size in pixels for each pane. */
+    minSize?: number;
+}
+/**
+ * Zero-dependency resizable split pane. Supports N children with
+ * draggable dividers between each pair.
+ */
+declare function SplitPane({ direction, children, initialSizes, minSize, }: SplitPaneProps): react_jsx_runtime.JSX.Element;
+
+/**
+ * Bundled p5 viz source code — single source of truth.
+ *
+ * These strings power both:
+ *   - `DEFAULT_VIZ_DESCRIPTORS` (the viz picker / demo / standalone
+ *     embedders), compiled via `compileP5Code`.
+ *   - The bundled `preset/viz/*.p5` workspace files seeded by the app
+ *     template, which re-export these constants for backwards-compat.
+ *
+ * Until #184 (PR retiring the 7 TS sketch classes that previously powered
+ * the picker), the picker rendered a different — richer or poorer — copy
+ * of each viz than what users edited in the preset file. PV56 demands the
+ * picker code path === the preset file code path; this module is that path.
+ */
+declare const PIANOROLL_P5_CODE = "// Stave p5 viz \u2014 Piano Roll\n// stave.scheduler, stave.analyser, stave.hapStream, stave.options are injected\n// globals. Fold-by-pitch lanes: each distinct pitch (or unpitched sound) gets\n// its own lane, sorted low\u2192high, so notes never overlap and the melodic\n// contour reads as a staircase. Notes scroll across a 4-cycle window; the\n// playhead sits at the half mark.\n//\n// Honours a subset of @strudel/draw's .pianoroll(options) vocabulary via\n// stave.options \u2014 defaults (no options) reproduce Stave's classic look:\n//   cycles, playhead, vertical, labels, flipTime, flipValues, fold,\n//   minMidi, maxMidi, autorange, fill, fillActive, strokeActive,\n//   active, inactive, background, playheadColor.\n\n// Drum/percussion sound-name prefixes for color classification.\nconst DRUM_PREFIXES = ['bd', 'sd', 'hh', 'rim', 'cp', 'cy', 'lt', 'mt', 'ht', 'oh', 'cl']\n\nfunction isDrum(s) {\n  return DRUM_PREFIXES.some(p => s === p || (s.startsWith(p) && /\\d/.test(s[p.length] || '')))\n}\n\n// Note NAME \u2192 MIDI. Returns null for unparseable names (octaveless or\n// sample names) \u2014 the caller folds those onto string lanes instead.\nfunction noteToMidi(n) {\n  if (typeof n === 'number') return Math.round(n)\n  if (typeof n !== 'string') return null\n  const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n  if (!m) return null\n  const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n  const acc = m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0\n  return (parseInt(m[3]) + 1) * 12 + base + acc\n}\n\n// Fold-grouping key: a MIDI number for pitched haps, a \"_sound\" string for\n// unpitched ones. Priority mirrors how Strudel fills a hap (freq is\n// pre-computed from note, so note(\"c e g\") resolves via freq, never NaN).\nfunction valueOf(h) {\n  if (typeof h.freq === 'number') return Math.round(12 * Math.log2(h.freq / 440) + 69)\n  if (typeof h.note === 'number') return h.note\n  if (typeof h.note === 'string') {\n    const mi = noteToMidi(h.note)\n    return mi !== null ? mi : '_' + h.note\n  }\n  if (h.s) return '_' + h.s\n  return 0\n}\n\n// Default label text for a hap (note name, else sound[:n]).\nfunction labelOf(h) {\n  if (typeof h.note === 'string') return h.note\n  if (typeof h.note === 'number') return String(h.note)\n  if (h.s) return h.s + (h.n != null ? ':' + h.n : '')\n  return ''\n}\n\nfunction parseHex(hex) {\n  const s = String(hex).replace('#', '')\n  if (s.length === 6) return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)]\n  if (s.length === 3) return [parseInt(s[0] + s[0], 16), parseInt(s[1] + s[1], 16), parseInt(s[2] + s[2], 16)]\n  return null\n}\n\n// Explicit hap color wins; else classify by sound family.\nfunction colorOf(h) {\n  if (h.color) { const c = parseHex(h.color); if (c) return c }\n  const s = h.s || ''\n  if (isDrum(s)) return [249, 115, 22]        // drums  \u2014 orange\n  if (s.startsWith('bass')) return [6, 182, 212]   // bass  \u2014 cyan\n  if (s.startsWith('pad')) return [16, 185, 129]   // pad   \u2014 green\n  return [139, 92, 246]                        // melody \u2014 purple\n}\n\nconst num = (v, d) => (typeof v === 'number' && !isNaN(v) ? v : d)\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\nfunction draw() {\n  const W = width, H = height\n  const O = (stave.options && typeof stave.options === 'object') ? stave.options : {}\n\n  // \u2500\u2500 options (defaults match @strudel/draw's pianoroll). fold defaults ON\n  // (strudel.cc's real default, __pianoroll fold=1): distinct pitches pack into\n  // CONTIGUOUS adjacent lanes \u2014 no empty rows between non-adjacent semitones.\n  // The landscape note look comes from the wide/short native surface (#214),\n  // NOT from fold:0. fold:0 (opt-in) spaces notes by absolute MIDI, which shows\n  // gaps at the missing semitones (use with autorange for a tight range). \u2500\u2500\n  const CYCLES = num(O.cycles, 4)\n  const PLAYHEAD = num(O.playhead, 0.5)\n  const vertical = !!O.vertical\n  const labels = !!O.labels\n  const flipTime = !!O.flipTime\n  const flipValues = !!O.flipValues\n  const useFold = O.fold == null ? true : !!O.fold\n  const autorange = !!O.autorange\n  const inactiveFilled = O.fill == null ? true : !!O.fill\n  const activeFilled = O.fillActive == null ? true : !!O.fillActive   // Stave default: filled glow\n  const activeStroked = O.strokeActive == null ? true : !!O.strokeActive\n  const activeOverride = typeof O.active === 'string' ? parseHex(O.active) : null\n  const inactiveOverride = typeof O.inactive === 'string' ? parseHex(O.inactive) : null\n  const bg = typeof O.background === 'string' ? parseHex(O.background) : null\n  const playheadCol = typeof O.playheadColor === 'string' ? parseHex(O.playheadColor) : null\n\n  if (bg) background(bg[0], bg[1], bg[2]); else clear()\n\n  const sched = stave.scheduler\n  if (!sched) return\n  let now\n  try { now = sched.now() } catch (e) { return }\n\n  const from = now - CYCLES * PLAYHEAD\n  const to = now + CYCLES * (1 - PLAYHEAD)\n  const ext = to - from\n  let haps\n  try { haps = sched.query(from, to) } catch (e) { haps = [] }\n\n  // Distinct values (for fold lanes / autorange), sorted low\u2192high.\n  const seen = new Set(), vals = []\n  for (const h of haps) { const v = valueOf(h); if (!seen.has(v)) { seen.add(v); vals.push(v) } }\n  vals.sort((a, b) => {\n    if (typeof a === 'number' && typeof b === 'number') return a - b\n    if (typeof a === 'number') return -1\n    if (typeof b === 'number') return 1\n    return String(a).localeCompare(String(b))\n  })\n\n  // Value-axis slotting: fold (one slot per distinct value) OR absolute MIDI\n  // range (minMidi..maxMidi, optionally autoranged from the numeric values).\n  const numericVals = vals.filter(v => typeof v === 'number')\n  let minMidi = num(O.minMidi, 10), maxMidi = num(O.maxMidi, 90)\n  if (autorange && numericVals.length) { minMidi = Math.min(...numericVals); maxMidi = Math.max(...numericVals) }\n  const foldCount = Math.max(1, vals.length)\n  const absExtent = Math.max(1, maxMidi - minMidi + 1)\n  const slotCount = useFold ? foldCount : absExtent\n\n  // slotFromTop: 0 = top of the value axis (high pitch up).\n  const slotFromTop = (h) => {\n    const v = valueOf(h)\n    let s\n    if (useFold) { const lane = vals.indexOf(v); s = lane < 0 ? -1 : foldCount - 1 - lane }\n    else if (typeof v === 'number') s = maxMidi - v\n    else s = absExtent - 1 // unpitched sounds sit at the bottom in absolute mode\n    if (s < 0 || s >= slotCount) return -1\n    return flipValues ? slotCount - 1 - s : s\n  }\n\n  const timeAxis = vertical ? H : W\n  const valueAxis = vertical ? W : H\n  const barSize = valueAxis / slotCount\n\n  noStroke()\n  for (const h of haps) {\n    const sft = slotFromTop(h)\n    if (sft < 0) continue\n    let tp = (h.begin - from) / ext            // 0..1 along the time axis\n    if (flipTime) tp = 1 - tp\n    const tPx = tp * timeAxis\n    const durPx = Math.max(2, ((h.end - h.begin) / ext) * timeAxis)\n    const vPx = (sft / slotCount) * valueAxis\n    const endC = h.endClipped != null ? h.endClipped : h.end\n    const active = h.begin <= now && endC > now\n    const gain = Math.min(1, Math.max(0.1, h.gain == null ? 1 : h.gain))\n    const vel = Math.min(1, Math.max(0.1, h.velocity == null ? 1 : h.velocity))\n    const alpha = gain * vel\n    let col = colorOf(h)\n    if (active && activeOverride) col = activeOverride\n    else if (!active && inactiveOverride) col = inactiveOverride\n    const [r, g, b] = col\n\n    // rect coords \u2014 horizontal: time\u2192x, value\u2192y; vertical: time\u2192y, value\u2192x.\n    const rx = vertical ? vPx : tPx - (flipTime ? durPx : 0)\n    const ry = vertical ? tPx - (flipTime ? 0 : durPx) : vPx\n    const rw = vertical ? barSize : durPx\n    const rh = vertical ? durPx : barSize\n\n    if (active) {\n      if (activeFilled) {\n        // Brightened toward white unless an explicit active color was given.\n        if (activeOverride) fill(r, g, b, alpha * 255)\n        else fill(min(255, r + 60), min(255, g + 60), min(255, b + 60), alpha * 255)\n        rect(rx, ry + 1, rw - 2, rh - 2)\n      }\n      if (activeStroked) {\n        noFill(); stroke(255, 255, 255, 220); strokeWeight(1)\n        rect(rx, ry + 1, rw - 2, rh - 2); noStroke()\n      }\n    } else if (inactiveFilled) {\n      fill(r, g, b, alpha * 180)\n      rect(rx, ry + 1, rw - 2, rh - 2)\n    }\n\n    if (labels) {\n      const txt = labelOf(h)\n      if (txt) {\n        const fs = Math.min(14, Math.max(7, rh * 0.7))\n        noStroke(); fill(active ? 255 : 230); textSize(fs); textAlign(LEFT, TOP)\n        text(txt, rx + 2, ry + 1)\n      }\n    }\n  }\n\n  // Playhead line at the PLAYHEAD mark of the time axis.\n  const phc = playheadCol || [255, 255, 255]\n  stroke(phc[0], phc[1], phc[2], 128); strokeWeight(1)\n  if (vertical) line(0, PLAYHEAD * H, W, PLAYHEAD * H)\n  else line(PLAYHEAD * W, 0, PLAYHEAD * W, H)\n  noStroke()\n}";
+declare const SCOPE_P5_CODE = "// Stave p5 viz \u2014 Scope (oscilloscope / event pulses)\n// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().\nlet _wave = null\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noFill()\n}\nfunction draw() {\n  clear()\n  stroke(40, 50, 70); strokeWeight(0.5)\n  line(0, height * 0.5, width, height * 0.5)\n  if (stave.analyser) {\n    const buf = stave.analyser.frequencyBinCount\n    if (!_wave || _wave.length !== buf) _wave = new Float32Array(buf)\n    const data = _wave\n    stave.analyser.getFloatTimeDomainData(data)\n    let trig = 0\n    for (let i = 1; i < buf; i++) { if (data[i-1] > 0 && data[i] <= 0) { trig = i; break } }\n    stroke('#75baff'); strokeWeight(2); beginShape()\n    for (let i = trig; i < buf; i++) vertex((i - trig) * width / (buf - trig), (0.5 - 0.25 * data[i]) * height)\n    endShape()\n  } else if (stave.scheduler) {\n    const now = stave.scheduler.now()\n    const haps = stave.scheduler.query(now - 4, now + 0.1)\n    noStroke()\n    for (const h of haps) {\n      const age = now - h.begin, decay = max(0, 1 - age / 4)\n      const x = ((h.begin - now + 4) / 4) * width\n      const w = max(3, ((h.end - h.begin) / 4) * width)\n      const pH = height * 0.6 * decay * (h.gain ?? 1)\n      fill(117, 186, 255, decay * 200)\n      rect(x, height * 0.5 - pH / 2, w, pH, 2)\n    }\n  }\n}";
+declare const FSCOPE_P5_CODE = "// Stave p5 viz \u2014 Frequency Scope (FFT bars / note bars)\n// PERF: one reused buffer (re-alloc only on size change) \u2014 never allocate per draw().\nlet _freq = null\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until\n// superdough renders, so parse the note name to MIDI ourselves.\nfunction hapFreq(h) {\n  if (typeof h.freq === 'number') return h.freq\n  let n = h.note\n  if (typeof n === 'string') {\n    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n    if (!m) return null\n    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)\n  }\n  if (typeof n !== 'number') return null\n  return 440 * pow(2, (n - 69) / 12)\n}\nfunction draw() {\n  clear()\n  stroke(40, 50, 70); strokeWeight(0.5); noFill()\n  line(0, height * 0.75, width, height * 0.75); noStroke()\n  if (stave.analyser) {\n    const buf = stave.analyser.frequencyBinCount\n    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)\n    const data = _freq\n    stave.analyser.getFloatFrequencyData(data)\n    fill('#75baff')\n    const sw = width / buf\n    for (let i = 0; i < buf; i++) {\n      const n = constrain((data[i] + 100) / 100, 0, 1), v = n * 0.25\n      rect(i * sw, (0.75 - v * 0.5) * height, max(sw, 1), v * height)\n    }\n  } else if (stave.scheduler) {\n    const now = stave.scheduler.now()\n    const haps = stave.scheduler.query(now - 0.2, now + 0.05)\n    const bins = new Float32Array(64)\n    for (const h of haps) {\n      const freq = hapFreq(h)\n      if (freq == null) continue\n      if (freq < 30) continue\n      const idx = constrain(floor(log(freq / 30) / log(4000 / 30) * 64), 0, 63)\n      bins[idx] = max(bins[idx], max(0, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1))\n    }\n    const sw = width / 64\n    for (let i = 0; i < 64; i++) {\n      if (bins[i] <= 0) continue\n      const v = bins[i] * 0.25\n      fill(117, 186, 255, bins[i] * 220)\n      rect(i * sw, (0.75 - v * 0.5) * height, max(sw - 1, 1), v * height)\n    }\n  }\n}";
+declare const SPECTRUM_P5_CODE = "// Stave p5 viz \u2014 Spectrum (scrolling waterfall)\n// The waterfall scrolls by reading back the PREVIOUS frame (getImageData \u2192\n// putImageData(-2,0)). That needs the drawing surface to PERSIST across frames \u2014\n// but in the worker the Tier-2 present transferToImageBitmap()s (and CLEARS) the\n// main canvas every frame, so reading the MAIN canvas back yields nothing (#306).\n// Own a persistent OffscreenCanvas buffer (_wf) instead: scroll it (cheap, one\n// column/frame), then blit it to the main canvas each frame. _wf is never\n// transferred, so history accumulates. OffscreenCanvas is native in the worker AND\n// on the main thread, so this renders identically on both (no p5.Graphics, whose\n// HTMLCanvasElement instanceof checks are undefined in the worker shim).\nlet _freq = null\nlet _wf = null, _wctx = null\nfunction _ensureBuf(w, h) {\n  if (_wf && _wf.width === w && _wf.height === h) return\n  const old = _wf\n  _wf = new OffscreenCanvas(max(1, w), max(1, h))\n  _wctx = _wf.getContext('2d')\n  if (old && _wctx) { try { _wctx.drawImage(old, 0, 0) } catch (e) {} }\n}\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  pixelDensity(1); noStroke()\n  _ensureBuf(width, height)\n}\n// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until\n// superdough renders, so parse the note name to MIDI ourselves.\nfunction hapFreq(h) {\n  if (typeof h.freq === 'number') return h.freq\n  let n = h.note\n  if (typeof n === 'string') {\n    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n    if (!m) return null\n    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)\n  }\n  if (typeof n !== 'number') return null\n  return 440 * pow(2, (n - 69) / 12)\n}\nfunction draw() {\n  _ensureBuf(width, height)\n  const ctx = _wctx\n  if (!ctx) { clear(); return }\n  if (stave.analyser) {\n    const buf = stave.analyser.frequencyBinCount\n    if (!_freq || _freq.length !== buf) _freq = new Float32Array(buf)\n    const data = _freq\n    stave.analyser.getFloatFrequencyData(data)\n    const img = ctx.getImageData(0, 0, width, height)\n    ctx.clearRect(0, 0, width, height)\n    ctx.putImageData(img, -2, 0)\n    ctx.fillStyle = '#75baff'\n    for (let i = 0; i < buf; i++) {\n      const n = constrain((data[i] + 80) / 80, 0, 1)\n      if (n <= 0) continue\n      ctx.globalAlpha = n\n      const yEnd = (log(i + 1) / log(buf)) * height\n      const yStart = i > 0 ? (log(i) / log(buf)) * height : 0\n      ctx.fillRect(width - 2, height - yEnd, 2, max(2, yEnd - yStart))\n    }\n    ctx.globalAlpha = 1\n  } else if (stave.scheduler) {\n    const now = stave.scheduler.now()\n    const img = ctx.getImageData(0, 0, width, height)\n    ctx.clearRect(0, 0, width, height)\n    ctx.putImageData(img, -2, 0)\n    const haps = stave.scheduler.query(now - 0.3, now + 0.05)\n    for (const h of haps) {\n      const freq = hapFreq(h)\n      if (freq == null) continue\n      if (freq < 20) continue\n      const logPos = log(freq / 20) / log(4000 / 20)\n      const y = height - logPos * height\n      const alpha = max(0.1, 1 - (now - h.begin) / 0.5) * (h.gain ?? 1)\n      ctx.fillStyle = h.color ?? '#75baff'\n      ctx.globalAlpha = alpha\n      ctx.fillRect(width - 2, y - 2, 2, max(4, height * 0.03))\n    }\n    ctx.globalAlpha = 1\n  } else { ctx.clearRect(0, 0, width, height) }\n  // Present the persistent buffer to the main canvas (which the worker clears\n  // every frame via transferToImageBitmap). drawImage accepts an OffscreenCanvas\n  // source on both the worker and the main-thread 2D context.\n  clear()\n  drawingContext.drawImage(_wf, 0, 0)\n}";
+declare const SPIRAL_P5_CODE = "// Stave p5 viz \u2014 Spiral\nfunction setup() {\n  createCanvas(300, 200)\n  pixelDensity(window.devicePixelRatio || 1)\n  noFill()\n}\nfunction xySpiral(rot, margin, cx, cy, rotate) {\n  const a = ((rot + rotate) * 360 - 90) * PI / 180\n  return [cx + cos(a) * margin * rot, cy + sin(a) * margin * rot]\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  const haps = stave.scheduler.query(now - 2, now + 1)\n  const cx = width / 2, cy = height / 2\n  const sz = min(width, height) * 0.38, mg = sz / 3\n  for (const h of haps) {\n    const active = h.begin <= now && h.end > now\n    const from = h.begin - now + 3, to = h.end - now + 3 - 0.005\n    const op = max(0, 1 - abs((h.begin - now) / 2))\n    const c = color(h.color ?? (active ? '#75baff' : '#8a919966'))\n    c.setAlpha(op * 255)\n    stroke(c); strokeWeight(mg / 2); strokeCap(ROUND)\n    beginShape()\n    for (let a = from; a <= to; a += 1/60) {\n      const [x, y] = xySpiral(a, mg, cx, cy, now)\n      vertex(x, y)\n    }\n    endShape()\n  }\n  stroke(255); strokeWeight(mg / 2)\n  beginShape()\n  for (let a = 2.98; a <= 3; a += 1/60) {\n    const [x, y] = xySpiral(a, mg, cx, cy, now)\n    vertex(x, y)\n  }\n  endShape()\n}";
+declare const PITCHWHEEL_P5_CODE = "// Stave p5 viz \u2014 Pitchwheel\nconst ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)\nfunction setup() {\n  createCanvas(300, 200)\n  pixelDensity(window.devicePixelRatio || 1)\n}\nfunction freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }\nfunction circPos(cx, cy, r, a) {\n  const rad = a * TWO_PI\n  return [sin(rad) * r + cx, cos(rad) * r + cy]\n}\n// Hz from a hap. Strudel leaves note as a NAME string and freq null until\n// superdough renders, so parse the note name to MIDI ourselves (h.freq is null\n// here \u2014 relying on it leaves every note stuck at the default pitch).\nfunction hapFreq(h) {\n  if (typeof h.freq === 'number') return h.freq\n  let n = h.note\n  if (typeof n === 'string') {\n    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n    if (!m) return null\n    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)\n  }\n  if (typeof n !== 'number') return null\n  return 440 * pow(2, (n - 69) / 12)\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  let haps = stave.scheduler.query(now - 0.01, now + 0.01)\n  haps = haps.filter(h => h.begin <= now && h.end > now)\n  const sz = min(width, height), r = sz / 2 - 12\n  const cx = width / 2, cy = height / 2\n  noStroke(); fill(117, 186, 255, 64)\n  for (let i = 0; i < 12; i++) {\n    const a = freq2angle(ROOT_FREQ * pow(2, i / 12))\n    const [x, y] = circPos(cx, cy, r, a)\n    circle(x, y, 7)\n  }\n  noFill(); stroke(117, 186, 255, 48); strokeWeight(1)\n  circle(cx, cy, r * 2)\n  for (const h of haps) {\n    const freq = hapFreq(h)\n    if (freq == null) continue\n    const a = freq2angle(freq)\n    const [x, y] = circPos(cx, cy, r, a)\n    const c = h.color ?? '#75baff'\n    stroke(c); strokeWeight(2)\n    line(cx, cy, x, y)\n    fill(c); noStroke()\n    circle(x, y, 12)\n  }\n}";
+declare const WORDFALL_P5_CODE = "// Stave p5 viz \u2014 Wordfall (vertical pianoroll with labels)\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  pixelDensity(window.devicePixelRatio || 1)\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  const CYCLES = 4, PH = 0.5\n  const haps = stave.scheduler.query(now - CYCLES * PH, now + CYCLES * (1 - PH))\n  const vals = [...new Set(haps.map(h => h.note ?? h.s ?? 0))].sort()\n  if (!vals.length) return\n  const bw = width / vals.length\n  for (const h of haps) {\n    const active = h.begin <= now && h.end > now\n    const dur = h.end - h.begin\n    const yOff = h.begin - now\n    const y = height * PH - (yOff / CYCLES) * height\n    const dH = (dur / CYCLES) * height\n    const v = h.note ?? h.s ?? 0\n    const x = vals.indexOf(v) * bw\n    noStroke()\n    if (active) fill(255)\n    else { const c = color(h.color ?? '#75baff'); c.setAlpha(160); fill(c) }\n    rect(x + 1, y + 1, bw - 2, dH - 2)\n    if (dH > 10 && bw > 16) {\n      const label = h.note != null ? String(h.note) : (h.s ?? '')\n      textSize(min(bw * 0.55, dH * 0.7, 11))\n      textAlign(LEFT, TOP); fill(active ? 0 : 255); noStroke()\n      text(label, x + 3, y + 3)\n    }\n  }\n  stroke(255, 255, 255, 128); strokeWeight(1)\n  line(0, height * PH, width, height * PH)\n}";
+declare const SIGNALS_SPECTRUM_P5_CODE = "// Stave p5 viz \u2014 Signals (Spectrum)\n// Showcases the named musical-signal bus. Try it over:  s(\"bd*4 hh*8\")\n//\n// The bus is exposed BARE in p5 (via the sketch's stave namespace), so you can\n// read these directly \u2014 they are LIVE NUMBERS / ARRAYS, refreshed every draw():\n//\n//   u('bd')        \u2014 the 'bd' (kick) sound's live signals (a SignalReading).\n//   u('bd').fft    \u2014 that sound's spectrum: a number[] of 32 buckets, each 0..1\n//                    (real audio off the kick's OWN analyser/orbit). [] if muted.\n//   u('bd').rms    \u2014 that sound's loudness 0..1. .bass/.mid/.treble also exist.\n//   uKick          \u2014 the kick ENVELOPE, 0..1, bumped on each hit, decaying ~0.92\n//                    per frame. uSnare / uHat / uClap / uTom \u2026 are siblings.\n//   u.fft          \u2014 the MASTER mix spectrum (combined audio), same shape.\n//\n// In hydra these same names are () => number THUNKS \u2014 see \"Signals (Bands)\".\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\nfunction draw() {\n  clear()\n\n  // \u2500\u2500 Spectrum bars from the kick's own audio: u('bd').fft is a number[] \u2500\u2500\u2500\u2500\u2500\u2500\n  // Each bucket is 0..1. We fall back to the master mix (u.fft) so the demo\n  // still moves before any 'bd' has fired its analyser.\n  const spectrum = (u('bd').fft.length ? u('bd').fft : u.fft) || []\n  const bw = width / Math.max(1, spectrum.length)\n  for (let i = 0; i < spectrum.length; i++) {\n    const v = spectrum[i]            // 0..1 magnitude for this band\n    const h = v * height\n    fill(117, 186, 255, 180 + v * 75)\n    rect(i * bw, height - h, bw - 1, h)\n  }\n\n  // \u2500\u2500 A circle pulsed by uKick (a live NUMBER 0..1 in p5) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  // uKick bumps to ~1 on each kick hit and decays each frame, so the circle\n  // punches outward on the beat. (hydra would call it: uKick().)\n  const base = min(width, height) * 0.18\n  const r = base + uKick * base * 1.6\n  noFill()\n  stroke(255, 255, 255, 120 + uKick * 135)\n  strokeWeight(2 + uKick * 4)\n  circle(width / 2, height / 2, r * 2)\n\n  // Inner dot brightens with overall loudness (master RMS, a number in p5).\n  noStroke()\n  fill(255, 255, 255, 60 + uRms * 195)\n  circle(width / 2, height / 2, base * 0.5)\n}";
+declare const SIGNALS_BACKDROP_P5_CODE = "// Stave p5 viz \u2014 Signals (Backdrop)\n// One color band per code block (track). Showcases the per-track side of the\n// bus: u.tracks enumerates the live track keys, and u.track(id).color is the\n// color that block declared in the music via .color() (e.g. in Strudel:\n//   $: s(\"bd*4\").color(\"#f97316\")\n//   $: s(\"hh*8\").color(\"#06b6d4\")\n// ). Each band's brightness follows that track's loudness (rms).\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\n// Parse a \"#rrggbb\" / \"#rgb\" hap color into [r,g,b]; null if unparseable.\nfunction parseHex(hex) {\n  const s = String(hex).replace('#', '')\n  if (s.length === 6) return [parseInt(s.slice(0,2),16), parseInt(s.slice(2,4),16), parseInt(s.slice(4,6),16)]\n  if (s.length === 3) return [parseInt(s[0]+s[0],16), parseInt(s[1]+s[1],16), parseInt(s[2]+s[2],16)]\n  return null\n}\n\nfunction draw() {\n  clear()\n\n  // u.tracks \u2014 the live track keys ('$0','$1',\u2026 anonymous, or 'd1','drums'\u2026).\n  const tracks = u.tracks || []\n  if (!tracks.length) {\n    fill(120); textAlign(CENTER, CENTER); textSize(13)\n    text('play a multi-block pattern\u2026', width / 2, height / 2)\n    return\n  }\n\n  const bandH = height / tracks.length\n  for (let i = 0; i < tracks.length; i++) {\n    const id = tracks[i]\n    const reading = u.track(id)            // this track's live SignalReading\n    // .color \u2014 the color this block set with .color() in the music. p5: a value\n    // (string|null). Fall back to a neutral blue if the block set none.\n    const rgb = parseHex(reading.color) || [117, 186, 255]\n    // .rms \u2014 this track's loudness 0..1 (own analyser; 0 if silent). Drives the\n    // band's brightness so the active block lights up.\n    const lvl = reading.rms\n    fill(rgb[0], rgb[1], rgb[2], 60 + lvl * 195)\n    rect(0, i * bandH, width, bandH)\n  }\n}";
 
 /**
  * WorkspaceShell — Phase 10.2 Task 04.
@@ -6696,63 +6838,6 @@ declare function getPresetIdForFile(file: WorkspaceFile): string | undefined;
 declare function registerPresetAsNamedViz(preset: VizPreset, name?: string): boolean;
 
 /**
- * vizLanguages — the single home for the viz `language` ↔ renderer `kind`
- * correspondence.
- *
- * ## Why this module exists
- *
- * A workspace file's `language` (`'p5js' | 'hydra' | 'glsl'`) maps to a
- * concrete renderer `kind` (`'p5' | 'hydra' | 'glsl'`), and the inverse.
- * Before this module that correspondence was duplicated as inline ternaries
- * and `language === 'p5js' || 'hydra'` allow-list filters across ~13 call
- * sites in the editor and app packages. Adding the GLSL renderer kind (#287)
- * meant threading `'glsl'` through every one of them — and the easily-missed
- * sites were the **filters**: a union-widen forces the type system to make you
- * add a ternary arm, but an allow-list filter compiles fine while silently
- * excluding the new kind, so the feature just no-ops (P118 / PV88 — the
- * named-viz registration filter and the backdrop filters dropped `'glsl'`
- * invisibly to tsc + unit tests; found only by live observation).
- *
- * Consolidating into one helper means:
- *   - the allow-list (`VIZ_LANGUAGES`) has ONE definition every filter calls,
- *     so a new kind can't be silently dropped by a forgotten filter, and
- *   - the maps are exhaustive `Record`s keyed by the renderer union, so a new
- *     renderer kind is a compile error until every arm is added — the next
- *     kind is a 1-line change, not a 13-site scavenger hunt.
- *
- * @see PV88 (the consolidation target), P118 (the silent-drop trap).
- */
-
-/**
- * The concrete renderer kind a viz file compiles to. Mirror of
- * `VizPreset['renderer']` — kept as a named alias so call sites read
- * intent rather than reaching into the preset shape.
- */
-type VizRendererKind = VizPreset['renderer'];
-/**
- * The workspace languages that compile to a viz renderer — THE single
- * allow-list. Every "is this a viz file?" filter must derive from this
- * (via {@link isVizLanguage}) so a new viz language can never be silently
- * excluded by a forgotten filter site.
- *
- * `satisfies` (not `as`) keeps each entry checked against
- * `WorkspaceLanguage` while preserving the literal tuple type.
- */
-declare const VIZ_LANGUAGES: readonly ["p5js", "hydra", "glsl"];
-/** Narrowing of `WorkspaceLanguage` to the viz languages. */
-type VizLanguage = (typeof VIZ_LANGUAGES)[number];
-/** True when `lang` is a viz language (compiles to a renderer). */
-declare function isVizLanguage(lang: WorkspaceLanguage): lang is VizLanguage;
-/**
- * The renderer kind a workspace `language` compiles to, or `null` when the
- * language is not a viz language. Callers that have already established a
- * viz file (e.g. via {@link isVizLanguage}) typically fall back to `'p5'`.
- */
-declare function rendererForLanguage(lang: WorkspaceLanguage): VizRendererKind | null;
-/** The workspace language a renderer kind authors as. */
-declare function languageForRenderer(renderer: VizRendererKind): WorkspaceLanguage;
-
-/**
  * Shared event store for every runtime's info / warn / error messages.
  *
  * Goal: one stream of structured log entries that multiple UI surfaces
@@ -7640,4 +7725,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MainSignalSampler, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, VIZ_LANGUAGES, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizQuality, getVizWorkerFactory, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, isVizLanguage, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, type InjectedGlobal, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MainSignalSampler, type MasterArray, type MasterScalar, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, VIZ_LANGUAGES, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizQuality, getVizWorkerFactory, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isSampleSoundPlaying, isViewing, isVizLanguage, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setProjectBackgroundFileId, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
