@@ -354,12 +354,20 @@ export function hostVizWorker(scope: WorkerScope): void {
         const origCreate = p.createCanvas.bind(p)
         p.createCanvas = function (w: number, h: number, renderer?: unknown, ...rest: unknown[]) {
           ccCalls += 1
-          // call #1 = p5's internal default createCanvas(100,100,P2D) → throwaway canvas.
-          if (ccCalls === 1 || adopted) return origCreate(w, h, renderer, ...rest)
-          // call #2 = the user's main createCanvas → inject msg.canvas as the elt. Pass a
-          // valid renderer constant so our canvas lands in the renderer's `elt` slot
-          // (createCanvas treats a non-constant 3rd arg as the elt itself → unshift, so a
-          // bare `createCanvas(w,h)` needs an explicit P2D to carry the elt positionally).
+          // call #1 = p5's internal default createCanvas(100,100,P2D) → throwaway canvas
+          // (p5 ALWAYS makes one before user setup; it's replaced by the user's call).
+          if (ccCalls === 1) return origCreate(w, h, renderer, ...rest)
+          // EVERY user createCanvas (call #2+) adopts msg.canvas as the renderer `elt`. p5
+          // never calls createCanvas internally beyond the default (resizeCanvas/pixelDensity
+          // don't), so calls ≥2 are all the user's. Adopting on each (not just the first)
+          // keeps a rare double-createCanvas of the SAME context type working (re-getContext
+          // is idempotent). The ONE unsupported case — switching renderer TYPE across two
+          // createCanvas calls in setup (P2D→WEBGL) — locks msg.canvas to the first type and
+          // would blank; it also can't reuse an element across context types on the main
+          // thread, and is covered by the `stave.viz.p5direct='0'` escape hatch. Pass a valid
+          // renderer constant so our canvas lands in the `elt` slot (createCanvas treats a
+          // non-constant 3rd arg as the elt → unshift; a bare createCanvas(w,h) needs an
+          // explicit P2D to carry the elt positionally).
           adopted = true
           const rk = RENDERER_CONSTS.has(renderer as string) ? (renderer as string) : 'p2d'
           return origCreate(w, h, rk, displayEl)

@@ -6156,7 +6156,7 @@ function hostVizWorker(scope) {
         const origCreate = p.createCanvas.bind(p);
         p.createCanvas = function(w, h, renderer, ...rest) {
           ccCalls += 1;
-          if (ccCalls === 1 || adopted) return origCreate(w, h, renderer, ...rest);
+          if (ccCalls === 1) return origCreate(w, h, renderer, ...rest);
           adopted = true;
           const rk = RENDERER_CONSTS.has(renderer) ? renderer : "p2d";
           return origCreate(w, h, rk, displayEl);
