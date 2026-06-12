@@ -17,6 +17,8 @@ import {
   type VizQualityLevel,
   getInlineVizTeardownEnabled,
   setInlineVizTeardownEnabled,
+  getVizInputsLiveValuesEnabled,
+  setVizInputsLiveValuesEnabled,
   getMusicalTimelineSubRowHeight,
   setMusicalTimelineSubRowHeight,
   getEditorTheme,
@@ -184,6 +186,8 @@ export function EditorSettingsModal({ open, onClose }: Props) {
   const [vizResCustom, setVizResCustom] = useState(false);
   const [vizQuality, setVizQualityState] = useState<VizQualityLevel>("balanced");
   const [vizTeardown, setVizTeardown] = useState(true);
+  // #346 — paint live master signal values in the open Stave Inputs viz drawer.
+  const [vizInputsLive, setVizInputsLive] = useState(true);
   const [subRowHeight, setSubRowHeight] = useState(18);
   const [theme, setTheme] = useState<EditorTheme>("dark");
   const [perfEnabled, setPerfEnabledState] = useState(false);
@@ -223,6 +227,7 @@ export function EditorSettingsModal({ open, onClose }: Props) {
     setVizResCustom(!VIZ_RES_PRESETS.includes(res));
     setVizQualityState(getVizQuality());
     setVizTeardown(getInlineVizTeardownEnabled());
+    setVizInputsLive(getVizInputsLiveValuesEnabled());
     setSubRowHeight(getMusicalTimelineSubRowHeight());
     setTheme(getEditorTheme());
     setPerfEnabledState(getPerfEnabled());
@@ -390,6 +395,21 @@ export function EditorSettingsModal({ open, onClose }: Props) {
                 style={s.numberInput}
               />
             ) : null}
+          </Row>
+          <Row label="Live values in viz inputs">
+            <label style={s.switchLabel}>
+              <input
+                type="checkbox"
+                checked={vizInputsLive}
+                aria-label="Live values in the Stave Inputs viz drawer"
+                onChange={() => {
+                  const next = !vizInputsLive;
+                  setVizInputsLiveValuesEnabled(next);
+                  setVizInputsLive(next);
+                }}
+              />
+              <span>{vizInputsLive ? "On (live master values in the drawer)" : "Off (static reference)"}</span>
+            </label>
           </Row>
           <Row label="Off-screen viz teardown">
             <label style={s.switchLabel}>
