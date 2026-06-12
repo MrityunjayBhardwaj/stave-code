@@ -30,6 +30,17 @@ test.describe('Stave Inputs panel + hover (#309)', () => {
   test.skip(!process.env.E2E_VERIFY, 'set E2E_VERIFY=1 to run')
 
   test('opening a viz file shows the Stave Inputs reference block', async ({ page }) => {
+    // The STATIC reference block is now the live-values-OFF fallback (#346 made
+    // live values the default). Force it off so this test exercises the static
+    // path it asserts on. (Live values get their own observation in
+    // viz-inputs-live-values.spec.ts.)
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('stave:vizInputsLiveValues', '0')
+      } catch {
+        /* ignore */
+      }
+    })
     await boot(page)
     await openVizFile(page, 'spectrum.p5')
 
@@ -43,7 +54,9 @@ test.describe('Stave Inputs panel + hover (#309)', () => {
     // eslint-disable-next-line no-console
     console.log('[stave-inputs] block:\n' + text)
     expect(text).toContain('Stave Inputs')
-    expect(text).toContain('uKick')
+    // spectrum.p5 is a p5 viz → the block speaks the `sig` namespace (#351),
+    // NOT the glsl `uKick` uniform names.
+    expect(text).toContain('sig.kick')
     expect(text).toContain('sig.fft')
     await page.screenshot({ path: 'test-results/stave-inputs-block.png' })
   })

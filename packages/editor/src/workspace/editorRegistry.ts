@@ -435,6 +435,42 @@ export function getInlineVizTeardownMs(): number {
   return INLINE_VIZ_TEARDOWN_MS
 }
 
+// ── Live values in the "Stave Inputs" viz drawer (#346) ─────────────
+// When ON, the open StaveInputsPanel paints each injected signal's LIVE master
+// value (bar+number / sparkline / iTime seconds) off the already-running
+// vizSignalProbe, throttled ~12fps, only while a pattern plays. Main-thread DOM
+// only — orthogonal to the #299/#122 GPU jank. Default ON; OFF falls back to the
+// static reference block.
+const DEFAULT_VIZ_INPUTS_LIVE_VALUES = true
+const VIZ_INPUTS_LIVE_VALUES_STORAGE = 'stave:vizInputsLiveValues'
+const vizInputsLiveValuesListeners = new Set<(on: boolean) => void>()
+
+function readVizInputsLiveValuesEnabled(): boolean {
+  const ls = safeLocalStorage()
+  if (!ls) return DEFAULT_VIZ_INPUTS_LIVE_VALUES
+  const saved = ls.getItem(VIZ_INPUTS_LIVE_VALUES_STORAGE)
+  if (saved === null) return DEFAULT_VIZ_INPUTS_LIVE_VALUES
+  return saved === '1'
+}
+
+/** Whether the open Stave Inputs drawer paints live master signal values
+ *  (#346). Default ON. */
+export function getVizInputsLiveValuesEnabled(): boolean {
+  return readVizInputsLiveValuesEnabled()
+}
+
+/** Enable/disable live values in the Stave Inputs drawer. Notifies listeners so
+ *  a mounted panel can start/stop its paint loop without a reload. */
+export function setVizInputsLiveValuesEnabled(on: boolean): void {
+  safeLocalStorage()?.setItem(VIZ_INPUTS_LIVE_VALUES_STORAGE, on ? '1' : '0')
+  for (const cb of Array.from(vizInputsLiveValuesListeners)) cb(on)
+}
+
+export function onVizInputsLiveValuesChange(cb: (on: boolean) => void): () => void {
+  vizInputsLiveValuesListeners.add(cb)
+  return () => { vizInputsLiveValuesListeners.delete(cb) }
+}
+
 // ── Musical Timeline sub-row height (Phase 20-12 wave-δ) ────────────
 // Sub-row band height (px) when an expanded track has multiple leaves.
 // Mockup default = 18; range 12-48 covers compact-density to "I want to
