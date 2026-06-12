@@ -66,9 +66,13 @@ throttle timing; keep the tab audible (or foreground) across silent sections.
 ## Troubleshooting
 
 **The canvas is blank.**
-- If it's a custom sketch, check the **Console** panel for an error — a typo in
-  `draw()` / `setup()` surfaces there (for p5). A shader that won't compile shows
-  its error and falls back to a safe path.
+- If it's a custom sketch, check the **Console** panel — Stave surfaces sketch
+  errors there for every visual type:
+  - **p5** — a typo in `draw()` / `setup()` shows up (with the line).
+  - **Hydra** — if a reactive function (`() => …`) throws, the message appears and
+    that value defaults so the rest keeps running (no source line — check the text).
+  - **GLSL** — a shader that won't compile shows its error **with the line number**
+    and falls back to a safe path; jump to that line, fix it, re-evaluate.
 - Make sure the pattern is actually playing — a visual attached to a stopped or
   silent pattern has nothing to react to.
 - For a standalone preview (a viz file opened in its own tab, not attached via

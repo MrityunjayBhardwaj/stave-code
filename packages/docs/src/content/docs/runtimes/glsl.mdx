@@ -140,3 +140,11 @@ A `.glsl` file reads the same uniforms documented above — `iChannel0` for the
 spectrum/waveform and `uKick`/`uSnare`/… for pattern events — so your shader is
 audio- and event-reactive with no extra wiring. New projects ship two examples to
 start from: **Prism** and **Pulse Grid**.
+
+## When a shader won't compile
+
+A typo or undeclared variable means the shader can't compile. When that happens the
+GLSL compiler's error shows up in the **Console** panel — **with the line number**,
+so you can jump straight to the offending line in your `.glsl` source (the canvas
+falls back to a safe path meanwhile). Fix it and re-evaluate; the live preview
+recompiles as you type.

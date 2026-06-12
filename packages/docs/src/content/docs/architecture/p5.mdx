@@ -150,6 +150,15 @@ error surfaced, no fallback). This is the P105 family — a per-thread channel i
 invisible until explicitly bridged (PV83).
 </Aside>
 
+<Aside type="note" title="p5 was the first leg of the error-surfacing triad">
+This `vizlog` re-emit is the *original* of a pattern every runtime now follows:
+each one swallows user errors differently, so each gets its own surfacing hook to
+the same Console. The siblings caught up — hydra ([#275](/architecture/hydra/),
+its library swallows reactive-fn throws) and GLSL ([#331](/architecture/glsl/), a
+mount-time compile error, surfaced *with* an editor line). The cross-runtime
+invariant is in the [renderer contract](/architecture/renderer-contract/).
+</Aside>
+
 **Verified by** `worker-draw-error.spec.ts` (#257 user-throw surfacing),
 `viz-density-lod.spec.ts` (#232 density moves the cost curve, no remount), and the
 p5 worker-path coverage gates.

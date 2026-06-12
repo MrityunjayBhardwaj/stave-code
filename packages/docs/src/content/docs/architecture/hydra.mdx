@@ -1,6 +1,6 @@
 ---
 title: 'Renderer: Hydra'
-description: How the Hydra renderer satisfies the viz contract — Tier-1 direct-to-canvas, the s.a.fft audio bridge, host-driven tick(), and the library-swallowed-error and GPU-async-dispatch gotchas.
+description: How the Hydra renderer satisfies the viz contract — Tier-1 direct-to-canvas, the s.a.fft audio bridge, host-driven tick(), and the library-swallowed-error (re-surfaced) and GPU-async-dispatch gotchas.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -76,27 +76,38 @@ serialized across the worker boundary, so they're deferred to the main-thread
 path for now. A `.hydra` *file* (a string) routes through the worker fine.
 </Aside>
 
-## Gotcha 1 — hydra swallows user errors (#257 is p5-only for user code, P116)
+## Gotcha 1 — hydra swallows user errors *inside the library* — Stave re-surfaces them (#275)
 
 A p5 `draw()` typo surfaces in the Stave Console (#257). The hydra equivalent — a
-reactive arrow that throws, e.g. `.rotate(() => { throw … })` — **does not**.
+reactive arrow that throws, e.g. `.rotate(() => { throw … })` — does **not** reach
+the host's draw catch on its own, because `hydra-synth` wraps every reactive-fn
+uniform evaluation in its own try/catch (`format-arguments.js:82`:
+`catch (e) { console.warn('ERROR', e); return input.default }`). The throw is
+caught *inside hydra*, logged to `console.warn`, and the uniform falls back to its
+default — so it never propagates out of `hydra.tick()`, never reaches the host's
+shared `s.draw()` catch (`hostP5Worker.ts`), never re-emits via `vizlog`. The host
+catch only fires for **engine-level** throws (regl / GL / context-lost), which a
+viz code string can't deterministically induce.
 
-`hydra-synth` wraps every reactive-fn uniform evaluation in its own try/catch
-(`format-arguments.js:72`: `catch (e) { console.warn('ERROR', e); return
-input.default }`). The throw is caught *inside hydra*, logged to `console.warn`
-(not Stave's `engineLog`), and the uniform falls back to its default — so it never
-propagates out of `hydra.tick()`, never reaches the host's shared `s.draw()` catch
-(`hostP5Worker.ts:519`), never re-emits via `vizlog`. The host catch is correct
-but only fires for **engine-level** throws (regl / GL / context-lost), which a viz
-code string can't deterministically induce.
+**The fix (#275):** rather than fight the library, Stave patches the worker's
+`console.warn` once — while a hydra sketch is live (`currentRuntimeRef.kind ===
+'hydra'`), it recognises hydra's two user-error markers (`'ERROR'` → error,
+`'function does not return a number'` → warn), re-emits them through the same
+deduped `postVizLog` → `vizlog` → main `emitLog` path a p5 typo uses, then always
+delegates to the real `console.warn` so devtools keeps the original. Gated on
+kind + the exact marker, so p5/other warns and hydra/regl internals pass through
+untouched. A hydra typo now appears in the Console just like a p5 one — the only
+difference is no source line (hydra gives no line for a code-string reactive fn;
+GLSL does — see [the GLSL chapter](/architecture/glsl/)).
 
 <Aside type="caution" title="Before asserting 'X surfaces an error,' check who swallows it first">
-This was a doc-comment inference (the #257 comment implied parity across kinds).
-The detection rule: grep the runtime library's arg/uniform eval for a try/catch
-before claiming an error surfaces. Characterized in `hydra-path-coverage.spec.ts`
-(b) — a throwing hydra reactive fn yields `engineLog` errors === 0, no fallback,
-worker stays live. (A throw on **frame 1** never reaches `ready` → that's the
-#247 *fallback* path, different again.)
+The original #257 comment *implied* parity across kinds — an inference that
+observation disproved (a probe showed hydra's `engineLog` errors === 0). The
+detection rule that found the real gap: grep the runtime library's arg/uniform
+eval for a try/catch before claiming an error surfaces. `hydra-path-coverage.spec.ts`
+(b) now **asserts the fix**: a clean sketch surfaces 0 (no over-capture), a throwing
+reactive fn surfaces ≥1 carrying its thrown text end-to-end. (A throw on **frame 1**
+never reaches `ready` → that's the #247 *fallback* path, different again.)
 </Aside>
 
 ## Gotcha 2 — resolution doesn't move `viz.worker.draw` (P117)
@@ -118,6 +129,6 @@ across res in `hydra-path-coverage.spec.ts` (c).
 </Aside>
 
 **Verified by** `hydra-path-coverage.spec.ts` (the worker `gl()` accessor → #266,
-kind-agnostic `s.draw()` timing → #230, the P116 swallow, the P117 flat-cost) and
+kind-agnostic `s.draw()` timing → #230, the #275 error re-surfacing, the P117 flat-cost) and
 `hydra-visual-gate.spec.ts` (the worker canvas actually paints, audio-reactive —
 PV86).
