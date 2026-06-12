@@ -13008,6 +13008,29 @@ ${stripVersion(userSource)}
   );
 }
 __name(buildGLSLFragmentSource, "buildGLSLFragmentSource");
+function glslPreambleLineCount(userSource) {
+  const probe = stripComments(userSource);
+  const hasMainImage = /\bmainImage\s*\(/.test(probe);
+  const prefix = hasMainImage ? `${VERSION}
+${PRECISION}
+${UNIFORMS}
+${STAVE_TRACK_API}
+${SHADERTOY_OUT}
+` : `${VERSION}
+${PRECISION}
+${UNIFORMS}
+${STAVE_TRACK_API}
+`;
+  return (prefix.match(/\n/g) ?? []).length;
+}
+__name(glslPreambleLineCount, "glslPreambleLineCount");
+function glslFragmentErrorUserLine(message, userSource) {
+  if (!/fragment compile error/.test(message)) return void 0;
+  const m = /\b\d+:(\d+):/.exec(message);
+  if (!m) return void 0;
+  return Math.max(1, Number(m[1]) - glslPreambleLineCount(userSource));
+}
+__name(glslFragmentErrorUserLine, "glslFragmentErrorUserLine");
 
 // src/visualizers/renderers/glslCore.ts
 var GLSL_EVENT_NAMES = [
@@ -13252,8 +13275,11 @@ __name(readGLSLTracks, "readGLSLTracks");
 // src/visualizers/renderers/GLSLVizRenderer.ts
 var glslPerfSeq = 0;
 var _GLSLVizRenderer = class _GLSLVizRenderer {
-  constructor(code) {
+  /** `code` = the user's GLSL source; `name` = the workspace path, used to
+   *  attribute a compile error to its file in the Console (#331). */
+  constructor(code, name = "") {
     this.code = code;
+    this.name = name;
     this.canvas = null;
     this.gl = null;
     this.program = null;
@@ -13328,7 +13354,15 @@ var _GLSLVizRenderer = class _GLSLVizRenderer {
         this.rafId = requestAnimationFrame(this.loop);
       }
     } catch (e) {
-      onError(e);
+      const err = e;
+      emitLog({
+        level: "error",
+        runtime: "glsl",
+        source: this.name || void 0,
+        message: err.message,
+        line: glslFragmentErrorUserLine(err.message, this.code)
+      });
+      onError(err);
     }
   }
   update(components) {
@@ -13389,8 +13423,8 @@ var GLSLVizRenderer = _GLSLVizRenderer;
 function makeGLSLRenderer(code, name) {
   return shouldUseWorkerRenderer() ? new FallbackVizRenderer(
     () => new WorkerVizRenderer("glsl", code, name),
-    () => new GLSLVizRenderer(code)
-  ) : new GLSLVizRenderer(code);
+    () => new GLSLVizRenderer(code, name)
+  ) : new GLSLVizRenderer(code, name);
 }
 __name(makeGLSLRenderer, "makeGLSLRenderer");
 

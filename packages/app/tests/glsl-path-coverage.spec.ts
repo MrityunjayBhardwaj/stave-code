@@ -204,19 +204,54 @@ test.describe('#281 GLSL worker path — contract validation', () => {
     }
   })
 
-  test('(c) #247 — a GLSL shader that fails to compile falls back to main-thread', async ({ browser }) => {
+  test('(c) #247/#331 — a broken GLSL shader falls back AND surfaces its compile error (with line) to the Console', async ({ browser }) => {
     const { ctx, page } = await open(browser)
     try {
+      // CONTROL (P135 — no false surfacing): a CLEAN GLSL shader must surface ZERO
+      // glsl error entries. Proves the emit fires on a real compile failure, not on
+      // every mount.
+      await registerGLSL(page, 'gl-clean', GLSL_OK)
+      await remount(page, `$: s("bd*4").bank("RolandTR909").viz('gl-clean')`)
+      await page.waitForTimeout(2500)
+      const cleanErrs = await page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const log: Array<{ level: string; runtime: string }> = (window as any).__staveGetLog?.() ?? []
+        return log.filter((e) => e.runtime === 'glsl' && e.level === 'error').length
+      })
+      console.log(`[#281 c] CONTROL clean glsl errors=${cleanErrs}`)
+      expect(cleanErrs, 'a clean GLSL shader surfaces NO compile errors').toBe(0)
+
+      // EFFECT: a shader with an undeclared identifier on USER line 2. The worker's
+      // createGLSLProgram throws before `ready` → FallbackVizRenderer mounts the
+      // main-thread GLSLVizRenderer, which re-compiles + (#331) emits the info log to
+      // the Console with the editor line.
       await registerGLSL(page, 'gl-broken', GLSL_BROKEN)
       await remount(page, `$: s("bd*4").bank("RolandTR909").viz('gl-broken')`)
+      await page.waitForTimeout(2500)
       const m = await snap(page)
-      console.log(`[#281 c] ${JSON.stringify(m)}`)
+      const obs = await page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const log: Array<{ level: string; runtime: string; message: string; line?: number }> =
+          (window as any).__staveGetLog?.() ?? []
+        const glslErrs = log.filter((e) => e.runtime === 'glsl' && e.level === 'error')
+        return {
+          count: glslErrs.length,
+          hasSymbol: glslErrs.some((e) => e.message.includes('definitely_not_a_real_symbol')),
+          lines: glslErrs.map((e) => e.line),
+          sample: glslErrs[0]?.message.slice(0, 100),
+        }
+      })
+      console.log(`[#281 c] EFFECT ${JSON.stringify(m)} | err=${JSON.stringify(obs)}`)
 
-      // The worker's createGLSLProgram throws before `ready` → FallbackVizRenderer
-      // mounts the main-thread GLSLVizRenderer. The main gauge goes up; no live
-      // GLSL worker remains (it was torn down on fallback).
+      // Fallback (#247): main gauge up, no live GLSL worker remains.
       expect(m.glsl, 'fell back to the main-thread GLSLVizRenderer (#247)').toBeGreaterThanOrEqual(1)
       expect(m.worker, 'the broken worker did not stay live as a worker viz').toBe(0)
+      // Surfacing (#331): the compile error reached the Console.
+      expect(obs.count, 'the GLSL compile error surfaced to the Console (#331)').toBeGreaterThanOrEqual(1)
+      // ISOLATION: it's OUR shader's error (the induced symbol), end-to-end.
+      expect(obs.hasSymbol, "the surfaced error carries the shader's undeclared symbol").toBe(true)
+      // LINE ATTRIBUTION: mapped back through the wrapper preamble to user line 2.
+      expect(obs.lines, 'the error is attributed to the authored editor line (2)').toContain(2)
     } finally {
       await ctx.close()
     }

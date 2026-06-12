@@ -137,3 +137,32 @@ export function buildGLSLFragmentSource(userSource: string): string {
     'GLSL: no entry point. Define `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for a ShaderToy shader, or `void main()` for a raw GLSL shader.',
   )
 }
+
+/** How many preamble lines `buildGLSLFragmentSource` prepends BEFORE the user's
+ *  source, for the mode auto-detected from `userSource`. A GLSL info-log line
+ *  `0:N` counts from the top of the COMPOSED shader; the user's editor line is
+ *  `N - glslPreambleLineCount(userSource)`. Built from the SAME prefix the
+ *  composer uses (ShaderToy mode adds the `SHADERTOY_OUT` line raw mode doesn't),
+ *  so the offset can't drift from the composition. (#331) */
+export function glslPreambleLineCount(userSource: string): number {
+  const probe = stripComments(userSource)
+  const hasMainImage = /\bmainImage\s*\(/.test(probe)
+  const prefix = hasMainImage
+    ? `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n${SHADERTOY_OUT}\n`
+    : `${VERSION}\n${PRECISION}\n${UNIFORMS}\n${STAVE_TRACK_API}\n`
+  return (prefix.match(/\n/g) ?? []).length
+}
+
+/** Map a GLSL FRAGMENT compile error message (from `glslCore`,
+ *  `glsl fragment compile error:\n<infoLog>`) to the user's 1-based editor line,
+ *  or `undefined` if it's not a fragment compile error or carries no `0:N` token.
+ *  The info log counts from the composed shader's top → subtract the preamble.
+ *  Vertex/link errors are Stave-owned (the fullscreen vert) — not the user's
+ *  fragment — so they map to no editor line. (#331) */
+export function glslFragmentErrorUserLine(message: string, userSource: string): number | undefined {
+  if (!/fragment compile error/.test(message)) return undefined
+  // ANGLE/driver format: `ERROR: 0:N: 'sym' : <reason>` — take the SECOND number.
+  const m = /\b\d+:(\d+):/.exec(message)
+  if (!m) return undefined
+  return Math.max(1, Number(m[1]) - glslPreambleLineCount(userSource))
+}

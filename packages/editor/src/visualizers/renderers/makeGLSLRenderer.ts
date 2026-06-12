@@ -32,7 +32,7 @@ export function makeGLSLRenderer(code: string, name: string): VizRenderer {
   return shouldUseWorkerRenderer()
     ? new FallbackVizRenderer(
         () => new WorkerVizRenderer('glsl', code, name),
-        () => new GLSLVizRenderer(code),
+        () => new GLSLVizRenderer(code, name),
       )
-    : new GLSLVizRenderer(code)
+    : new GLSLVizRenderer(code, name)
 }

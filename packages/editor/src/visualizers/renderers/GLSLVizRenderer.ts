@@ -24,7 +24,9 @@ import { SignalBus } from '../signals/SignalBus'
 import { resolveAliasesForEngine, DEFAULT_VIZ_ENGINE } from '../signals/aliasMap'
 import { getStoredSignalAliases } from '../../workspace/editorRegistry'
 import { createGLSLProgram, type GLSLProgram, type AudioByteSource, type GL2 } from './glslCore'
+import { glslFragmentErrorUserLine } from './glslShaderSource'
 import { readGLSLEvents, readGLSLTracks } from './glslEvents'
+import { emitLog } from '../../engine/engineLog'
 
 /** Monotone id source for a stable per-instance profiler key (`glsl#N`). */
 let glslPerfSeq = 0
@@ -46,7 +48,12 @@ export class GLSLVizRenderer implements VizRenderer {
   private hapStream: HapStream | null = null
   private busHapHandler: ((e: HapEvent) => void) | null = null
 
-  constructor(private readonly code: string) {}
+  /** `code` = the user's GLSL source; `name` = the workspace path, used to
+   *  attribute a compile error to its file in the Console (#331). */
+  constructor(
+    private readonly code: string,
+    private readonly name = '',
+  ) {}
 
   mount(
     container: HTMLDivElement,
@@ -91,7 +98,22 @@ export class GLSLVizRenderer implements VizRenderer {
         this.rafId = requestAnimationFrame(this.loop)
       }
     } catch (e) {
-      onError(e as Error)
+      // #331 — a shader compile/link failure (or a both/neither-mode friendly
+      // error) is a USER authoring error. Surface it to the main Console like a
+      // p5 (#257) / hydra (#275) typo — GLSL's info log even carries a line, which
+      // we map back through the wrapper preamble to the editor line. This is the
+      // ONLY place every broken GLSL terminates: worker→FallbackVizRenderer→here,
+      // or main-direct→here. emitLog dedups on (level,runtime,source,line,message)
+      // so a re-mount of the same broken shader won't spam the panel.
+      const err = e as Error
+      emitLog({
+        level: 'error',
+        runtime: 'glsl',
+        source: this.name || undefined,
+        message: err.message,
+        line: glslFragmentErrorUserLine(err.message, this.code),
+      })
+      onError(err)
     }
   }
 
