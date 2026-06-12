@@ -964,7 +964,7 @@ var DEFAULT_VIZ_CONFIG = {
   maxDpr: 1,
   // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
   // values are opted into via "performance mode" (deriveVizQuality) and read by
-  // sketches as `u.density`. Marshalled to the worker via the config channel.
+  // sketches as `sig.density`. Marshalled to the worker via the config channel.
   density: 1,
   // Inline view zones
   inlineZoneHeight: 150,
@@ -1012,64 +1012,40 @@ __name(updateVizConfig, "updateVizConfig");
 
 // src/visualizers/signals/staveUniforms.ts
 function buildStaveUniforms(bus, onTick) {
-  const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
-  u.track = (id) => bus.track(id);
-  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
-  Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
-  Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
-  Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
-  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-  Object.defineProperty(u, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
-  const uniforms = {
-    get uKick() {
-      return bus.envValue("uKick");
-    },
-    get uSnare() {
-      return bus.envValue("uSnare");
-    },
-    get uHat() {
-      return bus.envValue("uHat");
-    },
-    get uOpenHat() {
-      return bus.envValue("uOpenHat");
-    },
-    get uClap() {
-      return bus.envValue("uClap");
-    },
-    get uRim() {
-      return bus.envValue("uRim");
-    },
-    get uTom() {
-      return bus.envValue("uTom");
-    },
-    // `uKeyVelocity` is NOT a sound alias — the active event's velocity globally
-    // (max over every sound seen this frame; 0 when nothing is active).
-    get uKeyVelocity() {
+  const sig = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "sig");
+  sig.track = (id) => bus.track(id);
+  Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  const env = /* @__PURE__ */ __name((key) => ({
+    get: /* @__PURE__ */ __name(() => bus.envValue(key), "get"),
+    enumerable: true
+  }), "env");
+  Object.defineProperty(sig, "kick", env("uKick"));
+  Object.defineProperty(sig, "snare", env("uSnare"));
+  Object.defineProperty(sig, "hat", env("uHat"));
+  Object.defineProperty(sig, "openHat", env("uOpenHat"));
+  Object.defineProperty(sig, "clap", env("uClap"));
+  Object.defineProperty(sig, "rim", env("uRim"));
+  Object.defineProperty(sig, "tom", env("uTom"));
+  Object.defineProperty(sig, "keyVelocity", {
+    get: /* @__PURE__ */ __name(() => {
       let max = 0;
       for (const s of bus.sounds) {
         const v = bus.sound(s).velocity;
         if (v > max) max = v;
       }
       return max;
-    },
-    // Master-mix DSP sugar (live getter numbers) — parity with `uKick`.
-    get uRms() {
-      return bus.master().rms;
-    },
-    get uBass() {
-      return bus.master().bass;
-    },
-    get uMid() {
-      return bus.master().mid;
-    },
-    get uTreble() {
-      return bus.master().treble;
-    },
-    u
-  };
+    }, "get"),
+    enumerable: true
+  });
+  Object.defineProperty(sig, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+  Object.defineProperty(sig, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+  Object.defineProperty(sig, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+  Object.defineProperty(sig, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
+  Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  Object.defineProperty(sig, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
+  const uniforms = { sig };
   Object.defineProperty(uniforms, "__tick", {
     value: onTick ?? (() => {
     }),
@@ -1096,8 +1072,8 @@ function buildHydraStaveBag(bus) {
     Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
     return t;
   }, "soundThunks");
-  const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
-  u.track = (id) => {
+  const sig = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "sig");
+  sig.track = (id) => {
     const t = {
       env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
       velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
@@ -1112,37 +1088,33 @@ function buildHydraStaveBag(bus) {
     Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
     return t;
   };
-  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  u.rms = () => bus.master().rms;
-  u.bass = () => bus.master().bass;
-  u.mid = () => bus.master().mid;
-  u.treble = () => bus.master().treble;
-  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  sig.kick = () => bus.envValue("uKick");
+  sig.snare = () => bus.envValue("uSnare");
+  sig.hat = () => bus.envValue("uHat");
+  sig.openHat = () => bus.envValue("uOpenHat");
+  sig.clap = () => bus.envValue("uClap");
+  sig.rim = () => bus.envValue("uRim");
+  sig.tom = () => bus.envValue("uTom");
+  sig.keyVelocity = () => {
+    let max = 0;
+    for (const s of bus.sounds) {
+      const v = bus.sound(s).velocity;
+      if (v > max) max = v;
+    }
+    return max;
+  };
+  sig.rms = () => bus.master().rms;
+  sig.bass = () => bus.master().bass;
+  sig.mid = () => bus.master().mid;
+  sig.treble = () => bus.master().treble;
+  Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
   const bag = {
     scheduler: null,
     tracks: /* @__PURE__ */ new Map(),
-    uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
-    uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
-    uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
-    uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
-    uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
-    uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
-    uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
-    uKeyVelocity: /* @__PURE__ */ __name(() => {
-      let max = 0;
-      for (const s of bus.sounds) {
-        const v = bus.sound(s).velocity;
-        if (v > max) max = v;
-      }
-      return max;
-    }, "uKeyVelocity"),
-    uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
-    uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
-    uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
-    uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
-    u,
+    sig,
     H: /* @__PURE__ */ __name((trackId, field = "gain") => {
       return () => {
         const sched = bag.tracks.get(trackId) ?? bag.scheduler;
@@ -5481,10 +5453,10 @@ function compileP5Code(code, source) {
         get options() {
           return optionsRef.current ?? {};
         },
-        // D-02 — mirror the named-signal accessor onto the stave namespace.
-        // `stave.u` is the SAME `u` object exposed bare via `with`.
-        get u() {
-          return (staveUniformsRef.current ?? staveUniforms).u;
+        // D-02 — mirror the signal namespace onto the stave namespace.
+        // `stave.sig` is the SAME `sig` object exposed bare via `with`.
+        get sig() {
+          return (staveUniformsRef.current ?? staveUniforms).sig;
         }
       };
       let lifecycle;
@@ -5529,30 +5501,27 @@ function makeInertStaveUniforms() {
     fft: [],
     wave: []
   }), "zeroReading");
-  const u = /* @__PURE__ */ __name(((_sound) => zeroReading()), "u");
-  u.track = (_id) => zeroReading();
-  u.tracks = [];
-  u.sounds = [];
-  u.rms = 0;
-  u.bass = 0;
-  u.mid = 0;
-  u.treble = 0;
-  u.fft = [];
-  u.wave = [];
+  const sig = /* @__PURE__ */ __name(((_sound) => zeroReading()), "sig");
+  sig.track = (_id) => zeroReading();
+  sig.tracks = [];
+  sig.sounds = [];
+  sig.kick = 0;
+  sig.snare = 0;
+  sig.hat = 0;
+  sig.openHat = 0;
+  sig.clap = 0;
+  sig.rim = 0;
+  sig.tom = 0;
+  sig.keyVelocity = 0;
+  sig.rms = 0;
+  sig.bass = 0;
+  sig.mid = 0;
+  sig.treble = 0;
+  sig.fft = [];
+  sig.wave = [];
+  sig.density = 1;
   return {
-    uKick: 0,
-    uSnare: 0,
-    uHat: 0,
-    uOpenHat: 0,
-    uClap: 0,
-    uRim: 0,
-    uTom: 0,
-    uKeyVelocity: 0,
-    uRms: 0,
-    uBass: 0,
-    uMid: 0,
-    uTreble: 0,
-    u,
+    sig,
     __tick: /* @__PURE__ */ __name(() => {
     }, "__tick")
   };
@@ -5584,19 +5553,7 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
-      const u = staveUniforms.u
-      const uKick = staveUniforms.uKick
-      const uSnare = staveUniforms.uSnare
-      const uHat = staveUniforms.uHat
-      const uOpenHat = staveUniforms.uOpenHat
-      const uClap = staveUniforms.uClap
-      const uRim = staveUniforms.uRim
-      const uTom = staveUniforms.uTom
-      const uKeyVelocity = staveUniforms.uKeyVelocity
-      const uRms = staveUniforms.uRms
-      const uBass = staveUniforms.uBass
-      const uMid = staveUniforms.uMid
-      const uTreble = staveUniforms.uTreble
+      const sig = staveUniforms.sig
       `;
 var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
 function buildLegacyBody(userCode) {

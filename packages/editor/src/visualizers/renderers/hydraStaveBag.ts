@@ -27,7 +27,7 @@ import type { SignalBus } from '../signals/SignalBus'
 import type {
   HydraStaveBag,
   HydraSignalThunks,
-  HydraSignalAccessor,
+  HydraSigAccessor,
 } from './HydraVizRenderer'
 
 /** Build the live `stave` bag for a hydra sketch from a (pure) `SignalBus`. The
@@ -50,9 +50,11 @@ export function buildHydraStaveBag(bus: SignalBus): HydraStaveBag {
     Object.defineProperty(t, 'wave', { get: () => bus.sound(sound).wave, enumerable: true })
     return t
   }
-  const u: HydraSignalAccessor = ((sound: string): HydraSignalThunks =>
-    soundThunks(sound)) as HydraSignalAccessor
-  u.track = (id: string): HydraSignalThunks => {
+  // The single `sig` namespace (#351) — callable, carrying per-sound/per-track
+  // readings AND the per-drum / master-DSP scalar thunks on the same object.
+  const sig: HydraSigAccessor = ((sound: string): HydraSignalThunks =>
+    soundThunks(sound)) as HydraSigAccessor
+  sig.track = (id: string): HydraSignalThunks => {
     const t = {
       env: () => bus.track(id).env,
       velocity: () => bus.track(id).velocity,
@@ -67,38 +69,36 @@ export function buildHydraStaveBag(bus: SignalBus): HydraStaveBag {
     Object.defineProperty(t, 'wave', { get: () => bus.track(id).wave, enumerable: true })
     return t
   }
-  Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
-  Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
-  u.rms = () => bus.master().rms
-  u.bass = () => bus.master().bass
-  u.mid = () => bus.master().mid
-  u.treble = () => bus.master().treble
-  Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
-  Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
+  Object.defineProperty(sig, 'tracks', { get: () => bus.tracks, enumerable: true })
+  Object.defineProperty(sig, 'sounds', { get: () => bus.sounds, enumerable: true })
+  // Per-drum envelope thunks (were bag-level `uKick…uTom`).
+  sig.kick = () => bus.envValue('uKick')
+  sig.snare = () => bus.envValue('uSnare')
+  sig.hat = () => bus.envValue('uHat')
+  sig.openHat = () => bus.envValue('uOpenHat')
+  sig.clap = () => bus.envValue('uClap')
+  sig.rim = () => bus.envValue('uRim')
+  sig.tom = () => bus.envValue('uTom')
+  sig.keyVelocity = () => {
+    let max = 0
+    for (const s of bus.sounds) {
+      const v = bus.sound(s).velocity
+      if (v > max) max = v
+    }
+    return max
+  }
+  // Master-mix DSP thunks + live arrays.
+  sig.rms = () => bus.master().rms
+  sig.bass = () => bus.master().bass
+  sig.mid = () => bus.master().mid
+  sig.treble = () => bus.master().treble
+  Object.defineProperty(sig, 'fft', { get: () => bus.master().fft, enumerable: true })
+  Object.defineProperty(sig, 'wave', { get: () => bus.master().wave, enumerable: true })
 
   const bag: HydraStaveBag = {
     scheduler: null,
     tracks: new Map(),
-    uKick: () => bus.envValue('uKick'),
-    uSnare: () => bus.envValue('uSnare'),
-    uHat: () => bus.envValue('uHat'),
-    uOpenHat: () => bus.envValue('uOpenHat'),
-    uClap: () => bus.envValue('uClap'),
-    uRim: () => bus.envValue('uRim'),
-    uTom: () => bus.envValue('uTom'),
-    uKeyVelocity: () => {
-      let max = 0
-      for (const s of bus.sounds) {
-        const v = bus.sound(s).velocity
-        if (v > max) max = v
-      }
-      return max
-    },
-    uRms: () => bus.master().rms,
-    uBass: () => bus.master().bass,
-    uMid: () => bus.master().mid,
-    uTreble: () => bus.master().treble,
-    u,
+    sig,
     H: (trackId, field = 'gain') => {
       return () => {
         const sched = bag.tracks.get(trackId) ?? bag.scheduler

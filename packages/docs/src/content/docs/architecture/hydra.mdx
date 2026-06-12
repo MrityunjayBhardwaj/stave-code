@@ -48,7 +48,7 @@ main-thread `pumpAudio`. The byte buffer is downsampled to
 count comes across the worker boundary in the marshalled config subset
 (`hydraAudioBins` is one of `WORKER_VIZ_CONFIG_KEYS`).
 
-The named-signal **bus** (the `u.*` signals + per-track access) is built into the
+The named-signal **bus** (the `sig.*` signals + per-track access) is built into the
 hydra bag at mount (`hostP5Worker.ts:411`, `buildHydraStaveBag(feed.bus)`); the
 bus is ticked once per frame by `feed.applyFrame`, so `draw()` must **not** tick
 it again (`hostP5Worker.ts:478`).

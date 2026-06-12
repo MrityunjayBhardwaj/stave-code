@@ -5219,7 +5219,7 @@ var DEFAULT_VIZ_CONFIG = {
   maxDpr: 1,
   // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
   // values are opted into via "performance mode" (deriveVizQuality) and read by
-  // sketches as `u.density`. Marshalled to the worker via the config channel.
+  // sketches as `sig.density`. Marshalled to the worker via the config channel.
   density: 1,
   // Inline view zones
   inlineZoneHeight: 150,
@@ -5304,64 +5304,40 @@ __name(pickWorkerVizConfig, "pickWorkerVizConfig");
 
 // src/visualizers/signals/staveUniforms.ts
 function buildStaveUniforms(bus, onTick) {
-  const u = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "u");
-  u.track = (id) => bus.track(id);
-  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  Object.defineProperty(u, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
-  Object.defineProperty(u, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
-  Object.defineProperty(u, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
-  Object.defineProperty(u, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
-  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
-  Object.defineProperty(u, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
-  const uniforms = {
-    get uKick() {
-      return bus.envValue("uKick");
-    },
-    get uSnare() {
-      return bus.envValue("uSnare");
-    },
-    get uHat() {
-      return bus.envValue("uHat");
-    },
-    get uOpenHat() {
-      return bus.envValue("uOpenHat");
-    },
-    get uClap() {
-      return bus.envValue("uClap");
-    },
-    get uRim() {
-      return bus.envValue("uRim");
-    },
-    get uTom() {
-      return bus.envValue("uTom");
-    },
-    // `uKeyVelocity` is NOT a sound alias — the active event's velocity globally
-    // (max over every sound seen this frame; 0 when nothing is active).
-    get uKeyVelocity() {
+  const sig = /* @__PURE__ */ __name(((sound) => bus.sound(sound)), "sig");
+  sig.track = (id) => bus.track(id);
+  Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  const env = /* @__PURE__ */ __name((key) => ({
+    get: /* @__PURE__ */ __name(() => bus.envValue(key), "get"),
+    enumerable: true
+  }), "env");
+  Object.defineProperty(sig, "kick", env("uKick"));
+  Object.defineProperty(sig, "snare", env("uSnare"));
+  Object.defineProperty(sig, "hat", env("uHat"));
+  Object.defineProperty(sig, "openHat", env("uOpenHat"));
+  Object.defineProperty(sig, "clap", env("uClap"));
+  Object.defineProperty(sig, "rim", env("uRim"));
+  Object.defineProperty(sig, "tom", env("uTom"));
+  Object.defineProperty(sig, "keyVelocity", {
+    get: /* @__PURE__ */ __name(() => {
       let max = 0;
       for (const s of bus.sounds) {
         const v = bus.sound(s).velocity;
         if (v > max) max = v;
       }
       return max;
-    },
-    // Master-mix DSP sugar (live getter numbers) — parity with `uKick`.
-    get uRms() {
-      return bus.master().rms;
-    },
-    get uBass() {
-      return bus.master().bass;
-    },
-    get uMid() {
-      return bus.master().mid;
-    },
-    get uTreble() {
-      return bus.master().treble;
-    },
-    u
-  };
+    }, "get"),
+    enumerable: true
+  });
+  Object.defineProperty(sig, "rms", { get: /* @__PURE__ */ __name(() => bus.master().rms, "get"), enumerable: true });
+  Object.defineProperty(sig, "bass", { get: /* @__PURE__ */ __name(() => bus.master().bass, "get"), enumerable: true });
+  Object.defineProperty(sig, "mid", { get: /* @__PURE__ */ __name(() => bus.master().mid, "get"), enumerable: true });
+  Object.defineProperty(sig, "treble", { get: /* @__PURE__ */ __name(() => bus.master().treble, "get"), enumerable: true });
+  Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  Object.defineProperty(sig, "density", { get: /* @__PURE__ */ __name(() => getVizConfig().density, "get"), enumerable: true });
+  const uniforms = { sig };
   Object.defineProperty(uniforms, "__tick", {
     value: onTick ?? (() => {
     }),
@@ -11639,10 +11615,10 @@ function compileP5Code(code, source) {
         get options() {
           return optionsRef.current ?? {};
         },
-        // D-02 — mirror the named-signal accessor onto the stave namespace.
-        // `stave.u` is the SAME `u` object exposed bare via `with`.
-        get u() {
-          return (staveUniformsRef.current ?? staveUniforms).u;
+        // D-02 — mirror the signal namespace onto the stave namespace.
+        // `stave.sig` is the SAME `sig` object exposed bare via `with`.
+        get sig() {
+          return (staveUniformsRef.current ?? staveUniforms).sig;
         }
       };
       let lifecycle;
@@ -11687,30 +11663,27 @@ function makeInertStaveUniforms() {
     fft: [],
     wave: []
   }), "zeroReading");
-  const u = /* @__PURE__ */ __name(((_sound) => zeroReading()), "u");
-  u.track = (_id) => zeroReading();
-  u.tracks = [];
-  u.sounds = [];
-  u.rms = 0;
-  u.bass = 0;
-  u.mid = 0;
-  u.treble = 0;
-  u.fft = [];
-  u.wave = [];
+  const sig = /* @__PURE__ */ __name(((_sound) => zeroReading()), "sig");
+  sig.track = (_id) => zeroReading();
+  sig.tracks = [];
+  sig.sounds = [];
+  sig.kick = 0;
+  sig.snare = 0;
+  sig.hat = 0;
+  sig.openHat = 0;
+  sig.clap = 0;
+  sig.rim = 0;
+  sig.tom = 0;
+  sig.keyVelocity = 0;
+  sig.rms = 0;
+  sig.bass = 0;
+  sig.mid = 0;
+  sig.treble = 0;
+  sig.fft = [];
+  sig.wave = [];
+  sig.density = 1;
   return {
-    uKick: 0,
-    uSnare: 0,
-    uHat: 0,
-    uOpenHat: 0,
-    uClap: 0,
-    uRim: 0,
-    uTom: 0,
-    uKeyVelocity: 0,
-    uRms: 0,
-    uBass: 0,
-    uMid: 0,
-    uTreble: 0,
-    u,
+    sig,
     __tick: /* @__PURE__ */ __name(() => {
     }, "__tick")
   };
@@ -11742,19 +11715,7 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
-      const u = staveUniforms.u
-      const uKick = staveUniforms.uKick
-      const uSnare = staveUniforms.uSnare
-      const uHat = staveUniforms.uHat
-      const uOpenHat = staveUniforms.uOpenHat
-      const uClap = staveUniforms.uClap
-      const uRim = staveUniforms.uRim
-      const uTom = staveUniforms.uTom
-      const uKeyVelocity = staveUniforms.uKeyVelocity
-      const uRms = staveUniforms.uRms
-      const uBass = staveUniforms.uBass
-      const uMid = staveUniforms.uMid
-      const uTreble = staveUniforms.uTreble
+      const sig = staveUniforms.sig
       `;
 var LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length;
 function buildLegacyBody(userCode) {
@@ -11891,8 +11852,8 @@ function buildHydraStaveBag(bus) {
     Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.sound(sound).wave, "get"), enumerable: true });
     return t;
   }, "soundThunks");
-  const u = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "u");
-  u.track = (id) => {
+  const sig = /* @__PURE__ */ __name(((sound) => soundThunks(sound)), "sig");
+  sig.track = (id) => {
     const t = {
       env: /* @__PURE__ */ __name(() => bus.track(id).env, "env"),
       velocity: /* @__PURE__ */ __name(() => bus.track(id).velocity, "velocity"),
@@ -11907,37 +11868,33 @@ function buildHydraStaveBag(bus) {
     Object.defineProperty(t, "wave", { get: /* @__PURE__ */ __name(() => bus.track(id).wave, "get"), enumerable: true });
     return t;
   };
-  Object.defineProperty(u, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
-  Object.defineProperty(u, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  u.rms = () => bus.master().rms;
-  u.bass = () => bus.master().bass;
-  u.mid = () => bus.master().mid;
-  u.treble = () => bus.master().treble;
-  Object.defineProperty(u, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
-  Object.defineProperty(u, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
+  Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
+  Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
+  sig.kick = () => bus.envValue("uKick");
+  sig.snare = () => bus.envValue("uSnare");
+  sig.hat = () => bus.envValue("uHat");
+  sig.openHat = () => bus.envValue("uOpenHat");
+  sig.clap = () => bus.envValue("uClap");
+  sig.rim = () => bus.envValue("uRim");
+  sig.tom = () => bus.envValue("uTom");
+  sig.keyVelocity = () => {
+    let max = 0;
+    for (const s of bus.sounds) {
+      const v = bus.sound(s).velocity;
+      if (v > max) max = v;
+    }
+    return max;
+  };
+  sig.rms = () => bus.master().rms;
+  sig.bass = () => bus.master().bass;
+  sig.mid = () => bus.master().mid;
+  sig.treble = () => bus.master().treble;
+  Object.defineProperty(sig, "fft", { get: /* @__PURE__ */ __name(() => bus.master().fft, "get"), enumerable: true });
+  Object.defineProperty(sig, "wave", { get: /* @__PURE__ */ __name(() => bus.master().wave, "get"), enumerable: true });
   const bag = {
     scheduler: null,
     tracks: /* @__PURE__ */ new Map(),
-    uKick: /* @__PURE__ */ __name(() => bus.envValue("uKick"), "uKick"),
-    uSnare: /* @__PURE__ */ __name(() => bus.envValue("uSnare"), "uSnare"),
-    uHat: /* @__PURE__ */ __name(() => bus.envValue("uHat"), "uHat"),
-    uOpenHat: /* @__PURE__ */ __name(() => bus.envValue("uOpenHat"), "uOpenHat"),
-    uClap: /* @__PURE__ */ __name(() => bus.envValue("uClap"), "uClap"),
-    uRim: /* @__PURE__ */ __name(() => bus.envValue("uRim"), "uRim"),
-    uTom: /* @__PURE__ */ __name(() => bus.envValue("uTom"), "uTom"),
-    uKeyVelocity: /* @__PURE__ */ __name(() => {
-      let max = 0;
-      for (const s of bus.sounds) {
-        const v = bus.sound(s).velocity;
-        if (v > max) max = v;
-      }
-      return max;
-    }, "uKeyVelocity"),
-    uRms: /* @__PURE__ */ __name(() => bus.master().rms, "uRms"),
-    uBass: /* @__PURE__ */ __name(() => bus.master().bass, "uBass"),
-    uMid: /* @__PURE__ */ __name(() => bus.master().mid, "uMid"),
-    uTreble: /* @__PURE__ */ __name(() => bus.master().treble, "uTreble"),
-    u,
+    sig,
     H: /* @__PURE__ */ __name((trackId, field = "gain") => {
       return () => {
         const sched = bag.tracks.get(trackId) ?? bag.scheduler;
@@ -12769,16 +12726,16 @@ function draw() {
 var SIGNALS_SPECTRUM_P5_CODE = `// Stave p5 viz \u2014 Signals (Spectrum)
 // Showcases the named musical-signal bus. Try it over:  s("bd*4 hh*8")
 //
-// The bus is exposed BARE in p5 (via the sketch's stave namespace), so you can
-// read these directly \u2014 they are LIVE NUMBERS / ARRAYS, refreshed every draw():
+// Every signal lives on the 'sig' namespace in p5 \u2014 LIVE NUMBERS / ARRAYS,
+// refreshed every draw():
 //
-//   u('bd')        \u2014 the 'bd' (kick) sound's live signals (a SignalReading).
-//   u('bd').fft    \u2014 that sound's spectrum: a number[] of 32 buckets, each 0..1
+//   sig('bd')      \u2014 the 'bd' (kick) sound's live signals (a SignalReading).
+//   sig('bd').fft  \u2014 that sound's spectrum: a number[] of 32 buckets, each 0..1
 //                    (real audio off the kick's OWN analyser/orbit). [] if muted.
-//   u('bd').rms    \u2014 that sound's loudness 0..1. .bass/.mid/.treble also exist.
-//   uKick          \u2014 the kick ENVELOPE, 0..1, bumped on each hit, decaying ~0.92
-//                    per frame. uSnare / uHat / uClap / uTom \u2026 are siblings.
-//   u.fft          \u2014 the MASTER mix spectrum (combined audio), same shape.
+//   sig('bd').rms  \u2014 that sound's loudness 0..1. .bass/.mid/.treble also exist.
+//   sig.kick       \u2014 the kick ENVELOPE, 0..1, bumped on each hit, decaying ~0.92
+//                    per frame. sig.snare / sig.hat / sig.clap / sig.tom \u2026 are siblings.
+//   sig.fft        \u2014 the MASTER mix spectrum (combined audio), same shape.
 //
 // In hydra these same names are () => number THUNKS \u2014 see "Signals (Bands)".
 
@@ -12790,10 +12747,10 @@ function setup() {
 function draw() {
   clear()
 
-  // \u2500\u2500 Spectrum bars from the kick's own audio: u('bd').fft is a number[] \u2500\u2500\u2500\u2500\u2500\u2500
-  // Each bucket is 0..1. We fall back to the master mix (u.fft) so the demo
+  // \u2500\u2500 Spectrum bars from the kick's own audio: sig('bd').fft is a number[] \u2500\u2500\u2500\u2500
+  // Each bucket is 0..1. We fall back to the master mix (sig.fft) so the demo
   // still moves before any 'bd' has fired its analyser.
-  const spectrum = (u('bd').fft.length ? u('bd').fft : u.fft) || []
+  const spectrum = (sig('bd').fft.length ? sig('bd').fft : sig.fft) || []
   const bw = width / Math.max(1, spectrum.length)
   for (let i = 0; i < spectrum.length; i++) {
     const v = spectrum[i]            // 0..1 magnitude for this band
@@ -12802,24 +12759,24 @@ function draw() {
     rect(i * bw, height - h, bw - 1, h)
   }
 
-  // \u2500\u2500 A circle pulsed by uKick (a live NUMBER 0..1 in p5) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  // uKick bumps to ~1 on each kick hit and decays each frame, so the circle
-  // punches outward on the beat. (hydra would call it: uKick().)
+  // \u2500\u2500 A circle pulsed by sig.kick (a live NUMBER 0..1 in p5) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // sig.kick bumps to ~1 on each kick hit and decays each frame, so the circle
+  // punches outward on the beat. (hydra would call it: sig.kick().)
   const base = min(width, height) * 0.18
-  const r = base + uKick * base * 1.6
+  const r = base + sig.kick * base * 1.6
   noFill()
-  stroke(255, 255, 255, 120 + uKick * 135)
-  strokeWeight(2 + uKick * 4)
+  stroke(255, 255, 255, 120 + sig.kick * 135)
+  strokeWeight(2 + sig.kick * 4)
   circle(width / 2, height / 2, r * 2)
 
   // Inner dot brightens with overall loudness (master RMS, a number in p5).
   noStroke()
-  fill(255, 255, 255, 60 + uRms * 195)
+  fill(255, 255, 255, 60 + sig.rms * 195)
   circle(width / 2, height / 2, base * 0.5)
 }`;
 var SIGNALS_BACKDROP_P5_CODE = `// Stave p5 viz \u2014 Signals (Backdrop)
 // One color band per code block (track). Showcases the per-track side of the
-// bus: u.tracks enumerates the live track keys, and u.track(id).color is the
+// bus: sig.tracks enumerates the live track keys, and sig.track(id).color is the
 // color that block declared in the music via .color() (e.g. in Strudel:
 //   $: s("bd*4").color("#f97316")
 //   $: s("hh*8").color("#06b6d4")
@@ -12841,8 +12798,8 @@ function parseHex(hex) {
 function draw() {
   clear()
 
-  // u.tracks \u2014 the live track keys ('$0','$1',\u2026 anonymous, or 'd1','drums'\u2026).
-  const tracks = u.tracks || []
+  // sig.tracks \u2014 the live track keys ('$0','$1',\u2026 anonymous, or 'd1','drums'\u2026).
+  const tracks = sig.tracks || []
   if (!tracks.length) {
     fill(120); textAlign(CENTER, CENTER); textSize(13)
     text('play a multi-block pattern\u2026', width / 2, height / 2)
@@ -12852,7 +12809,7 @@ function draw() {
   const bandH = height / tracks.length
   for (let i = 0; i < tracks.length; i++) {
     const id = tracks[i]
-    const reading = u.track(id)            // this track's live SignalReading
+    const reading = sig.track(id)          // this track's live SignalReading
     // .color \u2014 the color this block set with .color() in the music. p5: a value
     // (string|null). Fall back to a neutral blue if the block set none.
     const rgb = parseHex(reading.color) || [117, 186, 255]
@@ -18265,296 +18222,255 @@ __name(registerHydraProviders, "registerHydraProviders");
 // src/monaco/docs/signals.ts
 var SIGNAL_BUS_DOCS = {
   // ── accessors / namespaces ────────────────────────────────────────────────
-  u: {
-    signature: "u(sound: string): SignalReading",
-    description: "Named-signal accessor. `u('bd')` reads a sound's live signals (`.env`/`.velocity`/`.note`/`.color` + DSP `.rms`/`.fft`/\u2026). Also callable as `u.track(id)`, with `u.tracks` / `u.sounds` enumerators and the master-mix DSP `u.rms`/`u.bass`/`u.mid`/`u.treble`/`u.fft`/`u.wave`. Access form: **p5** uses bare `u` and the scalar fields are live NUMBERS (`u('bd').rms`); **hydra** uses `stave.u` and the scalar fields are `() => number` THUNKS (`stave.u('bd').rms()`).",
+  sig: {
+    signature: "sig(sound: string): SignalReading",
+    description: "Named-signal accessor. `sig('bd')` reads a sound's live signals (`.env`/`.velocity`/`.note`/`.color` + DSP `.rms`/`.fft`/\u2026). Also callable as `sig.track(id)`, with `sig.tracks` / `sig.sounds` enumerators and the master-mix DSP `sig.rms`/`sig.bass`/`sig.mid`/`sig.treble`/`sig.fft`/`sig.wave`. Access form: **p5** uses bare `sig` and the scalar fields are live NUMBERS (`sig('bd').rms`); **hydra** uses `stave.sig` and the scalar fields are `() => number` THUNKS (`stave.sig('bd').rms()`).",
     example: {
-      p5: "u('bd').env",
-      hydra: "stave.u('bd').env()"
+      p5: "sig('bd').env",
+      hydra: "stave.sig('bd').env()"
     },
     kind: "function",
     returns: "SignalReading (sound/track) \u2014 env, velocity, note, color, rms, bass, mid, treble, fft[], wave[]"
   },
   stave: {
-    signature: "stave: { u, width, height, options, H }",
-    description: "The live namespace passed to every sketch \u2014 the SECOND arg of a hydra sketch `(s, stave) => \u2026`. Carries `stave.u` (the signal accessor), `stave.width` / `stave.height` (live preview-pane size), `stave.options` (per-render `.viz(opts)`), and `stave.H(track)` (per-track gain thunk). In **hydra** everything is `stave.`-prefixed (no bare globals); in **p5** the same signals are exposed bare (`u`, `uKick`) via `with`, so `stave.u` is just the mirror.",
+    signature: "stave: { sig, width, height, options, H }",
+    description: "The live namespace passed to every sketch \u2014 the SECOND arg of a hydra sketch `(s, stave) => \u2026`. Carries `stave.sig` (the signal accessor), `stave.width` / `stave.height` (live preview-pane size), `stave.options` (per-render `.viz(opts)`), and `stave.H(track)` (per-track gain thunk). In **hydra** everything is `stave.`-prefixed (no bare globals); in **p5** the same signals are exposed bare (`sig`, `sig.kick`) via `with`, so `stave.sig` is just the mirror.",
     example: {
-      p5: "stave.u('bd').env",
-      hydra: "stave.u('bd').env()"
+      p5: "stave.sig('bd').env",
+      hydra: "stave.sig('bd').env()"
     },
     kind: "variable"
   },
-  // ── bare drum/percussion aliases (envelope level 0..1) ────────────────────
-  uKick: {
-    signature: "uKick",
-    description: "Kick (`bd`) envelope level, 0..1, decaying each frame. Access form: **p5** bare `uKick` (live NUMBER); **hydra** `stave.uKick()` (`() => number` THUNK).",
+  // ── drum/percussion scalars on `sig` (envelope level 0..1) ────────────────
+  kick: {
+    signature: "sig.kick",
+    description: "Kick (`bd`) envelope level, 0..1, decaying each frame. Access form: **p5** `sig.kick` (live NUMBER); **hydra** `stave.sig.kick()` (`() => number` THUNK).",
     example: {
-      p5: "circle(width / 2, height / 2, 100 * uKick)",
-      hydra: "s.osc(() => stave.uKick() * 90 + 1, 0.1, () => stave.uKick() * 3).out()"
+      p5: "circle(width / 2, height / 2, 100 * sig.kick)",
+      hydra: "s.osc(() => stave.sig.kick() * 90 + 1, 0.1, () => stave.sig.kick() * 3).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  uSnare: {
-    signature: "uSnare",
-    description: "Snare (`sd`) envelope level, 0..1. **p5**: bare `uSnare` (NUMBER); **hydra**: `stave.uSnare()` (thunk).",
+  snare: {
+    signature: "sig.snare",
+    description: "Snare (`sd`) envelope level, 0..1. **p5**: `sig.snare` (NUMBER); **hydra**: `stave.sig.snare()` (thunk).",
     example: {
-      p5: "rect(0, 0, width, height * uSnare)",
-      hydra: "s.osc(() => stave.uSnare() * 20 + 5).out()"
+      p5: "rect(0, 0, width, height * sig.snare)",
+      hydra: "s.osc(() => stave.sig.snare() * 20 + 5).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  uHat: {
-    signature: "uHat",
-    description: "Closed hat (`hh`) envelope level, 0..1. **p5**: bare `uHat` (NUMBER); **hydra**: `stave.uHat()` (thunk).",
+  hat: {
+    signature: "sig.hat",
+    description: "Closed hat (`hh`) envelope level, 0..1. **p5**: `sig.hat` (NUMBER); **hydra**: `stave.sig.hat()` (thunk).",
     example: {
-      p5: "fill(255 * uHat)",
-      hydra: "s.osc(40, 0.1).brightness(() => stave.uHat()).out()"
+      p5: "fill(255 * sig.hat)",
+      hydra: "s.osc(40, 0.1).brightness(() => stave.sig.hat()).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  uOpenHat: {
-    signature: "uOpenHat",
-    description: "Open hat (`oh`) envelope level, 0..1. **p5**: bare `uOpenHat` (NUMBER); **hydra**: `stave.uOpenHat()` (thunk).",
+  openHat: {
+    signature: "sig.openHat",
+    description: "Open hat (`oh`) envelope level, 0..1. **p5**: `sig.openHat` (NUMBER); **hydra**: `stave.sig.openHat()` (thunk).",
     example: {
-      p5: "strokeWeight(1 + 8 * uOpenHat)",
-      hydra: "s.shape(4).scale(() => 1 + stave.uOpenHat()).out()"
+      p5: "strokeWeight(1 + 8 * sig.openHat)",
+      hydra: "s.shape(4).scale(() => 1 + stave.sig.openHat()).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  uClap: {
-    signature: "uClap",
-    description: "Clap (`cp`) envelope level, 0..1. **p5**: bare `uClap` (NUMBER); **hydra**: `stave.uClap()` (thunk).",
+  clap: {
+    signature: "sig.clap",
+    description: "Clap (`cp`) envelope level, 0..1. **p5**: `sig.clap` (NUMBER); **hydra**: `stave.sig.clap()` (thunk).",
     example: {
-      p5: "rotate(uClap * PI)",
-      hydra: "s.osc(20).rotate(() => stave.uClap() * 3.14).out()"
+      p5: "rotate(sig.clap * PI)",
+      hydra: "s.osc(20).rotate(() => stave.sig.clap() * 3.14).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  uRim: {
-    signature: "uRim",
-    description: "Rim (`rim`) envelope level, 0..1. **p5**: bare `uRim` (NUMBER); **hydra**: `stave.uRim()` (thunk).",
+  rim: {
+    signature: "sig.rim",
+    description: "Rim (`rim`) envelope level, 0..1. **p5**: `sig.rim` (NUMBER); **hydra**: `stave.sig.rim()` (thunk).",
     example: {
-      p5: "square(x, y, 20 + 40 * uRim)",
-      hydra: "s.osc(() => 20 + 40 * stave.uRim()).out()"
+      p5: "square(x, y, 20 + 40 * sig.rim)",
+      hydra: "s.osc(() => 20 + 40 * stave.sig.rim()).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  uTom: {
-    signature: "uTom",
-    description: "Tom envelope level \u2014 MAX over `lt`/`mt`/`ht`, 0..1 (any tom lights it). **p5**: bare `uTom` (NUMBER); **hydra**: `stave.uTom()` (thunk).",
+  tom: {
+    signature: "sig.tom",
+    description: "Tom envelope level \u2014 MAX over `lt`/`mt`/`ht`, 0..1 (any tom lights it). **p5**: `sig.tom` (NUMBER); **hydra**: `stave.sig.tom()` (thunk).",
     example: {
-      p5: "translate(0, 50 * uTom)",
-      hydra: "s.osc(10).modulateScale(s.noise(2), () => stave.uTom()).out()"
+      p5: "translate(0, 50 * sig.tom)",
+      hydra: "s.osc(10).modulateScale(s.noise(2), () => stave.sig.tom()).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  uKeyVelocity: {
-    signature: "uKeyVelocity",
-    description: "Velocity of the currently active event (global), 0..1. NOT a sound alias \u2014 reads the active scheduler event's velocity. **p5**: bare `uKeyVelocity` (NUMBER); **hydra**: `stave.uKeyVelocity()` (thunk).",
+  keyVelocity: {
+    signature: "sig.keyVelocity",
+    description: "Velocity of the currently active event (global), 0..1. NOT a sound alias \u2014 reads the active scheduler event's velocity. **p5**: `sig.keyVelocity` (NUMBER); **hydra**: `stave.sig.keyVelocity()` (thunk).",
     example: {
-      p5: "scale(0.5 + uKeyVelocity)",
-      hydra: "s.osc(() => 10 + 30 * stave.uKeyVelocity()).out()"
+      p5: "scale(0.5 + sig.keyVelocity)",
+      hydra: "s.osc(() => 10 + 30 * stave.sig.keyVelocity()).out()"
     },
     kind: "variable",
     returns: "number 0..1"
   },
-  // ── bare master-mix DSP scalars (analyser, combined mix) ──────────────────
-  uRms: {
-    signature: "uRms",
-    description: "Master-mix time-domain RMS (loudness), 0..1, from the combined analyser. 0 when no analyser is bound. **p5**: bare `uRms` (NUMBER); **hydra**: `stave.uRms()` (thunk).",
-    example: {
-      p5: "background(0, 0, 100 * uRms)",
-      hydra: "s.osc(10).luma(() => stave.uRms()).out()"
-    },
-    kind: "variable",
-    returns: "number 0..1"
-  },
-  uBass: {
-    signature: "uBass",
-    description: "Master-mix low-band magnitude (mean of the low third of the spectrum), 0..1. **p5**: bare `uBass` (NUMBER); **hydra**: `stave.uBass()` (thunk).",
-    example: {
-      p5: "circle(width / 2, height / 2, 200 * uBass)",
-      hydra: "s.osc(() => stave.uBass() * 10).out()"
-    },
-    kind: "variable",
-    returns: "number 0..1"
-  },
-  uMid: {
-    signature: "uMid",
-    description: "Master-mix mid-band magnitude (mean of the mid third of the spectrum), 0..1. **p5**: bare `uMid` (NUMBER); **hydra**: `stave.uMid()` (thunk).",
-    example: {
-      p5: "fill(255 * uMid)",
-      hydra: "s.osc(20).color(() => stave.uMid(), 0.5, 1).out()"
-    },
-    kind: "variable",
-    returns: "number 0..1"
-  },
-  uTreble: {
-    signature: "uTreble",
-    description: "Master-mix high-band magnitude (mean of the high third of the spectrum), 0..1. **p5**: bare `uTreble` (NUMBER); **hydra**: `stave.uTreble()` (thunk).",
-    example: {
-      p5: "strokeWeight(1 + 10 * uTreble)",
-      hydra: "s.osc(60, 0.1).pixelate(() => 4 + 40 * stave.uTreble()).out()"
-    },
-    kind: "variable",
-    returns: "number 0..1"
-  },
-  // ── fields on a SignalReading (u('bd').<field>) ───────────────────────────
+  // ── fields on a SignalReading (sig('bd').<field>) ─────────────────────────
+  // The master-mix DSP scalars (`sig.rms`/`sig.bass`/`sig.mid`/`sig.treble`/
+  // `sig.fft`/`sig.wave`) share the SAME field tokens as the per-sound reads
+  // (`sig('bd').rms`, …) under the merged `sig` namespace, so one entry per
+  // token documents both forms.
   env: {
-    signature: ".env",
-    description: "Decayed envelope level for the sound/track, 0..1 (bumps on a hit, decays 0.92/frame). **p5**: `u('bd').env` (NUMBER); **hydra**: `stave.u('bd').env()` (thunk).",
+    signature: ".env (on sig('bd'))",
+    description: "Decayed envelope level for the sound/track, 0..1 (bumps on a hit, decays 0.92/frame). **p5**: `sig('bd').env` (NUMBER); **hydra**: `stave.sig('bd').env()` (thunk).",
     example: {
-      p5: "u('bd').env",
-      hydra: "s.osc(() => stave.u('bd').env() * 10).out()"
+      p5: "sig('bd').env",
+      hydra: "s.osc(() => stave.sig('bd').env() * 10).out()"
     },
     kind: "method",
     returns: "number 0..1"
   },
   velocity: {
-    signature: ".velocity",
-    description: "Velocity of the active event for this sound/track, 0..1 (scheduler feed, NOT the envelope). **p5**: `u('bd').velocity` (NUMBER); **hydra**: `stave.u('bd').velocity()` (thunk).",
+    signature: ".velocity (on sig('bd'))",
+    description: "Velocity of the active event for this sound/track, 0..1 (scheduler feed, NOT the envelope). **p5**: `sig('bd').velocity` (NUMBER); **hydra**: `stave.sig('bd').velocity()` (thunk).",
     example: {
-      p5: "u('bd').velocity",
-      hydra: "stave.u('bd').velocity()"
+      p5: "sig('bd').velocity",
+      hydra: "stave.sig('bd').velocity()"
     },
     kind: "method",
     returns: "number 0..1"
   },
   note: {
-    signature: ".note",
-    description: "Active event note in the user's form (name|number|null) \u2014 scheduler feed. **p5**: `u('arp').note` (value); **hydra**: `stave.u('arp').note()` (`() => number | string | null` thunk).",
+    signature: ".note (on sig('arp'))",
+    description: "Active event note in the user's form (name|number|null) \u2014 scheduler feed. **p5**: `sig('arp').note` (value); **hydra**: `stave.sig('arp').note()` (`() => number | string | null` thunk).",
     example: {
-      p5: "u('arp').note",
-      hydra: "stave.u('arp').note()"
+      p5: "sig('arp').note",
+      hydra: "stave.sig('arp').note()"
     },
     kind: "method",
     returns: "number | string | null"
   },
   color: {
-    signature: ".color",
-    description: "Display color of the active event (or last-bumped hap fallback), or null. **p5**: `u('bd').color` (value); **hydra**: `stave.u('bd').color()` (thunk).",
+    signature: ".color (on sig('bd'))",
+    description: "Display color of the active event (or last-bumped hap fallback), or null. **p5**: `sig('bd').color` (value); **hydra**: `stave.sig('bd').color()` (thunk).",
     example: {
-      p5: "u('bd').color",
-      hydra: "stave.u('bd').color()"
+      p5: "sig('bd').color",
+      hydra: "stave.sig('bd').color()"
     },
     kind: "method",
     returns: "string | null"
   },
   rms: {
-    signature: ".rms",
-    description: "Time-domain RMS (loudness) of the sound/track's analyser, 0..1. 0 if no analyser bound. **p5**: `u('bd').rms` (NUMBER); **hydra**: `stave.u('bd').rms()` (thunk).",
+    signature: "sig.rms (master) \xB7 .rms (on sig('bd'))",
+    description: "Time-domain RMS (loudness), 0..1. 0 if no analyser bound. As `sig.rms` it is the MASTER mix; as `sig('bd').rms` it is that sound/track. **p5**: `sig.rms` / `sig('bd').rms` (NUMBER); **hydra**: `stave.sig.rms()` / `stave.sig('bd').rms()` (thunk).",
     example: {
-      p5: "u('bd').rms",
-      hydra: "s.osc(() => stave.u('bd').rms() * 10).out()"
+      p5: "background(0, 0, 100 * sig.rms)",
+      hydra: "s.osc(() => stave.sig('bd').rms() * 10).out()"
     },
     kind: "method",
     returns: "number 0..1"
   },
   bass: {
-    signature: ".bass",
-    description: "Mean of the LOW third of the spectrum, 0..1. **p5**: `u('bd').bass` (NUMBER); **hydra**: `stave.u('bd').bass()` (thunk).",
+    signature: "sig.bass (master) \xB7 .bass (on sig('bd'))",
+    description: "Mean of the LOW third of the spectrum, 0..1. `sig.bass` is the MASTER mix; `sig('bd').bass` is per sound/track. **p5**: `sig.bass` / `sig('bd').bass` (NUMBER); **hydra**: `stave.sig.bass()` / `stave.sig('bd').bass()` (thunk).",
     example: {
-      p5: "u('bd').bass",
-      hydra: "stave.u('bd').bass()"
+      p5: "circle(width / 2, height / 2, 200 * sig.bass)",
+      hydra: "s.osc(() => stave.sig.bass() * 10).out()"
     },
     kind: "method",
     returns: "number 0..1"
   },
   mid: {
-    signature: ".mid",
-    description: "Mean of the MID third of the spectrum, 0..1. **p5**: `u('bd').mid` (NUMBER); **hydra**: `stave.u('bd').mid()` (thunk).",
+    signature: "sig.mid (master) \xB7 .mid (on sig('bd'))",
+    description: "Mean of the MID third of the spectrum, 0..1. `sig.mid` is the MASTER mix; `sig('bd').mid` is per sound/track. **p5**: `sig.mid` / `sig('bd').mid` (NUMBER); **hydra**: `stave.sig.mid()` / `stave.sig('bd').mid()` (thunk).",
     example: {
-      p5: "u('bd').mid",
-      hydra: "stave.u('bd').mid()"
+      p5: "fill(255 * sig.mid)",
+      hydra: "s.osc(20).color(() => stave.sig.mid(), 0.5, 1).out()"
     },
     kind: "method",
     returns: "number 0..1"
   },
   treble: {
-    signature: ".treble",
-    description: "Mean of the HIGH third of the spectrum, 0..1. **p5**: `u('bd').treble` (NUMBER); **hydra**: `stave.u('bd').treble()` (thunk).",
+    signature: "sig.treble (master) \xB7 .treble (on sig('bd'))",
+    description: "Mean of the HIGH third of the spectrum, 0..1. `sig.treble` is the MASTER mix; `sig('bd').treble` is per sound/track. **p5**: `sig.treble` / `sig('bd').treble` (NUMBER); **hydra**: `stave.sig.treble()` / `stave.sig('bd').treble()` (thunk).",
     example: {
-      p5: "u('bd').treble",
-      hydra: "stave.u('bd').treble()"
+      p5: "strokeWeight(1 + 10 * sig.treble)",
+      hydra: "s.osc(60, 0.1).pixelate(() => 4 + 40 * stave.sig.treble()).out()"
     },
     kind: "method",
     returns: "number 0..1"
   },
   fft: {
-    signature: ".fft",
-    description: "Normalized magnitude spectrum, a live `number[]` (32 buckets, each 0..1). An ARRAY in BOTH runtimes \u2014 index it natively. **p5**: `u('bd').fft[i]`; **hydra**: `() => stave.u('bd').fft[i]` (wrap the index read in a thunk). `[]` if no analyser bound.",
+    signature: "sig.fft (master) \xB7 .fft (on sig('bd'))",
+    description: "Normalized magnitude spectrum, a live `number[]` (32 buckets, each 0..1). `sig.fft` is the MASTER mix; `sig('bd').fft` is per sound/track. An ARRAY in BOTH runtimes \u2014 index it natively. **p5**: `sig('bd').fft[i]`; **hydra**: `() => stave.sig('bd').fft[i]` (wrap the index read in a thunk). `[]` if no analyser bound.",
     example: {
-      p5: "rect(i * bw, height, bw, -u('bd').fft[i] * height)",
-      hydra: "s.osc(() => 10 + stave.u('bd').fft[0] * 50).out()"
+      p5: "rect(i * bw, height, bw, -sig('bd').fft[i] * height)",
+      hydra: "s.osc(() => 10 + stave.sig('bd').fft[0] * 50).out()"
     },
     kind: "method",
     returns: "number[] (each 0..1)"
   },
   wave: {
-    signature: ".wave",
-    description: "Time-domain waveform, a live `number[]` normalized -1..1. An ARRAY in BOTH runtimes \u2014 index it natively. **p5**: `u('bd').wave[i]`; **hydra**: `() => stave.u('bd').wave[i]`. `[]` if no analyser bound.",
+    signature: "sig.wave (master) \xB7 .wave (on sig('bd'))",
+    description: "Time-domain waveform, a live `number[]` normalized -1..1. `sig.wave` is the MASTER mix; `sig('bd').wave` is per sound/track. An ARRAY in BOTH runtimes \u2014 index it natively. **p5**: `sig('bd').wave[i]`; **hydra**: `() => stave.sig('bd').wave[i]`. `[]` if no analyser bound.",
     example: {
-      p5: "vertex(i * bw, height / 2 + u('bd').wave[i] * 50)",
-      hydra: "s.osc(() => 20 + stave.u('bd').wave[0] * 40).out()"
+      p5: "vertex(i * bw, height / 2 + sig('bd').wave[i] * 50)",
+      hydra: "s.osc(() => 20 + stave.sig('bd').wave[0] * 40).out()"
     },
     kind: "method",
     returns: "number[] (-1..1)"
   },
   track: {
-    signature: "u.track(id: string): SignalReading",
-    description: "Per-track reading, keyed on the SCHEDULER key space (`$0`/`$1` anonymous, `d1`/`drums` named) \u2014 NOT `IREvent.trackId`. Same fields as `u(sound)`. **p5**: `u.track('$0').env`; **hydra**: `stave.u.track('$0').env()`.",
+    signature: "sig.track(id: string): SignalReading",
+    description: "Per-track reading, keyed on the SCHEDULER key space (`$0`/`$1` anonymous, `d1`/`drums` named) \u2014 NOT `IREvent.trackId`. Same fields as `sig(sound)`. **p5**: `sig.track('$0').env`; **hydra**: `stave.sig.track('$0').env()`.",
     example: {
-      p5: "u.track('$0').color",
-      hydra: "stave.u.track('$0').color()"
+      p5: "sig.track('$0').color",
+      hydra: "stave.sig.track('$0').color()"
     },
     kind: "method",
     returns: "SignalReading"
   },
   tracks: {
-    signature: "u.tracks: string[]",
-    description: "Published track keys (scheduler key space, e.g. `['$0','$1']` or `['d1','drums']`). A live array. **p5**: `u.tracks`; **hydra**: `stave.u.tracks`.",
+    signature: "sig.tracks: string[]",
+    description: "Published track keys (scheduler key space, e.g. `['$0','$1']` or `['d1','drums']`). A live array. **p5**: `sig.tracks`; **hydra**: `stave.sig.tracks`.",
     example: {
-      p5: "u.tracks.forEach((id) => u.track(id))",
-      hydra: "stave.u.tracks.forEach((id) => stave.u.track(id))"
+      p5: "sig.tracks.forEach((id) => sig.track(id))",
+      hydra: "stave.sig.tracks.forEach((id) => stave.sig.track(id))"
     },
     kind: "method",
     returns: "string[]"
   },
   sounds: {
-    signature: "u.sounds: string[]",
-    description: "Distinct sound names seen through the envelope feed this session. A live array. **p5**: `u.sounds`; **hydra**: `stave.u.sounds`.",
+    signature: "sig.sounds: string[]",
+    description: "Distinct sound names seen through the envelope feed this session. A live array. **p5**: `sig.sounds`; **hydra**: `stave.sig.sounds`.",
     example: {
-      p5: "u.sounds.map((s) => u(s).env)",
-      hydra: "stave.u.sounds.map((name) => stave.u(name).env())"
+      p5: "sig.sounds.map((s) => sig(s).env)",
+      hydra: "stave.sig.sounds.map((name) => stave.sig(name).env())"
     },
     kind: "method",
     returns: "string[]"
   }
 };
 var SYMBOL_NAMES = [
-  "u",
-  "stave",
-  "uKick",
-  "uSnare",
-  "uHat",
-  "uOpenHat",
-  "uClap",
-  "uRim",
-  "uTom",
-  "uKeyVelocity",
-  "uRms",
-  "uBass",
-  "uMid",
-  "uTreble"
+  "sig",
+  "stave"
 ];
 var FIELD_NAMES = [
+  "kick",
+  "snare",
+  "hat",
+  "openHat",
+  "clap",
+  "rim",
+  "tom",
+  "keyVelocity",
   "env",
   "velocity",
   "note",
@@ -18580,7 +18496,7 @@ function buildRuntimeDocs(names, runtime) {
   );
 }
 __name(buildRuntimeDocs, "buildRuntimeDocs");
-var BUS_ACCESSOR_RE = /(?:u\s*\([^)]*\)|\bu|stave\.u|\.track\s*\([^)]*\))\s*\.\w*$/;
+var BUS_ACCESSOR_RE = /(?:sig\s*\([^)]*\)|\bsig|stave\.sig|\.track\s*\([^)]*\))\s*\.\w*$/;
 function fieldKind(monaco) {
   return monaco.languages.CompletionItemKind.Method;
 }
@@ -18639,15 +18555,15 @@ __name(registerSignalBusProviders, "registerSignalBusProviders");
 
 // src/visualizers/injectedGlobals.ts
 var G_CONTEXT = "context";
-var G_SCALARS = "signals \xB7 bare scalars (0..1)";
-var G_SCALARS_THUNK = "signals \xB7 bare scalars (thunks, 0..1)";
-var G_STRUCTURED = "signals \xB7 structured (on u)";
+var G_SCALARS = "signals \xB7 scalars on sig (0..1)";
+var G_SCALARS_THUNK = "signals \xB7 scalar thunks on stave.sig (0..1)";
+var G_STRUCTURED = "signals \xB7 structured (on sig)";
 var G_CORE = "core";
 var G_GLSL_SCALARS = "signals \xB7 scalars (0..1)";
 var G_GLSL_TRACK = "signals \xB7 per-track";
 var RULE = {
-  p5: "rule: bare uXxx = a single number \xB7 arrays, lookups & lists live on u",
-  hydra: "rule: bare stave.uXxx() = a single number \xB7 arrays, lookups & lists live on stave.u",
+  p5: "rule: every signal lives on sig \u2014 sig.kick is a number, sig.fft an array, sig('bd') one sound",
+  hydra: "rule: every signal lives on stave.sig \u2014 sig.kick() a number, sig.fft an array, sig('bd') one sound",
   glsl: "rule: scalars are floats \xB7 spectrum/waveform = iChannel0 texture \xB7 per-track via staveTrack(i)"
 };
 var ENV_LIVE = /* @__PURE__ */ __name((env) => ({ kind: "scalar", read: env }), "ENV_LIVE");
@@ -18689,58 +18605,58 @@ var P5_GLOBALS = [
   { group: G_CONTEXT, decl: "object            stave.options;", comment: "the .viz({ ... }) argument", tokens: ["options"] },
   {
     group: G_SCALARS,
-    decl: "number            uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;",
+    decl: "number   sig.kick, sig.snare, sig.hat, sig.openHat, sig.clap, sig.rim, sig.tom;",
     comment: "per-drum envelope 0..1",
-    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom"],
+    tokens: ["kick", "snare", "hat", "openHat", "clap", "rim", "tom"],
     live: {
-      uKick: ENV_LIVE("env:uKick"),
-      uSnare: ENV_LIVE("env:uSnare"),
-      uHat: ENV_LIVE("env:uHat"),
-      uOpenHat: ENV_LIVE("env:uOpenHat"),
-      uClap: ENV_LIVE("env:uClap"),
-      uRim: ENV_LIVE("env:uRim"),
-      uTom: ENV_LIVE("env:uTom")
+      kick: ENV_LIVE("env:uKick"),
+      snare: ENV_LIVE("env:uSnare"),
+      hat: ENV_LIVE("env:uHat"),
+      openHat: ENV_LIVE("env:uOpenHat"),
+      clap: ENV_LIVE("env:uClap"),
+      rim: ENV_LIVE("env:uRim"),
+      tom: ENV_LIVE("env:uTom")
     }
   },
-  { group: G_SCALARS, decl: "number            uKeyVelocity;", comment: "loudest active hit 0..1", tokens: ["uKeyVelocity"], live: { uKeyVelocity: { kind: "scalar", read: "keyVelocity" } } },
+  { group: G_SCALARS, decl: "number   sig.keyVelocity;", comment: "loudest active hit 0..1", tokens: ["keyVelocity"], live: { keyVelocity: { kind: "scalar", read: "keyVelocity" } } },
   {
     group: G_SCALARS,
-    decl: "number            uRms, uBass, uMid, uTreble;",
+    decl: "number   sig.rms, sig.bass, sig.mid, sig.treble;",
     comment: "master-mix DSP 0..1",
-    tokens: ["uRms", "uBass", "uMid", "uTreble"],
-    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+    tokens: ["rms", "bass", "mid", "treble"],
+    live: { rms: { kind: "scalar", read: "rms" }, bass: { kind: "scalar", read: "bass" }, mid: { kind: "scalar", read: "mid" }, treble: { kind: "scalar", read: "treble" } }
   },
-  { group: G_STRUCTURED, decl: "number[]          u.fft, u.wave;", comment: "master spectrum / waveform (arrays)", tokens: ["fft", "wave"], live: { fft: { kind: "array", read: "fft" }, wave: { kind: "array", read: "wave" } } },
-  { group: G_STRUCTURED, decl: "Reading           u('bd'), u.track('$0');", comment: "one sound / track \u2192 { env, rms, fft[], \u2026 }", tokens: ["u", "track"] },
-  { group: G_STRUCTURED, decl: "string[]          u.tracks, u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
-  { group: G_STRUCTURED, decl: "number            u.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] }
+  { group: G_STRUCTURED, decl: "number[] sig.fft, sig.wave;", comment: "master spectrum / waveform (arrays)", tokens: ["fft", "wave"], live: { fft: { kind: "array", read: "fft" }, wave: { kind: "array", read: "wave" } } },
+  { group: G_STRUCTURED, decl: "Reading  sig('bd'), sig.track('$0');", comment: "one sound / track \u2192 { env, rms, fft[], \u2026 }", tokens: ["sig", "track"] },
+  { group: G_STRUCTURED, decl: "string[] sig.tracks, sig.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
+  { group: G_STRUCTURED, decl: "number   sig.density;", comment: "quality LOD multiplier (1 = full)", tokens: ["density"] }
 ];
 var HYDRA_GLOBALS = [
   {
     group: G_SCALARS_THUNK,
-    decl: "() => number      stave.uKick, stave.uSnare, stave.uHat, stave.uOpenHat,\n                  stave.uClap, stave.uRim, stave.uTom, stave.uKeyVelocity;",
+    decl: "() => number      stave.sig.kick, stave.sig.snare, stave.sig.hat, stave.sig.openHat,\n                  stave.sig.clap, stave.sig.rim, stave.sig.tom, stave.sig.keyVelocity;",
     comment: "per-drum envelope thunks \u2192 call them",
-    tokens: ["uKick", "uSnare", "uHat", "uOpenHat", "uClap", "uRim", "uTom", "uKeyVelocity"],
+    tokens: ["kick", "snare", "hat", "openHat", "clap", "rim", "tom", "keyVelocity"],
     live: {
-      uKick: ENV_LIVE("env:uKick"),
-      uSnare: ENV_LIVE("env:uSnare"),
-      uHat: ENV_LIVE("env:uHat"),
-      uOpenHat: ENV_LIVE("env:uOpenHat"),
-      uClap: ENV_LIVE("env:uClap"),
-      uRim: ENV_LIVE("env:uRim"),
-      uTom: ENV_LIVE("env:uTom"),
-      uKeyVelocity: { kind: "scalar", read: "keyVelocity" }
+      kick: ENV_LIVE("env:uKick"),
+      snare: ENV_LIVE("env:uSnare"),
+      hat: ENV_LIVE("env:uHat"),
+      openHat: ENV_LIVE("env:uOpenHat"),
+      clap: ENV_LIVE("env:uClap"),
+      rim: ENV_LIVE("env:uRim"),
+      tom: ENV_LIVE("env:uTom"),
+      keyVelocity: { kind: "scalar", read: "keyVelocity" }
     }
   },
   {
     group: G_SCALARS_THUNK,
-    decl: "() => number      stave.uRms, stave.uBass, stave.uMid, stave.uTreble;",
+    decl: "() => number      stave.sig.rms, stave.sig.bass, stave.sig.mid, stave.sig.treble;",
     comment: "master-mix DSP thunks",
-    tokens: ["uRms", "uBass", "uMid", "uTreble"],
-    live: { uRms: { kind: "scalar", read: "rms" }, uBass: { kind: "scalar", read: "bass" }, uMid: { kind: "scalar", read: "mid" }, uTreble: { kind: "scalar", read: "treble" } }
+    tokens: ["rms", "bass", "mid", "treble"],
+    live: { rms: { kind: "scalar", read: "rms" }, bass: { kind: "scalar", read: "bass" }, mid: { kind: "scalar", read: "mid" }, treble: { kind: "scalar", read: "treble" } }
   },
-  { group: G_STRUCTURED, decl: "Thunks            stave.u('bd'), stave.u.track('$0');", comment: ".env() .rms() .fft[i] \u2026 per sound / track", tokens: ["u", "track"] },
-  { group: G_STRUCTURED, decl: "string[]          stave.u.tracks, stave.u.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
+  { group: G_STRUCTURED, decl: "Thunks            stave.sig('bd'), stave.sig.track('$0');", comment: ".env() .rms() .fft[i] \u2026 per sound / track", tokens: ["sig", "track"] },
+  { group: G_STRUCTURED, decl: "string[]          stave.sig.tracks, stave.sig.sounds;", comment: "live published track / sound keys", tokens: ["tracks", "sounds"] },
   { group: G_STRUCTURED, decl: "() => number      stave.H(trackId, field = 'gain');", comment: "raw event field reader", tokens: ["H"] },
   { group: G_CONTEXT, decl: "PatternScheduler  stave.scheduler;", comment: ".now(), .query(begin, end)", tokens: ["scheduler"] }
 ];

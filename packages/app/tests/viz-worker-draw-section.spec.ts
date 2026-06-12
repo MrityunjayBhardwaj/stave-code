@@ -22,8 +22,8 @@ function draw(){
   background(8,8,18)
   stroke(180,120,255); strokeWeight(1.5); noFill()
   for(let r=0;r<40;r++){ beginShape()
-    for(let c=0;c<=90;c++){ const fi=(c*3+r)%u.fft.length
-      vertex(-width/2+(c/90)*width, -height/2+r*8 - (u.fft[fi]||0)*120) }
+    for(let c=0;c<=90;c++){ const fi=(c*3+r)%sig.fft.length
+      vertex(-width/2+(c/90)*width, -height/2+r*8 - (sig.fft[fi]||0)*120) }
     endShape() }
 }`
 

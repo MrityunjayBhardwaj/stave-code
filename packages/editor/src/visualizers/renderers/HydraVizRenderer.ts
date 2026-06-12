@@ -45,58 +45,26 @@ export interface HydraStaveBag {
    */
   H: (trackId: string, field?: keyof IREvent) => () => number
 
-  // ── Named signal bus (Phase 21, D-01 hydra shape) ──────────────────────
-  // All `uKick…` are `() => number` thunks so hydra can call them natively
-  // each frame (`osc(() => uKick() * 10)`). The bus ticks ONCE per rAF in
-  // `pumpAudio` (U2 — never inside a thunk); thunks are pure reads.
-
-  /** Active `bd` (kick) envelope level, 0..1. */
-  uKick: () => number
-  /** Active `sd` (snare) envelope level, 0..1. */
-  uSnare: () => number
-  /** Active `hh` (closed hat) envelope level, 0..1. */
-  uHat: () => number
-  /** Active `oh` (open hat) envelope level, 0..1. */
-  uOpenHat: () => number
-  /** Active `cp` (clap) envelope level, 0..1. */
-  uClap: () => number
-  /** Active `rim` envelope level, 0..1. */
-  uRim: () => number
-  /** Active tom envelope level (max over `lt`/`mt`/`ht`), 0..1. */
-  uTom: () => number
-  /** Active event velocity (global, 0..1). */
-  uKeyVelocity: () => number
-
-  // ── Master-mix DSP sugar aliases (Phase 21 Slice 2, D-01 hydra shape) ──────
-  // Bare `() => number` thunks reading the MASTER analyser (`bus.master()`) —
-  // parity with `uKick` for the combined-mix audio scalars.
-  /** Master-mix time-domain RMS, 0..1. */
-  uRms: () => number
-  /** Master-mix low-band magnitude, 0..1. */
-  uBass: () => number
-  /** Master-mix mid-band magnitude, 0..1. */
-  uMid: () => number
-  /** Master-mix high-band magnitude, 0..1. */
-  uTreble: () => number
-
+  // ── Signal namespace (Phase 21 / #351, D-01 hydra shape) ──────────────────
   /**
-   * General per-sound / per-track signal accessor.
+   * The single `sig` namespace (#351). One callable carrying every Stave signal
+   * as `() => number` thunks (so hydra calls them natively each frame), plus the
+   * per-sound/per-track accessor and master DSP:
    *
-   *   osc(() => u('bd').env() * 10).out(o0)
-   *   osc(() => u('bd').rms() * 10).out(o0)
-   *   shape(() => u('bd').fft[0] * 4).out(o0)   // arrays index natively
-   *   u.track('$0').color()
-   *   osc(() => u.rms() * 10).out(o0)           // master scalar thunk
-   *   shape(() => u.fft[2] * 6).out(o0)          // master spectrum array
+   *   osc(() => stave.sig.kick() * 10).out(o0)        // per-drum envelope thunk
+   *   osc(() => stave.sig('bd').env() * 10).out(o0)   // one sound
+   *   shape(() => stave.sig('bd').fft[0] * 4).out(o0) // arrays index natively
+   *   stave.sig.track('$0').color()
+   *   osc(() => stave.sig.rms() * 10).out(o0)         // master scalar thunk
+   *   shape(() => stave.sig.fft[2] * 6).out(o0)        // master spectrum array
    *
-   * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color` AND the
-   * DSP scalars `.rms`/`.bass`/`.mid`/`.treble` (all `() => number`), plus the
-   * live `.fft`/`.wave` ARRAYS (indexed natively, NOT thunk-wrapped). `u.track(id)`
-   * keys on the SCHEDULER key space (`$0`/`drums`, NOT `IREvent.trackId`). `u`
-   * itself carries the MASTER-mix DSP: `u.rms()`/… thunks + `u.fft`/`u.wave`
-   * arrays. `u.tracks` / `u.sounds` enumerate.
+   * The per-drum scalars (`sig.kick`…`sig.tom`), global `sig.keyVelocity`, and
+   * master DSP (`sig.rms`…`sig.treble`) are all `() => number` thunks ON `sig`.
+   * `sig('bd')` / `sig.track('$0')` return per-reading thunks; `sig.fft`/`sig.wave`
+   * are live arrays; `sig.tracks`/`sig.sounds` enumerate. The bus ticks ONCE per
+   * rAF in `pumpAudio` (U2 — never inside a thunk); thunks are pure reads.
    */
-  u: HydraSignalAccessor
+  sig: HydraSigAccessor
 
   // ── Custom alias thunks (Phase 21 aliases) ─────────────────────────────────
   // A user-defined alias (e.g. `kick → bd`) is injected at mount as a
@@ -135,7 +103,7 @@ export interface HydraSignalThunks {
 
 /** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props AND
  *  the MASTER-mix DSP feed (Slice 2): scalar thunks + live arrays. */
-export interface HydraSignalAccessor {
+export interface HydraSigAccessor {
   (sound: string): HydraSignalThunks
   /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
   track: (id: string) => HydraSignalThunks
@@ -143,7 +111,17 @@ export interface HydraSignalAccessor {
   tracks: string[]
   /** Enumerate distinct sounds seen through the envelope feed. */
   sounds: string[]
-  // ── Master-mix DSP (Slice 2) — `u.rms()` thunk, `u.fft` live array ────────
+  // ── Per-drum envelopes (0..1 thunks; were `uKick…uTom`) ────────────────────
+  kick: () => number
+  snare: () => number
+  hat: () => number
+  openHat: () => number
+  clap: () => number
+  rim: () => number
+  tom: () => number
+  /** Active event velocity, global, 0..1 thunk (was `uKeyVelocity`). */
+  keyVelocity: () => number
+  // ── Master-mix DSP (Slice 2) — `sig.rms()` thunk, `sig.fft` live array ─────
   /** Master-mix time-domain RMS, 0..1 (thunk). */
   rms: () => number
   /** Master-mix low-band magnitude, 0..1 (thunk). */

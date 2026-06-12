@@ -31,9 +31,9 @@ const AUDIO = `$: s("bd*4, ~ sd, hh*8").bank("RolandTR909")`
 // A REALISTIC audio-reactive feedback sketch — the actual reason createGraphics()
 // matters in the worker: it owns a PERSISTENT buffer that accumulates across
 // frames (trails). The main canvas is transfer-cleared every frame, so the trails
-// can only live on `pg`. Spectrum-reactive orbiting nodes (u.fft) stamp into pg
-// over a slow dark wash (long-lived trails), with a kick ring (uKick) and an rms
-// core pulse (uRms). Works → a large lit field of accumulated trails; if
+// can only live on `pg`. Spectrum-reactive orbiting nodes (sig.fft) stamp into pg
+// over a slow dark wash (long-lived trails), with a kick ring (sig.kick) and an rms
+// core pulse (sig.rms). Works → a large lit field of accumulated trails; if
 // createGraphics() throws (worker, no shim) `pg` is undefined → only background()
 // survives → lit≈0. createGraphics() is the ONLY worker-hostile call.
 const CG_SKETCH = `let pg
@@ -45,7 +45,7 @@ function setup(){
 }
 function draw(){
   const t = frameCount * 0.016
-  const fft = (u && u.fft) || []
+  const fft = (sig && sig.fft) || []
   const cx = width/2, cy = height/2, R = min(width, height)
   background(6, 6, 14)
   // Slow dark wash → trails persist many frames on the OWNED buffer.
@@ -56,16 +56,16 @@ function draw(){
     const fi = floor((i / N) * (fft.length || 1))
     const mag = fft[fi] || 0
     const a = t*(0.5 + i*0.15) + i*TWO_PI/N
-    const rad = (0.10 + 0.075*i) * R * (0.8 + 0.7*(uBass||0))
+    const rad = (0.10 + 0.075*i) * R * (0.8 + 0.7*(sig.bass||0))
     const x = cx + cos(a)*rad, y = cy + sin(a*1.17)*rad
     pg.fill((i*48 + t*30) % 360, 90, 100)
     pg.circle(x, y, 10 + mag*80)
   }
   // Kick ring + rms core, also into the buffer.
-  pg.noFill(); pg.stroke(50, 10, 100, 70); pg.strokeWeight(2 + (uKick||0)*8)
-  pg.circle(cx, cy, (0.26 + (uKick||0)*0.45) * R)
-  pg.noStroke(); pg.fill((t*60) % 360, 75, 100, 40 + (uRms||0)*60)
-  pg.circle(cx, cy, 36 + (uRms||0)*130)
+  pg.noFill(); pg.stroke(50, 10, 100, 70); pg.strokeWeight(2 + (sig.kick||0)*8)
+  pg.circle(cx, cy, (0.26 + (sig.kick||0)*0.45) * R)
+  pg.noStroke(); pg.fill((t*60) % 360, 75, 100, 40 + (sig.rms||0)*60)
+  pg.circle(cx, cy, 36 + (sig.rms||0)*130)
   image(pg, 0, 0)
 }`
 

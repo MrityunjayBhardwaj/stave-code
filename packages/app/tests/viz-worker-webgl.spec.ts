@@ -25,8 +25,8 @@ function draw(){
   background(8, 8, 16)
   pg.background(8, 8, 18)
   pg.noStroke(); pg.ambientLight(80); pg.directionalLight(180,140,255, 0,0,-1)
-  pg.push(); pg.rotateZ(frameCount*0.02 + (uKick||0))
-  for(let i=0;i<8;i++){ pg.push(); pg.rotateZ(i*PI/4); pg.translate(min(width,height)*0.22, 0); pg.fill(120,200,255); pg.box(30 + (uRms||0)*40); pg.pop() }
+  pg.push(); pg.rotateZ(frameCount*0.02 + (sig.kick||0))
+  for(let i=0;i<8;i++){ pg.push(); pg.rotateZ(i*PI/4); pg.translate(min(width,height)*0.22, 0); pg.fill(120,200,255); pg.box(30 + (sig.rms||0)*40); pg.pop() }
   pg.pop()
   image(pg, -width/2, -height/2)
 }`

@@ -4,7 +4,7 @@
  * Asserts, by RUNNING the compiled factory, that:
  *   1. `compileP5Code` returns a factory that accepts the new 6th
  *      `staveUniformsRef` arg (back-compat: also works WITHOUT it).
- *   2. A sketch reading bare `uKick` inside `draw()` reads FRESH after the
+ *   2. A sketch reading bare `sig.kick` inside `draw()` reads FRESH after the
  *      underlying SignalBus value changes between two synthetic `draw()`
  *      invocations — i.e. it resolves through the inner `with (staveUniforms)`
  *      GETTER, NOT a stale compile-time const (the U2 trap).
@@ -24,12 +24,12 @@ import type { RefObject } from 'react'
 import { compileP5Code } from '../p5Compiler'
 import type {
   StaveUniforms,
-  P5SignalAccessor,
+  SigAccessor,
   P5SignalReading,
 } from '../p5Compiler'
 import { SignalBus } from '../signals/SignalBus'
+import type { HapStream } from '../../engine/HapStream'
 import type {
-  HapStream,
   ContainerSize,
   PatternScheduler,
 } from '../types'
@@ -60,49 +60,34 @@ function makeFakeP5() {
 }
 
 /** Build a `StaveUniforms` getter-object backed by a real bus — exactly the
- *  shape `P5VizRenderer` constructs. `__tick` counts how often the wrapper
- *  ticks so we can prove "once per frame, never per read". */
+ *  shape `P5VizRenderer` constructs (#351: the single `sig` namespace). `__tick`
+ *  counts how often the wrapper ticks so we can prove "once per frame, never per
+ *  read". */
 function makeStaveUniforms(bus: SignalBus): {
   uniforms: StaveUniforms
   tickCount: () => number
 } {
   let ticks = 0
-  const u = ((sound: string): P5SignalReading => bus.sound(sound)) as P5SignalAccessor
-  u.track = (id: string): P5SignalReading => bus.track(id)
-  Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
-  Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
-  // Master-mix DSP on `u` (Slice 2) — mirror the P5VizRenderer shape so the
-  // harness exercises the same getters the renderer builds.
-  Object.defineProperty(u, 'rms', { get: () => bus.master().rms, enumerable: true })
-  Object.defineProperty(u, 'bass', { get: () => bus.master().bass, enumerable: true })
-  Object.defineProperty(u, 'mid', { get: () => bus.master().mid, enumerable: true })
-  Object.defineProperty(u, 'treble', { get: () => bus.master().treble, enumerable: true })
-  Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
-  Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
-
-  const uniforms = {
-    get uKick(): number {
-      return bus.envValue('uKick')
-    },
-    get uSnare(): number {
-      return bus.envValue('uSnare')
-    },
-    get uHat(): number {
-      return bus.envValue('uHat')
-    },
-    get uOpenHat(): number {
-      return bus.envValue('uOpenHat')
-    },
-    get uClap(): number {
-      return bus.envValue('uClap')
-    },
-    get uRim(): number {
-      return bus.envValue('uRim')
-    },
-    get uTom(): number {
-      return bus.envValue('uTom')
-    },
-    get uKeyVelocity(): number {
+  // The single `sig` namespace — callable accessor carrying the per-drum +
+  // master-DSP scalars on the SAME object (p5 D-01: live getter numbers).
+  const sig = ((sound: string): P5SignalReading => bus.sound(sound)) as SigAccessor
+  sig.track = (id: string): P5SignalReading => bus.track(id)
+  Object.defineProperty(sig, 'tracks', { get: () => bus.tracks, enumerable: true })
+  Object.defineProperty(sig, 'sounds', { get: () => bus.sounds, enumerable: true })
+  // Per-drum envelope scalars (were bare `uKick…uTom`) — live getters on `sig`.
+  const env = (key: string): PropertyDescriptor => ({
+    get: () => bus.envValue(key),
+    enumerable: true,
+  })
+  Object.defineProperty(sig, 'kick', env('uKick'))
+  Object.defineProperty(sig, 'snare', env('uSnare'))
+  Object.defineProperty(sig, 'hat', env('uHat'))
+  Object.defineProperty(sig, 'openHat', env('uOpenHat'))
+  Object.defineProperty(sig, 'clap', env('uClap'))
+  Object.defineProperty(sig, 'rim', env('uRim'))
+  Object.defineProperty(sig, 'tom', env('uTom'))
+  Object.defineProperty(sig, 'keyVelocity', {
+    get: () => {
       let max = 0
       for (const s of bus.sounds) {
         const v = bus.sound(s).velocity
@@ -110,20 +95,18 @@ function makeStaveUniforms(bus: SignalBus): {
       }
       return max
     },
-    get uRms(): number {
-      return bus.master().rms
-    },
-    get uBass(): number {
-      return bus.master().bass
-    },
-    get uMid(): number {
-      return bus.master().mid
-    },
-    get uTreble(): number {
-      return bus.master().treble
-    },
-    u,
-  } as StaveUniforms
+    enumerable: true,
+  })
+  // Master-mix DSP on `sig` (Slice 2) — mirror the buildStaveUniforms shape so
+  // the harness exercises the same getters the renderer builds.
+  Object.defineProperty(sig, 'rms', { get: () => bus.master().rms, enumerable: true })
+  Object.defineProperty(sig, 'bass', { get: () => bus.master().bass, enumerable: true })
+  Object.defineProperty(sig, 'mid', { get: () => bus.master().mid, enumerable: true })
+  Object.defineProperty(sig, 'treble', { get: () => bus.master().treble, enumerable: true })
+  Object.defineProperty(sig, 'fft', { get: () => bus.master().fft, enumerable: true })
+  Object.defineProperty(sig, 'wave', { get: () => bus.master().wave, enumerable: true })
+
+  const uniforms = { sig } as StaveUniforms
   Object.defineProperty(uniforms, '__tick', {
     value: (): void => {
       ticks += 1
@@ -161,7 +144,7 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
   it('returns a factory that accepts the new 6th staveUniforms arg', () => {
     const bus = new SignalBus()
     const { uniforms } = makeStaveUniforms(bus)
-    const factory = compileP5Code(`function draw() { background(uKick) }`)
+    const factory = compileP5Code(`function draw() { background(sig.kick) }`)
     const refs = makeRefs(uniforms)
     // The factory must accept all 6 args without throwing.
     const sketchFn = factory(
@@ -176,7 +159,7 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
   })
 
   it('still compiles WITHOUT the 6th arg (back-compat — inert uniforms)', () => {
-    const factory = compileP5Code(`function draw() { background(uKick) }`)
+    const factory = compileP5Code(`function draw() { background(sig.kick) }`)
     const refs = makeRefs()
     // Omit the 6th arg entirely — the default inert object kicks in.
     const sketchFn = factory(
@@ -188,7 +171,7 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     )
     const { p } = makeFakeP5()
     expect(() => sketchFn(p as unknown as import('p5').default)).not.toThrow()
-    // bare uKick resolves to 0 (inert) — no throw, draws with 0.
+    // bare sig.kick resolves to 0 (inert) — no throw, draws with 0.
     const draw = (p as Record<string, unknown>).draw as () => void
     expect(() => draw()).not.toThrow()
   })
@@ -197,19 +180,19 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     expect(() =>
       compileP5Code(`
         function setup() { createCanvas(stave.width, stave.height) }
-        function draw() { background(uKick * 255) }
+        function draw() { background(sig.kick * 255) }
       `),
     ).not.toThrow()
   })
 
   // ── THE U2 OBSERVATION — frame-fresh getter, not a stale const ──────────
-  it('reads bare uKick FRESH across two draws as the bus value changes', () => {
+  it('reads bare sig.kick FRESH across two draws as the bus value changes', () => {
     const bus = new SignalBus()
     const { uniforms } = makeStaveUniforms(bus)
-    // Capture the live uKick the sketch sees each draw into an external array.
+    // Capture the live sig.kick the sketch sees each draw into an external array.
     const seen: number[] = []
     const factory = compileP5Code(
-      `function draw() { stave.options.__sink(uKick) }`,
+      `function draw() { stave.options.__sink(sig.kick) }`,
     )
     const refs = makeRefs(uniforms)
     const sketchFn = factory(
@@ -228,9 +211,9 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     sketchFn(p as unknown as import('p5').default)
     const draw = (p as Record<string, unknown>).draw as () => void
 
-    // Bus state A: bump bd → uKick (alias) reads the bd envelope level.
+    // Bus state A: bump bd → sig.kick (alias) reads the bd envelope level.
     bus.bump({ s: 'bd', hap: { value: { gain: 1 } } })
-    draw() // wrapper ticks once (decay 0.92), then user draw reads uKick
+    draw() // wrapper ticks once (decay 0.92), then user draw reads sig.kick
     const a = seen[seen.length - 1]
 
     // Bus state B: a clean bus with no further bump → next tick decays again.
@@ -255,7 +238,7 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     // A draw that reads MANY uniforms in one frame.
     const factory = compileP5Code(
       `function draw() {
-         const total = uKick + uSnare + uHat + uTom + uKeyVelocity
+         const total = sig.kick + sig.snare + sig.hat + sig.tom + sig.keyVelocity
          background(total)
        }`,
     )
@@ -279,14 +262,14 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     expect(tickCount()).toBe(3)
   })
 
-  // ── stave.u mirrors the bare u (D-02) ───────────────────────────────────
-  it('mirrors u onto stave.u (D-02) — same accessor object', () => {
+  // ── stave.sig mirrors the bare sig (D-02) ───────────────────────────────
+  it('mirrors sig onto stave.sig (D-02) — same accessor object', () => {
     const bus = new SignalBus()
     const { uniforms } = makeStaveUniforms(bus)
-    let bareU: unknown
-    let staveU: unknown
+    let bareSig: unknown
+    let staveSig: unknown
     const factory = compileP5Code(
-      `function draw() { stave.options.__capture(u, stave.u) }`,
+      `function draw() { stave.options.__capture(sig, stave.sig) }`,
     )
     const refs = makeRefs(uniforms)
     const sketchFn = factory(
@@ -299,24 +282,24 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     )
     ;(refs.optionsRef as { current: Record<string, unknown> }).current = {
       __capture: (a: unknown, b: unknown) => {
-        bareU = a
-        staveU = b
+        bareSig = a
+        staveSig = b
       },
     }
     const { p } = makeFakeP5()
     sketchFn(p as unknown as import('p5').default)
     ;((p as Record<string, unknown>).draw as () => void)()
-    expect(bareU).toBe(uniforms.u)
-    expect(staveU).toBe(uniforms.u)
+    expect(bareSig).toBe(uniforms.sig)
+    expect(staveSig).toBe(uniforms.sig)
   })
 
   // ── Legacy draw-body form exposes the same bare aliases, re-read each frame
-  it('legacy body re-reads bare uKick from inside the synthetic draw', () => {
+  it('legacy body re-reads bare sig.kick from inside the synthetic draw', () => {
     const bus = new SignalBus()
     const { uniforms } = makeStaveUniforms(bus)
     const seen: number[] = []
     // Legacy form: bare statements, NO `function draw`.
-    const factory = compileP5Code(`stave.options.__sink(uKick)`)
+    const factory = compileP5Code(`stave.options.__sink(sig.kick)`)
     const refs = makeRefs(uniforms)
     const sketchFn = factory(
       refs.hapStreamRef,
@@ -345,24 +328,26 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
   // ── CUSTOM ALIAS bare name in a LEGACY sketch (Phase 21 aliases — T2 Site B)
   // THE TRAP-GUARD: legacy draw-body sketches (no `function draw`) get NO inner
   // `with (staveUniforms)` UNLESS we add the legacy with()-wrap. Without it a
-  // CUSTOM bare name (`kick`) silently dies in legacy sketches (the headline
-  // R-2 trap). Here we inject a custom `kick` getter onto staveUniforms (exactly
-  // as `P5VizRenderer.mount` does) and assert a LEGACY sketch reading bare
-  // `kick` compiles AND resolves it live through the legacy with()-wrap.
-  it('legacy sketch resolves a CUSTOM bare alias (kick) through the with()-wrap (Site B)', () => {
+  // CUSTOM bare name (`myKick`) silently dies in legacy sketches (the headline
+  // R-2 trap). Here we inject a custom `myKick` getter onto staveUniforms (exactly
+  // as `P5VizRenderer.mount` does — a custom alias is a property on the uniforms
+  // object itself, distinct from the built-in `sig` namespace) and assert a
+  // LEGACY sketch reading bare `myKick` compiles AND resolves it live through the
+  // legacy with()-wrap.
+  it('legacy sketch resolves a CUSTOM bare alias (myKick) through the with()-wrap (Site B)', () => {
     const bus = new SignalBus()
     const { uniforms } = makeStaveUniforms(bus)
-    // Simulate the renderer's custom-getter injection: `kick → bd`.
-    bus.setAliases({ kick: 'bd' })
-    Object.defineProperty(uniforms, 'kick', {
-      get: () => bus.envValue('kick'),
+    // Simulate the renderer's custom-getter injection: `myKick → bd`.
+    bus.setAliases({ myKick: 'bd' })
+    Object.defineProperty(uniforms, 'myKick', {
+      get: () => bus.envValue('myKick'),
       enumerable: true,
       configurable: true,
     })
 
     const seen: number[] = []
-    // LEGACY form — bare statements, NO `function draw`. Reads bare `kick`.
-    const factory = compileP5Code(`stave.options.__sink(kick)`)
+    // LEGACY form — bare statements, NO `function draw`. Reads bare `myKick`.
+    const factory = compileP5Code(`stave.options.__sink(myKick)`)
     const refs = makeRefs(uniforms)
     const sketchFn = factory(
       refs.hapStreamRef,
@@ -376,7 +361,7 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
       __sink: (v: number) => seen.push(v),
     }
     const { p } = makeFakeP5()
-    // Compiles + runs WITHOUT throwing — the with()-wrap makes `kick` resolvable
+    // Compiles + runs WITHOUT throwing — the with()-wrap makes `myKick` resolvable
     // (no ReferenceError). Site B fix proven.
     expect(() => sketchFn(p as unknown as import('p5').default)).not.toThrow()
     const draw = (p as Record<string, unknown>).draw as () => void
@@ -387,12 +372,12 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     const a = seen[seen.length - 1]
     draw()
     const b = seen[seen.length - 1]
-    expect(a).toBeGreaterThan(0) // custom bare `kick` resolved (NOT dead)
+    expect(a).toBeGreaterThan(0) // custom bare `myKick` resolved (NOT dead)
     expect(b).toBeLessThan(a) // fresh getter through with(), not frozen
   })
 
-  // ── DSP fields (Slice 2, T3) — p5 reads u('bd').rms as a FRESH number ──────
-  it('reads u("bd").rms FRESH across two analyser states, and exposes arrays as arrays', () => {
+  // ── DSP fields (Slice 2, T3) — p5 reads sig('bd').rms as a FRESH number ────
+  it('reads sig("bd").rms FRESH across two analyser states, and exposes arrays as arrays', () => {
     const bus = new SignalBus()
     const { uniforms } = makeStaveUniforms(bus)
 
@@ -439,7 +424,7 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     const seenRmsIsNumber: boolean[] = []
     const factory = compileP5Code(
       `function draw() {
-         stave.options.__sink(u('bd').rms, Array.isArray(u('bd').fft), typeof u('bd').rms === 'number')
+         stave.options.__sink(sig('bd').rms, Array.isArray(sig('bd').fft), typeof sig('bd').rms === 'number')
        }`,
     )
     const refs = makeRefs(uniforms)
@@ -479,8 +464,8 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
     expect(rms2).toBeGreaterThan(rms1)
   })
 
-  // ── Master DSP sugar (Slice 2, T3) — bare uRms getter + u.fft array ───────
-  it('exposes bare uRms (master) as a fresh getter number and u.fft as an array', () => {
+  // ── Master DSP sugar (Slice 2, T3) — sig.rms getter + sig.fft array ───────
+  it('exposes sig.rms (master) as a fresh getter number and sig.fft as an array', () => {
     const bus = new SignalBus()
     const { uniforms } = makeStaveUniforms(bus)
     const master = {
@@ -498,7 +483,7 @@ describe('compileP5Code — Phase 21 named signals (T3)', () => {
       []
     const factory = compileP5Code(
       `function draw() {
-         stave.options.__sink(uRms, Array.isArray(u.fft), typeof uRms === 'number')
+         stave.options.__sink(sig.rms, Array.isArray(sig.fft), typeof sig.rms === 'number')
        }`,
     )
     const refs = makeRefs(uniforms)

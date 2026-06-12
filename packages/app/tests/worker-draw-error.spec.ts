@@ -16,7 +16,7 @@ import { test, expect, type Page } from '@playwright/test'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
-// draw() throws every frame: `stave.fft` is undefined (the bus DSP is `u.fft`),
+// draw() throws every frame: `stave.fft` is undefined (the bus DSP is `sig.fft`),
 // so `.length` is a TypeError — the exact wrong-namespace typo from the issue.
 // background() runs first (one statement paints), then the throw aborts the rest.
 const THROWING = `function setup(){ createCanvas(stave.width, stave.height) }

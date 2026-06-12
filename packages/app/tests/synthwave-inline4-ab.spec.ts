@@ -5,7 +5,7 @@
  *
  * The sketch is a heavy immediate-mode WEBGL-free terrain line-mesh (the
  * documented hot path: beginShape/vertex over thousands of segments per frame,
- * audio-reactive via u.fft/u.rms). Four of them serialized on the main rAF starve
+ * audio-reactive via sig.fft/sig.rms). Four of them serialized on the main rAF starve
  * both audio (trig/s) and the UI (fps/longtasks); in workers they run off-main.
  *
  * Measured over a fixed wall-clock window via __stavePerf (delta-based, no reset):
@@ -23,7 +23,7 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 // Heavy synthwave terrain in WEBGL — strokeWeight lines force p5 v2 to
 // quad-tessellate every thick segment in JS per frame (the documented CPU
 // bottleneck; canvas-size-INVARIANT, so short zones keep the full cost). ROWS
-// strips × COLS segments = ROWS*COLS segments/frame. Reactive ridge from u.fft.
+// strips × COLS segments = ROWS*COLS segments/frame. Reactive ridge from sig.fft.
 const ROWS = 60
 const COLS = 100
 const SYNTHWAVE = `function setup(){ createCanvas(stave.width, stave.height, WEBGL) }
@@ -39,8 +39,8 @@ function draw(){
     beginShape()
     for (let c = 0; c <= COLS; c++){
       const x = -W/2 + (c / COLS) * W
-      const fi = (c * 3 + r) % u.fft.length
-      const h = (u.fft[fi] || 0) * 130 * (1 - z)
+      const fi = (c * 3 + r) % sig.fft.length
+      const h = (sig.fft[fi] || 0) * 130 * (1 - z)
       vertex(x, y0 - h)
     }
     endShape()

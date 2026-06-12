@@ -1,5 +1,5 @@
 /**
- * GLSL PER-TRACK SIGNALS (#297) — the GLSL analog of p5/hydra `u.track(id)`.
+ * GLSL PER-TRACK SIGNALS (#297) — the GLSL analog of p5/hydra `sig.track(id)`.
  *
  * A GLSL shader gets the per-track signal bus via injected uniforms + a
  * `staveTrack(int i)` helper (glslShaderSource): `uTrackCount` is how many tracks

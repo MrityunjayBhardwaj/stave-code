@@ -1,4 +1,4 @@
-import { W as WorkerVizConfig } from '../../vizConfig-9gxrG-J4.cjs';
+import { W as WorkerVizConfig } from '../../vizConfig-Dpw8jb9R.cjs';
 
 /**
  * hostVizWorker — the bundler-AGNOSTIC worker host that runs a viz sketch in a

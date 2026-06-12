@@ -4,13 +4,13 @@
  *
  * #232 measured that dropping RESOLUTION does nothing for a line-mesh sketch
  * (canvas 600→150px at constant segments = no change) — that class needs fewer
- * SEGMENTS. Phase D wires a quality level → `u.density` (a sketch LOD multiplier)
+ * SEGMENTS. Phase D wires a quality level → `sig.density` (a sketch LOD multiplier)
  * marshalled live into the worker. This gate proves the whole chain works by
  * OBSERVATION, not inference (the house rule; three perf inferences inverted on
  * this saga — P112/P113/P114):
  *
  *   1. mount ONE heavy WEBGL line-mesh worker viz that scales its segment count
- *      by `u.density` (full mesh at density 1; ~4× fewer at density 0.5).
+ *      by `sig.density` (full mesh at density 1; ~4× fewer at density 0.5).
  *   2. measure the worker's per-instance frame interval at quality `high`
  *      (density 1) — under #261 backpressure the produce/ack cadence == the
  *      worker's true draw rate, so frame p95 reflects per-frame draw cost (PV80).
@@ -33,15 +33,15 @@ import { test, expect, type Page } from '@playwright/test'
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 /** Heavy WEBGL line-mesh — p5's JS line tessellation is the (resolution-
- *  invariant, #232) cost. Scales its row/col step by `u.density`: density 1 →
+ *  invariant, #232) cost. Scales its row/col step by `sig.density`: density 1 →
  *  step 1 (full ROWS×COLS mesh); density 0.5 → step 2 (~4× fewer segments).
- *  Reads `u.fft` so it stays audio-reactive (a static sketch could be cached). */
+ *  Reads `sig.fft` so it stays audio-reactive (a static sketch could be cached). */
 const HEAVY_MESH = `function setup(){ createCanvas(stave.width, stave.height, WEBGL) }
 function draw(){
   background(12,6,28)
   const W=width,H=height
   stroke(255,40,200); strokeWeight(1.5); noFill()
-  const d = (typeof u!=='undefined' && u && u.density>0) ? u.density : 1
+  const d = (typeof sig!=='undefined' && sig && sig.density>0) ? sig.density : 1
   const step = Math.max(1, Math.round(1/d))
   const ROWS=64, COLS=150
   for(let r=0;r<ROWS;r+=step){
@@ -50,8 +50,8 @@ function draw(){
     beginShape()
     for(let c=0;c<=COLS;c+=step){
       const x=-W/2 + (c/COLS)*W
-      const fi=(c*3+r)%u.fft.length
-      const h=(u.fft[fi]||0)*220*(1-z)
+      const fi=(c*3+r)%sig.fft.length
+      const h=(sig.fft[fi]||0)*220*(1-z)
       vertex(x, y0-h)
     }
     endShape()

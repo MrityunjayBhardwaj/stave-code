@@ -67,8 +67,8 @@ export interface InjectedGlobal {
   /**
    * Section the entry belongs to in the reference block. Entries are listed in
    * group order; {@link formatStaveInputs} emits a `// — <group> —` header when
-   * the group changes. Makes the scalar-vs-accessor rule visible at a glance
-   * (bare `uXxx` = a single number; arrays/lookups live on `u`).
+   * the group changes. Makes the one-namespace rule visible at a glance
+   * (every signal lives on `sig` — `sig.kick` a number, `sig.fft` an array).
    */
   readonly group: string
   /** Live-value source on the master bus, when the token carries one. */
@@ -78,17 +78,17 @@ export interface InjectedGlobal {
 // Section labels — shared so the formatter and the trailing rule line stay
 // consistent with the grouping.
 const G_CONTEXT = 'context'
-const G_SCALARS = 'signals · bare scalars (0..1)'
-const G_SCALARS_THUNK = 'signals · bare scalars (thunks, 0..1)'
-const G_STRUCTURED = 'signals · structured (on u)'
+const G_SCALARS = 'signals · scalars on sig (0..1)'
+const G_SCALARS_THUNK = 'signals · scalar thunks on stave.sig (0..1)'
+const G_STRUCTURED = 'signals · structured (on sig)'
 const G_CORE = 'core'
 const G_GLSL_SCALARS = 'signals · scalars (0..1)'
 const G_GLSL_TRACK = 'signals · per-track'
 
 /** The trailing one-line rule per kind (the scalar-vs-accessor payoff). */
 const RULE: Record<VizRendererKind, string | null> = {
-  p5: 'rule: bare uXxx = a single number · arrays, lookups & lists live on u',
-  hydra: 'rule: bare stave.uXxx() = a single number · arrays, lookups & lists live on stave.u',
+  p5: 'rule: every signal lives on sig — sig.kick is a number, sig.fft an array, sig(\'bd\') one sound',
+  hydra: 'rule: every signal lives on stave.sig — sig.kick() a number, sig.fft an array, sig(\'bd\') one sound',
   glsl: 'rule: scalars are floats · spectrum/waveform = iChannel0 texture · per-track via staveTrack(i)',
 }
 
@@ -133,49 +133,49 @@ const P5_GLOBALS: readonly InjectedGlobal[] = [
   { group: G_CONTEXT, decl: 'object            stave.options;', comment: 'the .viz({ ... }) argument', tokens: ['options'] },
   {
     group: G_SCALARS,
-    decl: 'number            uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom;',
+    decl: 'number   sig.kick, sig.snare, sig.hat, sig.openHat, sig.clap, sig.rim, sig.tom;',
     comment: 'per-drum envelope 0..1',
-    tokens: ['uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom'],
+    tokens: ['kick', 'snare', 'hat', 'openHat', 'clap', 'rim', 'tom'],
     live: {
-      uKick: ENV_LIVE('env:uKick'), uSnare: ENV_LIVE('env:uSnare'), uHat: ENV_LIVE('env:uHat'),
-      uOpenHat: ENV_LIVE('env:uOpenHat'), uClap: ENV_LIVE('env:uClap'), uRim: ENV_LIVE('env:uRim'), uTom: ENV_LIVE('env:uTom'),
+      kick: ENV_LIVE('env:uKick'), snare: ENV_LIVE('env:uSnare'), hat: ENV_LIVE('env:uHat'),
+      openHat: ENV_LIVE('env:uOpenHat'), clap: ENV_LIVE('env:uClap'), rim: ENV_LIVE('env:uRim'), tom: ENV_LIVE('env:uTom'),
     },
   },
-  { group: G_SCALARS, decl: 'number            uKeyVelocity;', comment: 'loudest active hit 0..1', tokens: ['uKeyVelocity'], live: { uKeyVelocity: { kind: 'scalar', read: 'keyVelocity' } } },
+  { group: G_SCALARS, decl: 'number   sig.keyVelocity;', comment: 'loudest active hit 0..1', tokens: ['keyVelocity'], live: { keyVelocity: { kind: 'scalar', read: 'keyVelocity' } } },
   {
     group: G_SCALARS,
-    decl: 'number            uRms, uBass, uMid, uTreble;',
+    decl: 'number   sig.rms, sig.bass, sig.mid, sig.treble;',
     comment: 'master-mix DSP 0..1',
-    tokens: ['uRms', 'uBass', 'uMid', 'uTreble'],
-    live: { uRms: { kind: 'scalar', read: 'rms' }, uBass: { kind: 'scalar', read: 'bass' }, uMid: { kind: 'scalar', read: 'mid' }, uTreble: { kind: 'scalar', read: 'treble' } },
+    tokens: ['rms', 'bass', 'mid', 'treble'],
+    live: { rms: { kind: 'scalar', read: 'rms' }, bass: { kind: 'scalar', read: 'bass' }, mid: { kind: 'scalar', read: 'mid' }, treble: { kind: 'scalar', read: 'treble' } },
   },
-  { group: G_STRUCTURED, decl: 'number[]          u.fft, u.wave;', comment: 'master spectrum / waveform (arrays)', tokens: ['fft', 'wave'], live: { fft: { kind: 'array', read: 'fft' }, wave: { kind: 'array', read: 'wave' } } },
-  { group: G_STRUCTURED, decl: "Reading           u('bd'), u.track('$0');", comment: 'one sound / track → { env, rms, fft[], … }', tokens: ['u', 'track'] },
-  { group: G_STRUCTURED, decl: 'string[]          u.tracks, u.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
-  { group: G_STRUCTURED, decl: 'number            u.density;', comment: 'quality LOD multiplier (1 = full)', tokens: ['density'] },
+  { group: G_STRUCTURED, decl: 'number[] sig.fft, sig.wave;', comment: 'master spectrum / waveform (arrays)', tokens: ['fft', 'wave'], live: { fft: { kind: 'array', read: 'fft' }, wave: { kind: 'array', read: 'wave' } } },
+  { group: G_STRUCTURED, decl: "Reading  sig('bd'), sig.track('$0');", comment: 'one sound / track → { env, rms, fft[], … }', tokens: ['sig', 'track'] },
+  { group: G_STRUCTURED, decl: 'string[] sig.tracks, sig.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
+  { group: G_STRUCTURED, decl: 'number   sig.density;', comment: 'quality LOD multiplier (1 = full)', tokens: ['density'] },
 ]
 
 const HYDRA_GLOBALS: readonly InjectedGlobal[] = [
   {
     group: G_SCALARS_THUNK,
-    decl: '() => number      stave.uKick, stave.uSnare, stave.uHat, stave.uOpenHat,\n                  stave.uClap, stave.uRim, stave.uTom, stave.uKeyVelocity;',
+    decl: '() => number      stave.sig.kick, stave.sig.snare, stave.sig.hat, stave.sig.openHat,\n                  stave.sig.clap, stave.sig.rim, stave.sig.tom, stave.sig.keyVelocity;',
     comment: 'per-drum envelope thunks → call them',
-    tokens: ['uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom', 'uKeyVelocity'],
+    tokens: ['kick', 'snare', 'hat', 'openHat', 'clap', 'rim', 'tom', 'keyVelocity'],
     live: {
-      uKick: ENV_LIVE('env:uKick'), uSnare: ENV_LIVE('env:uSnare'), uHat: ENV_LIVE('env:uHat'),
-      uOpenHat: ENV_LIVE('env:uOpenHat'), uClap: ENV_LIVE('env:uClap'), uRim: ENV_LIVE('env:uRim'), uTom: ENV_LIVE('env:uTom'),
-      uKeyVelocity: { kind: 'scalar', read: 'keyVelocity' },
+      kick: ENV_LIVE('env:uKick'), snare: ENV_LIVE('env:uSnare'), hat: ENV_LIVE('env:uHat'),
+      openHat: ENV_LIVE('env:uOpenHat'), clap: ENV_LIVE('env:uClap'), rim: ENV_LIVE('env:uRim'), tom: ENV_LIVE('env:uTom'),
+      keyVelocity: { kind: 'scalar', read: 'keyVelocity' },
     },
   },
   {
     group: G_SCALARS_THUNK,
-    decl: '() => number      stave.uRms, stave.uBass, stave.uMid, stave.uTreble;',
+    decl: '() => number      stave.sig.rms, stave.sig.bass, stave.sig.mid, stave.sig.treble;',
     comment: 'master-mix DSP thunks',
-    tokens: ['uRms', 'uBass', 'uMid', 'uTreble'],
-    live: { uRms: { kind: 'scalar', read: 'rms' }, uBass: { kind: 'scalar', read: 'bass' }, uMid: { kind: 'scalar', read: 'mid' }, uTreble: { kind: 'scalar', read: 'treble' } },
+    tokens: ['rms', 'bass', 'mid', 'treble'],
+    live: { rms: { kind: 'scalar', read: 'rms' }, bass: { kind: 'scalar', read: 'bass' }, mid: { kind: 'scalar', read: 'mid' }, treble: { kind: 'scalar', read: 'treble' } },
   },
-  { group: G_STRUCTURED, decl: "Thunks            stave.u('bd'), stave.u.track('$0');", comment: '.env() .rms() .fft[i] … per sound / track', tokens: ['u', 'track'] },
-  { group: G_STRUCTURED, decl: 'string[]          stave.u.tracks, stave.u.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
+  { group: G_STRUCTURED, decl: "Thunks            stave.sig('bd'), stave.sig.track('$0');", comment: '.env() .rms() .fft[i] … per sound / track', tokens: ['sig', 'track'] },
+  { group: G_STRUCTURED, decl: 'string[]          stave.sig.tracks, stave.sig.sounds;', comment: 'live published track / sound keys', tokens: ['tracks', 'sounds'] },
   { group: G_STRUCTURED, decl: "() => number      stave.H(trackId, field = 'gain');", comment: 'raw event field reader', tokens: ['H'] },
   { group: G_CONTEXT, decl: 'PatternScheduler  stave.scheduler;', comment: '.now(), .query(begin, end)', tokens: ['scheduler'] },
 ]

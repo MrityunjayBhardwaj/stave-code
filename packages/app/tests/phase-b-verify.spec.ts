@@ -39,8 +39,8 @@ const P5_BUILTINS = ['pianoroll', 'wordfall', 'scope', 'fscope', 'spectrum', 'sp
 const HYDRA_BUILTINS = ['hydra', 'pianoroll:hydra', 'scope:hydra', 'kaleidoscope:hydra']
 
 // User sketches (registered at runtime via __staveRegisterViz).
-// Bus DSP uniforms live on `u` (u.rms / u.fft) — NOT on `stave` (which carries
-// scheduler/analyser/hapStream/width/height/options/u). Reading `stave.rms` is
+// Bus DSP uniforms live on `sig` (sig.rms / sig.fft) — NOT on `stave` (which carries
+// scheduler/analyser/hapStream/width/height/options/sig). Reading `stave.rms` is
 // undefined and `stave.fft.length` THROWS, aborting draw() after background()
 // with NO surfaced error — the "blank that isn't blank" trap (P106). Opaque bg +
 // non-zero base radius keep it visible at idle audio.
@@ -48,11 +48,11 @@ const USER_P5 = `function setup(){ createCanvas(stave.width, stave.height) }
 function draw(){
   background(28, 34, 64)
   noStroke(); fill(120, 200, 255)
-  const r = 80 + u.rms * 500
+  const r = 80 + sig.rms * 500
   circle(width/2, height/2, r)
   fill(255, 180, 90)
-  for (let i=0;i<u.fft.length && i<48;i++){
-    const h = 4 + u.fft[i] * height
+  for (let i=0;i<sig.fft.length && i<48;i++){
+    const h = 4 + sig.fft[i] * height
     rect(i*(width/48), height-h, width/48-1, h)
   }
 }`
@@ -67,7 +67,7 @@ const BACKDROP_P5 = `function setup(){ createCanvas(stave.width, stave.height) }
 function draw(){
   background(140, 30, 160)
   noStroke(); fill(255, 200, 60)
-  const r = 80 + u.rms * 600
+  const r = 80 + sig.rms * 600
   circle(width/2, height/2, r)
 }`
 

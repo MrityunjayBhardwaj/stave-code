@@ -99,7 +99,7 @@ test.describe('B-3 worker render observation', () => {
     await run(page)
     await page.screenshot({ path: 'test-results/b3-pianoroll-worker.png' })
 
-    // ── Signals (Spectrum) — the BUS path (uKick / u.rms / u('bd').fft). This is
+    // ── Signals (Spectrum) — the BUS path (sig.kick / sig.rms / sig('bd').fft). This is
     // the deferred B-2 live-parity observation: a REAL worker bus driving visible
     // geometry. If the worker bus were wrong, the bars/circle would be static. ──
     await stop(page)
