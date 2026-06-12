@@ -13,16 +13,23 @@ import {
   getHydraLineOffset,
   HYDRA_LINE_OFFSET,
 } from '../hydraCompiler'
+import type { HydraStaveBag } from '../renderers/HydraVizRenderer'
+
+/** Minimal `stave` bag for the eval-scope tests — these sketches only read
+ *  `stave.scheduler`, so we cast a partial mock rather than build the full
+ *  `sig`/`H` surface (covered by HydraVizRenderer.staveBag.test.ts). */
+const asBag = (b: { scheduler: unknown; tracks: Map<unknown, unknown> }) =>
+  b as unknown as HydraStaveBag
 
 describe('compileHydraCode — stave bag in eval scope', () => {
   it('user code can reference `stave` without ReferenceError', () => {
     const pattern = compileHydraCode(
       'if (stave.scheduler) { globalThis.__saw_scheduler = true }',
     )
-    const fakeStave = {
+    const fakeStave = asBag({
       scheduler: { now: () => 0, query: () => [] },
       tracks: new Map(),
-    }
+    })
     expect(() => pattern({}, fakeStave)).not.toThrow()
     expect(
       (globalThis as Record<string, unknown>).__saw_scheduler,
@@ -32,7 +39,7 @@ describe('compileHydraCode — stave bag in eval scope', () => {
 
   it('sketches that ignore `stave` still work (backwards-compat)', () => {
     const pattern = compileHydraCode('globalThis.__saw_synth = typeof s')
-    const fakeStave = { scheduler: null, tracks: new Map() }
+    const fakeStave = asBag({ scheduler: null, tracks: new Map() })
     expect(() => pattern({}, fakeStave)).not.toThrow()
     expect((globalThis as Record<string, unknown>).__saw_synth).toBe(
       'object',
@@ -59,10 +66,10 @@ describe('compileHydraCode — stave bag in eval scope', () => {
     ]
     pattern(
       {},
-      {
+      asBag({
         scheduler: { now: () => 0, query: () => events },
         tracks: new Map(),
-      },
+      }),
     )
     expect((globalThis as Record<string, unknown>).__query_result).toEqual(
       events,

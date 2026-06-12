@@ -11,7 +11,7 @@
  *
  * Reactivity is a TEMPORAL, MULTI-INSTANCE, LIVE-AUDIO property — invisible to a
  * gauge, one frame, or fixed-byte parity (P108). This gate measures it directly:
- * render ≥4 concurrent heavy WEBGL p5 sketches reading `u.fft` on a 4-track LIVE
+ * render ≥4 concurrent heavy WEBGL p5 sketches reading `sig.fft` on a 4-track LIVE
  * pattern, screenshot each canvas 5× ~0.7s apart, count DISTINCT frames per zone.
  * A reactive viz changes every sample (→5 distinct); a stale/static one repeats.
  *
@@ -28,7 +28,7 @@ import { createHash } from 'node:crypto'
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 /** Heavy WEBGL sketch — p5's JS line-tessellation is the real (canvas-size-
- *  invariant) cost that makes the worker the bottleneck; reads `u.fft` so its
+ *  invariant) cost that makes the worker the bottleneck; reads `sig.fft` so its
  *  output tracks the live audio frame-to-frame. */
 const SYNTHWAVE = `function setup(){ createCanvas(stave.width, stave.height, WEBGL) }
 function draw(){
@@ -42,8 +42,8 @@ function draw(){
     beginShape()
     for(let c=0;c<=COLS;c++){
       const x=-W/2 + (c/COLS)*W
-      const fi=(c*3+r)%u.fft.length
-      const h=(u.fft[fi]||0)*220*(1-z)
+      const fi=(c*3+r)%sig.fft.length
+      const h=(sig.fft[fi]||0)*220*(1-z)
       vertex(x, y0-h)
     }
     endShape()

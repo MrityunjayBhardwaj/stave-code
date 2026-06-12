@@ -65,7 +65,7 @@ export interface VizConfig {
    * (default). Lower values ask the SKETCH to DECIMATE its per-frame work —
    * primarily segment / history COUNT for CPU-tessellation-bound line meshes,
    * the class a resolution drop does NOT help (#232: canvas 600→150px at
-   * constant segments = no change). Exposed to sketches as `u.density`
+   * constant segments = no change). Exposed to sketches as `sig.density`
    * (staveUniforms) so a heavy sketch can scale its geometry, and marshalled
    * into the worker via the config channel (the worker reads its OWN vizConfig
    * singleton — P105 / #253). Fill/fragment-bound sketches (hydra, shaders,
@@ -187,7 +187,7 @@ export const DEFAULT_VIZ_CONFIG: Readonly<VizConfig> = {
 
   // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
   // values are opted into via "performance mode" (deriveVizQuality) and read by
-  // sketches as `u.density`. Marshalled to the worker via the config channel.
+  // sketches as `sig.density`. Marshalled to the worker via the config channel.
   density: 1,
 
   // Inline view zones
@@ -257,7 +257,7 @@ export const DEFAULT_VIZ_QUALITY: VizQualityLevel = 'balanced'
 export interface VizQualitySettings {
   /** Inline-viz render backing-store HEIGHT (px) — composite/fill cost (main-side). */
   resolution: number
-  /** Sketch LOD multiplier in `(0, 1]` — segment/history count (worker-side, `u.density`). */
+  /** Sketch LOD multiplier in `(0, 1]` — segment/history count (worker-side, `sig.density`). */
   density: number
 }
 
@@ -345,7 +345,7 @@ export function onVizConfigChange(
  * `DEFAULT_VIZ_CONFIG`; these are marshalled across the thread boundary so the
  * worker sketch sees the user's effective settings:
  *   - `hydraAudioBins` — hydra fft bin count (hostP5Worker; closes #253)
- *   - `density`        — the `u.density` LOD multiplier (staveUniforms)
+ *   - `density`        — the `sig.density` LOD multiplier (staveUniforms)
  * `maxFps`/`maxDpr` are deliberately EXCLUDED: the main `WorkerVizRenderer` paces
  * frame production and sizes the presenting canvas, so the worker never reads
  * them. Adding a key here is the one place to extend what crosses the boundary.

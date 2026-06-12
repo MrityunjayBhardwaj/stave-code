@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
+import rehypeBaseInternalLinks from './rehype-base-internal-links.mjs'
 
 // Deployed at stave.live/docs/ — Astro's `base` makes every generated
 // URL (asset + internal link) include that prefix, so the Next app can
@@ -12,12 +13,24 @@ const BASE = process.env.STAVE_DOCS_BASE ?? '/docs/'
 export default defineConfig({
   site: 'https://stave.live',
   base: BASE,
+  // Author-written content links (markdown bodies) are emitted verbatim by
+  // Astro/Starlight — they don't get the `base` prefix that framework URLs do.
+  // This plugin prefixes root-absolute internal links in content with BASE so
+  // they resolve under `/docs/`. Base-agnostic: a no-op when BASE is `/`. (#355)
+  markdown: {
+    rehypePlugins: [[rehypeBaseInternalLinks, { base: BASE }]],
+  },
   integrations: [
     starlight({
       title: 'Stave Code',
       description:
         'Browser-native live-coding editor for music (Strudel, Sonic Pi) and visuals (p5.js, Hydra).',
       logo: { src: './src/assets/stave.svg' },
+      // Override Hero to base-prefix splash action links — Starlight renders
+      // them verbatim, and the rehype plugin can't reach frontmatter. (#355)
+      components: {
+        Hero: './src/components/Hero.astro',
+      },
       social: {
         github: 'https://github.com/MrityunjayBhardwaj/stave-code',
       },

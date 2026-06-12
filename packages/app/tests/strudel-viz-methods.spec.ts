@@ -281,14 +281,14 @@ test('inline ._pianoroll(options) — the options object reaches the sketch and 
 //
 // The signal-bus spine (pure SignalBus → per-renderer injection → PV64 backdrop
 // threading) was unit-green but unobserved on the real surfaces. "Renders
-// without error" is NOT proof of reactivity (P93 — a frozen `uKick` throws
+// without error" is NOT proof of reactivity (P93 — a frozen `sig.kick` throws
 // nothing). These four tests measure VARIANCE-OVER-TIME (reactivity) and
 // PIXEL-PRESENCE (per-codeblock color), never an error count.
 //
 // The `__STAVE_E2E__` flag (set via addInitScript before navigation) unlocks
 // two test-only window hooks in StaveApp / StrudelEditorClient:
 //   - `__staveRegisterViz(preset)` — register a one-off named viz so a custom
-//     p5/hydra sketch reading `uKick`/`u.tracks` is reachable via `.viz("name")`
+//     p5/hydra sketch reading `sig.kick`/`sig.tracks` is reachable via `.viz("name")`
 //     (inline, A/B). Calls the SAME `registerPresetAsNamedViz` the app uses for
 //     bundled presets.
 //   - `__staveOverrideVizFile(basename, code)` — replace an existing workspace
@@ -336,15 +336,15 @@ test.describe('Phase 21 — named signal bus (T5 end-to-end observation)', () =>
     }, b64)
   }
 
-  test('T5-A — uKick is reactive in a p5 inline sketch (size varies over frames)', async ({ page }) => {
-    // A `.viz()` p5 sketch draws a circle whose radius = uKick·(canvas span).
+  test('T5-A — sig.kick is reactive in a p5 inline sketch (size varies over frames)', async ({ page }) => {
+    // A `.viz()` p5 sketch draws a circle whose radius = sig.kick·(canvas span).
     // Over a `s("bd*4")` kick the bright-pixel count must VARY frame-to-frame —
-    // a dead/stale `uKick` (the U2 const-capture trap) gives range ≈ 0.
+    // a dead/stale `sig.kick` (the U2 const-capture trap) gives range ≈ 0.
     const sketch = `
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke(); fill(255, 60, 60)
-  circle(width / 2, height / 2, 4 + uKick * Math.min(width, height) * 0.9)
+  circle(width / 2, height / 2, 4 + sig.kick * Math.min(width, height) * 0.9)
 }`
     await page.evaluate((code) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -373,20 +373,20 @@ function draw() {
     for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
 
     const range = Math.max(...samples) - Math.min(...samples)
-    // The kick swings the radius across most of the canvas; a frozen uKick is
+    // The kick swings the radius across most of the canvas; a frozen sig.kick is
     // a constant circle (range 0). 5000 px is far above measurement noise and
     // far below the observed range (~40k).
     expect(range).toBeGreaterThan(5000)
   })
 
-  test('T5-B — uKick is reactive in a hydra inline sketch, with the analyser LIVE (FLAG-2)', async ({ page }) => {
-    // `s.osc(() => stave.uKick()*N)` brightness varies over frames. Crucially,
+  test('T5-B — sig.kick is reactive in a hydra inline sketch, with the analyser LIVE (FLAG-2)', async ({ page }) => {
+    // `s.osc(() => stave.sig.kick()*N)` brightness varies over frames. Crucially,
     // we ALSO assert the AudioContext is running (a real analyser is published
     // in normal playback) — this exercises the real-FFT path where the bus
     // feed/tick MUST stay live (BLOCK-1). A no-analyser run would false-green
     // the mis-placed (analyser-gated) feed/tick this test guards against.
     const sketch =
-      `s.osc(() => stave.uKick() * 90 + 1, 0.1, () => stave.uKick() * 3).out()`
+      `s.osc(() => stave.sig.kick() * 90 + 1, 0.1, () => stave.sig.kick() * 3).out()`
     await page.evaluate((code) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__staveRegisterViz({
@@ -417,15 +417,15 @@ function draw() {
       await page.waitForTimeout(160)
     }
     const range = Math.max(...lums) - Math.min(...lums)
-    // uKick swings osc frequency + saturation → brightness varies. A frozen
-    // uKick renders a constant shader (range ≈ 0). 40 (of 765 max) clears
+    // sig.kick swings osc frequency + saturation → brightness varies. A frozen
+    // sig.kick renders a constant shader (range ≈ 0). 40 (of 765 max) clears
     // compositor noise; observed range ~350.
     expect(range).toBeGreaterThan(40)
   })
 
-  test('T5-C — backdrop paints per-codeblock color from u.tracks + .color() (the headline)', async ({ page }, testInfo) => {
+  test('T5-C — backdrop paints per-codeblock color from sig.tracks + .color() (the headline)', async ({ page }, testInfo) => {
     // Override the bundled `spectrum.p5` with a backdrop sketch that walks
-    // `u.tracks` and fills a vertical band per track in `u.track(id).color`.
+    // `sig.tracks` and fills a vertical band per track in `sig.track(id).color`.
     // Two codeblocks, each `.color()`-tinted differently; the 2nd pins
     // `.spectrum()` as the backdrop. Both tints must appear in the BACKDROP
     // canvas — proving T4's compiledVizProvider trackSchedulers threading
@@ -434,11 +434,11 @@ function draw() {
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke()
-  const tracks = u.tracks || []
+  const tracks = sig.tracks || []
   const n = tracks.length
   if (n === 0) { fill(40, 40, 40); rect(0, 0, 24, 24); return }
   for (let i = 0; i < n; i++) {
-    const col = u.track(tracks[i]).color
+    const col = sig.track(tracks[i]).color
     if (col) fill(col); else fill(120, 120, 120)
     rect((i / n) * width, 0, width / n, height)
   }
@@ -496,9 +496,9 @@ function draw() {
     expect(ctrl.cyan / ctrl.total).toBeLessThan(0.05)
   })
 
-  test('T5-D — backdrop u.tracks refreshes on re-evaluate (adding a 2nd codeblock)', async ({ page }) => {
+  test('T5-D — backdrop sig.tracks refreshes on re-evaluate (adding a 2nd codeblock)', async ({ page }) => {
     // Run with one codeblock, then add a second and re-evaluate. The backdrop's
-    // `u.tracks` must grow from 1 → 2 (the new tint appears). Proves the
+    // `sig.tracks` must grow from 1 → 2 (the new tint appears). Proves the
     // identity guard re-binds trackSchedulers on re-eval (T4 deliberately left
     // engineComponents OUT of the memo guard — this OBSERVES that the scheduler
     // re-publish refreshes the per-track map anyway).
@@ -506,11 +506,11 @@ function draw() {
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke()
-  const tracks = u.tracks || []
+  const tracks = sig.tracks || []
   window.__p21bdTracks = JSON.stringify(tracks)
   const n = tracks.length || 1
   for (let i = 0; i < tracks.length; i++) {
-    const col = u.track(tracks[i]).color
+    const col = sig.track(tracks[i]).color
     if (col) fill(col); else fill(120, 120, 120)
     rect((i / n) * width, 0, width / n, height)
   }
@@ -546,10 +546,10 @@ function draw() {
   // ───────────────────────────────────────────────────────────────────────
   // Slice 2 (T4) — REAL-AUDIO (DSP) reactivity, distinct from the IR envelope.
   //
-  // Slice-1 (T5-A..D above) proved the SCHEDULER/IR feed reactive (`uKick`,
+  // Slice-1 (T5-A..D above) proved the SCHEDULER/IR feed reactive (`sig.kick`,
   // `.color`). These three prove the ANALYSER (DSP) feed: a sound's own-orbit
-  // analyser drives `u('bd').rms`/`.bass`/`.fft` and the master mix drives
-  // `u.rms`/`u.fft`. The signal is the analyser's spectrum/time-domain, NOT the
+  // analyser drives `sig('bd').rms`/`.bass`/`.fft` and the master mix drives
+  // `sig.rms`/`sig.fft`. The signal is the analyser's spectrum/time-domain, NOT the
   // envelope bump+decay — so the kick `s("bd*4")` produces a MOVING spectrum.
   //
   // Discipline:
@@ -580,8 +580,8 @@ function draw() {
     expect(acState).toBe('running')
   }
 
-  test('T4-A — u("bd").bass is reactive to REAL audio in a p5 inline sketch (size varies, analyser LIVE)', async ({ page }) => {
-    // A `.viz()` p5 sketch sizes a circle by `u('bd').bass` (a live NUMBER in
+  test('T4-A — sig("bd").bass is reactive to REAL audio in a p5 inline sketch (size varies, analyser LIVE)', async ({ page }) => {
+    // A `.viz()` p5 sketch sizes a circle by `sig('bd').bass` (a live NUMBER in
     // the p5 shape — the low-third of the resolved orbit's FFT). Over `s("bd*4")`
     // in its OWN orbit the kick's bass energy moves frame-to-frame, so the
     // bright-pixel count VARIES. This is the analyser feed (real FFT), NOT the
@@ -592,7 +592,7 @@ function draw() {
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke(); fill(60, 200, 255)
-  const bass = u('bd').bass
+  const bass = sig('bd').bass
   circle(width / 2, height / 2, 4 + bass * Math.min(width, height) * 4)
 }`
     await page.evaluate((code) => {
@@ -634,8 +634,8 @@ function draw() {
     expect(range).toBeGreaterThan(800)
   })
 
-  test('T4-B — u("bd").fft renders as bars and the spectrum VARIES over frames (+ screenshot, P74)', async ({ page }, testInfo) => {
-    // A sketch draws `u('bd').fft` (a live ARRAY in the p5 shape) as vertical
+  test('T4-B — sig("bd").fft renders as bars and the spectrum VARIES over frames (+ screenshot, P74)', async ({ page }, testInfo) => {
+    // A sketch draws `sig('bd').fft` (a live ARRAY in the p5 shape) as vertical
     // bars. Over `s("bd*4")` the spectrum moves, so the per-frame total bar
     // energy (sum of bar heights, read as bright-pixel count) VARIES. A frozen
     // or empty fft → identical frames (range 0). We attach a screenshot so the
@@ -645,7 +645,7 @@ function draw() {
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke(); fill(120, 255, 120)
-  const fft = u('bd').fft
+  const fft = sig('bd').fft
   const n = fft.length
   if (n === 0) { fill(80, 0, 0); rect(0, 0, 12, 12); return }
   const w = width / n
@@ -697,11 +697,11 @@ function draw() {
     expect(range).toBeGreaterThan(500)
   })
 
-  test('T4-C — master u.rms / u.fft are reactive to the overall mix (variance over frames)', async ({ page }) => {
-    // A sketch reads the MASTER accessors `u.rms` (a live getter NUMBER) and
-    // `u.fft` (a live getter ARRAY) — the combined-mix analyser, distinct from a
-    // per-sound orbit. Two codeblocks feed the master; `u.rms` drives a circle
-    // and `u.fft` energy tints it. Over the mix the size + tint VARY frame to
+  test('T4-C — master sig.rms / sig.fft are reactive to the overall mix (variance over frames)', async ({ page }) => {
+    // A sketch reads the MASTER accessors `sig.rms` (a live getter NUMBER) and
+    // `sig.fft` (a live getter ARRAY) — the combined-mix analyser, distinct from a
+    // per-sound orbit. Two codeblocks feed the master; `sig.rms` drives a circle
+    // and `sig.fft` energy tints it. Over the mix the size + tint VARY frame to
     // frame. Frozen master analyser → constant (range 0).
     const sketch = `
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
@@ -710,8 +710,8 @@ function draw() {
   // master rms (time-domain) + total fft energy (frequency-domain) — BOTH the
   // master accessors. Either moving over the mix swings the radius; summing
   // them gives the master signal a robust dynamic range to observe.
-  const rms = u.rms
-  const fft = u.fft
+  const rms = sig.rms
+  const fft = sig.fft
   let e = 0; for (let i = 0; i < fft.length; i++) e += fft[i]
   const drive = rms + e / Math.max(1, fft.length)
   circle(width / 2, height / 2, 4 + drive * Math.min(width, height) * 2.2)
@@ -763,10 +763,10 @@ function draw() {
 // `stave:signalAliases` localStorage key (editorRegistry), the renderers MERGE
 // it into the (pure) SignalBus at MOUNT — built-ins first, custom LAST so a
 // user override WINS — and expose every custom name as a live bare GETTER on
-// `staveUniforms` (p5, resolved through the inner `with (staveUniforms)`) and a
-// `stave.<name>()` thunk on the bag (hydra, which has no bare scope). These
+// `sig` (p5, resolved through the inner `with (staveUniforms)`) and a
+// `stave.sig.<name>()` thunk on the bag (hydra, which has no bare scope). These
 // three tests OBSERVE that a custom alias drives a viz on the REAL inline
-// surface — never "renders without error" (P93: a dead bare `kick` is either a
+// surface — never "renders without error" (P93: a dead `sig.kick` is either a
 // ReferenceError on the sketch error path OR a frozen 0 with range≈0 — both
 // caught by variance-over-frames). assertAudioLive (P96/FLAG-2) guards the
 // audio path so a silent context can't false-green a "reactive" claim.
@@ -841,13 +841,13 @@ test.describe('Phase 21 aliases — custom signal alias drives a viz (T4 observa
     }, b64)
   }
 
-  test('T4-A — custom bare `kick` (and u("kick").env) sizes a p5 sketch reactively over the custom alias', async ({ page }) => {
+  test('T4-A — custom `sig.kick` (and sig("kick").env) sizes a p5 sketch reactively over the custom alias', async ({ page }) => {
     // The alias `kick → ['bd','kick9']` was seeded before mount. A p5 sketch
-    // sizes a circle by BARE `kick` (resolved through the inner
+    // sizes a circle by `sig.kick` (resolved through the inner
     // `with (staveUniforms)` — proves the renderer injected a live getter for
-    // the custom name) and tints it by `u('kick').env` (the accessor form — the
+    // the custom name) and tints it by `sig('kick').env` (the accessor form — the
     // SignalBus resolves the same alias). Over `s("bd*4 kick9*2")` BOTH samples
-    // fire, so the bright-pixel count VARIES frame-to-frame. A dead bare `kick`
+    // fire, so the bright-pixel count VARIES frame-to-frame. A dead `sig.kick`
     // is either a ReferenceError (surfaces on the sketch error path → no canvas,
     // test times out / errors) OR a frozen 0 (range ≈ 0) — both are REAL
     // failures meaning the T2 injection didn't reach this surface (P93).
@@ -858,12 +858,12 @@ test.describe('Phase 21 aliases — custom signal alias drives a viz (T4 observa
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke()
-  // tint by the ACCESSOR form of the same custom alias (u('kick').env) — a
+  // tint by the ACCESSOR form of the same custom alias (sig('kick').env) — a
   // second, independent resolution path through the bus.
-  const t = u('kick').env
+  const t = sig('kick').env
   fill(255, 60 + t * 180, 60)
-  // size by the BARE custom name — resolved through with(staveUniforms).
-  circle(width / 2, height / 2, 4 + kick * Math.min(width, height) * 0.9)
+  // size by the custom name on sig — resolved through with(staveUniforms).
+  circle(width / 2, height / 2, 4 + sig.kick * Math.min(width, height) * 0.9)
 }`
     await page.evaluate((code) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -892,33 +892,33 @@ function draw() {
     const samples: number[] = []
     for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
 
-    // A ReferenceError on bare `kick` would surface here (the sketch never
+    // A ReferenceError on `sig.kick` would surface here (the sketch never
     // painted → all-zero samples AND a pageerror). Fail loud if so.
-    expect(errors, `sketch errors (bare \`kick\` may be undefined): ${errors.join(' | ')}`).toEqual([])
+    expect(errors, `sketch errors (\`sig.kick\` may be undefined): ${errors.join(' | ')}`).toEqual([])
 
     const range = Math.max(...samples) - Math.min(...samples)
-    // The custom `kick` alias swings the radius across most of the canvas; a
+    // The custom `sig.kick` alias swings the radius across most of the canvas; a
     // frozen/unresolved alias is a constant circle (range 0). 5000 px clears
     // measurement noise (mirror T5-A's threshold; observed range ~tens of k).
     expect(range).toBeGreaterThan(5000)
   })
 
-  test('T4-B — custom `stave.kick()` thunk drives a hydra sketch reactively (analyser LIVE)', async ({ page }) => {
+  test('T4-B — custom `stave.sig.kick()` thunk drives a hydra sketch reactively (analyser LIVE)', async ({ page }) => {
     // Same alias seeded before mount. A hydra sketch uses the custom
-    // `stave.kick()` thunk (injected on the bag at mount — hydra has no bare
+    // `stave.sig.kick()` thunk (injected on the bag at mount — hydra has no bare
     // scope) to drive osc frequency + brightness over `s("bd*4 kick9*2")`.
     // Brightness varies over frames. assertAudioLive (P96/FLAG-2) confirms a
     // real running context — a dead one would publish a silent analyser and
     // false-green a flat shader.
     //
-    // `.brightness(() => stave.kick() - 0.25)` swings the WHOLE-FRAME mean
+    // `.brightness(() => stave.sig.kick() - 0.25)` swings the WHOLE-FRAME mean
     // luminance directly (negative at rest, positive on a kick) — a far larger
     // mean-lum delta than osc-frequency alone, which only moves the stripe
     // PHASE (similar mean across frames). This keeps the probe robustly above
     // the compositor-noise floor instead of skimming it (observed 34.6 once
     // with the frequency-only driver — a real but marginal signal).
     const sketch =
-      `s.osc(() => stave.kick() * 90 + 8, 0.1, 0.5).brightness(() => stave.kick() * 1.2 - 0.25).out()`
+      `s.osc(() => stave.sig.kick() * 90 + 8, 0.1, 0.5).brightness(() => stave.sig.kick() * 1.2 - 0.25).out()`
     await page.evaluate((code) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__staveRegisterViz({
@@ -951,11 +951,11 @@ function draw() {
     expect(range).toBeGreaterThan(40)
   })
 
-  test('T4-C — built-in `uKick` still reacts with a custom alias seeded (merge did not clobber built-ins)', async ({ page }) => {
+  test('T4-C — built-in `sig.kick` still reacts with a custom alias seeded (merge did not clobber built-ins)', async ({ page }) => {
     // Regression: the merge `{ ...ALIAS_MAP, ...getSignalAliases() }` must keep
     // the built-ins. With the custom `kick`/`lead` aliases seeded, a sketch
-    // using the BUILT-IN bare `uKick` over `s("bd*4")` must STILL react — a
-    // clobbered ALIAS_MAP would freeze `uKick` (range 0). Same variance probe
+    // using the BUILT-IN `sig.kick` over `s("bd*4")` must STILL react — a
+    // clobbered ALIAS_MAP would freeze `sig.kick` (range 0). Same variance probe
     // as T5-A, now run under a non-empty custom alias map.
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(String(e)))
@@ -964,7 +964,7 @@ function draw() {
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke(); fill(255, 60, 60)
-  circle(width / 2, height / 2, 4 + uKick * Math.min(width, height) * 0.9)
+  circle(width / 2, height / 2, 4 + sig.kick * Math.min(width, height) * 0.9)
 }`
     await page.evaluate((code) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -994,7 +994,7 @@ function draw() {
 
     expect(errors, `sketch errors with custom alias seeded: ${errors.join(' | ')}`).toEqual([])
     const range = Math.max(...samples) - Math.min(...samples)
-    // Built-in uKick still swings the radius despite the custom map. A clobbered
+    // Built-in sig.kick still swings the radius despite the custom map. A clobbered
     // built-in would freeze it (range 0). 5000 px mirror T5-A.
     expect(range).toBeGreaterThan(5000)
   })

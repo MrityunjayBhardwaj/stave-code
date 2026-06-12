@@ -2,8 +2,8 @@ import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
 import React__default, { RefObject, ReactNode } from 'react';
 import * as p5 from 'p5';
-import { V as VizQualityLevel } from './vizConfig-9gxrG-J4.js';
-export { D as DEFAULT_VIZ_CONFIG, a as DEFAULT_VIZ_QUALITY, b as VizConfig, c as VizQualitySettings, W as WorkerVizConfig, d as createVizConfig, e as deriveVizQuality, g as getVizConfig, s as setVizConfig, u as updateVizConfig } from './vizConfig-9gxrG-J4.js';
+import { V as VizQualityLevel } from './vizConfig-Dpw8jb9R.js';
+export { D as DEFAULT_VIZ_CONFIG, a as DEFAULT_VIZ_QUALITY, b as VizConfig, c as VizQualitySettings, W as WorkerVizConfig, d as createVizConfig, e as deriveVizQuality, g as getVizConfig, s as setVizConfig, u as updateVizConfig } from './vizConfig-Dpw8jb9R.js';
 
 /**
  * IREvent — the universal music event.
@@ -881,7 +881,7 @@ declare class BreakpointStore {
 /** A per-sound or per-track reading as live NUMBERS (p5 D-01 shape — getters,
  *  NOT thunks; the renderer reads them directly inside `draw`). DSP scalars
  *  (`rms`/`bass`/`mid`/`treble`) are live numbers; DSP arrays (`fft`/`wave`)
- *  are live `number[]` indexed directly (`u('bd').fft[i]`). All read fresh per
+ *  are live `number[]` indexed directly (`sig('bd').fft[i]`). All read fresh per
  *  access — the reading object is produced by a getter through `with`. */
 interface P5SignalReading {
     env: number;
@@ -901,11 +901,11 @@ interface P5SignalReading {
     /** Time-domain waveform -1..1, `number[]`. */
     wave: number[];
 }
-/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props.
- *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk.
- *  `u` itself also carries the MASTER-mix DSP (Slice 2): `u.rms`/`u.bass`/… live
- *  number getters + `u.fft`/`u.wave` live arrays. */
-interface P5SignalAccessor {
+/** The single `sig` namespace (#351) — a callable carrying every Stave-injected
+ *  viz signal. p5 shape (D-01): `sig('bd').env` is a NUMBER (live each read), not
+ *  a thunk; the per-drum scalars (`sig.kick`…) and master DSP (`sig.rms`/`sig.fft`)
+ *  are live getters on the SAME object. */
+interface SigAccessor {
     (sound: string): P5SignalReading;
     /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
     track: (id: string) => P5SignalReading;
@@ -913,6 +913,15 @@ interface P5SignalAccessor {
     tracks: string[];
     /** Enumerate distinct sounds seen through the envelope feed. */
     sounds: string[];
+    kick: number;
+    snare: number;
+    hat: number;
+    openHat: number;
+    clap: number;
+    rim: number;
+    tom: number;
+    /** Loudest active hit 0..1, global (was `uKeyVelocity`). */
+    keyVelocity: number;
     /** Master-mix time-domain RMS, 0..1 (live getter). */
     rms: number;
     /** Master-mix low-band magnitude, 0..1 (live getter). */
@@ -930,44 +939,28 @@ interface P5SignalAccessor {
      * detail (default); "performance mode" lowers it. A CPU-tessellation-bound
      * sketch (line meshes — the class a resolution drop does NOT help, #232)
      * should scale its segment / history COUNT by this, e.g.
-     * `Math.max(2, Math.round(BASE_SEGMENTS * u.density))`. Fill/fragment-bound
+     * `Math.max(2, Math.round(BASE_SEGMENTS * sig.density))`. Fill/fragment-bound
      * sketches gain nothing here and instead ride the render-resolution knob the
      * renderer applies composite-side. Reads `vizConfig.density` fresh each access
      * (worker: its marshalled singleton — the config-marshal channel feeds it). */
     density: number;
 }
 /**
- * Phase 21 — the live named-signal uniform object handed to a p5 sketch as the
- * THIRD `new Function` arg. Bare `uKick…uTom` / `uKeyVelocity` are GETTERS
- * (p5 D-01: live numbers, NOT thunks) resolved per-frame through the inner
- * `with (staveUniforms)`. `u` is the callable accessor (also mirrored onto
- * `stave.u`, D-02).
+ * Phase 21 / #351 — the live signal object handed to a p5 sketch as the THIRD
+ * `new Function` arg. It exposes the single `sig` namespace (mirrored onto
+ * `stave.sig`, D-02), resolved bare per-frame through the inner
+ * `with (staveUniforms)`. The per-drum scalars / master DSP are getters ON `sig`
+ * itself (`sig.kick`, `sig.fft`) — p5 D-01: live numbers, NOT thunks.
  *
  * `__tick` is a NON-enumerable hook the draw wrapper calls ONCE per frame
  * (`bus.tick(); bus.refreshActive(bus.now())`) — the decay tick fires exactly
  * once per draw (U2), NEVER inside a getter (a getter-tick double-ticks when a
- * sketch reads N uniforms → decay collapses to 0). Built by `P5VizRenderer`,
+ * sketch reads N signals → decay collapses to 0). Built by `P5VizRenderer`,
  * which owns the (pure) SignalBus; the compiler stays renderer-agnostic and
  * only consumes the shape.
  */
 interface StaveUniforms {
-    readonly uKick: number;
-    readonly uSnare: number;
-    readonly uHat: number;
-    readonly uOpenHat: number;
-    readonly uClap: number;
-    readonly uRim: number;
-    readonly uTom: number;
-    readonly uKeyVelocity: number;
-    /** Master-mix time-domain RMS, 0..1. */
-    readonly uRms: number;
-    /** Master-mix low-band magnitude, 0..1. */
-    readonly uBass: number;
-    /** Master-mix mid-band magnitude, 0..1. */
-    readonly uMid: number;
-    /** Master-mix high-band magnitude, 0..1. */
-    readonly uTreble: number;
-    readonly u: P5SignalAccessor;
+    readonly sig: SigAccessor;
     /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
      *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
     __tick?: () => void;
@@ -975,7 +968,7 @@ interface StaveUniforms {
      * Custom alias getters (Phase 21 aliases). A user-defined alias (e.g.
      * `kick → bd`) is injected at mount by `P5VizRenderer` as a live getter
      * (`Object.defineProperty(uniforms, name, { get: () => bus.envValue(name) })`)
-     * for every merged-map name NOT already a built-in uniform. The index
+     * for every merged-map name NOT already a built-in signal. The index
      * signature lets `uniforms[name]` typecheck under strict TS; reads resolve
      * per-frame through the inner `with (staveUniforms)` (full-lifecycle) and the
      * legacy `with (staveUniforms)` wrap (legacy draw-body). `__tick` is read via
@@ -1693,48 +1686,25 @@ interface HydraStaveBag {
      * NaN a shader uniform even during silence.
      */
     H: (trackId: string, field?: keyof IREvent) => () => number;
-    /** Active `bd` (kick) envelope level, 0..1. */
-    uKick: () => number;
-    /** Active `sd` (snare) envelope level, 0..1. */
-    uSnare: () => number;
-    /** Active `hh` (closed hat) envelope level, 0..1. */
-    uHat: () => number;
-    /** Active `oh` (open hat) envelope level, 0..1. */
-    uOpenHat: () => number;
-    /** Active `cp` (clap) envelope level, 0..1. */
-    uClap: () => number;
-    /** Active `rim` envelope level, 0..1. */
-    uRim: () => number;
-    /** Active tom envelope level (max over `lt`/`mt`/`ht`), 0..1. */
-    uTom: () => number;
-    /** Active event velocity (global, 0..1). */
-    uKeyVelocity: () => number;
-    /** Master-mix time-domain RMS, 0..1. */
-    uRms: () => number;
-    /** Master-mix low-band magnitude, 0..1. */
-    uBass: () => number;
-    /** Master-mix mid-band magnitude, 0..1. */
-    uMid: () => number;
-    /** Master-mix high-band magnitude, 0..1. */
-    uTreble: () => number;
     /**
-     * General per-sound / per-track signal accessor.
+     * The single `sig` namespace (#351). One callable carrying every Stave signal
+     * as `() => number` thunks (so hydra calls them natively each frame), plus the
+     * per-sound/per-track accessor and master DSP:
      *
-     *   osc(() => u('bd').env() * 10).out(o0)
-     *   osc(() => u('bd').rms() * 10).out(o0)
-     *   shape(() => u('bd').fft[0] * 4).out(o0)   // arrays index natively
-     *   u.track('$0').color()
-     *   osc(() => u.rms() * 10).out(o0)           // master scalar thunk
-     *   shape(() => u.fft[2] * 6).out(o0)          // master spectrum array
+     *   osc(() => stave.sig.kick() * 10).out(o0)        // per-drum envelope thunk
+     *   osc(() => stave.sig('bd').env() * 10).out(o0)   // one sound
+     *   shape(() => stave.sig('bd').fft[0] * 4).out(o0) // arrays index natively
+     *   stave.sig.track('$0').color()
+     *   osc(() => stave.sig.rms() * 10).out(o0)         // master scalar thunk
+     *   shape(() => stave.sig.fft[2] * 6).out(o0)        // master spectrum array
      *
-     * `u(sound)` returns thunks for `.env`/`.velocity`/`.note`/`.color` AND the
-     * DSP scalars `.rms`/`.bass`/`.mid`/`.treble` (all `() => number`), plus the
-     * live `.fft`/`.wave` ARRAYS (indexed natively, NOT thunk-wrapped). `u.track(id)`
-     * keys on the SCHEDULER key space (`$0`/`drums`, NOT `IREvent.trackId`). `u`
-     * itself carries the MASTER-mix DSP: `u.rms()`/… thunks + `u.fft`/`u.wave`
-     * arrays. `u.tracks` / `u.sounds` enumerate.
+     * The per-drum scalars (`sig.kick`…`sig.tom`), global `sig.keyVelocity`, and
+     * master DSP (`sig.rms`…`sig.treble`) are all `() => number` thunks ON `sig`.
+     * `sig('bd')` / `sig.track('$0')` return per-reading thunks; `sig.fft`/`sig.wave`
+     * are live arrays; `sig.tracks`/`sig.sounds` enumerate. The bus ticks ONCE per
+     * rAF in `pumpAudio` (U2 — never inside a thunk); thunks are pure reads.
      */
-    u: HydraSignalAccessor;
+    sig: HydraSigAccessor;
     [customAlias: string]: any;
 }
 /** A per-sound or per-track reading exposed as `() => value` thunks (D-01).
@@ -1761,7 +1731,7 @@ interface HydraSignalThunks {
 }
 /** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props AND
  *  the MASTER-mix DSP feed (Slice 2): scalar thunks + live arrays. */
-interface HydraSignalAccessor {
+interface HydraSigAccessor {
     (sound: string): HydraSignalThunks;
     /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
     track: (id: string) => HydraSignalThunks;
@@ -1769,6 +1739,15 @@ interface HydraSignalAccessor {
     tracks: string[];
     /** Enumerate distinct sounds seen through the envelope feed. */
     sounds: string[];
+    kick: () => number;
+    snare: () => number;
+    hat: () => number;
+    openHat: () => number;
+    clap: () => number;
+    rim: () => number;
+    tom: () => number;
+    /** Active event velocity, global, 0..1 thunk (was `uKeyVelocity`). */
+    keyVelocity: () => number;
     /** Master-mix time-domain RMS, 0..1 (thunk). */
     rms: () => number;
     /** Master-mix low-band magnitude, 0..1 (thunk). */
@@ -3999,8 +3978,8 @@ interface InjectedGlobal {
     /**
      * Section the entry belongs to in the reference block. Entries are listed in
      * group order; {@link formatStaveInputs} emits a `// — <group> —` header when
-     * the group changes. Makes the scalar-vs-accessor rule visible at a glance
-     * (bare `uXxx` = a single number; arrays/lookups live on `u`).
+     * the group changes. Makes the one-namespace rule visible at a glance
+     * (every signal lives on `sig` — `sig.kick` a number, `sig.fft` an array).
      */
     readonly group: string;
     /** Live-value source on the master bus, when the token carries one. */
@@ -4697,8 +4676,8 @@ declare const SPECTRUM_P5_CODE = "// Stave p5 viz \u2014 Spectrum (scrolling wat
 declare const SPIRAL_P5_CODE = "// Stave p5 viz \u2014 Spiral\nfunction setup() {\n  createCanvas(300, 200)\n  pixelDensity(window.devicePixelRatio || 1)\n  noFill()\n}\nfunction xySpiral(rot, margin, cx, cy, rotate) {\n  const a = ((rot + rotate) * 360 - 90) * PI / 180\n  return [cx + cos(a) * margin * rot, cy + sin(a) * margin * rot]\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  const haps = stave.scheduler.query(now - 2, now + 1)\n  const cx = width / 2, cy = height / 2\n  const sz = min(width, height) * 0.38, mg = sz / 3\n  for (const h of haps) {\n    const active = h.begin <= now && h.end > now\n    const from = h.begin - now + 3, to = h.end - now + 3 - 0.005\n    const op = max(0, 1 - abs((h.begin - now) / 2))\n    const c = color(h.color ?? (active ? '#75baff' : '#8a919966'))\n    c.setAlpha(op * 255)\n    stroke(c); strokeWeight(mg / 2); strokeCap(ROUND)\n    beginShape()\n    for (let a = from; a <= to; a += 1/60) {\n      const [x, y] = xySpiral(a, mg, cx, cy, now)\n      vertex(x, y)\n    }\n    endShape()\n  }\n  stroke(255); strokeWeight(mg / 2)\n  beginShape()\n  for (let a = 2.98; a <= 3; a += 1/60) {\n    const [x, y] = xySpiral(a, mg, cx, cy, now)\n    vertex(x, y)\n  }\n  endShape()\n}";
 declare const PITCHWHEEL_P5_CODE = "// Stave p5 viz \u2014 Pitchwheel\nconst ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)\nfunction setup() {\n  createCanvas(300, 200)\n  pixelDensity(window.devicePixelRatio || 1)\n}\nfunction freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }\nfunction circPos(cx, cy, r, a) {\n  const rad = a * TWO_PI\n  return [sin(rad) * r + cx, cos(rad) * r + cy]\n}\n// Hz from a hap. Strudel leaves note as a NAME string and freq null until\n// superdough renders, so parse the note name to MIDI ourselves (h.freq is null\n// here \u2014 relying on it leaves every note stuck at the default pitch).\nfunction hapFreq(h) {\n  if (typeof h.freq === 'number') return h.freq\n  let n = h.note\n  if (typeof n === 'string') {\n    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)\n    if (!m) return null\n    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]\n    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)\n  }\n  if (typeof n !== 'number') return null\n  return 440 * pow(2, (n - 69) / 12)\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  let haps = stave.scheduler.query(now - 0.01, now + 0.01)\n  haps = haps.filter(h => h.begin <= now && h.end > now)\n  const sz = min(width, height), r = sz / 2 - 12\n  const cx = width / 2, cy = height / 2\n  noStroke(); fill(117, 186, 255, 64)\n  for (let i = 0; i < 12; i++) {\n    const a = freq2angle(ROOT_FREQ * pow(2, i / 12))\n    const [x, y] = circPos(cx, cy, r, a)\n    circle(x, y, 7)\n  }\n  noFill(); stroke(117, 186, 255, 48); strokeWeight(1)\n  circle(cx, cy, r * 2)\n  for (const h of haps) {\n    const freq = hapFreq(h)\n    if (freq == null) continue\n    const a = freq2angle(freq)\n    const [x, y] = circPos(cx, cy, r, a)\n    const c = h.color ?? '#75baff'\n    stroke(c); strokeWeight(2)\n    line(cx, cy, x, y)\n    fill(c); noStroke()\n    circle(x, y, 12)\n  }\n}";
 declare const WORDFALL_P5_CODE = "// Stave p5 viz \u2014 Wordfall (vertical pianoroll with labels)\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  pixelDensity(window.devicePixelRatio || 1)\n}\nfunction draw() {\n  clear()\n  if (!stave.scheduler) return\n  const now = stave.scheduler.now()\n  const CYCLES = 4, PH = 0.5\n  const haps = stave.scheduler.query(now - CYCLES * PH, now + CYCLES * (1 - PH))\n  const vals = [...new Set(haps.map(h => h.note ?? h.s ?? 0))].sort()\n  if (!vals.length) return\n  const bw = width / vals.length\n  for (const h of haps) {\n    const active = h.begin <= now && h.end > now\n    const dur = h.end - h.begin\n    const yOff = h.begin - now\n    const y = height * PH - (yOff / CYCLES) * height\n    const dH = (dur / CYCLES) * height\n    const v = h.note ?? h.s ?? 0\n    const x = vals.indexOf(v) * bw\n    noStroke()\n    if (active) fill(255)\n    else { const c = color(h.color ?? '#75baff'); c.setAlpha(160); fill(c) }\n    rect(x + 1, y + 1, bw - 2, dH - 2)\n    if (dH > 10 && bw > 16) {\n      const label = h.note != null ? String(h.note) : (h.s ?? '')\n      textSize(min(bw * 0.55, dH * 0.7, 11))\n      textAlign(LEFT, TOP); fill(active ? 0 : 255); noStroke()\n      text(label, x + 3, y + 3)\n    }\n  }\n  stroke(255, 255, 255, 128); strokeWeight(1)\n  line(0, height * PH, width, height * PH)\n}";
-declare const SIGNALS_SPECTRUM_P5_CODE = "// Stave p5 viz \u2014 Signals (Spectrum)\n// Showcases the named musical-signal bus. Try it over:  s(\"bd*4 hh*8\")\n//\n// The bus is exposed BARE in p5 (via the sketch's stave namespace), so you can\n// read these directly \u2014 they are LIVE NUMBERS / ARRAYS, refreshed every draw():\n//\n//   u('bd')        \u2014 the 'bd' (kick) sound's live signals (a SignalReading).\n//   u('bd').fft    \u2014 that sound's spectrum: a number[] of 32 buckets, each 0..1\n//                    (real audio off the kick's OWN analyser/orbit). [] if muted.\n//   u('bd').rms    \u2014 that sound's loudness 0..1. .bass/.mid/.treble also exist.\n//   uKick          \u2014 the kick ENVELOPE, 0..1, bumped on each hit, decaying ~0.92\n//                    per frame. uSnare / uHat / uClap / uTom \u2026 are siblings.\n//   u.fft          \u2014 the MASTER mix spectrum (combined audio), same shape.\n//\n// In hydra these same names are () => number THUNKS \u2014 see \"Signals (Bands)\".\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\nfunction draw() {\n  clear()\n\n  // \u2500\u2500 Spectrum bars from the kick's own audio: u('bd').fft is a number[] \u2500\u2500\u2500\u2500\u2500\u2500\n  // Each bucket is 0..1. We fall back to the master mix (u.fft) so the demo\n  // still moves before any 'bd' has fired its analyser.\n  const spectrum = (u('bd').fft.length ? u('bd').fft : u.fft) || []\n  const bw = width / Math.max(1, spectrum.length)\n  for (let i = 0; i < spectrum.length; i++) {\n    const v = spectrum[i]            // 0..1 magnitude for this band\n    const h = v * height\n    fill(117, 186, 255, 180 + v * 75)\n    rect(i * bw, height - h, bw - 1, h)\n  }\n\n  // \u2500\u2500 A circle pulsed by uKick (a live NUMBER 0..1 in p5) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  // uKick bumps to ~1 on each kick hit and decays each frame, so the circle\n  // punches outward on the beat. (hydra would call it: uKick().)\n  const base = min(width, height) * 0.18\n  const r = base + uKick * base * 1.6\n  noFill()\n  stroke(255, 255, 255, 120 + uKick * 135)\n  strokeWeight(2 + uKick * 4)\n  circle(width / 2, height / 2, r * 2)\n\n  // Inner dot brightens with overall loudness (master RMS, a number in p5).\n  noStroke()\n  fill(255, 255, 255, 60 + uRms * 195)\n  circle(width / 2, height / 2, base * 0.5)\n}";
-declare const SIGNALS_BACKDROP_P5_CODE = "// Stave p5 viz \u2014 Signals (Backdrop)\n// One color band per code block (track). Showcases the per-track side of the\n// bus: u.tracks enumerates the live track keys, and u.track(id).color is the\n// color that block declared in the music via .color() (e.g. in Strudel:\n//   $: s(\"bd*4\").color(\"#f97316\")\n//   $: s(\"hh*8\").color(\"#06b6d4\")\n// ). Each band's brightness follows that track's loudness (rms).\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\n// Parse a \"#rrggbb\" / \"#rgb\" hap color into [r,g,b]; null if unparseable.\nfunction parseHex(hex) {\n  const s = String(hex).replace('#', '')\n  if (s.length === 6) return [parseInt(s.slice(0,2),16), parseInt(s.slice(2,4),16), parseInt(s.slice(4,6),16)]\n  if (s.length === 3) return [parseInt(s[0]+s[0],16), parseInt(s[1]+s[1],16), parseInt(s[2]+s[2],16)]\n  return null\n}\n\nfunction draw() {\n  clear()\n\n  // u.tracks \u2014 the live track keys ('$0','$1',\u2026 anonymous, or 'd1','drums'\u2026).\n  const tracks = u.tracks || []\n  if (!tracks.length) {\n    fill(120); textAlign(CENTER, CENTER); textSize(13)\n    text('play a multi-block pattern\u2026', width / 2, height / 2)\n    return\n  }\n\n  const bandH = height / tracks.length\n  for (let i = 0; i < tracks.length; i++) {\n    const id = tracks[i]\n    const reading = u.track(id)            // this track's live SignalReading\n    // .color \u2014 the color this block set with .color() in the music. p5: a value\n    // (string|null). Fall back to a neutral blue if the block set none.\n    const rgb = parseHex(reading.color) || [117, 186, 255]\n    // .rms \u2014 this track's loudness 0..1 (own analyser; 0 if silent). Drives the\n    // band's brightness so the active block lights up.\n    const lvl = reading.rms\n    fill(rgb[0], rgb[1], rgb[2], 60 + lvl * 195)\n    rect(0, i * bandH, width, bandH)\n  }\n}";
+declare const SIGNALS_SPECTRUM_P5_CODE = "// Stave p5 viz \u2014 Signals (Spectrum)\n// Showcases the named musical-signal bus. Try it over:  s(\"bd*4 hh*8\")\n//\n// Every signal lives on the 'sig' namespace in p5 \u2014 LIVE NUMBERS / ARRAYS,\n// refreshed every draw():\n//\n//   sig('bd')      \u2014 the 'bd' (kick) sound's live signals (a SignalReading).\n//   sig('bd').fft  \u2014 that sound's spectrum: a number[] of 32 buckets, each 0..1\n//                    (real audio off the kick's OWN analyser/orbit). [] if muted.\n//   sig('bd').rms  \u2014 that sound's loudness 0..1. .bass/.mid/.treble also exist.\n//   sig.kick       \u2014 the kick ENVELOPE, 0..1, bumped on each hit, decaying ~0.92\n//                    per frame. sig.snare / sig.hat / sig.clap / sig.tom \u2026 are siblings.\n//   sig.fft        \u2014 the MASTER mix spectrum (combined audio), same shape.\n//\n// In hydra these same names are () => number THUNKS \u2014 see \"Signals (Bands)\".\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\nfunction draw() {\n  clear()\n\n  // \u2500\u2500 Spectrum bars from the kick's own audio: sig('bd').fft is a number[] \u2500\u2500\u2500\u2500\n  // Each bucket is 0..1. We fall back to the master mix (sig.fft) so the demo\n  // still moves before any 'bd' has fired its analyser.\n  const spectrum = (sig('bd').fft.length ? sig('bd').fft : sig.fft) || []\n  const bw = width / Math.max(1, spectrum.length)\n  for (let i = 0; i < spectrum.length; i++) {\n    const v = spectrum[i]            // 0..1 magnitude for this band\n    const h = v * height\n    fill(117, 186, 255, 180 + v * 75)\n    rect(i * bw, height - h, bw - 1, h)\n  }\n\n  // \u2500\u2500 A circle pulsed by sig.kick (a live NUMBER 0..1 in p5) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  // sig.kick bumps to ~1 on each kick hit and decays each frame, so the circle\n  // punches outward on the beat. (hydra would call it: sig.kick().)\n  const base = min(width, height) * 0.18\n  const r = base + sig.kick * base * 1.6\n  noFill()\n  stroke(255, 255, 255, 120 + sig.kick * 135)\n  strokeWeight(2 + sig.kick * 4)\n  circle(width / 2, height / 2, r * 2)\n\n  // Inner dot brightens with overall loudness (master RMS, a number in p5).\n  noStroke()\n  fill(255, 255, 255, 60 + sig.rms * 195)\n  circle(width / 2, height / 2, base * 0.5)\n}";
+declare const SIGNALS_BACKDROP_P5_CODE = "// Stave p5 viz \u2014 Signals (Backdrop)\n// One color band per code block (track). Showcases the per-track side of the\n// bus: sig.tracks enumerates the live track keys, and sig.track(id).color is the\n// color that block declared in the music via .color() (e.g. in Strudel:\n//   $: s(\"bd*4\").color(\"#f97316\")\n//   $: s(\"hh*8\").color(\"#06b6d4\")\n// ). Each band's brightness follows that track's loudness (rms).\n\nfunction setup() {\n  createCanvas(stave.width, stave.height)\n  noStroke()\n}\n\n// Parse a \"#rrggbb\" / \"#rgb\" hap color into [r,g,b]; null if unparseable.\nfunction parseHex(hex) {\n  const s = String(hex).replace('#', '')\n  if (s.length === 6) return [parseInt(s.slice(0,2),16), parseInt(s.slice(2,4),16), parseInt(s.slice(4,6),16)]\n  if (s.length === 3) return [parseInt(s[0]+s[0],16), parseInt(s[1]+s[1],16), parseInt(s[2]+s[2],16)]\n  return null\n}\n\nfunction draw() {\n  clear()\n\n  // sig.tracks \u2014 the live track keys ('$0','$1',\u2026 anonymous, or 'd1','drums'\u2026).\n  const tracks = sig.tracks || []\n  if (!tracks.length) {\n    fill(120); textAlign(CENTER, CENTER); textSize(13)\n    text('play a multi-block pattern\u2026', width / 2, height / 2)\n    return\n  }\n\n  const bandH = height / tracks.length\n  for (let i = 0; i < tracks.length; i++) {\n    const id = tracks[i]\n    const reading = sig.track(id)          // this track's live SignalReading\n    // .color \u2014 the color this block set with .color() in the music. p5: a value\n    // (string|null). Fall back to a neutral blue if the block set none.\n    const rgb = parseHex(reading.color) || [117, 186, 255]\n    // .rms \u2014 this track's loudness 0..1 (own analyser; 0 if silent). Drives the\n    // band's brightness so the active block lights up.\n    const lvl = reading.rms\n    fill(rgb[0], rgb[1], rgb[2], 60 + lvl * 195)\n    rect(0, i * bandH, width, bandH)\n  }\n}";
 
 /**
  * WorkspaceShell — Phase 10.2 Task 04.

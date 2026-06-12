@@ -69,7 +69,7 @@ const PAT = [
 ].join('\n')
 
 const VIZ = `function setup(){ createCanvas(stave.width, stave.height) }
-function draw(){ background(10,10,20); stroke(120,180,255); for(let i=0;i<60;i++){ line(i*8, 0, i*8, (u.fft[i%u.fft.length]||0)*height) } }`
+function draw(){ background(10,10,20); stroke(120,180,255); for(let i=0;i<60;i++){ line(i*8, 0, i*8, (sig.fft[i%sig.fft.length]||0)*height) } }`
 
 async function setCode(page: Page, code: string): Promise<void> {
   const ok = await page.evaluate((c) => {

@@ -1,7 +1,7 @@
 /**
  * Signal-bus docs (Phase 21 T1) — hover resolves the bus symbols/fields,
- * identifier completion narrows to `uKick` for `uK`, the targeted dot provider
- * fires for the FIELDS only after a bus accessor (`u('bd').`) and stays silent
+ * identifier completion narrows to `sig` for `si`, the targeted dot provider
+ * fires for the FIELDS only after a bus accessor (`sig('bd').`) and stays silent
  * after an unrelated `.`, and every doc entry validates (signature+description).
  */
 
@@ -137,8 +137,8 @@ describe('SIGNAL_BUS_DOCS shape', () => {
 
   it('covers the documented symbols and fields', () => {
     for (const n of [
-      'u', 'stave', 'uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim',
-      'uTom', 'uKeyVelocity', 'uRms', 'uBass', 'uMid', 'uTreble',
+      'sig', 'stave', 'kick', 'snare', 'hat', 'openHat', 'clap', 'rim',
+      'tom', 'keyVelocity',
       'env', 'velocity', 'note', 'color', 'rms', 'fft', 'bass', 'mid',
       'treble', 'wave', 'track', 'tracks', 'sounds',
     ]) {
@@ -157,37 +157,37 @@ describe('SIGNAL_BUS_DOCS shape', () => {
 })
 
 describe('runtime-aware examples', () => {
-  it('flattens uKick to a p5 form for p5js (no stave., uses a p5 verb)', () => {
-    const docs = __test.buildRuntimeDocs(['uKick'], 'p5js')
-    const ex = docs.uKick.example!
-    expect(ex).toContain('uKick')
+  it('flattens kick to a p5 form for p5js (no stave., uses a p5 verb)', () => {
+    const docs = __test.buildRuntimeDocs(['kick'], 'p5js')
+    const ex = docs.kick.example!
+    expect(ex).toContain('sig.kick')
     expect(ex).toContain('circle')
     expect(ex).not.toContain('stave.')
     expect(ex).not.toContain('s.osc')
   })
 
-  it('flattens uKick to a hydra form for hydra (stave.uKick() + s.)', () => {
-    const docs = __test.buildRuntimeDocs(['uKick'], 'hydra')
-    const ex = docs.uKick.example!
-    expect(ex).toContain('stave.uKick()')
+  it('flattens kick to a hydra form for hydra (stave.sig.kick() + s.)', () => {
+    const docs = __test.buildRuntimeDocs(['kick'], 'hydra')
+    const ex = docs.kick.example!
+    expect(ex).toContain('stave.sig.kick()')
     expect(ex).toContain('s.osc')
   })
 
-  it('p5 scalar field examples read the bare number (u(...).rms, no thunk call)', () => {
+  it('p5 scalar field examples read the bare number (sig(...).rms, no thunk call)', () => {
     const docs = __test.buildRuntimeDocs(['rms'], 'p5js')
     const ex = docs.rms.example!
-    expect(ex).toContain("u('bd').rms")
-    expect(ex).not.toContain("u('bd').rms()")
+    expect(ex).toContain('sig.rms')
+    expect(ex).not.toContain("sig('bd').rms()")
     expect(ex).not.toContain('stave.')
   })
 
   it('hydra scalar field examples call the thunk through stave.', () => {
     const docs = __test.buildRuntimeDocs(['rms'], 'hydra')
     const ex = docs.rms.example!
-    expect(ex).toContain("stave.u('bd').rms()")
+    expect(ex).toContain("stave.sig('bd').rms()")
   })
 
-  it('NO hydra example uses a bare osc(/uKick( without stave./s.', () => {
+  it('NO hydra example uses a bare osc(/sig.kick( thunk without stave./s.', () => {
     const docs = __test.buildRuntimeDocs(
       [...__test.SYMBOL_NAMES, ...__test.FIELD_NAMES],
       'hydra',
@@ -196,8 +196,9 @@ describe('runtime-aware examples', () => {
       const ex = doc.example ?? ''
       // A bare synth verb (`osc(`) not prefixed by `s.` is wrong for hydra.
       expect(/(?<!s\.)\bosc\(/.test(ex), `${name} bare osc(`).toBe(false)
-      // A bare uKick()/uSnare()/… thunk call not reached via `stave.` is wrong.
-      expect(/(?<!stave\.)\bu[A-Z]\w*\(/.test(ex), `${name} bare uXxx(`).toBe(false)
+      // A bare `sig.kick()`/`sig.snare()`/… thunk call not reached via `stave.`
+      // is wrong for hydra (everything is `stave.`-prefixed).
+      expect(/(?<!stave\.)\bsig\.\w+\(\)/.test(ex), `${name} bare sig.xxx()`).toBe(false)
     }
   })
 
@@ -209,18 +210,18 @@ describe('runtime-aware examples', () => {
     for (const [name, doc] of Object.entries(docs)) {
       const ex = doc.example ?? ''
       expect(ex.includes('s.osc'), `${name} uses s.osc in p5`).toBe(false)
-      // p5 scalar reads are bare numbers — no `stave.uKick()` thunk-call form.
-      expect(/stave\.u[A-Z]\w*\(\)/.test(ex), `${name} thunk-call in p5`).toBe(false)
+      // p5 scalar reads are bare numbers — no `stave.sig.kick()` thunk-call form.
+      expect(/stave\.sig\.\w+\(\)/.test(ex), `${name} thunk-call in p5`).toBe(false)
     }
   })
 })
 
 describe.each(['p5js', 'hydra'] as const)('hover (%s)', (runtime) => {
-  it('resolves uKick', () => {
+  it('resolves kick', () => {
     const { hover } = register(runtime)
-    const h = hoverFor(hover, 'uKick', 2)
+    const h = hoverFor(hover, 'kick', 2)
     expect(h).not.toBeNull()
-    expect(h!.contents[0].value).toContain('uKick')
+    expect(h!.contents[0].value).toContain('kick')
     expect(h!.contents.some((c) => c.value.toLowerCase().includes('kick'))).toBe(true)
   })
 
@@ -243,44 +244,46 @@ describe.each(['p5js', 'hydra'] as const)('hover (%s)', (runtime) => {
     expect(hoverFor(hover, 'circle', 2)).toBeNull()
   })
 
-  it('uKick hover shows the runtime-correct example (end-to-end)', () => {
+  it('kick hover shows the runtime-correct example (end-to-end)', () => {
     const { hover } = register(runtime)
-    const h = hoverFor(hover, 'uKick', 2)
+    const h = hoverFor(hover, 'kick', 2)
     // Isolate the rendered "**Example:**" content entry — the description
     // intentionally mentions BOTH forms, so assert only the example line.
     const exLine =
       h!.contents.find((c) => c.value.startsWith('**Example:**'))?.value ?? ''
     if (runtime === 'hydra') {
-      expect(exLine).toContain('stave.uKick()')
+      expect(exLine).toContain('stave.sig.kick()')
       expect(exLine).toContain('s.osc')
     } else {
-      // p5: bare uKick, p5 verb, never the hydra thunk/synth form.
-      expect(exLine).toContain('100 * uKick')
-      expect(exLine).not.toContain('stave.uKick()')
+      // p5: bare sig.kick, p5 verb, never the hydra thunk/synth form.
+      expect(exLine).toContain('100 * sig.kick')
+      expect(exLine).not.toContain('stave.sig.kick()')
       expect(exLine).not.toContain('s.osc')
     }
   })
 })
 
 describe.each(['p5js', 'hydra'] as const)('identifier completion (%s)', (runtime) => {
-  it('suggests uKick for prefix uK', () => {
+  it('suggests sig for prefix si', () => {
     const { identifier } = register(runtime)
-    const list = completeFor(identifier, 'uK', 3)
-    expect(list.suggestions.some((s) => s.label === 'uKick')).toBe(true)
+    const list = completeFor(identifier, 'si', 3)
+    expect(list.suggestions.some((s) => s.label === 'sig')).toBe(true)
   })
 
-  it('does NOT suggest bare field names (env) as identifiers', () => {
+  it('does NOT suggest bare field names (env, kick) as identifiers', () => {
     const { identifier } = register(runtime)
-    const list = completeFor(identifier, 'en', 3)
-    // 'env' is a FIELD, not a top-level symbol — must not appear here.
-    expect(list.suggestions.some((s) => s.label === 'env')).toBe(false)
+    // 'env' and 'kick' are FIELDS on `sig`, not top-level symbols.
+    const env = completeFor(identifier, 'en', 3)
+    expect(env.suggestions.some((s) => s.label === 'env')).toBe(false)
+    const kick = completeFor(identifier, 'ki', 3)
+    expect(kick.suggestions.some((s) => s.label === 'kick')).toBe(false)
   })
 })
 
 describe.each(['p5js', 'hydra'] as const)('targeted dot completion (%s)', (runtime) => {
-  it("suggests rms/fft/env after u('bd').", () => {
+  it("suggests rms/fft/env after sig('bd').", () => {
     const { dot } = register(runtime)
-    const line = "circle(x, u('bd')."
+    const line = "circle(x, sig('bd')."
     const list = completeFor(dot, line, line.length + 1)
     const labels = list.suggestions.map((s) => s.label)
     expect(labels).toContain('rms')
@@ -288,9 +291,16 @@ describe.each(['p5js', 'hydra'] as const)('targeted dot completion (%s)', (runti
     expect(labels).toContain('env')
   })
 
-  it('fires after u. and stave.u.', () => {
+  it('suggests the drum scalars (kick) after sig.', () => {
     const { dot } = register(runtime)
-    for (const line of ['osc(() => u.', 'stave.u.']) {
+    const line = 'sig.'
+    const list = completeFor(dot, line, line.length + 1)
+    expect(list.suggestions.some((s) => s.label === 'kick')).toBe(true)
+  })
+
+  it('fires after sig. and stave.sig.', () => {
+    const { dot } = register(runtime)
+    for (const line of ['osc(() => sig.', 'stave.sig.']) {
       const list = completeFor(dot, line, line.length + 1)
       expect(list.suggestions.length, line).toBeGreaterThan(0)
     }
@@ -298,18 +308,18 @@ describe.each(['p5js', 'hydra'] as const)('targeted dot completion (%s)', (runti
 
   it("fires after .track('x').", () => {
     const { dot } = register(runtime)
-    const line = "u.track('$0')."
+    const line = "sig.track('$0')."
     const list = completeFor(dot, line, line.length + 1)
     expect(list.suggestions.some((s) => s.label === 'color')).toBe(true)
   })
 
-  it('does NOT suggest the bus symbols (u/uKick) — fields only', () => {
+  it('does NOT suggest the bus symbols (sig/stave) — fields only', () => {
     const { dot } = register(runtime)
-    const line = "u('bd')."
+    const line = "sig('bd')."
     const list = completeFor(dot, line, line.length + 1)
     const labels = list.suggestions.map((s) => s.label)
-    expect(labels).not.toContain('u')
-    expect(labels).not.toContain('uKick')
+    expect(labels).not.toContain('sig')
+    expect(labels).not.toContain('stave')
   })
 
   it('stays silent after an unrelated dot (someShape.)', () => {
@@ -330,12 +340,12 @@ describe.each(['p5js', 'hydra'] as const)('targeted dot completion (%s)', (runti
 describe('BUS_ACCESSOR_RE', () => {
   it('matches bus accessors', () => {
     for (const s of [
-      "u('bd').",
-      'u("sd").',
-      'u.',
-      'stave.u.',
-      "u.track('$0').",
-      "circle(x, u('bd').r",
+      "sig('bd').",
+      'sig("sd").',
+      'sig.',
+      'stave.sig.',
+      "sig.track('$0').",
+      "circle(x, sig('bd').r",
     ]) {
       expect(__test.BUS_ACCESSOR_RE.test(s), s).toBe(true)
     }

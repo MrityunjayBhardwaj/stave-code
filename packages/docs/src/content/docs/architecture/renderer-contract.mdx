@@ -191,7 +191,7 @@ s.draw()                                 // kind-specific; the only line that di
 `feed.applyFrame` owns the single per-frame bus tick. A renderer's `draw()` must
 **not** tick the bus again — note `mountHydra`'s `draw()` calls `hydra.tick()` for
 a shader frame but explicitly does *not* re-tick the bus (`hostP5Worker.ts:474`).
-Double-ticking desyncs the named-signal uniforms (`u.fft`, `uKick`, …) from the
+Double-ticking desyncs the named-signal values (`sig.fft`, `sig.kick`, …) from the
 audio. Read your audio from the already-refreshed shims; draw; return.
 </Aside>
 

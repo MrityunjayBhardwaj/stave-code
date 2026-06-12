@@ -5,7 +5,7 @@
  *
  *   1. Opening a viz file shows the "Stave Inputs" toggle in its chrome; the
  *      block expands with the ShaderToy-style reference.
- *   2. Hovering an injected token (`uRms`) in a viz file shows its doc AND, while
+ *   2. Hovering an injected token (`sig.rms`) in a viz file shows its doc AND, while
  *      a pattern plays, the LIVE master value.
  *
  * Run: E2E_VERIFY=1 pnpm --filter @stave/app exec playwright test viz-stave-inputs.spec.ts --timeout=300000
@@ -44,7 +44,7 @@ test.describe('Stave Inputs panel + hover (#309)', () => {
     console.log('[stave-inputs] block:\n' + text)
     expect(text).toContain('Stave Inputs')
     expect(text).toContain('uKick')
-    expect(text).toContain('u.fft')
+    expect(text).toContain('sig.fft')
     await page.screenshot({ path: 'test-results/stave-inputs-block.png' })
   })
 
@@ -63,21 +63,21 @@ test.describe('Stave Inputs panel + hover (#309)', () => {
 
     await openVizFile(page, 'spectrum.p5')
 
-    // Put a live token (uRms) in the viz editor, then hover it.
+    // Put a live token (sig.rms) in the viz editor, then hover the `rms` member.
     const pos = await page.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const m = (window as any).monaco
       const ed = m.editor.getEditors().find((e: any) => e.getModel()?.getLanguageId() === 'p5js')
       if (!ed) return null
-      ed.getModel().setValue('function draw(){\n  const r = uRms * 100\n  circle(width/2, height/2, r)\n}\n')
-      const match = ed.getModel().findMatches('uRms', true, false, true, null, false)[0]
+      ed.getModel().setValue('function draw(){\n  const r = sig.rms * 100\n  circle(width/2, height/2, r)\n}\n')
+      const match = ed.getModel().findMatches('rms', true, false, true, null, false)[0]
       const p = match.range.getStartPosition()
       ed.revealPositionInCenter(p)
       const vp = ed.getScrolledVisiblePosition(p)
       const box = ed.getDomNode().getBoundingClientRect()
       return { x: box.left + vp.left + 4, y: box.top + vp.top + vp.height / 2 }
     })
-    expect(pos, 'p5js editor + uRms token located').not.toBeNull()
+    expect(pos, 'p5js editor + sig.rms token located').not.toBeNull()
     await page.waitForTimeout(800) // let the probe bind the playing analyser
 
     await page.mouse.move(pos!.x, pos!.y)

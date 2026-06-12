@@ -47,7 +47,7 @@ const SETTLE_MS = 3500
 const SHOT_GAP_MS = 600
 const SHOTS = 5
 
-// Heavy WEBGL sketch reading `u.fft` (live-audio reactive) — verbatim from the
+// Heavy WEBGL sketch reading `sig.fft` (live-audio reactive) — verbatim from the
 // reactivity gate. A LIVE instance changes every frame (≥4/5 distinct); a
 // force-lost one freezes black (1/5 distinct, tiny PNG).
 const SYNTHWAVE = `function setup(){ createCanvas(stave.width, stave.height, WEBGL) }
@@ -62,8 +62,8 @@ function draw(){
     beginShape()
     for(let c=0;c<=COLS;c++){
       const x=-W/2 + (c/COLS)*W
-      const fi=(c*3+r)%u.fft.length
-      const h=(u.fft[fi]||0)*220*(1-z)
+      const fi=(c*3+r)%sig.fft.length
+      const h=(sig.fft[fi]||0)*220*(1-z)
       vertex(x, y0-h)
     }
     endShape()

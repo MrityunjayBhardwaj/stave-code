@@ -14,21 +14,30 @@ describe('injectedGlobals catalogue', () => {
   })
 
   // PV94 additive-floor guard: the catalogue must cover the named-signal surface
-  // the builders inject. If a builder gains a signal, this list must too.
-  const DRUMS = ['uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom']
+  // the builders inject. If a builder gains a signal, this list must too. #351 —
+  // JS kinds (p5/hydra) now speak the `sig` namespace (bare drum scalars are
+  // `sig.kick`…`sig.tom`); GLSL keeps the flat `uKick` uniform names.
+  const JS_DRUMS = ['kick', 'snare', 'hat', 'openHat', 'clap', 'rim', 'tom']
+  const GLSL_DRUMS = ['uKick', 'uSnare', 'uHat', 'uOpenHat', 'uClap', 'uRim', 'uTom']
   it('covers the drum-envelope + master-DSP signal floor on every kind', () => {
-    for (const k of KINDS) {
+    for (const k of ['p5', 'hydra'] as VizRendererKind[]) {
       const tokens = new Set(injectedGlobals(k).flatMap((g) => g.tokens))
-      for (const d of DRUMS) expect(tokens, `${k} missing ${d}`).toContain(d)
-      for (const m of ['uRms', 'uBass', 'uMid', 'uTreble']) {
+      for (const d of JS_DRUMS) expect(tokens, `${k} missing ${d}`).toContain(d)
+      for (const m of ['rms', 'bass', 'mid', 'treble']) {
         expect(tokens, `${k} missing ${m}`).toContain(m)
       }
     }
+    // GLSL keeps the flat shader-uniform names (the `u`=uniform prefix is honest).
+    const glslTokens = new Set(injectedGlobals('glsl').flatMap((g) => g.tokens))
+    for (const d of GLSL_DRUMS) expect(glslTokens, `glsl missing ${d}`).toContain(d)
+    for (const m of ['uRms', 'uBass', 'uMid', 'uTreble']) {
+      expect(glslTokens, `glsl missing ${m}`).toContain(m)
+    }
   })
 
-  it('p5 exposes the stave context handles + u accessor members', () => {
+  it('p5 exposes the stave context handles + sig accessor members', () => {
     const tokens = new Set(injectedGlobals('p5').flatMap((g) => g.tokens))
-    for (const t of ['scheduler', 'analyser', 'hapStream', 'options', 'fft', 'wave', 'density', 'u', 'track', 'tracks', 'sounds', 'uKeyVelocity']) {
+    for (const t of ['scheduler', 'analyser', 'hapStream', 'options', 'fft', 'wave', 'density', 'sig', 'track', 'tracks', 'sounds', 'keyVelocity']) {
       expect(tokens).toContain(t)
     }
   })
@@ -42,7 +51,7 @@ describe('injectedGlobals catalogue', () => {
 
   it('hydra exposes the H() event reader + thunked signals', () => {
     const tokens = new Set(injectedGlobals('hydra').flatMap((g) => g.tokens))
-    for (const t of ['H', 'u', 'track', 'scheduler', 'uKeyVelocity']) {
+    for (const t of ['H', 'sig', 'track', 'scheduler', 'keyVelocity']) {
       expect(tokens).toContain(t)
     }
   })
@@ -66,27 +75,27 @@ describe('formatStaveInputs', () => {
 
   it('multi-line hydra decl keeps the comment on its last line only', () => {
     const block = formatStaveInputs('hydra')
-    const drumLine = block.split('\n').find((l) => l.includes('stave.uClap'))
+    const drumLine = block.split('\n').find((l) => l.includes('stave.sig.tom'))
     expect(drumLine).toContain('// per-drum envelope thunks')
     // the first physical line of the multi-line decl has no comment
-    expect(block).toContain('stave.uKick, stave.uSnare')
+    expect(block).toContain('stave.sig.kick, stave.sig.snare')
   })
 
   it('groups entries under section headers (scalar-vs-accessor visible)', () => {
     const p5 = formatStaveInputs('p5')
     expect(p5).toContain('// — context —')
-    expect(p5).toContain('// — signals · bare scalars (0..1) —')
-    expect(p5).toContain('// — signals · structured (on u) —')
-    // order: the bare-scalar header precedes the structured header, and uKick
-    // (bare) lands in scalars while u.fft lands in structured.
-    expect(p5.indexOf('bare scalars')).toBeLessThan(p5.indexOf('structured (on u)'))
-    expect(p5.indexOf('uKick')).toBeLessThan(p5.indexOf('u.fft'))
-    expect(p5.indexOf('u.fft')).toBeGreaterThan(p5.indexOf('structured (on u)'))
+    expect(p5).toContain('// — signals · scalars on sig (0..1) —')
+    expect(p5).toContain('// — signals · structured (on sig) —')
+    // order: the scalar header precedes the structured header, and sig.kick
+    // (scalar) lands in scalars while sig.fft lands in structured.
+    expect(p5.indexOf('scalars on sig')).toBeLessThan(p5.indexOf('structured (on sig)'))
+    expect(p5.indexOf('sig.kick')).toBeLessThan(p5.indexOf('sig.fft'))
+    expect(p5.indexOf('sig.fft')).toBeGreaterThan(p5.indexOf('structured (on sig)'))
   })
 
   it('ends with the scalar-vs-accessor rule line per kind', () => {
-    expect(formatStaveInputs('p5')).toContain('// rule: bare uXxx = a single number')
-    expect(formatStaveInputs('hydra')).toContain('// rule: bare stave.uXxx() = a single number')
+    expect(formatStaveInputs('p5')).toContain('// rule: every signal lives on sig')
+    expect(formatStaveInputs('hydra')).toContain('// rule: every signal lives on stave.sig')
     expect(formatStaveInputs('glsl')).toContain('// rule: scalars are floats')
   })
 
@@ -99,13 +108,14 @@ describe('formatStaveInputs', () => {
 
 describe('injectedGlobalByToken', () => {
   it('resolves a drum envelope token to a live scalar (master env)', () => {
-    const hit = injectedGlobalByToken('p5', 'uKick')
-    expect(hit?.live).toEqual({ kind: 'scalar', read: 'env:uKick' })
+    // p5 speaks `sig` — the bare token is `kick`; GLSL keeps the flat `uKick`.
+    expect(injectedGlobalByToken('p5', 'kick')?.live).toEqual({ kind: 'scalar', read: 'env:uKick' })
+    expect(injectedGlobalByToken('glsl', 'uKick')?.live).toEqual({ kind: 'scalar', read: 'env:uKick' })
   })
 
   it('resolves master DSP scalars', () => {
     expect(injectedGlobalByToken('glsl', 'uRms')?.live).toEqual({ kind: 'scalar', read: 'rms' })
-    expect(injectedGlobalByToken('p5', 'uTreble')?.live).toEqual({ kind: 'scalar', read: 'treble' })
+    expect(injectedGlobalByToken('p5', 'treble')?.live).toEqual({ kind: 'scalar', read: 'treble' })
   })
 
   it('resolves master arrays (fft/wave) to a live array', () => {
@@ -117,8 +127,8 @@ describe('injectedGlobalByToken', () => {
     expect(injectedGlobalByToken('glsl', 'iTime')?.live).toEqual({ kind: 'time' })
   })
 
-  it('resolves uKeyVelocity / uVelocity to keyVelocity', () => {
-    expect(injectedGlobalByToken('p5', 'uKeyVelocity')?.live).toEqual({ kind: 'scalar', read: 'keyVelocity' })
+  it('resolves keyVelocity / uVelocity to keyVelocity', () => {
+    expect(injectedGlobalByToken('p5', 'keyVelocity')?.live).toEqual({ kind: 'scalar', read: 'keyVelocity' })
     expect(injectedGlobalByToken('glsl', 'uVelocity')?.live).toEqual({ kind: 'scalar', read: 'keyVelocity' })
   })
 

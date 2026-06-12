@@ -118,27 +118,27 @@ export const SIGNALS_BANDS_HYDRA_CODE = `// Hydra Signals (Bands) — the named 
 //
 // IMPORTANT: hydra sketches receive two namespaces — \`s\` (the hydra synth) and
 // \`stave\` (the live bus). Unlike p5, nothing is exposed bare here, so write
-// \`s.osc(...)\` and \`stave.uBass(...)\`. And in hydra the bus SCALARS are
+// \`s.osc(...)\` and \`stave.sig.bass(...)\`. And in hydra the bus SCALARS are
 // () => number THUNKS (call them every frame), while \`fft\` / \`wave\` are arrays:
 //
-//   stave.uBass()          — master low-band magnitude, 0..1 (a THUNK — call it).
-//                            stave.uRms() / uMid() / uTreble() are siblings.
-//   stave.u('bd').rms()    — the 'bd' (kick) sound's loudness 0..1 (also a thunk).
-//   stave.u('bd').env()    — that sound's envelope, 0..1 (bumps on each hit).
-//   stave.u('bd').fft[i]   — that sound's spectrum: an ARRAY, indexed natively.
+//   stave.sig.bass()       — master low-band magnitude, 0..1 (a THUNK — call it).
+//                            stave.sig.rms() / sig.mid() / sig.treble() are siblings.
+//   stave.sig('bd').rms()  — the 'bd' (kick) sound's loudness 0..1 (also a thunk).
+//   stave.sig('bd').env()  — that sound's envelope, 0..1 (bumps on each hit).
+//   stave.sig('bd').fft[i] — that sound's spectrum: an ARRAY, indexed natively.
 //                            Wrap the WHOLE expression in () => … so hydra reads
-//                            it fresh each frame:  () => stave.u('bd').fft[2]
+//                            it fresh each frame:  () => stave.sig('bd').fft[2]
 //
 // (In p5 these same names are bare LIVE NUMBERS — see "Signals (Spectrum)".)
 
-s.osc(() => 8 + stave.uBass() * 30, 0.1, 0)        // density rides the low band
+s.osc(() => 8 + stave.sig.bass() * 30, 0.1, 0)      // density rides the low band
   .color(
-    () => 0.4 + stave.u('bd').rms() * 0.6,          // red pulses with the kick
+    () => 0.4 + stave.sig('bd').rms() * 0.6,        // red pulses with the kick
     0.5,
-    () => 0.6 + stave.uTreble() * 0.4               // blue follows the highs
+    () => 0.6 + stave.sig.treble() * 0.4            // blue follows the highs
   )
-  .rotate(() => stave.u('bd').fft[2] || 0)          // spin from a kick spectrum bin
-  .modulate(s.noise(2), () => stave.uMid() * 0.15)  // wobble with the mids
+  .rotate(() => stave.sig('bd').fft[2] || 0)        // spin from a kick spectrum bin
+  .modulate(s.noise(2), () => stave.sig.mid() * 0.15) // wobble with the mids
   .out(s.o0)`;
 
 // ── Types ────────────────────────────────────────────────────────────

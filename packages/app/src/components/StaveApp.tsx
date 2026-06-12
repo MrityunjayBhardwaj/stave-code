@@ -412,7 +412,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // non-underscore code method (`.scope()`/`.pianoroll()`) to a project viz
   // file's basename — only the methods in STRUDEL_VIZ_METHODS are installed,
   // so a one-off custom backdrop sketch can't be reached by code alone. T5
-  // proves the BACKDROP surface reads `u.tracks`/`u.track(id).color` (T4's
+  // proves the BACKDROP surface reads `sig.tracks`/`sig.track(id).color` (T4's
   // compiledVizProvider threading), NOT the method→file mapping, so shortcut
   // only the pin. Guarded on `__STAVE_E2E__`. Uses the SAME `seedWorkspaceFile`
   // + `setBackgroundFile` the production restore/pin paths use.

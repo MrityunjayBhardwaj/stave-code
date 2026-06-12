@@ -46,17 +46,17 @@ interface StaveContext {
    */
   readonly options: Record<string, unknown>
   /**
-   * Phase 21 — the named-signal accessor mirrored onto the stave namespace
-   * (D-02). Same `u` object exposed bare via `with (staveUniforms)`. Reads
-   * `u('bd')`, `u.track('$0')`, `u.tracks`, `u.sounds`.
+   * Phase 21 / #351 — the `sig` namespace mirrored onto the stave namespace
+   * (D-02). Same `sig` object exposed bare via `with (staveUniforms)`. Reads
+   * `sig('bd')`, `sig.track('$0')`, `sig.kick`, `sig.fft`, `sig.tracks`.
    */
-  readonly u: P5SignalAccessor
+  readonly sig: SigAccessor
 }
 
 /** A per-sound or per-track reading as live NUMBERS (p5 D-01 shape — getters,
  *  NOT thunks; the renderer reads them directly inside `draw`). DSP scalars
  *  (`rms`/`bass`/`mid`/`treble`) are live numbers; DSP arrays (`fft`/`wave`)
- *  are live `number[]` indexed directly (`u('bd').fft[i]`). All read fresh per
+ *  are live `number[]` indexed directly (`sig('bd').fft[i]`). All read fresh per
  *  access — the reading object is produced by a getter through `with`. */
 export interface P5SignalReading {
   env: number
@@ -78,11 +78,11 @@ export interface P5SignalReading {
   wave: number[]
 }
 
-/** The callable `u(...)` with attached `.track`/`.tracks`/`.sounds` props.
- *  p5 shape (D-01): `u('bd').env` is a NUMBER (live each read), not a thunk.
- *  `u` itself also carries the MASTER-mix DSP (Slice 2): `u.rms`/`u.bass`/… live
- *  number getters + `u.fft`/`u.wave` live arrays. */
-export interface P5SignalAccessor {
+/** The single `sig` namespace (#351) — a callable carrying every Stave-injected
+ *  viz signal. p5 shape (D-01): `sig('bd').env` is a NUMBER (live each read), not
+ *  a thunk; the per-drum scalars (`sig.kick`…) and master DSP (`sig.rms`/`sig.fft`)
+ *  are live getters on the SAME object. */
+export interface SigAccessor {
   (sound: string): P5SignalReading
   /** Per-track reading, keyed on the scheduler key space (`$0`/`drums`). */
   track: (id: string) => P5SignalReading
@@ -90,6 +90,16 @@ export interface P5SignalAccessor {
   tracks: string[]
   /** Enumerate distinct sounds seen through the envelope feed. */
   sounds: string[]
+  // ── Per-drum envelopes (0..1, live getters; were bare `uKick…uTom`) ────────
+  kick: number
+  snare: number
+  hat: number
+  openHat: number
+  clap: number
+  rim: number
+  tom: number
+  /** Loudest active hit 0..1, global (was `uKeyVelocity`). */
+  keyVelocity: number
   // ── Master-mix DSP (Slice 2) — live getters / arrays ──────────────────────
   /** Master-mix time-domain RMS, 0..1 (live getter). */
   rms: number
@@ -108,7 +118,7 @@ export interface P5SignalAccessor {
    * detail (default); "performance mode" lowers it. A CPU-tessellation-bound
    * sketch (line meshes — the class a resolution drop does NOT help, #232)
    * should scale its segment / history COUNT by this, e.g.
-   * `Math.max(2, Math.round(BASE_SEGMENTS * u.density))`. Fill/fragment-bound
+   * `Math.max(2, Math.round(BASE_SEGMENTS * sig.density))`. Fill/fragment-bound
    * sketches gain nothing here and instead ride the render-resolution knob the
    * renderer applies composite-side. Reads `vizConfig.density` fresh each access
    * (worker: its marshalled singleton — the config-marshal channel feeds it). */
@@ -116,38 +126,21 @@ export interface P5SignalAccessor {
 }
 
 /**
- * Phase 21 — the live named-signal uniform object handed to a p5 sketch as the
- * THIRD `new Function` arg. Bare `uKick…uTom` / `uKeyVelocity` are GETTERS
- * (p5 D-01: live numbers, NOT thunks) resolved per-frame through the inner
- * `with (staveUniforms)`. `u` is the callable accessor (also mirrored onto
- * `stave.u`, D-02).
+ * Phase 21 / #351 — the live signal object handed to a p5 sketch as the THIRD
+ * `new Function` arg. It exposes the single `sig` namespace (mirrored onto
+ * `stave.sig`, D-02), resolved bare per-frame through the inner
+ * `with (staveUniforms)`. The per-drum scalars / master DSP are getters ON `sig`
+ * itself (`sig.kick`, `sig.fft`) — p5 D-01: live numbers, NOT thunks.
  *
  * `__tick` is a NON-enumerable hook the draw wrapper calls ONCE per frame
  * (`bus.tick(); bus.refreshActive(bus.now())`) — the decay tick fires exactly
  * once per draw (U2), NEVER inside a getter (a getter-tick double-ticks when a
- * sketch reads N uniforms → decay collapses to 0). Built by `P5VizRenderer`,
+ * sketch reads N signals → decay collapses to 0). Built by `P5VizRenderer`,
  * which owns the (pure) SignalBus; the compiler stays renderer-agnostic and
  * only consumes the shape.
  */
 export interface StaveUniforms {
-  readonly uKick: number
-  readonly uSnare: number
-  readonly uHat: number
-  readonly uOpenHat: number
-  readonly uClap: number
-  readonly uRim: number
-  readonly uTom: number
-  readonly uKeyVelocity: number
-  // ── Master-mix DSP sugar aliases (Slice 2, p5 D-01 — live getter numbers) ──
-  /** Master-mix time-domain RMS, 0..1. */
-  readonly uRms: number
-  /** Master-mix low-band magnitude, 0..1. */
-  readonly uBass: number
-  /** Master-mix mid-band magnitude, 0..1. */
-  readonly uMid: number
-  /** Master-mix high-band magnitude, 0..1. */
-  readonly uTreble: number
-  readonly u: P5SignalAccessor
+  readonly sig: SigAccessor
   /** Per-frame tick hook (non-enumerable). Optional so a sketch compiled
    *  without a bus (tests, demo mode) still runs — the wrapper null-checks. */
   __tick?: () => void
@@ -155,7 +148,7 @@ export interface StaveUniforms {
    * Custom alias getters (Phase 21 aliases). A user-defined alias (e.g.
    * `kick → bd`) is injected at mount by `P5VizRenderer` as a live getter
    * (`Object.defineProperty(uniforms, name, { get: () => bus.envValue(name) })`)
-   * for every merged-map name NOT already a built-in uniform. The index
+   * for every merged-map name NOT already a built-in signal. The index
    * signature lets `uniforms[name]` typecheck under strict TS; reads resolve
    * per-frame through the inner `with (staveUniforms)` (full-lifecycle) and the
    * legacy `with (staveUniforms)` wrap (legacy draw-body). `__tick` is read via
@@ -279,8 +272,8 @@ export function compileP5Code(code: string, source?: string) {
   // catch in CompiledVizMount where it becomes a proper engineLog
   // entry (Console row, toast, status-bar chip, Monaco squiggle).
   // Phase 21 — the body now references a THIRD arg `staveUniforms` (the inner
-  // `with (staveUniforms)` in the full-lifecycle body, and the `staveUniforms.u`
-  // / `staveUniforms.uKick…` aliases in the legacy draw). Pre-validate with the
+  // `with (staveUniforms)` in the full-lifecycle body, and the `staveUniforms.sig`
+  // alias in the legacy draw). Pre-validate with the
   // same arity as the real compile below or the SyntaxError pre-check would
   // diverge from the executed function.
   new Function('p', 'stave', 'staveUniforms', body)
@@ -294,7 +287,7 @@ export function compileP5Code(code: string, source?: string) {
   // The SIXTH arg (`staveUniformsRef`, Phase 21) carries the live named-signal
   // uniform object built by `P5VizRenderer` from its per-renderer SignalBus.
   // Optional + defaulted to an inert object so callers that don't wire signals
-  // (tests, demo) still compile — bare `uKick` then reads 0, `u(...)` returns
+  // (tests, demo) still compile — `sig.kick` then reads 0, `sig(...)` returns
   // zeros, and `__tick` is a no-op.
   return (
     hapStreamRef: RefObject<HapStream | null>,
@@ -345,10 +338,10 @@ export function compileP5Code(code: string, source?: string) {
         get options(): Record<string, unknown> {
           return optionsRef.current ?? {}
         },
-        // D-02 — mirror the named-signal accessor onto the stave namespace.
-        // `stave.u` is the SAME `u` object exposed bare via `with`.
-        get u(): P5SignalAccessor {
-          return (staveUniformsRef.current ?? staveUniforms).u
+        // D-02 — mirror the signal namespace onto the stave namespace.
+        // `stave.sig` is the SAME `sig` object exposed bare via `with`.
+        get sig(): SigAccessor {
+          return (staveUniformsRef.current ?? staveUniforms).sig
         },
       }
 
@@ -405,9 +398,9 @@ export function compileP5Code(code: string, source?: string) {
 }
 
 /**
- * An inert `StaveUniforms` — all signals 0, `u(...)` returns zeros, `__tick` a
+ * An inert `StaveUniforms` — all signals 0, `sig(...)` returns zeros, `__tick` a
  * no-op. Used when a sketch is compiled without a wired SignalBus (unit tests,
- * demo mode). Keeps bare `uKick` / `u('bd')` safe (never `undefined`) so a
+ * demo mode). Keeps `sig.kick` / `sig('bd')` safe (never `undefined`) so a
  * sketch written for live signals still runs silently rather than throwing.
  */
 function makeInertStaveUniforms(): StaveUniforms {
@@ -423,33 +416,31 @@ function makeInertStaveUniforms(): StaveUniforms {
     fft: [],
     wave: [],
   })
-  const u = ((_sound: string): P5SignalReading =>
-    zeroReading()) as P5SignalAccessor
-  u.track = (_id: string): P5SignalReading => zeroReading()
-  u.tracks = []
-  u.sounds = []
-  // Master-mix DSP zeros (Slice 2) — `u.rms`/… are inert numbers, `u.fft`/… are
-  // empty arrays, so a sketch reading them in demo mode never NaNs / throws.
-  u.rms = 0
-  u.bass = 0
-  u.mid = 0
-  u.treble = 0
-  u.fft = []
-  u.wave = []
+  const sig = ((_sound: string): P5SignalReading =>
+    zeroReading()) as SigAccessor
+  sig.track = (_id: string): P5SignalReading => zeroReading()
+  sig.tracks = []
+  sig.sounds = []
+  // Per-drum envelope + global-velocity zeros.
+  sig.kick = 0
+  sig.snare = 0
+  sig.hat = 0
+  sig.openHat = 0
+  sig.clap = 0
+  sig.rim = 0
+  sig.tom = 0
+  sig.keyVelocity = 0
+  // Master-mix DSP zeros (Slice 2) — `sig.rms`/… are inert numbers, `sig.fft`/…
+  // are empty arrays, so a sketch reading them in demo mode never NaNs / throws.
+  sig.rms = 0
+  sig.bass = 0
+  sig.mid = 0
+  sig.treble = 0
+  sig.fft = []
+  sig.wave = []
+  sig.density = 1
   return {
-    uKick: 0,
-    uSnare: 0,
-    uHat: 0,
-    uOpenHat: 0,
-    uClap: 0,
-    uRim: 0,
-    uTom: 0,
-    uKeyVelocity: 0,
-    uRms: 0,
-    uBass: 0,
-    uMid: 0,
-    uTreble: 0,
-    u,
+    sig,
     __tick: () => {},
   }
 }
@@ -471,15 +462,14 @@ function makeInertStaveUniforms(): StaveUniforms {
  * Counted at module load so the emit-time line offset tracks the
  * template verbatim (change the template → offset self-updates).
  */
-// Phase 21 — a SECOND `with (staveUniforms)` nests inside `with (p)` so that
-// bare named signals (`uKick`, `uSnare`, `u`, `stave.u`) resolve LIVE through
-// the inner object's GETTERS every frame, exactly the way `width` / `mouseX`
-// resolve through `with (p)` (see the execution-model jsdoc above, :120-128).
-// A top-level `const uKick = staveUniforms.uKick` would capture ONCE at
-// compile time and freeze (U2 trap) — the inner `with` is what keeps the read
-// per-frame fresh. The prefix is counted at module load so the emit-time line
-// offset self-updates from the template string (change the template → the
-// offset tracks it).
+// Phase 21 / #351 — a SECOND `with (staveUniforms)` nests inside `with (p)` so
+// that the bare `sig` namespace (and `stave.sig`) resolves LIVE through the
+// object's GETTERS every frame, exactly the way `width` / `mouseX` resolve
+// through `with (p)` (see the execution-model jsdoc above, :120-128). Reading
+// `sig.kick` per-frame stays fresh because `sig`'s props are getters — a
+// top-level `const k = sig.kick` would capture ONCE and freeze (U2 trap). The
+// prefix is counted at module load so the emit-time line offset self-updates
+// from the template string (change the template → the offset tracks it).
 const FULL_LIFECYCLE_PREFIX = '\nwith (p) {\n  with (staveUniforms) {\n  '
 const FULL_LIFECYCLE_PREFIX_LINES = (FULL_LIFECYCLE_PREFIX.match(/\n/g) || [])
   .length
@@ -509,14 +499,13 @@ function buildFullLifecycleBody(userCode: string): string {
 /**
  * Prefix preceding `${userCode}` in the legacy draw-body template.
  *
- * Phase 21 — the named-signal aliases (`u`, `uKick…uTom`, `uKeyVelocity`) are
- * declared as `const`s INSIDE the synthetic `draw` body, NOT at top level —
- * they are re-read EVERY frame (mirroring the existing `const scheduler =
- * stave.scheduler` aliasing). A top-level const would evaluate ONCE at
- * `compile(p, stave, staveUniforms)` time, before any draw fires, and freeze
- * (U2 trap). Reading the getters here on each draw keeps the values live.
- * `stave.u` is the same `u` object mirrored on the stave namespace (D-02);
- * bare `uKick` reads the live getter each draw.
+ * Phase 21 / #351 — `const sig = staveUniforms.sig` is declared INSIDE the
+ * synthetic `draw` body, NOT at top level — re-read EVERY frame (mirroring the
+ * existing `const scheduler = stave.scheduler` aliasing). A top-level const
+ * would evaluate ONCE at `compile(p, stave, staveUniforms)` time, before any
+ * draw fires, and freeze (U2 trap). `sig`'s own props are getters, so
+ * `sig.kick` stays live each draw. `stave.sig` is the same object mirrored on
+ * the stave namespace (D-02).
  *
  * Phase 21 ALIASES — the draw body is ALSO wrapped in `with (staveUniforms)`
  * (nested inside `with (p)`), the SAME inner-`with` the full-lifecycle body
@@ -542,19 +531,7 @@ with (p) {
       const scheduler = stave.scheduler
       const analyser = stave.analyser
       const hapStream = stave.hapStream
-      const u = staveUniforms.u
-      const uKick = staveUniforms.uKick
-      const uSnare = staveUniforms.uSnare
-      const uHat = staveUniforms.uHat
-      const uOpenHat = staveUniforms.uOpenHat
-      const uClap = staveUniforms.uClap
-      const uRim = staveUniforms.uRim
-      const uTom = staveUniforms.uTom
-      const uKeyVelocity = staveUniforms.uKeyVelocity
-      const uRms = staveUniforms.uRms
-      const uBass = staveUniforms.uBass
-      const uMid = staveUniforms.uMid
-      const uTreble = staveUniforms.uTreble
+      const sig = staveUniforms.sig
       `
 const LEGACY_PREFIX_LINES = (LEGACY_PREFIX.match(/\n/g) || []).length
 
@@ -634,7 +611,7 @@ function installLifecycle(
       pi.createCanvas(pi.windowWidth, pi.windowHeight)
     }
   // Phase 21 — fire the signal-bus tick EXACTLY ONCE per draw frame, BEFORE the
-  // user's draw body so the bare `uKick` getters it reads see the freshly
+  // user's draw body so the `sig.kick` getters it reads see the freshly
   // decayed + re-snapshotted bus state. The tick lives HERE (the renderer-owned
   // draw wrapper), NEVER inside a uniform getter — a getter-driven tick would
   // double-tick when a sketch reads N uniforms in one frame (decay collapses to

@@ -6,6 +6,9 @@ hero:
   tagline: Live-code music and visuals side-by-side. No install, no toolchain — it's a URL.
   actions:
     - text: Get started
+      # Absolute — the Hero override (src/components/Hero.astro) base-prefixes
+      # this to /docs/getting-started/. Kept absolute (not relative) so the
+      # emitted href survives Next's trailing-slash stripping in prod. (#355)
       link: /getting-started/
       icon: right-arrow
       variant: primary

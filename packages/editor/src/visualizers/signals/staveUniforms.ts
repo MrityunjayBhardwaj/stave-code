@@ -1,7 +1,15 @@
 /**
- * buildStaveUniforms — construct the live named-signal uniform object a p5 sketch
- * reads (`uKick…uTom`, `uKeyVelocity`, `uRms…uTreble`, the callable `u(...)`)
- * from a (pure) `SignalBus`.
+ * buildStaveUniforms — construct the single live `sig` namespace a p5 sketch
+ * reads (`sig.kick…sig.tom`, `sig.keyVelocity`, `sig.rms…sig.treble`, `sig.fft`/
+ * `sig.wave`, and the callable `sig('bd')` / `sig.track('$0')`) from a (pure)
+ * `SignalBus`.
+ *
+ * #351 — ONE namespace. Both the bare per-drum scalars and the structured
+ * lookups now hang off a single callable `sig` object: `sig.kick` (a number),
+ * `sig.fft` (an array), `sig('bd')` (a per-sound reading). The old split surface
+ * (bare `uKick…` getters + a separate `u(...)` accessor) is gone — `sig` IS the
+ * accessor and it carries the scalars too. GLSL keeps flat `uKick` uniforms (the
+ * `u`=uniform prefix is honest in a shader); JS speaks `sig`.
  *
  * EXTRACTED from `P5VizRenderer`'s constructor (Phase B / B-3) so the MAIN
  * renderer and the WORKER renderer build IDENTICAL uniforms from their respective
@@ -10,10 +18,10 @@
  * the uniform surface). The ONLY thing that differs between main and worker is the
  * per-frame `onTick` (see below), which is injected — everything else is pure.
  *
- * The p5 D-01 SHAPE (vs hydra's thunks): bare `uKick` is a live GETTER NUMBER and
- * `u('bd')` returns the bus reading directly (carrying the spread DSP fields), so
- * a sketch reads `u('bd').rms` / `u('bd').fft[i]` as live numbers/arrays. Every
- * getter re-reads the bus fresh per access — frame-fresh through the draw's
+ * The p5 D-01 SHAPE (vs hydra's thunks): `sig.kick` is a live GETTER NUMBER and
+ * `sig('bd')` returns the bus reading directly (carrying the spread DSP fields),
+ * so a sketch reads `sig('bd').rms` / `sig('bd').fft[i]` as live numbers/arrays.
+ * Every getter re-reads the bus fresh per access — frame-fresh through the draw's
  * `with (staveUniforms)`, never compile-captured (U2).
  *
  * `__tick` (non-enumerable) fires ONCE per draw frame:
@@ -29,7 +37,7 @@
 import type { SignalBus } from './SignalBus'
 import type {
   StaveUniforms,
-  P5SignalAccessor,
+  SigAccessor,
   P5SignalReading,
 } from '../p5Compiler'
 import { getVizConfig } from '../vizConfig'
@@ -45,56 +53,34 @@ export function buildStaveUniforms(
   bus: SignalBus,
   onTick?: () => void,
 ): StaveUniforms {
-  // The callable `u(...)` accessor (D-03) — p5 shape returns live NUMBERS
-  // (NOT thunks), read fresh on each access. `u('bd')` / `u.track(id)` return the
-  // bus reading directly — it already carries the DSP fields (`rms`/`bass`/`mid`/
-  // `treble` numbers + `fft`/`wave` arrays) spread from `SignalReading`.
-  const u = ((sound: string): P5SignalReading => bus.sound(sound)) as P5SignalAccessor
-  u.track = (id: string): P5SignalReading => bus.track(id)
+  // The single `sig` namespace (#351). Callable (D-03) — p5 shape returns live
+  // NUMBERS (NOT thunks), read fresh on each access. `sig('bd')` / `sig.track(id)`
+  // return the bus reading directly — it already carries the DSP fields
+  // (`rms`/`bass`/`mid`/`treble` numbers + `fft`/`wave` arrays) spread from
+  // `SignalReading`. The per-drum scalars + master DSP + LOD hang off the SAME
+  // object, so one `with (staveUniforms)` exposes everything as `sig.*`.
+  const sig = ((sound: string): P5SignalReading => bus.sound(sound)) as SigAccessor
+  sig.track = (id: string): P5SignalReading => bus.track(id)
   // `tracks`/`sounds` getter-backed so they reflect live bus state every read.
-  Object.defineProperty(u, 'tracks', { get: () => bus.tracks, enumerable: true })
-  Object.defineProperty(u, 'sounds', { get: () => bus.sounds, enumerable: true })
-  // Master-mix DSP on `u` itself (live getter numbers / arrays — each re-reads
-  // `bus.master()` fresh, frame-fresh through the draw, never compile-captured).
-  Object.defineProperty(u, 'rms', { get: () => bus.master().rms, enumerable: true })
-  Object.defineProperty(u, 'bass', { get: () => bus.master().bass, enumerable: true })
-  Object.defineProperty(u, 'mid', { get: () => bus.master().mid, enumerable: true })
-  Object.defineProperty(u, 'treble', { get: () => bus.master().treble, enumerable: true })
-  Object.defineProperty(u, 'fft', { get: () => bus.master().fft, enumerable: true })
-  Object.defineProperty(u, 'wave', { get: () => bus.master().wave, enumerable: true })
-  // Quality / LOD multiplier (#269) — NOT a bus signal but a live config read, so
-  // a sketch reads the user's current "performance mode" per frame (worker: the
-  // marshalled singleton, fed by the config channel). Mesh sketches scale segment
-  // count by this; fill sketches ride render-resolution instead (#232).
-  Object.defineProperty(u, 'density', { get: () => getVizConfig().density, enumerable: true })
-
-  // The uniform object — bare `uKick…uTom` / `uKeyVelocity` are GETTERS
-  // (D-01 p5 shape: live numbers). `__tick` is a non-enumerable per-frame hook.
-  const uniforms = {
-    get uKick(): number {
-      return bus.envValue('uKick')
-    },
-    get uSnare(): number {
-      return bus.envValue('uSnare')
-    },
-    get uHat(): number {
-      return bus.envValue('uHat')
-    },
-    get uOpenHat(): number {
-      return bus.envValue('uOpenHat')
-    },
-    get uClap(): number {
-      return bus.envValue('uClap')
-    },
-    get uRim(): number {
-      return bus.envValue('uRim')
-    },
-    get uTom(): number {
-      return bus.envValue('uTom')
-    },
-    // `uKeyVelocity` is NOT a sound alias — the active event's velocity globally
-    // (max over every sound seen this frame; 0 when nothing is active).
-    get uKeyVelocity(): number {
+  Object.defineProperty(sig, 'tracks', { get: () => bus.tracks, enumerable: true })
+  Object.defineProperty(sig, 'sounds', { get: () => bus.sounds, enumerable: true })
+  // Per-drum envelopes (were bare `uKick…uTom`) — live getter numbers, each
+  // re-reads the bus fresh per access (frame-fresh through the draw, U2).
+  const env = (key: string): PropertyDescriptor => ({
+    get: () => bus.envValue(key),
+    enumerable: true,
+  })
+  Object.defineProperty(sig, 'kick', env('uKick'))
+  Object.defineProperty(sig, 'snare', env('uSnare'))
+  Object.defineProperty(sig, 'hat', env('uHat'))
+  Object.defineProperty(sig, 'openHat', env('uOpenHat'))
+  Object.defineProperty(sig, 'clap', env('uClap'))
+  Object.defineProperty(sig, 'rim', env('uRim'))
+  Object.defineProperty(sig, 'tom', env('uTom'))
+  // `sig.keyVelocity` is NOT a sound alias — the active event's velocity globally
+  // (max over every sound seen this frame; 0 when nothing is active).
+  Object.defineProperty(sig, 'keyVelocity', {
+    get: () => {
       let max = 0
       for (const s of bus.sounds) {
         const v = bus.sound(s).velocity
@@ -102,21 +88,25 @@ export function buildStaveUniforms(
       }
       return max
     },
-    // Master-mix DSP sugar (live getter numbers) — parity with `uKick`.
-    get uRms(): number {
-      return bus.master().rms
-    },
-    get uBass(): number {
-      return bus.master().bass
-    },
-    get uMid(): number {
-      return bus.master().mid
-    },
-    get uTreble(): number {
-      return bus.master().treble
-    },
-    u,
-  } as StaveUniforms
+    enumerable: true,
+  })
+  // Master-mix DSP on `sig` itself (live getter numbers / arrays — each re-reads
+  // `bus.master()` fresh, frame-fresh through the draw, never compile-captured).
+  Object.defineProperty(sig, 'rms', { get: () => bus.master().rms, enumerable: true })
+  Object.defineProperty(sig, 'bass', { get: () => bus.master().bass, enumerable: true })
+  Object.defineProperty(sig, 'mid', { get: () => bus.master().mid, enumerable: true })
+  Object.defineProperty(sig, 'treble', { get: () => bus.master().treble, enumerable: true })
+  Object.defineProperty(sig, 'fft', { get: () => bus.master().fft, enumerable: true })
+  Object.defineProperty(sig, 'wave', { get: () => bus.master().wave, enumerable: true })
+  // Quality / LOD multiplier (#269) — NOT a bus signal but a live config read, so
+  // a sketch reads the user's current "performance mode" per frame (worker: the
+  // marshalled singleton, fed by the config channel). Mesh sketches scale segment
+  // count by this; fill sketches ride render-resolution instead (#232).
+  Object.defineProperty(sig, 'density', { get: () => getVizConfig().density, enumerable: true })
+
+  // The uniform object exposes the single `sig` namespace bare via `with`.
+  // `__tick` is a non-enumerable per-frame hook.
+  const uniforms = { sig } as StaveUniforms
 
   // `__tick` non-enumerable so a `with (staveUniforms)` / for-in doesn't surface
   // it as a sketch identifier; the draw wrapper calls it explicitly once/frame.
