@@ -17,6 +17,11 @@
 /.next/
 /out/
 
+# Published by @stave/docs postbuild — generated, do not commit.
+# Served by the /docs/[[...slug]] route handler (kept out of /public so Next's
+# public-static handler doesn't shadow the nested clean-URLs — see #322).
+/docs-dist/
+
 # production
 /build
 
