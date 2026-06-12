@@ -48,6 +48,12 @@ const nextConfig: NextConfig = {
       return [
         // The Astro dev server (base '/docs/') serves the home page only at the
         // trailing-slash URL — forward the bare /docs to /docs/ so it resolves.
+        // NOTE: this proxies the docs PAGES so the in-app Docs button lands
+        // somewhere in dev, but Astro/Vite serve their dev stylesheets + client
+        // from root-level virtual paths (/@fs, /src, /node_modules/.vite, the HMR
+        // socket) that we deliberately do NOT proxy — chasing them all is fragile.
+        // For fully-styled docs while authoring, open http://localhost:4321/docs/
+        // directly. PROD (the route handler) serves everything correctly.
         { source: "/docs", destination: "http://localhost:4321/docs/" },
         { source: "/docs/:path*", destination: "http://localhost:4321/docs/:path*" },
       ];
