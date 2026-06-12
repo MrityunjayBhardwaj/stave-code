@@ -3,7 +3,9 @@ import {
   injectedGlobals,
   formatStaveInputs,
   injectedGlobalByToken,
+  buildVizInputRows,
 } from '../injectedGlobals'
+import type { VizInputRow } from '../injectedGlobals'
 import type { VizRendererKind } from '../../workspace/vizLanguages'
 
 const KINDS: VizRendererKind[] = ['p5', 'hydra', 'glsl']
@@ -141,5 +143,65 @@ describe('injectedGlobalByToken', () => {
   it('returns null for a non-injected word', () => {
     expect(injectedGlobalByToken('p5', 'background')).toBeNull()
     expect(injectedGlobalByToken('glsl', 'vec3')).toBeNull()
+  })
+})
+
+describe('buildVizInputRows (#346 live drawer row model)', () => {
+  const live = (rows: VizInputRow[]) => rows.filter((r): r is Extract<VizInputRow, { type: 'live' }> => r.type === 'live')
+  const staticRows = (rows: VizInputRow[]) => rows.filter((r): r is Extract<VizInputRow, { type: 'static' }> => r.type === 'static')
+
+  it('emits a header row when the group changes, in catalogue order', () => {
+    const rows = buildVizInputRows('p5')
+    const headers = rows.filter((r) => r.type === 'header').map((r) => (r as { group: string }).group)
+    // one header per distinct group, no consecutive duplicates
+    expect(headers).toEqual([...new Set(headers)])
+    expect(headers[0]).toBe('context')
+  })
+
+  it('expands a live entry into one live row PER token (drums → 7 rows)', () => {
+    const drums = live(buildVizInputRows('p5')).filter((r) =>
+      ['kick', 'snare', 'hat', 'openHat', 'clap', 'rim', 'tom'].includes(r.token),
+    )
+    expect(drums).toHaveLength(7)
+    // comment is attached to the first token of the entry only
+    expect(drums[0].comment).toContain('per-drum envelope')
+    expect(drums[1].comment).toBeNull()
+  })
+
+  it('namespaces the live label per kind (p5 sig., hydra thunk, glsl bare)', () => {
+    const p5 = live(buildVizInputRows('p5')).find((r) => r.token === 'kick')
+    const hydra = live(buildVizInputRows('hydra')).find((r) => r.token === 'kick')
+    const glsl = live(buildVizInputRows('glsl')).find((r) => r.token === 'uKick')
+    expect(p5?.label).toBe('sig.kick')
+    expect(hydra?.label).toBe('sig.kick()')
+    expect(glsl?.label).toBe('uKick')
+  })
+
+  it('carries the spec kind so the panel can pick a widget (bar/spark/seconds)', () => {
+    const rows = live(buildVizInputRows('p5'))
+    expect(rows.find((r) => r.token === 'rms')?.spec.kind).toBe('scalar')
+    expect(rows.find((r) => r.token === 'fft')?.spec.kind).toBe('array')
+    expect(live(buildVizInputRows('glsl')).find((r) => r.token === 'iTime')?.spec.kind).toBe('time')
+  })
+
+  it('keeps no-live entries as STATIC reference rows (sig accessor, density, context)', () => {
+    const rows = buildVizInputRows('p5')
+    const declText = staticRows(rows).map((r) => r.decl).join('\n')
+    // the sig()/sig.track accessor, density, and the scheduler/analyser handles
+    // carry no live spec → they stay documented as static rows, never live.
+    expect(declText).toContain("sig('bd')")
+    expect(declText).toContain('sig.density')
+    expect(declText).toContain('stave.scheduler')
+    const liveTokens = live(rows).map((r) => r.token)
+    expect(liveTokens).not.toContain('density')
+    expect(liveTokens).not.toContain('scheduler')
+  })
+
+  it('every live row references a real catalogue token + spec (additive floor)', () => {
+    for (const k of KINDS) {
+      for (const r of live(buildVizInputRows(k))) {
+        expect(injectedGlobalByToken(k, r.token)?.live).toEqual(r.spec)
+      }
+    }
   })
 })

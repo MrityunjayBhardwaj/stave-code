@@ -225,6 +225,67 @@ export function formatStaveInputs(kind: VizRendererKind): string {
 }
 
 /**
+ * A row in the LIVE "Stave Inputs" drawer (#346). The drawer, when live values
+ * are enabled, renders this flat list instead of the static {@link formatStaveInputs}
+ * block:
+ *   - `header` — a `// — group —` divider (group changed).
+ *   - `live`   — one injected token that carries a {@link LiveSpec}; the panel
+ *                paints its master value (bar+number / sparkline / iTime seconds)
+ *                imperatively off the vizSignalProbe tick.
+ *   - `static` — a reference entry with NO live token (`sig`, `sig.track`,
+ *                `sig.tracks`, `sig.sounds`, `sig.density`, `stave.scheduler`…):
+ *                shown as its `decl // comment` text, no live value.
+ *
+ * Pure + worker-safe (data only) so it is unit-testable without DOM/IDB/Yjs.
+ */
+export type VizInputRow =
+  | { type: 'header'; group: string }
+  | { type: 'static'; decl: string; comment: string }
+  | { type: 'live'; label: string; comment: string | null; token: string; spec: LiveSpec }
+
+/** The token as it reads in the kind's namespace, for the live row label. p5 and
+ *  hydra live tokens hang off `sig`; hydra scalars are thunks (call them); glsl
+ *  injects bare uniforms (`uKick`, `iTime`). */
+function liveLabel(kind: VizRendererKind, token: string, spec: LiveSpec): string {
+  if (kind === 'glsl') return token
+  if (kind === 'hydra') return spec.kind === 'scalar' ? `sig.${token}()` : `sig.${token}`
+  return `sig.${token}`
+}
+
+/**
+ * Build the live-drawer row model for a renderer kind (#346). Mirrors the group
+ * ordering of {@link formatStaveInputs}; every entry that has at least one `live`
+ * token expands into one `live` row per token (comment attached to the first),
+ * and every entry without a live token stays a `static` reference row.
+ */
+export function buildVizInputRows(kind: VizRendererKind): VizInputRow[] {
+  const out: VizInputRow[] = []
+  let group: string | null = null
+  for (const entry of injectedGlobals(kind)) {
+    if (entry.group !== group) {
+      out.push({ type: 'header', group: entry.group })
+      group = entry.group
+    }
+    const liveTokens = entry.tokens.filter((t) => entry.live?.[t])
+    if (liveTokens.length === 0) {
+      out.push({ type: 'static', decl: entry.decl, comment: entry.comment })
+      continue
+    }
+    liveTokens.forEach((token, i) => {
+      const spec = entry.live![token]!
+      out.push({
+        type: 'live',
+        label: liveLabel(kind, token, spec),
+        comment: i === 0 ? entry.comment : null,
+        token,
+        spec,
+      })
+    })
+  }
+  return out
+}
+
+/**
  * Look up the catalogue entry + the specific token a hovered WORD matches, for a
  * renderer kind. Returns `null` when the word is not a Stave-injected token.
  * (A bare word like `uKick` / `iTime` / `rms` is matched against every entry's

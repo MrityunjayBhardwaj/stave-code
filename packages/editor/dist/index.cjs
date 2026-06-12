@@ -5896,6 +5896,33 @@ function getInlineVizTeardownMs() {
   return INLINE_VIZ_TEARDOWN_MS;
 }
 __name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
+var DEFAULT_VIZ_INPUTS_LIVE_VALUES = true;
+var VIZ_INPUTS_LIVE_VALUES_STORAGE = "stave:vizInputsLiveValues";
+var vizInputsLiveValuesListeners = /* @__PURE__ */ new Set();
+function readVizInputsLiveValuesEnabled() {
+  const ls = safeLocalStorage2();
+  if (!ls) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
+  const saved = ls.getItem(VIZ_INPUTS_LIVE_VALUES_STORAGE);
+  if (saved === null) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
+  return saved === "1";
+}
+__name(readVizInputsLiveValuesEnabled, "readVizInputsLiveValuesEnabled");
+function getVizInputsLiveValuesEnabled() {
+  return readVizInputsLiveValuesEnabled();
+}
+__name(getVizInputsLiveValuesEnabled, "getVizInputsLiveValuesEnabled");
+function setVizInputsLiveValuesEnabled(on) {
+  safeLocalStorage2()?.setItem(VIZ_INPUTS_LIVE_VALUES_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(vizInputsLiveValuesListeners)) cb(on);
+}
+__name(setVizInputsLiveValuesEnabled, "setVizInputsLiveValuesEnabled");
+function onVizInputsLiveValuesChange(cb) {
+  vizInputsLiveValuesListeners.add(cb);
+  return () => {
+    vizInputsLiveValuesListeners.delete(cb);
+  };
+}
+__name(onVizInputsLiveValuesChange, "onVizInputsLiveValuesChange");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 18;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
@@ -18720,6 +18747,39 @@ function formatStaveInputs(kind) {
   return out.join("\n");
 }
 __name(formatStaveInputs, "formatStaveInputs");
+function liveLabel(kind, token, spec) {
+  if (kind === "glsl") return token;
+  if (kind === "hydra") return spec.kind === "scalar" ? `sig.${token}()` : `sig.${token}`;
+  return `sig.${token}`;
+}
+__name(liveLabel, "liveLabel");
+function buildVizInputRows(kind) {
+  const out = [];
+  let group = null;
+  for (const entry of injectedGlobals(kind)) {
+    if (entry.group !== group) {
+      out.push({ type: "header", group: entry.group });
+      group = entry.group;
+    }
+    const liveTokens = entry.tokens.filter((t) => entry.live?.[t]);
+    if (liveTokens.length === 0) {
+      out.push({ type: "static", decl: entry.decl, comment: entry.comment });
+      continue;
+    }
+    liveTokens.forEach((token, i) => {
+      const spec = entry.live[token];
+      out.push({
+        type: "live",
+        label: liveLabel(kind, token, spec),
+        comment: i === 0 ? entry.comment : null,
+        token,
+        spec
+      });
+    });
+  }
+  return out;
+}
+__name(buildVizInputRows, "buildVizInputRows");
 function injectedGlobalByToken(kind, word) {
   for (const entry of injectedGlobals(kind)) {
     if (entry.tokens.includes(word)) {
@@ -28769,10 +28829,89 @@ var KIND_LABEL2 = {
   hydra: "hydra",
   glsl: "glsl"
 };
+var PAINT_INTERVAL_MS = 1e3 / 12;
+var SPARK2 = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588";
+function sparkString(arr, n = 32) {
+  if (arr.length === 0) return "\xB7".repeat(n);
+  const step = Math.max(1, Math.floor(arr.length / n));
+  const samples = [];
+  let max = 1e-6;
+  for (let i = 0; i < arr.length && samples.length < n; i += step) {
+    const v = Math.abs(arr[i]);
+    samples.push(v);
+    if (v > max) max = v;
+  }
+  let out = "";
+  for (const v of samples) out += SPARK2[Math.min(7, Math.floor(v / max * 7.999))];
+  return out;
+}
+__name(sparkString, "sparkString");
 function StaveInputsPanel({ kind }) {
   const [open, setOpen] = React8.useState(false);
-  const block = formatStaveInputs(kind);
+  const [liveEnabled, setLiveEnabled] = React8.useState(true);
   React8.useEffect(() => vizSignalProbe.acquire(), []);
+  React8.useEffect(() => {
+    setLiveEnabled(getVizInputsLiveValuesEnabled());
+    return onVizInputsLiveValuesChange(setLiveEnabled);
+  }, []);
+  const rows = React8.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React8.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React8.useRef([]);
+  React8.useEffect(() => {
+    if (!open || !liveEnabled) return;
+    if (typeof requestAnimationFrame !== "function") return;
+    let raf = 0;
+    let last = 0;
+    let prevPlaying = false;
+    let playStartT = 0;
+    let idlePainted = false;
+    const paintIdle = /* @__PURE__ */ __name(() => {
+      for (const refs of valueRefs.current) {
+        if (!refs) continue;
+        if (refs.fill) refs.fill.style.width = "0%";
+        if (refs.num) refs.num.textContent = "\u2014";
+        if (refs.text) refs.text.textContent = "\u2014";
+      }
+    }, "paintIdle");
+    const loop = /* @__PURE__ */ __name((t) => {
+      raf = requestAnimationFrame(loop);
+      if (t - last < PAINT_INTERVAL_MS) return;
+      last = t;
+      const playing = vizSignalProbe.playing;
+      if (playing && !prevPlaying) playStartT = t;
+      prevPlaying = playing;
+      if (!playing) {
+        if (!idlePainted) {
+          paintIdle();
+          idlePainted = true;
+        }
+        return;
+      }
+      idlePainted = false;
+      liveRows.forEach((row, i) => {
+        const refs = valueRefs.current[i];
+        if (!refs) return;
+        if (row.spec.kind === "time") {
+          if (refs.text) refs.text.textContent = `${((t - playStartT) / 1e3).toFixed(1)}s`;
+          return;
+        }
+        const v = vizSignalProbe.read(row.spec);
+        if (row.spec.kind === "array") {
+          if (refs.text) refs.text.textContent = Array.isArray(v) ? sparkString(v) : "\u2014";
+          return;
+        }
+        if (typeof v === "number") {
+          if (refs.fill) refs.fill.style.width = `${Math.max(0, Math.min(1, v)) * 100}%`;
+          if (refs.num) refs.num.textContent = v.toFixed(2);
+        } else {
+          if (refs.fill) refs.fill.style.width = "0%";
+          if (refs.num) refs.num.textContent = "\u2014";
+        }
+      });
+    }, "loop");
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [open, liveEnabled, liveRows]);
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
@@ -28815,11 +28954,114 @@ function StaveInputsPanel({ kind }) {
                 KIND_LABEL2[kind],
                 " injected globals"
               ] }),
-              !open && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { marginLeft: "auto", opacity: 0.5 }, children: "hover a token in your code for live values" })
+              !open && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { marginLeft: "auto", opacity: 0.5 }, children: liveEnabled ? "open for live master values" : "hover a token in your code for live values" })
             ]
           }
         ),
-        open && /* @__PURE__ */ jsxRuntime.jsx(
+        open && (liveEnabled ? /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-testid": "viz-inputs-live",
+            style: {
+              padding: "4px 14px 10px 30px",
+              maxHeight: 320,
+              overflow: "auto",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              lineHeight: 1.5
+            },
+            children: (() => {
+              let li = -1;
+              return rows.map((row, idx) => {
+                if (row.type === "header") {
+                  return /* @__PURE__ */ jsxRuntime.jsx(
+                    "div",
+                    {
+                      style: { color: "var(--foreground-subtle, var(--foreground-muted))", opacity: 0.7, marginTop: idx === 0 ? 0 : 6 },
+                      children: `// \u2014 ${row.group} \u2014`
+                    },
+                    idx
+                  );
+                }
+                if (row.type === "static") {
+                  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { color: "var(--foreground-muted)", whiteSpace: "pre", opacity: 0.85 }, children: [
+                    /* @__PURE__ */ jsxRuntime.jsx("span", { children: row.decl }),
+                    /* @__PURE__ */ jsxRuntime.jsx("span", { style: { opacity: 0.6 }, children: `  // ${row.comment}` })
+                  ] }, idx);
+                }
+                const myIndex = li += 1;
+                const isScalar = row.spec.kind === "scalar";
+                return /* @__PURE__ */ jsxRuntime.jsxs(
+                  "div",
+                  {
+                    "data-token": row.token,
+                    style: { display: "flex", alignItems: "center", gap: 8, color: "var(--foreground)" },
+                    children: [
+                      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { minWidth: 132, color: "var(--accent-strong, var(--accent))" }, children: row.label }),
+                      isScalar ? /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+                        /* @__PURE__ */ jsxRuntime.jsx(
+                          "div",
+                          {
+                            style: {
+                              position: "relative",
+                              width: 96,
+                              height: 8,
+                              borderRadius: 2,
+                              background: "var(--bg-active, rgba(127,127,127,0.18))",
+                              overflow: "hidden",
+                              flexShrink: 0
+                            },
+                            children: /* @__PURE__ */ jsxRuntime.jsx(
+                              "div",
+                              {
+                                "data-live-bar": row.token,
+                                ref: (el) => {
+                                  var _a;
+                                  ((_a = valueRefs.current)[myIndex] ?? (_a[myIndex] = {})).fill = el;
+                                },
+                                style: {
+                                  position: "absolute",
+                                  inset: 0,
+                                  width: "0%",
+                                  background: "var(--accent-strong, var(--accent))"
+                                }
+                              }
+                            )
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntime.jsx(
+                          "span",
+                          {
+                            "data-live-num": row.token,
+                            ref: (el) => {
+                              var _a;
+                              ((_a = valueRefs.current)[myIndex] ?? (_a[myIndex] = {})).num = el;
+                            },
+                            style: { minWidth: 34, color: "var(--foreground-muted)" },
+                            children: "\u2014"
+                          }
+                        )
+                      ] }) : /* @__PURE__ */ jsxRuntime.jsx(
+                        "span",
+                        {
+                          "data-live-text": row.token,
+                          ref: (el) => {
+                            var _a;
+                            ((_a = valueRefs.current)[myIndex] ?? (_a[myIndex] = {})).text = el;
+                          },
+                          style: { color: "var(--foreground-muted)", whiteSpace: "pre" },
+                          children: "\u2014"
+                        }
+                      ),
+                      row.comment && /* @__PURE__ */ jsxRuntime.jsx("span", { style: { marginLeft: "auto", opacity: 0.5, color: "var(--foreground-muted)" }, children: `// ${row.comment}` })
+                    ]
+                  },
+                  idx
+                );
+              });
+            })()
+          }
+        ) : /* @__PURE__ */ jsxRuntime.jsx(
           "pre",
           {
             "data-testid": "viz-inputs-block",
@@ -28835,9 +29077,9 @@ function StaveInputsPanel({ kind }) {
               whiteSpace: "pre",
               userSelect: "text"
             },
-            children: block
+            children: formatStaveInputs(kind)
           }
-        )
+        ))
       ]
     }
   );
@@ -29810,6 +30052,7 @@ exports.getViewedCommit = getViewedCommit;
 exports.getViewedContent = getViewedContent;
 exports.getViewedFileIds = getViewedFileIds;
 exports.getVizConfig = getVizConfig;
+exports.getVizInputsLiveValuesEnabled = getVizInputsLiveValuesEnabled;
 exports.getVizMaxDprOverride = getVizMaxDprOverride;
 exports.getVizMaxFpsOverride = getVizMaxFpsOverride;
 exports.getVizQuality = getVizQuality;
@@ -29868,6 +30111,7 @@ exports.onPerfEnabledChange = onPerfEnabledChange;
 exports.onSignalAliasesChange = onSignalAliasesChange;
 exports.onThemeChange = onThemeChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
+exports.onVizInputsLiveValuesChange = onVizInputsLiveValuesChange;
 exports.onVizQualityChange = onVizQualityChange;
 exports.parseMini = parseMini;
 exports.parseStackLocation = parseStackLocation;
@@ -29939,6 +30183,7 @@ exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
 exports.setTrackMeta = setTrackMeta;
 exports.setVizConfig = setVizConfig;
+exports.setVizInputsLiveValuesEnabled = setVizInputsLiveValuesEnabled;
 exports.setVizQuality = setVizQuality;
 exports.setVizWorkerFactory = setVizWorkerFactory;
 exports.setZoneCropOverride = setZoneCropOverride;
