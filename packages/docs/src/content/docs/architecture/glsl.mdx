@@ -162,15 +162,24 @@ rendering.
 | `teardown()` | `program.dispose()` — delete program, VAO, texture | `hostP5Worker.ts:535` → `glslCore.ts:240` |
 | `gl?()` | re-get the WebGL2 context — **the easiest of all three kinds** (the context we created; no search) | `hostP5Worker.ts:515` |
 
-<Aside type="tip" title="GLSL satisfies #257 for free">
+<Aside type="tip" title="GLSL's draw can't throw — but its compile error is the user error, and it surfaces (#331)">
 Two seams are trivially satisfied by GLSL's nature. (1) `setupDone()` is
 synchronous because compile/link runs at mount — so there's no async-readiness
 dance. (2) `draw()` runs a GPU shader with **no per-frame user JavaScript**, so it
-cannot throw post-mount — the #257 draw-error surfacing seam has nothing to catch
-(`glslCore.ts:18`). The only failure point is shader compile/link, which throws
-at mount (`glslCore.ts:85`, `glslCore.ts:155`) → caught by the host → `onError` →
-`FallbackVizRenderer` degrades to main (#247). Contrast p5 (async setup, `draw()`
-can throw a user typo — P114) and hydra (library swallows user throws — P116).
+cannot throw post-mount — the *runtime* draw-error seam (#257) has nothing to
+catch (`glslCore.ts:18`).
+
+But that doesn't make GLSL error-free — it moves the user error to **mount time**:
+a shader that won't compile/link throws (`glslCore.ts:85`, `glslCore.ts:155`) →
+caught by the host → `onError` → `FallbackVizRenderer` degrades to main (#247),
+where the same shader throws again. That terminal catch in `GLSLVizRenderer` is
+where #331 surfaces it: `emitLog({ runtime: 'glsl', … })` to the main Console,
+and — because a GLSL info log carries a `0:N` line — it maps that line back through
+the wrapper preamble (`glslFragmentErrorUserLine`) to the user's **editor line**.
+So GLSL is the *only* runtime whose surfaced error lights an editor squiggle (p5
+has lines too; hydra can't — no line for a code-string reactive fn). The error-
+surfacing triad: p5 (`draw()` typo, #257), hydra (library-swallowed, re-surfaced
+#275), GLSL (mount-time compile, #331) — each swallows differently, each surfaces.
 </Aside>
 
 ## GL-context release (#266 hygiene)
