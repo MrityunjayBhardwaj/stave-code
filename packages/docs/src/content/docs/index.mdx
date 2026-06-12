@@ -6,7 +6,10 @@ hero:
   tagline: Live-code music and visuals side-by-side. No install, no toolchain — it's a URL.
   actions:
     - text: Get started
-      link: /getting-started/
+      # Relative (not /getting-started/) so it resolves against the splash page's
+      # own URL under `base` — Starlight renders hero action links verbatim, with
+      # no base prefix, and frontmatter isn't reachable by the rehype plugin. (#355)
+      link: getting-started/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
