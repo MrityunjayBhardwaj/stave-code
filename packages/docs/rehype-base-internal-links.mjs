@@ -21,6 +21,12 @@
  * blanket over every `<a href>`/`<img src>` without risk of double-prefixing.
  *
  * Dependency-free walker (unist-util-visit is not resolvable at the docs root).
+ *
+ * Assumption: every root-absolute (`/…`) link in docs content is docs-INTERNAL.
+ * This holds for a docs site — authors link within the docs. If you ever need to
+ * link to a host-app route OUTSIDE the docs (e.g. the Stave editor at `/`), this
+ * plugin would wrongly prefix it to `/docs/…`. Escape hatch: write a full origin
+ * URL (`https://stave.live/`) or a protocol-relative `//…` — both are skipped.
  */
 
 const ATTR_FOR = { a: 'href', area: 'href', img: 'src', source: 'src' }
