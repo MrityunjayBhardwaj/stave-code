@@ -220,7 +220,7 @@ export function MenuBar({
           variant="text"
           title="Documentation"
           ariaLabel="Open documentation"
-          onClick={() => { window.location.href = "/docs/"; }}
+          onClick={() => { window.open("/docs/", "_blank", "noopener,noreferrer"); }}
         >
           Docs
         </CornerButton>
