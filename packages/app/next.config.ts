@@ -46,7 +46,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     if (process.env.NODE_ENV === "development") {
       return [
-        { source: "/docs", destination: "http://localhost:4321/docs" },
+        // The Astro dev server (base '/docs/') serves the home page only at the
+        // trailing-slash URL — forward the bare /docs to /docs/ so it resolves.
+        { source: "/docs", destination: "http://localhost:4321/docs/" },
         { source: "/docs/:path*", destination: "http://localhost:4321/docs/:path*" },
       ];
     }
