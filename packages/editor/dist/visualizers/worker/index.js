@@ -6040,6 +6040,27 @@ function hostVizWorker(scope) {
       postVizLog(rest);
     }
   });
+  const HYDRA_WARN_THROW = "ERROR";
+  const HYDRA_WARN_NAN = "function does not return a number";
+  const realConsoleWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    try {
+      if (currentRuntimeRef.kind === "hydra" && typeof args[0] === "string") {
+        if (args[0] === HYDRA_WARN_THROW) {
+          postVizLog({
+            level: "error",
+            runtime: "hydra",
+            message: `reactive fn: ${errMsg(args[1])}`,
+            stack: errStack(args[1])
+          });
+        } else if (args[0] === HYDRA_WARN_NAN) {
+          postVizLog({ level: "warn", runtime: "hydra", message: "reactive fn did not return a number" });
+        }
+      }
+    } catch {
+    }
+    realConsoleWarn(...args);
+  };
   let glLoseExt = null;
   let glAccounted = false;
   const accountGL = /* @__PURE__ */ __name(() => {

@@ -41,11 +41,13 @@ const HYDRA_OK = `s.osc(20, 0.1, () => s.a.fft[0] * 6)
 
 /** A hydra sketch that draws cleanly for the first ~60 ticks (so the worker posts
  *  `ready` and does NOT fall back), then its reactive arrow THROWS every tick.
- *  OBSERVED (#275): hydra-synth wraps EACH reactive-fn uniform eval in its own
- *  try/catch (`format-arguments.js:72-83` → `console.warn('ERROR', e)` + default),
- *  so the throw is SWALLOWED by hydra and never reaches the host's `s.draw()`
- *  catch — unlike p5, whose per-frame `draw()` throw IS re-emitted to the main
- *  engineLog. This sketch characterizes that asymmetry.
+ *  hydra-synth wraps EACH reactive-fn uniform eval in its own try/catch
+ *  (`format-arguments.js:72-83` → `console.warn('ERROR', e)` + default), so the throw
+ *  never reaches the host's `s.draw()` catch. The #275 fix patches the worker's
+ *  `console.warn` to RE-EMIT hydra's swallowed user-error markers to the main
+ *  engineLog — restoring p5 parity (a p5 `draw()` typo already surfaces there). This
+ *  sketch drives that surfacing: the thrown text (`hydra tick boom`) must reach the
+ *  main Console end-to-end.
  *  `_n` lives in the Function body, captured by the reactive arrow across ticks. */
 const HYDRA_THROW_AFTER_READY = `let _n = 0
 s.osc(20, 0.1, () => s.a.fft[0] * 6)
@@ -209,47 +211,69 @@ test.describe('#274 hydra worker path coverage', () => {
     }
   })
 
-  // CHARACTERIZATION (#275): the #257 s.draw() catch was meant to surface hydra
-  // tick() throws to the main engineLog like the p5 path. OBSERVED: it does NOT
-  // for USER code, because hydra-synth swallows reactive-fn throws in its own
-  // try/catch (format-arguments.js:72-83) → console.warn + default uniform, so the
-  // throw never propagates out of tick(). The catch only fires for engine-level
-  // (regl/GL) throws, which aren't inducible from a viz code string. This test
-  // LOCKS that asymmetry (a future change that surfaces hydra errors flips it red
-  // → revisit #275). It is NOT a claim that hydra errors surface.
-  test('(b) #257/#275 — a hydra reactive-fn throw is swallowed by hydra-synth (NOT surfaced; asymmetry vs p5)', async ({ browser }) => {
+  // #275 — hydra-synth SWALLOWS user reactive-fn throws in its own try/catch
+  // (format-arguments.js:72-83 → console.warn('ERROR', e) + default uniform), so they
+  // never reach the host's s.draw() catch and a hydra typo gave a silent default +
+  // a warning buried in the DEDICATED worker's devtools — vs p5, whose draw() typo
+  // surfaces in the main Console (#257). The fix patches the worker's console.warn to
+  // re-emit hydra's user-error markers via vizlog → main engineLog. This test proves
+  // PARITY: a clean sketch surfaces NOTHING (control — no over-capture), and a
+  // throwing reactive fn surfaces its thrown text (effect + isolation).
+  test('(b) #257/#275 — a hydra reactive-fn throw SURFACES to the main Console (p5 parity)', async ({ browser }) => {
     const { ctx, page } = await open(browser)
     try {
-      await registerHydra(page, 'hy-throw', HYDRA_THROW_AFTER_READY)
+      // CONTROL (P135 — no over-capture): a HEALTHY hydra sketch trips neither marker
+      // ('ERROR' / 'function does not return a number'), so a green here proves the
+      // patch doesn't spam the Console with hydra/regl internals or clean frames.
+      await registerHydra(page, 'hy-clean', HYDRA_OK)
+      await remount(page, `$: s("bd*4, hh*8").bank("RolandTR909").viz('hy-clean')`)
+      await page.waitForTimeout(3000)
+      const cleanObs = await page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const w = window as any
+        const s = w.__stavePerf?.snapshot?.()
+        const log: Array<{ level: string; runtime: string; message: string }> = w.__staveGetLog?.() ?? []
+        const reactive = log.filter((e) => e.runtime === 'hydra' && /reactive fn/.test(e.message))
+        return { worker: s?.gauges?.['viz.worker'] ?? 0, hydra: s?.gauges?.['viz.hydra'] ?? 0, count: reactive.length }
+      })
+      console.log(`[#274 b] CONTROL clean: ${JSON.stringify(cleanObs)}`)
+      expect(cleanObs.worker, 'clean hydra worker viz live (control probe)').toBeGreaterThan(0)
+      expect(cleanObs.hydra, 'no main-thread fallback (clean)').toBe(0)
+      expect(cleanObs.count, 'a healthy hydra sketch surfaces NO reactive-fn errors (no over-capture)').toBe(0)
 
+      // EFFECT: a reactive arrow that throws every tick after ready. hydra-synth
+      // swallows it to console.warn('ERROR', e); the #275 patch re-emits it.
+      await registerHydra(page, 'hy-throw', HYDRA_THROW_AFTER_READY)
       await remount(page, `$: s("bd*4, hh*8").bank("RolandTR909").viz('hy-throw')`)
-      // > 60 clean ticks (ready, no fallback), then the arrow throws every tick.
-      await page.waitForTimeout(5000)
+      await page.waitForTimeout(5000) // > 60 clean ticks (ready, no fallback), then throws every tick
 
       const obs = await page.evaluate(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = window as any
         const s = w.__stavePerf?.snapshot?.()
         const log: Array<{ level: string; runtime: string; message: string }> = w.__staveGetLog?.() ?? []
-        const hydraDraw = log.filter(
-          (e) => e.level === 'error' && e.runtime === 'hydra' && e.message.includes('draw('),
-        )
+        const reactive = log.filter((e) => e.level === 'error' && e.runtime === 'hydra' && /reactive fn/.test(e.message))
         return {
           worker: s?.gauges?.['viz.worker'] ?? 0,
           hydra: s?.gauges?.['viz.hydra'] ?? 0,
-          count: hydraDraw.length,
+          count: reactive.length,
+          messages: reactive.map((e) => e.message),
         }
       })
-      console.log(`[#274 b] hydra draw errors surfaced=${obs.count} worker=${obs.worker} hydra=${obs.hydra}`)
+      console.log(`[#274 b] EFFECT surfaced=${obs.count} worker=${obs.worker} hydra=${obs.hydra} msgs=${JSON.stringify(obs.messages)}`)
 
-      // Control probe: the worker hydra path was taken and did NOT fall back — the
-      // (swallowed) throw can't tear down an already-ready worker.
+      // Control probe (PK29): worker hydra path taken, no fallback — surfacing the
+      // throw must NOT tear the already-ready worker down (it's a log, not onError).
       expect(obs.worker, 'worker path taken, still live (control probe)').toBeGreaterThan(0)
       expect(obs.hydra, 'no fallback to main-thread hydra').toBe(0)
-      // The throw is swallowed by hydra-synth → it does NOT reach the main engineLog
-      // (the documented asymmetry vs p5; #275). If this ever becomes ≥1, hydra error
-      // surfacing changed — update this test and close/triage #275.
-      expect(obs.count, 'hydra reactive-fn throw is swallowed by hydra-synth, not surfaced (#275)').toBe(0)
+      // EFFECT (#275): the swallowed reactive-fn throw now reaches the main engineLog.
+      expect(obs.count, 'hydra reactive-fn throw surfaces to the main Console (#275, p5 parity)').toBeGreaterThanOrEqual(1)
+      // ISOLATION: it's OUR induced throw, not an incidental hydra error — the surfaced
+      // message carries the thrown text end-to-end (hydra warn → vizlog → main log).
+      expect(
+        obs.messages.some((m) => m.includes('hydra tick boom')),
+        'the surfaced error is the induced reactive-fn throw (end-to-end)',
+      ).toBe(true)
     } finally {
       await ctx.close()
     }
