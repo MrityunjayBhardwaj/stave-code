@@ -3,6 +3,8 @@ import {
   buildGLSLFragmentSource,
   GLSL_FULLSCREEN_VERT,
   MAX_GLSL_TRACKS,
+  glslPreambleLineCount,
+  glslFragmentErrorUserLine,
 } from '../renderers/glslShaderSource'
 
 /**
@@ -116,5 +118,45 @@ describe('buildGLSLFragmentSource — ambiguous & empty cases (friendly errors)'
     const out = buildGLSLFragmentSource(commented)
     expect(out).toContain('void main()')
     expect(out).not.toContain('out vec4 stave_FragColor;')
+  })
+})
+
+describe('glsl compile-error line mapping (#331)', () => {
+  for (const [mode, src] of [
+    ['ShaderToy', SHADERTOY],
+    ['raw', RAW],
+  ] as const) {
+    it(`preamble count locates the user's first line in the composed source (${mode})`, () => {
+      // The tightest invariant: composed[preambleCount] IS the user's first line.
+      // If buildGLSLFragmentSource's preamble ever changes shape, this fails — so the
+      // mapping offset can't silently drift from the composition.
+      const composed = buildGLSLFragmentSource(src).split('\n')
+      expect(composed[glslPreambleLineCount(src)]).toBe(src.split('\n')[0])
+    })
+
+    it(`maps a GLSL info-log line back to the editor line (${mode})`, () => {
+      const preamble = glslPreambleLineCount(src)
+      // The driver reports an error on composed line (preamble + 3) → user line 3.
+      const msg = `glsl fragment compile error:\nERROR: 0:${preamble + 3}: 'x' : undeclared identifier`
+      expect(glslFragmentErrorUserLine(msg, src)).toBe(3)
+    })
+  }
+
+  it('clamps to >= 1 — an error inside the Stave preamble maps to line 1, never 0/negative', () => {
+    const msg = `glsl fragment compile error:\nERROR: 0:2: 'x' : something`
+    expect(glslFragmentErrorUserLine(msg, SHADERTOY)).toBe(1)
+  })
+
+  it('returns undefined for vertex/link errors (Stave-owned, not the user fragment)', () => {
+    expect(glslFragmentErrorUserLine('glsl link error:\nlinker said no', SHADERTOY)).toBeUndefined()
+    expect(
+      glslFragmentErrorUserLine('glsl vertex compile error:\nERROR: 0:3: bad', SHADERTOY),
+    ).toBeUndefined()
+  })
+
+  it('returns undefined when the message carries no 0:N token', () => {
+    expect(
+      glslFragmentErrorUserLine('glsl fragment compile error:\nsomething vague', SHADERTOY),
+    ).toBeUndefined()
   })
 })
