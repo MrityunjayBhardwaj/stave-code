@@ -251,16 +251,20 @@ test.describe('#274 hydra worker path coverage', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = window as any
         const s = w.__stavePerf?.snapshot?.()
-        const log: Array<{ level: string; runtime: string; message: string }> = w.__staveGetLog?.() ?? []
+        const log: Array<{ level: string; runtime: string; message: string; line?: number }> =
+          w.__staveGetLog?.() ?? []
         const reactive = log.filter((e) => e.level === 'error' && e.runtime === 'hydra' && /reactive fn/.test(e.message))
         return {
           worker: s?.gauges?.['viz.worker'] ?? 0,
           hydra: s?.gauges?.['viz.hydra'] ?? 0,
           count: reactive.length,
           messages: reactive.map((e) => e.message),
+          lines: reactive.map((e) => e.line),
         }
       })
-      console.log(`[#274 b] EFFECT surfaced=${obs.count} worker=${obs.worker} hydra=${obs.hydra} msgs=${JSON.stringify(obs.messages)}`)
+      console.log(
+        `[#274 b] EFFECT surfaced=${obs.count} worker=${obs.worker} hydra=${obs.hydra} lines=${JSON.stringify(obs.lines)} msgs=${JSON.stringify(obs.messages)}`,
+      )
 
       // Control probe (PK29): worker hydra path taken, no fallback — surfacing the
       // throw must NOT tear the already-ready worker down (it's a log, not onError).
@@ -274,6 +278,10 @@ test.describe('#274 hydra worker path coverage', () => {
         obs.messages.some((m) => m.includes('hydra tick boom')),
         'the surfaced error is the induced reactive-fn throw (end-to-end)',
       ).toBe(true)
+      // LINE ATTRIBUTION (#330): the Error's stack maps back through the new-Function
+      // header (getHydraLineOffset) to the authored line — the `throw` is on line 3 of
+      // HYDRA_THROW_AFTER_READY (`let _n = 0` is line 1, the `.rotate(() => …throw…)` is line 3).
+      expect(obs.lines, 'the hydra reactive-fn error is attributed to the authored editor line (3)').toContain(3)
     } finally {
       await ctx.close()
     }

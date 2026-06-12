@@ -66,6 +66,15 @@ export function parseStackLocation(
   const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/)
   if (v8Eval)
     return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) }
+  // V8 eval-WRAPPER: "at <Name> (eval at <outerFn> (<url>), <anonymous>:LINE:COL)"
+  // — a `new Function` body invoked from inside another function (e.g. hydra's
+  // reactive arrow run via `compileHydraCode`). Here `<anonymous>` follows the
+  // wrapper's `), `, not `(`, so the patterns below miss it. The `eval at` token
+  // marks it as a V8 eval frame and the lazy `.+?` stops at the FIRST `<anonymous>`
+  // (the innermost = the user frame, since stacks are top-first). #330.
+  const v8EvalWrap = stack.match(/eval at .+?<anonymous>:(\d+):(\d+)/)
+  if (v8EvalWrap)
+    return { line: parseInt(v8EvalWrap[1], 10), column: parseInt(v8EvalWrap[2], 10) }
   // V8: "at <FuncName> (<anonymous>:LINE:COL)" — a named user function
   // (setup / draw / a user helper) declared inside a `new Function`
   // body, throwing mid-execution. The `<anonymous>` token is the safe

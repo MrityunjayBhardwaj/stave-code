@@ -499,16 +499,20 @@ observation (don't infer "it surfaces" — a probe across all three found the ga
 | Runtime | What the user error is | How it's swallowed | Where Stave surfaces it |
 | --- | --- | --- | --- |
 | **p5** | a `draw()` / `setup()` throw (runtime) | p5Compiler's lifecycle try/catch → worker-local `engineLog` | `subscribeLog` → `vizlog` → main `emitLog` (#257) |
-| **hydra** | a reactive-fn throw (runtime) | hydra-synth's per-uniform try/catch → `console.warn` + default | patch the worker `console.warn`, re-emit via `vizlog` (#275) |
+| **hydra** | a reactive-fn throw (runtime) | hydra-synth's per-uniform try/catch → `console.warn` + default | patch the worker `console.warn`, re-emit via `vizlog`, **with the editor line** (#275/#330) |
 | **GLSL** | a shader compile/link failure (**mount-time**) | throws → fallback → main `GLSLVizRenderer` `console.error` | `emitLog` at the terminal compile catch, **with the editor line** (#331) |
 
-GLSL is the only one whose surfaced error carries a source line (its info log has
-`0:N`, mapped back through the wrapper preamble); p5 has lines too; hydra can't
-(no line for a code-string reactive fn). When you add a fourth kind, ask **how does
-*this* runtime hide a user mistake**, and surface it at that point — a clean sketch
-must surface nothing (no over-capture) and a broken one must surface its own error
-end-to-end. Gates: `worker-draw-error.spec.ts` (p5), `hydra-path-coverage.spec.ts`
-(b), `glsl-path-coverage.spec.ts` (c).
+All three now surface **with a source line**, so the Console error lights an editor
+squiggle. The line comes from a different place each time, mapped back through that
+runtime's wrapper: p5 and hydra parse the thrown Error's stack (`parseStackLocation`
+− the `new Function` header offset; hydra's frame is the V8 *eval-wrapper* shape,
+`eval at compileHydraCode (…), <anonymous>:L:C`), GLSL parses its compiler info-log
+`0:N` (− the shader preamble). When you add a fourth kind, ask **how does *this*
+runtime hide a user mistake**, surface it at that point, and map its line through
+its own wrapper — a clean sketch must surface nothing (no over-capture) and a broken
+one must surface its own error end-to-end *with a line*. Gates:
+`worker-draw-error.spec.ts` (p5), `hydra-path-coverage.spec.ts` (b),
+`glsl-path-coverage.spec.ts` (c).
 
 ## Validated by the GLSL renderer
 

@@ -96,9 +96,12 @@ viz code string can't deterministically induce.
 deduped `postVizLog` → `vizlog` → main `emitLog` path a p5 typo uses, then always
 delegates to the real `console.warn` so devtools keeps the original. Gated on
 kind + the exact marker, so p5/other warns and hydra/regl internals pass through
-untouched. A hydra typo now appears in the Console just like a p5 one — the only
-difference is no source line (hydra gives no line for a code-string reactive fn;
-GLSL does — see [the GLSL chapter](/architecture/glsl/)).
+untouched. A hydra typo now appears in the Console just like a p5 one — **including
+the source line**: the thrown Error's stack points into the `new Function` body
+(`at … eval at compileHydraCode (…), <anonymous>:L:C`), which `parseStackLocation`
+maps back through the 2-line header (`getHydraLineOffset`) to the editor line, so
+the squiggle lands (#330). (The V8 *eval-wrapper* frame is a distinct stack shape —
+the shared `parseStackLocation` learned it for this.)
 
 <Aside type="caution" title="Before asserting 'X surfaces an error,' check who swallows it first">
 The original #257 comment *implied* parity across kinds — an inference that

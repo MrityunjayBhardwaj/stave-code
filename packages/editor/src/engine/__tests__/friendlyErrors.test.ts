@@ -221,6 +221,22 @@ describe('parseStackLocation', () => {
     ).toEqual({ line: 14, column: 3 })
   })
 
+  it('parses V8 eval-WRAPPER frame (`eval at <fn> (<url>), <anonymous>:L:C`) — #330', () => {
+    // A `new Function` body invoked from inside another function (hydra's reactive
+    // arrow run via compileHydraCode) produces this shape — `<anonymous>` follows
+    // `), `, not `(`, so the named/bare patterns miss it. Must grab the FIRST
+    // `<anonymous>` (the innermost = user frame), not a deeper hydra-internal one.
+    expect(
+      parseStackLocation({
+        stack:
+          'Error: hydra tick boom\n' +
+          '    at Array.eval (eval at compileHydraCode (http://localhost:3000/_next/static/chunks/packages_01lflh9._.js:5747:5), <anonymous>:5:40)\n' +
+          '    at typedArg.value (http://localhost:3000/_next/static/chunks/node_modules.js:2285:52)\n' +
+          '    at Output.draw (eval at compile (http://localhost:3000/x.js:8605:33), <anonymous>:347:11)',
+      }),
+    ).toEqual({ line: 5, column: 40 })
+  })
+
   it('parses Firefox @<anonymous> frame', () => {
     expect(
       parseStackLocation({

@@ -175,11 +175,12 @@ caught by the host → `onError` → `FallbackVizRenderer` degrades to main (#24
 where the same shader throws again. That terminal catch in `GLSLVizRenderer` is
 where #331 surfaces it: `emitLog({ runtime: 'glsl', … })` to the main Console,
 and — because a GLSL info log carries a `0:N` line — it maps that line back through
-the wrapper preamble (`glslFragmentErrorUserLine`) to the user's **editor line**.
-So GLSL is the *only* runtime whose surfaced error lights an editor squiggle (p5
-has lines too; hydra can't — no line for a code-string reactive fn). The error-
-surfacing triad: p5 (`draw()` typo, #257), hydra (library-swallowed, re-surfaced
-#275), GLSL (mount-time compile, #331) — each swallows differently, each surfaces.
+the wrapper preamble (`glslFragmentErrorUserLine`) to the user's **editor line**, so
+the squiggle lands. All three runtimes now light a squiggle: p5 and hydra map their
+thrown Error's stack back through the `new Function` header, GLSL maps its compiler
+info-log line through the shader preamble. The error-surfacing triad: p5 (`draw()`
+typo, #257), hydra (library-swallowed, re-surfaced + line #275/#330), GLSL
+(mount-time compile, #331) — each swallows differently, each surfaces *with a line*.
 </Aside>
 
 ## GL-context release (#266 hygiene)
