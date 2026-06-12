@@ -50,6 +50,7 @@
  */
 
 import { perf } from '../perf/profiler'
+import { isVizGovernorEnabled } from './vizFlags'
 
 // ── Tunables ──────────────────────────────────────────────────────────────
 /** rAF interval at/below which we consider the frame healthy (≈50fps). Below
@@ -135,14 +136,8 @@ class VizGovernor {
   private stress = 0
 
   constructor() {
-    // Escape hatch / A-B: localStorage['stave.viz.governor'] === '0' disables.
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('stave.viz.governor') === '0') {
-        this.enabled = false
-      }
-    } catch {
-      /* private mode / no DOM — leave enabled */
-    }
+    // Escape hatch / A-B: localStorage['stave.viz.governor'] === '0' disables (vizFlags).
+    this.enabled = isVizGovernorEnabled()
   }
 
   /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */

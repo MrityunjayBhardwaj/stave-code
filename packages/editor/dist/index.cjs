@@ -5397,6 +5397,72 @@ function buildStaveUniforms(bus, onTick) {
 }
 __name(buildStaveUniforms, "buildStaveUniforms");
 
+// src/visualizers/vizFlags.ts
+var VIZ_FLAG_KEYS = {
+  worker: "stave.viz.worker",
+  p5direct: "stave.viz.p5direct",
+  pool: "stave.viz.pool",
+  governor: "stave.viz.governor",
+  pump: "stave.viz.pump",
+  maxFps: "stave.viz.maxFps",
+  maxDpr: "stave.viz.maxDpr"
+};
+function read(key) {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+__name(read, "read");
+function enabledByDefault(key) {
+  return read(key) !== "0";
+}
+__name(enabledByDefault, "enabledByDefault");
+function optIn(key) {
+  return read(key) === "1";
+}
+__name(optIn, "optIn");
+function triState(key) {
+  const v = read(key);
+  return v === "1" ? true : v === "0" ? false : null;
+}
+__name(triState, "triState");
+function numFlag(key) {
+  const n = Number(read(key));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+__name(numFlag, "numFlag");
+function isP5DirectCanvasEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.p5direct);
+}
+__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
+function isVizGovernorEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.governor);
+}
+__name(isVizGovernorEnabled, "isVizGovernorEnabled");
+function isVizPumpSharedCacheEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.pump);
+}
+__name(isVizPumpSharedCacheEnabled, "isVizPumpSharedCacheEnabled");
+function isVizWorkerPoolEnabled() {
+  return optIn(VIZ_FLAG_KEYS.pool);
+}
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+function getVizWorkerOverride() {
+  return triState(VIZ_FLAG_KEYS.worker);
+}
+__name(getVizWorkerOverride, "getVizWorkerOverride");
+function getVizMaxFpsOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxFps);
+}
+__name(getVizMaxFpsOverride, "getVizMaxFpsOverride");
+function getVizMaxDprOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxDpr);
+}
+__name(getVizMaxDprOverride, "getVizMaxDprOverride");
+
 // src/visualizers/vizGovernor.ts
 var HEALTHY_MS = 20;
 var JANK_MS = 45;
@@ -5445,12 +5511,7 @@ var _VizGovernor = class _VizGovernor {
     this.lastObserveTs = 0;
     this.emaMs = HEALTHY_MS;
     this.stress = 0;
-    try {
-      if (typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.governor") === "0") {
-        this.enabled = false;
-      }
-    } catch {
-    }
+    this.enabled = isVizGovernorEnabled();
   }
   /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
   register(id) {
@@ -6656,14 +6717,6 @@ function poolCap() {
   return Math.max(2, hc - 2);
 }
 __name(poolCap, "poolCap");
-function isVizWorkerPoolEnabled() {
-  try {
-    return typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.pool") === "1";
-  } catch {
-    return false;
-  }
-}
-__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
 var parked = [];
 function acquireVizWorker() {
   const reused = parked.pop();
@@ -6701,12 +6754,12 @@ var _FrameSampleCache = class _FrameSampleCache {
    * callers (a shared master, or the same node read under both `'master'` and its
    * track key) get a fresh-buffer slice of the cached bytes — no second FFT.
    */
-  readAnalyser(key, an, read) {
+  readAnalyser(key, an, read2) {
     let raw;
     if (this.analyserReads.has(an)) {
       raw = this.analyserReads.get(an) ?? null;
     } else {
-      raw = read(an);
+      raw = read2(an);
       this.analyserReads.set(an, raw);
     }
     if (raw === null) return null;
@@ -6759,12 +6812,7 @@ var _VizFramePump = class _VizFramePump {
       }
       this.rafId = requestAnimationFrame(this.tick);
     }, "tick");
-    try {
-      if (typeof localStorage !== "undefined" && localStorage.getItem("stave.viz.pump") === "0") {
-        this.sharedCache = false;
-      }
-    } catch {
-    }
+    this.sharedCache = isVizPumpSharedCacheEnabled();
   }
   /** Join the pump (renderer loop START — mount/resume). Idempotent. Starts the
    *  single rAF if it wasn't already running. */
@@ -6816,14 +6864,6 @@ function effectiveDpr() {
   return cap > 0 ? Math.min(raw, cap) : raw;
 }
 __name(effectiveDpr, "effectiveDpr");
-function isP5DirectCanvasEnabled() {
-  try {
-    return typeof localStorage === "undefined" || localStorage.getItem("stave.viz.p5direct") !== "0";
-  } catch {
-    return true;
-  }
-}
-__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
 function minFrameMs() {
   const fps = getVizConfig().maxFps;
   return fps > 0 ? 1e3 / fps : 0;
@@ -29704,6 +29744,7 @@ exports.StrudelEditor = StrudelEditor;
 exports.StrudelEngine = StrudelEngine;
 exports.StrudelParseSystem = StrudelParseSystem;
 exports.UI_ICON_SIZE_VAR = UI_ICON_SIZE_VAR;
+exports.VIZ_FLAG_KEYS = VIZ_FLAG_KEYS;
 exports.VIZ_LANGUAGES = VIZ_LANGUAGES;
 exports.VizDropdown = VizDropdown;
 exports.VizEditor = VizEditor;
@@ -29816,8 +29857,11 @@ exports.getViewedCommit = getViewedCommit;
 exports.getViewedContent = getViewedContent;
 exports.getViewedFileIds = getViewedFileIds;
 exports.getVizConfig = getVizConfig;
+exports.getVizMaxDprOverride = getVizMaxDprOverride;
+exports.getVizMaxFpsOverride = getVizMaxFpsOverride;
 exports.getVizQuality = getVizQuality;
 exports.getVizWorkerFactory = getVizWorkerFactory;
+exports.getVizWorkerOverride = getVizWorkerOverride;
 exports.getZoneCropOverride = getZoneCropOverride;
 exports.getZoneHeightOverride = getZoneHeightOverride;
 exports.hydraKaleidoscope = hydraKaleidoscope;
@@ -29834,9 +29878,13 @@ exports.installGlobalErrorCatch = installGlobalErrorCatch;
 exports.isBundledPresetId = isBundledPresetId;
 exports.isDocReady = isDocReady;
 exports.isFileModifiedSinceHead = isFileModifiedSinceHead;
+exports.isP5DirectCanvasEnabled = isP5DirectCanvasEnabled;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
 exports.isViewing = isViewing;
+exports.isVizGovernorEnabled = isVizGovernorEnabled;
 exports.isVizLanguage = isVizLanguage;
+exports.isVizPumpSharedCacheEnabled = isVizPumpSharedCacheEnabled;
+exports.isVizWorkerPoolEnabled = isVizWorkerPoolEnabled;
 exports.languageForRenderer = languageForRenderer;
 exports.levenshtein = levenshtein;
 exports.listBottomPanelTabs = listBottomPanelTabs;

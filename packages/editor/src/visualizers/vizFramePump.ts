@@ -40,6 +40,7 @@
 
 import { vizGovernor } from './vizGovernor'
 import { FrameSampleCache } from './worker/frameSampleCache'
+import { isVizPumpSharedCacheEnabled } from './vizFlags'
 
 /** A renderer the pump drives once per rAF tick. Implemented by `WorkerVizRenderer`. */
 export interface PumpDriven {
@@ -66,13 +67,8 @@ class VizFramePump {
   private sharedCache = true
 
   constructor() {
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('stave.viz.pump') === '0') {
-        this.sharedCache = false
-      }
-    } catch {
-      /* private mode / no DOM — leave on */
-    }
+    // `stave.viz.pump='0'` disables the shared cache (vizFlags).
+    this.sharedCache = isVizPumpSharedCacheEnabled()
   }
 
   /** Join the pump (renderer loop START — mount/resume). Idempotent. Starts the

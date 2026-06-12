@@ -11,19 +11,19 @@
  *
  * Idempotent + SSR-safe — only registers in a browser with `Worker` available.
  */
-import { setVizWorkerFactory, getVizConfig, setVizConfig } from '@stave/editor'
+import {
+  setVizWorkerFactory,
+  getVizConfig,
+  setVizConfig,
+  getVizWorkerOverride,
+  getVizMaxFpsOverride,
+  getVizMaxDprOverride,
+} from '@stave/editor'
 
-/** localStorage key that force-enables worker rendering while the `workerRenderer`
- *  config flag still defaults OFF — the switch for B-3 observation + the matrix
- *  gate, without a code change. Set `localStorage['stave.viz.worker'] = '1'`. Once
- *  the matrix is green the config DEFAULT flips to true and this override stays as
- *  an opt-OUT (`'0'`). */
-const WORKER_VIZ_LS_KEY = 'stave.viz.worker'
-/** Per-project overrides for the #261 worker pacing/resolution levers (optional).
- *  `stave.viz.maxFps` = frames/sec cap (e.g. '60'/'30'); `stave.viz.maxDpr` =
- *  presenting/render dpr cap (e.g. '1'/'1.5'/'2'). Absent → config default. */
-const MAX_FPS_LS_KEY = 'stave.viz.maxFps'
-const MAX_DPR_LS_KEY = 'stave.viz.maxDpr'
+// The `stave.viz.{worker,maxFps,maxDpr}` localStorage overrides are read via the
+// shared `vizFlags` readers (single source of truth, #327): `stave.viz.worker='1'|'0'`
+// force-toggles the worker renderer; `maxFps`/`maxDpr` cap the #261 pacing/resolution
+// levers. Absent → the vizConfig default is kept.
 
 let registered = false
 
@@ -36,19 +36,15 @@ export function registerVizWorker(): void {
   )
   // Apply the localStorage override (opt-in '1' / opt-out '0'); absent → leave the
   // config default. Merge over the live config so other runtime settings persist.
-  try {
-    const overrides: Partial<{ workerRenderer: boolean; maxFps: number; maxDpr: number }> = {}
-    const v = localStorage.getItem(WORKER_VIZ_LS_KEY)
-    if (v === '1' || v === '0') overrides.workerRenderer = v === '1'
-    const fps = Number(localStorage.getItem(MAX_FPS_LS_KEY))
-    if (Number.isFinite(fps) && fps > 0) overrides.maxFps = fps
-    const dpr = Number(localStorage.getItem(MAX_DPR_LS_KEY))
-    if (Number.isFinite(dpr) && dpr > 0) overrides.maxDpr = dpr
-    if (Object.keys(overrides).length > 0) {
-      setVizConfig({ ...getVizConfig(), ...overrides })
-    }
-  } catch {
-    /* localStorage may be unavailable (private mode) — ignore */
+  const overrides: Partial<{ workerRenderer: boolean; maxFps: number; maxDpr: number }> = {}
+  const workerOverride = getVizWorkerOverride()
+  if (workerOverride !== null) overrides.workerRenderer = workerOverride
+  const fps = getVizMaxFpsOverride()
+  if (fps !== null) overrides.maxFps = fps
+  const dpr = getVizMaxDprOverride()
+  if (dpr !== null) overrides.maxDpr = dpr
+  if (Object.keys(overrides).length > 0) {
+    setVizConfig({ ...getVizConfig(), ...overrides })
   }
 
   installForceBrokenWorkerHook()

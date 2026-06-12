@@ -57,6 +57,18 @@ export { HydraVizRenderer } from './visualizers/renderers/HydraVizRenderer'
 export { WorkerVizRenderer } from './visualizers/renderers/WorkerVizRenderer'
 export { setVizWorkerFactory, getVizWorkerFactory } from './visualizers/vizWorkerFactory'
 export type { VizWorkerFactory } from './visualizers/vizWorkerFactory'
+// #327 — the single source of truth for the `stave.viz.*` localStorage flags. The app
+// (`registerVizWorker`) reads the worker/maxFps/maxDpr overrides through these.
+export {
+  VIZ_FLAG_KEYS,
+  isP5DirectCanvasEnabled,
+  isVizGovernorEnabled,
+  isVizPumpSharedCacheEnabled,
+  isVizWorkerPoolEnabled,
+  getVizWorkerOverride,
+  getVizMaxFpsOverride,
+  getVizMaxDprOverride,
+} from './visualizers/vizFlags'
 export type { HydraPatternFn } from './visualizers/renderers/HydraVizRenderer'
 export { hydraPianoroll, hydraScope, hydraKaleidoscope } from './visualizers/renderers/hydraPresets'
 export { DEFAULT_VIZ_DESCRIPTORS } from './visualizers/defaultDescriptors'
