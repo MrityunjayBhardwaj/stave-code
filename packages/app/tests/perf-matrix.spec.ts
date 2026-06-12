@@ -297,17 +297,22 @@ test.describe('perf-matrix — synthwave terrain cost curve (#228)', () => {
     // SAME pristine synthterrain fixture run both ways — main-thread baseline
     // (unset) vs worker (set) — so trig/s + longtasks are A/B comparable.
     const vizWorker = !!process.env.VIZ_WORKER
-    await page.addInitScript((useWorker) => {
+    // #325 — P5_BLIT=1 forces the OLD p5 worker present path (blit via
+    // transferToImageBitmap) instead of the default Tier A direct-render, so the matrix
+    // can A/B the per-frame blit cost the direct path removes (no-regression check).
+    const p5Blit = !!process.env.P5_BLIT
+    await page.addInitScript((cfg) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__STAVE_PERF__ = true
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(window as any).__STAVE_E2E__ = true
       try {
-        localStorage.setItem('stave.viz.worker', useWorker ? '1' : '0')
+        localStorage.setItem('stave.viz.worker', cfg.useWorker ? '1' : '0')
+        if (cfg.p5Blit) localStorage.setItem('stave.viz.p5direct', '0')
       } catch {
         /* private mode — ignore */
       }
-    }, vizWorker)
+    }, { useWorker: vizWorker, p5Blit })
     await page.goto('/', { waitUntil: 'domcontentloaded' })
     await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
     await page.waitForTimeout(1000)

@@ -74,6 +74,23 @@ function effectiveDpr(): number {
   return cap > 0 ? Math.min(raw, cap) : raw
 }
 
+/** #325 — "p5 owns the display canvas" direct render (Tier A). p5 renders STRAIGHT
+ *  into the transferred `canvas` (like hydra/glsl) instead of a private canvas the
+ *  host blits from; the per-frame `transferToImageBitmap` CLEAR is gone, so the
+ *  canvas persists frame-to-frame and `getImageData`/`loadPixels`/skip-`background()`
+ *  trails work worker == main (the #306/#316/P126/PV96 transfer-clear class, removed
+ *  at the root — proven by the Phase-1 spike, viz-worker-p5-direct.spec.ts).
+ *  DEFAULT ON; escape hatch `localStorage['stave.viz.p5direct']='0'` forces the old
+ *  blit path (A/B insurance, mirroring `stave.viz.worker`/`pool`/`governor`). p5 only
+ *  — hydra/glsl already render direct. */
+function isP5DirectCanvasEnabled(): boolean {
+  try {
+    return typeof localStorage === 'undefined' || localStorage.getItem('stave.viz.p5direct') !== '0'
+  } catch {
+    return true
+  }
+}
+
 /** Minimum ms between produced frames for the `vizConfig.maxFps` cap (#261).
  *  0 when uncapped (maxFps ≤ 0) → produce every rAF (subject to backpressure). */
 function minFrameMs(): number {
@@ -252,6 +269,8 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
         // Marshal the worker-relevant vizConfig subset (#269) so the worker's own
         // singleton reflects the user's quality/LOD settings, not the bundle default.
         config: pickWorkerVizConfig(),
+        // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
+        p5DirectCanvas: this.kind === 'p5' && isP5DirectCanvasEnabled(),
       }
       worker.postMessage(mountMsg, [offscreen])
 

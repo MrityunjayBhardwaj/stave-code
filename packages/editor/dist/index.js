@@ -6790,6 +6790,14 @@ function effectiveDpr() {
   return cap > 0 ? Math.min(raw, cap) : raw;
 }
 __name(effectiveDpr, "effectiveDpr");
+function isP5DirectCanvasEnabled() {
+  try {
+    return typeof localStorage === "undefined" || localStorage.getItem("stave.viz.p5direct") !== "0";
+  } catch {
+    return true;
+  }
+}
+__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
 function minFrameMs() {
   const fps = getVizConfig().maxFps;
   return fps > 0 ? 1e3 / fps : 0;
@@ -6922,7 +6930,9 @@ ${d.stack}` : "");
         aliases,
         // Marshal the worker-relevant vizConfig subset (#269) so the worker's own
         // singleton reflects the user's quality/LOD settings, not the bundle default.
-        config: pickWorkerVizConfig()
+        config: pickWorkerVizConfig(),
+        // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
+        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled()
       };
       worker.postMessage(mountMsg, [offscreen]);
       this.configUnsub = onVizConfigChange(() => {

@@ -6147,8 +6147,23 @@ function hostVizWorker(scope) {
       optionsRef,
       staveUniformsRef
     );
+    const directCanvas = msg.p5DirectCanvas === true;
+    const RENDERER_CONSTS = /* @__PURE__ */ new Set(["p2d", "p2d-hdr", "webgl", "webgl2", "webgpu"]);
+    let adopted = false;
     let setup = false;
     const sketchFn = /* @__PURE__ */ __name((p) => {
+      if (directCanvas) {
+        const displayEl = wrapCanvas(msg.canvas);
+        let ccCalls = 0;
+        const origCreate = p.createCanvas.bind(p);
+        p.createCanvas = function(w, h, renderer, ...rest) {
+          ccCalls += 1;
+          if (ccCalls === 1) return origCreate(w, h, renderer, ...rest);
+          adopted = true;
+          const rk = RENDERER_CONSTS.has(renderer) ? renderer : "p2d";
+          return origCreate(w, h, rk, displayEl);
+        };
+      }
       userSketchFn(p);
       const setup0 = p.setup;
       p.setup = function() {
@@ -6161,13 +6176,15 @@ function hostVizWorker(scope) {
       };
     }, "sketchFn");
     const inst = new P5ctor(sketchFn);
-    msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr));
-    msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr));
     let present = null;
-    try {
-      present = msg.canvas.getContext("bitmaprenderer");
-    } catch (e) {
-      diag("error", `bitmaprenderer unavailable: ${errMsg(e)}`);
+    if (!directCanvas) {
+      msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr));
+      msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr));
+      try {
+        present = msg.canvas.getContext("bitmaprenderer");
+      } catch (e) {
+        diag("error", `bitmaprenderer unavailable: ${errMsg(e)}`);
+      }
     }
     return {
       setupDone: /* @__PURE__ */ __name(() => setup, "setupDone"),
@@ -6176,6 +6193,16 @@ function hostVizWorker(scope) {
       gl: /* @__PURE__ */ __name(() => inst?.drawingContext ?? null, "gl"),
       draw: /* @__PURE__ */ __name(() => {
         inst.redraw();
+        if (directCanvas && adopted) return;
+        if (directCanvas && !present) {
+          msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr));
+          msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr));
+          try {
+            present = msg.canvas.getContext("bitmaprenderer");
+          } catch (e) {
+            diag("error", `bitmaprenderer unavailable: ${errMsg(e)}`);
+          }
+        }
         if (!present) return;
         const src = inst?.drawingContext?.canvas;
         if (!src) return;
@@ -6186,8 +6213,10 @@ function hostVizWorker(scope) {
         }
       }, "draw"),
       resizeKind: /* @__PURE__ */ __name((w, h, dprNew) => {
-        msg.canvas.width = Math.max(1, Math.round(w * dprNew));
-        msg.canvas.height = Math.max(1, Math.round(h * dprNew));
+        if (!directCanvas) {
+          msg.canvas.width = Math.max(1, Math.round(w * dprNew));
+          msg.canvas.height = Math.max(1, Math.round(h * dprNew));
+        }
         inst?.resizeCanvas?.(w, h);
       }, "resizeKind"),
       teardown: /* @__PURE__ */ __name(() => {

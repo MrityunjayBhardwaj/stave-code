@@ -318,11 +318,61 @@ export function hostVizWorker(scope: WorkerScope): void {
       staveUniformsRef as any,
     )
 
+    // #325 Tier A — p5 owns the transferred display canvas (no blit). p5 v2's
+    // #_setup ALWAYS creates an internal default `createCanvas(100,100,P2D)` BEFORE the
+    // user's setup, which the user's createCanvas then REPLACES (p5.esm.js:72541 + the
+    // `if(this._renderer) this._renderer.remove()` in createCanvas:68303). So the FIRST
+    // createElement('canvas') is the throwaway default, NOT the display canvas — binding
+    // msg.canvas there would orphan it AND lock its context type. We instead wrap
+    // createCanvas: call #1 (default) keeps a fresh factory canvas; call #2 (the user's
+    // main createCanvas, inside setup) gets msg.canvas injected as the renderer `elt`
+    // (Renderer{2D,3D}: `this.canvas = elt || createElement` — 53051/71083). createGraphics
+    // does NOT route through createCanvas (own p5.Graphics canvas, 68556) → its buffers
+    // stay separate factory OffscreenCanvases. No transfer → the canvas persists frame-to-
+    // frame, so readback/trails work like hydra/glsl. Gated behind msg.p5DirectCanvas.
+    const directCanvas = msg.p5DirectCanvas === true
+    const RENDERER_CONSTS = new Set(['p2d', 'p2d-hdr', 'webgl', 'webgl2', 'webgpu'])
+    // True once the user's main createCanvas has adopted msg.canvas (call #2). Lifted
+    // to mount scope so draw() can branch: adopted → blit-free (canvas persists);
+    // NOT adopted → a sketch that never called createCanvas (only p5's 100×100 default
+    // exists, on a throwaway) — fall back to the blit so it still presents (parity with
+    // the pre-#325 path; never a silent blank). The flag is final by the first draw
+    // (createCanvas runs in setup, draws start after setupDone).
+    let adopted = false
+
     let setup = false
     // Wrap the sketch: after the user's setup runs, stop p5's auto-loop so WE drive
     // one redraw() per frame (1:1 cadence). p5 reads p.setup AFTER this fn assigns
     // it (instance-mode contract), so wrapping here is what #_setup calls.
     const sketchFn = (p: any): void => {
+      if (directCanvas) {
+        // Install the createCanvas adopter BEFORE the user sketch runs (the compiler's
+        // `with(p)` resolves bare `createCanvas` to this instance-own override at call
+        // time — p5's internal `this.createCanvas` does too).
+        const displayEl = wrapCanvas(msg.canvas)
+        let ccCalls = 0
+        const origCreate = p.createCanvas.bind(p)
+        p.createCanvas = function (w: number, h: number, renderer?: unknown, ...rest: unknown[]) {
+          ccCalls += 1
+          // call #1 = p5's internal default createCanvas(100,100,P2D) → throwaway canvas
+          // (p5 ALWAYS makes one before user setup; it's replaced by the user's call).
+          if (ccCalls === 1) return origCreate(w, h, renderer, ...rest)
+          // EVERY user createCanvas (call #2+) adopts msg.canvas as the renderer `elt`. p5
+          // never calls createCanvas internally beyond the default (resizeCanvas/pixelDensity
+          // don't), so calls ≥2 are all the user's. Adopting on each (not just the first)
+          // keeps a rare double-createCanvas of the SAME context type working (re-getContext
+          // is idempotent). The ONE unsupported case — switching renderer TYPE across two
+          // createCanvas calls in setup (P2D→WEBGL) — locks msg.canvas to the first type and
+          // would blank; it also can't reuse an element across context types on the main
+          // thread, and is covered by the `stave.viz.p5direct='0'` escape hatch. Pass a valid
+          // renderer constant so our canvas lands in the `elt` slot (createCanvas treats a
+          // non-constant 3rd arg as the elt → unshift; a bare createCanvas(w,h) needs an
+          // explicit P2D to carry the elt positionally).
+          adopted = true
+          const rk = RENDERER_CONSTS.has(renderer as string) ? (renderer as string) : 'p2d'
+          return origCreate(w, h, rk, displayEl)
+        }
+      }
       userSketchFn(p)
       const setup0 = p.setup
       p.setup = function (this: unknown) {
@@ -337,14 +387,19 @@ export function hostVizWorker(scope: WorkerScope): void {
     }
     const inst = new P5ctor(sketchFn)
 
-    // Presenting surface — size the backing store to device pixels, blit target.
-    msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr))
-    msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr))
+    // Presenting surface. #325 Tier A direct path: p5 OWNS msg.canvas (adopted as its
+    // main canvas above) and sizes it itself via createCanvas/pixelDensity — the host
+    // takes NO context and does NO blit, so the canvas persists frame-to-frame. Blit
+    // path (default): size the backing store to device pixels + claim a bitmaprenderer.
     let present: ImageBitmapRenderingContext | null = null
-    try {
-      present = msg.canvas.getContext('bitmaprenderer')
-    } catch (e) {
-      diag('error', `bitmaprenderer unavailable: ${errMsg(e)}`)
+    if (!directCanvas) {
+      msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr))
+      msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr))
+      try {
+        present = msg.canvas.getContext('bitmaprenderer')
+      } catch (e) {
+        diag('error', `bitmaprenderer unavailable: ${errMsg(e)}`)
+      }
     }
 
     return {
@@ -355,7 +410,24 @@ export function hostVizWorker(scope: WorkerScope): void {
       draw: () => {
         inst.redraw() // 1:1 with this frame. User-draw throws are swallowed by
         // p5Compiler's lifecycle wrap → forwarded via the engineLog subscription (#257).
-        // Blit p5's worker-local render canvas → the presenting canvas (zero-copy).
+        // #325 Tier A: p5 drew STRAIGHT into msg.canvas (adopted) — nothing to blit, and
+        // crucially nothing CLEARS the canvas (no transferToImageBitmap) → readback and
+        // skip-background() trails persist exactly like the main thread.
+        if (directCanvas && adopted) return
+        // Otherwise blit p5's worker-local render canvas → the presenting canvas. This is
+        // the blit path (flag off) AND the direct-path fallback for a sketch that never
+        // called createCanvas (only p5's 100×100 default exists → never adopted msg.canvas;
+        // present it instead of blanking). The direct path skipped the eager bitmaprenderer
+        // claim, so claim it lazily here (msg.canvas is untouched in the un-adopted case).
+        if (directCanvas && !present) {
+          msg.canvas.width = Math.max(1, Math.round(msg.size.w * dpr))
+          msg.canvas.height = Math.max(1, Math.round(msg.size.h * dpr))
+          try {
+            present = msg.canvas.getContext('bitmaprenderer')
+          } catch (e) {
+            diag('error', `bitmaprenderer unavailable: ${errMsg(e)}`)
+          }
+        }
         if (!present) return
         const src: OffscreenCanvas | undefined = inst?.drawingContext?.canvas
         if (!src) return
@@ -366,8 +438,13 @@ export function hostVizWorker(scope: WorkerScope): void {
         }
       },
       resizeKind: (w, h, dprNew) => {
-        msg.canvas.width = Math.max(1, Math.round(w * dprNew))
-        msg.canvas.height = Math.max(1, Math.round(h * dprNew))
+        // Direct path: p5 owns msg.canvas; resizeCanvas resizes it in place
+        // (p5.esm.js resizeCanvas → _renderer.resize, no element recreation) — the
+        // host must NOT set msg.canvas.width or it fights p5's own sizing.
+        if (!directCanvas) {
+          msg.canvas.width = Math.max(1, Math.round(w * dprNew))
+          msg.canvas.height = Math.max(1, Math.round(h * dprNew))
+        }
         // p5 sizes its render canvas off stave.width/height (containerSizeRef) on
         // the next draw; nudge resizeCanvas so it matches before the next frame.
         inst?.resizeCanvas?.(w, h)

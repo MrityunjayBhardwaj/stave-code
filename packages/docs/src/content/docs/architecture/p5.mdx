@@ -12,29 +12,38 @@ canvases, needs a DOM shim to run in a worker at all, and its `draw()` can throw
 user code. Every claim cites `file:line` in
 `packages/editor/src/visualizers/`.
 
-## Canvas tier — Tier-2 blit (PV73)
+## Canvas tier — Tier A direct render (#325)
 
-Unlike hydra/GLSL, p5 does not render into the transferred canvas — it creates its
-**own** worker-local canvas and we **blit** its output onto the presenting canvas
-each frame. The presenting surface is sized to **device** pixels (`size × dpr`,
-`hostP5Worker.ts:340`) and gets a `bitmaprenderer` context
-(`hostP5Worker.ts:344`); `draw()` copies p5's render canvas across zero-copy with
-`transferFromImageBitmap(src.transferToImageBitmap())` (`hostP5Worker.ts:362`).
+p5 renders **directly into the transferred display canvas** — the same as hydra/GLSL
+— so there is no blit and no per-frame clear. The catch is that p5 v2's `#_setup`
+**always** creates an internal default `createCanvas(100, 100, P2D)` *before* the
+user's `setup()` runs (which the user's `createCanvas` then replaces), so the FIRST
+`createElement('canvas')` is a throwaway, **not** the display canvas. The host therefore
+wraps `createCanvas`: call #1 (the default) keeps a fresh worker-local canvas; call #2
+(the user's main `createCanvas`) gets `wrapCanvas(msg.canvas)` injected as the renderer's
+`elt` (`Renderer{2D,3D}` does `this.canvas = elt || createElement`), so p5 adopts the
+on-screen `OffscreenCanvas` as its main canvas (`hostP5Worker.ts`, the `directCanvas`
+adopter). `createGraphics()` goes through `new p5.Graphics` (not `createCanvas`), so its
+buffers stay separate worker-local surfaces.
 
-The blit *is* what p5's `draw()` does — it's not a new seam, just this kind's
-implementation of the `draw()` contract.
+Because the canvas is never transferred out, it **persists** frame-to-frame: a `draw()`
+that reads it back (`getImageData`/`loadPixels`/`get()`) or skips a full `background()`
+(trails/feedback) behaves exactly as on the main thread. The old per-frame blit
+(`transferFromImageBitmap(src.transferToImageBitmap())`) is gone for every real sketch;
+it survives only as a fallback for a sketch that never calls `createCanvas` (only the
+100×100 default exists → nothing adopted `msg.canvas`, so the host blits the default in
+rather than leave it blank), and behind the `localStorage['stave.viz.p5direct']='0'`
+escape hatch.
 
-<Aside type="caution" title="The blit is destructive — main-canvas readback blanks (#306/#316, P126)">
-`transferToImageBitmap()` is zero-copy *because* it transfers the rendered bitmap
-**out** of p5's render canvas and leaves it **cleared**. So a user sketch that reads
-the main canvas back mid-`draw()` — `drawingContext.getImageData`, scrolling
-waterfalls, trails that skip a full `background()` — sees nothing, and the failure is
-**silent** (the `viz.worker` gauge still lights). The supported pattern is to
-accumulate on an **owned `createGraphics()` buffer**, which is never transferred or
-cleared (#308). Gate: `viz-worker-readback.spec.ts` (fills on the main thread, blanks
-in the worker). A conditional non-destructive present that retires the limitation —
-latch to a `createImageBitmap` copy on first readback, keeping zero-copy the default —
-is planned in **#324**.
+<Aside type="tip" title="Main-canvas readback + trails now work worker == main (#306/#316/#325, P126/PV96 retired)">
+This used to be the **transfer-clear limitation** (#306/#316): `transferToImageBitmap()`
+is destructive — it moved the bitmap *out* of p5's render canvas and left it cleared, so
+readback/trails went **silently blank** in the worker. #325 Tier A removes it at the root:
+p5 owns the persistent display canvas, so readback and skip-`background()` trails just
+work. Proven end-to-end by `viz-worker-p5-direct.spec.ts` (readback/trail/WEBGL/createGraphics,
+worker == main, compositor pixels) and the flipped `viz-worker-readback.spec.ts` (the worker
+arm now PAINTS). This **supersedes #324** (the conditional-latch fallback is unnecessary —
+the footgun is gone, not patched).
 </Aside>
 
 ## The worker DOM shim (PV70, P105)
@@ -48,8 +57,9 @@ fixed DOM shim installed **before** the import (`hostP5Worker.ts:293`,
 3. **`disableFriendlyErrors = true`** — p5's FES reads `location`/`document.lang`
    at import; disabling it sidesteps the i18n path (`hostP5Worker.ts:296`);
 5. **a fresh wrapped `OffscreenCanvas` per `createElement('canvas')`**
-   (`hostP5Worker.ts:293`, `makeCanvasEl`) — all worker-local, since we blit
-   rather than transfer.
+   (`hostP5Worker.ts`, `makeCanvasEl`) — used for the throwaway default + every
+   `createGraphics()` buffer; the user's main `createCanvas` instead adopts the
+   transferred display canvas (Tier A direct render, above).
 
 <Aside type="caution" title="A library's worker-DOM shim is BUILD-specific (P105)">
 The shim surface a prebuilt/minified POC needs can differ from the **bundled prod
