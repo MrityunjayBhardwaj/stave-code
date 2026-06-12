@@ -25,6 +25,11 @@ export default defineConfig({
       description:
         'Browser-native live-coding editor for music (Strudel, Sonic Pi) and visuals (p5.js, Hydra).',
       logo: { src: './src/assets/stave.svg' },
+      // Override Hero to base-prefix splash action links — Starlight renders
+      // them verbatim, and the rehype plugin can't reach frontmatter. (#355)
+      components: {
+        Hero: './src/components/Hero.astro',
+      },
       social: {
         github: 'https://github.com/MrityunjayBhardwaj/stave-code',
       },
