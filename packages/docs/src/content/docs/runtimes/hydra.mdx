@@ -46,6 +46,5 @@ s.osc(() => 20 + s.a.fft[0] * 80, 0.1, 0)
 
 If a reactive function throws — a typo, a bad property access inside `() => …` — the
 sketch doesn't go black: hydra defaults that value and keeps running, and Stave
-surfaces the error in the **Console** panel so you can see *what* broke. (There's no
-source line for it — hydra evaluates these functions without one — so check the
-Console message rather than looking for an editor squiggle.)
+surfaces the error in the **Console** panel so you can see *what* broke — **with the
+line number**, so the editor squiggle lands on the offending line just like a p5 typo.

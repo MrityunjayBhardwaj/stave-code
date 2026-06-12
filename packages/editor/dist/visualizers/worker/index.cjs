@@ -1221,6 +1221,9 @@ function parseStackLocation(err) {
   const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
   if (v8Eval)
     return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) };
+  const v8EvalWrap = stack.match(/eval at .+?<anonymous>:(\d+):(\d+)/);
+  if (v8EvalWrap)
+    return { line: parseInt(v8EvalWrap[1], 10), column: parseInt(v8EvalWrap[2], 10) };
   const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/);
   if (v8Named)
     return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) };
@@ -5677,6 +5680,11 @@ function compileHydraCode(code) {
   };
 }
 __name(compileHydraCode, "compileHydraCode");
+var HYDRA_LINE_OFFSET = 2;
+function getHydraLineOffset() {
+  return HYDRA_LINE_OFFSET;
+}
+__name(getHydraLineOffset, "getHydraLineOffset");
 
 // src/visualizers/renderers/glslShaderSource.ts
 var GLSL_FULLSCREEN_VERT = `#version 300 es
@@ -6049,11 +6057,14 @@ function hostVizWorker(scope) {
     try {
       if (currentRuntimeRef.kind === "hydra" && typeof args[0] === "string") {
         if (args[0] === HYDRA_WARN_THROW) {
+          const loc = parseStackLocation(args[1]);
+          const line = loc ? Math.max(1, loc.line - getHydraLineOffset()) : void 0;
           postVizLog({
             level: "error",
             runtime: "hydra",
             message: `reactive fn: ${errMsg(args[1])}`,
-            stack: errStack(args[1])
+            stack: errStack(args[1]),
+            line
           });
         } else if (args[0] === HYDRA_WARN_NAN) {
           postVizLog({ level: "warn", runtime: "hydra", message: "reactive fn did not return a number" });

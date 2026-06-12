@@ -7230,6 +7230,9 @@ function parseStackLocation(err) {
   const v8Eval = stack.match(/at eval[^(]*\(<anonymous>:(\d+):(\d+)\)/);
   if (v8Eval)
     return { line: parseInt(v8Eval[1], 10), column: parseInt(v8Eval[2], 10) };
+  const v8EvalWrap = stack.match(/eval at .+?<anonymous>:(\d+):(\d+)/);
+  if (v8EvalWrap)
+    return { line: parseInt(v8EvalWrap[1], 10), column: parseInt(v8EvalWrap[2], 10) };
   const v8Named = stack.match(/at\s+\S+\s+\(<anonymous>:(\d+):(\d+)\)/);
   if (v8Named)
     return { line: parseInt(v8Named[1], 10), column: parseInt(v8Named[2], 10) };

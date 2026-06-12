@@ -43,10 +43,11 @@ import { MASTER_KEY, type SignalFrame, type AnalyserBytes } from './signalFrame'
 import { buildStaveUniforms } from '../signals/staveUniforms'
 import { buildHydraStaveBag } from '../renderers/hydraStaveBag'
 import { compileP5Code } from '../p5Compiler'
-import { compileHydraCode } from '../hydraCompiler'
+import { compileHydraCode, getHydraLineOffset } from '../hydraCompiler'
 import { createGLSLProgram, type GLSLProgram } from '../renderers/glslCore'
 import { readGLSLEvents, readGLSLTracks } from '../renderers/glslEvents'
 import { subscribeLog, type LogEntry } from '../../engine/engineLog'
+import { parseStackLocation } from '../../engine/friendlyErrors'
 import { getVizConfig, updateVizConfig } from '../vizConfig'
 import {
   isControlMessage,
@@ -188,11 +189,19 @@ export function hostVizWorker(scope: WorkerScope): void {
     try {
       if (currentRuntimeRef.kind === 'hydra' && typeof args[0] === 'string') {
         if (args[0] === HYDRA_WARN_THROW) {
+          // #330 — args[1] is the user's Error, thrown inside the reactive arrow.
+          // Its stack points into the `new Function('s','stave',code)` body, so the
+          // same parse+offset p5 uses (parseStackLocation − getHydraLineOffset, the
+          // 2-line V8 header) maps it back to the EDITOR line → the squiggle lights
+          // like a p5 typo. No line if the stack can't be parsed (graceful).
+          const loc = parseStackLocation(args[1])
+          const line = loc ? Math.max(1, loc.line - getHydraLineOffset()) : undefined
           postVizLog({
             level: 'error',
             runtime: 'hydra',
             message: `reactive fn: ${errMsg(args[1])}`,
             stack: errStack(args[1]),
+            line,
           })
         } else if (args[0] === HYDRA_WARN_NAN) {
           postVizLog({ level: 'warn', runtime: 'hydra', message: 'reactive fn did not return a number' })
