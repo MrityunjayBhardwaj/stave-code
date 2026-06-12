@@ -55,11 +55,18 @@ function sparkString(arr: number[], n = 32): string {
   return out
 }
 
-/** Imperative value-element refs for one live row (scalar uses fill+num; array /
- *  time use text). */
+// Eighth-block fractions for a fine-grained unicode bar (1/8…7/8 of a cell).
+const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+/** A 0..1 scalar as a monospace unicode bar (no DOM box) — full `█` cells plus a
+ *  fractional eighth-block, so the bar resolves finer than one character. */
+function barString(v: number, cells = 8): string {
+  const total = Math.round(Math.max(0, Math.min(1, v)) * cells * 8)
+  return '█'.repeat(Math.floor(total / 8)) + EIGHTHS[total % 8]
+}
+
+/** Imperative value node for one live row — every kind (scalar bar / array
+ *  sparkline / time seconds) writes its text into a single span. */
 interface ValueRefs {
-  fill?: HTMLDivElement | null
-  num?: HTMLSpanElement | null
   text?: HTMLSpanElement | null
 }
 
@@ -98,10 +105,7 @@ export function StaveInputsPanel({ kind }: { kind: VizRendererKind }): React.Rea
 
     const paintIdle = (): void => {
       for (const refs of valueRefs.current) {
-        if (!refs) continue
-        if (refs.fill) refs.fill.style.width = '0%'
-        if (refs.num) refs.num.textContent = '—'
-        if (refs.text) refs.text.textContent = '—'
+        if (refs?.text) refs.text.textContent = '—'
       }
     }
 
@@ -121,27 +125,21 @@ export function StaveInputsPanel({ kind }: { kind: VizRendererKind }): React.Rea
       }
       idlePainted = false
       liveRows.forEach((row, i) => {
-        const refs = valueRefs.current[i]
-        if (!refs) return
+        const node = valueRefs.current[i]?.text
+        if (!node) return
         if (row.spec.kind === 'time') {
           // The master probe has no per-shader clock; approximate glsl iTime with
           // wall-clock seconds since playback was observed (an authoring hint).
-          if (refs.text) refs.text.textContent = `${((t - playStartT) / 1000).toFixed(1)}s`
+          node.textContent = `${((t - playStartT) / 1000).toFixed(1)}s`
           return
         }
         const v = vizSignalProbe.read(row.spec)
         if (row.spec.kind === 'array') {
-          if (refs.text) refs.text.textContent = Array.isArray(v) ? sparkString(v) : '—'
+          node.textContent = Array.isArray(v) ? sparkString(v) : '—'
           return
         }
-        // scalar — `null` while playing means an unsupported spec (keyVelocity).
-        if (typeof v === 'number') {
-          if (refs.fill) refs.fill.style.width = `${Math.max(0, Math.min(1, v)) * 100}%`
-          if (refs.num) refs.num.textContent = v.toFixed(2)
-        } else {
-          if (refs.fill) refs.fill.style.width = '0%'
-          if (refs.num) refs.num.textContent = '—'
-        }
+        // scalar — a unicode bar; `null` while playing = unsupported spec (keyVelocity).
+        node.textContent = typeof v === 'number' ? barString(v) : '—'
       })
     }
     raf = requestAnimationFrame(loop)
@@ -234,53 +232,21 @@ export function StaveInputsPanel({ kind }: { kind: VizRendererKind }): React.Rea
                     style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--foreground)' }}
                   >
                     <span style={{ minWidth: 132, color: 'var(--accent-strong, var(--accent))' }}>{row.label}</span>
-                    {isScalar ? (
-                      <>
-                        <div
-                          style={{
-                            position: 'relative',
-                            width: 96,
-                            height: 8,
-                            borderRadius: 2,
-                            background: 'var(--bg-active, rgba(127,127,127,0.18))',
-                            overflow: 'hidden',
-                            flexShrink: 0,
-                          }}
-                        >
-                          <div
-                            data-live-bar={row.token}
-                            ref={(el) => {
-                              ;(valueRefs.current[myIndex] ??= {}).fill = el
-                            }}
-                            style={{
-                              position: 'absolute',
-                              inset: 0,
-                              width: '0%',
-                              background: 'var(--accent-strong, var(--accent))',
-                            }}
-                          />
-                        </div>
-                        <span
-                          data-live-num={row.token}
-                          ref={(el) => {
-                            ;(valueRefs.current[myIndex] ??= {}).num = el
-                          }}
-                          style={{ minWidth: 34, color: 'var(--foreground-muted)' }}
-                        >
-                          —
-                        </span>
-                      </>
-                    ) : (
-                      <span
-                        data-live-text={row.token}
-                        ref={(el) => {
-                          ;(valueRefs.current[myIndex] ??= {}).text = el
-                        }}
-                        style={{ color: 'var(--foreground-muted)', whiteSpace: 'pre' }}
-                      >
-                        —
-                      </span>
-                    )}
+                    <span
+                      data-live-bar={isScalar ? row.token : undefined}
+                      data-live-text={isScalar ? undefined : row.token}
+                      ref={(el) => {
+                        ;(valueRefs.current[myIndex] ??= {}).text = el
+                      }}
+                      style={{
+                        whiteSpace: 'pre',
+                        color: isScalar
+                          ? 'var(--accent-strong, var(--accent))'
+                          : 'var(--foreground-muted)',
+                      }}
+                    >
+                      —
+                    </span>
                     {row.comment && (
                       <span style={{ marginLeft: 'auto', opacity: 0.5, color: 'var(--foreground-muted)' }}>{`// ${row.comment}`}</span>
                     )}

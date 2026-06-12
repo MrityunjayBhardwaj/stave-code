@@ -1,10 +1,10 @@
 /**
  * #346 — LIVE values in the "Stave Inputs" viz drawer, observed end-to-end in the
  * real app (Lokāyata: read the actual DOM the paint loop writes, never infer from
- * "the loop is wired"). The drawer bar/number/sparkline are MAIN-THREAD DOM (not
- * the worker-transferred viz canvas), so reading `style.width` / textContent over
- * time IS direct observation — PV90's compositor-capture rule is for the viz
- * canvas getContext, which this does not touch.
+ * "the loop is wired"). The drawer bar/sparkline are MAIN-THREAD DOM text (not the
+ * worker-transferred viz canvas), so reading textContent over time IS direct
+ * observation — PV90's compositor-capture rule is for the viz canvas getContext,
+ * which this does not touch.
  *
  *   1. With a pattern playing + the drawer open, `sig.kick` paints a master value
  *      that VARIES frame-to-frame (the imperative ref-write loop is live), and the
@@ -54,9 +54,9 @@ async function openVizFile(page: Page, name: string): Promise<void> {
   await page.waitForTimeout(400)
 }
 
-/** Read a token's painted scalar number (`[data-live-num]`) — null if absent. */
-async function kickNum(page: Page): Promise<string | null> {
-  return page.evaluate(() => document.querySelector('[data-live-num="kick"]')?.textContent ?? null)
+/** Read sig.kick's painted unicode bar (`[data-live-bar]` textContent) — null if absent. */
+async function kickBar(page: Page): Promise<string | null> {
+  return page.evaluate(() => document.querySelector('[data-live-bar="kick"]')?.textContent ?? null)
 }
 
 /** Sample a value-getter `n` times spanning > one musical cycle; return distinct values. */
@@ -83,26 +83,16 @@ test.describe('#346 — live values in the Stave Inputs drawer', () => {
     await page.getByTestId('viz-inputs-live').waitFor({ timeout: 6000 })
     await page.waitForTimeout(800) // let the probe bind the playing analyser
 
-    // sig.kick — a scalar bar+number. Sample across > one cycle; a live loop
-    // produces multiple distinct values, a dead/static one produces exactly one.
-    const kicks = await sample(page, () => kickNum(page), 14, 160)
+    // sig.kick — a scalar unicode bar (textContent, written imperatively). Sample
+    // across > one cycle; a live loop produces multiple distinct bar strings, a
+    // dead/static one produces exactly one.
+    const kicks = await sample(page, () => kickBar(page), 14, 160)
     // eslint-disable-next-line no-console
-    console.log(`[live] sig.kick distinct values=${JSON.stringify(kicks)}`)
-    const numeric = kicks.filter((v) => v !== '—').map(Number).filter((n) => Number.isFinite(n))
-    expect(numeric.length, 'sig.kick painted real numbers').toBeGreaterThan(0)
-    expect(new Set(kicks).size, 'sig.kick VARIES frame-to-frame (live loop)').toBeGreaterThan(1)
-    expect(Math.max(...numeric), 'kick envelope peaks above 0 on a bd*4').toBeGreaterThan(0)
-
-    // The bar fill width tracks the value (imperative style.width write).
-    const widths = await sample(
-      page,
-      () => page.evaluate(() => (document.querySelector('[data-live-bar="kick"]') as HTMLElement | null)?.style.width ?? null),
-      10,
-      160,
-    )
-    // eslint-disable-next-line no-console
-    console.log(`[live] sig.kick bar widths=${JSON.stringify(widths)}`)
-    expect(new Set(widths).size, 'bar fill width changes (style.width written live)').toBeGreaterThan(1)
+    console.log(`[live] sig.kick distinct bars=${JSON.stringify(kicks)}`)
+    const lit = kicks.filter((v) => v !== '—' && /[█▏▎▍▌▋▊▉]/.test(v))
+    expect(lit.length, 'sig.kick painted real unicode bars').toBeGreaterThan(0)
+    expect(new Set(kicks).size, 'sig.kick bar VARIES frame-to-frame (live loop)').toBeGreaterThan(1)
+    expect(Math.max(...lit.map((b) => b.length)), 'kick bar grows past empty on a bd*4').toBeGreaterThan(0)
 
     // sig.fft sparkline also moves.
     const ffts = await sample(
@@ -126,11 +116,11 @@ test.describe('#346 — live values in the Stave Inputs drawer', () => {
     const toggle = page.getByTestId('viz-inputs-toggle')
     await toggle.click()
     await page.getByTestId('viz-inputs-live').waitFor({ timeout: 6000 })
-    expect(await kickNum(page), 'live row present while open').not.toBeNull()
+    expect(await kickBar(page), 'live row present while open').not.toBeNull()
 
     await toggle.click() // collapse
     await page.waitForTimeout(300)
-    expect(await kickNum(page), 'live readout removed when collapsed → loop torn down').toBeNull()
+    expect(await kickBar(page), 'live readout removed when collapsed → loop torn down').toBeNull()
   })
 
   test('perf: drawer paint is orthogonal to the viz frame budget', async ({ page }) => {

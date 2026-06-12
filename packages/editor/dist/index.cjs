@@ -28846,6 +28846,12 @@ function sparkString(arr, n = 32) {
   return out;
 }
 __name(sparkString, "sparkString");
+var EIGHTHS = ["", "\u258F", "\u258E", "\u258D", "\u258C", "\u258B", "\u258A", "\u2589"];
+function barString(v, cells = 8) {
+  const total = Math.round(Math.max(0, Math.min(1, v)) * cells * 8);
+  return "\u2588".repeat(Math.floor(total / 8)) + EIGHTHS[total % 8];
+}
+__name(barString, "barString");
 function StaveInputsPanel({ kind }) {
   const [open, setOpen] = React8.useState(false);
   const [liveEnabled, setLiveEnabled] = React8.useState(true);
@@ -28867,10 +28873,7 @@ function StaveInputsPanel({ kind }) {
     let idlePainted = false;
     const paintIdle = /* @__PURE__ */ __name(() => {
       for (const refs of valueRefs.current) {
-        if (!refs) continue;
-        if (refs.fill) refs.fill.style.width = "0%";
-        if (refs.num) refs.num.textContent = "\u2014";
-        if (refs.text) refs.text.textContent = "\u2014";
+        if (refs?.text) refs.text.textContent = "\u2014";
       }
     }, "paintIdle");
     const loop = /* @__PURE__ */ __name((t) => {
@@ -28889,24 +28892,18 @@ function StaveInputsPanel({ kind }) {
       }
       idlePainted = false;
       liveRows.forEach((row, i) => {
-        const refs = valueRefs.current[i];
-        if (!refs) return;
+        const node = valueRefs.current[i]?.text;
+        if (!node) return;
         if (row.spec.kind === "time") {
-          if (refs.text) refs.text.textContent = `${((t - playStartT) / 1e3).toFixed(1)}s`;
+          node.textContent = `${((t - playStartT) / 1e3).toFixed(1)}s`;
           return;
         }
         const v = vizSignalProbe.read(row.spec);
         if (row.spec.kind === "array") {
-          if (refs.text) refs.text.textContent = Array.isArray(v) ? sparkString(v) : "\u2014";
+          node.textContent = Array.isArray(v) ? sparkString(v) : "\u2014";
           return;
         }
-        if (typeof v === "number") {
-          if (refs.fill) refs.fill.style.width = `${Math.max(0, Math.min(1, v)) * 100}%`;
-          if (refs.num) refs.num.textContent = v.toFixed(2);
-        } else {
-          if (refs.fill) refs.fill.style.width = "0%";
-          if (refs.num) refs.num.textContent = "\u2014";
-        }
+        node.textContent = typeof v === "number" ? barString(v) : "\u2014";
       });
     }, "loop");
     raf = requestAnimationFrame(loop);
@@ -28998,58 +28995,19 @@ function StaveInputsPanel({ kind }) {
                     style: { display: "flex", alignItems: "center", gap: 8, color: "var(--foreground)" },
                     children: [
                       /* @__PURE__ */ jsxRuntime.jsx("span", { style: { minWidth: 132, color: "var(--accent-strong, var(--accent))" }, children: row.label }),
-                      isScalar ? /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
-                        /* @__PURE__ */ jsxRuntime.jsx(
-                          "div",
-                          {
-                            style: {
-                              position: "relative",
-                              width: 96,
-                              height: 8,
-                              borderRadius: 2,
-                              background: "var(--bg-active, rgba(127,127,127,0.18))",
-                              overflow: "hidden",
-                              flexShrink: 0
-                            },
-                            children: /* @__PURE__ */ jsxRuntime.jsx(
-                              "div",
-                              {
-                                "data-live-bar": row.token,
-                                ref: (el) => {
-                                  var _a;
-                                  ((_a = valueRefs.current)[myIndex] ?? (_a[myIndex] = {})).fill = el;
-                                },
-                                style: {
-                                  position: "absolute",
-                                  inset: 0,
-                                  width: "0%",
-                                  background: "var(--accent-strong, var(--accent))"
-                                }
-                              }
-                            )
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntime.jsx(
-                          "span",
-                          {
-                            "data-live-num": row.token,
-                            ref: (el) => {
-                              var _a;
-                              ((_a = valueRefs.current)[myIndex] ?? (_a[myIndex] = {})).num = el;
-                            },
-                            style: { minWidth: 34, color: "var(--foreground-muted)" },
-                            children: "\u2014"
-                          }
-                        )
-                      ] }) : /* @__PURE__ */ jsxRuntime.jsx(
+                      /* @__PURE__ */ jsxRuntime.jsx(
                         "span",
                         {
-                          "data-live-text": row.token,
+                          "data-live-bar": isScalar ? row.token : void 0,
+                          "data-live-text": isScalar ? void 0 : row.token,
                           ref: (el) => {
                             var _a;
                             ((_a = valueRefs.current)[myIndex] ?? (_a[myIndex] = {})).text = el;
                           },
-                          style: { color: "var(--foreground-muted)", whiteSpace: "pre" },
+                          style: {
+                            whiteSpace: "pre",
+                            color: isScalar ? "var(--accent-strong, var(--accent))" : "var(--foreground-muted)"
+                          },
                           children: "\u2014"
                         }
                       ),
