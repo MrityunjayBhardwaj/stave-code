@@ -169,6 +169,41 @@ export function hostVizWorker(scope: WorkerScope): void {
     }
   })
 
+  // #275 — surface hydra reactive-fn errors that hydra-synth SWALLOWS. hydra-synth
+  // wraps every reactive-uniform fn (e.g. `.rotate(() => …)`) in its OWN try/catch and
+  // console.warn()s the failure, then defaults the uniform (hydra-synth
+  // format-arguments.js:78/82) — so the throw never escapes hydra.tick() and never
+  // reaches the s.draw() catch below that re-emits p5 typos (#257). A hydra user with a
+  // typo therefore gets a silent default + a warning buried in the DEDICATED worker's
+  // devtools (vs p5, which surfaces in the main Console). Patch console.warn ONCE:
+  // while a hydra sketch is live, re-emit hydra's two user-error markers through
+  // postVizLog (deduped) so they reach the main Console like p5 errors, then ALWAYS
+  // delegate to the real console.warn so devtools still shows the original. Gated on
+  // kind==='hydra' + an exact string-marker match → p5/other warns and hydra/regl
+  // internals pass through untouched.
+  const HYDRA_WARN_THROW = 'ERROR' // format-arguments.js:82 — reactive fn threw
+  const HYDRA_WARN_NAN = 'function does not return a number' // :78 — returned non-number
+  const realConsoleWarn = console.warn.bind(console)
+  console.warn = (...args: unknown[]): void => {
+    try {
+      if (currentRuntimeRef.kind === 'hydra' && typeof args[0] === 'string') {
+        if (args[0] === HYDRA_WARN_THROW) {
+          postVizLog({
+            level: 'error',
+            runtime: 'hydra',
+            message: `reactive fn: ${errMsg(args[1])}`,
+            stack: errStack(args[1]),
+          })
+        } else if (args[0] === HYDRA_WARN_NAN) {
+          postVizLog({ level: 'warn', runtime: 'hydra', message: 'reactive fn did not return a number' })
+        }
+      }
+    } catch {
+      /* never let surfacing break the real console.warn */
+    }
+    realConsoleWarn(...args)
+  }
+
   // #266 WebGL-context accounting + release. Stashed at first-draw so destroy() can
   // explicitly lose the context even after `state` is cleared. `glLoseExt` holds the
   // WEBGL_lose_context extension; `glAccounted` guards the one-shot `glctx+` report
