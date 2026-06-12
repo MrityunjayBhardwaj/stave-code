@@ -9,7 +9,11 @@ const j = (...p: string[]) => path.join(ROOT, ...p);
 describe("resolveDocsFile (#322 /docs serving)", () => {
   it("maps the root (empty slug) to the index page", () => {
     const r = resolveDocsFile([], ROOT);
-    expect(r).toEqual({ filePath: j("index.html"), contentType: DOCS_MIME[".html"] });
+    expect(r).toEqual({
+      filePath: j("index.html"),
+      contentType: DOCS_MIME[".html"],
+      cacheControl: "public, max-age=0, must-revalidate",
+    });
   });
 
   it("maps an extensionless single-segment slug to <slug>/index.html", () => {
@@ -28,6 +32,7 @@ describe("resolveDocsFile (#322 /docs serving)", () => {
     expect(resolveDocsFile(["_astro", "index.abc.css"], ROOT)).toEqual({
       filePath: j("_astro", "index.abc.css"),
       contentType: DOCS_MIME[".css"],
+      cacheControl: "public, max-age=31536000, immutable",
     });
     expect(resolveDocsFile(["_astro", "page.abc.js"], ROOT)?.contentType).toBe(
       DOCS_MIME[".js"],
@@ -47,6 +52,18 @@ describe("resolveDocsFile (#322 /docs serving)", () => {
     );
     expect(resolveDocsFile(["pagefind", "fragment", "x.pf_fragment"], ROOT)?.contentType).toBe(
       "application/octet-stream",
+    );
+  });
+
+  it("caches content-hashed _astro assets immutably, revalidates everything else", () => {
+    expect(resolveDocsFile(["_astro", "page.abc.js"], ROOT)?.cacheControl).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(resolveDocsFile(["getting-started"], ROOT)?.cacheControl).toBe(
+      "public, max-age=0, must-revalidate",
+    );
+    expect(resolveDocsFile(["pagefind", "pagefind-entry.json"], ROOT)?.cacheControl).toBe(
+      "public, max-age=0, must-revalidate",
     );
   });
 

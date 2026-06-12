@@ -53,7 +53,7 @@ export const DOCS_MIME: Record<string, string> = {
 export function resolveDocsFile(
   slug: string[],
   root: string,
-): { filePath: string; contentType: string } | null {
+): { filePath: string; contentType: string; cacheControl: string } | null {
   const rel = slug.join("/");
   const isAsset = path.extname(rel) !== "";
   const filePath = isAsset
@@ -64,9 +64,17 @@ export function resolveDocsFile(
   // satisfies the prefix guard.
   if (!filePath.startsWith(root + path.sep)) return null;
 
+  // `_astro/*` filenames are content-hashed by Astro → cache them immutably.
+  // Everything else (HTML pages, pagefind index/entry, sitemaps) is revalidated
+  // so a new deploy is picked up immediately.
+  const cacheControl = rel.startsWith("_astro/")
+    ? "public, max-age=31536000, immutable"
+    : "public, max-age=0, must-revalidate";
+
   return {
     filePath,
     contentType: DOCS_MIME[path.extname(filePath)] ?? "application/octet-stream",
+    cacheControl,
   };
 }
 
@@ -84,9 +92,7 @@ export async function GET(
       status: 200,
       headers: {
         "content-type": resolved.contentType,
-        // Docs are rebuilt and republished on every deploy; revalidate rather
-        // than cache hard so a new deploy is picked up immediately.
-        "cache-control": "public, max-age=0, must-revalidate",
+        "cache-control": resolved.cacheControl,
       },
     });
   } catch {
