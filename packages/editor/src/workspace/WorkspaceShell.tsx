@@ -141,6 +141,7 @@ import type {
   WorkspaceShellProps,
   WorkspaceTab,
 } from './types'
+import { resolveBackdropFileId } from './backdropPrecedence'
 import {
   type GroupLayout,
   type DropDirection,
@@ -305,6 +306,16 @@ export interface WorkspaceShellHandle {
    * Called by the file-tree context menu and by `Cmd+K B`.
    */
   setBackgroundFile(fileId: string | null, groupId?: string): void
+
+  /**
+   * Set the TRANSIENT code-override backdrop for a group (#350a). Pass `null`
+   * to drop the override so the manual sticky (`setBackgroundFile`) shows again.
+   * `groupId` defaults to the active group. Unlike `setBackgroundFile`, this is
+   * NOT persisted and does NOT fire `onBackgroundFileChange` — it's the active
+   * program's per-eval `.scope()` / `.viz({ backdrop })` declaration, which
+   * OVERLAYS the sticky and clears back to it when the code stops declaring one.
+   */
+  setBackgroundOverride(fileId: string | null, groupId?: string): void
 
   /**
    * Read the current backdrop fileId for a group (default: active
@@ -708,6 +719,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   height = '100%',
   onActiveTabChange,
   onBackgroundFileChange,
+  onActiveBackdropChange,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -751,6 +763,30 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   const [activeGroupId, setActiveGroupId] = useState<string>(
     () => initialState.current.activeGroupId,
   )
+
+  // #350a — transient per-group code-OVERRIDE backdrop layer. Deliberately kept
+  // OUT of `groups` / the `onGroupsChange` snapshot: the active program declares
+  // it every eval, so persisting it would churn tab-persistence and outlive the
+  // code that asked for it. `renderGroup` resolves override ?? sticky; clearing
+  // (delete) falls back to the persisted manual sticky (`group.backgroundFileId`).
+  const [bgOverrides, setBgOverrides] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  )
+
+  // #350a — notify the app when the ACTIVE group's RESOLVED backdrop changes
+  // (override ?? sticky) so UI that must reflect "what's showing" (the menubar
+  // bg indicator, the popover) tracks reality, not just the persisted sticky.
+  // Ref-guarded so steady code in live mode doesn't re-fire every eval.
+  const lastActiveBackdropRef = useRef<string | null>(null)
+  useEffect(() => {
+    const g = groups.get(activeGroupId)
+    const resolved =
+      resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null
+    if (resolved !== lastActiveBackdropRef.current) {
+      lastActiveBackdropRef.current = resolved
+      onActiveBackdropChange?.(resolved)
+    }
+  }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange])
 
   // Single persistence sink (#175). Fires on every change to groups /
   // layout / activeGroupId. The first render is suppressed via a
@@ -1267,6 +1303,25 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       onBackgroundFileChange?.(groupId, backgroundFileId)
     },
     [groups, updateGroup, onBackgroundFileChange],
+  )
+
+  /**
+   * Set/clear a group's transient code-override backdrop (#350a). `null` deletes
+   * the override so the manual sticky shows again. Idempotent — repeated equal
+   * calls (every eval in live mode) are no-ops, so there's no per-frame churn.
+   */
+  const updateGroupOverride = useCallback(
+    (groupId: string, overrideFileId: string | null) => {
+      setBgOverrides((prev) => {
+        const cur = prev.get(groupId) ?? null
+        if (cur === overrideFileId) return prev
+        const next = new Map(prev)
+        if (overrideFileId == null) next.delete(groupId)
+        else next.set(groupId, overrideFileId)
+        return next
+      })
+    },
+    [],
   )
 
   /**
@@ -2245,8 +2300,14 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 directly. Survives tab switches; silently drops when
                 the promoted file is deleted (provider lookup returns
                 undefined). */}
-            {group.backgroundFileId && (() => {
-              const bgFileId = group.backgroundFileId
+            {(() => {
+              // #350a precedence: code override (this eval) wins over the manual
+              // sticky; neither set → no backdrop.
+              const bgFileId = resolveBackdropFileId(
+                group.backgroundFileId,
+                bgOverrides.get(group.id),
+              )
+              if (!bgFileId) return null
               const bgProvider = previewProviderFor?.({
                 kind: 'preview',
                 id: `bg-${bgFileId}`,
@@ -2337,7 +2398,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               <div
                 data-stave-code-panel="true"
                 data-stave-backdrop={
-                  group.backgroundFileId ? 'on' : 'off'
+                  resolveBackdropFileId(
+                    group.backgroundFileId,
+                    bgOverrides.get(group.id),
+                  )
+                    ? 'on'
+                    : 'off'
                 }
                 style={{
                   position: 'relative',
@@ -2385,6 +2451,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       backgroundCrop,
       backdropQuality,
       backdropOpacity,
+      bgOverrides,
       previewProviderFor,
       theme,
     ],
@@ -2651,13 +2718,21 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         if (!gid) return
         updateGroupBackground(gid, fileId)
       },
+      setBackgroundOverride: (
+        fileId: string | null,
+        groupId?: string,
+      ) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupOverride(gid, fileId)
+      },
       getBackgroundFileId: (groupId?: string) => {
         const gid = groupId ?? activeGroupId
         if (!gid) return undefined
         return groups.get(gid)?.backgroundFileId
       },
     }),
-    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground],
+    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground, updateGroupOverride],
   )
 
   return (

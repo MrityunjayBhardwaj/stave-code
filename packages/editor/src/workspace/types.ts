@@ -920,6 +920,17 @@ export interface WorkspaceShellProps {
   ) => void
 
   /**
+   * Fires when the ACTIVE group's RESOLVED backdrop changes (#350a) — the code
+   * override (`setBackgroundOverride`) if present, else the manual sticky. This
+   * is "what is currently showing behind the active editor," for UI that must
+   * reflect reality (the menubar bg indicator, the popover pinned-state). Unlike
+   * `onBackgroundFileChange`, it is NOT a persistence signal — code overrides are
+   * transient — so consumers must mirror it into UI state WITHOUT persisting.
+   * Fires once per real change (ref-guarded); no per-eval churn for steady code.
+   */
+  readonly onActiveBackdropChange?: (fileId: string | null) => void
+
+  /**
    * Crop region applied to the pinned backdrop — 0–1 fractional
    * `{x, y, w, h}`. Absent means render the full viz rect. The
    * shell's backdrop wrapper scales/positions its inner div so

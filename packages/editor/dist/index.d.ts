@@ -3691,6 +3691,16 @@ interface WorkspaceShellProps {
      */
     readonly onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
     /**
+     * Fires when the ACTIVE group's RESOLVED backdrop changes (#350a) — the code
+     * override (`setBackgroundOverride`) if present, else the manual sticky. This
+     * is "what is currently showing behind the active editor," for UI that must
+     * reflect reality (the menubar bg indicator, the popover pinned-state). Unlike
+     * `onBackgroundFileChange`, it is NOT a persistence signal — code overrides are
+     * transient — so consumers must mirror it into UI state WITHOUT persisting.
+     * Fires once per real change (ref-guarded); no per-eval churn for steady code.
+     */
+    readonly onActiveBackdropChange?: (fileId: string | null) => void;
+    /**
      * Crop region applied to the pinned backdrop — 0–1 fractional
      * `{x, y, w, h}`. Absent means render the full viz rect. The
      * shell's backdrop wrapper scales/positions its inner div so
@@ -4860,6 +4870,15 @@ interface WorkspaceShellHandle {
      * Called by the file-tree context menu and by `Cmd+K B`.
      */
     setBackgroundFile(fileId: string | null, groupId?: string): void;
+    /**
+     * Set the TRANSIENT code-override backdrop for a group (#350a). Pass `null`
+     * to drop the override so the manual sticky (`setBackgroundFile`) shows again.
+     * `groupId` defaults to the active group. Unlike `setBackgroundFile`, this is
+     * NOT persisted and does NOT fire `onBackgroundFileChange` — it's the active
+     * program's per-eval `.scope()` / `.viz({ backdrop })` declaration, which
+     * OVERLAYS the sticky and clears back to it when the code stops declaring one.
+     */
+    setBackgroundOverride(fileId: string | null, groupId?: string): void;
     /**
      * Read the current backdrop fileId for a group (default: active
      * group). Returns `undefined` when no backdrop is pinned. Useful for

@@ -22750,6 +22750,12 @@ function HistoryViewOverlay({
 }
 __name(HistoryViewOverlay, "HistoryViewOverlay");
 
+// src/workspace/backdropPrecedence.ts
+function resolveBackdropFileId(stickyFileId, overrideFileId) {
+  return overrideFileId ?? stickyFileId;
+}
+__name(resolveBackdropFileId, "resolveBackdropFileId");
+
 // src/workspace/groupLayout.ts
 function findGroupCoords(layout, groupId) {
   for (let c = 0; c < layout.length; c++) {
@@ -24318,6 +24324,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   height = "100%",
   onActiveTabChange,
   onBackgroundFileChange,
+  onActiveBackdropChange,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -24345,6 +24352,18 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   const [activeGroupId, setActiveGroupId] = useState(
     () => initialState.current.activeGroupId
   );
+  const [bgOverrides, setBgOverrides] = useState(
+    () => /* @__PURE__ */ new Map()
+  );
+  const lastActiveBackdropRef = useRef(null);
+  useEffect(() => {
+    const g = groups.get(activeGroupId);
+    const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
+    if (resolved !== lastActiveBackdropRef.current) {
+      lastActiveBackdropRef.current = resolved;
+      onActiveBackdropChange?.(resolved);
+    }
+  }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
   const didMountRef = useRef(false);
   useEffect(() => {
     if (!didMountRef.current) {
@@ -24628,6 +24647,19 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
     [groups, updateGroup, onBackgroundFileChange]
+  );
+  const updateGroupOverride = useCallback(
+    (groupId, overrideFileId) => {
+      setBgOverrides((prev) => {
+        const cur = prev.get(groupId) ?? null;
+        if (cur === overrideFileId) return prev;
+        const next = new Map(prev);
+        if (overrideFileId == null) next.delete(groupId);
+        else next.set(groupId, overrideFileId);
+        return next;
+      });
+    },
+    []
   );
   const closeTabById = useCallback(
     (tabId) => {
@@ -25292,8 +25324,12 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                 "data-workspace-group-content": group.id,
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
-                  group.backgroundFileId && (() => {
-                    const bgFileId = group.backgroundFileId;
+                  (() => {
+                    const bgFileId = resolveBackdropFileId(
+                      group.backgroundFileId,
+                      bgOverrides.get(group.id)
+                    );
+                    if (!bgFileId) return null;
                     const bgProvider = previewProviderFor?.({
                       kind: "preview",
                       id: `bg-${bgFileId}`,
@@ -25364,7 +25400,10 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     "div",
                     {
                       "data-stave-code-panel": "true",
-                      "data-stave-backdrop": group.backgroundFileId ? "on" : "off",
+                      "data-stave-backdrop": resolveBackdropFileId(
+                        group.backgroundFileId,
+                        bgOverrides.get(group.id)
+                      ) ? "on" : "off",
                       style: {
                         position: "relative",
                         zIndex: 0,
@@ -25413,6 +25452,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
       backgroundCrop,
       backdropQuality,
       backdropOpacity,
+      bgOverrides,
       previewProviderFor,
       theme
     ]
@@ -25638,13 +25678,18 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
         if (!gid) return;
         updateGroupBackground(gid, fileId);
       }, "setBackgroundFile"),
+      setBackgroundOverride: /* @__PURE__ */ __name((fileId, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupOverride(gid, fileId);
+      }, "setBackgroundOverride"),
       getBackgroundFileId: /* @__PURE__ */ __name((groupId) => {
         const gid = groupId ?? activeGroupId;
         if (!gid) return void 0;
         return groups.get(gid)?.backgroundFileId;
       }, "getBackgroundFileId")
     }),
-    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground]
+    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground, updateGroupOverride]
   );
   return /* @__PURE__ */ jsxs(
     "div",
