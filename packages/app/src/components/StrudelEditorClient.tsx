@@ -179,6 +179,9 @@ interface StrudelEditorClientProps {
    *  the pinned backdrop into its own React state for the FileTree
    *  context-menu label. */
   onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
+  /** #350a — fires when the active group's RESOLVED backdrop (code override ??
+   *  manual sticky) changes, so UI mirrors what's showing. Forwarded to the shell. */
+  onActiveBackdropChange?: (fileId: string | null) => void;
   /** Crop region applied to the pinned backdrop. `null` = full rect. */
   backgroundCrop?: { x: number; y: number; w: number; h: number } | null;
   /**
@@ -201,6 +204,7 @@ export default function StrudelEditorClient({
   onEditViz,
   onCropViz,
   onBackgroundFileChange,
+  onActiveBackdropChange,
   backgroundCrop,
   onCodeBackdropChange,
 }: StrudelEditorClientProps) {
@@ -947,6 +951,7 @@ export default function StrudelEditorClient({
       onEditViz={onEditViz}
       onCropViz={onCropViz}
       onBackgroundFileChange={onBackgroundFileChange}
+      onActiveBackdropChange={onActiveBackdropChange}
       backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
         const fid =
