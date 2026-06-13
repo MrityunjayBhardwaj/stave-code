@@ -16,7 +16,7 @@ export default defineConfig({
   // Author-written content links (markdown bodies) are emitted verbatim by
   // Astro/Starlight — they don't get the `base` prefix that framework URLs do.
   // This plugin prefixes root-absolute internal links in content with BASE so
-  // they resolve under `/docs/`. Base-agnostic: a no-op when BASE is `/`. (#355)
+  // they resolve under `/docs/`. Base-agnostic: a no-op when BASE is `/`.
   markdown: {
     rehypePlugins: [[rehypeBaseInternalLinks, { base: BASE }]],
   },
@@ -27,7 +27,7 @@ export default defineConfig({
         'Browser-native live-coding editor for music (Strudel, Sonic Pi) and visuals (p5.js, Hydra).',
       logo: { src: './src/assets/stave.svg' },
       // Override Hero to base-prefix splash action links — Starlight renders
-      // them verbatim, and the rehype plugin can't reach frontmatter. (#355)
+      // them verbatim, and the rehype plugin can't reach frontmatter.
       components: {
         Hero: './src/components/Hero.astro',
       },
@@ -64,15 +64,6 @@ export default defineConfig({
         {
           label: 'Guides',
           autogenerate: { directory: 'guides' },
-        },
-        {
-          label: 'Architecture',
-          items: [
-            { label: 'The viz renderer contract', link: '/architecture/renderer-contract/' },
-            { label: 'Renderer: GLSL', link: '/architecture/glsl/' },
-            { label: 'Renderer: Hydra', link: '/architecture/hydra/' },
-            { label: 'Renderer: p5.js', link: '/architecture/p5/' },
-          ],
         },
         {
           label: 'API reference',
