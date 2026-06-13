@@ -2354,6 +2354,10 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   data-workspace-background={group.id}
                   data-background-file-id={bgFileId}
                   data-backdrop-quality={backdropQuality}
+                  // #350d: only the focused/active pane renders its backdrop
+                  // LIVE; inactive panes freeze to their last frame (see the
+                  // `paused` prop below). Exposed for observation.
+                  data-backdrop-live={isShellActiveGroup ? 'true' : 'false'}
                   style={{
                     position: 'absolute',
                     inset: 0,
@@ -2388,6 +2392,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                       sourceRef={{ kind: 'default' }}
                       theme={theme}
                       hidden={false}
+                      // #350d: freeze the backdrop on inactive panes. GPU is
+                      // shared (#299/#122) — N split panes each rendering a
+                      // heavy backdrop LIVE = N× the compositor cost. Only the
+                      // focused pane renders live; the rest pause to their last
+                      // frame. `paused` routes to renderer.pause() (p5.noLoop /
+                      // hydra stop) which freezes the canvas (keeps the last
+                      // frame) and resumes instantly on focus — the lighter
+                      // freeze, not an off-screen teardown.
+                      paused={!isShellActiveGroup}
                       onSourceRefChange={() => {}}
                     />
                   </div>

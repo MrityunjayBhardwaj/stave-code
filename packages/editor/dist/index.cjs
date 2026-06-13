@@ -25386,6 +25386,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                         "data-workspace-background": group.id,
                         "data-background-file-id": bgFileId,
                         "data-backdrop-quality": backdropQuality,
+                        "data-backdrop-live": isShellActiveGroup ? "true" : "false",
                         style: {
                           position: "absolute",
                           inset: 0,
@@ -25419,6 +25420,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                                 sourceRef: { kind: "default" },
                                 theme,
                                 hidden: false,
+                                paused: !isShellActiveGroup,
                                 onSourceRefChange: () => {
                                 }
                               }
@@ -29443,6 +29445,12 @@ function CompiledVizMount(props) {
         reportError
       );
       rendererRef.current = mounted;
+      if (paused) {
+        try {
+          mounted.renderer.pause();
+        } catch {
+        }
+      }
     } catch (err) {
       reportError(err instanceof Error ? err : new Error(String(err)));
     }

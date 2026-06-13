@@ -80,7 +80,7 @@ import type {
   PreviewProvider,
   PreviewContext,
 } from '../PreviewProvider'
-import type { WorkspaceTab } from '../types'
+import type { WorkspaceTab, WorkspaceGroupState } from '../types'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -97,6 +97,9 @@ function makePreviewProvider(): PreviewProvider {
         <div
           data-testid="stub-preview-output"
           data-file-content={ctx.file.content}
+          // #350d: expose the paused flag so the backdrop freeze wiring is
+          // observable — active pane = live (false), inactive = frozen (true).
+          data-paused={String(ctx.paused ?? false)}
         />
       )
     },
@@ -227,5 +230,50 @@ describe('WorkspaceShell commands integration', () => {
 
     bgLayer = container.querySelector('[data-workspace-background]')
     expect(bgLayer).toBeNull()
+  })
+
+  it('#350d — active pane backdrop is LIVE, inactive pane backdrop FREEZES (paused)', () => {
+    // Two split panes, each with its own pinned backdrop. Only the focused
+    // (active) pane renders its backdrop LIVE; the inactive pane freezes to its
+    // last frame (paused → renderer.pause()). This bounds the shared-GPU cost to
+    // ~1× regardless of how many panes are split (#299/#122). `data-backdrop-live`
+    // mirrors the group's `data-active-group`; the backdrop preview's `paused`
+    // ctx is the inverse.
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    const provider = makePreviewProvider()
+    const groups = new Map<string, WorkspaceGroupState>([
+      ['g1', { id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1', backgroundFileId: 'f-hydra' }],
+      ['g2', { id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2', backgroundFileId: 'f-hydra2' }],
+    ])
+    const { container } = render(
+      <WorkspaceShell
+        initialGroups={groups}
+        initialLayout={[['g1', 'g2']]}
+        initialActiveGroupId="g2"
+        previewProviderFor={() => provider}
+      />,
+    )
+
+    // Both panes render a backdrop.
+    const backdrops = container.querySelectorAll('[data-workspace-background]')
+    expect(backdrops.length).toBe(2)
+
+    // Invariant: each backdrop's live flag matches its group's active state,
+    // and the backdrop preview's `paused` ctx is the inverse of live.
+    let liveCount = 0
+    let frozenCount = 0
+    container.querySelectorAll('[data-workspace-group]').forEach((g) => {
+      const bg = g.querySelector('[data-workspace-background]')
+      if (!bg) return
+      const live = bg.getAttribute('data-backdrop-live')
+      expect(live).toBe(g.getAttribute('data-active-group'))
+      const out = bg.querySelector('[data-testid="stub-preview-output"]')
+      expect(out?.getAttribute('data-paused')).toBe(String(live !== 'true'))
+      if (live === 'true') liveCount++
+      else frozenCount++
+    })
+    // Exactly one active (live) pane and one inactive (frozen) pane.
+    expect(liveCount).toBe(1)
+    expect(frozenCount).toBe(1)
   })
 })
