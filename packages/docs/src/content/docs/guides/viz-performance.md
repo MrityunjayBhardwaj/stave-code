@@ -11,8 +11,7 @@ back to the **main thread**, where a heavy `draw()` *can* starve the scheduler
 and put audio timing at risk. Either way, the segment budget below is what keeps
 a sketch smooth. This guide is the short, *measured* version. Every number here
 came from the Stave profiler (`Alt+P`) and the cost-curve matrix harness — not
-from intuition. (For how the worker path works under the hood, see
-[The viz renderer contract](/architecture/renderer-contract/).)
+from intuition.
 
 ## What Stave handles for you (and what it can't)
 
@@ -124,6 +123,4 @@ segment budget still matters:
   section — so `Alt+P` shows it whether the sketch runs on the worker or the main
   thread.
 
-Decimate to the budget and the sketch is smooth on both paths. For the worker
-architecture itself, see
-[The viz renderer contract](/architecture/renderer-contract/).
+Decimate to the budget and the sketch is smooth on both paths.

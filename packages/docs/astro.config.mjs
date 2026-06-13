@@ -66,15 +66,6 @@ export default defineConfig({
           autogenerate: { directory: 'guides' },
         },
         {
-          label: 'Architecture',
-          items: [
-            { label: 'The viz renderer contract', link: '/architecture/renderer-contract/' },
-            { label: 'Renderer: GLSL', link: '/architecture/glsl/' },
-            { label: 'Renderer: Hydra', link: '/architecture/hydra/' },
-            { label: 'Renderer: p5.js', link: '/architecture/p5/' },
-          ],
-        },
-        {
           label: 'API reference',
           // Strudel reference omitted on this base — its vendored DocsIndex
           // (`strudel.json`) is a docs-site-only refactor not yet on `performance`.
