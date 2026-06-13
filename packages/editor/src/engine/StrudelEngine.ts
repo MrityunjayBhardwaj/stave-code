@@ -610,6 +610,26 @@ export class StrudelEngine implements LiveCodingEngine {
             // explanation of Strudel's reify-induced shapes. Pure
             // helper exported for unit testing.
             const resolvedName = extractVizName(vizName)
+            const optsObj =
+              opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : null
+            // #364 (350b): `.viz('name', { backdrop: true })` promotes the
+            // viz to the BACKDROP slot — a code-override source alongside the
+            // non-underscore `.scope()`/`.pianoroll()` forms below — instead of
+            // an inline view-zone. Sets the SAME `capturedBackdropViz` closure
+            // those methods use; the app's handleCodeBackdropChange →
+            // setBackgroundOverride (#363) then makes it an active-pane override.
+            // opacity/quality ride along in the options bag → backdropRequest.options
+            // (per-pane application is #365). We still chain to Strudel's `.viz()`
+            // for parity but DELIBERATELY do not tag `_pendingViz`, so the `.p()`
+            // wrapper never registers an inline request for a backdrop viz.
+            // G3: in a NON-active program this only mutates the closure, which the
+            // singular engine commits for the active evaluate alone → effectively a
+            // no-op until that program is active. `.viz('name')` (no flag) stays inline.
+            if (resolvedName && optsObj && optsObj.backdrop === true) {
+              capturedBackdropViz = resolvedName
+              capturedBackdropVizOptions = optsObj
+              return strudelViz ? strudelViz.call(this, vizName) : this
+            }
             // Chain to Strudel's .viz() if it exists
             const result = strudelViz ? strudelViz.call(this, vizName) : this
             // Tag the RETURNED pattern with the resolved viz name

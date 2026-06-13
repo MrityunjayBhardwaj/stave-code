@@ -16,6 +16,8 @@ type EvalBehavior =
   | 'error'        // fires onEvalError (no patterns captured)
   | 'muted'        // muted patterns: "_muted" and "muted_"
   | 'one-track'    // single anonymous pattern → "$0"
+  | 'viz-backdrop-flag'  // `.viz('name', { backdrop: true })` → backdrop slot (#364)
+  | 'viz-inline-no-flag' // `.viz('name')` no flag → inline zone (#364 control)
 
 let evalBehavior: EvalBehavior = 'two-anon'
 
@@ -119,6 +121,20 @@ vi.mock('@strudel/webaudio', () => {
           ;(p2 as any).p('muted_')
         } else if (code === 'one-track' || evalBehavior === 'one-track') {
           const p = new MockPattern()
+          ;(p as any).p('$')
+        } else if (evalBehavior === 'viz-backdrop-flag') {
+          // #364: `.viz('pianoroll', { backdrop: true })` promotes the viz to
+          // the BACKDROP slot. The flag fires BEFORE .p(); .p() must then NOT
+          // register an inline viz request (no `_pendingViz` was tagged).
+          const p = new MockPattern()
+          ;(p as any).viz('pianoroll', { backdrop: true, opacity: 0.5 })
+          ;(p as any).p('$')
+        } else if (evalBehavior === 'viz-inline-no-flag') {
+          // #364 control: `.viz('spectrum')` with no flag stays inline — it
+          // tags `_pendingViz`, so .p() registers an inline request and the
+          // backdrop slot stays empty.
+          const p = new MockPattern()
+          ;(p as any).viz('spectrum')
           ;(p as any).p('$')
         }
       }),
@@ -311,6 +327,59 @@ describe('StrudelEngine.getTrackSchedulers', () => {
     expect(map.has('$0')).toBe(true)
     expect(map.has('d1')).toBe(true)
     expect(map.size).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #364 (350b) — `.viz('name', { backdrop: true })` as a code-override.
+// The backdrop flag routes a named inline viz to the backdrop slot
+// (engine `backdropVizRequest` → `components.inlineViz.backdropRequest`),
+// the same channel the non-underscore `.scope()`/`.pianoroll()` methods feed.
+// Without the flag, `.viz('name')` stays an inline zone (vizRequests) and the
+// backdrop stays empty.
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine .viz() backdrop flag (#364)', () => {
+  beforeEach(() => {
+    patternInstanceCounter = 0
+    capturedOnEvalError = null
+    evalBehavior = 'two-anon'
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    const desc = Object.getOwnPropertyDescriptor(MockPattern.prototype, 'p')
+    if (desc?.set) delete (MockPattern.prototype as any).p
+  })
+
+  it('`.viz(name, { backdrop: true })` sets the backdrop request, not an inline zone', async () => {
+    evalBehavior = 'viz-backdrop-flag'
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('viz-backdrop-flag')
+
+    const inlineViz = engine.components.inlineViz
+    expect(inlineViz?.backdropRequest).toEqual({
+      vizId: 'pianoroll',
+      // opacity/quality ride along in the same options bag (#365 applies them).
+      options: { backdrop: true, opacity: 0.5 },
+    })
+    // The flagged viz must NOT also register as an inline zone request.
+    expect(inlineViz?.vizRequests.size ?? 0).toBe(0)
+  })
+
+  it('`.viz(name)` with no flag stays inline — backdrop request stays undefined', async () => {
+    evalBehavior = 'viz-inline-no-flag'
+    const engine = new StrudelEngine()
+    await engine.init()
+    // Code must carry a `$:` line — the exposed vizRequests map is built by
+    // line-scanning lastEvaluatedCode (buildVizRequestsWithLines).
+    await engine.evaluate('$: spectrum')
+
+    const inlineViz = engine.components.inlineViz
+    // Inline request registered for the track; no backdrop promotion.
+    expect(inlineViz?.vizRequests.get('$0')?.vizId).toBe('spectrum')
+    expect(inlineViz?.backdropRequest).toBeUndefined()
   })
 })
 

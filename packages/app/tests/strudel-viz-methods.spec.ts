@@ -101,6 +101,40 @@ test('removing the non-underscore method clears the backdrop (code is source of 
   await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false', { timeout: 6000 })
 })
 
+test('.viz("name", { backdrop: true }) pins the backdrop as a code-override (#364/350b)', async ({ page }) => {
+  // The inline API with the backdrop flag promotes a NAMED viz to the
+  // backdrop slot — a code-override source alongside the bare `.scope()`.
+  // SYNTH (sawtooth), not drum samples: samples don't load headless, so an
+  // eval-error would gate onCodeBackdropChange and the backdrop would never
+  // pin (P146). Observe the real DOM: data-workspace-background +
+  // data-background-file-id (the resolved backdrop), not inference.
+  const errors: string[] = []
+  page.on('pageerror', e => errors.push(String(e)))
+
+  await setCode(page, `$: note("c e g").s("sawtooth").viz("spectrum", { backdrop: true })`)
+  await runCode(page)
+
+  const bgIndicator = page.locator('[data-pinned]')
+  await expect(bgIndicator).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
+  const bg = page.locator('[data-workspace-background]')
+  await expect(bg).toHaveCount(1)
+  // The resolved backdrop file id is exposed on the rendered backdrop node.
+  await expect(bg.first()).toHaveAttribute('data-background-file-id', /.+/)
+  // No inline viz-zone for the flagged viz — it lives in the backdrop, not under the line.
+  await expect(page.locator('[data-viz-zone-track]')).toHaveCount(0)
+  expect(await page.locator('canvas#test-canvas').count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test('.viz("name") with NO backdrop flag stays an inline zone — no backdrop pin (#364 control)', async ({ page }) => {
+  await setCode(page, `$: note("c e g").s("sawtooth").viz("spectrum")`)
+  await runCode(page)
+  // Inline zone present; backdrop NOT pinned.
+  await expect(page.locator('[data-viz-zone-track]').first()).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false')
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+})
+
 test('underscore ._punchcard() and ._tscope() render inline with no error and no fullscreen canvas', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))

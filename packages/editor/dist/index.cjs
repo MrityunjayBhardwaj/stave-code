@@ -4259,6 +4259,12 @@ var _StrudelEngine = class _StrudelEngine {
           writable: true,
           value: /* @__PURE__ */ __name(function(vizName, opts) {
             const resolvedName = extractVizName(vizName);
+            const optsObj = opts && typeof opts === "object" ? opts : null;
+            if (resolvedName && optsObj && optsObj.backdrop === true) {
+              capturedBackdropViz = resolvedName;
+              capturedBackdropVizOptions = optsObj;
+              return strudelViz ? strudelViz.call(this, vizName) : this;
+            }
             const result = strudelViz ? strudelViz.call(this, vizName) : this;
             if (resolvedName) {
               result._pendingViz = resolvedName;
