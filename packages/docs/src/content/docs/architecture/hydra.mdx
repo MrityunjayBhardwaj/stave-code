@@ -11,7 +11,7 @@ covers only the kind-specific half: how a `hydra-synth` instance fills in the
 five `RendererStrategy` members and where its quirks bite. Every claim cites
 `file:line` in `packages/editor/src/visualizers/`.
 
-## Canvas tier — Tier-1 direct (PV73)
+## Canvas tier — Tier-1 direct
 
 Hydra **accepts the transferred `OffscreenCanvas`** and renders into it directly,
 no blit. `mountHydra` constructs the synth with `{ canvas: msg.canvas }`
@@ -25,10 +25,10 @@ The instance is configured for worker life (`hostP5Worker.ts:423`):
 - `detectAudio: false` — no Meyda / `getUserMedia` / `AudioContext` in the worker
   (we feed `s.a.fft` ourselves, below);
 - `makeGlobal: false` — generators live on `hydra.synth`, not the global scope;
-- `autoLoop: false` — **we** drive `tick()` once per frame (1:1, PK22);
+- `autoLoop: false` — **we** drive `tick()` once per frame (1:1);
 - `enableStreamCapture: false` — an `OffscreenCanvas` has no `captureStream`.
 
-<Aside type="note" title="The DOM shim is smaller than p5's (PV70)">
+<Aside type="note" title="The DOM shim is smaller than p5's">
 `hydra-synth` touches `window` at module-eval (`mouseListen`), so a 2-part shim
 (a `window = self` alias + a thin `document`) is installed *before* the import
 (`hostP5Worker.ts:405`, `installWorkerHydraShim`). That's far less than p5's
@@ -76,9 +76,9 @@ serialized across the worker boundary, so they're deferred to the main-thread
 path for now. A `.hydra` *file* (a string) routes through the worker fine.
 </Aside>
 
-## Gotcha 1 — hydra swallows user errors *inside the library* — Stave re-surfaces them (#275)
+## Gotcha 1 — hydra swallows user errors *inside the library* — Stave re-surfaces them
 
-A p5 `draw()` typo surfaces in the Stave Console (#257). The hydra equivalent — a
+A p5 `draw()` typo surfaces in the Stave Console. The hydra equivalent — a
 reactive arrow that throws, e.g. `.rotate(() => { throw … })` — does **not** reach
 the host's draw catch on its own, because `hydra-synth` wraps every reactive-fn
 uniform evaluation in its own try/catch (`format-arguments.js:82`:
@@ -89,7 +89,7 @@ shared `s.draw()` catch (`hostP5Worker.ts`), never re-emits via `vizlog`. The ho
 catch only fires for **engine-level** throws (regl / GL / context-lost), which a
 viz code string can't deterministically induce.
 
-**The fix (#275):** rather than fight the library, Stave patches the worker's
+**The fix:** rather than fight the library, Stave patches the worker's
 `console.warn` once — while a hydra sketch is live (`currentRuntimeRef.kind ===
 'hydra'`), it recognises hydra's two user-error markers (`'ERROR'` → error,
 `'function does not return a number'` → warn), re-emits them through the same
@@ -100,20 +100,20 @@ untouched. A hydra typo now appears in the Console just like a p5 one — **incl
 the source line**: the thrown Error's stack points into the `new Function` body
 (`at … eval at compileHydraCode (…), <anonymous>:L:C`), which `parseStackLocation`
 maps back through the 2-line header (`getHydraLineOffset`) to the editor line, so
-the squiggle lands (#330). (The V8 *eval-wrapper* frame is a distinct stack shape —
+the squiggle lands. (The V8 *eval-wrapper* frame is a distinct stack shape —
 the shared `parseStackLocation` learned it for this.)
 
 <Aside type="caution" title="Before asserting 'X surfaces an error,' check who swallows it first">
-The original #257 comment *implied* parity across kinds — an inference that
+The original draw-error-surfacing comment *implied* parity across kinds — an inference that
 observation disproved (a probe showed hydra's `engineLog` errors === 0). The
 detection rule that found the real gap: grep the runtime library's arg/uniform
 eval for a try/catch before claiming an error surfaces. `hydra-path-coverage.spec.ts`
 (b) now **asserts the fix**: a clean sketch surfaces 0 (no over-capture), a throwing
 reactive fn surfaces ≥1 carrying its thrown text end-to-end. (A throw on **frame 1**
-never reaches `ready` → that's the #247 *fallback* path, different again.)
+never reaches `ready` → that's the *fallback* path, different again.)
 </Aside>
 
-## Gotcha 2 — resolution doesn't move `viz.worker.draw` (P117)
+## Gotcha 2 — resolution doesn't move `viz.worker.draw`
 
 Dropping inline-viz resolution 1024→256 (16× fewer fragments) does **not** change
 a hydra viz's `viz.worker.draw` p95 — it stays ~0.06–0.13 ms at both.
@@ -121,17 +121,16 @@ a hydra viz's `viz.worker.draw` p95 — it stays ~0.06–0.13 ms at both.
 Because hydra is Tier-1, `hydra.tick()` only **dispatches** GPU work (issues draw
 calls and returns); the per-fragment fill runs **async on the GPU**. The
 profiler times the CPU wall-time of `s.draw()` — the dispatch — which is
-fragment-count-independent (PV83: the bridge measures dispatch, not fill).
+fragment-count-independent (the bridge measures dispatch, not fill).
 
 <Aside type="tip" title="Don't mirror the p5 density assertion onto hydra">
-Contrast p5's line meshes (#232), where the cost is CPU-side JS tessellation, so
+Contrast p5's line meshes, where the cost is CPU-side JS tessellation, so
 `density` *does* move `viz.worker.draw` (`viz-density-lod.spec.ts`). Hydra is the
 opposite class — GPU-fill-bound. To gauge hydra fill cost, measure the worker's
 actual frame **rate** under saturation, not the dispatch section. Verified flat
 across res in `hydra-path-coverage.spec.ts` (c).
 </Aside>
 
-**Verified by** `hydra-path-coverage.spec.ts` (the worker `gl()` accessor → #266,
-kind-agnostic `s.draw()` timing → #230, the #275 error re-surfacing, the P117 flat-cost) and
-`hydra-visual-gate.spec.ts` (the worker canvas actually paints, audio-reactive —
-PV86).
+**Verified by** `hydra-path-coverage.spec.ts` (the worker `gl()` accessor,
+kind-agnostic `s.draw()` timing, the error re-surfacing, the flat-cost) and
+`hydra-visual-gate.spec.ts` (the worker canvas actually paints, audio-reactive).

@@ -9,7 +9,7 @@
  * URLs (favicon, sitemap, sidebar config links via `pathWithBase`). Links an
  * author writes in markdown bodies (`[x](/architecture/...)`) and HTML pass
  * through verbatim — so under `base: '/docs/'` they resolve to `/architecture/...`
- * (the host app's catch-all) instead of `/docs/architecture/...`. See issue #355.
+ * (the host app's catch-all) instead of `/docs/architecture/...`.
  *
  * Base-agnostic: it receives the resolved base and skips anything already
  * carrying it, so `STAVE_DOCS_BASE=/` (standalone preview) is a clean no-op.

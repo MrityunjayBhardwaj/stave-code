@@ -12,7 +12,7 @@ canvases, needs a DOM shim to run in a worker at all, and its `draw()` can throw
 user code. Every claim cites `file:line` in
 `packages/editor/src/visualizers/`.
 
-## Canvas tier — Tier A direct render (#325)
+## Canvas tier — Tier A direct render
 
 p5 renders **directly into the transferred display canvas** — the same as hydra/GLSL
 — so there is no blit and no per-frame clear. The catch is that p5 v2's `#_setup`
@@ -35,18 +35,18 @@ it survives only as a fallback for a sketch that never calls `createCanvas` (onl
 rather than leave it blank), and behind the `localStorage['stave.viz.p5direct']='0'`
 escape hatch.
 
-<Aside type="tip" title="Main-canvas readback + trails now work worker == main (#306/#316/#325, P126/PV96 retired)">
-This used to be the **transfer-clear limitation** (#306/#316): `transferToImageBitmap()`
+<Aside type="tip" title="Main-canvas readback + trails now work worker == main">
+This used to be the **transfer-clear limitation**: `transferToImageBitmap()`
 is destructive — it moved the bitmap *out* of p5's render canvas and left it cleared, so
-readback/trails went **silently blank** in the worker. #325 Tier A removes it at the root:
+readback/trails went **silently blank** in the worker. Tier A removes it at the root:
 p5 owns the persistent display canvas, so readback and skip-`background()` trails just
 work. Proven end-to-end by `viz-worker-p5-direct.spec.ts` (readback/trail/WEBGL/createGraphics,
 worker == main, compositor pixels) and the flipped `viz-worker-readback.spec.ts` (the worker
-arm now PAINTS). This **supersedes #324** (the conditional-latch fallback is unnecessary —
-the footgun is gone, not patched).
+arm now PAINTS). This makes the conditional-latch fallback unnecessary —
+the footgun is gone, not patched.
 </Aside>
 
-## The worker DOM shim (PV70, P105)
+## The worker DOM shim
 
 p5 v2 **can** render WEBGL to an `OffscreenCanvas` in a worker — given a small,
 fixed DOM shim installed **before** the import (`hostP5Worker.ts:293`,
@@ -61,7 +61,7 @@ fixed DOM shim installed **before** the import (`hostP5Worker.ts:293`,
    `createGraphics()` buffer; the user's main `createCanvas` instead adopts the
    transferred display canvas (Tier A direct render, above).
 
-<Aside type="caution" title="A library's worker-DOM shim is BUILD-specific (P105)">
+<Aside type="caution" title="A library's worker-DOM shim is BUILD-specific">
 The shim surface a prebuilt/minified POC needs can differ from the **bundled prod
 build** — the Next-bundled p5 re-runs i18next FES code that reads
 `location.search` / `documentElement.lang` at import. Harden the shim against the
@@ -69,8 +69,8 @@ build that actually ships, not the POC min. The `@stave/editor/worker` subpath +
 DI + `app new Worker(new URL(...))` wiring exists for exactly this reason.
 </Aside>
 
-The shim also degrades **`save()` / `saveCanvas()` / `saveGif()`** to a clean no-op
-(#315): p5's `saveCanvas` calls `htmlCanvas.toBlob(cb)` (an `OffscreenCanvas` only has
+The shim also degrades **`save()` / `saveCanvas()` / `saveGif()`** to a clean no-op:
+p5's `saveCanvas` calls `htmlCanvas.toBlob(cb)` (an `OffscreenCanvas` only has
 `convertToBlob`) then `createElement('a').click()`. The shim bridges
 `wrapCanvas.toBlob`→`convertToBlob` and gives the anchor a no-op `click()`, so save()
 no longer throws `toBlob is not a function` — a worker can't trigger a browser download
@@ -82,7 +82,7 @@ The compiler reads `stave.analyser` / `stave.scheduler` off ref cells
 (`hostP5Worker.ts:304`) — the **same** contract `P5VizRenderer` uses on the main
 thread, so the sketch can't tell it's in a worker. The named-signal `sig.*` bus is
 built with `buildStaveUniforms(feed.bus)` (`hostP5Worker.ts:300`); the bus is
-ticked once by `feed.applyFrame` (PK22), and `onTick`/`__tick` is a no-op so the
+ticked once by `feed.applyFrame`, and `onTick`/`__tick` is a no-op so the
 sketch never double-ticks. Raw `hapStream` access isn't marshalled (no built-in
 needs it) → `null`.
 
@@ -91,11 +91,11 @@ needs it) → `null`.
 After the user's `setup()` runs, the host wraps it to call `p.noLoop()`
 (`hostP5Worker.ts:330`) so p5's auto-loop is off and **we** drive one
 `inst.redraw()` per frame (`hostP5Worker.ts:355`) — 1:1 with the host's signal
-frame (PK22). `setupDone()` flips `true` only after that wrapped setup runs
+frame. `setupDone()` flips `true` only after that wrapped setup runs
 (`hostP5Worker.ts:334`), so the contract gate holds frames until p5's async setup
 completes.
 
-## The density LOD lever (#232 / #269)
+## The density LOD lever
 
 For CPU-tessellated line meshes, frame cost is **linear in segment count** and
 almost nothing else — p5 builds quad geometry per thick-line segment on the CPU.
@@ -107,7 +107,7 @@ the marshalled config subset (`density` ∈ `WORKER_VIZ_CONFIG_KEYS`,
 
 <Aside type="tip" title="Resolution doesn't help line meshes; density does">
 Lower resolution / smaller canvas has *no effect* on a CPU-tessellation-bound line
-mesh — that cost is CPU, not pixels (the inverse of hydra's GPU-fill case, P117).
+mesh — that cost is CPU, not pixels (the inverse of hydra's GPU-fill case).
 `density` does move `viz.worker.draw` because it changes how many segments p5
 tessellates (`viz-density-lod.spec.ts`). The user-facing version of this budget is
 [Writing fast viz sketches](/guides/viz-performance/).
@@ -123,7 +123,7 @@ tessellates (`viz-density-lod.spec.ts`). The user-facing version of this budget 
 | `teardown()` | neutralize p5's async `#_setup` chain so a destroy mid-flight can't paint | `hostP5Worker.ts:374` |
 | `gl?()` | `inst.drawingContext` — WEBGL context, or a 2D context whose `getExtension` yields null (not accounted) | `hostP5Worker.ts:353` |
 
-## Gotcha — a user `draw()` throw is double-swallowed (P114, #257)
+## Gotcha — a user `draw()` throw is double-swallowed
 
 A `draw()` typo in the worker (e.g. `stave.fft.length` — wrong namespace) gives a
 silent blank canvas: no console error, no diag, only the first draw statement
@@ -140,25 +140,25 @@ is wrong **twice**:
    bundle has its own instance**, disconnected from the main `engineLog` that
    feeds the Console. "It's reported" was true *in the worker*, invisible on main.
 
-<Aside type="caution" title="The fix: re-emit across the boundary, and split the channels (#257)">
+<Aside type="caution" title="The fix: re-emit across the boundary, and split the channels">
 The worker subscribes to its local `engineLog` and posts each error across to the
 main `emitLog` (`vizlog`). Crucially the channels are separate: **fatal/mount**
 errors → `diag`→`onError`→fallback (tear the worker down); **runtime** draw/setup
 errors → `vizlog`→main `emitLog` (surface, do **not** fall back — a post-`ready`
 user typo must not kill the worker). Verified by `worker-draw-error.spec.ts` (one
-error surfaced, no fallback). This is the P105 family — a per-thread channel is
-invisible until explicitly bridged (PV83).
+error surfaced, no fallback). This is the per-thread-channel family — a per-thread channel is
+invisible until explicitly bridged.
 </Aside>
 
 <Aside type="note" title="p5 was the first leg of the error-surfacing triad">
 This `vizlog` re-emit is the *original* of a pattern every runtime now follows:
 each one swallows user errors differently, so each gets its own surfacing hook to
-the same Console. The siblings caught up — hydra ([#275](/architecture/hydra/),
-its library swallows reactive-fn throws) and GLSL ([#331](/architecture/glsl/), a
+the same Console. The siblings caught up — hydra ([hydra](/architecture/hydra/),
+its library swallows reactive-fn throws) and GLSL ([GLSL](/architecture/glsl/), a
 mount-time compile error, surfaced *with* an editor line). The cross-runtime
 invariant is in the [renderer contract](/architecture/renderer-contract/).
 </Aside>
 
-**Verified by** `worker-draw-error.spec.ts` (#257 user-throw surfacing),
-`viz-density-lod.spec.ts` (#232 density moves the cost curve, no remount), and the
+**Verified by** `worker-draw-error.spec.ts` (user-throw surfacing),
+`viz-density-lod.spec.ts` (density moves the cost curve, no remount), and the
 p5 worker-path coverage gates.

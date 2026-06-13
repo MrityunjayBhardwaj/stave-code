@@ -5,7 +5,7 @@
 // `<LinkButton href={action.link}>`), with NO `base` prefix — so a hero
 // `link: /getting-started/` ships as `/getting-started/` and, under
 // `base: /docs/`, leaves the docs entirely. The rehype plugin can't reach it
-// (frontmatter isn't in the markdown AST). (#355)
+// (frontmatter isn't in the markdown AST).
 //
 // This thin wrapper base-prefixes root-absolute action links via
 // `import.meta.env.BASE_URL`, then delegates to the default Hero. Base-agnostic
