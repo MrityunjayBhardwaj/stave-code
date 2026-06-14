@@ -22,3 +22,24 @@ export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from './chunkDetect'
 
 export { Writeback, formatNumber, normalizeEdits } from './writeback'
 export type { WriteSource, OffsetEdit } from './writeback'
+
+export {
+  parseStepGrid,
+  parsePianoRoll,
+  serializeStepGrid,
+  serializePianoRoll,
+  pitchToMidi,
+  midiToPitch,
+  isBlackKey,
+  placeNote,
+  resizeGrid,
+  resizeRoll,
+} from './notation'
+export type {
+  StepGridModel,
+  StepLane,
+  PianoRollModel,
+  RollNote,
+  ParseResult,
+  ResizeMode,
+} from './notation'

@@ -508,6 +508,16 @@ export {
   Writeback,
   formatNumber,
   normalizeEdits,
+  parseStepGrid,
+  parsePianoRoll,
+  serializeStepGrid,
+  serializePianoRoll,
+  pitchToMidi,
+  midiToPitch,
+  isBlackKey,
+  placeNote,
+  resizeGrid,
+  resizeRoll,
 } from './visualEdit'
 export type {
   ChunkInfo,
@@ -516,6 +526,12 @@ export type {
   ChunkType,
   WriteSource,
   OffsetEdit,
+  StepGridModel,
+  StepLane,
+  PianoRollModel,
+  RollNote,
+  ParseResult,
+  ResizeMode,
 } from './visualEdit'
 export {
   BOTTOM_PANEL_HEIGHT_KEY,
