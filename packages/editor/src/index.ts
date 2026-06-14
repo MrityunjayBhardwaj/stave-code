@@ -521,6 +521,7 @@ export {
   VisualEditStandby,
   Mixer,
   SequencerGrid,
+  PianoRollGrid,
   Knob,
   knobRangeFor,
   VISUAL_EDIT_TABS,

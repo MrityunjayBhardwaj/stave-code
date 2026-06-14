@@ -22,17 +22,18 @@ import * as React from 'react'
 import { parseStepGrid } from '../notation/parse'
 import { serializeStepGrid } from '../notation/serialize'
 import type { StepGridModel } from '../notation/model'
+import type { ChunkInfo } from '../chunkDetect'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID, VISUAL_EDIT_TABS } from './tabs'
-import { useActiveChunk } from './useActiveChunk'
+import { useGridModel } from './useGridModel'
 
 const SEQ_HINT =
   VISUAL_EDIT_TABS.find((t) => t.id === SEQUENCER_TAB_ID)?.hint ??
   'Click a drum pattern to edit it as a step grid.'
 
 /** the sequencer only edits sound/sample patterns; notes go to the Piano Roll */
-function isStepHead(headFn: string | null): boolean {
-  return headFn === 's' || headFn === 'sound'
+function isStepChunk(chunk: ChunkInfo): boolean {
+  return chunk.miniString !== null && (chunk.headFn === 's' || chunk.headFn === 'sound')
 }
 
 /** flip one cell, returning a new model (stable lane set preserved) */
@@ -53,35 +54,12 @@ function toggleCell(
 }
 
 export function SequencerGrid(): React.ReactElement {
-  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
-  const [model, setModel] = React.useState<StepGridModel | null>(null)
-  // Mirror of `model` for synchronous reads inside pointer handlers (a fast
-  // drag fires several paints before React re-renders).
-  const modelRef = React.useRef<StepGridModel | null>(null)
-  React.useEffect(() => {
-    modelRef.current = model
-  }, [model])
-
-  // Reconcile model with the chunk: reseed on external edits, keep on echoes.
-  React.useEffect(() => {
-    if (!chunk || chunk.miniString === null || !isStepHead(chunk.headFn)) {
-      modelRef.current = null
-      setModel(null)
-      return
-    }
-    const parsed = parseStepGrid(chunk.miniString)
-    if (!parsed.ok) {
-      modelRef.current = null
-      setModel(null)
-      return
-    }
-    // Our own write-back echo (or unchanged) → keep the in-state model so a
-    // fully-cleared lane doesn't vanish; otherwise an external edit → reseed.
-    const prev = modelRef.current
-    const next = prev && serializeStepGrid(prev) === chunk.miniString ? prev : parsed.model
-    modelRef.current = next
-    setModel(next)
-  }, [chunk])
+  const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
+    source: 'seq',
+    eligible: isStepChunk,
+    parse: parseStepGrid,
+    serialize: serializeStepGrid,
+  })
 
   // Drag-paint: a press sets the paint value (opposite of the pressed cell);
   // entering further cells while held paints them the same. The whole drag is
@@ -101,27 +79,17 @@ export function SequencerGrid(): React.ReactElement {
     return () => window.removeEventListener('pointerup', onUp)
   }, [endGesture])
 
-  const write = React.useCallback(
-    (next: StepGridModel): void => {
-      applyEdit((fresh, wb) => {
-        if (fresh.miniRange) wb.replaceRange(fresh.miniRange, serializeStepGrid(next), 'seq')
-      })
-    },
-    [applyEdit],
-  )
-
   const paintCell = React.useCallback(
     (laneIndex: number, stepIndex: number, value: boolean): void => {
-      const prev = modelRef.current
-      if (!prev) return
-      const lane = prev.lanes[laneIndex]
-      if (!lane || stepIndex >= lane.cells.length || lane.cells[stepIndex] === value) return
-      const next = toggleCell(prev, laneIndex, stepIndex, value)
-      modelRef.current = next // synchronous so a fast drag reads the latest
-      setModel(next)
-      write(next)
+      mutate((prev) => {
+        const lane = prev.lanes[laneIndex]
+        if (!lane || stepIndex >= lane.cells.length || lane.cells[stepIndex] === value) {
+          return prev // no change → useGridModel skips the write
+        }
+        return toggleCell(prev, laneIndex, stepIndex, value)
+      })
     },
-    [write],
+    [mutate],
   )
 
   const onCellDown = (laneIndex: number, stepIndex: number, current: boolean): void => {
@@ -138,7 +106,7 @@ export function SequencerGrid(): React.ReactElement {
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
-      hint: chunk && chunk.miniString !== null && isStepHead(chunk.headFn)
+      hint: chunk && isStepChunk(chunk)
         ? "This pattern isn't grid-editable — edit it as code."
         : SEQ_HINT,
       icon: 'symbol-array',

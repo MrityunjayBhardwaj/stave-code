@@ -15,32 +15,36 @@
 import * as React from 'react'
 
 import { registerBottomPanelTab } from './bottomPanelRegistry'
-import { VisualEditStandby } from '../../visualEdit/panels/VisualEditStandby'
 import { Mixer } from '../../visualEdit/panels/Mixer'
 import { SequencerGrid } from '../../visualEdit/panels/SequencerGrid'
+import { PianoRollGrid } from '../../visualEdit/panels/PianoRollGrid'
 import {
   VISUAL_EDIT_TABS,
   MIXER_TAB_ID,
   SEQUENCER_TAB_ID,
+  PIANO_ROLL_TAB_ID,
 } from '../../visualEdit/panels/tabs'
 
+const PANELS: Record<string, () => React.ReactElement> = {
+  [MIXER_TAB_ID]: Mixer,
+  [SEQUENCER_TAB_ID]: SequencerGrid,
+  [PIANO_ROLL_TAB_ID]: PianoRollGrid,
+}
+
 /**
- * Register the visual-editing tabs. The Mixer (#381) and Sequencer (#382) are
- * live; the Piano Roll is standby until its phase lands. Idempotent —
- * re-seeding or a panel re-registering its id just replaces the entry.
+ * Register the visual-editing tabs with their live panels (Mixer #381,
+ * Sequencer #382, Piano Roll #383). Idempotent — re-seeding or a panel
+ * re-registering its id just replaces the entry.
  */
 export function seedVisualEditTabs(): void {
   for (const tab of VISUAL_EDIT_TABS) {
-    let content: React.ReactNode
-    if (tab.id === MIXER_TAB_ID) content = React.createElement(Mixer)
-    else if (tab.id === SEQUENCER_TAB_ID) content = React.createElement(SequencerGrid)
-    else
-      content = React.createElement(VisualEditStandby, {
-        panel: tab.id,
-        hint: tab.hint,
-        icon: tab.icon,
-      })
-    registerBottomPanelTab({ id: tab.id, title: tab.title, icon: tab.icon, content })
+    const Panel = PANELS[tab.id]
+    registerBottomPanelTab({
+      id: tab.id,
+      title: tab.title,
+      icon: tab.icon,
+      content: React.createElement(Panel),
+    })
   }
 }
 
