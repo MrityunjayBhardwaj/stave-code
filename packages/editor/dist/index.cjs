@@ -24357,6 +24357,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
   onActiveTabChange,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  onOpenBackdropSettings,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -25149,6 +25150,11 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                     });
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // #372 — forward the viz chrome's settings click to the host
+                  // popover, tagged with this tab's fileId so the app opens the
+                  // controls for the right backdrop (no-picker; the file is the
+                  // source). Omitted when the host supplies no handler.
+                  onOpenBackdropSettings: onOpenBackdropSettings ? (rect) => onOpenBackdropSettings(tab.fileId, rect) : void 0,
                   onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
                   }, "onSave")
@@ -29169,7 +29175,8 @@ function VizEditorChrome({
   onTogglePausePreview,
   onChangePreviewSource,
   onToggleBackground,
-  isBackground
+  isBackground,
+  onOpenBackdropSettings
 }) {
   const [liveOn, setLiveOn] = React8.useState(() => getVizLive(file.id));
   React8.useEffect(() => {
@@ -29309,6 +29316,28 @@ function VizEditorChrome({
                 border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
               },
               children: isBackground ? "\u25A0 bg" : "\u25A0"
+            }
+          ),
+          isBackground && onOpenBackdropSettings && /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-bg-settings",
+              onClick: (e) => onOpenBackdropSettings(e.currentTarget.getBoundingClientRect()),
+              title: "Backdrop controls (opacity, quality, crop\\u2026)",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "3px 6px",
+                borderRadius: 3,
+                fontSize: 9,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: "none",
+                color: "var(--accent-strong, var(--accent))",
+                border: "1px solid var(--accent-dim)"
+              },
+              children: "\u25BE"
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsx(

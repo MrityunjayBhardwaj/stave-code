@@ -2848,6 +2848,16 @@ interface PreviewEditorChromeContext {
      * the label just can't flip).
      */
     readonly isBackground?: boolean;
+    /**
+     * #372 — open the backdrop controls popover for THIS file (opacity /
+     * quality / crop / reveal / clear). Anchored to the rect the chrome
+     * passes (its settings button). Only meaningful when `isBackground`
+     * is true — a viz file is its own backdrop source, so there is no
+     * "pick a file" step here (that's the pattern-tab popover's job).
+     * Optional: callers that don't host a backdrop popover omit it and
+     * the chrome simply doesn't render the settings affordance.
+     */
+    readonly onOpenBackdropSettings?: (rect: DOMRect) => void;
     /** Save the file back to its persistent store (VizPresetStore). */
     readonly onSave: () => void;
     /**
@@ -3964,6 +3974,15 @@ interface WorkspaceShellProps {
      * Fires once per real change (ref-guarded); no per-eval churn for steady code.
      */
     readonly onActiveBackdropChange?: (fileId: string | null) => void;
+    /**
+     * #372 — open the host's backdrop controls popover for a viz file tab
+     * whose file is the active group's backdrop. The shell forwards the
+     * viz chrome's settings-button click here with the tab's `fileId` and
+     * the button's anchor rect; the app opens its `BackdropPopover` (in
+     * no-picker mode — the source is the file itself). Optional: when the
+     * host omits it, the viz chrome renders no settings affordance.
+     */
+    readonly onOpenBackdropSettings?: (fileId: string, rect: DOMRect) => void;
     /**
      * Crop region applied to the pinned backdrop — 0–1 fractional
      * `{x, y, w, h}`. Absent means render the full viz rect. The
