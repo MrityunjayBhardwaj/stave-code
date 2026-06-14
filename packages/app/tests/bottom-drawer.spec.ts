@@ -7,7 +7,8 @@
  *   3. Open + height + activeTabId persist across reload (Trap 7 — assert
  *      on `domcontentloaded`, not `load`, to catch first-paint flicker).
  *   4. Drag handle clamps to [80, 600] (Trap 6).
- *   5. Single-tab keyboard nav is a stable no-op.
+ *   5. Keyboard nav moves selection across tabs (multi-tab since #380 seeded
+ *      the Sequencer/Mixer/Piano Roll siblings alongside Timeline).
  *   6. Closed-state pixel cost is exactly 29px (Trap 2 proxy — combined
  *      with the unit test that empty-registry returns null this covers
  *      "no editor-grid theft for users who haven't interacted").
@@ -186,18 +187,22 @@ test.describe('Bottom drawer — infra (Phase 20-01 PR-A)', () => {
     expect(Number(stored)).toBe(600)
   })
 
-  test('single-tab keyboard nav is a stable no-op', async ({ page }) => {
+  test('keyboard nav moves selection across tabs', async ({ page }) => {
     await clearDrawerStorage(page)
     await bootShell(page)
     const tablist = page.locator('[role="tablist"][aria-label="Bottom panel tabs"]')
     await expect(tablist).toHaveCount(1)
-    const tab = tablist.locator('role=tab[name="Timeline"]')
-    await tab.focus()
-    // Press ArrowRight; with a single tab this is a no-op (still selected).
+    const timeline = tablist.locator('role=tab[name="Timeline"]')
+    const sequencer = tablist.locator('role=tab[name="Sequencer"]')
+    await timeline.focus()
+    await expect(timeline).toHaveAttribute('aria-selected', 'true')
+    // ArrowRight advances to the next sibling tab (#380 seeded siblings).
     await page.keyboard.press('ArrowRight')
-    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    await expect(sequencer).toHaveAttribute('aria-selected', 'true')
+    await expect(timeline).toHaveAttribute('aria-selected', 'false')
+    // ArrowLeft returns to Timeline.
     await page.keyboard.press('ArrowLeft')
-    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    await expect(timeline).toHaveAttribute('aria-selected', 'true')
   })
 
   test('vocabulary regression — drawer DOM contains no IR-jargon (Trap 1)', async ({
