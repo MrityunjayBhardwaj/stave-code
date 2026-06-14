@@ -151,6 +151,11 @@ export function hostVizWorker(scope: WorkerScope): void {
   // reports once, not 60×/s.
   const seenWorkerErrors = new Set<string>()
   const currentRuntimeRef = { kind: 'p5' as LogEntry['runtime'] }
+  // #388 — per-render viz options → `stave.options` (p5). Worker-scoped so the
+  // live `options` control message (re-eval) can update `.current` and the
+  // compiled sketch (which captured this ref at mount) reads it on the next draw.
+  // Mirrors P5VizRenderer's optionsRef. Set from `msg.options` at mount.
+  const optionsRef = { current: {} as Record<string, unknown> }
   const postVizLog = (entry: Omit<LogEntry, 'id' | 'ts'>): void => {
     const sig = `${entry.runtime}|${entry.message}|${entry.line ?? ''}`
     if (seenWorkerErrors.has(sig)) return
@@ -277,6 +282,12 @@ export function hostVizWorker(scope: WorkerScope): void {
         // singleton so the next draw reads it (e.g. `u.density`) without remount.
         updateVizConfig(msg.patch)
         break
+      case 'options':
+        // #388 — live per-render viz options update (re-eval). The compiled sketch
+        // captured `optionsRef` at mount, so updating `.current` makes the next
+        // draw read the new `stave.options` without a remount.
+        optionsRef.current = msg.options ?? {}
+        break
     }
   }
 
@@ -291,6 +302,7 @@ export function hostVizWorker(scope: WorkerScope): void {
     if (msg.config) updateVizConfig(msg.config)
 
     currentRuntimeRef.kind = msg.kind // #257 — attribute sync draw throws to the kind
+    optionsRef.current = msg.options ?? {} // #388 — seed stave.options for this mount
     const dpr = msg.dpr > 0 ? msg.dpr : 1
     const feed = new WorkerBusFeed()
     if (msg.aliases) feed.setAliases(msg.aliases)
@@ -349,7 +361,8 @@ export function hostVizWorker(scope: WorkerScope): void {
     const analyserRef = { current: rawAnalyser as unknown as AnalyserNode }
     const schedulerRef = { current: rawScheduler }
     const hapStreamRef = { current: null }
-    const optionsRef = { current: {} as Record<string, unknown> }
+    // optionsRef is worker-scoped (#388) — seeded from msg.options in mount() and
+    // updated live by the 'options' control message. Do NOT shadow it here.
     const staveUniformsRef = { current: staveUniforms }
 
     const factory = compileP5Code(msg.code, msg.name)

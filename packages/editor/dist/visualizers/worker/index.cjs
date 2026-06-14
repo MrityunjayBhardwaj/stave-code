@@ -5991,6 +5991,7 @@ function hostVizWorker(scope) {
   }, "signalReady");
   const seenWorkerErrors = /* @__PURE__ */ new Set();
   const currentRuntimeRef = { kind: "p5" };
+  const optionsRef = { current: {} };
   const postVizLog = /* @__PURE__ */ __name((entry) => {
     const sig = `${entry.runtime}|${entry.message}|${entry.line ?? ""}`;
     if (seenWorkerErrors.has(sig)) return;
@@ -6083,6 +6084,9 @@ function hostVizWorker(scope) {
       case "config":
         updateVizConfig(msg.patch);
         break;
+      case "options":
+        optionsRef.current = msg.options ?? {};
+        break;
     }
   }
   __name(handleControl, "handleControl");
@@ -6090,6 +6094,7 @@ function hostVizWorker(scope) {
     if (state) destroy();
     if (msg.config) updateVizConfig(msg.config);
     currentRuntimeRef.kind = msg.kind;
+    optionsRef.current = msg.options ?? {};
     const dpr = msg.dpr > 0 ? msg.dpr : 1;
     const feed = new WorkerBusFeed();
     if (msg.aliases) feed.setAliases(msg.aliases);
@@ -6125,7 +6130,6 @@ function hostVizWorker(scope) {
     const analyserRef = { current: rawAnalyser };
     const schedulerRef = { current: rawScheduler };
     const hapStreamRef = { current: null };
-    const optionsRef = { current: {} };
     const staveUniformsRef = { current: staveUniforms };
     const factory = compileP5Code(msg.code, msg.name);
     const userSketchFn = factory(
