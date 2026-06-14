@@ -130,12 +130,15 @@ export function Mixer(): React.ReactElement {
       if (!model) return
       // Re-detect against the live doc so the literal's range is current even
       // after earlier edits in this drag changed its length.
-      const fresh = detectChunk(model.getValue(), anchor)
-      const arg = fresh?.chain[chainIndex]?.args[argIndex]
+      const before = detectChunk(model.getValue(), anchor)
+      const arg = before?.chain[chainIndex]?.args[argIndex]
       if (!arg) return
       wb.replaceRange(arg.range, formatNumber(value), 'knob')
-      // Reflect the new value immediately without waiting for the content echo.
-      setChunk(fresh)
+      // Re-detect AFTER the write so the knob reads back the value we just
+      // wrote (the model reflects the edit synchronously). Detecting before the
+      // write would leave the readout one drag-step stale. The content-change
+      // listener ignores this same edit (currentSource === 'knob').
+      setChunk(detectChunk(model.getValue(), anchor))
     },
     [],
   )

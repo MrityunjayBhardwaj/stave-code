@@ -120,6 +120,8 @@ test.describe('Mixer (#381)', () => {
     const match = after.match(/^\$: s\("bd"\)\.gain\((\d*\.?\d+)\)$/)
     expect(match, `unexpected doc after drag: ${after}`).not.toBeNull()
     expect(Number(match![1])).toBeGreaterThan(0.6)
+    // The knob readout reconciles with the literal it wrote (no one-step lag).
+    await expect(slider).toHaveAttribute('aria-valuenow', match![1])
 
     // One undo reverts the WHOLE drag (not just the last increment).
     await undo(page)
