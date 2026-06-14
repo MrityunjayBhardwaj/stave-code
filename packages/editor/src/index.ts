@@ -520,6 +520,7 @@ export {
   resizeRoll,
   VisualEditStandby,
   Mixer,
+  SequencerGrid,
   Knob,
   knobRangeFor,
   VISUAL_EDIT_TABS,
