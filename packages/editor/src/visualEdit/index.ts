@@ -46,6 +46,11 @@ export type {
 
 export { VisualEditStandby } from './panels/VisualEditStandby'
 export type { VisualEditStandbyProps } from './panels/VisualEditStandby'
+export { Mixer } from './panels/Mixer'
+export { Knob } from './panels/Knob'
+export type { KnobProps } from './panels/Knob'
+export { knobRangeFor } from './panels/knobRanges'
+export type { KnobRange } from './panels/knobRanges'
 export {
   VISUAL_EDIT_TABS,
   SEQUENCER_TAB_ID,

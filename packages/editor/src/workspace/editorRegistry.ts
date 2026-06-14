@@ -56,10 +56,48 @@ export function registerEditor(fileId: string, editor: MonacoEditor): void {
 
 export function unregisterEditor(fileId: string, editor: MonacoEditor): void {
   if (editors.get(fileId) === editor) editors.delete(fileId)
+  // If the editor going away was the active one, clear it so panels bound to
+  // the active editor (visual-editing Mixer/Sequencer/Piano Roll) fall back to
+  // standby instead of holding a disposed instance.
+  if (activeEditor === editor) setActiveEditor(null)
 }
 
 export function getEditorForFile(fileId: string): MonacoEditor | undefined {
   return editors.get(fileId)
+}
+
+// ── Active editor ───────────────────────────────────────────────────
+// The Monaco editor the user is currently working in (last focused / mounted).
+// Visual-editing panels bind to it so they always act on the editor in view,
+// across splits and tab switches. EditorView sets it on mount and on focus.
+
+let activeEditor: MonacoEditor | null = null
+const activeEditorListeners = new Set<() => void>()
+
+/** Set (or clear) the active editor; notifies subscribers on change. */
+export function setActiveEditor(editor: MonacoEditor | null): void {
+  if (activeEditor === editor) return
+  activeEditor = editor
+  for (const l of activeEditorListeners) {
+    try {
+      l()
+    } catch {
+      /* a listener error must not block the others */
+    }
+  }
+}
+
+/** The active Monaco editor, or null if none is focused/mounted. */
+export function getActiveEditor(): MonacoEditor | null {
+  return activeEditor
+}
+
+/** Subscribe to active-editor changes. Returns an unsubscribe fn. */
+export function onActiveEditorChange(cb: () => void): () => void {
+  activeEditorListeners.add(cb)
+  return () => {
+    activeEditorListeners.delete(cb)
+  }
 }
 
 /**

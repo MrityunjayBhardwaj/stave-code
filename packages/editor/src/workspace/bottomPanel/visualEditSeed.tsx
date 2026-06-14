@@ -16,21 +16,25 @@ import * as React from 'react'
 
 import { registerBottomPanelTab } from './bottomPanelRegistry'
 import { VisualEditStandby } from '../../visualEdit/panels/VisualEditStandby'
-import { VISUAL_EDIT_TABS } from '../../visualEdit/panels/tabs'
+import { Mixer } from '../../visualEdit/panels/Mixer'
+import { VISUAL_EDIT_TABS, MIXER_TAB_ID } from '../../visualEdit/panels/tabs'
 
-/** Register all visual-editing tabs in standby. Idempotent (re-registers by id). */
+/**
+ * Register the visual-editing tabs. The Mixer (#381) is live; the Sequencer
+ * and Piano Roll are standby until their phases land. Idempotent — re-seeding
+ * or a panel re-registering its id just replaces the entry.
+ */
 export function seedVisualEditTabs(): void {
   for (const tab of VISUAL_EDIT_TABS) {
-    registerBottomPanelTab({
-      id: tab.id,
-      title: tab.title,
-      icon: tab.icon,
-      content: React.createElement(VisualEditStandby, {
-        panel: tab.id,
-        hint: tab.hint,
-        icon: tab.icon,
-      }),
-    })
+    const content =
+      tab.id === MIXER_TAB_ID
+        ? React.createElement(Mixer)
+        : React.createElement(VisualEditStandby, {
+            panel: tab.id,
+            hint: tab.hint,
+            icon: tab.icon,
+          })
+    registerBottomPanelTab({ id: tab.id, title: tab.title, icon: tab.icon, content })
   }
 }
 

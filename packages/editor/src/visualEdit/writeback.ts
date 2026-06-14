@@ -105,11 +105,34 @@ export function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[] {
  */
 export class Writeback {
   private writingSource: WriteSource | null = null
+  /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+  private inGesture = false
 
   constructor(
     private readonly editor: Monaco.editor.IStandaloneCodeEditor,
     private readonly monaco: typeof Monaco,
   ) {}
+
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture(): void {
+    if (this.inGesture) return
+    const model = this.editor.getModel()
+    if (!model) return
+    model.pushStackElement() // close any prior (typing) undo group
+    this.inGesture = true
+  }
+
+  /** Close the gesture, sealing all its edits as one undo step. */
+  endGesture(): void {
+    if (!this.inGesture) return
+    this.inGesture = false
+    this.editor.getModel()?.pushStackElement()
+  }
 
   /**
    * The source of the edit currently being applied, or null. The host's
@@ -176,15 +199,16 @@ export class Writeback {
         forceMoveMarkers: true,
       }
     })
-    // Close any in-flight typing group so this batch is its own undo step,
-    // then apply all ops in a single operation (= a single undo step).
-    model.pushStackElement()
+    // Outside a gesture, bracket the batch with undo boundaries so it is its
+    // own single undo step. Inside a gesture, skip the boundaries so every
+    // edit between beginGesture/endGesture coalesces into ONE undo step.
+    if (!this.inGesture) model.pushStackElement()
     this.writingSource = source
     try {
       model.pushEditOperations([], ops, () => null)
     } finally {
       this.writingSource = null
     }
-    model.pushStackElement()
+    if (!this.inGesture) model.pushStackElement()
   }
 }
