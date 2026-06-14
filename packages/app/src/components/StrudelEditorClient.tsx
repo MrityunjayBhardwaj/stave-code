@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
+import { BackdropPopover } from "./BackdropPopover";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
   WorkspaceShell,
@@ -193,6 +194,75 @@ interface StrudelEditorClientProps {
    * un-pins it). Fires on every eval so the backdrop tracks code edits.
    */
   onCodeBackdropChange?: (vizId: string | null) => void;
+  /** #347 — open the crop modal for the active pane's backdrop (same handler
+   *  the menubar bg-popover uses). Invoked from the pattern-bar set-bg popover. */
+  onCropBackdrop?: () => void;
+  /** #347 — reveal (open) the active pane's backdrop viz file in the editor. */
+  onRevealBackdrop?: () => void;
+}
+
+/**
+ * #347 — "set bg" dropdown injected into the pattern (Strudel) chrome bar via
+ * `chromeExtras`, sitting next to the live toggle. Mirrors the menubar
+ * bg-indicator: a click opens the SAME `BackdropPopover` (viz-file picker when
+ * unpinned; swap + opacity/quality + crop/reveal/clear when pinned), anchored
+ * to this button and scoped to THIS pane. A `.strudel` file can't itself be a
+ * backdrop (the backdrop renders viz files only), so the picker lists viz files
+ * and selecting one pins it as this pane's manual sticky (#350a). `pinned`
+ * reflects the pane's resolved backdrop (code override ?? sticky).
+ */
+function SetBackdropButton({
+  pinned,
+  fileName,
+  onOpen,
+}: {
+  pinned: boolean;
+  fileName: string | null;
+  onOpen: (rect: DOMRect) => void;
+}): React.ReactElement {
+  return (
+    <button
+      data-testid="strudel-chrome-bg-toggle"
+      data-pinned={pinned ? "true" : "false"}
+      onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect())}
+      title={
+        pinned
+          ? `Backdrop: ${fileName ?? ""} — click for controls`
+          : "Set a viz as this pane's backdrop"
+      }
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "3px 8px",
+        borderRadius: 3,
+        fontSize: 10,
+        fontFamily: "inherit",
+        cursor: "pointer",
+        userSelect: "none",
+        background: pinned ? "var(--accent-dim)" : "none",
+        color: pinned
+          ? "var(--accent-strong, var(--accent))"
+          : "var(--foreground-muted)",
+        border: `1px solid ${pinned ? "var(--accent-dim)" : "var(--border)"}`,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: pinned
+            ? "var(--accent-strong, var(--accent))"
+            : "var(--foreground-muted)",
+          flexShrink: 0,
+        }}
+      />
+      <span>{pinned && fileName ? `bg: ${fileName}` : "set bg"}</span>
+      <span style={{ fontSize: 9, opacity: 0.8 }}>▾</span>
+    </button>
+  );
 }
 
 export default function StrudelEditorClient({
@@ -207,6 +277,8 @@ export default function StrudelEditorClient({
   onActiveBackdropChange,
   backgroundCrop,
   onCodeBackdropChange,
+  onCropBackdrop,
+  onRevealBackdrop,
 }: StrudelEditorClientProps) {
   // Register providers once
   ensureProviders();
@@ -218,6 +290,34 @@ export default function StrudelEditorClient({
     typeof window === "undefined" ? "dark" : getResolvedTheme(),
   );
   useEffect(() => onThemeChange(setResolvedTheme), []);
+
+  // #347 — drives the pattern chrome's "set bg" dropdown. `bgResolved` is the
+  // RESOLVED backdrop (code override ?? manual sticky) the shell reports via
+  // onActiveBackdropChange — it tells the button whether a backdrop is showing
+  // and which viz the popover should pre-select. `bgPopoverRect` is the anchor
+  // rect captured when the button is clicked; non-null = the BackdropPopover is
+  // open (anchored to the pattern bar, scoped to this pane).
+  const [bgResolved, setBgResolved] = useState<string | null>(null);
+  const [bgPopoverRect, setBgPopoverRect] = useState<DOMRect | null>(null);
+
+  const handleActiveBackdropChange = useCallback(
+    (fileId: string | null) => {
+      setBgResolved(fileId);
+      onActiveBackdropChange?.(fileId);
+    },
+    [onActiveBackdropChange],
+  );
+
+  // Resolve a backdrop fileId → its display basename (no extension).
+  const backdropName = useCallback(
+    (fileId: string | null): string | null => {
+      if (!fileId) return null;
+      const f = getFile(fileId);
+      if (!f) return null;
+      return f.path.split("/").pop()!.replace(/\.[^.]+$/, "");
+    },
+    [],
+  );
 
   // Track active file for the viz-ref watcher hook.
   const [watchedFileId, setWatchedFileId] = useState<string | null>(null);
@@ -708,6 +808,10 @@ export default function StrudelEditorClient({
     const state = runtimeStates.get(tab.fileId) ?? {
       isPlaying: false, error: null, autoRefresh: false,
     };
+    // #347 — "set bg" dropdown on the pattern bar. `bgResolved` is what's
+    // showing as the active pane's backdrop (code override ?? sticky); the
+    // button opens the BackdropPopover (rendered at the component root) anchored
+    // to itself.
     const ctx: ChromeContext = {
       runtime: rt,
       file,
@@ -718,9 +822,16 @@ export default function StrudelEditorClient({
       onStop: () => handleStop(tab.fileId),
       autoRefresh: state.autoRefresh,
       onToggleAutoRefresh: () => handleToggleAutoRefresh(tab.fileId),
+      chromeExtras: (
+        <SetBackdropButton
+          pinned={bgResolved != null}
+          fileName={backdropName(bgResolved)}
+          onOpen={(rect) => setBgPopoverRect(rect)}
+        />
+      ),
     };
     return runtimeProvider.renderChrome(ctx);
-  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh]);
+  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, bgResolved, backdropName]);
 
   // onSaveFile: Cmd+S / Save button handler. For viz files, flush the
   // current in-memory content back to VizPresetStore via the bridge,
@@ -934,6 +1045,7 @@ export default function StrudelEditorClient({
   );
 
   return (
+    <>
     <WorkspaceShell
       ref={shellRef}
       initialGroups={initialSnapshot.groups}
@@ -951,7 +1063,7 @@ export default function StrudelEditorClient({
       onEditViz={onEditViz}
       onCropViz={onCropViz}
       onBackgroundFileChange={onBackgroundFileChange}
-      onActiveBackdropChange={onActiveBackdropChange}
+      onActiveBackdropChange={handleActiveBackdropChange}
       backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
         const fid =
@@ -1017,5 +1129,29 @@ export default function StrudelEditorClient({
         });
       }}
     />
+    {bgPopoverRect && (
+      <BackdropPopover
+        anchorRect={bgPopoverRect}
+        onClose={() => setBgPopoverRect(null)}
+        vizFiles={listWorkspaceFiles()
+          .filter((f) => isVizLanguage(f.language))
+          .map((f) => ({
+            id: f.id,
+            name: f.path.split("/").pop()!.replace(/\.[^.]+$/, ""),
+          }))}
+        backgroundFileId={bgResolved}
+        backgroundFileName={backdropName(bgResolved)}
+        onSetBackdrop={(id) => shellRef?.current?.setBackgroundFile?.(id)}
+        onCropBackground={() => onCropBackdrop?.()}
+        onRevealBackground={() => onRevealBackdrop?.()}
+        initialOpacity={shellRef?.current?.getBackdropSettings?.().opacity ?? 1}
+        initialQuality={
+          shellRef?.current?.getBackdropSettings?.().quality ?? "half"
+        }
+        onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
+        onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
+      />
+    )}
+    </>
   );
 }

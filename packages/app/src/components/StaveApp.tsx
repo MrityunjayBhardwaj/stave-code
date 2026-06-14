@@ -999,6 +999,34 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       });
   }, [quickOpenOpen, handleOpenFile]);
 
+  // #347 — backdrop crop/reveal, shared by the menubar bg-popover AND the
+  // pattern-bar "set bg" popover (StrudelEditorClient). Both act on the active
+  // pane's resolved backdrop (`backgroundFileId`).
+  const handleRevealBackdrop = () => {
+    if (backgroundFileId) handleOpenFile(backgroundFileId);
+  };
+  const handleCropBackdrop = () => {
+    if (!backgroundFileId) return;
+    // Read the actual backdrop container size so the crop preview renders at
+    // the same dimensions as the live viz.
+    const bgEl = document.querySelector("[data-workspace-background]");
+    const rect = bgEl?.getBoundingClientRect();
+    const renderSize =
+      rect && rect.width > 0
+        ? { w: Math.round(rect.width), h: Math.round(rect.height) }
+        : undefined;
+    setCropTarget({
+      mode: "backdrop",
+      adapter: createBackdropCropAdapter({
+        projectId: activeProject.id,
+        fileId: backgroundFileId,
+        initialCrop: backgroundCrop,
+        onChange: (c) => setBackgroundCropState(c),
+        renderSize,
+      }),
+    });
+  };
+
   return (
     <div style={styles.root}>
       <MenuBar
@@ -1032,29 +1060,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         backdropQuality={shellRef.current?.getBackdropSettings?.().quality ?? "half"}
         onSetBackdropOpacity={(v: number) => shellRef.current?.setBackdropOpacity?.(v)}
         onSetBackdropQuality={(v: BackdropQuality) => shellRef.current?.setBackdropQuality?.(v)}
-        onRevealBackground={() => {
-          if (backgroundFileId) handleOpenFile(backgroundFileId);
-        }}
-        onCropBackground={() => {
-          if (!backgroundFileId) return;
-          // Read the actual backdrop container size so the crop
-          // preview renders at the same dimensions as the live viz.
-          const bgEl = document.querySelector("[data-workspace-background]");
-          const rect = bgEl?.getBoundingClientRect();
-          const renderSize = rect && rect.width > 0
-            ? { w: Math.round(rect.width), h: Math.round(rect.height) }
-            : undefined;
-          setCropTarget({
-            mode: "backdrop",
-            adapter: createBackdropCropAdapter({
-              projectId: activeProject.id,
-              fileId: backgroundFileId,
-              initialCrop: backgroundCrop,
-              onChange: (c) => setBackgroundCropState(c),
-              renderSize,
-            }),
-          });
-        }}
+        onRevealBackground={handleRevealBackdrop}
+        onCropBackground={handleCropBackdrop}
         projectName={activeProject.name}
         onOpenEditorSettings={() => setEditorSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
@@ -1168,6 +1175,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
                 onCodeBackdropChange={handleCodeBackdropChange}
+                // #347 — pattern-bar "set bg" popover reuses the same crop /
+                // reveal handlers as the menubar bg-popover.
+                onCropBackdrop={handleCropBackdrop}
+                onRevealBackdrop={handleRevealBackdrop}
                 // #350a — mirror the RESOLVED backdrop (code override ?? sticky)
                 // so the menubar indicator / popover reflect what's actually
                 // showing, including a code-driven `.scope()`. NOT persisted here
