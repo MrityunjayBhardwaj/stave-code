@@ -518,6 +518,11 @@ export {
   placeNote,
   resizeGrid,
   resizeRoll,
+  VisualEditStandby,
+  VISUAL_EDIT_TABS,
+  SEQUENCER_TAB_ID,
+  MIXER_TAB_ID,
+  PIANO_ROLL_TAB_ID,
 } from './visualEdit'
 export type {
   ChunkInfo,
@@ -532,6 +537,8 @@ export type {
   RollNote,
   ParseResult,
   ResizeMode,
+  VisualEditStandbyProps,
+  VisualEditTabDef,
 } from './visualEdit'
 export {
   BOTTOM_PANEL_HEIGHT_KEY,

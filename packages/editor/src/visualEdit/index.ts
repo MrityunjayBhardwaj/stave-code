@@ -43,3 +43,13 @@ export type {
   ParseResult,
   ResizeMode,
 } from './notation'
+
+export { VisualEditStandby } from './panels/VisualEditStandby'
+export type { VisualEditStandbyProps } from './panels/VisualEditStandby'
+export {
+  VISUAL_EDIT_TABS,
+  SEQUENCER_TAB_ID,
+  MIXER_TAB_ID,
+  PIANO_ROLL_TAB_ID,
+} from './panels/tabs'
+export type { VisualEditTabDef } from './panels/tabs'
