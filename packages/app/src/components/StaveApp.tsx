@@ -23,6 +23,7 @@ import {
   type WorkspaceShellHandle,
   type HapStream,
   type BreakpointStore,
+  type BackdropQuality,
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
@@ -1024,6 +1025,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
               .replace(/\.[^.]+$/, ""),
           }))}
         onSetBackdrop={(id) => handleSetAsBackground(id)}
+        // #350c — per-pane opacity/quality. Seed from the ACTIVE pane's
+        // resolved settings (its override, else the global default), and route
+        // edits to the active pane's override on the shell handle.
+        backdropOpacity={shellRef.current?.getBackdropSettings?.().opacity ?? 1}
+        backdropQuality={shellRef.current?.getBackdropSettings?.().quality ?? "half"}
+        onSetBackdropOpacity={(v: number) => shellRef.current?.setBackdropOpacity?.(v)}
+        onSetBackdropQuality={(v: BackdropQuality) => shellRef.current?.setBackdropQuality?.(v)}
         onRevealBackground={() => {
           if (backgroundFileId) handleOpenFile(backgroundFileId);
         }}

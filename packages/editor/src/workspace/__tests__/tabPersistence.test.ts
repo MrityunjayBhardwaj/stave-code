@@ -153,6 +153,35 @@ describe('serializeShellState', () => {
     )
     expect(serializeShellState(s).groups.g1.backgroundFileId).toBe('fbg')
   })
+
+  it('keeps per-pane backdropOpacity / backdropQuality (#350c)', () => {
+    const s = snap(
+      [
+        group(
+          'g1',
+          [{ kind: 'editor', id: 't1', fileId: 'f1' }],
+          't1',
+          { backdropOpacity: 0.4, backdropQuality: 'quarter' },
+        ),
+      ],
+      [['g1']],
+      'g1',
+    )
+    const out = serializeShellState(s).groups.g1
+    expect(out.backdropOpacity).toBe(0.4)
+    expect(out.backdropQuality).toBe('quarter')
+  })
+
+  it('omits per-pane backdrop overrides when absent (→ global default applies)', () => {
+    const s = snap(
+      [group('g1', [{ kind: 'editor', id: 't1', fileId: 'f1' }], 't1')],
+      [['g1']],
+      'g1',
+    )
+    const out = serializeShellState(s).groups.g1
+    expect(out.backdropOpacity).toBeUndefined()
+    expect(out.backdropQuality).toBeUndefined()
+  })
 })
 
 describe('validatePersistedState', () => {
@@ -226,6 +255,49 @@ describe('validatePersistedState', () => {
       },
     }
     expect(validatePersistedState(s, valid)?.groups.g1.backgroundFileId).toBeUndefined()
+  })
+
+  it('keeps valid per-pane backdropOpacity / backdropQuality (#350c)', () => {
+    const s: PersistedShellState = {
+      ...good(),
+      groups: {
+        g1: {
+          id: 'g1',
+          tabs: [{ kind: 'editor', id: 't1', fileId: 'f1' }],
+          activeTabId: 't1',
+          backdropOpacity: 0.25,
+          backdropQuality: 'full',
+        },
+      },
+    }
+    const g = validatePersistedState(s, valid)?.groups.g1
+    expect(g?.backdropOpacity).toBe(0.25)
+    expect(g?.backdropQuality).toBe('full')
+  })
+
+  it('drops out-of-range / malformed per-pane backdrop overrides (#350c)', () => {
+    for (const [opacity, quality] of [
+      [2, 'ultra'],
+      [-0.5, ''],
+      [NaN, 'HALF'],
+      ['0.5', 42],
+    ] as Array<[unknown, unknown]>) {
+      const s = {
+        ...good(),
+        groups: {
+          g1: {
+            id: 'g1',
+            tabs: [{ kind: 'editor', id: 't1', fileId: 'f1' }],
+            activeTabId: 't1',
+            backdropOpacity: opacity,
+            backdropQuality: quality,
+          },
+        },
+      } as unknown as PersistedShellState
+      const g = validatePersistedState(s, valid)?.groups.g1
+      expect(g?.backdropOpacity).toBeUndefined()
+      expect(g?.backdropQuality).toBeUndefined()
+    }
   })
 
   it('drops layout cells referencing unknown groups and collapses empty columns', () => {

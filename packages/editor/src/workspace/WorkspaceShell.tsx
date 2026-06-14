@@ -324,6 +324,24 @@ export interface WorkspaceShellHandle {
    * subscribing to every shell state change.
    */
   getBackgroundFileId(groupId?: string): string | undefined
+
+  /**
+   * Set/clear a group's per-pane backdrop opacity (#350c). `null` drops the
+   * override so the global default applies. `groupId` defaults to the active
+   * group. Persisted (survives reload) — it's user intent, not transient
+   * code state.
+   */
+  setBackdropOpacity(opacity: number | null, groupId?: string): void
+
+  /** Set/clear a group's per-pane backdrop quality (#350c). `null` → global default. */
+  setBackdropQuality(quality: BackdropQuality | null, groupId?: string): void
+
+  /**
+   * Read a group's RESOLVED backdrop settings (#350c) — the per-pane override
+   * if set, else the global default. `groupId` defaults to the active group.
+   * Lets the popover seed its controls without subscribing to shell state.
+   */
+  getBackdropSettings(groupId?: string): { opacity: number; quality: BackdropQuality }
 }
 
 /** Resolve a tab's display name from the file store. Falls back to fileId. */
@@ -1325,6 +1343,34 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   )
 
   /**
+   * Set/clear a group's per-pane backdrop opacity override (#350c). `null`
+   * drops the override so the global default applies again. Idempotent —
+   * persisted via the normal `onGroupsChange` sink (it's user intent, not
+   * transient code state, so unlike the override it lives on the snapshot).
+   */
+  const updateGroupBackdropOpacity = useCallback(
+    (groupId: string, opacity: number | null) => {
+      const prev = groups.get(groupId)?.backdropOpacity
+      const nextVal =
+        opacity == null ? undefined : Math.min(1, Math.max(0, opacity))
+      if (prev === nextVal) return
+      updateGroup(groupId, (g) => ({ ...g, backdropOpacity: nextVal }))
+    },
+    [groups, updateGroup],
+  )
+
+  /** Set/clear a group's per-pane backdrop quality override (#350c). */
+  const updateGroupBackdropQuality = useCallback(
+    (groupId: string, quality: BackdropQuality | null) => {
+      const prev = groups.get(groupId)?.backdropQuality
+      const nextVal = quality ?? undefined
+      if (prev === nextVal) return
+      updateGroup(groupId, (g) => ({ ...g, backdropQuality: nextVal }))
+    },
+    [groups, updateGroup],
+  )
+
+  /**
    * Close a tab by id — scans every group, removes the matching tab, and
    * fires the normal `handleTabClose` path so runtime disposal (U3) still
    * runs. No-op if the tab id isn't found. If closing the tab empties a
@@ -2315,12 +2361,17 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 sourceRef: { kind: 'default' },
               })
               if (!bgProvider) return null
+              // #350c: per-pane opacity/quality override the global default.
+              // Absent on the group → the shell-wide value (the EditorSettings
+              // default) applies, so untuned panes are unchanged.
+              const groupQuality = group.backdropQuality ?? backdropQuality
+              const groupOpacity = group.backdropOpacity ?? backdropOpacity
               // Quality ladder (#41): the inner wrapper is sized at
               // (1/factor) × viewport and scaled back by `factor` —
               // renderer sees a smaller container, CSS stretches the
               // result. factor=1 → full; 0.5 → half (default, quartered
               // pixel budget); 0.25 → quarter (1/16 budget).
-              const qf = backdropQualityFactor(backdropQuality)
+              const qf = backdropQualityFactor(groupQuality)
               // Crop (#40): when set, the sub-rect {x,y,w,h} of the
               // full viz should fill the viewport. We upscale the
               // inner wrapper by 1/crop.w (horiz) and 1/crop.h
@@ -2353,7 +2404,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 <div
                   data-workspace-background={group.id}
                   data-background-file-id={bgFileId}
-                  data-backdrop-quality={backdropQuality}
+                  data-backdrop-quality={groupQuality}
                   // #350d: only the focused/active pane renders its backdrop
                   // LIVE; inactive panes freeze to their last frame (see the
                   // `paused` prop below). Exposed for observation.
@@ -2365,7 +2416,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     // Viz renders at user-set opacity. Stacks with
                     // the code-panel wash in globals.css — both
                     // dim the viz behind the code. Defaults to 1.
-                    opacity: backdropOpacity,
+                    opacity: groupOpacity,
                     pointerEvents: 'none',
                     overflow: 'hidden',
                   }}
@@ -2744,8 +2795,38 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         if (!gid) return undefined
         return groups.get(gid)?.backgroundFileId
       },
+      setBackdropOpacity: (opacity: number | null, groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupBackdropOpacity(gid, opacity)
+      },
+      setBackdropQuality: (quality: BackdropQuality | null, groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupBackdropQuality(gid, quality)
+      },
+      getBackdropSettings: (groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        const g = gid ? groups.get(gid) : undefined
+        // Per-pane override if set, else the global (EditorSettings) default.
+        return {
+          opacity: g?.backdropOpacity ?? backdropOpacity,
+          quality: g?.backdropQuality ?? backdropQuality,
+        }
+      },
     }),
-    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground, updateGroupOverride],
+    [
+      groups,
+      activeGroupId,
+      closeTabById,
+      handleSplit,
+      updateGroupBackground,
+      updateGroupOverride,
+      updateGroupBackdropOpacity,
+      updateGroupBackdropQuality,
+      backdropOpacity,
+      backdropQuality,
+    ],
   )
 
   return (

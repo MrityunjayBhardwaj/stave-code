@@ -6,6 +6,7 @@ import {
   BackdropPopover,
   type BackdropPopoverVizFile,
 } from "./BackdropPopover";
+import { type BackdropQuality } from "@stave/editor";
 import { showToast } from "../dialogs/host";
 
 const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
@@ -41,6 +42,14 @@ interface MenuBarProps {
   onCropBackground?: () => void;
   /** Reveal the pinned file's editor tab. */
   onRevealBackground?: () => void;
+  /** #350c — the ACTIVE pane's resolved backdrop opacity (override-or-global). */
+  backdropOpacity?: number;
+  /** #350c — the ACTIVE pane's resolved backdrop quality (override-or-global). */
+  backdropQuality?: BackdropQuality;
+  /** #350c — set the ACTIVE pane's backdrop opacity override. */
+  onSetBackdropOpacity?: (opacity: number) => void;
+  /** #350c — set the ACTIVE pane's backdrop quality override. */
+  onSetBackdropQuality?: (quality: BackdropQuality) => void;
 }
 
 type MenuId = "file" | "edit" | "view" | "settings" | null;
@@ -70,6 +79,10 @@ export function MenuBar({
   onSetBackdrop,
   onRevealBackground,
   onCropBackground,
+  backdropOpacity = 1,
+  backdropQuality = "half",
+  onSetBackdropOpacity,
+  onSetBackdropQuality,
 }: MenuBarProps) {
   // Popover open/close state — single surface that handles both
   // "set a backdrop" (when unpinned) and "tweak this backdrop"
@@ -210,6 +223,10 @@ export function MenuBar({
               onSetBackdrop={(id) => onSetBackdrop?.(id)}
               onCropBackground={() => onCropBackground?.()}
               onRevealBackground={() => onRevealBackground?.()}
+              initialOpacity={backdropOpacity}
+              initialQuality={backdropQuality}
+              onSetOpacity={(v) => onSetBackdropOpacity?.(v)}
+              onSetQuality={(v) => onSetBackdropQuality?.(v)}
             />
           )}
         </div>

@@ -68,7 +68,7 @@ vi.mock('../../monaco/diagnostics', () => ({
   clearEvalErrors: vi.fn(),
 }))
 
-import { WorkspaceShell } from '../WorkspaceShell'
+import { WorkspaceShell, type WorkspaceShellHandle } from '../WorkspaceShell'
 import {
   createWorkspaceFile,
   __resetWorkspaceFilesForTests,
@@ -275,5 +275,77 @@ describe('WorkspaceShell commands integration', () => {
     // Exactly one active (live) pane and one inactive (frozen) pane.
     expect(liveCount).toBe(1)
     expect(frozenCount).toBe(1)
+  })
+
+  it('#350c — per-pane opacity/quality override the global default; absent → default', () => {
+    const provider = makePreviewProvider()
+    const groups = new Map<string, WorkspaceGroupState>([
+      // g1 has explicit per-pane overrides.
+      ['g1', {
+        id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1',
+        backgroundFileId: 'f-hydra', backdropOpacity: 0.3, backdropQuality: 'quarter',
+      }],
+      // g2 has NO overrides → the global default (opacity 1 / quality 'half').
+      ['g2', {
+        id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2',
+        backgroundFileId: 'f-hydra2',
+      }],
+    ])
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    const { container } = render(
+      <WorkspaceShell
+        initialGroups={groups}
+        initialLayout={[['g1', 'g2']]}
+        initialActiveGroupId="g1"
+        previewProviderFor={() => provider}
+      />,
+    )
+
+    const bg1 = container.querySelector('[data-workspace-group="g1"] [data-workspace-background]') as HTMLElement
+    const bg2 = container.querySelector('[data-workspace-group="g2"] [data-workspace-background]') as HTMLElement
+    // g1: per-pane override applied.
+    expect(bg1.getAttribute('data-backdrop-quality')).toBe('quarter')
+    expect(bg1.style.opacity).toBe('0.3')
+    // g2: untouched → global default.
+    expect(bg2.getAttribute('data-backdrop-quality')).toBe('half')
+    expect(bg2.style.opacity).toBe('1')
+  })
+
+  it('#350c — setBackdropOpacity/Quality handle patches the active group; getBackdropSettings resolves', () => {
+    const provider = makePreviewProvider()
+    const ref = React.createRef<WorkspaceShellHandle>()
+    const groups = new Map<string, WorkspaceGroupState>([
+      ['g1', {
+        id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1',
+        backgroundFileId: 'f-hydra',
+      }],
+    ])
+    render(
+      <WorkspaceShell
+        ref={ref}
+        initialGroups={groups}
+        initialLayout={[['g1']]}
+        initialActiveGroupId="g1"
+        previewProviderFor={() => provider}
+      />,
+    )
+
+    // Before: no override → resolved = global default.
+    expect(ref.current!.getBackdropSettings('g1')).toEqual({ opacity: 1, quality: 'half' })
+
+    act(() => {
+      ref.current!.setBackdropOpacity(0.5)
+      ref.current!.setBackdropQuality('full')
+    })
+
+    // After: the active group's override resolves.
+    expect(ref.current!.getBackdropSettings('g1')).toEqual({ opacity: 0.5, quality: 'full' })
+
+    // Clearing (null) falls back to the global default again.
+    act(() => {
+      ref.current!.setBackdropOpacity(null)
+      ref.current!.setBackdropQuality(null)
+    })
+    expect(ref.current!.getBackdropSettings('g1')).toEqual({ opacity: 1, quality: 'half' })
   })
 })

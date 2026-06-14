@@ -24693,6 +24693,24 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
+  const updateGroupBackdropOpacity = React8.useCallback(
+    (groupId, opacity) => {
+      const prev = groups.get(groupId)?.backdropOpacity;
+      const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
+      if (prev === nextVal) return;
+      updateGroup(groupId, (g) => ({ ...g, backdropOpacity: nextVal }));
+    },
+    [groups, updateGroup]
+  );
+  const updateGroupBackdropQuality = React8.useCallback(
+    (groupId, quality) => {
+      const prev = groups.get(groupId)?.backdropQuality;
+      const nextVal = quality ?? void 0;
+      if (prev === nextVal) return;
+      updateGroup(groupId, (g) => ({ ...g, backdropQuality: nextVal }));
+    },
+    [groups, updateGroup]
+  );
   const closeTabById = React8.useCallback(
     (tabId) => {
       let ownerGroupId = null;
@@ -25369,7 +25387,9 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                       sourceRef: { kind: "default" }
                     });
                     if (!bgProvider) return null;
-                    const qf = backdropQualityFactor(backdropQuality);
+                    const groupQuality = group.backdropQuality ?? backdropQuality;
+                    const groupOpacity = group.backdropOpacity ?? backdropOpacity;
+                    const qf = backdropQualityFactor(groupQuality);
                     const crop = backgroundCrop ?? null;
                     const cx = crop?.x ?? 0;
                     const cy = crop?.y ?? 0;
@@ -25385,7 +25405,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                       {
                         "data-workspace-background": group.id,
                         "data-background-file-id": bgFileId,
-                        "data-backdrop-quality": backdropQuality,
+                        "data-backdrop-quality": groupQuality,
                         "data-backdrop-live": isShellActiveGroup ? "true" : "false",
                         style: {
                           position: "absolute",
@@ -25394,7 +25414,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                           // Viz renders at user-set opacity. Stacks with
                           // the code-panel wash in globals.css — both
                           // dim the viz behind the code. Defaults to 1.
-                          opacity: backdropOpacity,
+                          opacity: groupOpacity,
                           pointerEvents: "none",
                           overflow: "hidden"
                         },
@@ -25721,9 +25741,38 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
         const gid = groupId ?? activeGroupId;
         if (!gid) return void 0;
         return groups.get(gid)?.backgroundFileId;
-      }, "getBackgroundFileId")
+      }, "getBackgroundFileId"),
+      setBackdropOpacity: /* @__PURE__ */ __name((opacity, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupBackdropOpacity(gid, opacity);
+      }, "setBackdropOpacity"),
+      setBackdropQuality: /* @__PURE__ */ __name((quality, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupBackdropQuality(gid, quality);
+      }, "setBackdropQuality"),
+      getBackdropSettings: /* @__PURE__ */ __name((groupId) => {
+        const gid = groupId ?? activeGroupId;
+        const g = gid ? groups.get(gid) : void 0;
+        return {
+          opacity: g?.backdropOpacity ?? backdropOpacity,
+          quality: g?.backdropQuality ?? backdropQuality
+        };
+      }, "getBackdropSettings")
     }),
-    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground, updateGroupOverride]
+    [
+      groups,
+      activeGroupId,
+      closeTabById,
+      handleSplit,
+      updateGroupBackground,
+      updateGroupOverride,
+      updateGroupBackdropOpacity,
+      updateGroupBackdropQuality,
+      backdropOpacity,
+      backdropQuality
+    ]
   );
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
@@ -29712,6 +29761,14 @@ function emitFromGlobal(err, _kind) {
 __name(emitFromGlobal, "emitFromGlobal");
 
 // src/workspace/tabPersistence.ts
+function validBackdropOpacity(v) {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : void 0;
+}
+__name(validBackdropOpacity, "validBackdropOpacity");
+function validBackdropQuality(v) {
+  return v === "full" || v === "half" || v === "quarter" ? v : void 0;
+}
+__name(validBackdropQuality, "validBackdropQuality");
 var SHELL_STATE_KEY_PREFIX = "stave:workspace:";
 var SHELL_STATE_VERSION = 1;
 function shellStateKeyFor(projectId) {
@@ -29767,11 +29824,15 @@ function validatePersistedState(input, validFileIds) {
       activeTabId = cleanedTabs.length > 0 ? cleanedTabs[0].id : null;
     }
     const bg3 = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
+    const opacity = validBackdropOpacity(g.backdropOpacity);
+    const quality = validBackdropQuality(g.backdropQuality);
     cleanedGroups[gid] = {
       id: gid,
       tabs: cleanedTabs,
       activeTabId,
-      ...bg3 !== void 0 ? { backgroundFileId: bg3 } : {}
+      ...bg3 !== void 0 ? { backgroundFileId: bg3 } : {},
+      ...opacity !== void 0 ? { backdropOpacity: opacity } : {},
+      ...quality !== void 0 ? { backdropQuality: quality } : {}
     };
   }
   const cleanedLayout = [];
@@ -29818,7 +29879,9 @@ function serializeShellState(snapshot) {
       id: gid,
       tabs: editorTabs,
       activeTabId,
-      ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {}
+      ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {},
+      ...g.backdropOpacity !== void 0 ? { backdropOpacity: g.backdropOpacity } : {},
+      ...g.backdropQuality !== void 0 ? { backdropQuality: g.backdropQuality } : {}
     };
   }
   return {
@@ -29874,7 +29937,9 @@ function hydrateSnapshot(persisted) {
         ...t.preview === true ? { preview: true } : {}
       })),
       activeTabId: pg.activeTabId,
-      ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {}
+      ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {},
+      ...pg.backdropOpacity !== void 0 ? { backdropOpacity: pg.backdropOpacity } : {},
+      ...pg.backdropQuality !== void 0 ? { backdropQuality: pg.backdropQuality } : {}
     });
   }
   return {

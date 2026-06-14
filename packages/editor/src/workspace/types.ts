@@ -39,6 +39,7 @@ import type {
 import type { BreakpointStore } from '../engine/BreakpointStore'
 import type { StrudelTheme } from '../theme/tokens'
 import type { PreviewProvider } from './PreviewProvider'
+import type { BackdropQuality } from './editorRegistry'
 
 /**
  * The set of languages a WorkspaceFile may declare. This is an explicit
@@ -561,6 +562,20 @@ export interface WorkspaceGroupState {
   readonly tabs: readonly WorkspaceTab[]
   readonly activeTabId: string | null
   readonly backgroundFileId?: string
+  /**
+   * Per-pane backdrop opacity override (#350c). When set, this group's
+   * backdrop renders at this opacity instead of the global
+   * `getBackdropOpacity()` default. Absent → the global default applies.
+   * Persisted user intent (survives reload), unlike the transient code
+   * override — so it lives on the group snapshot.
+   */
+  readonly backdropOpacity?: number
+  /**
+   * Per-pane backdrop quality override (#350c). When set, this group's
+   * backdrop renders at this quality tier instead of the global
+   * `getBackdropQuality()` default. Absent → the global default applies.
+   */
+  readonly backdropQuality?: BackdropQuality
 }
 
 // ---------------------------------------------------------------------------
