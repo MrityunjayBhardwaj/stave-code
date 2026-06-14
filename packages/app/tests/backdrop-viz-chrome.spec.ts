@@ -94,9 +94,12 @@ test.describe('Backdrop viz-chrome toggle', () => {
     await expect(btn).toHaveAttribute('data-bg-mode', 'off')
   })
 
-  test('backdrop survives tab switches (file-pinned, not tab-mirrored)', async ({
+  test('backdrop is PER-TAB (#347) — clears on switch to a tab without one, restores on return', async ({
     page,
   }) => {
+    // #347 reworked the backdrop from per-PANE ("survives tab switches") to
+    // per-TAB: each tab carries its own backdrop, so switching to a tab that
+    // has none clears the pane, and switching back restores it.
     await gotoApp(page)
     await clickHydraTab(page)
 
@@ -106,19 +109,18 @@ test.describe('Backdrop viz-chrome toggle', () => {
       page.locator('[data-workspace-background]').first(),
     ).toBeVisible({ timeout: 5000 })
 
+    // Switch to the pattern tab — it has no backdrop of its own → pane clears.
     await page
       .locator('[data-workspace-tab]', { hasText: 'pattern.strudel' })
       .click()
     await page.waitForTimeout(400)
+    await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+
+    // Back to the hydra tab → its own backdrop is restored.
+    await clickHydraTab(page)
     await expect(
       page.locator('[data-workspace-background]').first(),
     ).toBeVisible({ timeout: 2000 })
-
-    await clickHydraTab(page)
-    await page
-      .locator('[data-testid="viz-chrome-bg-toggle"]')
-      .first()
-      .click()
   })
 
   test('selection persists across page reload (#38)', async ({ page }) => {

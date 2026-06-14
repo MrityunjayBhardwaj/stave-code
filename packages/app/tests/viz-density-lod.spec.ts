@@ -192,8 +192,8 @@ test.describe('Phase D — density LOD moves the line-mesh cost curve (#269 / #2
     await page.locator('.monaco-editor').first().waitFor({ timeout: 30000 })
     await page.waitForTimeout(1000)
 
-    // Open the gear menu → Editor Settings…
-    await page.locator('[aria-label="Settings"]').click()
+    // Open File menu → Editor Settings… (#347 moved it off the removed gear).
+    await page.getByRole('button', { name: 'File' }).click()
     await page.getByText('Editor Settings...').click()
 
     const select = page.getByLabel('Viz quality (performance mode)')

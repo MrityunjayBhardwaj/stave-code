@@ -1,16 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Icon } from "./Icon";
-import {
-  BackdropPopover,
-  type BackdropPopoverVizFile,
-} from "./BackdropPopover";
-import { type BackdropQuality } from "@stave/editor";
-import { showToast } from "../dialogs/host";
 
 const GITHUB_REPO_URL = "https://github.com/MrityunjayBhardwaj/stave-code";
 
+// Backdrop selection used to live in a menubar bg-indicator + popover here.
+// As of #347 the backdrop is per-tab, set from the pattern bar's "set bg"
+// dropdown (and VizEditorChrome), so the menubar no longer owns it.
 interface MenuBarProps {
   projectName: string;
   onOpenEditorSettings: () => void;
@@ -30,29 +26,9 @@ interface MenuBarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  /** Current backdrop file id, or null when none pinned. */
-  backgroundFileId?: string | null;
-  /** Display name of pinned backdrop (basename minus extension). */
-  backgroundFileName?: string | null;
-  /** All viz files eligible for pinning (`.hydra` / `.p5`). */
-  vizFiles?: readonly BackdropPopoverVizFile[];
-  /** Pin or clear the backdrop — null clears. */
-  onSetBackdrop?: (fileId: string | null) => void;
-  /** Open the backdrop crop popup for the current backdrop. */
-  onCropBackground?: () => void;
-  /** Reveal the pinned file's editor tab. */
-  onRevealBackground?: () => void;
-  /** #350c — the ACTIVE pane's resolved backdrop opacity (override-or-global). */
-  backdropOpacity?: number;
-  /** #350c — the ACTIVE pane's resolved backdrop quality (override-or-global). */
-  backdropQuality?: BackdropQuality;
-  /** #350c — set the ACTIVE pane's backdrop opacity override. */
-  onSetBackdropOpacity?: (opacity: number) => void;
-  /** #350c — set the ACTIVE pane's backdrop quality override. */
-  onSetBackdropQuality?: (quality: BackdropQuality) => void;
 }
 
-type MenuId = "file" | "edit" | "view" | "settings" | null;
+type MenuId = "file" | "edit" | "view" | "help" | null;
 
 export function MenuBar({
   projectName: _projectName,
@@ -73,39 +49,7 @@ export function MenuBar({
   onRedo,
   canUndo,
   canRedo,
-  backgroundFileId,
-  backgroundFileName,
-  vizFiles = [],
-  onSetBackdrop,
-  onRevealBackground,
-  onCropBackground,
-  backdropOpacity = 1,
-  backdropQuality = "half",
-  onSetBackdropOpacity,
-  onSetBackdropQuality,
 }: MenuBarProps) {
-  // Popover open/close state — single surface that handles both
-  // "set a backdrop" (when unpinned) and "tweak this backdrop"
-  // (when pinned). Anchored to the indicator button.
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const indicatorRef = useRef<HTMLButtonElement | null>(null);
-
-  const toggleBackdropPopover = () => {
-    if (popoverOpen) {
-      setPopoverOpen(false);
-      return;
-    }
-    const el = indicatorRef.current;
-    if (el) setAnchorRect(el.getBoundingClientRect());
-    setPopoverOpen(true);
-  };
-
-  const pinned = backgroundFileId != null;
-  const hasVizFiles = vizFiles.length > 0;
-  // Only render the indicator when there's something actionable —
-  // either a pinned backdrop OR viz files available to pin.
-  const showIndicator = pinned || hasVizFiles;
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -146,6 +90,9 @@ export function MenuBar({
         <MenuItem label="Export as .zip" onClick={() => clickItem(onExportProject)} />
         <MenuDivider />
         <MenuItem label="Copy Share Link" onClick={() => clickItem(onShareProject)} />
+        <MenuDivider />
+        <MenuItem label="Editor Settings..." onClick={() => clickItem(onOpenEditorSettings)} />
+        <MenuItem label="Keyboard Shortcuts..." onClick={() => clickItem(onOpenShortcuts)} />
       </MenuButton>
 
       <MenuButton label="Edit" open={openMenu === "edit"} onClick={() => setOpenMenu(openMenu === "edit" ? null : "edit")}>
@@ -168,171 +115,27 @@ export function MenuBar({
         />
       </MenuButton>
 
+      <MenuButton label="Help" open={openMenu === "help"} onClick={() => setOpenMenu(openMenu === "help" ? null : "help")}>
+        <MenuItem
+          label="Documentation"
+          onClick={() => clickItem(() => window.open("/docs/", "_blank", "noopener,noreferrer"))}
+        />
+        <MenuItem
+          label="GitHub Repository"
+          onClick={() => clickItem(() => window.open(GITHUB_REPO_URL, "_blank", "noopener,noreferrer"))}
+        />
+      </MenuButton>
+
       <div data-stave-brand style={styles.brand} aria-hidden="true">
         Stave Code
       </div>
 
       <div style={styles.spacer} />
-
-      {/* Backdrop indicator — single entry point. Click opens the
-          popover which handles both "set backdrop" (unpinned) and
-          full controls (pinned). Kept visible whenever there's a
-          viz file to pin or a backdrop already pinned — so the
-          control is self-sustaining without going through the
-          file tree or Settings. */}
-      {showIndicator && (
-        <div style={styles.bgCluster}>
-          <button
-            ref={indicatorRef}
-            data-testid="menubar-bg-indicator"
-            data-pinned={pinned ? "true" : "false"}
-            title={
-              pinned
-                ? `Backdrop: ${backgroundFileName} — click for controls`
-                : "Set a viz as backdrop"
-            }
-            onClick={toggleBackdropPopover}
-            style={styles.bgIndicator}
-          >
-            <span
-              style={{
-                ...styles.bgRecDot,
-                ...(pinned ? {} : styles.bgRecDotIdle),
-              }}
-              aria-hidden="true"
-            />
-            <span style={styles.bgText}>
-              <span style={styles.bgLabel}>
-                {pinned ? "bg:" : "set bg"}
-              </span>
-              {pinned && (
-                <span style={styles.bgFileName}>{backgroundFileName}</span>
-              )}
-            </span>
-            <span style={{ color: "var(--foreground-muted)", fontSize: 9 }}>
-              ▾
-            </span>
-          </button>
-          {popoverOpen && anchorRect && (
-            <BackdropPopover
-              anchorRect={anchorRect}
-              onClose={() => setPopoverOpen(false)}
-              vizFiles={vizFiles}
-              backgroundFileId={backgroundFileId ?? null}
-              backgroundFileName={backgroundFileName ?? null}
-              onSetBackdrop={(id) => onSetBackdrop?.(id)}
-              onCropBackground={() => onCropBackground?.()}
-              onRevealBackground={() => onRevealBackground?.()}
-              initialOpacity={backdropOpacity}
-              initialQuality={backdropQuality}
-              onSetOpacity={(v) => onSetBackdropOpacity?.(v)}
-              onSetQuality={(v) => onSetBackdropQuality?.(v)}
-            />
-          )}
-        </div>
-      )}
-      <div style={styles.cornerCluster} data-stave-corner>
-        <CornerButton
-          testid="docs"
-          variant="text"
-          title="Documentation"
-          ariaLabel="Open documentation"
-          onClick={() => { window.open("/docs/", "_blank", "noopener,noreferrer"); }}
-        >
-          Docs
-        </CornerButton>
-        <CornerButton
-          testid="github"
-          variant="icon"
-          title="GitHub repository"
-          ariaLabel="GitHub repository"
-          onClick={() => { window.open(GITHUB_REPO_URL, "_blank", "noopener,noreferrer"); }}
-        >
-          <Icon name="github-inverted" size={16} />
-        </CornerButton>
-        <CornerButton
-          testid="signin"
-          variant="primary"
-          title="Sign in (coming soon)"
-          ariaLabel="Sign in — coming soon"
-          onClick={() => showToast("Sign-in coming soon", "info")}
-        >
-          Sign in
-        </CornerButton>
-      </div>
-      <div style={styles.menuButtonWrap}>
-        <button
-          style={{ ...styles.gearBtn, ...(openMenu === "settings" ? styles.menuButtonOpen : {}) }}
-          onClick={() => setOpenMenu(openMenu === "settings" ? null : "settings")}
-          title="Settings"
-          aria-label="Settings"
-        >
-          <Icon name="settings-gear" size="var(--ui-icon-size, 25px)" />
-        </button>
-        {openMenu === "settings" && (
-          <div style={{ ...styles.dropdown, right: 0, left: "auto" }}>
-            <MenuItem label="Editor Settings..." onClick={() => clickItem(onOpenEditorSettings)} />
-            <MenuItem label="Keyboard Shortcuts..." onClick={() => clickItem(onOpenShortcuts)} />
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
 // ── Sub-components ────────────────────────────────────────────────
-
-/**
- * Top-bar corner button (Docs / GitHub / Sign in). Accent-tinted
- * `primary` variant for sign-in; `text` for prose actions; `icon` for
- * icon-only buttons. All variants share a subtle hover background so
- * the cluster feels clickable — MenuButton has the same treatment via
- * `menuButtonOpen`.
- */
-function CornerButton({
-  testid,
-  variant,
-  title,
-  ariaLabel,
-  onClick,
-  children,
-}: {
-  testid: string;
-  variant: "text" | "icon" | "primary";
-  title: string;
-  ariaLabel: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  const [hover, setHover] = useState(false);
-  const base =
-    variant === "text"
-      ? styles.cornerTextBtn
-      : variant === "icon"
-      ? styles.cornerIconBtn
-      : styles.cornerSignInBtn;
-  const hoverStyle =
-    hover && variant === "primary"
-      ? styles.cornerSignInBtnHover
-      : hover
-      ? styles.cornerHover
-      : undefined;
-  return (
-    <button
-      data-stave-corner-item={testid}
-      style={{ ...base, ...(hoverStyle ?? {}) }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onFocus={() => setHover(true)}
-      onBlur={() => setHover(false)}
-      onClick={onClick}
-      title={title}
-      aria-label={ariaLabel}
-    >
-      {children}
-    </button>
-  );
-}
 
 function MenuButton({
   label, open, onClick, children,
@@ -464,123 +267,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   spacer: {
     flex: 1,
-  },
-  gearBtn: {
-    background: "none",
-    border: "none",
-    color: "var(--text-icon)",
-    cursor: "pointer",
-    fontSize: "var(--ui-icon-size, 25px)",
-    padding: "0 12px",
-    height: "100%",
-    lineHeight: 1,
-    fontFamily: "inherit",
-  },
-  bgIndicator: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    height: "calc(100% - 8px)",
-    margin: "4px 4px 4px 0",
-    padding: "0 10px",
-    borderRadius: 4,
-    border: "1px solid var(--border)",
-    background: "var(--surface-elevated, var(--surface))",
-    color: "var(--text-primary)",
-    fontSize: 11,
-    fontFamily: "var(--font-mono, ui-monospace, monospace)",
-    cursor: "pointer",
-    userSelect: "none",
-    whiteSpace: "nowrap",
-  },
-  bgRecDot: {
-    display: "inline-block",
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    background: "#ef4444",
-    boxShadow: "0 0 6px rgba(239, 68, 68, 0.7)",
-    animation: "stave-bg-rec-pulse 1.6s ease-in-out infinite",
-    flexShrink: 0,
-  },
-  bgRecDotIdle: {
-    background: "var(--text-muted, #6a6a88)",
-    boxShadow: "none",
-    animation: "none",
-  },
-  bgText: {
-    display: "inline-flex",
-    alignItems: "baseline",
-    gap: 4,
-  },
-  bgLabel: {
-    color: "var(--text-secondary)",
-    fontSize: 10,
-    letterSpacing: 0.3,
-  },
-  bgFileName: {
-    color: "var(--text-primary)",
-    fontSize: 11,
-    maxWidth: 200,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  bgCluster: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    height: "calc(100% - 8px)",
-    margin: "4px 4px 4px 0",
-  },
-  cornerCluster: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 2,
-    height: "100%",
-    marginRight: 4,
-  },
-  cornerTextBtn: {
-    background: "none",
-    border: "none",
-    color: "var(--text-chrome)",
-    cursor: "pointer",
-    fontSize: 12,
-    fontFamily: "inherit",
-    padding: "4px 10px",
-    borderRadius: 3,
-    lineHeight: 1,
-  },
-  cornerIconBtn: {
-    background: "none",
-    border: "none",
-    color: "var(--text-icon, var(--text-chrome))",
-    cursor: "pointer",
-    padding: "4px 8px",
-    borderRadius: 3,
-    lineHeight: 1,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontFamily: "inherit",
-  },
-  cornerSignInBtn: {
-    background: "var(--accent, #8b5cf6)",
-    border: "1px solid var(--accent, #8b5cf6)",
-    color: "#ffffff",
-    cursor: "pointer",
-    fontSize: 11,
-    fontWeight: 500,
-    fontFamily: "inherit",
-    padding: "4px 10px",
-    borderRadius: 3,
-    lineHeight: 1,
-    marginLeft: 4,
-    transition: "filter 80ms ease, background 80ms ease",
-  },
-  cornerHover: {
-    background: "var(--bg-hover)",
-  },
-  cornerSignInBtnHover: {
-    filter: "brightness(1.15)",
   },
 };

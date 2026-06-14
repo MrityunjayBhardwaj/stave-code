@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
+import { BackdropPopover } from "./BackdropPopover";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
   WorkspaceShell,
@@ -193,6 +194,109 @@ interface StrudelEditorClientProps {
    * un-pins it). Fires on every eval so the backdrop tracks code edits.
    */
   onCodeBackdropChange?: (vizId: string | null) => void;
+  /** #347 — open the crop modal for the active pane's backdrop (same handler
+   *  the menubar bg-popover uses). Invoked from the pattern-bar set-bg popover. */
+  onCropBackdrop?: () => void;
+  /** #347 — reveal (open) the active pane's backdrop viz file in the editor. */
+  onRevealBackdrop?: () => void;
+}
+
+/**
+ * #347 — per-TAB backdrop persistence. The backdrop a user pins is stored
+ * against the file (tab) it was set from, not the pane — so switching tabs
+ * swaps/clears the pane's backdrop to match the active tab. Persisted per
+ * project in localStorage as a plain `{ fileId: vizFileId }` map; best-effort.
+ */
+function perTabBackdropKey(projectId: string): string {
+  return `stave:perTabBackdrop:${projectId}`;
+}
+function loadPerTabBackdrop(projectId: string): Map<string, string> {
+  if (typeof window === "undefined") return new Map();
+  try {
+    const raw = window.localStorage.getItem(perTabBackdropKey(projectId));
+    if (!raw) return new Map();
+    return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
+  } catch {
+    return new Map();
+  }
+}
+function savePerTabBackdrop(
+  projectId: string,
+  map: ReadonlyMap<string, string>,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      perTabBackdropKey(projectId),
+      JSON.stringify(Object.fromEntries(map)),
+    );
+  } catch {
+    /* best-effort persistence */
+  }
+}
+
+/**
+ * #347 — "set bg" dropdown injected into the pattern (Strudel) chrome bar via
+ * `chromeExtras`, sitting next to the live toggle. Mirrors the menubar
+ * bg-indicator: a click opens the SAME `BackdropPopover` (viz-file picker when
+ * unpinned; swap + opacity/quality + crop/reveal/clear when pinned), anchored
+ * to this button and scoped to THIS pane. A `.strudel` file can't itself be a
+ * backdrop (the backdrop renders viz files only), so the picker lists viz files
+ * and selecting one pins it as this pane's manual sticky (#350a). `pinned`
+ * reflects the pane's resolved backdrop (code override ?? sticky).
+ */
+function SetBackdropButton({
+  pinned,
+  fileName,
+  onOpen,
+}: {
+  pinned: boolean;
+  fileName: string | null;
+  onOpen: (rect: DOMRect) => void;
+}): React.ReactElement {
+  return (
+    <button
+      data-testid="strudel-chrome-bg-toggle"
+      data-pinned={pinned ? "true" : "false"}
+      onClick={(e) => onOpen(e.currentTarget.getBoundingClientRect())}
+      title={
+        pinned
+          ? `Backdrop: ${fileName ?? ""} — click for controls`
+          : "Set a viz as this pane's backdrop"
+      }
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "3px 8px",
+        borderRadius: 3,
+        fontSize: 10,
+        fontFamily: "inherit",
+        cursor: "pointer",
+        userSelect: "none",
+        background: pinned ? "var(--accent-dim)" : "none",
+        color: pinned
+          ? "var(--accent-strong, var(--accent))"
+          : "var(--foreground-muted)",
+        border: `1px solid ${pinned ? "var(--accent-dim)" : "var(--border)"}`,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: pinned
+            ? "var(--accent-strong, var(--accent))"
+            : "var(--foreground-muted)",
+          flexShrink: 0,
+        }}
+      />
+      <span>{pinned && fileName ? `bg: ${fileName}` : "set bg"}</span>
+      <span style={{ fontSize: 9, opacity: 0.8 }}>▾</span>
+    </button>
+  );
 }
 
 export default function StrudelEditorClient({
@@ -207,6 +311,8 @@ export default function StrudelEditorClient({
   onActiveBackdropChange,
   backgroundCrop,
   onCodeBackdropChange,
+  onCropBackdrop,
+  onRevealBackdrop,
 }: StrudelEditorClientProps) {
   // Register providers once
   ensureProviders();
@@ -218,6 +324,63 @@ export default function StrudelEditorClient({
     typeof window === "undefined" ? "dark" : getResolvedTheme(),
   );
   useEffect(() => onThemeChange(setResolvedTheme), []);
+
+  // #347 — per-TAB backdrop. `tabBackdrops` maps a file (tab) id → the viz file
+  // pinned as ITS backdrop. The pane's rendered backdrop follows the active
+  // tab (see the active-tab sync + onBackgroundFileChange recorder below), so
+  // switching tabs swaps/clears the backdrop instead of bleeding it across the
+  // whole pane. `bgPopover` carries the anchor rect AND the file id the popover
+  // was opened from, so it edits THAT tab's backdrop.
+  const [tabBackdrops, setTabBackdrops] = useState<ReadonlyMap<string, string>>(
+    () => loadPerTabBackdrop(projectId),
+  );
+  const [bgPopover, setBgPopover] = useState<{
+    rect: DOMRect;
+    fileId: string;
+  } | null>(null);
+
+  // Persist the per-tab map (best-effort). Re-runs only when the map changes.
+  useEffect(() => {
+    savePerTabBackdrop(projectId, tabBackdrops);
+  }, [projectId, tabBackdrops]);
+
+  // Record a tab's backdrop choice. Pure state update; the persist effect above
+  // flushes it. The pane render is driven separately via setBackgroundFile.
+  const recordTabBackdrop = useCallback(
+    (fileId: string, vizId: string | null) => {
+      setTabBackdrops((prev) => {
+        if ((prev.get(fileId) ?? null) === vizId) return prev; // no churn
+        const next = new Map(prev);
+        if (vizId) next.set(fileId, vizId);
+        else next.delete(fileId);
+        return next;
+      });
+    },
+    [],
+  );
+
+  // Pass-through that ALSO captures every manual sticky against the ACTIVE tab,
+  // so backdrops set from any surface (pattern-bar popover, VizEditorChrome
+  // toggle, file-tree, Cmd+K B) become per-tab and travel with the tab.
+  const handleBackgroundFileChange = useCallback(
+    (groupId: string, fileId: string | null) => {
+      const activeId = activeFileIdRef.current;
+      if (activeId) recordTabBackdrop(activeId, fileId);
+      onBackgroundFileChange?.(groupId, fileId);
+    },
+    [recordTabBackdrop, onBackgroundFileChange],
+  );
+
+  // Resolve a backdrop fileId → its display basename (no extension).
+  const backdropName = useCallback(
+    (fileId: string | null): string | null => {
+      if (!fileId) return null;
+      const f = getFile(fileId);
+      if (!f) return null;
+      return f.path.split("/").pop()!.replace(/\.[^.]+$/, "");
+    },
+    [],
+  );
 
   // Track active file for the viz-ref watcher hook.
   const [watchedFileId, setWatchedFileId] = useState<string | null>(null);
@@ -708,6 +871,11 @@ export default function StrudelEditorClient({
     const state = runtimeStates.get(tab.fileId) ?? {
       isPlaying: false, error: null, autoRefresh: false,
     };
+    // #347 — per-tab "set bg" dropdown. Pinned state + filename come from THIS
+    // tab's backdrop (tabBackdrops), so other tabs read their own. The button
+    // opens the BackdropPopover (rendered at the component root) anchored to
+    // itself and scoped to this tab's file id.
+    const tabBg = tabBackdrops.get(tab.fileId) ?? null;
     const ctx: ChromeContext = {
       runtime: rt,
       file,
@@ -718,9 +886,16 @@ export default function StrudelEditorClient({
       onStop: () => handleStop(tab.fileId),
       autoRefresh: state.autoRefresh,
       onToggleAutoRefresh: () => handleToggleAutoRefresh(tab.fileId),
+      chromeExtras: (
+        <SetBackdropButton
+          pinned={tabBg != null}
+          fileName={backdropName(tabBg)}
+          onOpen={(rect) => setBgPopover({ rect, fileId: tab.fileId })}
+        />
+      ),
     };
     return runtimeProvider.renderChrome(ctx);
-  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh]);
+  }, [getOrCreateRuntime, runtimeStates, handlePlay, handleStop, handleToggleAutoRefresh, tabBackdrops, backdropName]);
 
   // onSaveFile: Cmd+S / Save button handler. For viz files, flush the
   // current in-memory content back to VizPresetStore via the bridge,
@@ -934,6 +1109,7 @@ export default function StrudelEditorClient({
   );
 
   return (
+    <>
     <WorkspaceShell
       ref={shellRef}
       initialGroups={initialSnapshot.groups}
@@ -950,7 +1126,7 @@ export default function StrudelEditorClient({
       onTabContextMenu={onTabContextMenu}
       onEditViz={onEditViz}
       onCropViz={onCropViz}
-      onBackgroundFileChange={onBackgroundFileChange}
+      onBackgroundFileChange={handleBackgroundFileChange}
       onActiveBackdropChange={onActiveBackdropChange}
       backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
@@ -959,6 +1135,12 @@ export default function StrudelEditorClient({
             ? tab.fileId
             : null;
         activeFileIdRef.current = fid;
+        // #347 — per-tab backdrop: swap the active group's backdrop to the new
+        // active tab's stored choice (or clear when it has none). This is what
+        // makes the backdrop follow the tab instead of bleeding across the pane.
+        shellRef?.current?.setBackgroundFile?.(
+          fid ? tabBackdrops.get(fid) ?? null : null,
+        );
         setWatchedFileId(fid);
         onActiveFileChange?.(fid);
         if (!onActiveRuntimeStateChange) return;
@@ -1017,5 +1199,34 @@ export default function StrudelEditorClient({
         });
       }}
     />
+    {bgPopover && (
+      <BackdropPopover
+        anchorRect={bgPopover.rect}
+        onClose={() => setBgPopover(null)}
+        vizFiles={listWorkspaceFiles()
+          .filter((f) => isVizLanguage(f.language))
+          .map((f) => ({
+            id: f.id,
+            name: f.path.split("/").pop()!.replace(/\.[^.]+$/, ""),
+          }))}
+        backgroundFileId={tabBackdrops.get(bgPopover.fileId) ?? null}
+        backgroundFileName={backdropName(tabBackdrops.get(bgPopover.fileId) ?? null)}
+        onSetBackdrop={(id) => {
+          // Record against the tab the popover was opened from, and (since that
+          // tab is the active one) drive the active group's rendered backdrop.
+          recordTabBackdrop(bgPopover.fileId, id);
+          shellRef?.current?.setBackgroundFile?.(id);
+        }}
+        onCropBackground={() => onCropBackdrop?.()}
+        onRevealBackground={() => onRevealBackdrop?.()}
+        initialOpacity={shellRef?.current?.getBackdropSettings?.().opacity ?? 1}
+        initialQuality={
+          shellRef?.current?.getBackdropSettings?.().quality ?? "half"
+        }
+        onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
+        onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
+      />
+    )}
+    </>
   );
 }

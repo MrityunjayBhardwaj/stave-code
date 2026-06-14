@@ -377,7 +377,6 @@ export {
   renameProject,
   deleteProject,
   duplicateProject,
-  setProjectBackgroundFileId,
   setProjectBackgroundCrop,
   type ProjectMeta,
 } from './workspace/projectRegistry'

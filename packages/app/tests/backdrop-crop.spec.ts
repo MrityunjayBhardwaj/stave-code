@@ -20,42 +20,36 @@ async function gotoApp(page: import('@playwright/test').Page) {
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
 }
 
-async function pinHydraBackdrop(page: import('@playwright/test').Page) {
-  const tabs = page.locator('[data-workspace-tab]')
-  const count = await tabs.count()
-  for (let i = 0; i < count; i++) {
-    const t = await tabs.nth(i).textContent()
-    if (t && /\.hydra/.test(t)) {
-      await tabs.nth(i).click()
-      break
-    }
+/**
+ * Open the backdrop popover from the pattern bar's "set bg" dropdown (#347 —
+ * the menubar indicator was removed). Idempotent: if it's already open, no-op.
+ */
+async function openPopover(page: import('@playwright/test').Page) {
+  if ((await page.locator('[data-testid="backdrop-popover"]').count()) === 0) {
+    await page.locator('[data-testid="strudel-chrome-bg-toggle"]').click()
   }
-  await page.waitForTimeout(200)
   await page
-    .locator('[data-testid="viz-chrome-bg-toggle"]')
-    .first()
-    .click()
+    .locator('[data-testid="backdrop-popover"]')
+    .waitFor({ timeout: 2000 })
+}
+
+async function pinBackdropFromPatternBar(page: import('@playwright/test').Page) {
+  // Pick a viz in the popover → pins it as the active pattern tab's backdrop,
+  // leaving the popover open in its pinned (controls) state.
+  await openPopover(page)
+  const picker = page.locator('[data-testid="backdrop-popover-picker"]')
+  const value = await picker.locator('option').nth(1).getAttribute('value')
+  await picker.selectOption(value!)
   await page
     .locator('[data-workspace-background]')
     .first()
     .waitFor({ timeout: 5000 })
 }
 
-/** Click the menubar bg indicator to open the backdrop popover. */
-async function openPopover(page: import('@playwright/test').Page) {
-  await page.locator('[data-testid="menubar-bg-indicator"]').click()
-  await page
-    .locator('[data-testid="backdrop-popover"]')
-    .waitFor({ timeout: 2000 })
-}
-
 test.describe('Backdrop crop', () => {
   test('popover shows no action controls when unpinned', async ({ page }) => {
     await gotoApp(page)
-    // Indicator is visible (viz files exist) but no backdrop is pinned.
-    await expect(
-      page.locator('[data-testid="menubar-bg-indicator"]'),
-    ).toBeVisible()
+    // Open the popover from the pattern bar with no backdrop pinned yet.
     await openPopover(page)
     // Popover opens in unpinned state — no action buttons.
     await expect(
@@ -78,7 +72,7 @@ test.describe('Backdrop crop', () => {
     page,
   }) => {
     await gotoApp(page)
-    await pinHydraBackdrop(page)
+    await pinBackdropFromPatternBar(page)
     await openPopover(page)
     await expect(
       page.locator('[data-testid="backdrop-popover"][data-pinned="true"]'),
@@ -99,7 +93,7 @@ test.describe('Backdrop crop', () => {
     page,
   }) => {
     await gotoApp(page)
-    await pinHydraBackdrop(page)
+    await pinBackdropFromPatternBar(page)
     await openPopover(page)
     await page.locator('[data-testid="backdrop-chrome-crop"]').click()
     await expect(
@@ -113,7 +107,7 @@ test.describe('Backdrop crop', () => {
     page,
   }) => {
     await gotoApp(page)
-    await pinHydraBackdrop(page)
+    await pinBackdropFromPatternBar(page)
 
     // Baseline transform.
     const inner = page
@@ -165,16 +159,12 @@ test.describe('Backdrop crop', () => {
     page,
   }) => {
     await gotoApp(page)
-    await pinHydraBackdrop(page)
+    await pinBackdropFromPatternBar(page)
     await openPopover(page)
     await page.locator('[data-testid="backdrop-chrome-clear"]').click()
     // Popover closes on clear; backdrop removed.
     await expect(
       page.locator('[data-workspace-background]'),
     ).toHaveCount(0)
-    // Indicator reverts to unpinned state.
-    await expect(
-      page.locator('[data-testid="menubar-bg-indicator"][data-pinned="false"]'),
-    ).toBeVisible()
   })
 })
