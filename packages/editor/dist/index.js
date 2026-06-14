@@ -1,6 +1,6 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
-import * as React10 from 'react';
-import React10__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React12 from 'react';
+import React12__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
@@ -5588,12 +5588,37 @@ function registerEditor(fileId, editor) {
 __name(registerEditor, "registerEditor");
 function unregisterEditor(fileId, editor) {
   if (editors.get(fileId) === editor) editors.delete(fileId);
+  if (activeEditor === editor) setActiveEditor(null);
 }
 __name(unregisterEditor, "unregisterEditor");
 function getEditorForFile(fileId) {
   return editors.get(fileId);
 }
 __name(getEditorForFile, "getEditorForFile");
+var activeEditor = null;
+var activeEditorListeners = /* @__PURE__ */ new Set();
+function setActiveEditor(editor) {
+  if (activeEditor === editor) return;
+  activeEditor = editor;
+  for (const l of activeEditorListeners) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(setActiveEditor, "setActiveEditor");
+function getActiveEditor() {
+  return activeEditor;
+}
+__name(getActiveEditor, "getActiveEditor");
+function onActiveEditorChange(cb) {
+  activeEditorListeners.add(cb);
+  return () => {
+    activeEditorListeners.delete(cb);
+  };
+}
+__name(onActiveEditorChange, "onActiveEditorChange");
 function revealLineInFile(fileId, line) {
   const editor = editors.get(fileId);
   if (!editor) return false;
@@ -13032,10 +13057,10 @@ function compileShader(gl, type, src, label) {
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(sh) ?? "";
+    const log2 = gl.getShaderInfoLog(sh) ?? "";
     gl.deleteShader(sh);
     throw new Error(`glsl ${label} compile error:
-${log.trim()}`);
+${log2.trim()}`);
   }
   return sh;
 }
@@ -13083,10 +13108,10 @@ var _GLSLProgram = class _GLSLProgram {
     gl.deleteShader(vert);
     gl.deleteShader(frag);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      const log = gl.getProgramInfoLog(program) ?? "";
+      const log2 = gl.getProgramInfoLog(program) ?? "";
       gl.deleteProgram(program);
       throw new Error(`glsl link error:
-${log.trim()}`);
+${log2.trim()}`);
     }
     this.program = program;
     this.uResolution = gl.getUniformLocation(program, "iResolution");
@@ -13509,8 +13534,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React10__default.Children.count(children);
-  const childArray = React10__default.Children.toArray(children);
+  const count = React12__default.Children.count(children);
+  const childArray = React12__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -13555,7 +13580,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React10__default.useEffect(() => {
+  React12__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -13571,7 +13596,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React10__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React12__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -21818,6 +21843,8 @@ function EditorView({
     setEditorReady(true);
     registerEditor(fileId, editor);
     registerMonacoNamespace(monaco);
+    setActiveEditor(editor);
+    editor.onDidFocusEditorText?.(() => setActiveEditor(editor));
     applyPersistedEditorOptions(editor);
     ensureWorkspaceLanguages(monaco);
     if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
@@ -21985,7 +22012,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React10__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React12__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -22207,7 +22234,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React10__default.useMemo(() => {
+  const providerNode = React12__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -22500,25 +22527,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React10.useMemo(
+  const changedIds = React12.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode] = React10.useState(defaultMode);
-  React10.useEffect(() => {
+  const [mode, setMode] = React12.useState(defaultMode);
+  React12.useEffect(() => {
     setMode(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React10.useState(
+  const [fileId, setFileId] = React12.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React10.useRef(null);
-  const handleMount = React10.useCallback(
+  const diffEditorRef = React12.useRef(null);
+  const handleMount = React12.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -22528,7 +22555,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -22653,18 +22680,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React10.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React10.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React10.useState(
+  const snapshot = React12.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React12.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React12.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React10.useCallback(
+  const handleMount = React12.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -23555,7 +23582,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React10.createElement(
+  return React12.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -23573,14 +23600,14 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React10.createElement(EmptyTimelineStub)
+  content: React12.createElement(EmptyTimelineStub)
 });
 function VisualEditStandby({
   panel,
   hint,
   icon
 }) {
-  return React10.createElement(
+  return React12.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -23599,15 +23626,493 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React10.createElement("span", {
+    icon ? React12.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React10.createElement("span", null, hint)
+    React12.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
+function parseTopLevel(doc) {
+  try {
+    const program = parse(doc, {
+      ecmaVersion: "latest",
+      allowAwaitOutsideFunction: true
+    });
+    return program.body;
+  } catch {
+    return null;
+  }
+}
+__name(parseTopLevel, "parseTopLevel");
+function docParses(doc) {
+  return parseTopLevel(doc) !== null;
+}
+__name(docParses, "docParses");
+function isChunkFresh(doc, chunk) {
+  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
+}
+__name(isChunkFresh, "isChunkFresh");
+function detectChunk(doc, pos) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  for (const node of statements) {
+    if (pos >= node.start && pos <= node.end) return buildChunk(doc, node);
+  }
+  return null;
+}
+__name(detectChunk, "detectChunk");
+function detectAllChunks(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return [];
+  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
+}
+__name(detectAllChunks, "detectAllChunks");
+function buildChunk(doc, node) {
+  let label = null;
+  let body = node;
+  if (node.type === "LabeledStatement") {
+    label = node.label.name;
+    body = node.body;
+  }
+  if (body.type !== "ExpressionStatement") return null;
+  const expr = body.expression;
+  const headNode = { ref: null };
+  const chain = collectChain(doc, expr, headNode);
+  const headFn = chain.length > 0 ? chain[0].name : null;
+  let miniRange = null;
+  let miniString = null;
+  if (headNode.ref) {
+    const firstString = headNode.ref.arguments.find(
+      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
+    );
+    if (firstString) {
+      miniRange = [firstString.start + 1, firstString.end - 1];
+      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
+    }
+  }
+  const info = {
+    statementRange: [node.start, node.end],
+    statementText: doc.slice(node.start, node.end),
+    exprRange: [expr.start, expr.end],
+    label,
+    headFn,
+    miniRange,
+    miniString,
+    chain,
+    type: "unknown"
+  };
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildChunk, "buildChunk");
+function collectChain(doc, expr, headOut) {
+  const calls = [];
+  let node = expr;
+  while (node) {
+    if (node.type === "CallExpression") {
+      const callee = node.callee;
+      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
+        const dot = doc.lastIndexOf(".", callee.property.start);
+        calls.push({
+          name: callee.property.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [dot, node.end]
+        });
+        node = callee.object;
+        continue;
+      }
+      if (callee.type === "Identifier") {
+        calls.push({
+          name: callee.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [node.start, node.end]
+        });
+        headOut.ref = node;
+      }
+    }
+    break;
+  }
+  return calls.reverse();
+}
+__name(collectChain, "collectChain");
+function toArg(doc, node) {
+  let numeric = null;
+  if (node.type === "Literal" && typeof node.value === "number") {
+    numeric = node.value;
+  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
+    numeric = -node.argument.value;
+  }
+  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
+}
+__name(toArg, "toArg");
+function classifyChunk(info) {
+  const head = info.headFn;
+  if (info.miniString !== null) {
+    if (head === "note" || head === "n") return "roll";
+    if (head === "s" || head === "sound") return "step";
+  }
+  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
+  return "unknown";
+}
+__name(classifyChunk, "classifyChunk");
+
+// src/visualEdit/writeback.ts
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+  }
+  /** Close the gesture, sealing all its edits as one undo step. */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range, text, source) {
+    this.apply([{ range, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range, source) {
+    this.apply([{ range, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
+var DRAG_SPAN_PX = 160;
+function toPosition(value, r) {
+  if (r.scale === "log" && r.min > 0 && value > 0) {
+    return Math.log(value / r.min) / Math.log(r.max / r.min);
+  }
+  return (value - r.min) / (r.max - r.min || 1);
+}
+__name(toPosition, "toPosition");
+function fromPosition(pos, r) {
+  const clamped = Math.max(0, Math.min(1, pos));
+  let value;
+  if (r.scale === "log" && r.min > 0) {
+    value = r.min * Math.pow(r.max / r.min, clamped);
+  } else {
+    value = r.min + clamped * (r.max - r.min);
+  }
+  const stepped = Math.round(value / r.step) * r.step;
+  const decimals = (String(r.step).split(".")[1] ?? "").length;
+  return Number(stepped.toFixed(decimals));
+}
+__name(fromPosition, "fromPosition");
+function Knob({
+  label,
+  value,
+  range,
+  onChange,
+  onGestureStart,
+  onGestureEnd
+}) {
+  const dragRef = React12.useRef(null);
+  const pos = Math.max(0, Math.min(1, toPosition(value, range)));
+  const angle = -135 + pos * 270;
+  const onPointerDown = /* @__PURE__ */ __name((e) => {
+    e.preventDefault();
+    e.target.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startY: e.clientY, startPos: toPosition(value, range) };
+    onGestureStart?.();
+  }, "onPointerDown");
+  const onPointerMove = /* @__PURE__ */ __name((e) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dy = drag.startY - e.clientY;
+    const nextPos = drag.startPos + dy / DRAG_SPAN_PX;
+    const next = fromPosition(nextPos, range);
+    if (next !== value) onChange(next);
+  }, "onPointerMove");
+  const endDrag = /* @__PURE__ */ __name((e) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.target.releasePointerCapture?.(e.pointerId);
+    onGestureEnd?.();
+  }, "endDrag");
+  const onKeyDown = /* @__PURE__ */ __name((e) => {
+    let next = value;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") next = value + range.step;
+    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") next = value - range.step;
+    else return;
+    e.preventDefault();
+    next = Math.max(range.min, Math.min(range.max, next));
+    const decimals = (String(range.step).split(".")[1] ?? "").length;
+    next = Number(next.toFixed(decimals));
+    if (next !== value) {
+      onGestureStart?.();
+      onChange(next);
+      onGestureEnd?.();
+    }
+  }, "onKeyDown");
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-knob": label,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        width: 64,
+        userSelect: "none"
+      },
+      children: [
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            role: "slider",
+            tabIndex: 0,
+            "aria-label": label,
+            "aria-valuemin": range.min,
+            "aria-valuemax": range.max,
+            "aria-valuenow": value,
+            onPointerDown,
+            onPointerMove,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onKeyDown,
+            style: {
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "var(--background-elevated, #26262c)",
+              border: "1px solid var(--border, #3a3a42)",
+              position: "relative",
+              cursor: "ns-resize",
+              touchAction: "none"
+            },
+            children: /* @__PURE__ */ jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: 2,
+                  height: 16,
+                  background: "var(--accent, #6ea8fe)",
+                  transformOrigin: "bottom center",
+                  transform: `translate(-50%, -100%) rotate(${angle}deg)`
+                }
+              }
+            )
+          }
+        ),
+        /* @__PURE__ */ jsx(
+          "span",
+          {
+            style: {
+              fontSize: 10,
+              color: "var(--foreground, #e6e6ea)",
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+              maxWidth: 60,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            },
+            title: label,
+            children: label
+          }
+        ),
+        /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-knob-value": label,
+            style: {
+              fontSize: 10,
+              color: "var(--foreground-muted, #a0a0aa)",
+              fontVariantNumeric: "tabular-nums"
+            },
+            children: value
+          }
+        )
+      ]
+    }
+  );
+}
+__name(Knob, "Knob");
+
+// src/visualEdit/panels/knobRanges.ts
+var lin = /* @__PURE__ */ __name((min, max, step) => ({
+  min,
+  max,
+  step,
+  scale: "linear"
+}), "lin");
+var log = /* @__PURE__ */ __name((min, max) => ({ min, max, step: 1, scale: "log" }), "log");
+var RANGES = {
+  // levels
+  gain: lin(0, 1, 0.01),
+  velocity: lin(0, 1, 0.01),
+  pan: lin(0, 1, 0.01),
+  // reverb
+  room: lin(0, 1, 0.01),
+  size: lin(0, 1, 0.01),
+  roomsize: lin(0, 1, 0.01),
+  // delay
+  delay: lin(0, 1, 0.01),
+  delaytime: lin(0, 1, 0.01),
+  delayfeedback: lin(0, 1, 0.01),
+  // filters (logarithmic frequency)
+  lpf: log(20, 2e4),
+  cutoff: log(20, 2e4),
+  hpf: log(20, 2e4),
+  hcutoff: log(20, 2e4),
+  bandf: log(20, 2e4),
+  resonance: lin(0, 40, 0.5),
+  lpq: lin(0, 40, 0.5),
+  // tone / drive
+  shape: lin(0, 1, 0.01),
+  distort: lin(0, 1, 0.01),
+  crush: lin(1, 16, 1),
+  coarse: lin(1, 16, 1),
+  // envelope
+  attack: lin(0, 2, 0.01),
+  decay: lin(0, 2, 0.01),
+  sustain: lin(0, 1, 0.01),
+  release: lin(0, 4, 0.01),
+  // playback
+  speed: lin(-2, 2, 0.01),
+  accelerate: lin(-2, 2, 0.01),
+  begin: lin(0, 1, 0.01),
+  end: lin(0, 1, 0.01),
+  legato: lin(0, 2, 0.01),
+  // time
+  slow: lin(0.25, 8, 0.25),
+  fast: lin(0.25, 8, 0.25),
+  cps: lin(0.1, 4, 0.05),
+  // probability
+  degradeBy: lin(0, 1, 0.01),
+  sometimesBy: lin(0, 1, 0.01),
+  // discrete index
+  n: lin(0, 16, 1)
+};
+function niceStep(span) {
+  const raw = span / 100;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  return pow || 0.01;
+}
+__name(niceStep, "niceStep");
+function knobRangeFor(method, value) {
+  const known = RANGES[method];
+  if (known) {
+    if (value > known.max) return { ...known, max: value };
+    if (value < known.min) return { ...known, min: value };
+    return known;
+  }
+  if (value >= 0 && value <= 1) return lin(0, 1, 0.01);
+  const min = value < 0 ? value * 2 : 0;
+  const max = Math.max(1, value * 2);
+  return lin(min, max, niceStep(max - min));
+}
+__name(knobRangeFor, "knobRangeFor");
 
 // src/visualEdit/panels/tabs.ts
 var SEQUENCER_TAB_ID = "sequencer";
@@ -23633,20 +24138,135 @@ var VISUAL_EDIT_TABS = [
     icon: "music"
   }
 ];
+var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
+function knobsFromChunk(chunk) {
+  const knobs = [];
+  chunk.chain.forEach((call, chainIndex) => {
+    const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
+    numericArgs.forEach(({ a, argIndex }) => {
+      knobs.push({
+        chainIndex,
+        argIndex,
+        method: call.name,
+        // disambiguate when a single call has several numeric args
+        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
+        value: a.numeric
+      });
+    });
+  });
+  return knobs;
+}
+__name(knobsFromChunk, "knobsFromChunk");
+function Mixer() {
+  const [editor, setEditor] = React12.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React12.useState(null);
+  const writebackRef = React12.useRef(null);
+  const editorRef = React12.useRef(null);
+  React12.useEffect(() => {
+    setEditor(getActiveEditor());
+    return onActiveEditorChange(() => setEditor(getActiveEditor()));
+  }, []);
+  React12.useEffect(() => {
+    editorRef.current = editor;
+    const monaco = getMonacoNamespace();
+    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
+  }, [editor]);
+  React12.useEffect(() => {
+    if (!editor) {
+      setChunk(null);
+      return;
+    }
+    const redetect = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      const position = editor.getPosition?.();
+      if (!model2 || !position) {
+        setChunk(null);
+        return;
+      }
+      const offset = model2.getOffsetAt(position);
+      setChunk(detectChunk(model2.getValue(), offset));
+    }, "redetect");
+    redetect();
+    const model = editor.getModel?.();
+    const subs = [
+      editor.onDidChangeCursorPosition?.(redetect),
+      model?.onDidChangeContent?.(() => {
+        if (writebackRef.current?.currentSource != null) return;
+        redetect();
+      })
+    ];
+    return () => {
+      for (const s of subs) s?.dispose?.();
+    };
+  }, [editor]);
+  const knobs = chunk ? knobsFromChunk(chunk) : [];
+  const anchorRef = React12.useRef(null);
+  anchorRef.current = chunk ? chunk.statementRange[0] : null;
+  const writeKnob = React12.useCallback(
+    (chainIndex, argIndex, value) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      const anchor = anchorRef.current;
+      if (!ed || !wb || anchor == null) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const fresh = detectChunk(model.getValue(), anchor);
+      const arg = fresh?.chain[chainIndex]?.args[argIndex];
+      if (!arg) return;
+      wb.replaceRange(arg.range, formatNumber(value), "knob");
+      setChunk(fresh);
+    },
+    []
+  );
+  const beginGesture = React12.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React12.useCallback(() => writebackRef.current?.endGesture(), []);
+  if (knobs.length === 0) {
+    return React12.createElement(VisualEditStandby, {
+      panel: MIXER_TAB_ID,
+      hint: MIXER_HINT,
+      icon: "settings"
+    });
+  }
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      "data-bottom-panel-tab": "mixer",
+      style: {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 16,
+        alignItems: "flex-start",
+        padding: 16,
+        height: "100%",
+        overflowY: "auto",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: knobs.map((k) => /* @__PURE__ */ jsx(
+        Knob,
+        {
+          label: k.label,
+          value: k.value,
+          range: knobRangeFor(k.method, k.value),
+          onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
+          onGestureStart: beginGesture,
+          onGestureEnd: endGesture
+        },
+        `${k.chainIndex}:${k.argIndex}`
+      ))
+    }
+  );
+}
+__name(Mixer, "Mixer");
 
 // src/workspace/bottomPanel/visualEditSeed.tsx
 function seedVisualEditTabs() {
   for (const tab of VISUAL_EDIT_TABS) {
-    registerBottomPanelTab({
-      id: tab.id,
-      title: tab.title,
-      icon: tab.icon,
-      content: React10.createElement(VisualEditStandby, {
-        panel: tab.id,
-        hint: tab.hint,
-        icon: tab.icon
-      })
+    const content = tab.id === MIXER_TAB_ID ? React12.createElement(Mixer) : React12.createElement(VisualEditStandby, {
+      panel: tab.id,
+      hint: tab.hint,
+      icon: tab.icon
     });
+    registerBottomPanelTab({ id: tab.id, title: tab.title, icon: tab.icon, content });
   }
 }
 __name(seedVisualEditTabs, "seedVisualEditTabs");
@@ -23659,24 +24279,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React10.useState(opts.initial);
-  const [dragging, setDragging] = React10.useState(false);
-  const startYRef = React10.useRef(0);
-  const startValueRef = React10.useRef(opts.initial);
-  const pointerIdRef = React10.useRef(null);
-  const draggingRef = React10.useRef(false);
-  const minRef = React10.useRef(opts.min);
-  const maxRef = React10.useRef(opts.max);
-  React10.useEffect(() => {
+  const [value, setValueState] = React12.useState(opts.initial);
+  const [dragging, setDragging] = React12.useState(false);
+  const startYRef = React12.useRef(0);
+  const startValueRef = React12.useRef(opts.initial);
+  const pointerIdRef = React12.useRef(null);
+  const draggingRef = React12.useRef(false);
+  const minRef = React12.useRef(opts.min);
+  const maxRef = React12.useRef(opts.max);
+  React12.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React10.useCallback((v) => {
+  const setValue = React12.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React10.useCallback(
+  const onPointerDown = React12.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -23691,7 +24311,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React10.useCallback(
+  const endDrag = React12.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -23706,7 +24326,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React10.useCallback(
+  const onPointerMove = React12.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -23722,13 +24342,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React10.useCallback(
+  const onPointerUp = React12.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React10.useCallback(
+  const onPointerCancel = React12.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -23756,15 +24376,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React10.useState(
+  const [tabs2, setTabs] = React12.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React10.useState(readPersistedOpen);
-  const [height, setHeight] = React10.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React10.useState(
+  const [open, setOpen] = React12.useState(readPersistedOpen);
+  const [height, setHeight] = React12.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React12.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -23774,10 +24394,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -23789,24 +24409,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React10.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React10.useCallback(
+  const tabButtonRefs = React12.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React12.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React10.useCallback((id) => {
+  const focusTab = React12.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React10.useCallback(
+  const onTabsKeyDown = React12.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -25917,7 +26537,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
             })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsx(React10__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsx(React12__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsx(
                 SplitPane,
@@ -25925,7 +26545,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsx(React10__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsx(React12__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -28352,10 +28972,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React10.useReducer((x) => x + 1, 0);
-  React10.useEffect(() => subscribeToHistory(force), []);
-  React10.useEffect(() => subscribeToRuntimeView(force), []);
-  React10.useEffect(() => {
+  const [, force] = React12.useReducer((x) => x + 1, 0);
+  React12.useEffect(() => subscribeToHistory(force), []);
+  React12.useEffect(() => subscribeToRuntimeView(force), []);
+  React12.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -28372,17 +28992,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React10.useState(null);
-  const [forkName, setForkName] = React10.useState("");
-  const [committing, setCommitting] = React10.useState(false);
-  const [commitLabel, setCommitLabel] = React10.useState("");
-  const [expanded, setExpanded] = React10.useState(null);
-  const [hovered, setHovered] = React10.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React10.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React10.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React10.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React12.useState(null);
+  const [forkName, setForkName] = React12.useState("");
+  const [committing, setCommitting] = React12.useState(false);
+  const [commitLabel, setCommitLabel] = React12.useState("");
+  const [expanded, setExpanded] = React12.useState(null);
+  const [hovered, setHovered] = React12.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React12.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React12.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React12.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -29896,234 +30516,6 @@ function emitFromGlobal(err, _kind) {
   });
 }
 __name(emitFromGlobal, "emitFromGlobal");
-function parseTopLevel(doc) {
-  try {
-    const program = parse(doc, {
-      ecmaVersion: "latest",
-      allowAwaitOutsideFunction: true
-    });
-    return program.body;
-  } catch {
-    return null;
-  }
-}
-__name(parseTopLevel, "parseTopLevel");
-function docParses(doc) {
-  return parseTopLevel(doc) !== null;
-}
-__name(docParses, "docParses");
-function isChunkFresh(doc, chunk) {
-  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
-}
-__name(isChunkFresh, "isChunkFresh");
-function detectChunk(doc, pos) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return null;
-  for (const node of statements) {
-    if (pos >= node.start && pos <= node.end) return buildChunk(doc, node);
-  }
-  return null;
-}
-__name(detectChunk, "detectChunk");
-function detectAllChunks(doc) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return [];
-  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
-}
-__name(detectAllChunks, "detectAllChunks");
-function buildChunk(doc, node) {
-  let label = null;
-  let body = node;
-  if (node.type === "LabeledStatement") {
-    label = node.label.name;
-    body = node.body;
-  }
-  if (body.type !== "ExpressionStatement") return null;
-  const expr = body.expression;
-  const headNode = { ref: null };
-  const chain = collectChain(doc, expr, headNode);
-  const headFn = chain.length > 0 ? chain[0].name : null;
-  let miniRange = null;
-  let miniString = null;
-  if (headNode.ref) {
-    const firstString = headNode.ref.arguments.find(
-      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
-    );
-    if (firstString) {
-      miniRange = [firstString.start + 1, firstString.end - 1];
-      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
-    }
-  }
-  const info = {
-    statementRange: [node.start, node.end],
-    statementText: doc.slice(node.start, node.end),
-    exprRange: [expr.start, expr.end],
-    label,
-    headFn,
-    miniRange,
-    miniString,
-    chain,
-    type: "unknown"
-  };
-  info.type = classifyChunk(info);
-  return info;
-}
-__name(buildChunk, "buildChunk");
-function collectChain(doc, expr, headOut) {
-  const calls = [];
-  let node = expr;
-  while (node) {
-    if (node.type === "CallExpression") {
-      const callee = node.callee;
-      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
-        const dot = doc.lastIndexOf(".", callee.property.start);
-        calls.push({
-          name: callee.property.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [dot, node.end]
-        });
-        node = callee.object;
-        continue;
-      }
-      if (callee.type === "Identifier") {
-        calls.push({
-          name: callee.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [node.start, node.end]
-        });
-        headOut.ref = node;
-      }
-    }
-    break;
-  }
-  return calls.reverse();
-}
-__name(collectChain, "collectChain");
-function toArg(doc, node) {
-  let numeric = null;
-  if (node.type === "Literal" && typeof node.value === "number") {
-    numeric = node.value;
-  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
-    numeric = -node.argument.value;
-  }
-  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
-}
-__name(toArg, "toArg");
-function classifyChunk(info) {
-  const head = info.headFn;
-  if (info.miniString !== null) {
-    if (head === "note" || head === "n") return "roll";
-    if (head === "s" || head === "sound") return "step";
-  }
-  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
-  return "unknown";
-}
-__name(classifyChunk, "classifyChunk");
-
-// src/visualEdit/writeback.ts
-function formatNumber(v, maxDecimals = 4) {
-  if (!Number.isFinite(v)) return "0";
-  if (Number.isInteger(v)) return String(v);
-  const fixed = v.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, "");
-}
-__name(formatNumber, "formatNumber");
-function normalizeEdits(edits) {
-  for (const e of edits) {
-    if (e.range[0] > e.range[1]) {
-      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
-    }
-  }
-  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].range;
-    const cur = sorted[i].range;
-    if (cur[0] < prev[1]) {
-      throw new Error(
-        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
-      );
-    }
-  }
-  return sorted;
-}
-__name(normalizeEdits, "normalizeEdits");
-var _Writeback = class _Writeback {
-  constructor(editor, monaco) {
-    this.editor = editor;
-    this.monaco = monaco;
-    this.writingSource = null;
-  }
-  /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
-   */
-  get currentSource() {
-    return this.writingSource;
-  }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range, text, source) {
-    this.apply([{ range, text }], source);
-  }
-  /**
-   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-   * the whole gesture).
-   */
-  replaceRanges(edits, source) {
-    this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range, source) {
-    this.apply([{ range, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
-    return true;
-  }
-  apply(edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return;
-    const normalized = normalizeEdits(edits);
-    const ops = normalized.map((e) => {
-      const start = model.getPositionAt(e.range[0]);
-      const end = model.getPositionAt(e.range[1]);
-      return {
-        range: new this.monaco.Range(
-          start.lineNumber,
-          start.column,
-          end.lineNumber,
-          end.column
-        ),
-        text: e.text,
-        forceMoveMarkers: true
-      };
-    });
-    model.pushStackElement();
-    this.writingSource = source;
-    try {
-      model.pushEditOperations([], ops, () => null);
-    } finally {
-      this.writingSource = null;
-    }
-    model.pushStackElement();
-  }
-};
-__name(_Writeback, "Writeback");
-var Writeback = _Writeback;
 
 // src/visualEdit/notation/parse.ts
 var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
@@ -30818,6 +31210,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllChunks, detectChunk, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllChunks, detectChunk, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

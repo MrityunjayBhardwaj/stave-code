@@ -1,7 +1,7 @@
 'use strict';
 
 var core = require('@strudel/core');
-var React10 = require('react');
+var React12 = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
@@ -28,7 +28,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React10__namespace = /*#__PURE__*/_interopNamespace(React10);
+var React12__namespace = /*#__PURE__*/_interopNamespace(React12);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -5614,12 +5614,37 @@ function registerEditor(fileId, editor) {
 __name(registerEditor, "registerEditor");
 function unregisterEditor(fileId, editor) {
   if (editors.get(fileId) === editor) editors.delete(fileId);
+  if (activeEditor === editor) setActiveEditor(null);
 }
 __name(unregisterEditor, "unregisterEditor");
 function getEditorForFile(fileId) {
   return editors.get(fileId);
 }
 __name(getEditorForFile, "getEditorForFile");
+var activeEditor = null;
+var activeEditorListeners = /* @__PURE__ */ new Set();
+function setActiveEditor(editor) {
+  if (activeEditor === editor) return;
+  activeEditor = editor;
+  for (const l of activeEditorListeners) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(setActiveEditor, "setActiveEditor");
+function getActiveEditor() {
+  return activeEditor;
+}
+__name(getActiveEditor, "getActiveEditor");
+function onActiveEditorChange(cb) {
+  activeEditorListeners.add(cb);
+  return () => {
+    activeEditorListeners.delete(cb);
+  };
+}
+__name(onActiveEditorChange, "onActiveEditorChange");
 function revealLineInFile(fileId, line) {
   const editor = editors.get(fileId);
   if (!editor) return false;
@@ -13058,10 +13083,10 @@ function compileShader(gl, type, src, label) {
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(sh) ?? "";
+    const log2 = gl.getShaderInfoLog(sh) ?? "";
     gl.deleteShader(sh);
     throw new Error(`glsl ${label} compile error:
-${log.trim()}`);
+${log2.trim()}`);
   }
   return sh;
 }
@@ -13109,10 +13134,10 @@ var _GLSLProgram = class _GLSLProgram {
     gl.deleteShader(vert);
     gl.deleteShader(frag);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      const log = gl.getProgramInfoLog(program) ?? "";
+      const log2 = gl.getProgramInfoLog(program) ?? "";
       gl.deleteProgram(program);
       throw new Error(`glsl link error:
-${log.trim()}`);
+${log2.trim()}`);
     }
     this.program = program;
     this.uResolution = gl.getUniformLocation(program, "iResolution");
@@ -13535,14 +13560,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React10__namespace.default.Children.count(children);
-  const childArray = React10__namespace.default.Children.toArray(children);
+  const count = React12__namespace.default.Children.count(children);
+  const childArray = React12__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React10.useState(defaultSizes);
-  const containerRef = React10.useRef(null);
-  const draggingRef = React10.useRef(null);
+  const [sizes, setSizes] = React12.useState(defaultSizes);
+  const containerRef = React12.useRef(null);
+  const draggingRef = React12.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React10.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React12.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -13581,7 +13606,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React10__namespace.default.useEffect(() => {
+  React12__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -13597,7 +13622,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React10__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React12__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -14472,13 +14497,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe3 = React10.useCallback(
+  const subscribe3 = React12.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React10.useCallback(() => getFile(id), [id]);
-  const file = React10.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const setContent2 = React10.useCallback(
+  const getSnapshot = React12.useCallback(() => getFile(id), [id]);
+  const file = React12.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const setContent2 = React12.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -19668,13 +19693,13 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React10.useRef([]);
-  const hapCollectionsRef = React10.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React10.useRef(0);
-  const clearAll = React10.useCallback(() => {
+  const timeoutIdsRef = React12.useRef([]);
+  const hapCollectionsRef = React12.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React12.useRef(0);
+  const clearAll = React12.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
   }, []);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     const handler = /* @__PURE__ */ __name((event) => {
@@ -19883,12 +19908,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React10.useRef(null);
-  const clearAll = React10.useCallback(() => {
+  const collectionRef = React12.useRef(null);
+  const clearAll = React12.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -19903,7 +19928,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -21739,30 +21764,30 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React10.useRef(null);
-  const [, forceViewTick] = React10.useState(0);
-  React10.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const containerRef = React12.useRef(null);
+  const [, forceViewTick] = React12.useState(0);
+  React12.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
   const viewing = viewedContent !== null;
   const viewedCommit = getViewedCommit();
-  const editorRef = React10.useRef(null);
-  const monacoRef = React10.useRef(null);
-  const viewZoneHandleRef = React10.useRef(null);
-  const lastPayloadRef = React10.useRef(null);
-  const [hapStream, setHapStream] = React10.useState(null);
-  const [breakpointStore, setBreakpointStore] = React10.useState(null);
-  const [onResume, setOnResume] = React10.useState(null);
-  const [editorReady, setEditorReady] = React10.useState(false);
-  React10.useEffect(() => {
+  const editorRef = React12.useRef(null);
+  const monacoRef = React12.useRef(null);
+  const viewZoneHandleRef = React12.useRef(null);
+  const lastPayloadRef = React12.useRef(null);
+  const [hapStream, setHapStream] = React12.useState(null);
+  const [breakpointStore, setBreakpointStore] = React12.useState(null);
+  const [onResume, setOnResume] = React12.useState(null);
+  const [editorReady, setEditorReady] = React12.useState(false);
+  React12.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -21793,7 +21818,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -21817,12 +21842,12 @@ function EditorView({
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -21834,9 +21859,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React10.useRef(onPlay);
+  const onPlayRef = React12.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React10.useRef(onStop);
+  const onStopRef = React12.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
@@ -21844,6 +21869,8 @@ function EditorView({
     setEditorReady(true);
     registerEditor(fileId, editor);
     registerMonacoNamespace(monaco);
+    setActiveEditor(editor);
+    editor.onDidFocusEditorText?.(() => setActiveEditor(editor));
     applyPersistedEditorOptions(editor);
     ensureWorkspaceLanguages(monaco);
     if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
@@ -22011,7 +22038,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React10__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React12__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -22158,34 +22185,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React10.useRef(null);
-  const [audioPayload, setAudioPayload] = React10.useState(null);
-  const [reloadTick, setReloadTick] = React10.useState(0);
-  const [, forceSourcesRerender] = React10.useState(0);
-  const catchUpNeededRef = React10.useRef(false);
-  const [liveOn, setLiveOn] = React10.useState(() => getVizLive(fileId));
-  React10.useEffect(() => {
+  const containerRef = React12.useRef(null);
+  const [audioPayload, setAudioPayload] = React12.useState(null);
+  const [reloadTick, setReloadTick] = React12.useState(0);
+  const [, forceSourcesRerender] = React12.useState(0);
+  const catchUpNeededRef = React12.useRef(false);
+  const [liveOn, setLiveOn] = React12.useState(() => getVizLive(fileId));
+  React12.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -22215,8 +22242,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React10.useRef(effectivelyHidden);
-  React10.useEffect(() => {
+  const prevEffectivelyHiddenRef = React12.useRef(effectivelyHidden);
+  React12.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -22224,8 +22251,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React10.useRef(liveOn);
-  React10.useEffect(() => {
+  const prevLiveOnRef = React12.useRef(liveOn);
+  React12.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -22233,7 +22260,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React10__namespace.default.useMemo(() => {
+  const providerNode = React12__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -22412,9 +22439,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React10.useRef(opts);
+  const optsRef = React12.useRef(opts);
   optsRef.current = opts;
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -22526,25 +22553,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React10__namespace.useMemo(
+  const changedIds = React12__namespace.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode] = React10__namespace.useState(defaultMode);
-  React10__namespace.useEffect(() => {
+  const [mode, setMode] = React12__namespace.useState(defaultMode);
+  React12__namespace.useEffect(() => {
     setMode(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React10__namespace.useState(
+  const [fileId, setFileId] = React12__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React10__namespace.useRef(null);
-  const handleMount = React10__namespace.useCallback(
+  const diffEditorRef = React12__namespace.useRef(null);
+  const handleMount = React12__namespace.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -22554,7 +22581,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -22679,18 +22706,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React10__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React10__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React10__namespace.useState(
+  const snapshot = React12__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React12__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React12__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React10__namespace.useCallback(
+  const handleMount = React12__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -23581,7 +23608,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React10__namespace.createElement(
+  return React12__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -23599,14 +23626,14 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React10__namespace.createElement(EmptyTimelineStub)
+  content: React12__namespace.createElement(EmptyTimelineStub)
 });
 function VisualEditStandby({
   panel,
   hint,
   icon
 }) {
-  return React10__namespace.createElement(
+  return React12__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -23625,15 +23652,493 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React10__namespace.createElement("span", {
+    icon ? React12__namespace.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React10__namespace.createElement("span", null, hint)
+    React12__namespace.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
+function parseTopLevel(doc) {
+  try {
+    const program = acorn.parse(doc, {
+      ecmaVersion: "latest",
+      allowAwaitOutsideFunction: true
+    });
+    return program.body;
+  } catch {
+    return null;
+  }
+}
+__name(parseTopLevel, "parseTopLevel");
+function docParses(doc) {
+  return parseTopLevel(doc) !== null;
+}
+__name(docParses, "docParses");
+function isChunkFresh(doc, chunk) {
+  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
+}
+__name(isChunkFresh, "isChunkFresh");
+function detectChunk(doc, pos) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  for (const node of statements) {
+    if (pos >= node.start && pos <= node.end) return buildChunk(doc, node);
+  }
+  return null;
+}
+__name(detectChunk, "detectChunk");
+function detectAllChunks(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return [];
+  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
+}
+__name(detectAllChunks, "detectAllChunks");
+function buildChunk(doc, node) {
+  let label = null;
+  let body = node;
+  if (node.type === "LabeledStatement") {
+    label = node.label.name;
+    body = node.body;
+  }
+  if (body.type !== "ExpressionStatement") return null;
+  const expr = body.expression;
+  const headNode = { ref: null };
+  const chain = collectChain(doc, expr, headNode);
+  const headFn = chain.length > 0 ? chain[0].name : null;
+  let miniRange = null;
+  let miniString = null;
+  if (headNode.ref) {
+    const firstString = headNode.ref.arguments.find(
+      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
+    );
+    if (firstString) {
+      miniRange = [firstString.start + 1, firstString.end - 1];
+      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
+    }
+  }
+  const info = {
+    statementRange: [node.start, node.end],
+    statementText: doc.slice(node.start, node.end),
+    exprRange: [expr.start, expr.end],
+    label,
+    headFn,
+    miniRange,
+    miniString,
+    chain,
+    type: "unknown"
+  };
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildChunk, "buildChunk");
+function collectChain(doc, expr, headOut) {
+  const calls = [];
+  let node = expr;
+  while (node) {
+    if (node.type === "CallExpression") {
+      const callee = node.callee;
+      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
+        const dot = doc.lastIndexOf(".", callee.property.start);
+        calls.push({
+          name: callee.property.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [dot, node.end]
+        });
+        node = callee.object;
+        continue;
+      }
+      if (callee.type === "Identifier") {
+        calls.push({
+          name: callee.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [node.start, node.end]
+        });
+        headOut.ref = node;
+      }
+    }
+    break;
+  }
+  return calls.reverse();
+}
+__name(collectChain, "collectChain");
+function toArg(doc, node) {
+  let numeric = null;
+  if (node.type === "Literal" && typeof node.value === "number") {
+    numeric = node.value;
+  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
+    numeric = -node.argument.value;
+  }
+  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
+}
+__name(toArg, "toArg");
+function classifyChunk(info) {
+  const head = info.headFn;
+  if (info.miniString !== null) {
+    if (head === "note" || head === "n") return "roll";
+    if (head === "s" || head === "sound") return "step";
+  }
+  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
+  return "unknown";
+}
+__name(classifyChunk, "classifyChunk");
+
+// src/visualEdit/writeback.ts
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+  }
+  /** Close the gesture, sealing all its edits as one undo step. */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range, text, source) {
+    this.apply([{ range, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range, source) {
+    this.apply([{ range, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
+var DRAG_SPAN_PX = 160;
+function toPosition(value, r) {
+  if (r.scale === "log" && r.min > 0 && value > 0) {
+    return Math.log(value / r.min) / Math.log(r.max / r.min);
+  }
+  return (value - r.min) / (r.max - r.min || 1);
+}
+__name(toPosition, "toPosition");
+function fromPosition(pos, r) {
+  const clamped = Math.max(0, Math.min(1, pos));
+  let value;
+  if (r.scale === "log" && r.min > 0) {
+    value = r.min * Math.pow(r.max / r.min, clamped);
+  } else {
+    value = r.min + clamped * (r.max - r.min);
+  }
+  const stepped = Math.round(value / r.step) * r.step;
+  const decimals = (String(r.step).split(".")[1] ?? "").length;
+  return Number(stepped.toFixed(decimals));
+}
+__name(fromPosition, "fromPosition");
+function Knob({
+  label,
+  value,
+  range,
+  onChange,
+  onGestureStart,
+  onGestureEnd
+}) {
+  const dragRef = React12__namespace.useRef(null);
+  const pos = Math.max(0, Math.min(1, toPosition(value, range)));
+  const angle = -135 + pos * 270;
+  const onPointerDown = /* @__PURE__ */ __name((e) => {
+    e.preventDefault();
+    e.target.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startY: e.clientY, startPos: toPosition(value, range) };
+    onGestureStart?.();
+  }, "onPointerDown");
+  const onPointerMove = /* @__PURE__ */ __name((e) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dy = drag.startY - e.clientY;
+    const nextPos = drag.startPos + dy / DRAG_SPAN_PX;
+    const next = fromPosition(nextPos, range);
+    if (next !== value) onChange(next);
+  }, "onPointerMove");
+  const endDrag = /* @__PURE__ */ __name((e) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.target.releasePointerCapture?.(e.pointerId);
+    onGestureEnd?.();
+  }, "endDrag");
+  const onKeyDown = /* @__PURE__ */ __name((e) => {
+    let next = value;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") next = value + range.step;
+    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") next = value - range.step;
+    else return;
+    e.preventDefault();
+    next = Math.max(range.min, Math.min(range.max, next));
+    const decimals = (String(range.step).split(".")[1] ?? "").length;
+    next = Number(next.toFixed(decimals));
+    if (next !== value) {
+      onGestureStart?.();
+      onChange(next);
+      onGestureEnd?.();
+    }
+  }, "onKeyDown");
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-knob": label,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        width: 64,
+        userSelect: "none"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            role: "slider",
+            tabIndex: 0,
+            "aria-label": label,
+            "aria-valuemin": range.min,
+            "aria-valuemax": range.max,
+            "aria-valuenow": value,
+            onPointerDown,
+            onPointerMove,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onKeyDown,
+            style: {
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "var(--background-elevated, #26262c)",
+              border: "1px solid var(--border, #3a3a42)",
+              position: "relative",
+              cursor: "ns-resize",
+              touchAction: "none"
+            },
+            children: /* @__PURE__ */ jsxRuntime.jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: 2,
+                  height: 16,
+                  background: "var(--accent, #6ea8fe)",
+                  transformOrigin: "bottom center",
+                  transform: `translate(-50%, -100%) rotate(${angle}deg)`
+                }
+              }
+            )
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "span",
+          {
+            style: {
+              fontSize: 10,
+              color: "var(--foreground, #e6e6ea)",
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+              maxWidth: 60,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            },
+            title: label,
+            children: label
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "span",
+          {
+            "data-knob-value": label,
+            style: {
+              fontSize: 10,
+              color: "var(--foreground-muted, #a0a0aa)",
+              fontVariantNumeric: "tabular-nums"
+            },
+            children: value
+          }
+        )
+      ]
+    }
+  );
+}
+__name(Knob, "Knob");
+
+// src/visualEdit/panels/knobRanges.ts
+var lin = /* @__PURE__ */ __name((min, max, step) => ({
+  min,
+  max,
+  step,
+  scale: "linear"
+}), "lin");
+var log = /* @__PURE__ */ __name((min, max) => ({ min, max, step: 1, scale: "log" }), "log");
+var RANGES = {
+  // levels
+  gain: lin(0, 1, 0.01),
+  velocity: lin(0, 1, 0.01),
+  pan: lin(0, 1, 0.01),
+  // reverb
+  room: lin(0, 1, 0.01),
+  size: lin(0, 1, 0.01),
+  roomsize: lin(0, 1, 0.01),
+  // delay
+  delay: lin(0, 1, 0.01),
+  delaytime: lin(0, 1, 0.01),
+  delayfeedback: lin(0, 1, 0.01),
+  // filters (logarithmic frequency)
+  lpf: log(20, 2e4),
+  cutoff: log(20, 2e4),
+  hpf: log(20, 2e4),
+  hcutoff: log(20, 2e4),
+  bandf: log(20, 2e4),
+  resonance: lin(0, 40, 0.5),
+  lpq: lin(0, 40, 0.5),
+  // tone / drive
+  shape: lin(0, 1, 0.01),
+  distort: lin(0, 1, 0.01),
+  crush: lin(1, 16, 1),
+  coarse: lin(1, 16, 1),
+  // envelope
+  attack: lin(0, 2, 0.01),
+  decay: lin(0, 2, 0.01),
+  sustain: lin(0, 1, 0.01),
+  release: lin(0, 4, 0.01),
+  // playback
+  speed: lin(-2, 2, 0.01),
+  accelerate: lin(-2, 2, 0.01),
+  begin: lin(0, 1, 0.01),
+  end: lin(0, 1, 0.01),
+  legato: lin(0, 2, 0.01),
+  // time
+  slow: lin(0.25, 8, 0.25),
+  fast: lin(0.25, 8, 0.25),
+  cps: lin(0.1, 4, 0.05),
+  // probability
+  degradeBy: lin(0, 1, 0.01),
+  sometimesBy: lin(0, 1, 0.01),
+  // discrete index
+  n: lin(0, 16, 1)
+};
+function niceStep(span) {
+  const raw = span / 100;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  return pow || 0.01;
+}
+__name(niceStep, "niceStep");
+function knobRangeFor(method, value) {
+  const known = RANGES[method];
+  if (known) {
+    if (value > known.max) return { ...known, max: value };
+    if (value < known.min) return { ...known, min: value };
+    return known;
+  }
+  if (value >= 0 && value <= 1) return lin(0, 1, 0.01);
+  const min = value < 0 ? value * 2 : 0;
+  const max = Math.max(1, value * 2);
+  return lin(min, max, niceStep(max - min));
+}
+__name(knobRangeFor, "knobRangeFor");
 
 // src/visualEdit/panels/tabs.ts
 var SEQUENCER_TAB_ID = "sequencer";
@@ -23659,20 +24164,135 @@ var VISUAL_EDIT_TABS = [
     icon: "music"
   }
 ];
+var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
+function knobsFromChunk(chunk) {
+  const knobs = [];
+  chunk.chain.forEach((call, chainIndex) => {
+    const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
+    numericArgs.forEach(({ a, argIndex }) => {
+      knobs.push({
+        chainIndex,
+        argIndex,
+        method: call.name,
+        // disambiguate when a single call has several numeric args
+        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
+        value: a.numeric
+      });
+    });
+  });
+  return knobs;
+}
+__name(knobsFromChunk, "knobsFromChunk");
+function Mixer() {
+  const [editor, setEditor] = React12__namespace.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React12__namespace.useState(null);
+  const writebackRef = React12__namespace.useRef(null);
+  const editorRef = React12__namespace.useRef(null);
+  React12__namespace.useEffect(() => {
+    setEditor(getActiveEditor());
+    return onActiveEditorChange(() => setEditor(getActiveEditor()));
+  }, []);
+  React12__namespace.useEffect(() => {
+    editorRef.current = editor;
+    const monaco = getMonacoNamespace();
+    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
+  }, [editor]);
+  React12__namespace.useEffect(() => {
+    if (!editor) {
+      setChunk(null);
+      return;
+    }
+    const redetect = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      const position = editor.getPosition?.();
+      if (!model2 || !position) {
+        setChunk(null);
+        return;
+      }
+      const offset = model2.getOffsetAt(position);
+      setChunk(detectChunk(model2.getValue(), offset));
+    }, "redetect");
+    redetect();
+    const model = editor.getModel?.();
+    const subs = [
+      editor.onDidChangeCursorPosition?.(redetect),
+      model?.onDidChangeContent?.(() => {
+        if (writebackRef.current?.currentSource != null) return;
+        redetect();
+      })
+    ];
+    return () => {
+      for (const s of subs) s?.dispose?.();
+    };
+  }, [editor]);
+  const knobs = chunk ? knobsFromChunk(chunk) : [];
+  const anchorRef = React12__namespace.useRef(null);
+  anchorRef.current = chunk ? chunk.statementRange[0] : null;
+  const writeKnob = React12__namespace.useCallback(
+    (chainIndex, argIndex, value) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      const anchor = anchorRef.current;
+      if (!ed || !wb || anchor == null) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const fresh = detectChunk(model.getValue(), anchor);
+      const arg = fresh?.chain[chainIndex]?.args[argIndex];
+      if (!arg) return;
+      wb.replaceRange(arg.range, formatNumber(value), "knob");
+      setChunk(fresh);
+    },
+    []
+  );
+  const beginGesture = React12__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React12__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
+  if (knobs.length === 0) {
+    return React12__namespace.createElement(VisualEditStandby, {
+      panel: MIXER_TAB_ID,
+      hint: MIXER_HINT,
+      icon: "settings"
+    });
+  }
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-bottom-panel-tab": "mixer",
+      style: {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 16,
+        alignItems: "flex-start",
+        padding: 16,
+        height: "100%",
+        overflowY: "auto",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: knobs.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
+        Knob,
+        {
+          label: k.label,
+          value: k.value,
+          range: knobRangeFor(k.method, k.value),
+          onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
+          onGestureStart: beginGesture,
+          onGestureEnd: endGesture
+        },
+        `${k.chainIndex}:${k.argIndex}`
+      ))
+    }
+  );
+}
+__name(Mixer, "Mixer");
 
 // src/workspace/bottomPanel/visualEditSeed.tsx
 function seedVisualEditTabs() {
   for (const tab of VISUAL_EDIT_TABS) {
-    registerBottomPanelTab({
-      id: tab.id,
-      title: tab.title,
-      icon: tab.icon,
-      content: React10__namespace.createElement(VisualEditStandby, {
-        panel: tab.id,
-        hint: tab.hint,
-        icon: tab.icon
-      })
+    const content = tab.id === MIXER_TAB_ID ? React12__namespace.createElement(Mixer) : React12__namespace.createElement(VisualEditStandby, {
+      panel: tab.id,
+      hint: tab.hint,
+      icon: tab.icon
     });
+    registerBottomPanelTab({ id: tab.id, title: tab.title, icon: tab.icon, content });
   }
 }
 __name(seedVisualEditTabs, "seedVisualEditTabs");
@@ -23685,24 +24305,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React10__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React10__namespace.useState(false);
-  const startYRef = React10__namespace.useRef(0);
-  const startValueRef = React10__namespace.useRef(opts.initial);
-  const pointerIdRef = React10__namespace.useRef(null);
-  const draggingRef = React10__namespace.useRef(false);
-  const minRef = React10__namespace.useRef(opts.min);
-  const maxRef = React10__namespace.useRef(opts.max);
-  React10__namespace.useEffect(() => {
+  const [value, setValueState] = React12__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React12__namespace.useState(false);
+  const startYRef = React12__namespace.useRef(0);
+  const startValueRef = React12__namespace.useRef(opts.initial);
+  const pointerIdRef = React12__namespace.useRef(null);
+  const draggingRef = React12__namespace.useRef(false);
+  const minRef = React12__namespace.useRef(opts.min);
+  const maxRef = React12__namespace.useRef(opts.max);
+  React12__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React10__namespace.useCallback((v) => {
+  const setValue = React12__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React10__namespace.useCallback(
+  const onPointerDown = React12__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -23717,7 +24337,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React10__namespace.useCallback(
+  const endDrag = React12__namespace.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -23732,7 +24352,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React10__namespace.useCallback(
+  const onPointerMove = React12__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -23748,13 +24368,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React10__namespace.useCallback(
+  const onPointerUp = React12__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React10__namespace.useCallback(
+  const onPointerCancel = React12__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -23782,15 +24402,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React10__namespace.useState(
+  const [tabs2, setTabs] = React12__namespace.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React10__namespace.useState(readPersistedOpen);
-  const [height, setHeight] = React10__namespace.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React10__namespace.useState(
+  const [open, setOpen] = React12__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React12__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React12__namespace.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -23800,10 +24420,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -23815,24 +24435,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React10__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React10__namespace.useCallback(
+  const tabButtonRefs = React12__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React12__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React10__namespace.useCallback((id) => {
+  const focusTab = React12__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React10__namespace.useCallback(
+  const onTabsKeyDown = React12__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -24078,16 +24698,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React10.useRef(null);
-  const activeTabElRef = React10.useRef(null);
-  const menuBtnRef = React10.useRef(null);
-  const menuRef = React10.useRef(null);
-  const [overflow, setOverflow] = React10.useState({
+  const scrollRef = React12.useRef(null);
+  const activeTabElRef = React12.useRef(null);
+  const menuBtnRef = React12.useRef(null);
+  const menuRef = React12.useRef(null);
+  const [overflow, setOverflow] = React12.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React10.useState(false);
-  React10.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React12.useState(false);
+  React12.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -24106,12 +24726,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -24423,7 +25043,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React12.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -24445,28 +25065,28 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
   onEditViz,
   onCropViz
 }, forwardedRef) {
-  const shellRootRef = React10.useRef(null);
-  const initialState = React10.useRef(
+  const shellRootRef = React12.useRef(null);
+  const initialState = React12.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React10.useState(
+  const [groups, setGroups] = React12.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React10.useState(
+  const [layout, setLayout] = React12.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React10.useState(
+  const [activeGroupId, setActiveGroupId] = React12.useState(
     () => initialState.current.activeGroupId
   );
-  const [bgOverrides, setBgOverrides] = React10.useState(
+  const [bgOverrides, setBgOverrides] = React12.useState(
     () => /* @__PURE__ */ new Map()
   );
-  const lastActiveBackdropRef = React10.useRef(null);
-  React10.useEffect(() => {
+  const lastActiveBackdropRef = React12.useRef(null);
+  React12.useEffect(() => {
     const g = groups.get(activeGroupId);
     const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
     if (resolved !== lastActiveBackdropRef.current) {
@@ -24474,56 +25094,56 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
       onActiveBackdropChange?.(resolved);
     }
   }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
-  const didMountRef = React10.useRef(false);
-  React10.useEffect(() => {
+  const didMountRef = React12.useRef(false);
+  React12.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React10.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React10.useState(
+  const [dragOverTarget, setDragOverTarget] = React12.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React12.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React10.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React10.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React12.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React12.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React10.useState(
+  const [backdropQuality, setBackdropQualityState] = React12.useState(
     () => getBackdropQuality()
   );
-  React10.useEffect(
+  React12.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React10.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React12.useState(
     () => getBackdropOpacity()
   );
-  React10.useEffect(
+  React12.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React10.useMemo(() => {
+  const activeTab = React12.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React10.useRef(void 0);
-  React10.useEffect(() => {
+  const prevActiveTabRef = React12.useRef(void 0);
+  React12.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React10.useCallback(
+  const updateGroup = React12.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -24535,14 +25155,14 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabClick = React10.useCallback(
+  const handleTabClick = React12.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const handleTabClose = React10.useCallback(
+  const handleTabClose = React12.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -24607,7 +25227,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, onTabClose]
   );
-  const handleSplit = React10.useCallback(
+  const handleSplit = React12.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -24619,7 +25239,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const findNeighborGroupId = React10.useCallback(
+  const findNeighborGroupId = React12.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -24628,7 +25248,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [layout]
   );
-  const handleCloseGroup = React10.useCallback(
+  const handleCloseGroup = React12.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -24655,7 +25275,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React10.useCallback(
+  const splitGroupWithTab = React12.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -24671,7 +25291,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const moveTabToNewQuadrant = React10.useCallback(
+  const moveTabToNewQuadrant = React12.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -24711,7 +25331,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React10.useCallback(
+  const moveTabToNewEdgeGroup = React12.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -24746,7 +25366,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const updateGroupBackground = React10.useCallback(
+  const updateGroupBackground = React12.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -24758,7 +25378,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup, onBackgroundFileChange]
   );
-  const updateGroupOverride = React10.useCallback(
+  const updateGroupOverride = React12.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
         const cur = prev.get(groupId) ?? null;
@@ -24771,7 +25391,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const updateGroupBackdropOpacity = React10.useCallback(
+  const updateGroupBackdropOpacity = React12.useCallback(
     (groupId, opacity) => {
       const prev = groups.get(groupId)?.backdropOpacity;
       const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
@@ -24780,7 +25400,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const updateGroupBackdropQuality = React10.useCallback(
+  const updateGroupBackdropQuality = React12.useCallback(
     (groupId, quality) => {
       const prev = groups.get(groupId)?.backdropQuality;
       const nextVal = quality ?? void 0;
@@ -24789,7 +25409,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const closeTabById = React10.useCallback(
+  const closeTabById = React12.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -24822,7 +25442,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React10.useCallback(
+  const findTabByFileId = React12.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -24835,14 +25455,14 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React10.useCallback(() => {
+  const findGroupWithAnyPreview = React12.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React10.useRef(null);
-  const shellActions = React10.useMemo(
+  const shellActionsRef = React12.useRef(null);
+  const shellActions = React12.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -24863,12 +25483,12 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React10.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React10.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React10.useCallback(() => {
+  const getActiveTab = React12.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React12.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React12.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React10.useCallback(
+  const getPreviewProviderForCommand = React12.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -24893,7 +25513,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React10.useCallback(
+  const handleEdgeDrop = React12.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -24910,7 +25530,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React10.useCallback(
+  const handleEdgeDragOver = React12.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -24919,12 +25539,12 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React10.useCallback(() => {
+  const handleEdgeDragLeave = React12.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React10.useRef(onSaveFile);
+  const onSaveFileRef = React12.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -24938,7 +25558,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React10.useCallback(
+  const handleTabDragStart = React12.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -24947,7 +25567,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -24960,7 +25580,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React10.useCallback(
+  const computeQuadrant = React12.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -24985,7 +25605,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabBarDrop = React10.useCallback(
+  const handleTabBarDrop = React12.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -25057,7 +25677,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleDropOnGroup = React10.useCallback(
+  const handleDropOnGroup = React12.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -25126,7 +25746,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [computeQuadrant, groups, moveTabToNewQuadrant]
   );
-  const renderTabContent = React10.useCallback(
+  const renderTabContent = React12.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -25373,7 +25993,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
       closeTabById
     ]
   );
-  const renderGroup = React10.useCallback(
+  const renderGroup = React12.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -25593,11 +26213,11 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
       theme
     ]
   );
-  const totalGroupCount = React10.useMemo(
+  const totalGroupCount = React12.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React10.useMemo(() => {
+  const previewTabIds = React12.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -25608,7 +26228,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
     }
     return out;
   }, [groups]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -25631,7 +26251,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React10.useImperativeHandle(
+  React12.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -25943,7 +26563,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
             })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsxRuntime.jsx(React10__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsxRuntime.jsx(React12__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsxRuntime.jsx(
                 SplitPane,
@@ -25951,7 +26571,7 @@ var WorkspaceShell = React10.forwardRef(/* @__PURE__ */ __name(function Workspac
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsxRuntime.jsx(React10__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsxRuntime.jsx(React12__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -26561,14 +27181,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React10.useRef(null);
-  const [isPlaying, setIsPlaying] = React10.useState(false);
-  const [error, setError] = React10.useState(null);
-  const [bpm, setBpm] = React10.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React10.useState(false);
-  const fileIdRef = React10.useRef(FILE_ID);
-  const [seeded, setSeeded] = React10.useState(false);
-  React10.useEffect(() => {
+  const runtimeRef = React12.useRef(null);
+  const [isPlaying, setIsPlaying] = React12.useState(false);
+  const [error, setError] = React12.useState(null);
+  const [bpm, setBpm] = React12.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React12.useState(false);
+  const fileIdRef = React12.useRef(FILE_ID);
+  const [seeded, setSeeded] = React12.useState(false);
+  React12.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -26577,7 +27197,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -26613,41 +27233,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React10.useRef(false);
-  React10.useEffect(() => {
+  const autoPlayedRef = React12.useRef(false);
+  React12.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React10.useRef(onChange);
+  const onChangeRef = React12.useRef(onChange);
   onChangeRef.current = onChange;
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React10.useCallback(() => {
+  const handlePlay = React12.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React10.useCallback(() => {
+  const handleStop = React12.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React10.useCallback(() => {
+  const handleToggleAutoRefresh = React12.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React10.useCallback(
+  const chromeForTab = React12.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -26670,7 +27290,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React10.useCallback(
+  const editorExtrasForTab = React12.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -26718,10 +27338,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React10.useRef(null);
-  const [bpm, setBpm] = React10.useState(120);
-  const [soundNames, setSoundNames] = React10.useState([]);
-  const [isExporting, setIsExporting] = React10.useState(false);
+  const engineRef = React12.useRef(null);
+  const [bpm, setBpm] = React12.useState(120);
+  const [soundNames, setSoundNames] = React12.useState([]);
+  const [isExporting, setIsExporting] = React12.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -26730,19 +27350,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React10.useRef(controlledCode ?? defaultCode);
+  const codeRef = React12.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React10.useCallback((engine2) => {
+  const handlePostEvaluate = React12.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -26755,7 +27375,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React10.useCallback(async () => {
+  const handleExport = React12.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -27338,7 +27958,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React10.useRef(null);
+  const rendererRef = React12.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -27352,7 +27972,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -27375,7 +27995,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React10.useRef(null);
+  const containerRef = React12.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -27533,9 +28153,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React10.useState(false);
-  const ref = React10.useRef(null);
-  React10.useEffect(() => {
+  const [open, setOpen] = React12.useState(false);
+  const ref = React12.useRef(null);
+  React12.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -27806,12 +28426,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React10.useRef(null);
-  const [initialTabs, setInitialTabs] = React10.useState(null);
-  React10.useEffect(() => {
+  const containerRef = React12.useRef(null);
+  const [initialTabs, setInitialTabs] = React12.useState(null);
+  React12.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -27831,7 +28451,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React10.useCallback(
+  const handleSaveFile = React12.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -27845,7 +28465,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React10.useCallback(
+  const previewProviderFor = React12.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -27940,10 +28560,10 @@ function usePopoutPreview({
   onClose,
   theme = "dark"
 }) {
-  const windowRef = React10.useRef(null);
-  const rendererRef = React10.useRef(null);
-  const rafRef = React10.useRef(null);
-  const cleanup = React10.useCallback(() => {
+  const windowRef = React12.useRef(null);
+  const rendererRef = React12.useRef(null);
+  const rafRef = React12.useRef(null);
+  const cleanup = React12.useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -27955,7 +28575,7 @@ function usePopoutPreview({
     }
     windowRef.current = null;
   }, []);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!descriptor) {
       cleanup();
       return;
@@ -28014,7 +28634,7 @@ function usePopoutPreview({
       cleanup();
     };
   }, [descriptor?.id]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!rendererRef.current) return;
     const components = {};
     if (hapStream) components.streaming = { hapStream };
@@ -28027,7 +28647,7 @@ function usePopoutPreview({
 __name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe3 = React10.useCallback(
+  const subscribe3 = React12.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -28035,12 +28655,12 @@ function useTrackMeta(fileId, trackId) {
     },
     [fileId]
   );
-  const getSnapshot = React10.useCallback(() => {
+  const getSnapshot = React12.useCallback(() => {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = React10.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const set = React10.useCallback(
+  const meta = React12.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const set = React12.useCallback(
     (partial) => {
       if (!fileId) return;
       setTrackMeta(fileId, trackId, partial);
@@ -28378,10 +28998,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React10__namespace.useReducer((x) => x + 1, 0);
-  React10__namespace.useEffect(() => subscribeToHistory(force), []);
-  React10__namespace.useEffect(() => subscribeToRuntimeView(force), []);
-  React10__namespace.useEffect(() => {
+  const [, force] = React12__namespace.useReducer((x) => x + 1, 0);
+  React12__namespace.useEffect(() => subscribeToHistory(force), []);
+  React12__namespace.useEffect(() => subscribeToRuntimeView(force), []);
+  React12__namespace.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -28398,17 +29018,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React10__namespace.useState(null);
-  const [forkName, setForkName] = React10__namespace.useState("");
-  const [committing, setCommitting] = React10__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React10__namespace.useState("");
-  const [expanded, setExpanded] = React10__namespace.useState(null);
-  const [hovered, setHovered] = React10__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React10__namespace.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React10__namespace.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React10__namespace.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React12__namespace.useState(null);
+  const [forkName, setForkName] = React12__namespace.useState("");
+  const [committing, setCommitting] = React12__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React12__namespace.useState("");
+  const [expanded, setExpanded] = React12__namespace.useState(null);
+  const [hovered, setHovered] = React12__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React12__namespace.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React12__namespace.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React12__namespace.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React10__namespace.useEffect(() => {
+  React12__namespace.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -29118,17 +29738,17 @@ function barString(v, cells = 8) {
 }
 __name(barString, "barString");
 function StaveInputsPanel({ kind }) {
-  const [open, setOpen] = React10.useState(false);
-  const [liveEnabled, setLiveEnabled] = React10.useState(true);
-  React10.useEffect(() => vizSignalProbe.acquire(), []);
-  React10.useEffect(() => {
+  const [open, setOpen] = React12.useState(false);
+  const [liveEnabled, setLiveEnabled] = React12.useState(true);
+  React12.useEffect(() => vizSignalProbe.acquire(), []);
+  React12.useEffect(() => {
     setLiveEnabled(getVizInputsLiveValuesEnabled());
     return onVizInputsLiveValuesChange(setLiveEnabled);
   }, []);
-  const rows = React10.useMemo(() => buildVizInputRows(kind), [kind]);
-  const liveRows = React10.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
-  const valueRefs = React10.useRef([]);
-  React10.useEffect(() => {
+  const rows = React12.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React12.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React12.useRef([]);
+  React12.useEffect(() => {
     if (!open || !liveEnabled) return;
     if (typeof requestAnimationFrame !== "function") return;
     let raf = 0;
@@ -29346,21 +29966,21 @@ function VizEditorChrome({
   onToggleBackground,
   isBackground
 }) {
-  const [liveOn, setLiveOn] = React10.useState(() => getVizLive(file.id));
-  React10.useEffect(() => {
+  const [liveOn, setLiveOn] = React12.useState(() => getVizLive(file.id));
+  React12.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React10.useState({
+  const [selectedSource, setSelectedSource] = React12.useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = React10.useState(0);
-  React10.useEffect(() => {
+  const [, forceSourcesRerender] = React12.useState(0);
+  React12.useEffect(() => {
     return workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
   }, []);
-  const handleSourceChange = React10.useCallback(
+  const handleSourceChange = React12.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -29378,7 +29998,7 @@ function VizEditorChrome({
     },
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = React10.useCallback(() => {
+  const handlePrimaryButtonClick = React12.useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
       onTogglePausePreview();
       return;
@@ -29548,7 +30168,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React10.useMemo(() => {
+  const { descriptor, compileError } = React12.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -29584,9 +30204,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React10.useRef(null);
-  const rendererRef = React10.useRef(null);
-  const components = React10.useMemo(() => {
+  const containerRef = React12.useRef(null);
+  const rendererRef = React12.useRef(null);
+  const components = React12.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -29618,7 +30238,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -29678,7 +30298,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -29686,7 +30306,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -29701,7 +30321,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React10.useEffect(() => {
+  React12.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -29922,234 +30542,6 @@ function emitFromGlobal(err, _kind) {
   });
 }
 __name(emitFromGlobal, "emitFromGlobal");
-function parseTopLevel(doc) {
-  try {
-    const program = acorn.parse(doc, {
-      ecmaVersion: "latest",
-      allowAwaitOutsideFunction: true
-    });
-    return program.body;
-  } catch {
-    return null;
-  }
-}
-__name(parseTopLevel, "parseTopLevel");
-function docParses(doc) {
-  return parseTopLevel(doc) !== null;
-}
-__name(docParses, "docParses");
-function isChunkFresh(doc, chunk) {
-  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
-}
-__name(isChunkFresh, "isChunkFresh");
-function detectChunk(doc, pos) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return null;
-  for (const node of statements) {
-    if (pos >= node.start && pos <= node.end) return buildChunk(doc, node);
-  }
-  return null;
-}
-__name(detectChunk, "detectChunk");
-function detectAllChunks(doc) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return [];
-  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
-}
-__name(detectAllChunks, "detectAllChunks");
-function buildChunk(doc, node) {
-  let label = null;
-  let body = node;
-  if (node.type === "LabeledStatement") {
-    label = node.label.name;
-    body = node.body;
-  }
-  if (body.type !== "ExpressionStatement") return null;
-  const expr = body.expression;
-  const headNode = { ref: null };
-  const chain = collectChain(doc, expr, headNode);
-  const headFn = chain.length > 0 ? chain[0].name : null;
-  let miniRange = null;
-  let miniString = null;
-  if (headNode.ref) {
-    const firstString = headNode.ref.arguments.find(
-      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
-    );
-    if (firstString) {
-      miniRange = [firstString.start + 1, firstString.end - 1];
-      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
-    }
-  }
-  const info = {
-    statementRange: [node.start, node.end],
-    statementText: doc.slice(node.start, node.end),
-    exprRange: [expr.start, expr.end],
-    label,
-    headFn,
-    miniRange,
-    miniString,
-    chain,
-    type: "unknown"
-  };
-  info.type = classifyChunk(info);
-  return info;
-}
-__name(buildChunk, "buildChunk");
-function collectChain(doc, expr, headOut) {
-  const calls = [];
-  let node = expr;
-  while (node) {
-    if (node.type === "CallExpression") {
-      const callee = node.callee;
-      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
-        const dot = doc.lastIndexOf(".", callee.property.start);
-        calls.push({
-          name: callee.property.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [dot, node.end]
-        });
-        node = callee.object;
-        continue;
-      }
-      if (callee.type === "Identifier") {
-        calls.push({
-          name: callee.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [node.start, node.end]
-        });
-        headOut.ref = node;
-      }
-    }
-    break;
-  }
-  return calls.reverse();
-}
-__name(collectChain, "collectChain");
-function toArg(doc, node) {
-  let numeric = null;
-  if (node.type === "Literal" && typeof node.value === "number") {
-    numeric = node.value;
-  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
-    numeric = -node.argument.value;
-  }
-  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
-}
-__name(toArg, "toArg");
-function classifyChunk(info) {
-  const head = info.headFn;
-  if (info.miniString !== null) {
-    if (head === "note" || head === "n") return "roll";
-    if (head === "s" || head === "sound") return "step";
-  }
-  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
-  return "unknown";
-}
-__name(classifyChunk, "classifyChunk");
-
-// src/visualEdit/writeback.ts
-function formatNumber(v, maxDecimals = 4) {
-  if (!Number.isFinite(v)) return "0";
-  if (Number.isInteger(v)) return String(v);
-  const fixed = v.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, "");
-}
-__name(formatNumber, "formatNumber");
-function normalizeEdits(edits) {
-  for (const e of edits) {
-    if (e.range[0] > e.range[1]) {
-      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
-    }
-  }
-  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].range;
-    const cur = sorted[i].range;
-    if (cur[0] < prev[1]) {
-      throw new Error(
-        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
-      );
-    }
-  }
-  return sorted;
-}
-__name(normalizeEdits, "normalizeEdits");
-var _Writeback = class _Writeback {
-  constructor(editor, monaco) {
-    this.editor = editor;
-    this.monaco = monaco;
-    this.writingSource = null;
-  }
-  /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
-   */
-  get currentSource() {
-    return this.writingSource;
-  }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range, text, source) {
-    this.apply([{ range, text }], source);
-  }
-  /**
-   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-   * the whole gesture).
-   */
-  replaceRanges(edits, source) {
-    this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range, source) {
-    this.apply([{ range, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
-    return true;
-  }
-  apply(edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return;
-    const normalized = normalizeEdits(edits);
-    const ops = normalized.map((e) => {
-      const start = model.getPositionAt(e.range[0]);
-      const end = model.getPositionAt(e.range[1]);
-      return {
-        range: new this.monaco.Range(
-          start.lineNumber,
-          start.column,
-          end.lineNumber,
-          end.column
-        ),
-        text: e.text,
-        forceMoveMarkers: true
-      };
-    });
-    model.pushStackElement();
-    this.writingSource = source;
-    try {
-      model.pushEditOperations([], ops, () => null);
-    } finally {
-      this.writingSource = null;
-    }
-    model.pushStackElement();
-  }
-};
-__name(_Writeback, "Writeback");
-var Writeback = _Writeback;
 
 // src/visualEdit/notation/parse.ts
 var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
@@ -30876,6 +31268,7 @@ exports.HydraVizRenderer = HydraVizRenderer;
 exports.INLINE_VIZ_ACTION_SIZE_VAR = INLINE_VIZ_ACTION_SIZE_VAR;
 exports.IR = IR;
 exports.IREventCollectSystem = IREventCollectSystem;
+exports.Knob = Knob;
 exports.LIGHT_THEME_TOKENS = LIGHT_THEME_TOKENS;
 exports.LiveCodingEditor = LiveCodingEditor;
 exports.LiveCodingRuntime = LiveCodingRuntime;
@@ -30883,6 +31276,7 @@ exports.LiveRecorder = LiveRecorder;
 exports.MASTER_KEY = MASTER_KEY;
 exports.MIXER_TAB_ID = MIXER_TAB_ID;
 exports.MainSignalSampler = MainSignalSampler;
+exports.Mixer = Mixer;
 exports.OfflineRenderer = OfflineRenderer;
 exports.P5VizRenderer = P5VizRenderer;
 exports.P5_DOCS_INDEX = P5_DOCS_INDEX;
@@ -31066,6 +31460,7 @@ exports.isVizGovernorEnabled = isVizGovernorEnabled;
 exports.isVizLanguage = isVizLanguage;
 exports.isVizPumpSharedCacheEnabled = isVizPumpSharedCacheEnabled;
 exports.isVizWorkerPoolEnabled = isVizWorkerPoolEnabled;
+exports.knobRangeFor = knobRangeFor;
 exports.languageForRenderer = languageForRenderer;
 exports.levenshtein = levenshtein;
 exports.listBottomPanelTabs = listBottomPanelTabs;
