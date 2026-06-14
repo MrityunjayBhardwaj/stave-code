@@ -494,6 +494,29 @@ export {
   getBottomPanelTab,
   subscribeToBottomPanelTabs,
 } from './workspace/bottomPanel/bottomPanelRegistry'
+
+// Visual-editing spine (#379) — chunk detection + tagged writeback + notation.
+// The durable layer the musician-facing write-back panels sit on; panels live
+// in @stave/app and import these via @stave/editor.
+export {
+  detectChunk,
+  detectAllChunks,
+  parseTopLevel,
+  docParses,
+  isChunkFresh,
+  classifyChunk,
+  Writeback,
+  formatNumber,
+  normalizeEdits,
+} from './visualEdit'
+export type {
+  ChunkInfo,
+  ChainCall,
+  ChainArg,
+  ChunkType,
+  WriteSource,
+  OffsetEdit,
+} from './visualEdit'
 export {
   BOTTOM_PANEL_HEIGHT_KEY,
   BOTTOM_PANEL_OPEN_KEY,
