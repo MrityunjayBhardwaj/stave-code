@@ -24236,11 +24236,11 @@ function Mixer() {
       if (!ed || !wb || anchor == null) return;
       const model = ed.getModel?.();
       if (!model) return;
-      const fresh = detectChunk(model.getValue(), anchor);
-      const arg = fresh?.chain[chainIndex]?.args[argIndex];
+      const before = detectChunk(model.getValue(), anchor);
+      const arg = before?.chain[chainIndex]?.args[argIndex];
       if (!arg) return;
       wb.replaceRange(arg.range, formatNumber(value), "knob");
-      setChunk(fresh);
+      setChunk(detectChunk(model.getValue(), anchor));
     },
     []
   );
