@@ -14,8 +14,9 @@
  *     it's `showVizPicker`-gated (standalone-editor surface, not the WorkspaceShell
  *     app) and its `useVizRenderer` hook calls the SAME `mountVizRenderer`, so its
  *     renderer path is covered transitively by mode-invariance (a dedicated
- *     picker-UI test is a follow-up). Popout is dead scaffold (#240) —
- *     `openPopoutPreview` is never implemented + `usePopoutPreview` never imported.
+ *     picker-UI test is a follow-up). (Popout was dead scaffold; #240 WIRED it —
+ *     `openPopoutPreview` is now implemented via the `onOpenPopoutPreview` shell
+ *     prop + `usePopoutPreview`, covered by viz-popout.spec.ts.)
  *   - runtime fallback to main thread when the worker fails before `ready` (PK23).
  *   - re-evaluate reactivity + resize.
  *

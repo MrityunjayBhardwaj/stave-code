@@ -946,6 +946,16 @@ export interface WorkspaceShellProps {
   readonly onActiveBackdropChange?: (fileId: string | null) => void
 
   /**
+   * #240 — open a viz file's preview in a pop-out browser window. The shell
+   * forwards the Cmd+K W command (`workspace.openPreviewInWindow` →
+   * `shell.openPopoutPreview(fileId)`) to this host callback; the app compiles
+   * a descriptor + subscribes the audio bus and drives `usePopoutPreview`.
+   * Optional: when the host omits it, Cmd+K W is a no-op (the command guards
+   * on `shell.openPopoutPreview?.`).
+   */
+  readonly onOpenPopoutPreview?: (fileId: string) => void
+
+  /**
    * Crop region applied to the pinned backdrop — 0–1 fractional
    * `{x, y, w, h}`. Absent means render the full viz rect. The
    * shell's backdrop wrapper scales/positions its inner div so
