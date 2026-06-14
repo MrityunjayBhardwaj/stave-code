@@ -28632,18 +28632,6 @@ async function touchProject(id) {
   db.close();
 }
 __name(touchProject, "touchProject");
-async function setProjectBackgroundFileId(id, fileId) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    const { backgroundFileId: _unusedFile, backgroundCrop: _unusedCrop, ...rest } = existing;
-    const next = fileId == null ? rest : { ...rest, backgroundFileId: fileId };
-    await wrap4(store.put(next));
-  }
-  db.close();
-}
-__name(setProjectBackgroundFileId, "setProjectBackgroundFileId");
 async function setProjectBackgroundCrop(id, crop) {
   const db = await openDb4();
   const store = tx2(db, "readwrite");
@@ -30259,7 +30247,6 @@ exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
 exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
-exports.setProjectBackgroundFileId = setProjectBackgroundFileId;
 exports.setSignalAliases = setSignalAliases;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
