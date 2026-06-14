@@ -57,3 +57,27 @@ test('clicking opens the BackdropPopover; picking a viz pins it, clearing remove
 
   expect(errors).toEqual([])
 })
+
+test('backdrop is PER-TAB — switching tabs swaps/clears it, switching back restores', async ({ page }) => {
+  const btn = page.locator('[data-testid="strudel-chrome-bg-toggle"]')
+
+  // Pin a backdrop on the pattern tab.
+  await btn.click()
+  const picker = page.locator('[data-testid="backdrop-popover-picker"]')
+  const value = await picker.locator('option').nth(1).getAttribute('value')
+  await picker.selectOption(value!)
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+  await expect(btn).toHaveAttribute('data-pinned', 'true')
+  // Close the popover.
+  await page.keyboard.press('Escape')
+
+  // Open a second tab (a viz file) — it has no backdrop of its own, so the
+  // pane's backdrop must CLEAR (it does not bleed from the pattern tab).
+  await page.locator('[data-file-tree-item*="hydra"]').first().dblclick()
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
+
+  // Switch back to the pattern tab → its own backdrop is restored.
+  await page.locator('[data-workspace-tab]', { hasText: 'pattern' }).first().click()
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+  await expect(btn).toHaveAttribute('data-pinned', 'true')
+})
