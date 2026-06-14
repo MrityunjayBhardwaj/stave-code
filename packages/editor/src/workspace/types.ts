@@ -960,8 +960,9 @@ export interface WorkspaceShellProps {
    * `{x, y, w, h}`. Absent means render the full viz rect. The
    * shell's backdrop wrapper scales/positions its inner div so
    * only the cropped sub-rect fills the viewport, preserving the
-   * quality-ladder transform math. Purely presentational; app
-   * owns persistence via ProjectMeta.backgroundCrop.
+   * quality-ladder transform math. Purely presentational; the app
+   * owns persistence (per-viz-file localStorage, #372) and passes the
+   * RESOLVED crop for whatever backdrop is currently rendered.
    */
   readonly backgroundCrop?: {
     readonly x: number

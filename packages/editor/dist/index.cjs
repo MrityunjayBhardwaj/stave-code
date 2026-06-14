@@ -28638,18 +28638,6 @@ async function touchProject(id) {
   db.close();
 }
 __name(touchProject, "touchProject");
-async function setProjectBackgroundCrop(id, crop) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing;
-    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
-    await wrap4(store.put(next));
-  }
-  db.close();
-}
-__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
 async function renameProject(id, name) {
   const db = await openDb4();
   const store = tx2(db, "readwrite");
@@ -30275,7 +30263,6 @@ exports.setInlineVizResolution = setInlineVizResolution;
 exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
-exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setSignalAliases = setSignalAliases;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
