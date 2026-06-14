@@ -23,6 +23,7 @@ import {
   type WorkspaceShellHandle,
   type HapStream,
   type BreakpointStore,
+  type BackdropQuality,
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
@@ -487,8 +488,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
    */
   const handleCodeBackdropChange = useCallback(
     (vizId: string | null) => {
+      // #350a — code is a TRANSIENT OVERRIDE on the ACTIVE pane, not the manual
+      // sticky. `null` drops the override so the user's manual sticky (if any)
+      // shows again — previously this WIPED the sticky ("removing .scope()
+      // un-pins"), now superseded by the #350 per-pane precedence model
+      // (override ?? sticky). The shell call is idempotent, so no churn in live.
       if (vizId === null) {
-        if (backgroundFileId !== null) handleSetAsBackground(null);
+        shellRef.current?.setBackgroundOverride?.(null);
         return;
       }
       const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -498,13 +504,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           isVizLanguage(f.language) &&
           norm(f.path.split("/").pop()!.replace(/\.[^.]+$/, "")) === target,
       );
-      if (matches.length === 0) return; // no viz file — leave backdrop as-is
+      if (matches.length === 0) return; // no viz file — leave the override as-is
       const fileId =
         matches.find((f) => f.language === "p5js")?.id ?? matches[0].id;
-      if (fileId === backgroundFileId) return; // already pinned
-      handleSetAsBackground(fileId);
+      shellRef.current?.setBackgroundOverride?.(fileId);
     },
-    [backgroundFileId, handleSetAsBackground],
+    [],
   );
 
   // Restore the persisted backdrop when the active project changes.
@@ -1020,6 +1025,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
               .replace(/\.[^.]+$/, ""),
           }))}
         onSetBackdrop={(id) => handleSetAsBackground(id)}
+        // #350c — per-pane opacity/quality. Seed from the ACTIVE pane's
+        // resolved settings (its override, else the global default), and route
+        // edits to the active pane's override on the shell handle.
+        backdropOpacity={shellRef.current?.getBackdropSettings?.().opacity ?? 1}
+        backdropQuality={shellRef.current?.getBackdropSettings?.().quality ?? "half"}
+        onSetBackdropOpacity={(v: number) => shellRef.current?.setBackdropOpacity?.(v)}
+        onSetBackdropQuality={(v: BackdropQuality) => shellRef.current?.setBackdropQuality?.(v)}
         onRevealBackground={() => {
           if (backgroundFileId) handleOpenFile(backgroundFileId);
         }}
@@ -1156,6 +1168,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 onActiveFileChange={setActiveFileId}
                 onActiveRuntimeStateChange={handleRuntimeStateChange}
                 onCodeBackdropChange={handleCodeBackdropChange}
+                // #350a — mirror the RESOLVED backdrop (code override ?? sticky)
+                // so the menubar indicator / popover reflect what's actually
+                // showing, including a code-driven `.scope()`. NOT persisted here
+                // (code overrides are transient — persistence stays on the manual
+                // path); the shell ref-guards this so steady code never churns it.
+                onActiveBackdropChange={(fileId) => setBackgroundFileId(fileId)}
                 backgroundCrop={backgroundCrop}
                 onBackgroundFileChange={(_groupId, fileId) => {
                   setBackgroundFileId(fileId);

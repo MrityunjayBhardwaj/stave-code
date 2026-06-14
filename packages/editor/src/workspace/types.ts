@@ -39,6 +39,7 @@ import type {
 import type { BreakpointStore } from '../engine/BreakpointStore'
 import type { StrudelTheme } from '../theme/tokens'
 import type { PreviewProvider } from './PreviewProvider'
+import type { BackdropQuality } from './editorRegistry'
 
 /**
  * The set of languages a WorkspaceFile may declare. This is an explicit
@@ -561,6 +562,20 @@ export interface WorkspaceGroupState {
   readonly tabs: readonly WorkspaceTab[]
   readonly activeTabId: string | null
   readonly backgroundFileId?: string
+  /**
+   * Per-pane backdrop opacity override (#350c). When set, this group's
+   * backdrop renders at this opacity instead of the global
+   * `getBackdropOpacity()` default. Absent → the global default applies.
+   * Persisted user intent (survives reload), unlike the transient code
+   * override — so it lives on the group snapshot.
+   */
+  readonly backdropOpacity?: number
+  /**
+   * Per-pane backdrop quality override (#350c). When set, this group's
+   * backdrop renders at this quality tier instead of the global
+   * `getBackdropQuality()` default. Absent → the global default applies.
+   */
+  readonly backdropQuality?: BackdropQuality
 }
 
 // ---------------------------------------------------------------------------
@@ -918,6 +933,17 @@ export interface WorkspaceShellProps {
     groupId: string,
     fileId: string | null,
   ) => void
+
+  /**
+   * Fires when the ACTIVE group's RESOLVED backdrop changes (#350a) — the code
+   * override (`setBackgroundOverride`) if present, else the manual sticky. This
+   * is "what is currently showing behind the active editor," for UI that must
+   * reflect reality (the menubar bg indicator, the popover pinned-state). Unlike
+   * `onBackgroundFileChange`, it is NOT a persistence signal — code overrides are
+   * transient — so consumers must mirror it into UI state WITHOUT persisting.
+   * Fires once per real change (ref-guarded); no per-eval churn for steady code.
+   */
+  readonly onActiveBackdropChange?: (fileId: string | null) => void
 
   /**
    * Crop region applied to the pinned backdrop — 0–1 fractional

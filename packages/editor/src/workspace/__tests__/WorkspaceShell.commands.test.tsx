@@ -68,7 +68,7 @@ vi.mock('../../monaco/diagnostics', () => ({
   clearEvalErrors: vi.fn(),
 }))
 
-import { WorkspaceShell } from '../WorkspaceShell'
+import { WorkspaceShell, type WorkspaceShellHandle } from '../WorkspaceShell'
 import {
   createWorkspaceFile,
   __resetWorkspaceFilesForTests,
@@ -80,7 +80,7 @@ import type {
   PreviewProvider,
   PreviewContext,
 } from '../PreviewProvider'
-import type { WorkspaceTab } from '../types'
+import type { WorkspaceTab, WorkspaceGroupState } from '../types'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -97,6 +97,9 @@ function makePreviewProvider(): PreviewProvider {
         <div
           data-testid="stub-preview-output"
           data-file-content={ctx.file.content}
+          // #350d: expose the paused flag so the backdrop freeze wiring is
+          // observable — active pane = live (false), inactive = frozen (true).
+          data-paused={String(ctx.paused ?? false)}
         />
       )
     },
@@ -227,5 +230,122 @@ describe('WorkspaceShell commands integration', () => {
 
     bgLayer = container.querySelector('[data-workspace-background]')
     expect(bgLayer).toBeNull()
+  })
+
+  it('#350d — active pane backdrop is LIVE, inactive pane backdrop FREEZES (paused)', () => {
+    // Two split panes, each with its own pinned backdrop. Only the focused
+    // (active) pane renders its backdrop LIVE; the inactive pane freezes to its
+    // last frame (paused → renderer.pause()). This bounds the shared-GPU cost to
+    // ~1× regardless of how many panes are split (#299/#122). `data-backdrop-live`
+    // mirrors the group's `data-active-group`; the backdrop preview's `paused`
+    // ctx is the inverse.
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    const provider = makePreviewProvider()
+    const groups = new Map<string, WorkspaceGroupState>([
+      ['g1', { id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1', backgroundFileId: 'f-hydra' }],
+      ['g2', { id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2', backgroundFileId: 'f-hydra2' }],
+    ])
+    const { container } = render(
+      <WorkspaceShell
+        initialGroups={groups}
+        initialLayout={[['g1', 'g2']]}
+        initialActiveGroupId="g2"
+        previewProviderFor={() => provider}
+      />,
+    )
+
+    // Both panes render a backdrop.
+    const backdrops = container.querySelectorAll('[data-workspace-background]')
+    expect(backdrops.length).toBe(2)
+
+    // Invariant: each backdrop's live flag matches its group's active state,
+    // and the backdrop preview's `paused` ctx is the inverse of live.
+    let liveCount = 0
+    let frozenCount = 0
+    container.querySelectorAll('[data-workspace-group]').forEach((g) => {
+      const bg = g.querySelector('[data-workspace-background]')
+      if (!bg) return
+      const live = bg.getAttribute('data-backdrop-live')
+      expect(live).toBe(g.getAttribute('data-active-group'))
+      const out = bg.querySelector('[data-testid="stub-preview-output"]')
+      expect(out?.getAttribute('data-paused')).toBe(String(live !== 'true'))
+      if (live === 'true') liveCount++
+      else frozenCount++
+    })
+    // Exactly one active (live) pane and one inactive (frozen) pane.
+    expect(liveCount).toBe(1)
+    expect(frozenCount).toBe(1)
+  })
+
+  it('#350c — per-pane opacity/quality override the global default; absent → default', () => {
+    const provider = makePreviewProvider()
+    const groups = new Map<string, WorkspaceGroupState>([
+      // g1 has explicit per-pane overrides.
+      ['g1', {
+        id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1',
+        backgroundFileId: 'f-hydra', backdropOpacity: 0.3, backdropQuality: 'quarter',
+      }],
+      // g2 has NO overrides → the global default (opacity 1 / quality 'half').
+      ['g2', {
+        id: 'g2', tabs: [editorTab('t2', 'f-hydra2')], activeTabId: 't2',
+        backgroundFileId: 'f-hydra2',
+      }],
+    ])
+    createWorkspaceFile('f-hydra2', 'spectrum.hydra', '// hydra code 2', 'hydra')
+    const { container } = render(
+      <WorkspaceShell
+        initialGroups={groups}
+        initialLayout={[['g1', 'g2']]}
+        initialActiveGroupId="g1"
+        previewProviderFor={() => provider}
+      />,
+    )
+
+    const bg1 = container.querySelector('[data-workspace-group="g1"] [data-workspace-background]') as HTMLElement
+    const bg2 = container.querySelector('[data-workspace-group="g2"] [data-workspace-background]') as HTMLElement
+    // g1: per-pane override applied.
+    expect(bg1.getAttribute('data-backdrop-quality')).toBe('quarter')
+    expect(bg1.style.opacity).toBe('0.3')
+    // g2: untouched → global default.
+    expect(bg2.getAttribute('data-backdrop-quality')).toBe('half')
+    expect(bg2.style.opacity).toBe('1')
+  })
+
+  it('#350c — setBackdropOpacity/Quality handle patches the active group; getBackdropSettings resolves', () => {
+    const provider = makePreviewProvider()
+    const ref = React.createRef<WorkspaceShellHandle>()
+    const groups = new Map<string, WorkspaceGroupState>([
+      ['g1', {
+        id: 'g1', tabs: [editorTab('t1', 'f-hydra')], activeTabId: 't1',
+        backgroundFileId: 'f-hydra',
+      }],
+    ])
+    render(
+      <WorkspaceShell
+        ref={ref}
+        initialGroups={groups}
+        initialLayout={[['g1']]}
+        initialActiveGroupId="g1"
+        previewProviderFor={() => provider}
+      />,
+    )
+
+    // Before: no override → resolved = global default.
+    expect(ref.current!.getBackdropSettings('g1')).toEqual({ opacity: 1, quality: 'half' })
+
+    act(() => {
+      ref.current!.setBackdropOpacity(0.5)
+      ref.current!.setBackdropQuality('full')
+    })
+
+    // After: the active group's override resolves.
+    expect(ref.current!.getBackdropSettings('g1')).toEqual({ opacity: 0.5, quality: 'full' })
+
+    // Clearing (null) falls back to the global default again.
+    act(() => {
+      ref.current!.setBackdropOpacity(null)
+      ref.current!.setBackdropQuality(null)
+    })
+    expect(ref.current!.getBackdropSettings('g1')).toEqual({ opacity: 1, quality: 'half' })
   })
 })

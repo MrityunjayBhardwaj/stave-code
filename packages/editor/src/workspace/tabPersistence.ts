@@ -58,6 +58,17 @@
 
 import type { GroupLayout } from './groupLayout'
 import type { WorkspaceTab, WorkspaceGroupState } from './types'
+import type { BackdropQuality } from './editorRegistry'
+
+/** Validate a persisted per-pane backdrop opacity — a finite number in [0, 1]. */
+function validBackdropOpacity(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : undefined
+}
+
+/** Validate a persisted per-pane backdrop quality tier. */
+function validBackdropQuality(v: unknown): BackdropQuality | undefined {
+  return v === 'full' || v === 'half' || v === 'quarter' ? v : undefined
+}
 
 /**
  * Canonical localStorage key prefix. Per-project keys append `:${projectId}:state`.
@@ -93,6 +104,10 @@ export interface PersistedGroup {
   readonly tabs: readonly PersistedEditorTab[]
   readonly activeTabId: string | null
   readonly backgroundFileId?: string
+  /** Per-pane backdrop opacity override (#350c). Absent → global default. */
+  readonly backdropOpacity?: number
+  /** Per-pane backdrop quality override (#350c). Absent → global default. */
+  readonly backdropQuality?: BackdropQuality
 }
 
 export interface PersistedEditorTab {
@@ -215,11 +230,16 @@ export function validatePersistedState(
       typeof g.backgroundFileId === 'string' && validFileIds.has(g.backgroundFileId)
         ? g.backgroundFileId
         : undefined
+    // Per-pane backdrop overrides (#350c) — validated, absent → global default.
+    const opacity = validBackdropOpacity(g.backdropOpacity)
+    const quality = validBackdropQuality(g.backdropQuality)
     cleanedGroups[gid] = {
       id: gid,
       tabs: cleanedTabs,
       activeTabId,
       ...(bg !== undefined ? { backgroundFileId: bg } : {}),
+      ...(opacity !== undefined ? { backdropOpacity: opacity } : {}),
+      ...(quality !== undefined ? { backdropQuality: quality } : {}),
     }
   }
 
@@ -291,6 +311,12 @@ export function serializeShellState(snapshot: ShellSnapshot): PersistedShellStat
       activeTabId,
       ...(g.backgroundFileId !== undefined
         ? { backgroundFileId: g.backgroundFileId }
+        : {}),
+      ...(g.backdropOpacity !== undefined
+        ? { backdropOpacity: g.backdropOpacity }
+        : {}),
+      ...(g.backdropQuality !== undefined
+        ? { backdropQuality: g.backdropQuality }
         : {}),
     }
   }
@@ -389,6 +415,12 @@ export function hydrateSnapshot(
       activeTabId: pg.activeTabId,
       ...(pg.backgroundFileId !== undefined
         ? { backgroundFileId: pg.backgroundFileId }
+        : {}),
+      ...(pg.backdropOpacity !== undefined
+        ? { backdropOpacity: pg.backdropOpacity }
+        : {}),
+      ...(pg.backdropQuality !== undefined
+        ? { backdropQuality: pg.backdropQuality }
         : {}),
     })
   }

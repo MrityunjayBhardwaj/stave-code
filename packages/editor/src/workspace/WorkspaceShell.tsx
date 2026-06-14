@@ -141,6 +141,7 @@ import type {
   WorkspaceShellProps,
   WorkspaceTab,
 } from './types'
+import { resolveBackdropFileId } from './backdropPrecedence'
 import {
   type GroupLayout,
   type DropDirection,
@@ -307,12 +308,40 @@ export interface WorkspaceShellHandle {
   setBackgroundFile(fileId: string | null, groupId?: string): void
 
   /**
+   * Set the TRANSIENT code-override backdrop for a group (#350a). Pass `null`
+   * to drop the override so the manual sticky (`setBackgroundFile`) shows again.
+   * `groupId` defaults to the active group. Unlike `setBackgroundFile`, this is
+   * NOT persisted and does NOT fire `onBackgroundFileChange` — it's the active
+   * program's per-eval `.scope()` / `.viz({ backdrop })` declaration, which
+   * OVERLAYS the sticky and clears back to it when the code stops declaring one.
+   */
+  setBackgroundOverride(fileId: string | null, groupId?: string): void
+
+  /**
    * Read the current backdrop fileId for a group (default: active
    * group). Returns `undefined` when no backdrop is pinned. Useful for
    * UI that needs to render a "Clear" vs "Set" label without
    * subscribing to every shell state change.
    */
   getBackgroundFileId(groupId?: string): string | undefined
+
+  /**
+   * Set/clear a group's per-pane backdrop opacity (#350c). `null` drops the
+   * override so the global default applies. `groupId` defaults to the active
+   * group. Persisted (survives reload) — it's user intent, not transient
+   * code state.
+   */
+  setBackdropOpacity(opacity: number | null, groupId?: string): void
+
+  /** Set/clear a group's per-pane backdrop quality (#350c). `null` → global default. */
+  setBackdropQuality(quality: BackdropQuality | null, groupId?: string): void
+
+  /**
+   * Read a group's RESOLVED backdrop settings (#350c) — the per-pane override
+   * if set, else the global default. `groupId` defaults to the active group.
+   * Lets the popover seed its controls without subscribing to shell state.
+   */
+  getBackdropSettings(groupId?: string): { opacity: number; quality: BackdropQuality }
 }
 
 /** Resolve a tab's display name from the file store. Falls back to fileId. */
@@ -708,6 +737,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   height = '100%',
   onActiveTabChange,
   onBackgroundFileChange,
+  onActiveBackdropChange,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -751,6 +781,30 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   const [activeGroupId, setActiveGroupId] = useState<string>(
     () => initialState.current.activeGroupId,
   )
+
+  // #350a — transient per-group code-OVERRIDE backdrop layer. Deliberately kept
+  // OUT of `groups` / the `onGroupsChange` snapshot: the active program declares
+  // it every eval, so persisting it would churn tab-persistence and outlive the
+  // code that asked for it. `renderGroup` resolves override ?? sticky; clearing
+  // (delete) falls back to the persisted manual sticky (`group.backgroundFileId`).
+  const [bgOverrides, setBgOverrides] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  )
+
+  // #350a — notify the app when the ACTIVE group's RESOLVED backdrop changes
+  // (override ?? sticky) so UI that must reflect "what's showing" (the menubar
+  // bg indicator, the popover) tracks reality, not just the persisted sticky.
+  // Ref-guarded so steady code in live mode doesn't re-fire every eval.
+  const lastActiveBackdropRef = useRef<string | null>(null)
+  useEffect(() => {
+    const g = groups.get(activeGroupId)
+    const resolved =
+      resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null
+    if (resolved !== lastActiveBackdropRef.current) {
+      lastActiveBackdropRef.current = resolved
+      onActiveBackdropChange?.(resolved)
+    }
+  }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange])
 
   // Single persistence sink (#175). Fires on every change to groups /
   // layout / activeGroupId. The first render is suppressed via a
@@ -1267,6 +1321,53 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       onBackgroundFileChange?.(groupId, backgroundFileId)
     },
     [groups, updateGroup, onBackgroundFileChange],
+  )
+
+  /**
+   * Set/clear a group's transient code-override backdrop (#350a). `null` deletes
+   * the override so the manual sticky shows again. Idempotent — repeated equal
+   * calls (every eval in live mode) are no-ops, so there's no per-frame churn.
+   */
+  const updateGroupOverride = useCallback(
+    (groupId: string, overrideFileId: string | null) => {
+      setBgOverrides((prev) => {
+        const cur = prev.get(groupId) ?? null
+        if (cur === overrideFileId) return prev
+        const next = new Map(prev)
+        if (overrideFileId == null) next.delete(groupId)
+        else next.set(groupId, overrideFileId)
+        return next
+      })
+    },
+    [],
+  )
+
+  /**
+   * Set/clear a group's per-pane backdrop opacity override (#350c). `null`
+   * drops the override so the global default applies again. Idempotent —
+   * persisted via the normal `onGroupsChange` sink (it's user intent, not
+   * transient code state, so unlike the override it lives on the snapshot).
+   */
+  const updateGroupBackdropOpacity = useCallback(
+    (groupId: string, opacity: number | null) => {
+      const prev = groups.get(groupId)?.backdropOpacity
+      const nextVal =
+        opacity == null ? undefined : Math.min(1, Math.max(0, opacity))
+      if (prev === nextVal) return
+      updateGroup(groupId, (g) => ({ ...g, backdropOpacity: nextVal }))
+    },
+    [groups, updateGroup],
+  )
+
+  /** Set/clear a group's per-pane backdrop quality override (#350c). */
+  const updateGroupBackdropQuality = useCallback(
+    (groupId: string, quality: BackdropQuality | null) => {
+      const prev = groups.get(groupId)?.backdropQuality
+      const nextVal = quality ?? undefined
+      if (prev === nextVal) return
+      updateGroup(groupId, (g) => ({ ...g, backdropQuality: nextVal }))
+    },
+    [groups, updateGroup],
   )
 
   /**
@@ -2245,8 +2346,14 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 directly. Survives tab switches; silently drops when
                 the promoted file is deleted (provider lookup returns
                 undefined). */}
-            {group.backgroundFileId && (() => {
-              const bgFileId = group.backgroundFileId
+            {(() => {
+              // #350a precedence: code override (this eval) wins over the manual
+              // sticky; neither set → no backdrop.
+              const bgFileId = resolveBackdropFileId(
+                group.backgroundFileId,
+                bgOverrides.get(group.id),
+              )
+              if (!bgFileId) return null
               const bgProvider = previewProviderFor?.({
                 kind: 'preview',
                 id: `bg-${bgFileId}`,
@@ -2254,12 +2361,17 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 sourceRef: { kind: 'default' },
               })
               if (!bgProvider) return null
+              // #350c: per-pane opacity/quality override the global default.
+              // Absent on the group → the shell-wide value (the EditorSettings
+              // default) applies, so untuned panes are unchanged.
+              const groupQuality = group.backdropQuality ?? backdropQuality
+              const groupOpacity = group.backdropOpacity ?? backdropOpacity
               // Quality ladder (#41): the inner wrapper is sized at
               // (1/factor) × viewport and scaled back by `factor` —
               // renderer sees a smaller container, CSS stretches the
               // result. factor=1 → full; 0.5 → half (default, quartered
               // pixel budget); 0.25 → quarter (1/16 budget).
-              const qf = backdropQualityFactor(backdropQuality)
+              const qf = backdropQualityFactor(groupQuality)
               // Crop (#40): when set, the sub-rect {x,y,w,h} of the
               // full viz should fill the viewport. We upscale the
               // inner wrapper by 1/crop.w (horiz) and 1/crop.h
@@ -2292,7 +2404,11 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                 <div
                   data-workspace-background={group.id}
                   data-background-file-id={bgFileId}
-                  data-backdrop-quality={backdropQuality}
+                  data-backdrop-quality={groupQuality}
+                  // #350d: only the focused/active pane renders its backdrop
+                  // LIVE; inactive panes freeze to their last frame (see the
+                  // `paused` prop below). Exposed for observation.
+                  data-backdrop-live={isShellActiveGroup ? 'true' : 'false'}
                   style={{
                     position: 'absolute',
                     inset: 0,
@@ -2300,7 +2416,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                     // Viz renders at user-set opacity. Stacks with
                     // the code-panel wash in globals.css — both
                     // dim the viz behind the code. Defaults to 1.
-                    opacity: backdropOpacity,
+                    opacity: groupOpacity,
                     pointerEvents: 'none',
                     overflow: 'hidden',
                   }}
@@ -2327,6 +2443,15 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                       sourceRef={{ kind: 'default' }}
                       theme={theme}
                       hidden={false}
+                      // #350d: freeze the backdrop on inactive panes. GPU is
+                      // shared (#299/#122) — N split panes each rendering a
+                      // heavy backdrop LIVE = N× the compositor cost. Only the
+                      // focused pane renders live; the rest pause to their last
+                      // frame. `paused` routes to renderer.pause() (p5.noLoop /
+                      // hydra stop) which freezes the canvas (keeps the last
+                      // frame) and resumes instantly on focus — the lighter
+                      // freeze, not an off-screen teardown.
+                      paused={!isShellActiveGroup}
                       onSourceRefChange={() => {}}
                     />
                   </div>
@@ -2337,7 +2462,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
               <div
                 data-stave-code-panel="true"
                 data-stave-backdrop={
-                  group.backgroundFileId ? 'on' : 'off'
+                  resolveBackdropFileId(
+                    group.backgroundFileId,
+                    bgOverrides.get(group.id),
+                  )
+                    ? 'on'
+                    : 'off'
                 }
                 style={{
                   position: 'relative',
@@ -2385,6 +2515,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       backgroundCrop,
       backdropQuality,
       backdropOpacity,
+      bgOverrides,
       previewProviderFor,
       theme,
     ],
@@ -2651,13 +2782,51 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         if (!gid) return
         updateGroupBackground(gid, fileId)
       },
+      setBackgroundOverride: (
+        fileId: string | null,
+        groupId?: string,
+      ) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupOverride(gid, fileId)
+      },
       getBackgroundFileId: (groupId?: string) => {
         const gid = groupId ?? activeGroupId
         if (!gid) return undefined
         return groups.get(gid)?.backgroundFileId
       },
+      setBackdropOpacity: (opacity: number | null, groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupBackdropOpacity(gid, opacity)
+      },
+      setBackdropQuality: (quality: BackdropQuality | null, groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        if (!gid) return
+        updateGroupBackdropQuality(gid, quality)
+      },
+      getBackdropSettings: (groupId?: string) => {
+        const gid = groupId ?? activeGroupId
+        const g = gid ? groups.get(gid) : undefined
+        // Per-pane override if set, else the global (EditorSettings) default.
+        return {
+          opacity: g?.backdropOpacity ?? backdropOpacity,
+          quality: g?.backdropQuality ?? backdropQuality,
+        }
+      },
     }),
-    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground],
+    [
+      groups,
+      activeGroupId,
+      closeTabById,
+      handleSplit,
+      updateGroupBackground,
+      updateGroupOverride,
+      updateGroupBackdropOpacity,
+      updateGroupBackdropQuality,
+      backdropOpacity,
+      backdropQuality,
+    ],
   )
 
   return (

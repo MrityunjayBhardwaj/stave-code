@@ -393,6 +393,12 @@ function CompiledVizMount(props: CompiledVizMountProps): React.ReactElement {
         reportError,
       )
       rendererRef.current = mounted
+      // A renderer mounted while paused (e.g. an inactive pane's backdrop, #350d)
+      // must start paused — the `[paused]` effect below won't re-fire on a remount
+      // that doesn't change the prop, so it would otherwise come up running.
+      if (paused) {
+        try { mounted.renderer.pause() } catch { /* non-fatal */ }
+      }
     } catch (err) {
       reportError(err instanceof Error ? err : new Error(String(err)))
     }

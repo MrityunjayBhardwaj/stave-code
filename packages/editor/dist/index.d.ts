@@ -2865,6 +2865,256 @@ interface PreviewEditorChromeContext {
 }
 
 /**
+ * aliasMap — built-in named-signal aliases for the SignalBus, plus the
+ * engine-keyed model that lets one alias NAME carry per-engine sound lists.
+ *
+ * ## Why engine-keyed
+ * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
+ * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
+ * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
+ * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
+ * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
+ * :9609; every trigger resolves to a single `scsynth_name` string,
+ * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
+ * single STRING (or a list) — the alias VALUE type never needs to be richer,
+ * only the values differ per engine. So an alias absorbs the leak: the NAME
+ * (`kick`) stays unified across engines, only the sound list is per-engine.
+ *
+ *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
+ *
+ * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
+ * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
+ * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
+ * storage + this resolver (PV12: the bus stays pure, never sees an engine).
+ *
+ * ## Array aliases
+ * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
+ * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
+ * value as the MAX over members (any tom firing lights the alias).
+ *
+ * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
+ * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
+ */
+/** The live-coding engine a viz sketch is currently driven by. Strudel is the
+ *  only engine wired today; `sonicpi` is reserved for Sonic Pi Web (a thesis,
+ *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
+ *  storage/sanitize keep ANY engine key with a valid value, so a future engine
+ *  survives a round-trip through an older build. */
+type VizEngine = 'strudel' | 'sonicpi';
+/** A resolved alias value for one engine: a single sound name, or a list whose
+ *  envelope reads as the MAX over members. */
+type EngineAliasValue = string | string[];
+/** One alias' per-engine sound lists. Partial: an alias may define a value for
+ *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
+ *  equivalent → silently inert under Sonic Pi, never a crash). */
+type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
+/** The persisted custom-alias shape: alias name → per-engine sound lists. This
+ *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
+ *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
+type StoredSignalAliases = Record<string, EngineAliasMap>;
+/** The active viz engine. Strudel is the only live engine today; this is the
+ *  single wire-point — when Sonic Pi Web lands, source the active engine from
+ *  the running `LiveCodingEngine` at the renderer mount and pass it to
+ *  `resolveAliasesForEngine`. */
+declare const DEFAULT_VIZ_ENGINE: VizEngine;
+/**
+ * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
+ * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
+ * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
+ * signals work cross-engine the day Sonic Pi Web ships. Aliases with no
+ * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
+ * slot rather than guess — they stay Strudel-only until a user maps them.
+ */
+declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
+/**
+ * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
+ * consumes for a single engine. Built-ins first, custom LAST so a user override
+ * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
+ * alias with no value for `engine` is omitted (its bare name stays unbound under
+ * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
+ * custom map as an arg, imports nothing impure (PV12).
+ */
+declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
+/**
+ * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
+ * Kept as a derived view for back-compat: the bus' default constructor and the
+ * renderers' bare-name injection consume this flat shape. Equivalent to the
+ * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
+ */
+declare const ALIAS_MAP: Record<string, EngineAliasValue>;
+
+/**
+ * editorRegistry — tiny module-level map so callers outside the
+ * editor package (shell, app, outline panel) can find the Monaco
+ * editor instance that's currently rendering a given fileId. Used
+ * for cross-file navigation features like "reveal at line".
+ *
+ * EditorView registers on mount and unregisters on unmount. Only the
+ * ACTIVE editor for a fileId matters — if two groups show the same
+ * file, the last mount wins, which matches the UX ("jump to this
+ * symbol" lands wherever the editor is currently focused).
+ */
+
+/**
+ * Reveal the given line in the editor for `fileId` and set the cursor
+ * at column 1. Returns true if the editor was found. Line numbers are
+ * 1-based.
+ */
+declare function revealLineInFile(fileId: string, line: number): boolean;
+/** CSS variable that scales every chrome-level icon glyph (menu gear,
+ *  activity bar, etc.). Applied to documentElement on mount and on
+ *  every change. */
+declare const UI_ICON_SIZE_VAR = "--ui-icon-size";
+/** Separate CSS variable for the floating action buttons (edit / crop)
+ *  attached to inline `.viz()` zones. They sit inside the canvas area
+ *  and tend to need a tighter scale than the rest of the chrome —
+ *  hence their own slider, independent of the main UI icon size. */
+declare const INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
+/** Get the current global editor font size (px). */
+declare function getEditorFontSize(): number;
+/** Get the current global minimap visibility flag. */
+declare function getEditorMinimap(): boolean;
+/** Set the font size (clamped 8–40) and apply to every open editor. */
+declare function setEditorFontSize(size: number): void;
+/** Bump font size by delta (positive / negative). */
+declare function bumpEditorFontSize(delta: number): void;
+/** Toggle minimap visibility across every open editor. */
+declare function toggleEditorMinimap(): void;
+declare function getEditorUiIconSize(): number;
+declare function setEditorUiIconSize(size: number): void;
+declare function onUiIconSizeChange(cb: (size: number) => void): () => void;
+/** Apply the persisted icon size to the document root on first mount. */
+declare function applyPersistedUiIconSize(): void;
+declare function getInlineVizActionSize(): number;
+declare function setInlineVizActionSize(size: number): void;
+declare function onInlineVizActionSizeChange(cb: (size: number) => void): () => void;
+declare function applyPersistedInlineVizActionSize(): void;
+/** Current inline-viz render resolution (height in px). */
+declare function getInlineVizResolution(): number;
+/** Set the inline-viz render resolution (clamped 64–2048). Notifies listeners;
+ *  takes effect on the next zone (re)mount / evaluate. */
+declare function setInlineVizResolution(n: number): void;
+declare function onInlineVizResolutionChange(cb: (n: number) => void): () => void;
+/** Current viz quality level ("performance mode"). */
+declare function getVizQuality(): VizQualityLevel;
+/** Set the viz quality level — persists, applies resolution + density to their
+ *  channels (the density marshals live to worker viz), and notifies listeners. */
+declare function setVizQuality(level: VizQualityLevel): void;
+declare function onVizQualityChange(cb: (level: VizQualityLevel) => void): () => void;
+/** Restore the persisted quality's DENSITY into the vizConfig singleton on
+ *  startup (call once at app init, like `applyPersistedInlineVizActionSize`).
+ *
+ *  Density ONLY — deliberately NOT resolution. Resolution is pull-model (read
+ *  fresh from its own `stave:inlineVizResolution` setting when a zone mounts),
+ *  and `setVizQuality` already writes that setting at set-time, so a chosen
+ *  level's resolution persists through that channel. Re-applying resolution here
+ *  would CLOBBER a user's standalone render-resolution override on every reload
+ *  (it would force the default level's 512 whenever quality was never changed).
+ *  Density, by contrast, lives in the in-memory vizConfig singleton that resets
+ *  to default(1) per page load, so it's the only knob that needs restoring. */
+declare function applyPersistedVizQuality(): void;
+/** Whether off-screen inline viz are torn down (destroyed to reclaim memory)
+ *  after the threshold. Default ON. */
+declare function getInlineVizTeardownEnabled(): boolean;
+/** Enable/disable off-screen inline-viz teardown. Notifies listeners; takes
+ *  effect on the next zone (re)mount / evaluate. */
+declare function setInlineVizTeardownEnabled(on: boolean): void;
+declare function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void;
+/** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
+ *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
+ *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
+ *  test churn harnesses) — clamped to ≥1000ms; absent → the 60s default. */
+declare function getInlineVizTeardownMs(): number;
+/** Whether the open Stave Inputs drawer paints live master signal values
+ *  (#346). Default ON. */
+declare function getVizInputsLiveValuesEnabled(): boolean;
+/** Enable/disable live values in the Stave Inputs drawer. Notifies listeners so
+ *  a mounted panel can start/stop its paint loop without a reload. */
+declare function setVizInputsLiveValuesEnabled(on: boolean): void;
+declare function onVizInputsLiveValuesChange(cb: (on: boolean) => void): () => void;
+declare function getMusicalTimelineSubRowHeight(): number;
+declare function setMusicalTimelineSubRowHeight(h: number): void;
+declare function onMusicalTimelineSubRowHeightChange(cb: (h: number) => void): () => void;
+/** CSS variable read by the shell's code-panel blur rule (see
+ *  globals.css). 0 disables the blur entirely; higher values push
+ *  more toward frosted-glass legibility. */
+declare const BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
+declare function getEditorBackdropBlur(): number;
+declare function setEditorBackdropBlur(size: number): void;
+declare function applyPersistedBackdropBlur(): void;
+declare function getBackdropOpacity(): number;
+declare function setBackdropOpacity(o: number): void;
+declare function onBackdropOpacityChange(cb: (o: number) => void): () => void;
+/** The flat per-engine view the bus consumes and the settings UI edits. */
+type SignalAliasMap = Record<string, string | string[]>;
+/** The raw engine-keyed custom-alias map (sanitized + migrated). Source of
+ *  truth for the renderer's `resolveAliasesForEngine` and any future
+ *  multi-engine settings UI. */
+declare function getStoredSignalAliases(): StoredSignalAliases;
+/** Custom signal aliases for ONE engine (default: the active engine, Strudel),
+ *  as the flat `name → value` view the settings UI edits. Built-ins are NOT
+ *  included — custom map only. */
+declare function getSignalAliases(engine?: VizEngine): SignalAliasMap;
+/** Replace the custom aliases for ONE engine (default: active/Strudel) from the
+ *  flat `name → value` view, persist, and notify. Surviving names KEEP their
+ *  other engines' slots (editing the Strudel column never wipes a Sonic Pi one);
+ *  names absent from `map` are removed. The values are sanitized so a bad caller
+ *  can't poison storage. */
+declare function setSignalAliases(map: SignalAliasMap, engine?: VizEngine): void;
+/** Subscribe to alias-map changes (fires on every setSignalAliases). The
+ *  callback receives the FLAT view for the engine that was set. Returns an
+ *  unsubscribe. */
+declare function onSignalAliasesChange(cb: (map: SignalAliasMap) => void): () => void;
+type BackdropQuality = 'full' | 'half' | 'quarter';
+declare function getBackdropQuality(): BackdropQuality;
+declare function setBackdropQuality(q: BackdropQuality): void;
+declare function onBackdropQualityChange(cb: (q: BackdropQuality) => void): () => void;
+/** Resolution factor applied to the backdrop — render at factor×
+ *  viewport size, CSS-stretch to fill. Lower = cheaper GPU. */
+declare function backdropQualityFactor(q: BackdropQuality): number;
+type EditorTheme = 'dark' | 'light' | 'system';
+type ResolvedTheme = 'dark' | 'light';
+type ThemeListener = (t: ResolvedTheme) => void;
+declare function getEditorTheme(): EditorTheme;
+declare function getResolvedTheme(): ResolvedTheme;
+declare function setEditorTheme(theme: EditorTheme): void;
+/** Cycle dark → light → system → dark. Used by the menu command. */
+declare function cycleEditorTheme(): EditorTheme;
+/** Subscribe to resolved theme changes. Fires when mode changes or when
+ * 'system' preference flips. Returns an unsubscribe. */
+declare function onThemeChange(fn: ThemeListener): () => void;
+/** Seed DOM + monaco with the persisted theme. Call after mounting. */
+declare function applyPersistedTheme(): void;
+/** Whether the perf overlay/profiler is enabled (persisted preference, or the
+ *  `__STAVE_PERF__` global force-on). */
+declare function getPerfEnabled(): boolean;
+/** Enable/disable the perf profiler + overlay. Persists, flips the profiler
+ *  singleton's live flag, and notifies listeners (the overlay subscribes). */
+declare function setPerfEnabled(on: boolean): void;
+/** Toggle the perf overlay; returns the new state. */
+declare function togglePerfEnabled(): boolean;
+/** Subscribe to perf-enabled changes (fires on set/toggle). Returns an
+ *  unsubscribe. */
+declare function onPerfEnabledChange(cb: (on: boolean) => void): () => void;
+/** Apply the persisted perf-enabled preference to the profiler. Call once at
+ *  app start so a reload restores an enabled overlay. */
+declare function applyPersistedPerfEnabled(): void;
+/** Whether adaptive performance (the viz governor) is enabled (persisted; ON by default). */
+declare function getAdaptivePerfEnabled(): boolean;
+/** Enable/disable adaptive performance. Persists, flips the governor's live gate
+ *  (disabling releases the levers immediately — full resolution, no throttle),
+ *  and notifies listeners. */
+declare function setAdaptivePerfEnabled(on: boolean): void;
+/** Toggle adaptive performance; returns the new state. */
+declare function toggleAdaptivePerfEnabled(): boolean;
+/** Subscribe to adaptive-performance changes (fires on set/toggle). */
+declare function onAdaptivePerfChange(cb: (on: boolean) => void): () => void;
+/** Apply the persisted adaptive-performance preference to the governor. Call once
+ *  at app start (like applyPersistedPerfEnabled) so the governor's live flag agrees
+ *  with the stored preference regardless of module-load ordering. */
+declare function applyPersistedAdaptivePerf(): void;
+
+/**
  * Phase 10.2 — Workspace type vocabulary.
  *
  * This file is the single source of truth for workspace-level types. Each
@@ -3364,6 +3614,20 @@ interface WorkspaceGroupState {
     readonly tabs: readonly WorkspaceTab[];
     readonly activeTabId: string | null;
     readonly backgroundFileId?: string;
+    /**
+     * Per-pane backdrop opacity override (#350c). When set, this group's
+     * backdrop renders at this opacity instead of the global
+     * `getBackdropOpacity()` default. Absent → the global default applies.
+     * Persisted user intent (survives reload), unlike the transient code
+     * override — so it lives on the group snapshot.
+     */
+    readonly backdropOpacity?: number;
+    /**
+     * Per-pane backdrop quality override (#350c). When set, this group's
+     * backdrop renders at this quality tier instead of the global
+     * `getBackdropQuality()` default. Absent → the global default applies.
+     */
+    readonly backdropQuality?: BackdropQuality;
 }
 /**
  * Per-file runtime that wraps a `LiveCodingEngine`. Created by a
@@ -3690,6 +3954,16 @@ interface WorkspaceShellProps {
      * state fire since an unset backdrop is the default.
      */
     readonly onBackgroundFileChange?: (groupId: string, fileId: string | null) => void;
+    /**
+     * Fires when the ACTIVE group's RESOLVED backdrop changes (#350a) — the code
+     * override (`setBackgroundOverride`) if present, else the manual sticky. This
+     * is "what is currently showing behind the active editor," for UI that must
+     * reflect reality (the menubar bg indicator, the popover pinned-state). Unlike
+     * `onBackgroundFileChange`, it is NOT a persistence signal — code overrides are
+     * transient — so consumers must mirror it into UI state WITHOUT persisting.
+     * Fires once per real change (ref-guarded); no per-eval churn for steady code.
+     */
+    readonly onActiveBackdropChange?: (fileId: string | null) => void;
     /**
      * Crop region applied to the pinned backdrop — 0–1 fractional
      * `{x, y, w, h}`. Absent means render the full viz rect. The
@@ -4420,85 +4694,6 @@ declare function mountVizRenderer(container: HTMLDivElement, source: VizRenderer
 };
 
 /**
- * aliasMap — built-in named-signal aliases for the SignalBus, plus the
- * engine-keyed model that lets one alias NAME carry per-engine sound lists.
- *
- * ## Why engine-keyed
- * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
- * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
- * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
- * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
- * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
- * :9609; every trigger resolves to a single `scsynth_name` string,
- * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
- * single STRING (or a list) — the alias VALUE type never needs to be richer,
- * only the values differ per engine. So an alias absorbs the leak: the NAME
- * (`kick`) stays unified across engines, only the sound list is per-engine.
- *
- *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
- *
- * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
- * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
- * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
- * storage + this resolver (PV12: the bus stays pure, never sees an engine).
- *
- * ## Array aliases
- * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
- * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
- * value as the MAX over members (any tom firing lights the alias).
- *
- * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
- * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
- */
-/** The live-coding engine a viz sketch is currently driven by. Strudel is the
- *  only engine wired today; `sonicpi` is reserved for Sonic Pi Web (a thesis,
- *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
- *  storage/sanitize keep ANY engine key with a valid value, so a future engine
- *  survives a round-trip through an older build. */
-type VizEngine = 'strudel' | 'sonicpi';
-/** A resolved alias value for one engine: a single sound name, or a list whose
- *  envelope reads as the MAX over members. */
-type EngineAliasValue = string | string[];
-/** One alias' per-engine sound lists. Partial: an alias may define a value for
- *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
- *  equivalent → silently inert under Sonic Pi, never a crash). */
-type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
-/** The persisted custom-alias shape: alias name → per-engine sound lists. This
- *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
- *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
-type StoredSignalAliases = Record<string, EngineAliasMap>;
-/** The active viz engine. Strudel is the only live engine today; this is the
- *  single wire-point — when Sonic Pi Web lands, source the active engine from
- *  the running `LiveCodingEngine` at the renderer mount and pass it to
- *  `resolveAliasesForEngine`. */
-declare const DEFAULT_VIZ_ENGINE: VizEngine;
-/**
- * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
- * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
- * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
- * signals work cross-engine the day Sonic Pi Web ships. Aliases with no
- * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
- * slot rather than guess — they stay Strudel-only until a user maps them.
- */
-declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
-/**
- * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
- * consumes for a single engine. Built-ins first, custom LAST so a user override
- * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
- * alias with no value for `engine` is omitted (its bare name stays unbound under
- * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
- * custom map as an arg, imports nothing impure (PV12).
- */
-declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
-/**
- * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
- * Kept as a derived view for back-compat: the bus' default constructor and the
- * renderers' bare-name injection consume this flat shape. Equivalent to the
- * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
- */
-declare const ALIAS_MAP: Record<string, EngineAliasValue>;
-
-/**
  * profiler — a zero-cost-when-disabled runtime performance profiler.
  *
  * WHY (issue #228): we want to optimize viz smoothness / main-thread budget /
@@ -4861,12 +5056,39 @@ interface WorkspaceShellHandle {
      */
     setBackgroundFile(fileId: string | null, groupId?: string): void;
     /**
+     * Set the TRANSIENT code-override backdrop for a group (#350a). Pass `null`
+     * to drop the override so the manual sticky (`setBackgroundFile`) shows again.
+     * `groupId` defaults to the active group. Unlike `setBackgroundFile`, this is
+     * NOT persisted and does NOT fire `onBackgroundFileChange` — it's the active
+     * program's per-eval `.scope()` / `.viz({ backdrop })` declaration, which
+     * OVERLAYS the sticky and clears back to it when the code stops declaring one.
+     */
+    setBackgroundOverride(fileId: string | null, groupId?: string): void;
+    /**
      * Read the current backdrop fileId for a group (default: active
      * group). Returns `undefined` when no backdrop is pinned. Useful for
      * UI that needs to render a "Clear" vs "Set" label without
      * subscribing to every shell state change.
      */
     getBackgroundFileId(groupId?: string): string | undefined;
+    /**
+     * Set/clear a group's per-pane backdrop opacity (#350c). `null` drops the
+     * override so the global default applies. `groupId` defaults to the active
+     * group. Persisted (survives reload) — it's user intent, not transient
+     * code state.
+     */
+    setBackdropOpacity(opacity: number | null, groupId?: string): void;
+    /** Set/clear a group's per-pane backdrop quality (#350c). `null` → global default. */
+    setBackdropQuality(quality: BackdropQuality | null, groupId?: string): void;
+    /**
+     * Read a group's RESOLVED backdrop settings (#350c) — the per-pane override
+     * if set, else the global default. `groupId` defaults to the active group.
+     * Lets the popover seed its controls without subscribing to shell state.
+     */
+    getBackdropSettings(groupId?: string): {
+        opacity: number;
+        quality: BackdropQuality;
+    };
 }
 declare const WorkspaceShell: React__default.ForwardRefExoticComponent<WorkspaceShellProps & React__default.RefAttributes<WorkspaceShellHandle>>;
 
@@ -5330,177 +5552,6 @@ declare function redo(): boolean;
 declare function canUndo(): boolean;
 declare function canRedo(): boolean;
 declare function subscribeToUndoState(cb: Listener$5): () => void;
-
-/**
- * editorRegistry — tiny module-level map so callers outside the
- * editor package (shell, app, outline panel) can find the Monaco
- * editor instance that's currently rendering a given fileId. Used
- * for cross-file navigation features like "reveal at line".
- *
- * EditorView registers on mount and unregisters on unmount. Only the
- * ACTIVE editor for a fileId matters — if two groups show the same
- * file, the last mount wins, which matches the UX ("jump to this
- * symbol" lands wherever the editor is currently focused).
- */
-
-/**
- * Reveal the given line in the editor for `fileId` and set the cursor
- * at column 1. Returns true if the editor was found. Line numbers are
- * 1-based.
- */
-declare function revealLineInFile(fileId: string, line: number): boolean;
-/** CSS variable that scales every chrome-level icon glyph (menu gear,
- *  activity bar, etc.). Applied to documentElement on mount and on
- *  every change. */
-declare const UI_ICON_SIZE_VAR = "--ui-icon-size";
-/** Separate CSS variable for the floating action buttons (edit / crop)
- *  attached to inline `.viz()` zones. They sit inside the canvas area
- *  and tend to need a tighter scale than the rest of the chrome —
- *  hence their own slider, independent of the main UI icon size. */
-declare const INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
-/** Get the current global editor font size (px). */
-declare function getEditorFontSize(): number;
-/** Get the current global minimap visibility flag. */
-declare function getEditorMinimap(): boolean;
-/** Set the font size (clamped 8–40) and apply to every open editor. */
-declare function setEditorFontSize(size: number): void;
-/** Bump font size by delta (positive / negative). */
-declare function bumpEditorFontSize(delta: number): void;
-/** Toggle minimap visibility across every open editor. */
-declare function toggleEditorMinimap(): void;
-declare function getEditorUiIconSize(): number;
-declare function setEditorUiIconSize(size: number): void;
-declare function onUiIconSizeChange(cb: (size: number) => void): () => void;
-/** Apply the persisted icon size to the document root on first mount. */
-declare function applyPersistedUiIconSize(): void;
-declare function getInlineVizActionSize(): number;
-declare function setInlineVizActionSize(size: number): void;
-declare function onInlineVizActionSizeChange(cb: (size: number) => void): () => void;
-declare function applyPersistedInlineVizActionSize(): void;
-/** Current inline-viz render resolution (height in px). */
-declare function getInlineVizResolution(): number;
-/** Set the inline-viz render resolution (clamped 64–2048). Notifies listeners;
- *  takes effect on the next zone (re)mount / evaluate. */
-declare function setInlineVizResolution(n: number): void;
-declare function onInlineVizResolutionChange(cb: (n: number) => void): () => void;
-/** Current viz quality level ("performance mode"). */
-declare function getVizQuality(): VizQualityLevel;
-/** Set the viz quality level — persists, applies resolution + density to their
- *  channels (the density marshals live to worker viz), and notifies listeners. */
-declare function setVizQuality(level: VizQualityLevel): void;
-declare function onVizQualityChange(cb: (level: VizQualityLevel) => void): () => void;
-/** Restore the persisted quality's DENSITY into the vizConfig singleton on
- *  startup (call once at app init, like `applyPersistedInlineVizActionSize`).
- *
- *  Density ONLY — deliberately NOT resolution. Resolution is pull-model (read
- *  fresh from its own `stave:inlineVizResolution` setting when a zone mounts),
- *  and `setVizQuality` already writes that setting at set-time, so a chosen
- *  level's resolution persists through that channel. Re-applying resolution here
- *  would CLOBBER a user's standalone render-resolution override on every reload
- *  (it would force the default level's 512 whenever quality was never changed).
- *  Density, by contrast, lives in the in-memory vizConfig singleton that resets
- *  to default(1) per page load, so it's the only knob that needs restoring. */
-declare function applyPersistedVizQuality(): void;
-/** Whether off-screen inline viz are torn down (destroyed to reclaim memory)
- *  after the threshold. Default ON. */
-declare function getInlineVizTeardownEnabled(): boolean;
-/** Enable/disable off-screen inline-viz teardown. Notifies listeners; takes
- *  effect on the next zone (re)mount / evaluate. */
-declare function setInlineVizTeardownEnabled(on: boolean): void;
-declare function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void;
-/** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
- *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
- *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
- *  test churn harnesses) — clamped to ≥1000ms; absent → the 60s default. */
-declare function getInlineVizTeardownMs(): number;
-/** Whether the open Stave Inputs drawer paints live master signal values
- *  (#346). Default ON. */
-declare function getVizInputsLiveValuesEnabled(): boolean;
-/** Enable/disable live values in the Stave Inputs drawer. Notifies listeners so
- *  a mounted panel can start/stop its paint loop without a reload. */
-declare function setVizInputsLiveValuesEnabled(on: boolean): void;
-declare function onVizInputsLiveValuesChange(cb: (on: boolean) => void): () => void;
-declare function getMusicalTimelineSubRowHeight(): number;
-declare function setMusicalTimelineSubRowHeight(h: number): void;
-declare function onMusicalTimelineSubRowHeightChange(cb: (h: number) => void): () => void;
-/** CSS variable read by the shell's code-panel blur rule (see
- *  globals.css). 0 disables the blur entirely; higher values push
- *  more toward frosted-glass legibility. */
-declare const BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
-declare function getEditorBackdropBlur(): number;
-declare function setEditorBackdropBlur(size: number): void;
-declare function applyPersistedBackdropBlur(): void;
-declare function getBackdropOpacity(): number;
-declare function setBackdropOpacity(o: number): void;
-declare function onBackdropOpacityChange(cb: (o: number) => void): () => void;
-/** The flat per-engine view the bus consumes and the settings UI edits. */
-type SignalAliasMap = Record<string, string | string[]>;
-/** The raw engine-keyed custom-alias map (sanitized + migrated). Source of
- *  truth for the renderer's `resolveAliasesForEngine` and any future
- *  multi-engine settings UI. */
-declare function getStoredSignalAliases(): StoredSignalAliases;
-/** Custom signal aliases for ONE engine (default: the active engine, Strudel),
- *  as the flat `name → value` view the settings UI edits. Built-ins are NOT
- *  included — custom map only. */
-declare function getSignalAliases(engine?: VizEngine): SignalAliasMap;
-/** Replace the custom aliases for ONE engine (default: active/Strudel) from the
- *  flat `name → value` view, persist, and notify. Surviving names KEEP their
- *  other engines' slots (editing the Strudel column never wipes a Sonic Pi one);
- *  names absent from `map` are removed. The values are sanitized so a bad caller
- *  can't poison storage. */
-declare function setSignalAliases(map: SignalAliasMap, engine?: VizEngine): void;
-/** Subscribe to alias-map changes (fires on every setSignalAliases). The
- *  callback receives the FLAT view for the engine that was set. Returns an
- *  unsubscribe. */
-declare function onSignalAliasesChange(cb: (map: SignalAliasMap) => void): () => void;
-type BackdropQuality = 'full' | 'half' | 'quarter';
-declare function getBackdropQuality(): BackdropQuality;
-declare function setBackdropQuality(q: BackdropQuality): void;
-declare function onBackdropQualityChange(cb: (q: BackdropQuality) => void): () => void;
-/** Resolution factor applied to the backdrop — render at factor×
- *  viewport size, CSS-stretch to fill. Lower = cheaper GPU. */
-declare function backdropQualityFactor(q: BackdropQuality): number;
-type EditorTheme = 'dark' | 'light' | 'system';
-type ResolvedTheme = 'dark' | 'light';
-type ThemeListener = (t: ResolvedTheme) => void;
-declare function getEditorTheme(): EditorTheme;
-declare function getResolvedTheme(): ResolvedTheme;
-declare function setEditorTheme(theme: EditorTheme): void;
-/** Cycle dark → light → system → dark. Used by the menu command. */
-declare function cycleEditorTheme(): EditorTheme;
-/** Subscribe to resolved theme changes. Fires when mode changes or when
- * 'system' preference flips. Returns an unsubscribe. */
-declare function onThemeChange(fn: ThemeListener): () => void;
-/** Seed DOM + monaco with the persisted theme. Call after mounting. */
-declare function applyPersistedTheme(): void;
-/** Whether the perf overlay/profiler is enabled (persisted preference, or the
- *  `__STAVE_PERF__` global force-on). */
-declare function getPerfEnabled(): boolean;
-/** Enable/disable the perf profiler + overlay. Persists, flips the profiler
- *  singleton's live flag, and notifies listeners (the overlay subscribes). */
-declare function setPerfEnabled(on: boolean): void;
-/** Toggle the perf overlay; returns the new state. */
-declare function togglePerfEnabled(): boolean;
-/** Subscribe to perf-enabled changes (fires on set/toggle). Returns an
- *  unsubscribe. */
-declare function onPerfEnabledChange(cb: (on: boolean) => void): () => void;
-/** Apply the persisted perf-enabled preference to the profiler. Call once at
- *  app start so a reload restores an enabled overlay. */
-declare function applyPersistedPerfEnabled(): void;
-/** Whether adaptive performance (the viz governor) is enabled (persisted; ON by default). */
-declare function getAdaptivePerfEnabled(): boolean;
-/** Enable/disable adaptive performance. Persists, flips the governor's live gate
- *  (disabling releases the levers immediately — full resolution, no throttle),
- *  and notifies listeners. */
-declare function setAdaptivePerfEnabled(on: boolean): void;
-/** Toggle adaptive performance; returns the new state. */
-declare function toggleAdaptivePerfEnabled(): boolean;
-/** Subscribe to adaptive-performance changes (fires on set/toggle). */
-declare function onAdaptivePerfChange(cb: (on: boolean) => void): () => void;
-/** Apply the persisted adaptive-performance preference to the governor. Call once
- *  at app start (like applyPersistedPerfEnabled) so the governor's live flag agrees
- *  with the stored preference regardless of module-load ordering. */
-declare function applyPersistedAdaptivePerf(): void;
 
 /**
  * SnapshotStore — PM Phase 4 (version history, MVP).
@@ -7330,6 +7381,10 @@ interface PersistedGroup {
     readonly tabs: readonly PersistedEditorTab[];
     readonly activeTabId: string | null;
     readonly backgroundFileId?: string;
+    /** Per-pane backdrop opacity override (#350c). Absent → global default. */
+    readonly backdropOpacity?: number;
+    /** Per-pane backdrop quality override (#350c). Absent → global default. */
+    readonly backdropQuality?: BackdropQuality;
 }
 interface PersistedEditorTab {
     readonly kind: 'editor';

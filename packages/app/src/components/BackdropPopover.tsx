@@ -15,15 +15,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import {
-  getBackdropOpacity,
-  setBackdropOpacity,
-  onBackdropOpacityChange,
-  getBackdropQuality,
-  setBackdropQuality,
-  onBackdropQualityChange,
-  type BackdropQuality,
-} from "@stave/editor";
+import { type BackdropQuality } from "@stave/editor";
 
 export interface BackdropPopoverVizFile {
   id: string;
@@ -39,6 +31,15 @@ interface Props {
   onSetBackdrop: (fileId: string | null) => void;
   onCropBackground: () => void;
   onRevealBackground: () => void;
+  /**
+   * #350c — per-pane backdrop opacity/quality. The values are the ACTIVE
+   * pane's RESOLVED settings (its override, else the global default) read at
+   * open; the setters route to the active pane's override on the shell handle.
+   */
+  initialOpacity: number;
+  initialQuality: BackdropQuality;
+  onSetOpacity: (opacity: number) => void;
+  onSetQuality: (quality: BackdropQuality) => void;
 }
 
 export function BackdropPopover(props: Props) {
@@ -67,13 +68,13 @@ export function BackdropPopover(props: Props) {
     };
   }, [props]);
 
-  // Subscriptions — live-update when settings change elsewhere.
-  const [opacity, setOpacity] = useState(() => getBackdropOpacity());
-  useEffect(() => onBackdropOpacityChange(setOpacity), []);
-  const [quality, setQuality] = useState<BackdropQuality>(() =>
-    getBackdropQuality(),
+  // #350c — seed from the ACTIVE pane's resolved settings (override-or-global)
+  // at open. The popover is mounted fresh on each open, so no live subscription
+  // is needed; edits route to the active pane's override via the props.
+  const [opacity, setOpacity] = useState(() => props.initialOpacity);
+  const [quality, setQuality] = useState<BackdropQuality>(
+    () => props.initialQuality,
   );
-  useEffect(() => onBackdropQualityChange(setQuality), []);
   const pinned = props.backgroundFileId != null;
 
   // Position below the indicator, right-aligned to its right edge.
@@ -144,7 +145,7 @@ export function BackdropPopover(props: Props) {
               onChange={(e) => {
                 const v = Number(e.target.value);
                 setOpacity(v);
-                setBackdropOpacity(v);
+                props.onSetOpacity(v);
               }}
               style={rangeStyle}
             />
@@ -159,7 +160,7 @@ export function BackdropPopover(props: Props) {
               onChange={(e) => {
                 const v = e.target.value as BackdropQuality;
                 setQuality(v);
-                setBackdropQuality(v);
+                props.onSetQuality(v);
               }}
               style={selectStyle}
             >

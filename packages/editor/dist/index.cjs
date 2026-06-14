@@ -4259,6 +4259,12 @@ var _StrudelEngine = class _StrudelEngine {
           writable: true,
           value: /* @__PURE__ */ __name(function(vizName, opts) {
             const resolvedName = extractVizName(vizName);
+            const optsObj = opts && typeof opts === "object" ? opts : null;
+            if (resolvedName && optsObj && optsObj.backdrop === true) {
+              capturedBackdropViz = resolvedName;
+              capturedBackdropVizOptions = optsObj;
+              return strudelViz ? strudelViz.call(this, vizName) : this;
+            }
             const result = strudelViz ? strudelViz.call(this, vizName) : this;
             if (resolvedName) {
               result._pendingViz = resolvedName;
@@ -22776,6 +22782,12 @@ function HistoryViewOverlay({
 }
 __name(HistoryViewOverlay, "HistoryViewOverlay");
 
+// src/workspace/backdropPrecedence.ts
+function resolveBackdropFileId(stickyFileId, overrideFileId) {
+  return overrideFileId ?? stickyFileId;
+}
+__name(resolveBackdropFileId, "resolveBackdropFileId");
+
 // src/workspace/groupLayout.ts
 function findGroupCoords(layout, groupId) {
   for (let c = 0; c < layout.length; c++) {
@@ -24344,6 +24356,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
   height = "100%",
   onActiveTabChange,
   onBackgroundFileChange,
+  onActiveBackdropChange,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -24371,6 +24384,18 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
   const [activeGroupId, setActiveGroupId] = React8.useState(
     () => initialState.current.activeGroupId
   );
+  const [bgOverrides, setBgOverrides] = React8.useState(
+    () => /* @__PURE__ */ new Map()
+  );
+  const lastActiveBackdropRef = React8.useRef(null);
+  React8.useEffect(() => {
+    const g = groups.get(activeGroupId);
+    const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
+    if (resolved !== lastActiveBackdropRef.current) {
+      lastActiveBackdropRef.current = resolved;
+      onActiveBackdropChange?.(resolved);
+    }
+  }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
   const didMountRef = React8.useRef(false);
   React8.useEffect(() => {
     if (!didMountRef.current) {
@@ -24654,6 +24679,37 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       onBackgroundFileChange?.(groupId, backgroundFileId);
     },
     [groups, updateGroup, onBackgroundFileChange]
+  );
+  const updateGroupOverride = React8.useCallback(
+    (groupId, overrideFileId) => {
+      setBgOverrides((prev) => {
+        const cur = prev.get(groupId) ?? null;
+        if (cur === overrideFileId) return prev;
+        const next = new Map(prev);
+        if (overrideFileId == null) next.delete(groupId);
+        else next.set(groupId, overrideFileId);
+        return next;
+      });
+    },
+    []
+  );
+  const updateGroupBackdropOpacity = React8.useCallback(
+    (groupId, opacity) => {
+      const prev = groups.get(groupId)?.backdropOpacity;
+      const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
+      if (prev === nextVal) return;
+      updateGroup(groupId, (g) => ({ ...g, backdropOpacity: nextVal }));
+    },
+    [groups, updateGroup]
+  );
+  const updateGroupBackdropQuality = React8.useCallback(
+    (groupId, quality) => {
+      const prev = groups.get(groupId)?.backdropQuality;
+      const nextVal = quality ?? void 0;
+      if (prev === nextVal) return;
+      updateGroup(groupId, (g) => ({ ...g, backdropQuality: nextVal }));
+    },
+    [groups, updateGroup]
   );
   const closeTabById = React8.useCallback(
     (tabId) => {
@@ -25318,8 +25374,12 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                 "data-workspace-group-content": group.id,
                 style: { flex: 1, minHeight: 0, position: "relative" },
                 children: [
-                  group.backgroundFileId && (() => {
-                    const bgFileId = group.backgroundFileId;
+                  (() => {
+                    const bgFileId = resolveBackdropFileId(
+                      group.backgroundFileId,
+                      bgOverrides.get(group.id)
+                    );
+                    if (!bgFileId) return null;
                     const bgProvider = previewProviderFor?.({
                       kind: "preview",
                       id: `bg-${bgFileId}`,
@@ -25327,7 +25387,9 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                       sourceRef: { kind: "default" }
                     });
                     if (!bgProvider) return null;
-                    const qf = backdropQualityFactor(backdropQuality);
+                    const groupQuality = group.backdropQuality ?? backdropQuality;
+                    const groupOpacity = group.backdropOpacity ?? backdropOpacity;
+                    const qf = backdropQualityFactor(groupQuality);
                     const crop = backgroundCrop ?? null;
                     const cx = crop?.x ?? 0;
                     const cy = crop?.y ?? 0;
@@ -25343,7 +25405,8 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                       {
                         "data-workspace-background": group.id,
                         "data-background-file-id": bgFileId,
-                        "data-backdrop-quality": backdropQuality,
+                        "data-backdrop-quality": groupQuality,
+                        "data-backdrop-live": isShellActiveGroup ? "true" : "false",
                         style: {
                           position: "absolute",
                           inset: 0,
@@ -25351,7 +25414,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                           // Viz renders at user-set opacity. Stacks with
                           // the code-panel wash in globals.css — both
                           // dim the viz behind the code. Defaults to 1.
-                          opacity: backdropOpacity,
+                          opacity: groupOpacity,
                           pointerEvents: "none",
                           overflow: "hidden"
                         },
@@ -25377,6 +25440,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                                 sourceRef: { kind: "default" },
                                 theme,
                                 hidden: false,
+                                paused: !isShellActiveGroup,
                                 onSourceRefChange: () => {
                                 }
                               }
@@ -25390,7 +25454,10 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                     "div",
                     {
                       "data-stave-code-panel": "true",
-                      "data-stave-backdrop": group.backgroundFileId ? "on" : "off",
+                      "data-stave-backdrop": resolveBackdropFileId(
+                        group.backgroundFileId,
+                        bgOverrides.get(group.id)
+                      ) ? "on" : "off",
                       style: {
                         position: "relative",
                         zIndex: 0,
@@ -25439,6 +25506,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       backgroundCrop,
       backdropQuality,
       backdropOpacity,
+      bgOverrides,
       previewProviderFor,
       theme
     ]
@@ -25664,13 +25732,47 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
         if (!gid) return;
         updateGroupBackground(gid, fileId);
       }, "setBackgroundFile"),
+      setBackgroundOverride: /* @__PURE__ */ __name((fileId, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupOverride(gid, fileId);
+      }, "setBackgroundOverride"),
       getBackgroundFileId: /* @__PURE__ */ __name((groupId) => {
         const gid = groupId ?? activeGroupId;
         if (!gid) return void 0;
         return groups.get(gid)?.backgroundFileId;
-      }, "getBackgroundFileId")
+      }, "getBackgroundFileId"),
+      setBackdropOpacity: /* @__PURE__ */ __name((opacity, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupBackdropOpacity(gid, opacity);
+      }, "setBackdropOpacity"),
+      setBackdropQuality: /* @__PURE__ */ __name((quality, groupId) => {
+        const gid = groupId ?? activeGroupId;
+        if (!gid) return;
+        updateGroupBackdropQuality(gid, quality);
+      }, "setBackdropQuality"),
+      getBackdropSettings: /* @__PURE__ */ __name((groupId) => {
+        const gid = groupId ?? activeGroupId;
+        const g = gid ? groups.get(gid) : void 0;
+        return {
+          opacity: g?.backdropOpacity ?? backdropOpacity,
+          quality: g?.backdropQuality ?? backdropQuality
+        };
+      }, "getBackdropSettings")
     }),
-    [groups, activeGroupId, closeTabById, handleSplit, updateGroupBackground]
+    [
+      groups,
+      activeGroupId,
+      closeTabById,
+      handleSplit,
+      updateGroupBackground,
+      updateGroupOverride,
+      updateGroupBackdropOpacity,
+      updateGroupBackdropQuality,
+      backdropOpacity,
+      backdropQuality
+    ]
   );
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
@@ -29392,6 +29494,12 @@ function CompiledVizMount(props) {
         reportError
       );
       rendererRef.current = mounted;
+      if (paused) {
+        try {
+          mounted.renderer.pause();
+        } catch {
+        }
+      }
     } catch (err) {
       reportError(err instanceof Error ? err : new Error(String(err)));
     }
@@ -29653,6 +29761,14 @@ function emitFromGlobal(err, _kind) {
 __name(emitFromGlobal, "emitFromGlobal");
 
 // src/workspace/tabPersistence.ts
+function validBackdropOpacity(v) {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : void 0;
+}
+__name(validBackdropOpacity, "validBackdropOpacity");
+function validBackdropQuality(v) {
+  return v === "full" || v === "half" || v === "quarter" ? v : void 0;
+}
+__name(validBackdropQuality, "validBackdropQuality");
 var SHELL_STATE_KEY_PREFIX = "stave:workspace:";
 var SHELL_STATE_VERSION = 1;
 function shellStateKeyFor(projectId) {
@@ -29708,11 +29824,15 @@ function validatePersistedState(input, validFileIds) {
       activeTabId = cleanedTabs.length > 0 ? cleanedTabs[0].id : null;
     }
     const bg3 = typeof g.backgroundFileId === "string" && validFileIds.has(g.backgroundFileId) ? g.backgroundFileId : void 0;
+    const opacity = validBackdropOpacity(g.backdropOpacity);
+    const quality = validBackdropQuality(g.backdropQuality);
     cleanedGroups[gid] = {
       id: gid,
       tabs: cleanedTabs,
       activeTabId,
-      ...bg3 !== void 0 ? { backgroundFileId: bg3 } : {}
+      ...bg3 !== void 0 ? { backgroundFileId: bg3 } : {},
+      ...opacity !== void 0 ? { backdropOpacity: opacity } : {},
+      ...quality !== void 0 ? { backdropQuality: quality } : {}
     };
   }
   const cleanedLayout = [];
@@ -29759,7 +29879,9 @@ function serializeShellState(snapshot) {
       id: gid,
       tabs: editorTabs,
       activeTabId,
-      ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {}
+      ...g.backgroundFileId !== void 0 ? { backgroundFileId: g.backgroundFileId } : {},
+      ...g.backdropOpacity !== void 0 ? { backdropOpacity: g.backdropOpacity } : {},
+      ...g.backdropQuality !== void 0 ? { backdropQuality: g.backdropQuality } : {}
     };
   }
   return {
@@ -29815,7 +29937,9 @@ function hydrateSnapshot(persisted) {
         ...t.preview === true ? { preview: true } : {}
       })),
       activeTabId: pg.activeTabId,
-      ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {}
+      ...pg.backgroundFileId !== void 0 ? { backgroundFileId: pg.backgroundFileId } : {},
+      ...pg.backdropOpacity !== void 0 ? { backdropOpacity: pg.backdropOpacity } : {},
+      ...pg.backdropQuality !== void 0 ? { backdropQuality: pg.backdropQuality } : {}
     });
   }
   return {
