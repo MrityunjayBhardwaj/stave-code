@@ -40,10 +40,11 @@ test('non-underscore .scope() pins the backdrop and updates the "set bg" indicat
   await setCode(page, `$: note("c e g").s("sawtooth").scope()`)
   await runCode(page)
 
-  const bgIndicator = page.locator('[data-pinned]')
-  await expect(bgIndicator).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
-  await expect(bgIndicator).toContainText(/bg:.*scope/i)
-  await expect(page.locator('[data-workspace-background]')).toHaveCount(1)
+  // #347 removed the menubar bg-indicator; the real signal that a code-driven
+  // backdrop pinned is the rendered backdrop node + its resolved file id.
+  const bg = page.locator('[data-workspace-background]')
+  await expect(bg).toHaveCount(1, { timeout: 6000 })
+  await expect(bg.first()).toHaveAttribute('data-background-file-id', /.+/)
   // strudel's own fullscreen canvas must NOT be injected
   expect(await page.locator('canvas#test-canvas').count()).toBe(0)
   expect(errors).toEqual([])
@@ -52,9 +53,7 @@ test('non-underscore .scope() pins the backdrop and updates the "set bg" indicat
 test('non-underscore .pianoroll() resolves to "Piano Roll.p5" via normalized basename', async ({ page }) => {
   await setCode(page, `$: note("c e g").s("sawtooth").pianoroll()`)
   await runCode(page)
-  const bgIndicator = page.locator('[data-pinned]')
-  await expect(bgIndicator).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
-  await expect(bgIndicator).toContainText(/bg:.*piano/i)
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(1, { timeout: 6000 })
 })
 
 test('backdrop .pianoroll({ opts }) threads options to the backdrop sketch (#214)', async ({ page }) => {
@@ -89,7 +88,7 @@ test('backdrop .pianoroll({ opts }) threads options to the backdrop sketch (#214
 test('removing the non-underscore method clears the backdrop (code is source of truth)', async ({ page }) => {
   await setCode(page, `$: note("c e g").s("sawtooth").scope()`)
   await runCode(page)
-  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(1, { timeout: 6000 })
 
   // Remove the .scope() call. Manual Ctrl+Enter while playing is a no-op
   // in this codebase (re-eval comes from live mode or stop+play), so force
@@ -98,7 +97,7 @@ test('removing the non-underscore method clears the backdrop (code is source of 
   await page.keyboard.press(`${MOD}+.`) // stop
   await page.waitForTimeout(500)
   await runCode(page) // play → fresh eval
-  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false', { timeout: 6000 })
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(0, { timeout: 6000 })
 })
 
 test('.viz("name", { backdrop: true }) pins the backdrop as a code-override (#364/350b)', async ({ page }) => {
@@ -114,10 +113,8 @@ test('.viz("name", { backdrop: true }) pins the backdrop as a code-override (#36
   await setCode(page, `$: note("c e g").s("sawtooth").viz("spectrum", { backdrop: true })`)
   await runCode(page)
 
-  const bgIndicator = page.locator('[data-pinned]')
-  await expect(bgIndicator).toHaveAttribute('data-pinned', 'true', { timeout: 6000 })
   const bg = page.locator('[data-workspace-background]')
-  await expect(bg).toHaveCount(1)
+  await expect(bg).toHaveCount(1, { timeout: 6000 })
   // The resolved backdrop file id is exposed on the rendered backdrop node.
   await expect(bg.first()).toHaveAttribute('data-background-file-id', /.+/)
   // No inline viz-zone for the flagged viz — it lives in the backdrop, not under the line.
@@ -131,7 +128,6 @@ test('.viz("name") with NO backdrop flag stays an inline zone — no backdrop pi
   await runCode(page)
   // Inline zone present; backdrop NOT pinned.
   await expect(page.locator('[data-viz-zone-track]').first()).toBeVisible({ timeout: 6000 })
-  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false')
   await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
 })
 
@@ -144,7 +140,7 @@ test('underscore ._punchcard() and ._tscope() render inline with no error and no
 
   expect(await page.locator('canvas#test-canvas').count()).toBe(0)
   // underscore forms are inline only — they must NOT pin the backdrop
-  await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false')
+  await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
   expect(errors).toEqual([])
 })
 
@@ -303,7 +299,7 @@ test('inline ._pianoroll(options) — the options object reaches the sketch and 
     await runCode(page)
     await expect(page.locator('[data-viz-zone-track] canvas').first()).toBeVisible({ timeout: 6000 })
     // options on the inline form must not pin a backdrop
-    await expect(page.locator('[data-pinned]')).toHaveAttribute('data-pinned', 'false')
+    await expect(page.locator('[data-workspace-background]')).toHaveCount(0)
     await page.keyboard.press(`${MOD}+.`)
     await page.waitForTimeout(300)
   }

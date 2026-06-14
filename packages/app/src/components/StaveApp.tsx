@@ -23,7 +23,6 @@ import {
   type WorkspaceShellHandle,
   type HapStream,
   type BreakpointStore,
-  type BackdropQuality,
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
@@ -1030,38 +1029,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   return (
     <div style={styles.root}>
       <MenuBar
-        // Resolve backdrop file id → display name. Re-derived each
-        // render; cheap (list is in memory) and picks up renames
-        // without a separate subscription.
-        backgroundFileName={(() => {
-          if (!backgroundFileId) return null;
-          const f = listWorkspaceFiles().find(
-            (x) => x.id === backgroundFileId,
-          );
-          if (!f) return null;
-          const parts = f.path.split("/");
-          return parts[parts.length - 1].replace(/\.[^.]+$/, "");
-        })()}
-        backgroundFileId={backgroundFileId}
-        vizFiles={listWorkspaceFiles()
-          .filter((f) => isVizLanguage(f.language))
-          .map((f) => ({
-            id: f.id,
-            name: f.path
-              .split("/")
-              .pop()!
-              .replace(/\.[^.]+$/, ""),
-          }))}
-        onSetBackdrop={(id) => handleSetAsBackground(id)}
-        // #350c — per-pane opacity/quality. Seed from the ACTIVE pane's
-        // resolved settings (its override, else the global default), and route
-        // edits to the active pane's override on the shell handle.
-        backdropOpacity={shellRef.current?.getBackdropSettings?.().opacity ?? 1}
-        backdropQuality={shellRef.current?.getBackdropSettings?.().quality ?? "half"}
-        onSetBackdropOpacity={(v: number) => shellRef.current?.setBackdropOpacity?.(v)}
-        onSetBackdropQuality={(v: BackdropQuality) => shellRef.current?.setBackdropQuality?.(v)}
-        onRevealBackground={handleRevealBackdrop}
-        onCropBackground={handleCropBackdrop}
+        // Backdrop selection moved to the per-tab pattern-bar dropdown (#347);
+        // the menubar no longer owns it.
         projectName={activeProject.name}
         onOpenEditorSettings={() => setEditorSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}

@@ -21,26 +21,29 @@ async function gotoApp(page: Page): Promise<void> {
   await page.waitForTimeout(800)
 }
 
-async function pinHydraBackdrop(page: Page): Promise<void> {
-  // Open a bundled hydra viz tab via the file tree, then pin it as backdrop.
-  const item = page.locator('[data-file-tree-item*="hydra"]').first()
-  await item.dblclick()
-  await page.waitForTimeout(400)
-  const toggle = page.locator('[data-testid="viz-chrome-bg-toggle"]').first()
-  await toggle.click()
+async function pinBackdropFromPatternBar(page: Page): Promise<void> {
+  // #347 — the backdrop popover now opens from the pattern bar's "set bg"
+  // dropdown (the menubar indicator was removed). Picking a viz pins it as the
+  // active (pattern) tab's backdrop, and the popover flips to its pinned
+  // controls (opacity/quality) in place.
+  await page.locator('[data-testid="strudel-chrome-bg-toggle"]').click()
+  const popover = page.locator('[data-testid="backdrop-popover"]')
+  await expect(popover).toBeVisible({ timeout: 4000 })
+  const picker = popover.locator('[data-testid="backdrop-popover-picker"]')
+  const value = await picker.locator('option').nth(1).getAttribute('value')
+  await picker.selectOption(value!)
   await expect(page.locator('[data-workspace-background]').first()).toBeVisible({ timeout: 6000 })
 }
 
 test('#365 — popover opacity/quality edit the pane backdrop and persist across reload', async ({ page }) => {
   await gotoApp(page)
-  await pinHydraBackdrop(page)
+  await pinBackdropFromPatternBar(page)
 
   const backdrop = page.locator('[data-workspace-background]').first()
   // Default (global) quality is 'half'.
   await expect(backdrop).toHaveAttribute('data-backdrop-quality', 'half')
 
-  // Open the menubar backdrop popover.
-  await page.locator('[data-testid="menubar-bg-indicator"]').click()
+  // The popover stayed open and is now in its pinned state (opacity/quality).
   await expect(page.locator('[data-testid="backdrop-popover"]')).toBeVisible({ timeout: 4000 })
 
   // Change quality → 'quarter'. The render attribute reflects the pane override.
