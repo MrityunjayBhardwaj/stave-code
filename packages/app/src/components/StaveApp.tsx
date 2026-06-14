@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  setProjectBackgroundFileId,
   getProject,
   listProjects,
   createProject,
@@ -386,26 +385,18 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   /**
    * Promote a viz file to the active group's backdrop, or clear with
-   * `null`. The shell's `setBackgroundFile` mutates group state; we
-   * mirror the new value into React state so the FileTree menu label
-   * (Set ↔ Clear) updates without a second round-trip, and persist
-   * to project metadata so the choice survives reload / project
-   * switch. Cmd+K B paths inside the shell route through
-   * `onBackgroundFileChange` below — same write site.
+   * `null`. The shell's `setBackgroundFile` mutates group state and
+   * fires `onBackgroundFileChange`, which StrudelEditorClient records
+   * against the active tab (#347 per-tab map — the source of truth for
+   * persistence). We only mirror the new value into React state here so
+   * the FileTree menu label (Set ↔ Clear) and crop/reveal handlers
+   * update without a second round-trip. (#371 — the old project-global
+   * `setProjectBackgroundFileId` persist was removed; per-tab is SoT.)
    */
-  const handleSetAsBackground = useCallback(
-    (fileId: string | null) => {
-      shellRef.current?.setBackgroundFile?.(fileId);
-      setBackgroundFileId(fileId);
-      // Fire-and-forget; the IDB write is best-effort. A failure
-      // here doesn't roll back the React state — user still sees
-      // the backdrop on screen, it just won't survive reload.
-      setProjectBackgroundFileId(activeProject.id, fileId).catch((err) =>
-        console.warn("[stave] backdrop persist failed:", err),
-      );
-    },
-    [activeProject.id],
-  );
+  const handleSetAsBackground = useCallback((fileId: string | null) => {
+    shellRef.current?.setBackgroundFile?.(fileId);
+    setBackgroundFileId(fileId);
+  }, []);
 
   // E2E-only hook (Phase 21 T5-C/D): seed a custom viz workspace FILE and pin
   // it as the backdrop directly. Production pins the backdrop by mapping a
@@ -511,52 +502,25 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     [],
   );
 
-  // Restore the persisted backdrop when the active project changes.
-  // Reads the stored fileId from project metadata and pushes it into
-  // the shell + local state. Skips the push when nothing is stored or
-  // the stored file no longer exists in this project (e.g., user
-  // deleted it before re-opening). The shell remount on
-  // `key={activeProject.id}` guarantees the imperative call lands on
-  // the new shell, not the previous one.
+  // Restore the per-project backdrop CROP when the active project
+  // changes. The backdrop *file* itself is restored per-tab by
+  // StrudelEditorClient (#347 `tabBackdrops` → `setBackgroundFile` on
+  // the active-tab sync), which is the source of truth — so this effect
+  // no longer reads/pushes `backgroundFileId` (#371 retired the
+  // project-global slot, which used to double-restore and fight the
+  // per-tab path on reload). Crop stays project-global
+  // (`ProjectMeta.backgroundCrop`); it's plain React state consumed by
+  // the shell wrapper render, so no shell handle / rAF gating is needed.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const meta = await getProject(activeProject.id);
-      if (cancelled) return;
-      const stored = meta?.backgroundFileId ?? null;
-      // Wait one tick for the shell + file store to be ready —
-      // shellRef is set after WorkspaceShell's first render, and the
-      // file store needs to have switched to the new project before
-      // we ask the shell to render the backdrop.
-      requestAnimationFrame(() => {
+    getProject(activeProject.id)
+      .then((meta) => {
         if (cancelled) return;
-        // Validate the file still exists; otherwise drop silently
-        // and clear persistence so a stale id doesn't keep getting
-        // re-applied on every reload.
-        if (stored) {
-          const exists = listWorkspaceFiles().some((f) => f.id === stored);
-          if (!exists) {
-            setProjectBackgroundFileId(activeProject.id, null).catch(
-              (err) =>
-                console.warn(
-                  "[stave] backdrop stale-clean failed:",
-                  err,
-                ),
-            );
-            shellRef.current?.setBackgroundFile?.(null);
-            setBackgroundFileId(null);
-            return;
-          }
-        }
-        shellRef.current?.setBackgroundFile?.(stored);
-        setBackgroundFileId(stored);
-        // Restore per-project backdrop crop — null means full-rect
-        // (default). Rendering applies in the shell wrapper.
         setBackgroundCropState(meta?.backgroundCrop ?? null);
-      });
-    })().catch((err) =>
-      console.warn("[stave] backdrop restore failed:", err),
-    );
+      })
+      .catch((err) =>
+        console.warn("[stave] backdrop crop restore failed:", err),
+      );
     return () => {
       cancelled = true;
     };
@@ -1155,18 +1119,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 // path); the shell ref-guards this so steady code never churns it.
                 onActiveBackdropChange={(fileId) => setBackgroundFileId(fileId)}
                 backgroundCrop={backgroundCrop}
+                // Mirror every manual sticky into local state for the
+                // crop/reveal handlers + file-tree label. Persistence is
+                // owned per-tab by StrudelEditorClient's recorder, which
+                // wraps this same callback (#347); #371 removed the old
+                // project-global `setProjectBackgroundFileId` write here.
                 onBackgroundFileChange={(_groupId, fileId) => {
                   setBackgroundFileId(fileId);
-                  // Same persistence as handleSetAsBackground — this
-                  // path covers the Cmd+K B keybind which writes
-                  // through the shell directly without going via the
-                  // file-tree callback.
-                  setProjectBackgroundFileId(
-                    activeProject.id,
-                    fileId,
-                  ).catch((err) =>
-                    console.warn("[stave] backdrop persist failed:", err),
-                  );
                 }}
                 onTabContextMenu={(tab, x, y) => {
                   const fileId =
