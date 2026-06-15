@@ -57,7 +57,6 @@ import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
 import { ResizableSidebar } from "./ResizableSidebar";
-import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
 import { ConsolePanel } from "./ConsolePanel";
 import { IRInspectorPanel } from "./IRInspectorPanel";
 import { registerCommand } from "../commands/registry";
@@ -376,7 +375,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   //   file in the tree.
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
-  const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
 
   // Tell the history service which file is focused so the History panel's
   // File scope targets it (Phase G, #197).
@@ -588,18 +586,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getIsPausedRef.current = s?.getIsPaused ?? (() => false);
       onResumeRef.current = s?.onResume ?? (() => {});
       onPauseChangedRef.current = s?.onPauseChanged ?? (() => () => {});
-      setActiveRuntime((prev) => {
-        if (!s) return prev === null ? prev : null;
-        if (
-          prev &&
-          prev.isPlaying === s.isPlaying &&
-          prev.bpm === s.bpm &&
-          prev.error === s.error
-        ) {
-          return prev; // same values — skip re-render
-        }
-        return { isPlaying: s.isPlaying, bpm: s.bpm, error: s.error };
-      });
     },
     [],
   );
@@ -1336,19 +1322,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       )}
 
       <DialogHost />
-
-      {!zenMode && <StatusBar
-        projectName={activeProject.name}
-        activeFilePath={
-          activeFileId
-            ? listWorkspaceFiles().find((f) => f.id === activeFileId)?.path ?? null
-            : null
-        }
-        runtime={activeRuntime}
-        canUndo={undoState.canUndo}
-        canRedo={undoState.canRedo}
-        onOpenConsole={() => setActivePanelId("console")}
-      />}
 
       <CommandPalette
         open={paletteOpen}
