@@ -514,19 +514,27 @@ export function addInlineViewZones(
         const onMove = (ev: PointerEvent) => {
           ev.preventDefault()
           const delta = ev.clientY - startY
-          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta))
-          entry.container.style.height = `${newH}px`
-          entry.zoneDesc.heightInPx = newH
-          // Tell Monaco the zone height changed so lines below
-          // reflow in real time (resizing flag prevents recomputeAllZones
-          // from resetting the height).
-          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
+          const dragH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta))
           const nw = entry.native.w, nh = entry.native.h
           const cropW = Math.max(0.01, entry.crop.w)
           const cropH = Math.max(0.01, entry.crop.h)
           const scaleByW = contentW / (cropW * nw)
-          const scaleByH = newH / (cropH * nh)
+          const scaleByH = dragH / (cropH * nh)
           const scale = Math.min(scaleByW, scaleByH)
+          // #337 — the zone height tracks the canvas's ACTUAL displayed height
+          // (cropH·nh·scale), not the raw dragged height. Dragging taller than
+          // the fit-to-width height keeps the canvas width-bound (scale =
+          // scaleByW) and would otherwise leave letterbox space below it while
+          // the resize bar stays pinned to the zone bottom — the gap. Setting
+          // the zone to the canvas height keeps the bar flush with the canvas
+          // base. Clamp preserves a usable min/max.
+          const dispH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, Math.round(cropH * nh * scale)))
+          entry.container.style.height = `${dispH}px`
+          entry.zoneDesc.heightInPx = dispH
+          // Tell Monaco the zone height changed so lines below
+          // reflow in real time (resizing flag prevents recomputeAllZones
+          // from resetting the height).
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId))
           const tx = -entry.crop.x * nw * scale
           const ty = -entry.crop.y * nh * scale
           applyLayout(entry.container, entry.container.querySelector('canvas'), { scale, tx, ty })

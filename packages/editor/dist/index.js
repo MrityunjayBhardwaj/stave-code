@@ -20657,16 +20657,17 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const onMove = /* @__PURE__ */ __name((ev) => {
           ev.preventDefault();
           const delta = ev.clientY - startY;
-          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
-          entry.container.style.height = `${newH}px`;
-          entry.zoneDesc.heightInPx = newH;
-          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
+          const dragH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
           const nw = entry.native.w, nh = entry.native.h;
           const cropW = Math.max(0.01, entry.crop.w);
           const cropH = Math.max(0.01, entry.crop.h);
           const scaleByW = contentW2 / (cropW * nw);
-          const scaleByH = newH / (cropH * nh);
+          const scaleByH = dragH / (cropH * nh);
           const scale = Math.min(scaleByW, scaleByH);
+          const dispH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, Math.round(cropH * nh * scale)));
+          entry.container.style.height = `${dispH}px`;
+          entry.zoneDesc.heightInPx = dispH;
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           const tx3 = -entry.crop.x * nw * scale;
           const ty = -entry.crop.y * nh * scale;
           applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
