@@ -7846,7 +7846,8 @@ declare function SequencerGrid(): React.ReactElement;
  * Interactions:
  *   - click an empty cell → place a note (one step; overlaps resolved);
  *   - click a note → remove it;
- *   - drag a note → move it in pitch + time (duration preserved), one undo.
+ *   - drag a note → move it in pitch + time (duration preserved), one undo;
+ *   - drag a note's right-edge handle → resize its duration (`@n`), one undo.
  * Each edit re-serializes and writes back over the mini range (`'roll'`); a
  * serialization the subset can't express (e.g. a move that would overlap) is
  * dropped, leaving the document untouched — the conservatism rule.
@@ -7854,9 +7855,6 @@ declare function SequencerGrid(): React.ReactElement;
  * The visible pitch range is sticky within a binding: it expands to fit notes
  * but never shrinks when notes are removed, and resets only when the cursor
  * moves to a different statement (#391) — so editing doesn't make rows jump.
- *
- * Drag-to-resize (`@n` elongation) and live-playhead column highlight remain
- * follow-ups.
  */
 
 declare function PianoRollGrid(): React.ReactElement;

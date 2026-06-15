@@ -113,6 +113,27 @@ test.describe('Piano Roll (#383)', () => {
     expect(await strudelValue(page)).toBe('$: note("~ ~ e3 ~")')
   })
 
+  test('dragging the right-edge handle resizes a note duration to `@n` (#391/#405)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    // grab c3's right-edge resize handle and drag right to step 2 (→ duration 3)
+    const handle = await grid.locator('[data-roll-resize="48:0"]').boundingBox()
+    const to = await grid.locator('[data-roll-cell="48:2"]').boundingBox()
+    if (!handle || !to) throw new Error('missing handle/cell')
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("c3@3 ~")')
+    // the note now spans steps 0–2 (head + sustained tail cells on)
+    await expect(grid.locator('[data-roll-cell="48:2"]')).toHaveAttribute('aria-pressed', 'true')
+  })
+
   test('pitch range stays put when a note is removed (#391)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c5 ~ ~ ~")') // c5 = midi 72

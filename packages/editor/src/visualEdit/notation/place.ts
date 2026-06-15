@@ -28,3 +28,26 @@ export function placeNote(
   notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) })
   return { ...model, notes }
 }
+
+/**
+ * Resize the note group starting at `start` to `duration` steps. The new
+ * duration floors at 1 and caps at the next group's start (or the grid end),
+ * so a resize can never overlap the following note — the result is always a
+ * tileable sequence the serializer accepts. All notes sharing `start` (a chord)
+ * resize together, since the subset requires chord members to share a duration.
+ */
+export function resizeNote(
+  model: PianoRollModel,
+  start: number,
+  duration: number,
+): PianoRollModel {
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps,
+  )
+  const capped = Math.max(1, Math.min(duration, nextStart - start))
+  return {
+    ...model,
+    notes: model.notes.map((n) => (n.start === start ? { ...n, duration: capped } : n)),
+  }
+}
