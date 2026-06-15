@@ -77,6 +77,7 @@ import {
   registerBottomPanelTab,
   readPersistedOpen,
   readPersistedActiveTabId,
+  setCurrentCycleAccessor,
 } from "@stave/editor";
 import {
   applyPersistedPerfEnabled,
@@ -627,6 +628,15 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // placeholder seed is benign even after a hot reload because the
     // registry's idempotent semantics (DA-05) make re-registration a
     // no-fanfare swap.
+  }, []);
+
+  // #391 — expose the live transport cycle to the editor-seeded visual panels
+  // (Sequencer / Piano Roll) so they can highlight the playing step. Reuses the
+  // same getCycleRef the MusicalTimeline reads (active runtime, gated on
+  // isPlaying); the panels run their own rAF against this accessor.
+  useEffect(() => {
+    setCurrentCycleAccessor(() => getCycleRef.current());
+    return () => setCurrentCycleAccessor(null);
   }, []);
 
   const refreshProjects = useCallback(async () => {

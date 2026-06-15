@@ -89,6 +89,19 @@ test.describe('Sequencer (#382)', () => {
     await expect(grid.locator('[data-seq-cell="0:2"]')).toHaveAttribute('aria-pressed', 'true')
   })
 
+  test('highlights the playing step during playback (#391)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd hh sn hh")') // focuses the editor
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+    await page.keyboard.press(`${mod}+Enter`) // play (editor is focused)
+    await page.waitForTimeout(300)
+    const drawer = await openSequencer(page) // playback continues across tab open
+    // a step cell becomes "playing" as the transport clock advances
+    await expect(
+      drawer.locator('[data-seq-cell][data-playing="true"]').first(),
+    ).toBeVisible({ timeout: 5000 })
+  })
+
   test('non-grid pattern falls back to standby', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd*<2 3>")')
