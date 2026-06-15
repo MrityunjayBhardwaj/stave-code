@@ -161,6 +161,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     position: "relative",
+    // The left panel's background is one concern, owned here (#341) — every
+    // tab's content fills this and must NOT set its own bg, or switching tabs
+    // would flash a different shade.
+    background: "var(--bg-sidebar)",
     borderRight: "1px solid var(--border-subtle)",
     zIndex: 1,
   },

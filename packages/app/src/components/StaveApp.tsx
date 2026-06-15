@@ -1419,11 +1419,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   panelRoot: {
-    // Width + right border are owned by the ResizableSidebar wrapper (#341);
-    // the panel content just fills it.
+    // Width + right border + background are owned by the ResizableSidebar
+    // wrapper (#341); the panel content just fills it.
     width: "100%",
     height: "100%",
-    background: "var(--bg-panel)",
     display: "flex",
     flexDirection: "column",
     fontFamily: "system-ui, -apple-system, sans-serif",
