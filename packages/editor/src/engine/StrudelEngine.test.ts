@@ -495,3 +495,35 @@ describe('StrudelEngine LiveCodingEngine conformance', () => {
     engine.dispose()
   })
 })
+
+// ---------------------------------------------------------------------------
+// #384 — transport seek offset. The field + getter/setter are pure (no audio
+// env), so they're unit-testable on a bare engine. The `.late()` wrap they
+// drive at the `.p` seam is exercised end-to-end (design §10), not here.
+// ---------------------------------------------------------------------------
+describe('StrudelEngine transport offset (#384)', () => {
+  it('defaults to 0 before any seek', () => {
+    const engine = new StrudelEngine()
+    expect(engine.getTransportOffset()).toBe(0)
+    engine.dispose()
+  })
+
+  it('setTransportOffset round-trips through getTransportOffset', () => {
+    const engine = new StrudelEngine()
+    engine.setTransportOffset(7)
+    expect(engine.getTransportOffset()).toBe(7)
+    engine.setTransportOffset(-2.5)
+    expect(engine.getTransportOffset()).toBe(-2.5)
+    engine.dispose()
+  })
+
+  it('coerces a non-finite offset to 0 (NaN/Infinity guard)', () => {
+    const engine = new StrudelEngine()
+    engine.setTransportOffset(5)
+    engine.setTransportOffset(Number.NaN)
+    expect(engine.getTransportOffset()).toBe(0)
+    engine.setTransportOffset(Number.POSITIVE_INFINITY)
+    expect(engine.getTransportOffset()).toBe(0)
+    engine.dispose()
+  })
+})
