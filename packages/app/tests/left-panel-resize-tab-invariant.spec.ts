@@ -60,7 +60,7 @@ test('left-panel width is identical across every tab', async ({ page }) => {
   expect(explorerWidth).toBeGreaterThan(300) // actually moved
 
   // Every other tab must report the SAME width — width is tab-invariant.
-  for (const tab of ['Search', 'Version History', 'Outline', 'Console', 'IR Inspector']) {
+  for (const tab of ['Search', 'Version History', 'Console', 'IR Inspector']) {
     await selectTab(page, tab)
     const w = await sidebarWidth(page)
     expect(Math.abs(w - explorerWidth), `${tab} width should match Explorer`).toBeLessThanOrEqual(2)

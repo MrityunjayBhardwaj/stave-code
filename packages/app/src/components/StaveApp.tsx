@@ -37,9 +37,7 @@ import { MenuBar } from "./MenuBar";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
-import { OutlineView } from "./OutlineView";
 import {
-  revealLineInFile,
   bumpEditorFontSize,
   toggleEditorMinimap,
   cycleEditorTheme,
@@ -906,13 +904,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       render: () => null,
     }));
     unregs.push(registerPanel({
-      id: "outline",
-      title: "Outline",
-      icon: "symbol-class",
-      order: 40,
-      render: () => null,
-    }));
-    unregs.push(registerPanel({
       id: "console",
       title: "Console",
       icon: "terminal",
@@ -1066,25 +1057,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
                 onResume={() => onResumeRef.current()}
                 onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
               />
-            )}
-            {activePanelId === "outline" && (
-              <div style={styles.panelRoot} data-sidebar>
-                <div style={styles.panelHeader}>OUTLINE</div>
-                <OutlineView
-                  activeFileId={activeFileId}
-                  onJump={(fileId, line) => {
-                    handleOpenFile(fileId, { preview: false });
-                    // The tab may need a tick to mount its Monaco instance;
-                    // retry up to a few times until the editor is registered.
-                    let tries = 0;
-                    const tick = () => {
-                      if (revealLineInFile(fileId, line)) return;
-                      if (++tries < 10) setTimeout(tick, 40);
-                    };
-                    setTimeout(tick, 50);
-                  }}
-                />
-              </div>
             )}
           </ResizableSidebar>
         )}
