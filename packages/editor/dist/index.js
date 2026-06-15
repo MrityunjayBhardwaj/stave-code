@@ -24968,7 +24968,7 @@ function SequencerGrid() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
-      children: /* @__PURE__ */ jsx("div", { style: { display: "inline-flex", flexDirection: "column", gap: 4 }, children: model.lanes.map((lane, laneIndex) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+      children: /* @__PURE__ */ jsx("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: model.lanes.map((lane, laneIndex) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
         /* @__PURE__ */ jsx(
           "span",
           {
@@ -24985,7 +24985,7 @@ function SequencerGrid() {
             children: lane.sound
           }
         ),
-        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2 }, children: lane.cells.map((on, stepIndex) => {
+        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
           const gain = model.gains?.[stepIndex] ?? 1;
           const isPlaying = stepIndex === playingStep;
           return /* @__PURE__ */ jsx(
@@ -25004,7 +25004,9 @@ function SequencerGrid() {
               onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
               style: {
                 position: "relative",
-                width: 22,
+                flex: "1 1 0",
+                minWidth: 16,
+                maxWidth: 56,
                 height: 22,
                 padding: 0,
                 overflow: "hidden",
@@ -25226,7 +25228,7 @@ function PianoRollGrid() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
-      children: /* @__PURE__ */ jsx("div", { style: { display: "inline-flex", flexDirection: "column", gap: 1 }, children: rows.map((midi) => {
+      children: /* @__PURE__ */ jsx("div", { style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" }, children: rows.map((midi) => {
         const black = isBlackKey(midi);
         return /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
           /* @__PURE__ */ jsx(
@@ -25241,7 +25243,7 @@ function PianoRollGrid() {
               children: midiToPitch(midi)
             }
           ),
-          /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1 }, children: Array.from({ length: model.steps }, (_, step) => {
+          /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
             const note = noteAt(model, midi, step);
             const on = note !== void 0;
             const isHead = on && note.start === step;
@@ -25261,7 +25263,9 @@ function PianoRollGrid() {
                 onPointerEnter: () => onCellEnter(midi, step),
                 style: {
                   position: "relative",
-                  width: 18,
+                  flex: "1 1 0",
+                  minWidth: 12,
+                  maxWidth: 44,
                   height: 16,
                   padding: 0,
                   border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
