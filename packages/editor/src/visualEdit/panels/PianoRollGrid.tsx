@@ -207,7 +207,7 @@ export function PianoRollGrid(): React.ReactElement {
         touchAction: 'none',
       }}
     >
-      <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
         {rows.map((midi) => {
           const black = isBlackKey(midi)
           return (
@@ -224,7 +224,7 @@ export function PianoRollGrid(): React.ReactElement {
               >
                 {midiToPitch(midi)}
               </span>
-              <div style={{ display: 'flex', gap: 1 }}>
+              <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
                 {Array.from({ length: model.steps }, (_, step) => {
                   const note = noteAt(model, midi, step)
                   const on = note !== undefined
@@ -245,7 +245,9 @@ export function PianoRollGrid(): React.ReactElement {
                       onPointerEnter={() => onCellEnter(midi, step)}
                       style={{
                         position: 'relative',
-                        width: 18,
+                        flex: '1 1 0',
+                        minWidth: 12,
+                        maxWidth: 44,
                         height: 16,
                         padding: 0,
                         border:

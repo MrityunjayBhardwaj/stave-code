@@ -206,7 +206,7 @@ export function SequencerGrid(): React.ReactElement {
         touchAction: 'none',
       }}
     >
-      <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
         {model.lanes.map((lane, laneIndex) => (
           <div key={`${lane.sound}:${lane.part ?? 0}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span
@@ -223,7 +223,7 @@ export function SequencerGrid(): React.ReactElement {
             >
               {lane.sound}
             </span>
-            <div style={{ display: 'flex', gap: 2 }}>
+            <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
               {lane.cells.map((on, stepIndex) => {
                 const gain = model.gains?.[stepIndex] ?? 1
                 const isPlaying = stepIndex === playingStep
@@ -243,7 +243,9 @@ export function SequencerGrid(): React.ReactElement {
                     onPointerEnter={() => onCellEnter(laneIndex, stepIndex)}
                     style={{
                       position: 'relative',
-                      width: 22,
+                      flex: '1 1 0',
+                      minWidth: 16,
+                      maxWidth: 56,
                       height: 22,
                       padding: 0,
                       overflow: 'hidden',
