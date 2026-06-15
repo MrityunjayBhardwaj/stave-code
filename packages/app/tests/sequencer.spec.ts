@@ -212,4 +212,26 @@ test.describe('Sequencer (#382)', () => {
     expect(await strudelValue(page)).toBe('$: s("bd bd ~ bd ~ ~ bd ~")')
     await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
   })
+
+  test('binds `bd!3` replicate as a 3-step lane and expands the sugar on toggle (#407)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd!3")')
+    await placeCursorOn(page, 'bd!3')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1) // bound, not standby
+    // `!3` = three separate beats, all on
+    for (let s = 0; s < 3; s++) {
+      await expect(grid.locator(`[data-seq-cell="0:${s}"]`)).toHaveAttribute('aria-pressed', 'true')
+    }
+    await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveCount(0) // no 4th column
+
+    // turning step 1 off expands the `!3` sugar into the canonical sequence
+    await grid.locator('[data-seq-cell="0:1"]').click()
+    await page.waitForTimeout(100)
+    expect(await strudelValue(page)).toBe('$: s("bd ~ bd")')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
+  })
 })
