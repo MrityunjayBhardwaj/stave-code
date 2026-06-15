@@ -24463,6 +24463,30 @@ function gridFromStack(parts) {
   return { ok: true, model: { steps: total, lanes } };
 }
 __name(gridFromStack, "gridFromStack");
+var GAIN_TOKEN = /^\d+(\.\d+)?$/;
+function parseGainMini(mini, count) {
+  const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length !== count) return null;
+  const out = [];
+  for (const t of tokens) {
+    if (t === "~") {
+      out.push(1);
+      continue;
+    }
+    if (!GAIN_TOKEN.test(t)) return null;
+    out.push(parseFloat(t));
+  }
+  return out;
+}
+__name(parseGainMini, "parseGainMini");
+function applyStepGain(model, gainMini, foreign = false) {
+  if (foreign) return { ...model, gainForeign: true };
+  if (gainMini === null) return model;
+  const gains = parseGainMini(gainMini, model.steps);
+  if (gains === null) return { ...model, gainForeign: true };
+  return { ...model, gains };
+}
+__name(applyStepGain, "applyStepGain");
 function parsePianoRoll(mini) {
   const alt = unwrapAlternation(mini);
   const tok = tokenize2(alt ?? mini);
@@ -24492,6 +24516,12 @@ function parsePianoRoll(mini) {
 __name(parsePianoRoll, "parsePianoRoll");
 
 // src/visualEdit/notation/serialize.ts
+function fmtGain(v) {
+  if (!Number.isFinite(v)) return "1";
+  if (Number.isInteger(v)) return String(v);
+  return v.toFixed(2).replace(/\.?0+$/, "");
+}
+__name(fmtGain, "fmtGain");
 function serializeStepGrid(model) {
   const bars = model.bars ?? 1;
   if (bars > 1) return gridBars(model, bars);
@@ -24516,6 +24546,20 @@ function gridColumns(lanes, steps) {
   return cols;
 }
 __name(gridColumns, "gridColumns");
+function serializeStepGain(model) {
+  if (model.gainForeign) return { kind: "skip" };
+  const bars = model.bars ?? 1;
+  const parts = new Set(model.lanes.map((l) => l.part ?? 0));
+  if (bars > 1 || parts.size > 1) return { kind: "skip" };
+  const gains = model.gains;
+  if (!gains || gains.length !== model.steps || gains.every((g) => g === 1)) {
+    return { kind: "clear" };
+  }
+  const cols = gridColumns(model.lanes, model.steps);
+  const mini = cols.map((tok, i) => tok === "~" ? "~" : fmtGain(gains[i])).join(" ");
+  return { kind: "write", mini };
+}
+__name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bars) {
   const perBar = model.steps / bars;
   const cols = gridColumns(model.lanes, model.steps);
@@ -24661,6 +24705,40 @@ var VISUAL_EDIT_TABS = [
     icon: "symbol-array"
   }
 ];
+function readChunkGain(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain");
+  const arg = call?.args[0];
+  if (!call || !arg) return { mini: null, foreign: false };
+  if (arg.numeric !== null) return { mini: null, foreign: true };
+  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), foreign: false };
+  return { mini: null, foreign: true };
+}
+__name(readChunkGain, "readChunkGain");
+function gainTargets(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain");
+  const arg = call?.args[0];
+  if (!call || !arg || arg.numeric !== null || !/^["'`]/.test(arg.raw)) {
+    return { argInner: null, callRange: null };
+  }
+  return { argInner: [arg.range[0] + 1, arg.range[1] - 1], callRange: call.range };
+}
+__name(gainTargets, "gainTargets");
+function gainEdits(fresh, g) {
+  if (g.kind === "skip") return [];
+  const t = gainTargets(fresh);
+  if (g.kind === "clear") {
+    return t.callRange ? [{ range: t.callRange, text: "" }] : [];
+  }
+  if (t.argInner) return [{ range: t.argInner, text: g.mini }];
+  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain("${g.mini}")` }];
+}
+__name(gainEdits, "gainEdits");
+function gainUnchanged(g, chunkMini) {
+  if (g.kind === "skip") return true;
+  if (g.kind === "clear") return chunkMini === null;
+  return chunkMini === g.mini;
+}
+__name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React17.useState(null);
@@ -24683,8 +24761,12 @@ function useGridModel(opts) {
       setModel(null);
       return;
     }
+    const chunkGain = readChunkGain(chunk);
+    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain.mini, chunkGain.foreign) : parsed.model;
     const prev = modelRef.current;
-    const next = prev && o.serialize(prev) === chunk.miniString ? prev : parsed.model;
+    const sameMini = prev != null && o.serialize(prev) === chunk.miniString;
+    const sameGain = prev == null || !o.serializeGain ? true : gainUnchanged(o.serializeGain(prev), chunkGain.mini);
+    const next = prev && sameMini && sameGain ? prev : fresh;
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
@@ -24700,7 +24782,10 @@ function useGridModel(opts) {
       modelRef.current = next;
       setModel(next);
       applyEdit((fresh, wb) => {
-        if (fresh.miniRange) wb.replaceRange(fresh.miniRange, mini, o.source);
+        if (!fresh.miniRange) return;
+        const edits = [{ range: fresh.miniRange, text: mini }];
+        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(next)));
+        wb.replaceRanges(edits, o.source);
       });
     },
     [applyEdit]
@@ -24750,6 +24835,9 @@ function usePlayingStep(steps, bars) {
 }
 __name(usePlayingStep, "usePlayingStep");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
+var VELOCITY_FULL_PX = 80;
+var DRAG_THRESHOLD = 4;
+var clamp01 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
@@ -24759,27 +24847,30 @@ function toggleCell(model, laneIndex, stepIndex, value) {
   };
 }
 __name(toggleCell, "toggleCell");
+function setColumnGain(model, stepIndex, gain) {
+  const gains = model.gains ? [...model.gains] : Array(model.steps).fill(1);
+  if (gains[stepIndex] === gain) return model;
+  gains[stepIndex] = gain;
+  return { ...model, gains };
+}
+__name(setColumnGain, "setColumnGain");
+function gainInScope(model) {
+  if (model.gainForeign || (model.bars ?? 1) > 1) return false;
+  return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
+}
+__name(gainInScope, "gainInScope");
 function SequencerGrid() {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: isStepChunk,
     parse: parseStepGrid,
-    serialize: serializeStepGrid
+    serialize: serializeStepGrid,
+    applyGain: applyStepGain,
+    serializeGain: serializeStepGain
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
-  const paintRef = React17.useRef({
-    active: false,
-    value: true
-  });
-  React17.useEffect(() => {
-    const onUp = /* @__PURE__ */ __name(() => {
-      if (!paintRef.current.active) return;
-      paintRef.current.active = false;
-      endGesture();
-    }, "onUp");
-    window.addEventListener("pointerup", onUp);
-    return () => window.removeEventListener("pointerup", onUp);
-  }, [endGesture]);
+  const gestureRef = React17.useRef(null);
+  const gainScoped = model ? gainInScope(model) : false;
   const paintCell = React17.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
@@ -24792,14 +24883,71 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current3) => {
-    paintRef.current = { active: true, value: !current3 };
+  React17.useEffect(() => {
+    const onMove = /* @__PURE__ */ __name((e) => {
+      const g = gestureRef.current;
+      if (!g) return;
+      const dx = e.clientX - g.startX;
+      const dy = e.clientY - g.startY;
+      if (g.mode === "pending") {
+        if (gainScoped && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+          g.mode = "velocity";
+        } else if (Math.abs(dx) > DRAG_THRESHOLD) {
+          g.mode = "paint";
+          paintCell(g.lane, g.step, g.paintValue);
+          return;
+        } else {
+          return;
+        }
+      }
+      if (g.mode === "velocity") {
+        const next = clamp01(g.startGain - dy / VELOCITY_FULL_PX);
+        mutate((prev) => setColumnGain(prev, g.step, next));
+      }
+    }, "onMove");
+    const onUp = /* @__PURE__ */ __name(() => {
+      const g = gestureRef.current;
+      if (!g) return;
+      gestureRef.current = null;
+      if (g.mode === "pending") paintCell(g.lane, g.step, g.paintValue);
+      endGesture();
+    }, "onUp");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [mutate, paintCell, endGesture, gainScoped]);
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current3, e) => {
     beginGesture();
-    paintCell(laneIndex, stepIndex, !current3);
+    if (current3) {
+      gestureRef.current = {
+        lane: laneIndex,
+        step: stepIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        startGain: model?.gains?.[stepIndex] ?? 1,
+        mode: "pending",
+        paintValue: false
+      };
+    } else {
+      gestureRef.current = {
+        lane: laneIndex,
+        step: stepIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        startGain: 1,
+        mode: "paint",
+        paintValue: true
+      };
+      paintCell(laneIndex, stepIndex, true);
+    }
   }, "onCellDown");
   const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
-    if (!paintRef.current.active) return;
-    paintCell(laneIndex, stepIndex, paintRef.current.value);
+    const g = gestureRef.current;
+    if (!g || g.mode !== "paint") return;
+    paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
     return React17.createElement(VisualEditStandby, {
@@ -24837,33 +24985,58 @@ function SequencerGrid() {
             children: lane.sound
           }
         ),
-        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2 }, children: lane.cells.map((on, stepIndex) => /* @__PURE__ */ jsx(
-          "button",
-          {
-            type: "button",
-            "aria-pressed": on,
-            "aria-label": `${lane.sound} step ${stepIndex + 1}`,
-            "data-seq-cell": `${laneIndex}:${stepIndex}`,
-            "data-playing": stepIndex === playingStep ? "true" : void 0,
-            onPointerDown: (e) => {
-              e.preventDefault();
-              onCellDown(laneIndex, stepIndex, on);
+        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2 }, children: lane.cells.map((on, stepIndex) => {
+          const gain = model.gains?.[stepIndex] ?? 1;
+          const isPlaying = stepIndex === playingStep;
+          return /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              "aria-pressed": on,
+              "aria-label": `${lane.sound} step ${stepIndex + 1}`,
+              "data-seq-cell": `${laneIndex}:${stepIndex}`,
+              "data-gain": on && gainScoped ? gain : void 0,
+              "data-playing": isPlaying ? "true" : void 0,
+              onPointerDown: (e) => {
+                e.preventDefault();
+                onCellDown(laneIndex, stepIndex, on, e);
+              },
+              onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+              style: {
+                position: "relative",
+                width: 22,
+                height: 22,
+                padding: 0,
+                overflow: "hidden",
+                border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                borderRadius: 3,
+                // subtle gap at each bar boundary
+                marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
+                background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
+                cursor: gainScoped && on ? "ns-resize" : "pointer"
+              },
+              children: on && // bottom-anchored fill = velocity (full when neutral); when
+              // gain is out of scope it always reads full, so the cell
+              // looks exactly like the pre-velocity solid square.
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  "data-seq-fill": true,
+                  style: {
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
+                    background: "var(--accent, #6ea8fe)",
+                    pointerEvents: "none"
+                  }
+                }
+              )
             },
-            onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
-            style: {
-              width: 22,
-              height: 22,
-              padding: 0,
-              border: stepIndex === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-              borderRadius: 3,
-              // subtle gap at each bar boundary
-              marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
-              background: on ? "var(--accent, #6ea8fe)" : stepIndex === playingStep ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-              cursor: "pointer"
-            }
-          },
-          stepIndex
-        )) })
+            stepIndex
+          );
+        }) })
       ] }, `${lane.sound}:${lane.part ?? 0}`)) })
     }
   );
