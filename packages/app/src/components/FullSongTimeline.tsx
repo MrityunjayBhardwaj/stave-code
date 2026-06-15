@@ -45,8 +45,6 @@ export interface FullSongTimelineProps {
   readonly getDrawerOpen: () => boolean
   /** Active tab id — must equal the timeline tab for the rAF loop to run. */
   readonly getActiveTabId: () => string | null
-  /** True while an analysis pass is in flight (shows a hint in the status). */
-  readonly analyzing?: boolean
 }
 
 /** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
