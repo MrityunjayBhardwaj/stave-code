@@ -174,6 +174,41 @@ describe('step grid — parse', () => {
   it('rejects euclid that expands past the step ceiling', () => {
     expect(parseStepGrid('bd(3,128)').ok).toBe(false)
   })
+
+  it('expands `atom!n` into n separate steps of the atom', () => {
+    const r = parseStepGrid('bd!3')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(3)
+    expect(r.model.lanes).toEqual([{ sound: 'bd', cells: [true, true, true] }])
+  })
+
+  it('`!n` replicates as whole steps, unlike `*n` (subdivision)', () => {
+    // bd!3 sn = bd bd bd sn → 4 equal steps; bd*3 sn would be 6 cells
+    const r = parseStepGrid('bd!3 sn')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(4)
+    expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells).toEqual([true, true, true, false])
+    expect(r.model.lanes.find((l) => l.sound === 'sn')!.cells).toEqual([
+      false,
+      false,
+      false,
+      true,
+    ])
+  })
+
+  it('rejects `!` combined with other modifiers / groups (conservative scope)', () => {
+    expect(parseStepGrid('bd!3*2').ok).toBe(false) // ! with *
+    expect(parseStepGrid('bd!3@2').ok).toBe(false) // ! with @
+    expect(parseStepGrid('[bd hh]!2').ok).toBe(false) // group replicate
+    expect(parseStepGrid('bd!0').ok).toBe(false) // zero replicate
+    expect(parseStepGrid('bd!').ok).toBe(false) // missing count
+  })
+
+  it('rejects `atom!n` that expands past the step ceiling', () => {
+    expect(parseStepGrid('bd!128').ok).toBe(false)
+  })
 })
 
 describe('step grid — round-trip identity', () => {
@@ -229,6 +264,23 @@ describe('step grid — euclid is parse-only sugar', () => {
     if (!sugar.ok || !expanded.ok) return
     expect(sugar.model).toEqual(expanded.model)
     expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+  })
+})
+
+describe('step grid — `!` is parse-only sugar', () => {
+  it('serializes `bd!3` as the expanded sequence', () => {
+    const r = parseStepGrid('bd!3')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('bd bd bd')
+  })
+
+  it('the expanded form re-parses to the same model (stable, no reseed loop)', () => {
+    const sugar = parseStepGrid('bd!3')
+    const expanded = parseStepGrid('bd bd bd')
+    expect(sugar.ok && expanded.ok).toBe(true)
+    if (!sugar.ok || !expanded.ok) return
+    expect(sugar.model).toEqual(expanded.model)
   })
 })
 
@@ -316,6 +368,18 @@ describe('piano roll — parse', () => {
       { pitch: 'c3', start: 0, duration: 1 },
       { pitch: 'c3', start: 3, duration: 1 },
       { pitch: 'c3', start: 6, duration: 1 },
+    ])
+  })
+
+  it('expands `note!n` replicate via the shared tokenizer', () => {
+    const r = parsePianoRoll('c3!3')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(3)
+    expect(r.model.notes).toEqual([
+      { pitch: 'c3', start: 0, duration: 1 },
+      { pitch: 'c3', start: 1, duration: 1 },
+      { pitch: 'c3', start: 2, duration: 1 },
     ])
   })
 
