@@ -97,6 +97,35 @@ test.describe('Piano Roll (#383)', () => {
     expect(await strudelValue(page)).toBe('$: note("~ ~ ~ ~")')
   })
 
+  test('dragging a note moves it in pitch and time (#391)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 ~ ~ ~")')
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    const from = await grid.locator('[data-roll-cell="48:0"]').boundingBox() // c3 step0
+    const to = await grid.locator('[data-roll-cell="52:2"]').boundingBox() // e3 step2
+    if (!from || !to) throw new Error('missing cells')
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("~ ~ e3 ~")')
+  })
+
+  test('pitch range stays put when a note is removed (#391)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c5 ~ ~ ~")') // c5 = midi 72
+    const drawer = await openRoll(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(grid.locator('[data-roll-cell="72:0"]')).toHaveCount(1)
+    await grid.locator('[data-roll-cell="72:0"]').click() // remove c5
+    await page.waitForTimeout(80)
+    expect(await strudelValue(page)).toBe('$: note("~ ~ ~ ~")')
+    // the c5 row is still rendered (range didn't collapse to the default octave)
+    await expect(grid.locator('[data-roll-cell="72:0"]')).toHaveCount(1)
+  })
+
   test('a sound pattern falls back to standby', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~")')
