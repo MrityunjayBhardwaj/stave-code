@@ -59,9 +59,18 @@ export function bjorklund(k: number, n: number): boolean[] {
   return [...a, ...b].flat()
 }
 
-/** rotate a boolean pattern left by `rot` positions (euclid's 3rd argument) */
-const rotateLeft = (pattern: boolean[], rot: number): boolean[] =>
-  pattern.map((_, i) => pattern[(i + rot) % pattern.length])
+/**
+ * Rotate a euclid pattern to match Strudel's `euclidRot`, so an unedited
+ * `atom(k,n,rot)` shows exactly the cells the audio plays. Strudel applies
+ * `rotate(b, -rot)` where `rotate` left-rotates — i.e. a *right* rotation by
+ * `rot`. (Source: @strudel/core euclid.mjs `_euclidRot` → util.mjs `rotate`.)
+ */
+const rotateEuclid = (pattern: boolean[], rot: number): boolean[] => {
+  const n = pattern.length
+  if (n === 0) return pattern
+  const k = (((-rot) % n) + n) % n
+  return pattern.slice(k).concat(pattern.slice(0, k))
+}
 
 /** one slot inside a `[...]` sub-sequence */
 interface Slot {
@@ -300,7 +309,7 @@ function tokenize(mini: string): Tokenized {
       }
       // `atom(k,n[,rot])` ≡ a sub-sequence of n single-unit slots: the atom at
       // the Bjørklund pulse positions (rotated by `rot`), rests everywhere else.
-      const hits = rotateLeft(bjorklund(euclid.spec.k, euclid.spec.n), euclid.spec.rot)
+      const hits = rotateEuclid(bjorklund(euclid.spec.k, euclid.spec.n), euclid.spec.rot)
       const slots: Slot[] = hits.map((on) => ({ atoms: on ? [match[0]] : [], units: 1 }))
       steps.push({ atoms: [], elongation: 1, sub: slots })
     } else if (mult.value > 1) {

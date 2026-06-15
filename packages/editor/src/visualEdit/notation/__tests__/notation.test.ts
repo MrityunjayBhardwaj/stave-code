@@ -142,13 +142,13 @@ describe('step grid — parse', () => {
     }
   })
 
-  it('rotates the euclid pattern with the 3rd argument `(3,8,2)`', () => {
+  it('rotates the euclid pattern with the 3rd argument `(3,8,2)` (matches Strudel euclidRot)', () => {
     const r = parseStepGrid('bd(3,8,2)')
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    // base x..x..x. rotated left by 2 → .x..x.x.
+    // Strudel applies rotate(b, -rot) — a right rotation: x..x..x. → x.x..x..
     expect(r.model.lanes[0].cells).toEqual([
-      false, true, false, false, true, false, true, false,
+      true, false, true, false, false, true, false, false,
     ])
   })
 
