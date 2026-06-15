@@ -7651,19 +7651,24 @@ declare function Mixer(): React.ReactElement;
 declare function SequencerGrid(): React.ReactElement;
 
 /**
- * Piano Roll — note grid (#383).
+ * Piano Roll — note grid (#383, drag-move + range stability from #391).
  *
  * Parses the mini-notation of the `note(...)` / `n(...)` statement under the
  * cursor into a `PianoRollModel` and renders pitch rows × step columns.
- * Clicking an empty cell places a note (one step, overlaps resolved by
- * `placeNote`); clicking a filled cell removes that note. Each edit
- * re-serializes and writes back over the mini range (`'roll'`); a serialization
- * the subset can't express is dropped (the document stays untouched) — the
- * conservatism rule, leaned on hard here because pitch + duration + rests are
- * the most parser-edgey case.
+ * Interactions:
+ *   - click an empty cell → place a note (one step; overlaps resolved);
+ *   - click a note → remove it;
+ *   - drag a note → move it in pitch + time (duration preserved), one undo.
+ * Each edit re-serializes and writes back over the mini range (`'roll'`); a
+ * serialization the subset can't express (e.g. a move that would overlap) is
+ * dropped, leaving the document untouched — the conservatism rule.
  *
- * v1 is click-to-place / click-to-remove. Drag-to-move and drag-to-resize
- * (and live-playhead column highlight) are follow-ups.
+ * The visible pitch range is sticky within a binding: it expands to fit notes
+ * but never shrinks when notes are removed, and resets only when the cursor
+ * moves to a different statement (#391) — so editing doesn't make rows jump.
+ *
+ * Drag-to-resize (`@n` elongation) and live-playhead column highlight remain
+ * follow-ups.
  */
 
 declare function PianoRollGrid(): React.ReactElement;

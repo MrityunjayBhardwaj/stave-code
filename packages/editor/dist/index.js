@@ -24927,37 +24927,91 @@ __name(isRollChunk, "isRollChunk");
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
-function pitchRange(model) {
+function contentRange(model) {
   const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
   if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
   let lo = Math.min(...midis) - 2;
-  let hi = Math.max(...midis) + 2;
-  if (hi - lo < MIN_SPAN) hi = lo + MIN_SPAN;
+  const hi = Math.max(Math.max(...midis) + 2, lo + MIN_SPAN);
   return { lo, hi };
 }
-__name(pitchRange, "pitchRange");
+__name(contentRange, "contentRange");
+function noteAt(model, midi, step) {
+  return model.notes.find(
+    (n) => pitchToMidi(n.pitch) === midi && n.start <= step && step < n.start + n.duration
+  );
+}
+__name(noteAt, "noteAt");
 function PianoRollGrid() {
-  const { chunk, model, mutate } = useGridModel({
+  const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "roll",
     eligible: isRollChunk,
     parse: parsePianoRoll,
     serialize: serializePianoRoll
   });
-  const toggleNote = React16.useCallback(
-    (midi, step) => {
-      mutate((prev) => {
-        const pitch = midiToPitch(midi);
-        const covering = prev.notes.find(
-          (n) => pitchToMidi(n.pitch) === midi && n.start <= step && step < n.start + n.duration
-        );
-        if (covering) {
-          return { ...prev, notes: prev.notes.filter((n) => n !== covering) };
-        }
-        return placeNote(prev, pitch, step, 1);
-      });
-    },
-    [mutate]
-  );
+  const dragRef = React16.useRef(null);
+  const [range, setRange] = React16.useState({
+    lo: DEFAULT_LO,
+    hi: DEFAULT_HI
+  });
+  const stmtIdRef = React16.useRef(null);
+  React16.useEffect(() => {
+    if (!model) return;
+    if (dragRef.current) return;
+    const content = contentRange(model);
+    const id = chunk ? chunk.statementRange[0] : null;
+    if (stmtIdRef.current !== id) {
+      stmtIdRef.current = id;
+      setRange(content);
+    } else {
+      setRange((prev) => ({
+        lo: Math.min(prev.lo, content.lo),
+        hi: Math.max(prev.hi, content.hi)
+      }));
+    }
+  }, [model, chunk]);
+  React16.useEffect(() => {
+    const onUp = /* @__PURE__ */ __name(() => {
+      const d = dragRef.current;
+      if (!d) return;
+      dragRef.current = null;
+      if (!d.moved) mutate((prev) => ({ ...prev, notes: d.baseNotes }));
+      endGesture();
+    }, "onUp");
+    window.addEventListener("pointerup", onUp);
+    return () => window.removeEventListener("pointerup", onUp);
+  }, [mutate, endGesture]);
+  const onCellDown = /* @__PURE__ */ __name((midi, step) => {
+    if (!model) return;
+    const note = noteAt(model, midi, step);
+    if (note) {
+      dragRef.current = {
+        baseNotes: model.notes.filter((n) => n !== note),
+        duration: note.duration,
+        steps: model.steps,
+        grabOffset: step - note.start,
+        origPitch: note.pitch,
+        origStart: note.start,
+        moved: false
+      };
+      beginGesture();
+    } else {
+      mutate((prev) => placeNote(prev, midiToPitch(midi), step, 1));
+    }
+  }, "onCellDown");
+  const onCellEnter = /* @__PURE__ */ __name((midi, step) => {
+    const d = dragRef.current;
+    if (!d || !model) return;
+    const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
+    const newPitch = midiToPitch(midi);
+    const dur = Math.max(1, Math.min(d.duration, d.steps - newStart));
+    const moved = {
+      steps: d.steps,
+      ...model.bars != null ? { bars: model.bars } : {},
+      notes: [...d.baseNotes, { pitch: newPitch, start: newStart, duration: dur }]
+    };
+    mutate(() => moved);
+    d.moved = true;
+  }, "onCellEnter");
   if (!model) {
     return React16.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -24965,9 +25019,8 @@ function PianoRollGrid() {
       icon: "music"
     });
   }
-  const { lo, hi } = pitchRange(model);
   const rows = [];
-  for (let m = hi; m >= lo; m--) rows.push(m);
+  for (let m = range.hi; m >= range.lo; m--) rows.push(m);
   return /* @__PURE__ */ jsx(
     "div",
     {
@@ -24995,9 +25048,7 @@ function PianoRollGrid() {
             }
           ),
           /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1 }, children: Array.from({ length: model.steps }, (_, step) => {
-            const note = model.notes.find(
-              (n) => pitchToMidi(n.pitch) === midi && n.start <= step && step < n.start + n.duration
-            );
+            const note = noteAt(model, midi, step);
             const on = note !== void 0;
             const isHead = on && note.start === step;
             return /* @__PURE__ */ jsx(
@@ -25009,8 +25060,9 @@ function PianoRollGrid() {
                 "data-roll-cell": `${midi}:${step}`,
                 onPointerDown: (e) => {
                   e.preventDefault();
-                  toggleNote(midi, step);
+                  onCellDown(midi, step);
                 },
+                onPointerEnter: () => onCellEnter(midi, step),
                 style: {
                   width: 18,
                   height: 16,
@@ -25018,7 +25070,6 @@ function PianoRollGrid() {
                   border: "1px solid var(--border, #3a3a42)",
                   borderRadius: 2,
                   background: on ? "var(--accent, #6ea8fe)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                  // a small notch marks where a held note starts
                   opacity: on && !isHead ? 0.7 : 1,
                   cursor: "pointer"
                 }
