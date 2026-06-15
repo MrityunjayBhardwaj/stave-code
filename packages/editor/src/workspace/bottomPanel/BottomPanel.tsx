@@ -45,6 +45,10 @@ import {
 // first bundle load (DA-09 / T-06). PR-B replaces by re-registering the
 // same id (idempotent).
 import './seedTabs'
+// Visual-editing scaffold (#380): seeds the Sequencer / Mixer / Piano Roll
+// standby tabs alongside Timeline. Each panel later re-registers its id with
+// a live UI (idempotent replace).
+import './visualEditSeed'
 
 const HEADER_HEIGHT = 28
 const RESIZE_HANDLE_HEIGHT = 4

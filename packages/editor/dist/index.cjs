@@ -1,11 +1,12 @@
 'use strict';
 
 var core = require('@strudel/core');
-var React8 = require('react');
+var React16 = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
 var Y3 = require('yjs');
+var acorn = require('acorn');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
@@ -27,7 +28,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React8__namespace = /*#__PURE__*/_interopNamespace(React8);
+var React16__namespace = /*#__PURE__*/_interopNamespace(React16);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -5613,12 +5614,37 @@ function registerEditor(fileId, editor) {
 __name(registerEditor, "registerEditor");
 function unregisterEditor(fileId, editor) {
   if (editors.get(fileId) === editor) editors.delete(fileId);
+  if (activeEditor === editor) setActiveEditor(null);
 }
 __name(unregisterEditor, "unregisterEditor");
 function getEditorForFile(fileId) {
   return editors.get(fileId);
 }
 __name(getEditorForFile, "getEditorForFile");
+var activeEditor = null;
+var activeEditorListeners = /* @__PURE__ */ new Set();
+function setActiveEditor(editor) {
+  if (activeEditor === editor) return;
+  activeEditor = editor;
+  for (const l of activeEditorListeners) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(setActiveEditor, "setActiveEditor");
+function getActiveEditor() {
+  return activeEditor;
+}
+__name(getActiveEditor, "getActiveEditor");
+function onActiveEditorChange(cb) {
+  activeEditorListeners.add(cb);
+  return () => {
+    activeEditorListeners.delete(cb);
+  };
+}
+__name(onActiveEditorChange, "onActiveEditorChange");
 function revealLineInFile(fileId, line) {
   const editor = editors.get(fileId);
   if (!editor) return false;
@@ -13057,10 +13083,10 @@ function compileShader(gl, type, src, label) {
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(sh) ?? "";
+    const log2 = gl.getShaderInfoLog(sh) ?? "";
     gl.deleteShader(sh);
     throw new Error(`glsl ${label} compile error:
-${log.trim()}`);
+${log2.trim()}`);
   }
   return sh;
 }
@@ -13108,10 +13134,10 @@ var _GLSLProgram = class _GLSLProgram {
     gl.deleteShader(vert);
     gl.deleteShader(frag);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      const log = gl.getProgramInfoLog(program) ?? "";
+      const log2 = gl.getProgramInfoLog(program) ?? "";
       gl.deleteProgram(program);
       throw new Error(`glsl link error:
-${log.trim()}`);
+${log2.trim()}`);
     }
     this.program = program;
     this.uResolution = gl.getUniformLocation(program, "iResolution");
@@ -13534,14 +13560,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React8__namespace.default.Children.count(children);
-  const childArray = React8__namespace.default.Children.toArray(children);
+  const count = React16__namespace.default.Children.count(children);
+  const childArray = React16__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React8.useState(defaultSizes);
-  const containerRef = React8.useRef(null);
-  const draggingRef = React8.useRef(null);
+  const [sizes, setSizes] = React16.useState(defaultSizes);
+  const containerRef = React16.useRef(null);
+  const draggingRef = React16.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React8.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React16.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -13580,7 +13606,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React8__namespace.default.useEffect(() => {
+  React16__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -13596,7 +13622,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React8__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React16__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -14471,13 +14497,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe3 = React8.useCallback(
+  const subscribe3 = React16.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React8.useCallback(() => getFile(id), [id]);
-  const file = React8.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const setContent2 = React8.useCallback(
+  const getSnapshot = React16.useCallback(() => getFile(id), [id]);
+  const file = React16.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const setContent2 = React16.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -19667,13 +19693,13 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React8.useRef([]);
-  const hapCollectionsRef = React8.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React8.useRef(0);
-  const clearAll = React8.useCallback(() => {
+  const timeoutIdsRef = React16.useRef([]);
+  const hapCollectionsRef = React16.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React16.useRef(0);
+  const clearAll = React16.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
   }, []);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     const handler = /* @__PURE__ */ __name((event) => {
@@ -19882,12 +19908,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React8.useRef(null);
-  const clearAll = React8.useCallback(() => {
+  const collectionRef = React16.useRef(null);
+  const clearAll = React16.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -19902,7 +19928,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -21738,30 +21764,30 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React8.useRef(null);
-  const [, forceViewTick] = React8.useState(0);
-  React8.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const containerRef = React16.useRef(null);
+  const [, forceViewTick] = React16.useState(0);
+  React16.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
   const viewing = viewedContent !== null;
   const viewedCommit = getViewedCommit();
-  const editorRef = React8.useRef(null);
-  const monacoRef = React8.useRef(null);
-  const viewZoneHandleRef = React8.useRef(null);
-  const lastPayloadRef = React8.useRef(null);
-  const [hapStream, setHapStream] = React8.useState(null);
-  const [breakpointStore, setBreakpointStore] = React8.useState(null);
-  const [onResume, setOnResume] = React8.useState(null);
-  const [editorReady, setEditorReady] = React8.useState(false);
-  React8.useEffect(() => {
+  const editorRef = React16.useRef(null);
+  const monacoRef = React16.useRef(null);
+  const viewZoneHandleRef = React16.useRef(null);
+  const lastPayloadRef = React16.useRef(null);
+  const [hapStream, setHapStream] = React16.useState(null);
+  const [breakpointStore, setBreakpointStore] = React16.useState(null);
+  const [onResume, setOnResume] = React16.useState(null);
+  const [editorReady, setEditorReady] = React16.useState(false);
+  React16.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -21792,7 +21818,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -21816,12 +21842,12 @@ function EditorView({
   }, [fileId]);
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -21833,9 +21859,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React8.useRef(onPlay);
+  const onPlayRef = React16.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React8.useRef(onStop);
+  const onStopRef = React16.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoMount = /* @__PURE__ */ __name((editor, monaco) => {
     editorRef.current = editor;
@@ -21843,6 +21869,8 @@ function EditorView({
     setEditorReady(true);
     registerEditor(fileId, editor);
     registerMonacoNamespace(monaco);
+    setActiveEditor(editor);
+    editor.onDidFocusEditorText?.(() => setActiveEditor(editor));
     applyPersistedEditorOptions(editor);
     ensureWorkspaceLanguages(monaco);
     if (monaco.editor?.defineTheme && monaco.editor?.setTheme) {
@@ -22010,7 +22038,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React8__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React16__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -22157,34 +22185,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React8.useRef(null);
-  const [audioPayload, setAudioPayload] = React8.useState(null);
-  const [reloadTick, setReloadTick] = React8.useState(0);
-  const [, forceSourcesRerender] = React8.useState(0);
-  const catchUpNeededRef = React8.useRef(false);
-  const [liveOn, setLiveOn] = React8.useState(() => getVizLive(fileId));
-  React8.useEffect(() => {
+  const containerRef = React16.useRef(null);
+  const [audioPayload, setAudioPayload] = React16.useState(null);
+  const [reloadTick, setReloadTick] = React16.useState(0);
+  const [, forceSourcesRerender] = React16.useState(0);
+  const catchUpNeededRef = React16.useRef(false);
+  const [liveOn, setLiveOn] = React16.useState(() => getVizLive(fileId));
+  React16.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -22214,8 +22242,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React8.useRef(effectivelyHidden);
-  React8.useEffect(() => {
+  const prevEffectivelyHiddenRef = React16.useRef(effectivelyHidden);
+  React16.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -22223,8 +22251,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React8.useRef(liveOn);
-  React8.useEffect(() => {
+  const prevLiveOnRef = React16.useRef(liveOn);
+  React16.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -22232,7 +22260,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React8__namespace.default.useMemo(() => {
+  const providerNode = React16__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -22411,9 +22439,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React8.useRef(opts);
+  const optsRef = React16.useRef(opts);
   optsRef.current = opts;
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -22525,25 +22553,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React8__namespace.useMemo(
+  const changedIds = React16__namespace.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode] = React8__namespace.useState(defaultMode);
-  React8__namespace.useEffect(() => {
+  const [mode, setMode] = React16__namespace.useState(defaultMode);
+  React16__namespace.useEffect(() => {
     setMode(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React8__namespace.useState(
+  const [fileId, setFileId] = React16__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React8__namespace.useRef(null);
-  const handleMount = React8__namespace.useCallback(
+  const diffEditorRef = React16__namespace.useRef(null);
+  const handleMount = React16__namespace.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -22553,7 +22581,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -22678,18 +22706,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React8__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React8__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React8__namespace.useState(
+  const snapshot = React16__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React16__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React16__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React8__namespace.useCallback(
+  const handleMount = React16__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -23580,7 +23608,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React8__namespace.createElement(
+  return React16__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -23598,8 +23626,1414 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React8__namespace.createElement(EmptyTimelineStub)
+  content: React16__namespace.createElement(EmptyTimelineStub)
 });
+function parseTopLevel(doc) {
+  try {
+    const program = acorn.parse(doc, {
+      ecmaVersion: "latest",
+      allowAwaitOutsideFunction: true
+    });
+    return program.body;
+  } catch {
+    return null;
+  }
+}
+__name(parseTopLevel, "parseTopLevel");
+function docParses(doc) {
+  return parseTopLevel(doc) !== null;
+}
+__name(docParses, "docParses");
+function isChunkFresh(doc, chunk) {
+  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
+}
+__name(isChunkFresh, "isChunkFresh");
+function detectChunk(doc, pos) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  for (const node of statements) {
+    if (pos >= node.start && pos <= node.end) return buildChunk(doc, node);
+  }
+  return null;
+}
+__name(detectChunk, "detectChunk");
+function detectAllChunks(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return [];
+  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
+}
+__name(detectAllChunks, "detectAllChunks");
+function buildChunk(doc, node) {
+  let label = null;
+  let body = node;
+  if (node.type === "LabeledStatement") {
+    label = node.label.name;
+    body = node.body;
+  }
+  if (body.type !== "ExpressionStatement") return null;
+  const expr = body.expression;
+  const headNode = { ref: null };
+  const chain = collectChain(doc, expr, headNode);
+  const headFn = chain.length > 0 ? chain[0].name : null;
+  let miniRange = null;
+  let miniString = null;
+  if (headNode.ref) {
+    const firstString = headNode.ref.arguments.find(
+      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
+    );
+    if (firstString) {
+      miniRange = [firstString.start + 1, firstString.end - 1];
+      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
+    }
+  }
+  const info = {
+    statementRange: [node.start, node.end],
+    statementText: doc.slice(node.start, node.end),
+    exprRange: [expr.start, expr.end],
+    label,
+    headFn,
+    miniRange,
+    miniString,
+    chain,
+    type: "unknown"
+  };
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildChunk, "buildChunk");
+function collectChain(doc, expr, headOut) {
+  const calls = [];
+  let node = expr;
+  while (node) {
+    if (node.type === "CallExpression") {
+      const callee = node.callee;
+      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
+        const dot = doc.lastIndexOf(".", callee.property.start);
+        calls.push({
+          name: callee.property.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [dot, node.end]
+        });
+        node = callee.object;
+        continue;
+      }
+      if (callee.type === "Identifier") {
+        calls.push({
+          name: callee.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [node.start, node.end]
+        });
+        headOut.ref = node;
+      }
+    }
+    break;
+  }
+  return calls.reverse();
+}
+__name(collectChain, "collectChain");
+function toArg(doc, node) {
+  let numeric = null;
+  if (node.type === "Literal" && typeof node.value === "number") {
+    numeric = node.value;
+  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
+    numeric = -node.argument.value;
+  }
+  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
+}
+__name(toArg, "toArg");
+function classifyChunk(info) {
+  const head = info.headFn;
+  if (info.miniString !== null) {
+    if (head === "note" || head === "n") return "roll";
+    if (head === "s" || head === "sound") return "step";
+  }
+  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
+  return "unknown";
+}
+__name(classifyChunk, "classifyChunk");
+
+// src/visualEdit/writeback.ts
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+  }
+  /** Close the gesture, sealing all its edits as one undo step. */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range, text, source) {
+    this.apply([{ range, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range, source) {
+    this.apply([{ range, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
+var DRAG_SPAN_PX = 160;
+function toPosition(value, r) {
+  if (r.scale === "log" && r.min > 0 && value > 0) {
+    return Math.log(value / r.min) / Math.log(r.max / r.min);
+  }
+  return (value - r.min) / (r.max - r.min || 1);
+}
+__name(toPosition, "toPosition");
+function fromPosition(pos, r) {
+  const clamped = Math.max(0, Math.min(1, pos));
+  let value;
+  if (r.scale === "log" && r.min > 0) {
+    value = r.min * Math.pow(r.max / r.min, clamped);
+  } else {
+    value = r.min + clamped * (r.max - r.min);
+  }
+  const stepped = Math.round(value / r.step) * r.step;
+  const decimals = (String(r.step).split(".")[1] ?? "").length;
+  return Number(stepped.toFixed(decimals));
+}
+__name(fromPosition, "fromPosition");
+function Knob({
+  label,
+  value,
+  range,
+  onChange,
+  onGestureStart,
+  onGestureEnd
+}) {
+  const dragRef = React16__namespace.useRef(null);
+  const pos = Math.max(0, Math.min(1, toPosition(value, range)));
+  const angle = -135 + pos * 270;
+  const onPointerDown = /* @__PURE__ */ __name((e) => {
+    e.preventDefault();
+    e.target.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startY: e.clientY, startPos: toPosition(value, range) };
+    onGestureStart?.();
+  }, "onPointerDown");
+  const onPointerMove = /* @__PURE__ */ __name((e) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dy = drag.startY - e.clientY;
+    const nextPos = drag.startPos + dy / DRAG_SPAN_PX;
+    const next = fromPosition(nextPos, range);
+    if (next !== value) onChange(next);
+  }, "onPointerMove");
+  const endDrag = /* @__PURE__ */ __name((e) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.target.releasePointerCapture?.(e.pointerId);
+    onGestureEnd?.();
+  }, "endDrag");
+  const onKeyDown = /* @__PURE__ */ __name((e) => {
+    let next = value;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") next = value + range.step;
+    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") next = value - range.step;
+    else return;
+    e.preventDefault();
+    next = Math.max(range.min, Math.min(range.max, next));
+    const decimals = (String(range.step).split(".")[1] ?? "").length;
+    next = Number(next.toFixed(decimals));
+    if (next !== value) {
+      onGestureStart?.();
+      onChange(next);
+      onGestureEnd?.();
+    }
+  }, "onKeyDown");
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-knob": label,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        width: 64,
+        userSelect: "none"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            role: "slider",
+            tabIndex: 0,
+            "aria-label": label,
+            "aria-valuemin": range.min,
+            "aria-valuemax": range.max,
+            "aria-valuenow": value,
+            onPointerDown,
+            onPointerMove,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onKeyDown,
+            style: {
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "var(--background-elevated, #26262c)",
+              border: "1px solid var(--border, #3a3a42)",
+              position: "relative",
+              cursor: "ns-resize",
+              touchAction: "none"
+            },
+            children: /* @__PURE__ */ jsxRuntime.jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: 2,
+                  height: 16,
+                  background: "var(--accent, #6ea8fe)",
+                  transformOrigin: "bottom center",
+                  transform: `translate(-50%, -100%) rotate(${angle}deg)`
+                }
+              }
+            )
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "span",
+          {
+            style: {
+              fontSize: 10,
+              color: "var(--foreground, #e6e6ea)",
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+              maxWidth: 60,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            },
+            title: label,
+            children: label
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "span",
+          {
+            "data-knob-value": label,
+            style: {
+              fontSize: 10,
+              color: "var(--foreground-muted, #a0a0aa)",
+              fontVariantNumeric: "tabular-nums"
+            },
+            children: value
+          }
+        )
+      ]
+    }
+  );
+}
+__name(Knob, "Knob");
+
+// src/visualEdit/panels/knobRanges.ts
+var lin = /* @__PURE__ */ __name((min, max, step) => ({
+  min,
+  max,
+  step,
+  scale: "linear"
+}), "lin");
+var log = /* @__PURE__ */ __name((min, max) => ({ min, max, step: 1, scale: "log" }), "log");
+var RANGES = {
+  // levels
+  gain: lin(0, 1, 0.01),
+  velocity: lin(0, 1, 0.01),
+  pan: lin(0, 1, 0.01),
+  // reverb
+  room: lin(0, 1, 0.01),
+  size: lin(0, 1, 0.01),
+  roomsize: lin(0, 1, 0.01),
+  // delay
+  delay: lin(0, 1, 0.01),
+  delaytime: lin(0, 1, 0.01),
+  delayfeedback: lin(0, 1, 0.01),
+  // filters (logarithmic frequency)
+  lpf: log(20, 2e4),
+  cutoff: log(20, 2e4),
+  hpf: log(20, 2e4),
+  hcutoff: log(20, 2e4),
+  bandf: log(20, 2e4),
+  resonance: lin(0, 40, 0.5),
+  lpq: lin(0, 40, 0.5),
+  // tone / drive
+  shape: lin(0, 1, 0.01),
+  distort: lin(0, 1, 0.01),
+  crush: lin(1, 16, 1),
+  coarse: lin(1, 16, 1),
+  // envelope
+  attack: lin(0, 2, 0.01),
+  decay: lin(0, 2, 0.01),
+  sustain: lin(0, 1, 0.01),
+  release: lin(0, 4, 0.01),
+  // playback
+  speed: lin(-2, 2, 0.01),
+  accelerate: lin(-2, 2, 0.01),
+  begin: lin(0, 1, 0.01),
+  end: lin(0, 1, 0.01),
+  legato: lin(0, 2, 0.01),
+  // time
+  slow: lin(0.25, 8, 0.25),
+  fast: lin(0.25, 8, 0.25),
+  cps: lin(0.1, 4, 0.05),
+  // probability
+  degradeBy: lin(0, 1, 0.01),
+  sometimesBy: lin(0, 1, 0.01),
+  // discrete index
+  n: lin(0, 16, 1)
+};
+function niceStep(span) {
+  const raw = span / 100;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  return pow || 0.01;
+}
+__name(niceStep, "niceStep");
+function knobRangeFor(method, value) {
+  const known = RANGES[method];
+  if (known) {
+    if (value > known.max) return { ...known, max: value };
+    if (value < known.min) return { ...known, min: value };
+    return known;
+  }
+  if (value >= 0 && value <= 1) return lin(0, 1, 0.01);
+  const min = value < 0 ? value * 2 : 0;
+  const max = Math.max(1, value * 2);
+  return lin(min, max, niceStep(max - min));
+}
+__name(knobRangeFor, "knobRangeFor");
+function VisualEditStandby({
+  panel,
+  hint,
+  icon
+}) {
+  return React16__namespace.createElement(
+    "div",
+    {
+      "data-bottom-panel-tab": `${panel}-standby`,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        height: "100%",
+        minHeight: 96,
+        padding: 24,
+        textAlign: "center",
+        color: "var(--foreground-muted, #a0a0aa)",
+        fontSize: 12,
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      }
+    },
+    icon ? React16__namespace.createElement("span", {
+      className: `codicon codicon-${icon}`,
+      "aria-hidden": true,
+      style: { fontSize: 22, opacity: 0.6 }
+    }) : null,
+    React16__namespace.createElement("span", null, hint)
+  );
+}
+__name(VisualEditStandby, "VisualEditStandby");
+
+// src/visualEdit/panels/tabs.ts
+var SEQUENCER_TAB_ID = "sequencer";
+var MIXER_TAB_ID = "mixer";
+var PIANO_ROLL_TAB_ID = "piano-roll";
+var VISUAL_EDIT_TABS = [
+  {
+    id: SEQUENCER_TAB_ID,
+    title: "Sequencer",
+    hint: "Click a drum pattern to edit it as a step grid.",
+    icon: "symbol-array"
+  },
+  {
+    id: MIXER_TAB_ID,
+    title: "Mixer",
+    hint: "Click a pattern to adjust its sound with knobs.",
+    icon: "settings"
+  },
+  {
+    id: PIANO_ROLL_TAB_ID,
+    title: "Piano Roll",
+    hint: "Click a melody to edit its notes.",
+    icon: "music"
+  }
+];
+function useActiveChunk() {
+  const [editor, setEditor] = React16__namespace.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React16__namespace.useState(null);
+  const writebackRef = React16__namespace.useRef(null);
+  const editorRef = React16__namespace.useRef(null);
+  const anchorRef = React16__namespace.useRef(null);
+  anchorRef.current = chunk ? chunk.statementRange[0] : null;
+  React16__namespace.useEffect(() => {
+    setEditor(getActiveEditor());
+    return onActiveEditorChange(() => setEditor(getActiveEditor()));
+  }, []);
+  React16__namespace.useEffect(() => {
+    editorRef.current = editor;
+    const monaco = getMonacoNamespace();
+    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
+  }, [editor]);
+  React16__namespace.useEffect(() => {
+    if (!editor) {
+      setChunk(null);
+      return;
+    }
+    const redetect = /* @__PURE__ */ __name(() => {
+      const model2 = editor.getModel?.();
+      const position = editor.getPosition?.();
+      if (!model2 || !position) {
+        setChunk(null);
+        return;
+      }
+      setChunk(detectChunk(model2.getValue(), model2.getOffsetAt(position)));
+    }, "redetect");
+    redetect();
+    const model = editor.getModel?.();
+    const subs = [
+      editor.onDidChangeCursorPosition?.(redetect),
+      model?.onDidChangeContent?.(() => {
+        if (writebackRef.current?.currentSource != null) return;
+        redetect();
+      })
+    ];
+    return () => {
+      for (const s of subs) s?.dispose?.();
+    };
+  }, [editor]);
+  const applyEdit = React16__namespace.useCallback(
+    (mutate) => {
+      const ed = editorRef.current;
+      const wb = writebackRef.current;
+      const anchor = anchorRef.current;
+      if (!ed || !wb || anchor == null) return;
+      const model = ed.getModel?.();
+      if (!model) return;
+      const fresh = detectChunk(model.getValue(), anchor);
+      if (!fresh) return;
+      mutate(fresh, wb);
+      setChunk(detectChunk(model.getValue(), anchor));
+    },
+    []
+  );
+  const beginGesture = React16__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React16__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
+  return { chunk, applyEdit, beginGesture, endGesture };
+}
+__name(useActiveChunk, "useActiveChunk");
+var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
+function knobsFromChunk(chunk) {
+  const knobs = [];
+  chunk.chain.forEach((call, chainIndex) => {
+    const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
+    numericArgs.forEach(({ a, argIndex }) => {
+      knobs.push({
+        chainIndex,
+        argIndex,
+        method: call.name,
+        // disambiguate when a single call has several numeric args
+        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
+        value: a.numeric
+      });
+    });
+  });
+  return knobs;
+}
+__name(knobsFromChunk, "knobsFromChunk");
+function Mixer() {
+  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const knobs = chunk ? knobsFromChunk(chunk) : [];
+  const writeKnob = React16__namespace.useCallback(
+    (chainIndex, argIndex, value) => {
+      applyEdit((fresh, wb) => {
+        const arg = fresh.chain[chainIndex]?.args[argIndex];
+        if (!arg) return;
+        wb.replaceRange(arg.range, formatNumber(value), "knob");
+      });
+    },
+    [applyEdit]
+  );
+  if (knobs.length === 0) {
+    return React16__namespace.createElement(VisualEditStandby, {
+      panel: MIXER_TAB_ID,
+      hint: MIXER_HINT,
+      icon: "settings"
+    });
+  }
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-bottom-panel-tab": "mixer",
+      style: {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 16,
+        alignItems: "flex-start",
+        padding: 16,
+        height: "100%",
+        overflowY: "auto",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: knobs.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
+        Knob,
+        {
+          label: k.label,
+          value: k.value,
+          range: knobRangeFor(k.method, k.value),
+          onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
+          onGestureStart: beginGesture,
+          onGestureEnd: endGesture
+        },
+        `${k.chainIndex}:${k.argIndex}`
+      ))
+    }
+  );
+}
+__name(Mixer, "Mixer");
+
+// src/visualEdit/notation/parse.ts
+var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
+var NOTE = /^[a-gA-G][bs#]?-?\d$/;
+var MAX_STEPS = 64;
+var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
+var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
+var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
+var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
+function closeBracket(src, open) {
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === "[") depth++;
+    else if (src[i] === "]" && --depth === 0) return i;
+  }
+  return -1;
+}
+__name(closeBracket, "closeBracket");
+function splitTopLevel(src) {
+  const out = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === "[") depth++;
+    else if (src[i] === "]") depth--;
+    else if (src[i] === "," && depth === 0) {
+      out.push(src.slice(from, i));
+      from = i + 1;
+    }
+  }
+  out.push(src.slice(from));
+  return out;
+}
+__name(splitTopLevel, "splitTopLevel");
+function unwrapAlternation(mini) {
+  const t = mini.trim();
+  return t.length >= 2 && t.startsWith("<") && t.endsWith(">") ? t.slice(1, -1) : null;
+}
+__name(unwrapAlternation, "unwrapAlternation");
+function readElongation(src, i) {
+  if (src[i] !== "@") return { ok: true, value: 1, next: i };
+  const digits = src.slice(i + 1).match(/^\d+/);
+  if (!digits) return { ok: false, reason: "invalid @ elongation" };
+  return { ok: true, value: parseInt(digits[0], 10), next: i + 1 + digits[0].length };
+}
+__name(readElongation, "readElongation");
+function parseGroup(inner, elongation) {
+  const commaParts = splitTopLevel(inner);
+  if (commaParts.length > 1) {
+    const atoms = [];
+    for (const raw of commaParts) {
+      const token = raw.trim();
+      if (/[\s[\]]/.test(token) || !ATOM.test(token)) {
+        return { reason: "stacked sub-sequences are beyond the editable subset" };
+      }
+      atoms.push(token);
+    }
+    return { atoms, elongation, sub: null };
+  }
+  const slots = [];
+  let i = 0;
+  while (i < inner.length) {
+    const ch = inner[i];
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    if (ch === "~") {
+      slots.push({ atoms: [], units: 1 });
+      i++;
+      continue;
+    }
+    if (ch === "[") {
+      const close = closeBracket(inner, i);
+      if (close === -1) return { reason: "unbalanced brackets" };
+      const chord = inner.slice(i + 1, close);
+      if (/[[\]]/.test(chord) || !chord.includes(",")) {
+        return { reason: "nested groups are beyond the editable subset" };
+      }
+      i = close + 1;
+      const elong2 = readElongation(inner, i);
+      if (!elong2.ok) return { reason: elong2.reason };
+      i = elong2.next;
+      const atoms = [];
+      for (const raw of chord.split(",")) {
+        const token = raw.trim();
+        if (!ATOM.test(token)) return { reason: `unsupported token "${token}"` };
+        atoms.push(token);
+      }
+      slots.push({ atoms, units: elong2.value });
+      continue;
+    }
+    const match = inner.slice(i).match(/^[^\s[\]@,]+/);
+    if (!match || !ATOM.test(match[0])) {
+      return { reason: `unsupported token "${match?.[0] ?? ch}"` };
+    }
+    i += match[0].length;
+    const elong = readElongation(inner, i);
+    if (!elong.ok) return { reason: elong.reason };
+    i = elong.next;
+    slots.push({ atoms: [match[0]], units: elong.value });
+  }
+  if (slots.length === 0) return { reason: "empty group" };
+  if (slots.length === 1 && slots[0].units === 1) {
+    return { atoms: slots[0].atoms, elongation, sub: null };
+  }
+  return { atoms: [], elongation, sub: slots };
+}
+__name(parseGroup, "parseGroup");
+function tokenize2(mini) {
+  const src = mini.trim();
+  if (src === "") return { ok: true, steps: [] };
+  if (/[<>{}*/!?()%._|]/.test(src)) {
+    return { ok: false, reason: "uses mini-notation features beyond the editable subset" };
+  }
+  const steps = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    if (ch === "~") {
+      steps.push({ atoms: [], elongation: 1, sub: null });
+      i++;
+      continue;
+    }
+    if (ch === "[") {
+      const close = closeBracket(src, i);
+      if (close === -1) return { ok: false, reason: "unbalanced brackets" };
+      const inner = src.slice(i + 1, close);
+      i = close + 1;
+      const elong2 = readElongation(src, i);
+      if (!elong2.ok) return { ok: false, reason: elong2.reason };
+      i = elong2.next;
+      const group = parseGroup(inner, elong2.value);
+      if ("reason" in group) return { ok: false, reason: group.reason };
+      steps.push(group);
+      continue;
+    }
+    const match = src.slice(i).match(/^[^\s[\]@,]+/);
+    if (!match || !ATOM.test(match[0])) {
+      return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` };
+    }
+    i += match[0].length;
+    const elong = readElongation(src, i);
+    if (!elong.ok) return { ok: false, reason: elong.reason };
+    i = elong.next;
+    steps.push({ atoms: [match[0]], elongation: elong.value, sub: null });
+  }
+  return { ok: true, steps };
+}
+__name(tokenize2, "tokenize");
+var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
+function toCells(steps, div) {
+  const cells = [];
+  for (const step of steps) {
+    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const total = stepUnits(step);
+    for (const slot of slots) {
+      const span = div / total * slot.units;
+      cells.push(slot.atoms);
+      for (let j = 1; j < span; j++) cells.push([]);
+    }
+  }
+  return cells;
+}
+__name(toCells, "toCells");
+function lanesFromCells(cells, part) {
+  const order = [];
+  for (const cell of cells) {
+    for (const sound of cell) if (!order.includes(sound)) order.push(sound);
+  }
+  return order.map((sound) => ({
+    sound,
+    ...part !== void 0 ? { part } : {},
+    cells: cells.map((cell) => cell.includes(sound))
+  }));
+}
+__name(lanesFromCells, "lanesFromCells");
+function parseStepGrid(mini) {
+  const alt = unwrapAlternation(mini);
+  if (alt !== null) return gridFromAlternation(alt);
+  const parts = splitTopLevel(mini);
+  if (parts.length > 1) return gridFromStack(parts);
+  const tok = tokenize2(mini);
+  if (!tok.ok) return tok;
+  if (gridHasElongation(tok.steps)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const div = division(tok.steps);
+  if (tok.steps.length * div > MAX_STEPS) {
+    return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
+  }
+  const cells = toCells(tok.steps, div);
+  return { ok: true, model: { steps: cells.length, lanes: lanesFromCells(cells) } };
+}
+__name(parseStepGrid, "parseStepGrid");
+function gridFromAlternation(inner) {
+  const tok = tokenize2(inner);
+  if (!tok.ok) return tok;
+  if (tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
+  if (gridHasElongation(tok.steps)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const div = division(tok.steps);
+  if (tok.steps.length * div > MAX_STEPS) {
+    return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
+  }
+  const cells = toCells(tok.steps, div);
+  return {
+    ok: true,
+    model: { steps: cells.length, bars: tok.steps.length, lanes: lanesFromCells(cells) }
+  };
+}
+__name(gridFromAlternation, "gridFromAlternation");
+function gridFromStack(parts) {
+  const partCells = [];
+  for (const part of parts) {
+    if (part.trim() === "") return { ok: false, reason: "empty stack part" };
+    const tok = tokenize2(part);
+    if (!tok.ok) return tok;
+    if (gridHasElongation(tok.steps)) {
+      return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+    }
+    partCells.push(toCells(tok.steps, division(tok.steps)));
+  }
+  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
+  if (total > MAX_STEPS) {
+    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
+  }
+  const lanes = [];
+  partCells.forEach((cells, part) => {
+    const factor = total / (cells.length || 1);
+    const stretched = Array.from(
+      { length: total },
+      (_, c) => c % factor === 0 ? cells[c / factor] ?? [] : []
+    );
+    lanes.push(...lanesFromCells(stretched, part));
+  });
+  return { ok: true, model: { steps: total, lanes } };
+}
+__name(gridFromStack, "gridFromStack");
+function parsePianoRoll(mini) {
+  const alt = unwrapAlternation(mini);
+  const tok = tokenize2(alt ?? mini);
+  if (!tok.ok) return tok;
+  if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
+  const div = division(tok.steps);
+  const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
+  if ((div > 1 || alt !== null) && bars * div > MAX_STEPS) {
+    return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
+  }
+  const notes = [];
+  let col = 0;
+  for (const step of tok.steps) {
+    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const total = stepUnits(step);
+    for (const slot of slots) {
+      const span = step.elongation * div * slot.units / total;
+      for (const token of slot.atoms) {
+        if (!NOTE.test(token)) return { ok: false, reason: `"${token}" is not a note name` };
+        notes.push({ pitch: token.toLowerCase(), start: col, duration: span });
+      }
+      col += span;
+    }
+  }
+  return { ok: true, model: { steps: col, ...alt !== null ? { bars } : {}, notes } };
+}
+__name(parsePianoRoll, "parsePianoRoll");
+
+// src/visualEdit/notation/serialize.ts
+function serializeStepGrid(model) {
+  const bars = model.bars ?? 1;
+  if (bars > 1) return gridBars(model, bars);
+  const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b);
+  if (parts.length <= 1) return gridColumns(model.lanes, model.steps).join(" ");
+  return parts.map(
+    (p) => gridColumns(
+      model.lanes.filter((l) => (l.part ?? 0) === p),
+      model.steps
+    ).join(" ")
+  ).join(", ");
+}
+__name(serializeStepGrid, "serializeStepGrid");
+function gridColumns(lanes, steps) {
+  const cols = [];
+  for (let i = 0; i < steps; i++) {
+    const active2 = lanes.filter((l) => l.cells[i]).map((l) => l.sound);
+    if (active2.length === 0) cols.push("~");
+    else if (active2.length === 1) cols.push(active2[0]);
+    else cols.push(`[${active2.join(",")}]`);
+  }
+  return cols;
+}
+__name(gridColumns, "gridColumns");
+function gridBars(model, bars) {
+  const perBar = model.steps / bars;
+  const cols = gridColumns(model.lanes, model.steps);
+  const slots = [];
+  for (let b = 0; b < bars; b++) {
+    const bar2 = cols.slice(b * perBar, (b + 1) * perBar);
+    if (bar2.every((c) => c === "~")) slots.push("~");
+    else if (perBar === 1) slots.push(bar2[0]);
+    else slots.push(`[${bar2.join(" ")}]`);
+  }
+  return `<${slots.join(" ")}>`;
+}
+__name(gridBars, "gridBars");
+var groupBody = /* @__PURE__ */ __name((g) => g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(",")}]`, "groupBody");
+var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${g.duration}`, "groupToken");
+function buildGroups(model) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return null;
+    }
+    const g = groups.get(note.start);
+    if (!g) groups.set(note.start, { pitches: [note.pitch], duration: note.duration });
+    else if (g.duration !== note.duration) return null;
+    else g.pitches.push(note.pitch);
+  }
+  return groups;
+}
+__name(buildGroups, "buildGroups");
+function serializePianoRoll(model) {
+  const groups = buildGroups(model);
+  if (groups === null) return null;
+  const bars = model.bars ?? 1;
+  if (bars > 1) return rollBars(groups, model.steps, bars);
+  const cols = [];
+  let col = 0;
+  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
+    if (start < col) return null;
+    while (col < start) {
+      cols.push("~");
+      col++;
+    }
+    const g = groups.get(start);
+    cols.push(groupToken(g));
+    col += g.duration;
+  }
+  while (col < model.steps) {
+    cols.push("~");
+    col++;
+  }
+  return cols.join(" ");
+}
+__name(serializePianoRoll, "serializePianoRoll");
+function rollBars(groups, steps, bars) {
+  const perBar = steps / bars;
+  if (!Number.isInteger(perBar)) return null;
+  const starts = [...groups.keys()].sort((a, b2) => a - b2);
+  const slots = [];
+  let b = 0;
+  while (b < bars) {
+    const barStart = b * perBar;
+    const barEnd = barStart + perBar;
+    const atStart = groups.get(barStart);
+    if (atStart && atStart.duration % perBar === 0) {
+      const k = atStart.duration / perBar;
+      const heldEnd = barStart + atStart.duration;
+      if (starts.some((s) => s > barStart && s < heldEnd)) return null;
+      slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
+      b += k;
+      continue;
+    }
+    if (perBar === 1) {
+      slots.push("~");
+      b++;
+      continue;
+    }
+    const tokens = [];
+    let c = barStart;
+    let consumed = 0;
+    while (c < barEnd) {
+      const g = groups.get(c);
+      if (!g) {
+        tokens.push("~");
+        c++;
+        continue;
+      }
+      if (c + g.duration > barEnd) return null;
+      tokens.push(groupToken(g));
+      c += g.duration;
+      consumed++;
+    }
+    if (consumed !== starts.filter((s) => s >= barStart && s < barEnd).length) return null;
+    slots.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
+    b++;
+  }
+  return `<${slots.join(" ")}>`;
+}
+__name(rollBars, "rollBars");
+function useGridModel(opts) {
+  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const [model, setModel] = React16__namespace.useState(null);
+  const modelRef = React16__namespace.useRef(null);
+  React16__namespace.useEffect(() => {
+    modelRef.current = model;
+  }, [model]);
+  const optsRef = React16__namespace.useRef(opts);
+  optsRef.current = opts;
+  React16__namespace.useEffect(() => {
+    const o = optsRef.current;
+    if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
+      modelRef.current = null;
+      setModel(null);
+      return;
+    }
+    const parsed = o.parse(chunk.miniString);
+    if (!parsed.ok) {
+      modelRef.current = null;
+      setModel(null);
+      return;
+    }
+    const prev = modelRef.current;
+    const next = prev && o.serialize(prev) === chunk.miniString ? prev : parsed.model;
+    modelRef.current = next;
+    setModel(next);
+  }, [chunk]);
+  const mutate = React16__namespace.useCallback(
+    (fn) => {
+      const o = optsRef.current;
+      const prev = modelRef.current;
+      if (prev == null) return;
+      const next = fn(prev);
+      if (next === prev) return;
+      const mini = o.serialize(next);
+      if (mini == null) return;
+      modelRef.current = next;
+      setModel(next);
+      applyEdit((fresh, wb) => {
+        if (fresh.miniRange) wb.replaceRange(fresh.miniRange, mini, o.source);
+      });
+    },
+    [applyEdit]
+  );
+  return { model, chunk, mutate, beginGesture, endGesture };
+}
+__name(useGridModel, "useGridModel");
+var SEQ_HINT = VISUAL_EDIT_TABS.find((t) => t.id === SEQUENCER_TAB_ID)?.hint ?? "Click a drum pattern to edit it as a step grid.";
+function isStepChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
+}
+__name(isStepChunk, "isStepChunk");
+function toggleCell(model, laneIndex, stepIndex, value) {
+  return {
+    ...model,
+    lanes: model.lanes.map(
+      (lane, i) => i === laneIndex ? { ...lane, cells: lane.cells.map((c, j) => j === stepIndex ? value : c) } : lane
+    )
+  };
+}
+__name(toggleCell, "toggleCell");
+function SequencerGrid() {
+  const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
+    source: "seq",
+    eligible: isStepChunk,
+    parse: parseStepGrid,
+    serialize: serializeStepGrid
+  });
+  const paintRef = React16__namespace.useRef({
+    active: false,
+    value: true
+  });
+  React16__namespace.useEffect(() => {
+    const onUp = /* @__PURE__ */ __name(() => {
+      if (!paintRef.current.active) return;
+      paintRef.current.active = false;
+      endGesture();
+    }, "onUp");
+    window.addEventListener("pointerup", onUp);
+    return () => window.removeEventListener("pointerup", onUp);
+  }, [endGesture]);
+  const paintCell = React16__namespace.useCallback(
+    (laneIndex, stepIndex, value) => {
+      mutate((prev) => {
+        const lane = prev.lanes[laneIndex];
+        if (!lane || stepIndex >= lane.cells.length || lane.cells[stepIndex] === value) {
+          return prev;
+        }
+        return toggleCell(prev, laneIndex, stepIndex, value);
+      });
+    },
+    [mutate]
+  );
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current3) => {
+    paintRef.current = { active: true, value: !current3 };
+    beginGesture();
+    paintCell(laneIndex, stepIndex, !current3);
+  }, "onCellDown");
+  const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
+    if (!paintRef.current.active) return;
+    paintCell(laneIndex, stepIndex, paintRef.current.value);
+  }, "onCellEnter");
+  if (!model) {
+    return React16__namespace.createElement(VisualEditStandby, {
+      panel: SEQUENCER_TAB_ID,
+      hint: chunk && isStepChunk(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
+      icon: "symbol-array"
+    });
+  }
+  const barSize = model.bars ? model.steps / model.bars : 0;
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-bottom-panel-tab": "sequencer",
+      style: {
+        padding: 16,
+        height: "100%",
+        overflow: "auto",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        touchAction: "none"
+      },
+      children: /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "inline-flex", flexDirection: "column", gap: 4 }, children: model.lanes.map((lane, laneIndex) => /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "span",
+          {
+            style: {
+              width: 56,
+              fontSize: 11,
+              color: "var(--foreground, #e6e6ea)",
+              textAlign: "right",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            },
+            title: lane.sound,
+            children: lane.sound
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 2 }, children: lane.cells.map((on, stepIndex) => /* @__PURE__ */ jsxRuntime.jsx(
+          "button",
+          {
+            type: "button",
+            "aria-pressed": on,
+            "aria-label": `${lane.sound} step ${stepIndex + 1}`,
+            "data-seq-cell": `${laneIndex}:${stepIndex}`,
+            onPointerDown: (e) => {
+              e.preventDefault();
+              onCellDown(laneIndex, stepIndex, on);
+            },
+            onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+            style: {
+              width: 22,
+              height: 22,
+              padding: 0,
+              border: "1px solid var(--border, #3a3a42)",
+              borderRadius: 3,
+              // subtle gap at each bar boundary
+              marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
+              background: on ? "var(--accent, #6ea8fe)" : "var(--background-elevated, #26262c)",
+              cursor: "pointer"
+            }
+          },
+          stepIndex
+        )) })
+      ] }, `${lane.sound}:${lane.part ?? 0}`)) })
+    }
+  );
+}
+__name(SequencerGrid, "SequencerGrid");
+
+// src/visualEdit/notation/pitch.ts
+var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+function pitchToMidi(token) {
+  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)$/);
+  if (!m) return null;
+  const [, letter, accidental, octave] = m;
+  let semitone = SEMITONE_OF[letter];
+  if (accidental === "s" || accidental === "#") semitone += 1;
+  else if (accidental === "b") semitone -= 1;
+  return (parseInt(octave, 10) + 1) * 12 + semitone;
+}
+__name(pitchToMidi, "pitchToMidi");
+function midiToPitch(midi) {
+  const octave = Math.floor(midi / 12) - 1;
+  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
+}
+__name(midiToPitch, "midiToPitch");
+function isBlackKey(midi) {
+  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
+}
+__name(isBlackKey, "isBlackKey");
+
+// src/visualEdit/notation/place.ts
+function placeNote(model, pitch, start, duration) {
+  const groupAt = model.notes.find((n) => n.start === start);
+  if (groupAt) {
+    return { ...model, notes: [...model.notes, { pitch, start, duration: groupAt.duration }] };
+  }
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const notes = model.notes.map(
+    (n) => n.start < start && n.start + n.duration > start ? { ...n, duration: start - n.start } : n
+  );
+  notes.push({ pitch, start, duration: Math.max(1, Math.min(duration, nextStart - start)) });
+  return { ...model, notes };
+}
+__name(placeNote, "placeNote");
+var ROLL_HINT = VISUAL_EDIT_TABS.find((t) => t.id === PIANO_ROLL_TAB_ID)?.hint ?? "Click a melody to edit its notes.";
+function isRollChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
+}
+__name(isRollChunk, "isRollChunk");
+var DEFAULT_LO = 48;
+var DEFAULT_HI = 72;
+var MIN_SPAN = 12;
+function pitchRange(model) {
+  const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
+  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
+  let lo = Math.min(...midis) - 2;
+  let hi = Math.max(...midis) + 2;
+  if (hi - lo < MIN_SPAN) hi = lo + MIN_SPAN;
+  return { lo, hi };
+}
+__name(pitchRange, "pitchRange");
+function PianoRollGrid() {
+  const { chunk, model, mutate } = useGridModel({
+    source: "roll",
+    eligible: isRollChunk,
+    parse: parsePianoRoll,
+    serialize: serializePianoRoll
+  });
+  const toggleNote = React16__namespace.useCallback(
+    (midi, step) => {
+      mutate((prev) => {
+        const pitch = midiToPitch(midi);
+        const covering = prev.notes.find(
+          (n) => pitchToMidi(n.pitch) === midi && n.start <= step && step < n.start + n.duration
+        );
+        if (covering) {
+          return { ...prev, notes: prev.notes.filter((n) => n !== covering) };
+        }
+        return placeNote(prev, pitch, step, 1);
+      });
+    },
+    [mutate]
+  );
+  if (!model) {
+    return React16__namespace.createElement(VisualEditStandby, {
+      panel: PIANO_ROLL_TAB_ID,
+      hint: chunk && isRollChunk(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
+      icon: "music"
+    });
+  }
+  const { lo, hi } = pitchRange(model);
+  const rows = [];
+  for (let m = hi; m >= lo; m--) rows.push(m);
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "div",
+    {
+      "data-bottom-panel-tab": "piano-roll",
+      style: {
+        padding: 16,
+        height: "100%",
+        overflow: "auto",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        touchAction: "none"
+      },
+      children: /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "inline-flex", flexDirection: "column", gap: 1 }, children: rows.map((midi) => {
+        const black = isBlackKey(midi);
+        return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+          /* @__PURE__ */ jsxRuntime.jsx(
+            "span",
+            {
+              style: {
+                width: 36,
+                fontSize: 9,
+                textAlign: "right",
+                color: black ? "var(--foreground-muted, #a0a0aa)" : "var(--foreground, #e6e6ea)"
+              },
+              children: midiToPitch(midi)
+            }
+          ),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1 }, children: Array.from({ length: model.steps }, (_, step) => {
+            const note = model.notes.find(
+              (n) => pitchToMidi(n.pitch) === midi && n.start <= step && step < n.start + n.duration
+            );
+            const on = note !== void 0;
+            const isHead = on && note.start === step;
+            return /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                type: "button",
+                "aria-pressed": on,
+                "aria-label": `${midiToPitch(midi)} step ${step + 1}`,
+                "data-roll-cell": `${midi}:${step}`,
+                onPointerDown: (e) => {
+                  e.preventDefault();
+                  toggleNote(midi, step);
+                },
+                style: {
+                  width: 18,
+                  height: 16,
+                  padding: 0,
+                  border: "1px solid var(--border, #3a3a42)",
+                  borderRadius: 2,
+                  background: on ? "var(--accent, #6ea8fe)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+                  // a small notch marks where a held note starts
+                  opacity: on && !isHead ? 0.7 : 1,
+                  cursor: "pointer"
+                }
+              },
+              step
+            );
+          }) })
+        ] }, midi);
+      }) })
+    }
+  );
+}
+__name(PianoRollGrid, "PianoRollGrid");
+
+// src/workspace/bottomPanel/visualEditSeed.tsx
+var PANELS = {
+  [MIXER_TAB_ID]: Mixer,
+  [SEQUENCER_TAB_ID]: SequencerGrid,
+  [PIANO_ROLL_TAB_ID]: PianoRollGrid
+};
+function seedVisualEditTabs() {
+  for (const tab of VISUAL_EDIT_TABS) {
+    const Panel = PANELS[tab.id];
+    registerBottomPanelTab({
+      id: tab.id,
+      title: tab.title,
+      icon: tab.icon,
+      content: React16__namespace.createElement(Panel)
+    });
+  }
+}
+__name(seedVisualEditTabs, "seedVisualEditTabs");
+seedVisualEditTabs();
 var HEADER_HEIGHT = 28;
 var RESIZE_HANDLE_HEIGHT = 4;
 var CLOSED_HEIGHT = HEADER_HEIGHT + 1;
@@ -23608,24 +25042,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React8__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React8__namespace.useState(false);
-  const startYRef = React8__namespace.useRef(0);
-  const startValueRef = React8__namespace.useRef(opts.initial);
-  const pointerIdRef = React8__namespace.useRef(null);
-  const draggingRef = React8__namespace.useRef(false);
-  const minRef = React8__namespace.useRef(opts.min);
-  const maxRef = React8__namespace.useRef(opts.max);
-  React8__namespace.useEffect(() => {
+  const [value, setValueState] = React16__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React16__namespace.useState(false);
+  const startYRef = React16__namespace.useRef(0);
+  const startValueRef = React16__namespace.useRef(opts.initial);
+  const pointerIdRef = React16__namespace.useRef(null);
+  const draggingRef = React16__namespace.useRef(false);
+  const minRef = React16__namespace.useRef(opts.min);
+  const maxRef = React16__namespace.useRef(opts.max);
+  React16__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React8__namespace.useCallback((v) => {
+  const setValue = React16__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React8__namespace.useCallback(
+  const onPointerDown = React16__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -23640,7 +25074,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React8__namespace.useCallback(
+  const endDrag = React16__namespace.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -23655,7 +25089,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React8__namespace.useCallback(
+  const onPointerMove = React16__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -23671,13 +25105,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React8__namespace.useCallback(
+  const onPointerUp = React16__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React8__namespace.useCallback(
+  const onPointerCancel = React16__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -23705,15 +25139,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React8__namespace.useState(
+  const [tabs2, setTabs] = React16__namespace.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React8__namespace.useState(readPersistedOpen);
-  const [height, setHeight] = React8__namespace.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React8__namespace.useState(
+  const [open, setOpen] = React16__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React16__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React16__namespace.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -23723,10 +25157,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -23738,24 +25172,24 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const tabButtonRefs = React8__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React8__namespace.useCallback(
+  const tabButtonRefs = React16__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React16__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React8__namespace.useCallback((id) => {
+  const focusTab = React16__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React8__namespace.useCallback(
+  const onTabsKeyDown = React16__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -24001,16 +25435,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React8.useRef(null);
-  const activeTabElRef = React8.useRef(null);
-  const menuBtnRef = React8.useRef(null);
-  const menuRef = React8.useRef(null);
-  const [overflow, setOverflow] = React8.useState({
+  const scrollRef = React16.useRef(null);
+  const activeTabElRef = React16.useRef(null);
+  const menuBtnRef = React16.useRef(null);
+  const menuRef = React16.useRef(null);
+  const [overflow, setOverflow] = React16.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React8.useState(false);
-  React8.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React16.useState(false);
+  React16.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -24029,12 +25463,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -24346,7 +25780,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React16.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -24368,28 +25802,28 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
   onEditViz,
   onCropViz
 }, forwardedRef) {
-  const shellRootRef = React8.useRef(null);
-  const initialState = React8.useRef(
+  const shellRootRef = React16.useRef(null);
+  const initialState = React16.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React8.useState(
+  const [groups, setGroups] = React16.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React8.useState(
+  const [layout, setLayout] = React16.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React8.useState(
+  const [activeGroupId, setActiveGroupId] = React16.useState(
     () => initialState.current.activeGroupId
   );
-  const [bgOverrides, setBgOverrides] = React8.useState(
+  const [bgOverrides, setBgOverrides] = React16.useState(
     () => /* @__PURE__ */ new Map()
   );
-  const lastActiveBackdropRef = React8.useRef(null);
-  React8.useEffect(() => {
+  const lastActiveBackdropRef = React16.useRef(null);
+  React16.useEffect(() => {
     const g = groups.get(activeGroupId);
     const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
     if (resolved !== lastActiveBackdropRef.current) {
@@ -24397,56 +25831,56 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       onActiveBackdropChange?.(resolved);
     }
   }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
-  const didMountRef = React8.useRef(false);
-  React8.useEffect(() => {
+  const didMountRef = React16.useRef(false);
+  React16.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React8.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React8.useState(
+  const [dragOverTarget, setDragOverTarget] = React16.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React16.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React8.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React8.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React16.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React16.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React8.useState(
+  const [backdropQuality, setBackdropQualityState] = React16.useState(
     () => getBackdropQuality()
   );
-  React8.useEffect(
+  React16.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React8.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React16.useState(
     () => getBackdropOpacity()
   );
-  React8.useEffect(
+  React16.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React8.useMemo(() => {
+  const activeTab = React16.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React8.useRef(void 0);
-  React8.useEffect(() => {
+  const prevActiveTabRef = React16.useRef(void 0);
+  React16.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React8.useCallback(
+  const updateGroup = React16.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -24458,14 +25892,14 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleTabClick = React8.useCallback(
+  const handleTabClick = React16.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const handleTabClose = React8.useCallback(
+  const handleTabClose = React16.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -24530,7 +25964,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout, onTabClose]
   );
-  const handleSplit = React8.useCallback(
+  const handleSplit = React16.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -24542,7 +25976,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const findNeighborGroupId = React8.useCallback(
+  const findNeighborGroupId = React16.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -24551,7 +25985,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [layout]
   );
-  const handleCloseGroup = React8.useCallback(
+  const handleCloseGroup = React16.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -24578,7 +26012,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React8.useCallback(
+  const splitGroupWithTab = React16.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -24594,7 +26028,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const moveTabToNewQuadrant = React8.useCallback(
+  const moveTabToNewQuadrant = React16.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -24634,7 +26068,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React8.useCallback(
+  const moveTabToNewEdgeGroup = React16.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -24669,7 +26103,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups]
   );
-  const updateGroupBackground = React8.useCallback(
+  const updateGroupBackground = React16.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -24681,7 +26115,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, updateGroup, onBackgroundFileChange]
   );
-  const updateGroupOverride = React8.useCallback(
+  const updateGroupOverride = React16.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
         const cur = prev.get(groupId) ?? null;
@@ -24694,7 +26128,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const updateGroupBackdropOpacity = React8.useCallback(
+  const updateGroupBackdropOpacity = React16.useCallback(
     (groupId, opacity) => {
       const prev = groups.get(groupId)?.backdropOpacity;
       const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
@@ -24703,7 +26137,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, updateGroup]
   );
-  const updateGroupBackdropQuality = React8.useCallback(
+  const updateGroupBackdropQuality = React16.useCallback(
     (groupId, quality) => {
       const prev = groups.get(groupId)?.backdropQuality;
       const nextVal = quality ?? void 0;
@@ -24712,7 +26146,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, updateGroup]
   );
-  const closeTabById = React8.useCallback(
+  const closeTabById = React16.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -24745,7 +26179,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React8.useCallback(
+  const findTabByFileId = React16.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -24758,14 +26192,14 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React8.useCallback(() => {
+  const findGroupWithAnyPreview = React16.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React8.useRef(null);
-  const shellActions = React8.useMemo(
+  const shellActionsRef = React16.useRef(null);
+  const shellActions = React16.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -24786,12 +26220,12 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React8.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React8.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React8.useCallback(() => {
+  const getActiveTab = React16.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React16.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React16.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React8.useCallback(
+  const getPreviewProviderForCommand = React16.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -24816,7 +26250,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React8.useCallback(
+  const handleEdgeDrop = React16.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -24833,7 +26267,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React8.useCallback(
+  const handleEdgeDragOver = React16.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -24842,12 +26276,12 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React8.useCallback(() => {
+  const handleEdgeDragLeave = React16.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React8.useRef(onSaveFile);
+  const onSaveFileRef = React16.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -24861,7 +26295,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React8.useCallback(
+  const handleTabDragStart = React16.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -24870,7 +26304,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -24883,7 +26317,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React8.useCallback(
+  const computeQuadrant = React16.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -24908,7 +26342,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleTabBarDrop = React8.useCallback(
+  const handleTabBarDrop = React16.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -24980,7 +26414,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     []
   );
-  const handleDropOnGroup = React8.useCallback(
+  const handleDropOnGroup = React16.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -25049,7 +26483,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     },
     [computeQuadrant, groups, moveTabToNewQuadrant]
   );
-  const renderTabContent = React8.useCallback(
+  const renderTabContent = React16.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -25296,7 +26730,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       closeTabById
     ]
   );
-  const renderGroup = React8.useCallback(
+  const renderGroup = React16.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -25516,11 +26950,11 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       theme
     ]
   );
-  const totalGroupCount = React8.useMemo(
+  const totalGroupCount = React16.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React8.useMemo(() => {
+  const previewTabIds = React16.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -25531,7 +26965,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
     }
     return out;
   }, [groups]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -25554,7 +26988,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React8.useImperativeHandle(
+  React16.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -25866,7 +27300,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
             })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
               if (column.length === 1) {
                 const g = groups.get(column[0]);
-                return /* @__PURE__ */ jsxRuntime.jsx(React8__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                return /* @__PURE__ */ jsxRuntime.jsx(React16__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
               }
               return /* @__PURE__ */ jsxRuntime.jsx(
                 SplitPane,
@@ -25874,7 +27308,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                   direction: "vertical",
                   children: column.map((gid) => {
                     const g = groups.get(gid);
-                    return /* @__PURE__ */ jsxRuntime.jsx(React8__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                    return /* @__PURE__ */ jsxRuntime.jsx(React16__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                   })
                 },
                 `col-${colIdx}-${column.join("+")}`
@@ -26484,14 +27918,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React8.useRef(null);
-  const [isPlaying, setIsPlaying] = React8.useState(false);
-  const [error, setError] = React8.useState(null);
-  const [bpm, setBpm] = React8.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React8.useState(false);
-  const fileIdRef = React8.useRef(FILE_ID);
-  const [seeded, setSeeded] = React8.useState(false);
-  React8.useEffect(() => {
+  const runtimeRef = React16.useRef(null);
+  const [isPlaying, setIsPlaying] = React16.useState(false);
+  const [error, setError] = React16.useState(null);
+  const [bpm, setBpm] = React16.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React16.useState(false);
+  const fileIdRef = React16.useRef(FILE_ID);
+  const [seeded, setSeeded] = React16.useState(false);
+  React16.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -26500,7 +27934,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -26536,41 +27970,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React8.useRef(false);
-  React8.useEffect(() => {
+  const autoPlayedRef = React16.useRef(false);
+  React16.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React8.useRef(onChange);
+  const onChangeRef = React16.useRef(onChange);
   onChangeRef.current = onChange;
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React8.useCallback(() => {
+  const handlePlay = React16.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React8.useCallback(() => {
+  const handleStop = React16.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React8.useCallback(() => {
+  const handleToggleAutoRefresh = React16.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React8.useCallback(
+  const chromeForTab = React16.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -26593,7 +28027,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React8.useCallback(
+  const editorExtrasForTab = React16.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -26641,10 +28075,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React8.useRef(null);
-  const [bpm, setBpm] = React8.useState(120);
-  const [soundNames, setSoundNames] = React8.useState([]);
-  const [isExporting, setIsExporting] = React8.useState(false);
+  const engineRef = React16.useRef(null);
+  const [bpm, setBpm] = React16.useState(120);
+  const [soundNames, setSoundNames] = React16.useState([]);
+  const [isExporting, setIsExporting] = React16.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -26653,19 +28087,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React8.useRef(controlledCode ?? defaultCode);
+  const codeRef = React16.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React8.useCallback((engine2) => {
+  const handlePostEvaluate = React16.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -26678,7 +28112,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React8.useCallback(async () => {
+  const handleExport = React16.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -27261,7 +28695,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React8.useRef(null);
+  const rendererRef = React16.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -27275,7 +28709,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -27298,7 +28732,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React8.useRef(null);
+  const containerRef = React16.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -27456,9 +28890,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React8.useState(false);
-  const ref = React8.useRef(null);
-  React8.useEffect(() => {
+  const [open, setOpen] = React16.useState(false);
+  const ref = React16.useRef(null);
+  React16.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -27729,12 +29163,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React8.useRef(null);
-  const [initialTabs, setInitialTabs] = React8.useState(null);
-  React8.useEffect(() => {
+  const containerRef = React16.useRef(null);
+  const [initialTabs, setInitialTabs] = React16.useState(null);
+  React16.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -27754,7 +29188,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React8.useCallback(
+  const handleSaveFile = React16.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -27768,7 +29202,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React8.useCallback(
+  const previewProviderFor = React16.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -27863,10 +29297,10 @@ function usePopoutPreview({
   onClose,
   theme = "dark"
 }) {
-  const windowRef = React8.useRef(null);
-  const rendererRef = React8.useRef(null);
-  const rafRef = React8.useRef(null);
-  const cleanup = React8.useCallback(() => {
+  const windowRef = React16.useRef(null);
+  const rendererRef = React16.useRef(null);
+  const rafRef = React16.useRef(null);
+  const cleanup = React16.useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -27878,7 +29312,7 @@ function usePopoutPreview({
     }
     windowRef.current = null;
   }, []);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!descriptor) {
       cleanup();
       return;
@@ -27937,7 +29371,7 @@ function usePopoutPreview({
       cleanup();
     };
   }, [descriptor?.id]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!rendererRef.current) return;
     const components = {};
     if (hapStream) components.streaming = { hapStream };
@@ -27950,7 +29384,7 @@ function usePopoutPreview({
 __name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
-  const subscribe3 = React8.useCallback(
+  const subscribe3 = React16.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -27958,12 +29392,12 @@ function useTrackMeta(fileId, trackId) {
     },
     [fileId]
   );
-  const getSnapshot = React8.useCallback(() => {
+  const getSnapshot = React16.useCallback(() => {
     if (!fileId) return EMPTY_META;
     return getTrackMeta(fileId, trackId);
   }, [fileId, trackId]);
-  const meta = React8.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
-  const set = React8.useCallback(
+  const meta = React16.useSyncExternalStore(subscribe3, getSnapshot, getSnapshot);
+  const set = React16.useCallback(
     (partial) => {
       if (!fileId) return;
       setTrackMeta(fileId, trackId, partial);
@@ -28301,10 +29735,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React8__namespace.useReducer((x) => x + 1, 0);
-  React8__namespace.useEffect(() => subscribeToHistory(force), []);
-  React8__namespace.useEffect(() => subscribeToRuntimeView(force), []);
-  React8__namespace.useEffect(() => {
+  const [, force] = React16__namespace.useReducer((x) => x + 1, 0);
+  React16__namespace.useEffect(() => subscribeToHistory(force), []);
+  React16__namespace.useEffect(() => subscribeToRuntimeView(force), []);
+  React16__namespace.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -28321,17 +29755,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React8__namespace.useState(null);
-  const [forkName, setForkName] = React8__namespace.useState("");
-  const [committing, setCommitting] = React8__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React8__namespace.useState("");
-  const [expanded, setExpanded] = React8__namespace.useState(null);
-  const [hovered, setHovered] = React8__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React8__namespace.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React8__namespace.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React8__namespace.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React16__namespace.useState(null);
+  const [forkName, setForkName] = React16__namespace.useState("");
+  const [committing, setCommitting] = React16__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React16__namespace.useState("");
+  const [expanded, setExpanded] = React16__namespace.useState(null);
+  const [hovered, setHovered] = React16__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React16__namespace.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React16__namespace.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React16__namespace.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React8__namespace.useEffect(() => {
+  React16__namespace.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -29041,17 +30475,17 @@ function barString(v, cells = 8) {
 }
 __name(barString, "barString");
 function StaveInputsPanel({ kind }) {
-  const [open, setOpen] = React8.useState(false);
-  const [liveEnabled, setLiveEnabled] = React8.useState(true);
-  React8.useEffect(() => vizSignalProbe.acquire(), []);
-  React8.useEffect(() => {
+  const [open, setOpen] = React16.useState(false);
+  const [liveEnabled, setLiveEnabled] = React16.useState(true);
+  React16.useEffect(() => vizSignalProbe.acquire(), []);
+  React16.useEffect(() => {
     setLiveEnabled(getVizInputsLiveValuesEnabled());
     return onVizInputsLiveValuesChange(setLiveEnabled);
   }, []);
-  const rows = React8.useMemo(() => buildVizInputRows(kind), [kind]);
-  const liveRows = React8.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
-  const valueRefs = React8.useRef([]);
-  React8.useEffect(() => {
+  const rows = React16.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React16.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React16.useRef([]);
+  React16.useEffect(() => {
     if (!open || !liveEnabled) return;
     if (typeof requestAnimationFrame !== "function") return;
     let raf = 0;
@@ -29269,21 +30703,21 @@ function VizEditorChrome({
   onToggleBackground,
   isBackground
 }) {
-  const [liveOn, setLiveOn] = React8.useState(() => getVizLive(file.id));
-  React8.useEffect(() => {
+  const [liveOn, setLiveOn] = React16.useState(() => getVizLive(file.id));
+  React16.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React8.useState({
+  const [selectedSource, setSelectedSource] = React16.useState({
     kind: "default"
   });
-  const [, forceSourcesRerender] = React8.useState(0);
-  React8.useEffect(() => {
+  const [, forceSourcesRerender] = React16.useState(0);
+  React16.useEffect(() => {
     return workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
   }, []);
-  const handleSourceChange = React8.useCallback(
+  const handleSourceChange = React16.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -29301,7 +30735,7 @@ function VizEditorChrome({
     },
     [previewOpen, previewPaused, onChangePreviewSource, selectedSource]
   );
-  const handlePrimaryButtonClick = React8.useCallback(() => {
+  const handlePrimaryButtonClick = React16.useCallback(() => {
     if (previewOpen && onTogglePausePreview) {
       onTogglePausePreview();
       return;
@@ -29471,7 +30905,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React8.useMemo(() => {
+  const { descriptor, compileError } = React16.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -29507,9 +30941,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React8.useRef(null);
-  const rendererRef = React8.useRef(null);
-  const components = React8.useMemo(() => {
+  const containerRef = React16.useRef(null);
+  const rendererRef = React16.useRef(null);
+  const components = React16.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -29541,7 +30975,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -29601,7 +31035,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -29609,7 +31043,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -29624,7 +31058,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React8.useEffect(() => {
+  React16.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -29845,6 +31279,69 @@ function emitFromGlobal(err, _kind) {
   });
 }
 __name(emitFromGlobal, "emitFromGlobal");
+
+// src/visualEdit/notation/resize.ts
+function resizeGrid(model, nextSteps, mode) {
+  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
+  if (mode === "pad" || model.steps === 0) {
+    return {
+      ...model,
+      steps: nextSteps,
+      lanes: model.lanes.map((l) => ({ ...l, cells: padCells(l.cells, nextSteps) }))
+    };
+  }
+  const from = model.steps;
+  return {
+    ...model,
+    steps: nextSteps,
+    lanes: model.lanes.map((l) => ({
+      ...l,
+      cells: Array.from({ length: nextSteps }, (_, j) => {
+        if (nextSteps >= from) {
+          return j * from % nextSteps === 0 && l.cells[j * from / nextSteps] === true;
+        }
+        const lo = Math.ceil(j * from / nextSteps);
+        const hi = Math.ceil((j + 1) * from / nextSteps);
+        return l.cells.slice(lo, hi).some(Boolean);
+      })
+    }))
+  };
+}
+__name(resizeGrid, "resizeGrid");
+function resizeRoll(model, nextSteps, mode) {
+  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
+  if (mode === "pad" || model.steps === 0) {
+    return {
+      ...model,
+      steps: nextSteps,
+      notes: model.notes.filter((n) => n.start < nextSteps).map((n) => ({ ...n, duration: Math.min(n.duration, nextSteps - n.start) }))
+    };
+  }
+  const factor = nextSteps / model.steps;
+  const scaled = model.notes.map((n) => {
+    const start = Math.floor(n.start * factor);
+    const end = Math.max(start + 1, Math.round((n.start + n.duration) * factor));
+    return { ...n, start, duration: Math.min(end, nextSteps) - start };
+  }).filter((n) => n.start < nextSteps && n.duration >= 1);
+  const seen = /* @__PURE__ */ new Set();
+  return {
+    ...model,
+    steps: nextSteps,
+    notes: scaled.filter((n) => {
+      const key = `${n.pitch}@${n.start}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+  };
+}
+__name(resizeRoll, "resizeRoll");
+function padCells(cells, steps) {
+  if (cells.length === steps) return [...cells];
+  if (cells.length > steps) return cells.slice(0, steps);
+  return [...cells, ...new Array(steps - cells.length).fill(false)];
+}
+__name(padCells, "padCells");
 
 // src/workspace/tabPersistence.ts
 function validBackdropOpacity(v) {
@@ -30072,23 +31569,29 @@ exports.HydraVizRenderer = HydraVizRenderer;
 exports.INLINE_VIZ_ACTION_SIZE_VAR = INLINE_VIZ_ACTION_SIZE_VAR;
 exports.IR = IR;
 exports.IREventCollectSystem = IREventCollectSystem;
+exports.Knob = Knob;
 exports.LIGHT_THEME_TOKENS = LIGHT_THEME_TOKENS;
 exports.LiveCodingEditor = LiveCodingEditor;
 exports.LiveCodingRuntime = LiveCodingRuntime;
 exports.LiveRecorder = LiveRecorder;
 exports.MASTER_KEY = MASTER_KEY;
+exports.MIXER_TAB_ID = MIXER_TAB_ID;
 exports.MainSignalSampler = MainSignalSampler;
+exports.Mixer = Mixer;
 exports.OfflineRenderer = OfflineRenderer;
 exports.P5VizRenderer = P5VizRenderer;
 exports.P5_DOCS_INDEX = P5_DOCS_INDEX;
 exports.P5_VIZ = P5_VIZ;
 exports.PATTERN_IR_SCHEMA_VERSION = PATTERN_IR_SCHEMA_VERSION;
 exports.PIANOROLL_P5_CODE = PIANOROLL_P5_CODE;
+exports.PIANO_ROLL_TAB_ID = PIANO_ROLL_TAB_ID;
 exports.PITCHWHEEL_P5_CODE = PITCHWHEEL_P5_CODE;
+exports.PianoRollGrid = PianoRollGrid;
 exports.PreviewView = PreviewView;
 exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
 exports.SAMPLE_SOUND_SOURCE_ID = SAMPLE_SOUND_SOURCE_ID;
 exports.SCOPE_P5_CODE = SCOPE_P5_CODE;
+exports.SEQUENCER_TAB_ID = SEQUENCER_TAB_ID;
 exports.SHELL_STATE_KEY_PREFIX = SHELL_STATE_KEY_PREFIX;
 exports.SHELL_STATE_VERSION = SHELL_STATE_VERSION;
 exports.SIGNALS_BACKDROP_P5_CODE = SIGNALS_BACKDROP_P5_CODE;
@@ -30100,6 +31603,7 @@ exports.SPECTRUM_P5_CODE = SPECTRUM_P5_CODE;
 exports.SPIRAL_P5_CODE = SPIRAL_P5_CODE;
 exports.STRUDEL_DOCS_INDEX = STRUDEL_DOCS_INDEX;
 exports.STRUDEL_RUNTIME = STRUDEL_RUNTIME;
+exports.SequencerGrid = SequencerGrid;
 exports.SignalBus = SignalBus;
 exports.SonicPiEngine = SonicPiEngine;
 exports.SplitPane = SplitPane;
@@ -30107,8 +31611,10 @@ exports.StrudelEditor = StrudelEditor;
 exports.StrudelEngine = StrudelEngine;
 exports.StrudelParseSystem = StrudelParseSystem;
 exports.UI_ICON_SIZE_VAR = UI_ICON_SIZE_VAR;
+exports.VISUAL_EDIT_TABS = VISUAL_EDIT_TABS;
 exports.VIZ_FLAG_KEYS = VIZ_FLAG_KEYS;
 exports.VIZ_LANGUAGES = VIZ_LANGUAGES;
+exports.VisualEditStandby = VisualEditStandby;
 exports.VizDropdown = VizDropdown;
 exports.VizEditor = VizEditor;
 exports.VizPanel = VizPanel;
@@ -30119,6 +31625,7 @@ exports.WavEncoder = WavEncoder;
 exports.WorkerBusFeed = WorkerBusFeed;
 exports.WorkerVizRenderer = WorkerVizRenderer;
 exports.WorkspaceShell = WorkspaceShell;
+exports.Writeback = Writeback;
 exports.applyPersistedAdaptivePerf = applyPersistedAdaptivePerf;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;
 exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
@@ -30135,6 +31642,7 @@ exports.bundledPresetId = bundledPresetId;
 exports.canRedo = canRedo;
 exports.canUndo = canUndo;
 exports.captureSnapshot = captureSnapshot;
+exports.classifyChunk = classifyChunk;
 exports.classifyLiteralRhs = classifyLiteralRhs;
 exports.clearCapture = clearCapture;
 exports.clearIRSnapshot = clearIRSnapshot;
@@ -30155,7 +31663,10 @@ exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
 exports.deriveVizQuality = deriveVizQuality;
+exports.detectAllChunks = detectAllChunks;
+exports.detectChunk = detectChunk;
 exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
+exports.docParses = docParses;
 exports.duplicateProject = duplicateProject;
 exports.emitFixed = emitFixed;
 exports.emitLog = emitLog;
@@ -30167,6 +31678,7 @@ exports.fileHistory = fileHistory;
 exports.filter = filter;
 exports.flushToPreset = flushToPreset;
 exports.formatFriendlyError = formatFriendlyError;
+exports.formatNumber = formatNumber;
 exports.formatStaveInputs = formatStaveInputs;
 exports.frameTransferables = frameTransferables;
 exports.fuzzyMatch = fuzzyMatch;
@@ -30239,7 +31751,9 @@ exports.injectedGlobalByToken = injectedGlobalByToken;
 exports.injectedGlobals = injectedGlobals;
 exports.installEngineLogMarkers = installEngineLogMarkers;
 exports.installGlobalErrorCatch = installGlobalErrorCatch;
+exports.isBlackKey = isBlackKey;
 exports.isBundledPresetId = isBundledPresetId;
+exports.isChunkFresh = isChunkFresh;
 exports.isDocReady = isDocReady;
 exports.isFileModifiedSinceHead = isFileModifiedSinceHead;
 exports.isP5DirectCanvasEnabled = isP5DirectCanvasEnabled;
@@ -30249,6 +31763,7 @@ exports.isVizGovernorEnabled = isVizGovernorEnabled;
 exports.isVizLanguage = isVizLanguage;
 exports.isVizPumpSharedCacheEnabled = isVizPumpSharedCacheEnabled;
 exports.isVizWorkerPoolEnabled = isVizWorkerPoolEnabled;
+exports.knobRangeFor = knobRangeFor;
 exports.languageForRenderer = languageForRenderer;
 exports.levenshtein = levenshtein;
 exports.listBottomPanelTabs = listBottomPanelTabs;
@@ -30264,7 +31779,9 @@ exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.loadShellState = loadShellState;
 exports.makeFixedKey = makeFixedKey;
 exports.merge = merge;
+exports.midiToPitch = midiToPitch;
 exports.mountVizRenderer = mountVizRenderer;
+exports.normalizeEdits = normalizeEdits;
 exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
 exports.onAdaptivePerfChange = onAdaptivePerfChange;
@@ -30282,11 +31799,16 @@ exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.onVizInputsLiveValuesChange = onVizInputsLiveValuesChange;
 exports.onVizQualityChange = onVizQualityChange;
 exports.parseMini = parseMini;
+exports.parsePianoRoll = parsePianoRoll;
 exports.parseStackLocation = parseStackLocation;
+exports.parseStepGrid = parseStepGrid;
 exports.parseStrudel = parseStrudel;
+exports.parseTopLevel = parseTopLevel;
 exports.patternFromJSON = patternFromJSON;
 exports.patternToJSON = patternToJSON;
 exports.perf = perf;
+exports.pitchToMidi = pitchToMidi;
+exports.placeNote = placeNote;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.propagate = propagate;
 exports.pruneZoneOverrides = pruneZoneOverrides;
@@ -30305,6 +31827,8 @@ exports.rendererForLanguage = rendererForLanguage;
 exports.resetFileStore = resetFileStore;
 exports.resetHistoryState = resetHistoryState;
 exports.resetUndoManager = resetUndoManager;
+exports.resizeGrid = resizeGrid;
+exports.resizeRoll = resizeRoll;
 exports.resolveAlias = resolveAlias;
 exports.resolveAliasesForEngine = resolveAliasesForEngine;
 exports.resolveDescriptor = resolveDescriptor;
@@ -30325,7 +31849,9 @@ exports.scaleGain = scaleGain;
 exports.seedFromPreset = seedFromPreset;
 exports.seedFromPresetId = seedFromPresetId;
 exports.seedWorkspaceFile = seedWorkspaceFile;
+exports.serializePianoRoll = serializePianoRoll;
 exports.serializeShellState = serializeShellState;
+exports.serializeStepGrid = serializeStepGrid;
 exports.setActiveHistoryFile = setActiveHistoryFile;
 exports.setAdaptivePerfEnabled = setAdaptivePerfEnabled;
 exports.setBackdropOpacity = setBackdropOpacity;

@@ -39,7 +39,7 @@ import { ensureWorkspaceLanguages, toMonacoLanguage } from './languages'
 import { workspaceAudioBus } from './WorkspaceAudioBus'
 import { useHighlighting } from '../monaco/useHighlighting'
 import { useBreakpoints } from '../monaco/useBreakpoints'
-import { registerEditor, unregisterEditor, applyPersistedEditorOptions, registerMonacoNamespace } from './editorRegistry'
+import { registerEditor, unregisterEditor, applyPersistedEditorOptions, registerMonacoNamespace, setActiveEditor } from './editorRegistry'
 import {
   setEvalError,
   clearEvalErrors,
@@ -326,6 +326,11 @@ export function EditorView({
     setEditorReady(true)
     registerEditor(fileId, editor)
     registerMonacoNamespace(monaco)
+    // Visual-editing (#381): this editor becomes the active one on mount and
+    // whenever its text gains focus, so the Mixer/Sequencer/Piano Roll panels
+    // always bind to the editor in view (across splits and tab switches).
+    setActiveEditor(editor)
+    editor.onDidFocusEditorText?.(() => setActiveEditor(editor))
     applyPersistedEditorOptions(editor)
     ensureWorkspaceLanguages(monaco)
 

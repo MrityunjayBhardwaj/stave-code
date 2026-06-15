@@ -4,6 +4,7 @@ import React__default, { RefObject, ReactNode } from 'react';
 import * as p5 from 'p5';
 import { V as VizQualityLevel } from './vizConfig-Dpw8jb9R.cjs';
 export { D as DEFAULT_VIZ_CONFIG, a as DEFAULT_VIZ_QUALITY, b as VizConfig, c as VizQualitySettings, W as WorkerVizConfig, d as createVizConfig, e as deriveVizQuality, g as getVizConfig, s as setVizConfig, u as updateVizConfig } from './vizConfig-Dpw8jb9R.cjs';
+import * as Monaco from 'monaco-editor';
 
 /**
  * IREvent — the universal music event.
@@ -7275,6 +7276,469 @@ declare function getBottomPanelTab(id: string): BottomPanelTab | undefined;
  */
 declare function subscribeToBottomPanelTabs(cb: Listener$1): () => void;
 
+/** Coarse hint for which editor a chunk can open. Panels still read the
+ * structured fields below to decide what they can actually edit. */
+type ChunkType = 'step' | 'roll' | 'knobs' | 'unknown';
+interface ChainArg {
+    /** source text of the argument expression, verbatim */
+    raw: string;
+    /** numeric value when the arg is a (possibly negated) number literal, else null */
+    numeric: number | null;
+    /** absolute doc offsets of the argument expression */
+    range: [number, number];
+}
+interface ChainCall {
+    name: string;
+    args: ChainArg[];
+    /**
+     * For member calls: [dotOffset, callEnd] — replacing/deleting this range
+     * removes the call. For the head call: the full call expression range.
+     */
+    range: [number, number];
+}
+interface ChunkInfo {
+    /** the whole top-level statement (incl. any `$:` label) */
+    statementRange: [number, number];
+    /** the statement's exact source when detected — used to verify freshness */
+    statementText: string;
+    /** the pattern expression, excluding the `$:` label — append `.fx()` here */
+    exprRange: [number, number];
+    /** `$:` label name, or null */
+    label: string | null;
+    /** head function name, e.g. `s`, `note`, `stack` */
+    headFn: string | null;
+    /** contents of the head call's first string literal, quotes excluded */
+    miniRange: [number, number] | null;
+    miniString: string | null;
+    /** calls in source order, head first */
+    chain: ChainCall[];
+    type: ChunkType;
+}
+/** Top-level statement nodes, or null when the doc doesn't parse
+ * (mid-keystroke syntax error — the caller keeps the last good chunk). */
+declare function parseTopLevel(doc: string): any[] | null;
+/** Does the doc parse at all? Distinguishes "no statement here" from "broken doc". */
+declare function docParses(doc: string): boolean;
+/**
+ * A chunk's ranges are only valid against the exact doc it was detected from.
+ * Every write MUST check this first.
+ */
+declare function isChunkFresh(doc: string, chunk: ChunkInfo): boolean;
+/** The chunk whose statement contains `pos`, or null. */
+declare function detectChunk(doc: string, pos: number): ChunkInfo | null;
+/** Every editable chunk in the doc, in source order. */
+declare function detectAllChunks(doc: string): ChunkInfo[];
+/**
+ * Best-guess primary editor for a chunk. Coarse — panels read `chain`/`mini`
+ * directly to decide what they can edit. A pattern with a `note`/`n` head and
+ * a mini string is roll-shaped; an `s`/`sound` head with a mini string is
+ * grid-shaped; anything with a numeric chain literal can at least show knobs.
+ */
+declare function classifyChunk(info: ChunkInfo): ChunkType;
+
+/**
+ * writeback — chunk → document.
+ *
+ * The mutation half of the visual-editing spine. Visual panels read a
+ * `ChunkInfo` (see `chunkDetect.ts`) to learn the doc offsets they may edit,
+ * then route every edit through here so it is:
+ *
+ *  1. **Surgical** — only the named offset range changes; the rest of the
+ *     statement (mini-notation quotes, spacing, indent) stays byte-identical.
+ *     This is the whole reason write-back panels edit TEXT and not the IR:
+ *     `toStrudel` is a whole-statement canonical regenerator that would
+ *     reformat the leaf layer (design doc Appendix A).
+ *  2. **Origin-tagged** — while a panel edit is applied, `currentSource` names
+ *     it, so the host's `onDidChangeModelContent` listener can tell a panel
+ *     edit (re-eval audio, keep panel model) from a typed edit (re-parse the
+ *     panel model). Monaco's content-change event carries no source of its
+ *     own, so the flag is set synchronously around the edit — the listener
+ *     fires inside `pushEditOperations`, while the flag is up.
+ *  3. **One undo step** — every call is a single `pushEditOperations`, so even
+ *     a multi-cell drag (`replaceRanges`) is one Ctrl-Z.
+ *
+ * Range discipline: offsets come from a `ChunkInfo` and are valid ONLY against
+ * the exact doc it was detected from. Use `applyFresh` (or call `isChunkFresh`
+ * yourself) before every write — stale offsets corrupt unrelated code.
+ *
+ * The pure helpers (`formatNumber`, `normalizeEdits`) are string/number math
+ * with no Monaco dependency, so they unit-test with plain assertions. The
+ * `Writeback` class is the thin Monaco-bound shell, observed in the app.
+ */
+
+/**
+ * Which panel originated an edit. The host content-change listener switches on
+ * this to decide whether to re-parse its model (typed edit) or leave it
+ * (panel-originated edit it already knows about).
+ */
+type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport';
+/** A single replacement, addressed by absolute pre-edit doc offsets. */
+interface OffsetEdit {
+    /** absolute [start, end) offsets in the document as it was when detected */
+    range: [number, number];
+    /** replacement text ('' to delete) */
+    text: string;
+}
+/**
+ * Format a number for insertion as a source literal. Drag handlers produce
+ * values like `0.30000000000000004` or `2.9999999`; emitting those verbatim
+ * would corrupt the user's code with float noise. We round to `maxDecimals`
+ * and strip trailing zeros, so `0.3`, `2`, `-1.5` come out clean.
+ *
+ * Pure — no Monaco.
+ */
+declare function formatNumber(v: number, maxDecimals?: number): string;
+/**
+ * Validate a batch of edits and return them sorted ascending by start offset.
+ * Throws on any overlap — overlapping ranges in a single `pushEditOperations`
+ * have undefined application order and would corrupt the doc. Zero-width edits
+ * (inserts) are allowed and never count as overlapping a neighbour that starts
+ * at the same offset only if texts don't both target it; we conservatively
+ * reject ranges that share interior space.
+ *
+ * Pure — no Monaco.
+ */
+declare function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[];
+/**
+ * Monaco-bound edit sink. One per editor. Construct with the editor instance
+ * and the `monaco` namespace (for `Range`). All edits go through `apply`, which
+ * keeps the origin flag up across the synchronous content-change event.
+ */
+declare class Writeback {
+    private readonly editor;
+    private readonly monaco;
+    private writingSource;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    private inGesture;
+    constructor(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco);
+    /**
+     * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+     * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+     * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+     * the undo grouping is affected. Idempotent if already in a gesture.
+     */
+    beginGesture(): void;
+    /** Close the gesture, sealing all its edits as one undo step. */
+    endGesture(): void;
+    /**
+     * The source of the edit currently being applied, or null. The host's
+     * `onDidChangeModelContent` listener reads this synchronously to attribute
+     * the change. It is non-null ONLY for the duration of `apply`.
+     */
+    get currentSource(): WriteSource | null;
+    /** Replace a single offset range. One undo step. */
+    replaceRange(range: [number, number], text: string, source: WriteSource): void;
+    /**
+     * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+     * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+     * the whole gesture).
+     */
+    replaceRanges(edits: OffsetEdit[], source: WriteSource): void;
+    /** Insert text at an offset (zero-width edit). */
+    insertAt(offset: number, text: string, source: WriteSource): void;
+    /** Delete an offset range. */
+    deleteRange(range: [number, number], source: WriteSource): void;
+    /**
+     * Freshness-guarded write. Re-reads the live model text and refuses the edit
+     * if the chunk's statement no longer matches what it was detected from
+     * (the doc changed under the panel). Returns true if applied, false if stale.
+     * Prefer this over the raw methods on any path that can race a typed edit.
+     */
+    applyFresh(chunk: ChunkInfo, edits: OffsetEdit[], source: WriteSource): boolean;
+    private apply;
+}
+
+/**
+ * Notation models — the structured shapes the Sequencer and Piano Roll panels
+ * own, parsed from and serialized back to mini-notation.
+ *
+ * These are deliberately a STRICT SUBSET of Strudel mini-notation: only the
+ * idioms that survive a lossless text round-trip live here. Anything richer
+ * (`{}` polymeter, `*`/`/` speed, `!` replicate, `?` degrade, euclids, deep
+ * nesting) parses to `{ ok: false }` and the panel falls back to code-only
+ * editing rather than guess and corrupt the source. This is the conservatism
+ * the whole text-writeback substrate depends on (design doc §4, §5.3).
+ */
+/** Drum/step grid: lanes (sounds) × steps (columns). */
+interface StepGridModel {
+    /** total columns across all bars */
+    steps: number;
+    /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
+    bars?: number;
+    /**
+     * Lanes in presentation order. `sound` is the whole token incl. any
+     * `:variant` (e.g. `bd:3`). `part` is the top-level `,`-stack the lane was
+     * written in (absent = 0) — purely syntactic, kept so a hand-written stack
+     * round-trips as the user wrote it instead of being flattened.
+     */
+    lanes: StepLane[];
+}
+interface StepLane {
+    sound: string;
+    part?: number;
+    cells: boolean[];
+}
+/** A single note in the piano roll. */
+interface RollNote {
+    /** note token, e.g. `c3`, `eb4` */
+    pitch: string;
+    /** column index where the note begins */
+    start: number;
+    /** length in columns (1 = one step; emitted as `@n` elongation) */
+    duration: number;
+}
+/** Pitched (melodic) grid: notes placed on a pitch × time grid. */
+interface PianoRollModel {
+    /** total columns across all bars */
+    steps: number;
+    /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
+    bars?: number;
+    notes: RollNote[];
+}
+/**
+ * Parse outcome. `ok: false` is a first-class result, not an exception — every
+ * panel checks it on open and disables itself (code-only) when the pattern is
+ * outside the editable subset.
+ */
+type ParseResult<M> = {
+    ok: true;
+    model: M;
+} | {
+    ok: false;
+    reason: string;
+};
+
+/**
+ * Mini-notation (strict editable subset) → notation models.
+ *
+ * Self-contained tokenizer rather than `@strudel/mini` or Stave's `parseMini`:
+ * the full parser builds an IR that only round-trips through `toStrudel`'s
+ * canonical regenerator (the very reformatting text-writeback exists to
+ * avoid), and it accepts idioms the visual grids can't represent. A narrow
+ * tokenizer that rejects everything outside the subset is exactly what the
+ * round-trip guarantee needs.
+ *
+ * Supported: flat sequences of atoms (`bd`, `bd:3`, `c3`), rests (`~`),
+ * `[bd,hh]` simultaneous stacks, `[hh hh]` sub-sequences (expanded onto a
+ * uniform finer grid), `@n` elongation (roll), a whole-string `<...>`
+ * alternation with one slot per bar, and top-level `,` stacks (grid only,
+ * parts preserved). Everything else → `{ ok: false }`.
+ */
+
+declare function parseStepGrid(mini: string): ParseResult<StepGridModel>;
+declare function parsePianoRoll(mini: string): ParseResult<PianoRollModel>;
+
+/**
+ * Notation models → mini-notation. The round-trip law (golden-tested):
+ *   serialize(parse(s).model) === s   for canonical strings
+ *   parse(serialize(m)).model ≡ m
+ *
+ * Canonical form: single-space separated, lanes in first-appearance order,
+ * multi-bar patterns as a whole-string `<...>` alternation (one slot per bar),
+ * `,`-stack parts in ascending part order. Serializing a model the subset
+ * can't express (overlapping roll notes, a note straddling a bar line) returns
+ * null and the panel keeps the document untouched.
+ */
+
+declare function serializeStepGrid(model: StepGridModel): string;
+declare function serializePianoRoll(model: PianoRollModel): string | null;
+
+/**
+ * Note-token ↔ MIDI helpers for the piano roll's vertical axis.
+ *
+ * Numeric convention matches the engine's `noteToMidi` (`c3 = 48`,
+ * `eb4 = 63`). Accidentals accept Strudel's three spellings on read — `#`,
+ * `b`, and `s` (`cs3`) — and emit `#` on write. Conversion only feeds row
+ * placement and newly-created notes; the round-trip itself stores the token
+ * verbatim, so emission style never threatens fidelity for existing notes.
+ */
+/** `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token. */
+declare function pitchToMidi(token: string): number | null;
+/** MIDI number → canonical note token (sharps as `#`). Inverse of pitchToMidi. */
+declare function midiToPitch(midi: number): string;
+/** Is this MIDI pitch a black key (for striping the roll's pitch rows)? */
+declare function isBlackKey(midi: number): boolean;
+
+/**
+ * Insert a note into a roll, resolving overlaps so the result stays a flat,
+ * tileable sequence (what the serializer requires). DAW-style resolution:
+ *  - a group already at `start` → the note joins the chord, adopting its
+ *    duration (chord members share one);
+ *  - an earlier note sustaining across `start` → it trims to end at `start`;
+ *  - the next group (or the grid end) caps the new note's duration.
+ */
+
+declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number): PianoRollModel;
+
+/**
+ * Step-count changes. A flat mini string spans one cycle, so step count is the
+ * note value (8 steps → 8th notes, 16 → 16ths):
+ *
+ *  - "spread" (default): preserve musical time — 8→16 moves a hit at step i to
+ *    step 2i, so it sounds identical at finer resolution; shrinking quantizes
+ *    hits onto the coarser grid (any hit in a bucket keeps the bucket on).
+ *  - "pad": preserve step indices — append/truncate at the end, stretching or
+ *    compressing the groove (hardware "pattern length" semantics).
+ *
+ * Multi-bar (`<...>`) patterns don't resize — their column resolution is fixed
+ * by the bar groups — so both functions return the model unchanged.
+ */
+
+type ResizeMode = 'spread' | 'pad';
+declare function resizeGrid(model: StepGridModel, nextSteps: number, mode: ResizeMode): StepGridModel;
+declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: ResizeMode): PianoRollModel;
+
+/**
+ * VisualEditStandby — the empty state every write-back panel shows when there
+ * is nothing editable to bind to (no pattern under the cursor, or the pattern
+ * is outside the panel's editable subset).
+ *
+ * This is a first-class state, not a placeholder: the design's conservatism
+ * rule (§4, §6) says a panel that can't safely round-trip a pattern stays in
+ * standby rather than guess. The scaffold seeds all three tabs with it; each
+ * panel swaps in its live UI when a compatible chunk is in focus, and falls
+ * back here otherwise.
+ *
+ * Vocabulary discipline (PV32 / D-06): musician-facing copy only, no IR jargon.
+ */
+
+interface VisualEditStandbyProps {
+    /** the panel id, used for a stable test hook */
+    panel: string;
+    /** one-line musician-facing hint, e.g. "Click a pattern to edit its knobs." */
+    hint: string;
+    /** optional codicon name (without the `codicon-` prefix) for the glyph */
+    icon?: string;
+}
+declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProps): React.ReactElement;
+
+/**
+ * Mixer — the first write-back visual editor (#381).
+ *
+ * Finds the Strudel statement under the cursor (via `useActiveChunk`) and
+ * renders a Knob for every numeric argument in its method chain (`.gain(0.6)`
+ * → a "gain" knob at 0.6). Dragging a knob writes a surgical text edit of just
+ * that literal through the tagged `Writeback` — the mini-notation and the rest
+ * of the statement stay byte-identical, and the whole drag is one undo step.
+ * Audio updates through the existing live-mode re-eval.
+ *
+ * Shows a standby state when the cursor isn't in a chunk with editable knobs
+ * (the conservatism rule).
+ */
+
+declare function Mixer(): React.ReactElement;
+
+/**
+ * Sequencer — drum/step grid (#382).
+ *
+ * Parses the mini-notation of the `s(...)` / `sound(...)` statement under the
+ * cursor into a `StepGridModel` and renders lanes × steps. Toggling a cell
+ * re-serializes the model and writes it back over the mini-notation range
+ * (`'seq'`); a drag paints multiple cells as ONE undo step. Anything outside
+ * the editable grid subset (`{}`, `*`, euclids, …) → standby, code-only — the
+ * conservatism rule.
+ *
+ * The model lives in component state, not derived per-render from the chunk, so
+ * a lane the user clears completely keeps its row (its sound vanishes from the
+ * serialized mini, but the row stays editable). The model is reseeded only on
+ * EXTERNAL edits — detected by comparing what we'd serialize against the
+ * incoming mini; our own write-back echoes leave it untouched.
+ *
+ * Live-playhead step highlighting is a follow-up (needs the runtime clock,
+ * which this editor-seeded panel doesn't yet receive).
+ */
+
+declare function SequencerGrid(): React.ReactElement;
+
+/**
+ * Piano Roll — note grid (#383).
+ *
+ * Parses the mini-notation of the `note(...)` / `n(...)` statement under the
+ * cursor into a `PianoRollModel` and renders pitch rows × step columns.
+ * Clicking an empty cell places a note (one step, overlaps resolved by
+ * `placeNote`); clicking a filled cell removes that note. Each edit
+ * re-serializes and writes back over the mini range (`'roll'`); a serialization
+ * the subset can't express is dropped (the document stays untouched) — the
+ * conservatism rule, leaned on hard here because pitch + duration + rests are
+ * the most parser-edgey case.
+ *
+ * v1 is click-to-place / click-to-remove. Drag-to-move and drag-to-resize
+ * (and live-playhead column highlight) are follow-ups.
+ */
+
+declare function PianoRollGrid(): React.ReactElement;
+
+/**
+ * Per-method knob ranges for the Mixer (S4).
+ *
+ * Each numeric chain argument becomes a knob; the method name picks a sensible
+ * range and step (gain 0..1, speed −2..2, lpf log 20..20k, …). Unknown methods
+ * fall back to a range derived from the current value so any numeric literal is
+ * still draggable — the user can always type an exact value in code.
+ *
+ * Pure — no Monaco, no React.
+ */
+interface KnobRange {
+    min: number;
+    max: number;
+    step: number;
+    /** 'log' methods (filter cutoffs) map the slider position logarithmically */
+    scale: 'linear' | 'log';
+}
+/**
+ * The knob range for a method given the literal's current value. Known methods
+ * use the override table; unknown methods get a range that comfortably
+ * contains the current value so the knob is still usable.
+ */
+declare function knobRangeFor(method: string, value: number): KnobRange;
+
+/**
+ * Knob — a draggable dial over a single numeric value.
+ *
+ * Vertical drag (or up/down arrows) changes the value across its range; the
+ * Mixer maps each change to a surgical text edit of the underlying literal.
+ * Accessible as a `slider` (aria-valuemin/max/now) so it's keyboard-usable and
+ * Playwright-observable.
+ *
+ * Reports `onChange(value)` live during a drag and brackets the gesture with
+ * `onGestureStart` / `onGestureEnd` so the Mixer can coalesce the whole drag
+ * into one undo step.
+ */
+
+interface KnobProps {
+    label: string;
+    value: number;
+    range: KnobRange;
+    onChange: (value: number) => void;
+    onGestureStart?: () => void;
+    onGestureEnd?: () => void;
+}
+declare function Knob({ label, value, range, onChange, onGestureStart, onGestureEnd, }: KnobProps): React.ReactElement;
+
+/**
+ * Single source of truth for the visual-editing bottom-panel tabs.
+ *
+ * The scaffold seeds these as standby tabs alongside "Timeline"; each panel
+ * later re-registers its own id (idempotent replace) with a live UI. Keeping
+ * id/title/hint/icon here means the seed and the real panel agree on identity
+ * and musician-facing copy without duplication.
+ *
+ * Tab order is presentation order. Titles carry NO IR jargon (PV32 / D-06):
+ * "Sequencer", "Mixer", "Piano Roll" — what a musician calls them.
+ */
+interface VisualEditTabDef {
+    readonly id: string;
+    readonly title: string;
+    /** musician-facing standby hint shown before a pattern is bound */
+    readonly hint: string;
+    /** codicon name (without the `codicon-` prefix) */
+    readonly icon: string;
+}
+declare const SEQUENCER_TAB_ID = "sequencer";
+declare const MIXER_TAB_ID = "mixer";
+declare const PIANO_ROLL_TAB_ID = "piano-roll";
+declare const VISUAL_EDIT_TABS: readonly VisualEditTabDef[];
+
 /**
  * persistence — SSR-safe localStorage helpers for BottomPanel state +
  * the `clampHeight` pure function shared with `useDragResize`.
@@ -7840,4 +8304,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChromeContext, type ChromeForTab, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, type InjectedGlobal, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MainSignalSampler, type MasterArray, type MasterScalar, type NormalizedHap, OfflineRenderer, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, type Pass, type PatternIR, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResolvedTheme, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, VIZ_FLAG_KEYS, VIZ_LANGUAGES, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AudioPayload, type AudioReading, type AudioSourceRef, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectContext, type Commit, type CommitKind, type ComponentBag, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DocKind, type DocsIndex, type EditorTheme, EditorView, type EngineAliasMap, type EngineAliasValue, type EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FSCOPE_P5_CODE, type FixedMarker, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, type HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, type IRComponent, type IREvent, IREventCollectSystem, type IRPattern, type IRSnapshot, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, type LiveCodingEditorProps, type LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, type MasterArray, type MasterScalar, Mixer, type NormalizedHap, OfflineRenderer, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, type PatternIR, type PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PlayParams, type PreviewContext, type PreviewProvider, PreviewView, type ProjectHistory, type ProjectMeta, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplerInputs, type SectionStats, SequencerGrid, type ShellSnapshot, type SignalAliasMap, SignalBus, type SignalFrame, type SignalReading, type SignalTransportReader, type SignalTransportWriter, type SnapshotMeta, SonicPiEngine, type SourceLocation, SplitPane, type StepGridModel, type StepLane, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, StrudelParseSystem, type StrudelTheme, type System, type TierFlags, type TierName, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseTrackMetaResult, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, type VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, VizQualityLevel, type VizRefs, type VizRenderer, type VizRendererKind, type VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteSource, Writeback, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectAllChunks, detectChunk, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
