@@ -18,7 +18,7 @@ import { formatNumber } from '../writeback'
 import { Knob } from './Knob'
 import { knobRangeFor } from './knobRanges'
 import { VisualEditStandby } from './VisualEditStandby'
-import { MIXER_TAB_ID, VISUAL_EDIT_TABS } from './tabs'
+import { MIXER_TAB_ID } from './tabs'
 import { useActiveChunk } from './useActiveChunk'
 import { QUICK_TRANSFORMS } from './quickTransforms'
 
@@ -31,9 +31,7 @@ interface KnobEntry {
   value: number
 }
 
-const MIXER_HINT =
-  VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ??
-  'Click a pattern to adjust its sound with knobs.'
+const MIXER_HINT = 'Click a pattern to adjust its sound with knobs.'
 
 /** flatten a chunk's chain into the numeric-arg knobs it exposes */
 function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {

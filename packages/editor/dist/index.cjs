@@ -25270,7 +25270,7 @@ var QUICK_TRANSFORMS = [
   { label: "Speed", method: "speed", value: 1.5 },
   { label: "Gain", method: "gain", value: 0.8 }
 ];
-var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
+var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function knobsFromChunk(chunk) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
