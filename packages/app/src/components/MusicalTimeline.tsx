@@ -51,6 +51,8 @@ import {
   useTrackMeta,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
+  analyzeSong,
+  type SongAnalysis,
 } from '@stave/editor'
 import { groupEventsByTrack } from './musicalTimeline/groupEventsByTrack'
 import { stableTrackOrder } from './musicalTimeline/stableTrackOrder'
@@ -70,6 +72,7 @@ import {
 import { extractPitch, pitchToY } from './musicalTimeline/pitch'
 import { TrackSwatchPopover } from './TrackSwatchPopover'
 import { Ruler } from './musicalTimeline/Ruler'
+import { FullSongTimeline } from './FullSongTimeline'
 import {
   EMPTY_STATE_COPY,
   STOPPED_STATUS_COPY,
@@ -96,6 +99,19 @@ export interface MusicalTimelineProps {
   /** Active tab id — must equal `'musical-timeline'` for the rAF loop
    *  to run. Same gating purpose as `getDrawerOpen`. */
   readonly getActiveTabId: () => string | null
+  /**
+   * #384/#385 — transport-offset-aware song position (cycles), or null when
+   * stopped / non-Strudel. The full-song view's scrubbable playhead reads
+   * this instead of the raw window clock. Optional: registrations that
+   * predate scrub pass nothing → song view's playhead simply stays hidden.
+   */
+  readonly getSongPosition?: () => number | null
+  /**
+   * #384 — seek the transport to an absolute song cycle (full-song ruler
+   * click → seekTo). Optional for the same back-compat reason; when absent
+   * the full-song view renders read-only (clicks are ignored).
+   */
+  readonly onSeek?: (cycle: number) => void
 }
 
 const TAB_ID = 'musical-timeline'
@@ -519,6 +535,39 @@ export function MusicalTimeline(
     setSnapshot(getIRSnapshot())
     return unsub
   }, [])
+
+  // ── View mode: live 2-cycle window (default) vs full-song map (#385) ──────
+  const [viewMode, setViewMode] = useState<'window' | 'song'>('window')
+  const [analysis, setAnalysis] = useState<SongAnalysis | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+
+  // Analyze the whole song from the IR snapshot when (and only when) the
+  // full-song view is active. Re-runs on every new snapshot (re-eval). The
+  // previous run is aborted via a per-run signal so a fast edit cadence can't
+  // pile up overlapping budgeted collections. Window mode never analyzes.
+  useEffect(() => {
+    if (viewMode !== 'song') return
+    const ir = snapshot?.ir ?? null
+    if (!ir) {
+      setAnalysis(null)
+      return
+    }
+    const signal = { aborted: false }
+    setAnalyzing(true)
+    analyzeSong(ir, { signal })
+      .then((result) => {
+        if (!signal.aborted) setAnalysis(result)
+      })
+      .catch(() => {
+        /* analysis is best-effort; leave the prior result in place */
+      })
+      .finally(() => {
+        if (!signal.aborted) setAnalyzing(false)
+      })
+    return () => {
+      signal.aborted = true
+    }
+  }, [viewMode, snapshot])
 
   // ── Grid width via ResizeObserver (DB-04) ───────────────────────────────
   const [gridContentWidth, setGridContentWidth] = useState(0)
@@ -954,6 +1003,36 @@ export function MusicalTimeline(
     )
   }
 
+  // Song-mode status replaces the live BPM line with the song shape (#385):
+  // the detected loop length, the analyzed horizon, or an analyzing hint.
+  if (viewMode === 'song') {
+    let songText: string
+    if (analyzing && !analysis) songText = 'SONG · analyzing…'
+    else if (!analysis) songText = 'SONG · press play'
+    else if (analysis.periodCycles != null)
+      songText = `SONG · loop ${analysis.periodCycles} cycles`
+    else
+      songText = `SONG · ${analysis.horizonCycles}${analysis.reachedCap ? '+' : ''} cycles`
+    statusContent = (
+      <span data-musical-timeline="status-text">{songText}</span>
+    )
+  }
+
+  // View toggle — switches between the live 2-cycle window and the full-song
+  // map. Musician vocabulary only (PV32): "Song" / "Live".
+  const toggleButton = (
+    <button
+      type="button"
+      data-musical-timeline="view-toggle"
+      data-view-mode={viewMode}
+      onClick={() => setViewMode((m) => (m === 'window' ? 'song' : 'window'))}
+      style={styles.viewToggle}
+      title={viewMode === 'window' ? 'Show the whole song' : 'Back to the live window'}
+    >
+      {viewMode === 'window' ? 'Song ▸' : '◂ Live'}
+    </button>
+  )
+
   const empty = orderedTracks.length === 0
 
   return (
@@ -963,9 +1042,24 @@ export function MusicalTimeline(
       aria-label="Timeline"
       style={styles.root}
     >
-      <div data-musical-timeline="status" style={styles.status}>
+      <div
+        data-musical-timeline="status"
+        style={{ ...styles.status, justifyContent: 'space-between' }}
+      >
         {statusContent}
+        {toggleButton}
       </div>
+      {viewMode === 'song' ? (
+        <FullSongTimeline
+          analysis={analysis}
+          analyzing={analyzing}
+          getSongPosition={props.getSongPosition ?? (() => null)}
+          onSeek={props.onSeek ?? (() => {})}
+          getDrawerOpen={props.getDrawerOpen}
+          getActiveTabId={props.getActiveTabId}
+        />
+      ) : (
+        <>
       <Ruler currentCycle={currentCycle} gridContentWidth={gridContentWidth} />
       <div style={styles.body}>
         <div
@@ -1186,6 +1280,8 @@ export function MusicalTimeline(
           onClose={() => setSwatchAnchor(null)}
         />
       )}
+        </>
+      )}
     </div>
   )
 }
@@ -1222,6 +1318,19 @@ const styles = {
     background: 'var(--bg-panel, #14141f)',
     fontVariantNumeric: 'tabular-nums' as const,
     fontSize: 11,
+  },
+  viewToggle: {
+    appearance: 'none' as const,
+    border: '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
+    borderRadius: 3,
+    background: 'var(--bg-input, rgba(255,255,255,0.04))',
+    color: 'var(--text-body, #e2e8f0)',
+    fontFamily: 'inherit',
+    fontSize: 10,
+    lineHeight: 1,
+    padding: '3px 8px',
+    cursor: 'pointer' as const,
+    flexShrink: 0,
   },
   body: {
     flex: 1,

@@ -537,6 +537,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // Phase 20-06 (PV38, PK13 step 7+8) — closure-bound accessor onto the
   // active runtime's HapStream for the MusicalTimeline subscriber.
   const getHapStreamRef = useRef<() => HapStream | null>(() => null);
+  // #384/#385 — transport seek accessors for the full-song timeline. Same
+  // ref-closure shape as getCycleRef so the registered element never
+  // re-registers when the active runtime swaps. getSongPosition is the
+  // transport-offset-aware clock; onSeek drives runtime.seekTo. Defaults
+  // are no-ops so non-Strudel runtimes (DemoEngine, SonicPi) are well-typed.
+  const getSongPositionRef = useRef<() => number | null>(() => null);
+  const onSeekRef = useRef<(cycle: number) => void>(() => {});
   // Phase 20-07 wave γ (R-2) — Inspector accessors. Live alongside
   // getHapStreamRef. Each ref holds a closure that reads through the
   // active runtime; default returns null/false so renders before the
@@ -563,6 +570,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             getCycle?: () => number | null;
             getCps?: () => number | null;
             getHapStream?: () => HapStream | null;
+            // #384/#385 — transport seek accessors (Strudel only).
+            getSongPosition?: () => number | null;
+            onSeek?: (cycle: number) => void;
             // Phase 20-07 wave γ (R-2) — debugger accessors. Optional
             // because non-Strudel runtimes (DemoEngine, SonicPi) skip
             // them; the default no-op refs survive a null assignment.
@@ -580,6 +590,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getCycleRef.current = s?.getCycle ?? (() => null);
       getCpsRef.current = s?.getCps ?? (() => null);
       getHapStreamRef.current = s?.getHapStream ?? (() => null);
+      getSongPositionRef.current = s?.getSongPosition ?? (() => null);
+      onSeekRef.current = s?.onSeek ?? (() => {});
       // Phase 20-07 wave γ (R-2) — Inspector accessor refs. When `s` is
       // null (runtime detached / non-Strudel tab), the no-op defaults
       // mean IRInspectorPanel renders without breakpoint / pulse / Resume
@@ -619,6 +631,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           getCycle={() => getCycleRef.current()}
           getCps={() => getCpsRef.current()}
           getHapStream={() => getHapStreamRef.current()}
+          getSongPosition={() => getSongPositionRef.current()}
+          onSeek={(cycle) => onSeekRef.current(cycle)}
           getDrawerOpen={() => readPersistedOpen()}
           getActiveTabId={() => readPersistedActiveTabId()}
         />

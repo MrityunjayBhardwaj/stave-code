@@ -163,6 +163,14 @@ interface StrudelEditorClientProps {
      */
     getHapStream: () => HapStream | null;
     /**
+     * #384/#385 — transport seek accessors for the full-song timeline.
+     * `getSongPosition` is the transport-offset-aware clock; `onSeek`
+     * seeks to an absolute song cycle. Closure-bound through `runtimesRef`
+     * like the others; non-Strudel runtimes return null / no-op.
+     */
+    getSongPosition: () => number | null;
+    onSeek: (cycle: number) => void;
+    /**
      * Phase 20-07 wave γ (R-2) — debugger accessors. Mirror the
      * `getHapStream` shape: closure-bound reads through `runtimesRef`
      * so the closures stay valid across active-tab swaps. Non-Strudel
@@ -1116,6 +1124,15 @@ export default function StrudelEditorClient({
       },
       getHapStream: () =>
         runtimesRef.current.get(accessorFid)?.getHapStream?.() ?? null,
+      // #384/#385 — transport seek accessors. Closure-bound through
+      // runtimesRef like getHapStream; seekTo is fire-and-forget here (the
+      // full-song ruler doesn't await the re-eval — clock + playhead reflect
+      // it on the next rAF tick).
+      getSongPosition: () =>
+        runtimesRef.current.get(accessorFid)?.getSongPosition?.() ?? null,
+      onSeek: (cycle: number) => {
+        void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
+      },
       // Phase 20-07 wave γ (R-2) — Inspector accessors. Mirror getHapStream's
       // closure shape so they read through runtimesRef on every invocation.
       getBreakpointStore: () =>
@@ -1210,6 +1227,15 @@ export default function StrudelEditorClient({
             runtimesRef.current
               .get(accessorFid)
               ?.getHapStream?.() ?? null,
+          // #384/#385 — transport seek accessors (same shape as the
+          // useEffect builder above).
+          getSongPosition: () =>
+            runtimesRef.current
+              .get(accessorFid)
+              ?.getSongPosition?.() ?? null,
+          onSeek: (cycle: number) => {
+            void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
+          },
           // Phase 20-07 wave γ (R-2) — Inspector accessors. Mirrors the
           // useEffect closure builder above; both push the same shape to
           // the parent on every active-tab transition.
