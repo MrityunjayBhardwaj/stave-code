@@ -253,7 +253,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   style={{ ...styles.laneRow, top: laneIdx * ROW_HEIGHT }}
                 >
                   {lane.onsetsByCycle.map((count, cycle) =>
-                    count > 0 ? (
+                    // Guard: only render cells within the displayed span so a
+                    // wider analysis horizon can never pile cells onto the edge
+                    // (the period-trim in analyzeSong keeps these equal, but the
+                    // view must not depend on that holding).
+                    count > 0 && cycle < displayCycles ? (
                       <div
                         key={cycle}
                         data-full-song-cell={`${lane.laneKey}:${cycle}`}

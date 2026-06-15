@@ -285,7 +285,18 @@ export async function analyzeSong(
     if (events.length === 0) return analyzeEvents([], 0, false)
     const period = detectPeriod(cycleFingerprints(events, horizon))
     if (period !== null) {
-      return analyzeEvents(events, horizon, false)
+      // Trim the analysis to exactly ONE loop. The full-song view spans
+      // `displayCycles` and wraps the playhead there; if lanes/sections kept
+      // the wider collection horizon (e.g. 8 with period 4), the cells beyond
+      // the period would pile up off the view edge and the playhead — which
+      // wraps at the period — would no longer line up with them. Keeping the
+      // view exactly one period wide makes displayCycles === periodCycles ===
+      // cell span === the audible loop. periodCycles is the period we DETECTED
+      // over the full horizon (re-detecting over just [0, period) would find
+      // null, since one loop has no internal repetition).
+      const lanes = accumulateLanes(events, period)
+      const sections = computeSections(lanes, period)
+      return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false }
     }
     if (horizon >= cap) {
       return analyzeEvents(events, cap, true)

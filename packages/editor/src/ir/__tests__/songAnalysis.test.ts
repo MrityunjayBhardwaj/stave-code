@@ -147,14 +147,17 @@ describe('analyzeSong (budgeted progressive horizon)', () => {
     return out
   }
 
-  it('finds the period at the hint horizon without growing', async () => {
+  it('finds the period at the hint horizon and trims the view to one loop', async () => {
     const a = await analyzeSong(null, {
       hintCycles: 8,
       collectFn: periodicCollect,
       yieldFn: async () => {},
     })
     expect(a.periodCycles).toBe(4)
-    expect(a.horizonCycles).toBe(8)
+    // The view is trimmed to exactly one loop so displayCycles === period
+    // (cells, playhead wrap, and audible loop all coincide).
+    expect(a.horizonCycles).toBe(4)
+    expect(a.lanes[0]?.onsetsByCycle.length).toBe(4)
     expect(a.reachedCap).toBe(false)
   })
 
