@@ -26,6 +26,7 @@ import type { ChunkInfo } from '../chunkDetect'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID, VISUAL_EDIT_TABS } from './tabs'
 import { useGridModel } from './useGridModel'
+import { usePlayingStep } from './usePlayingStep'
 
 const SEQ_HINT =
   VISUAL_EDIT_TABS.find((t) => t.id === SEQUENCER_TAB_ID)?.hint ??
@@ -60,6 +61,8 @@ export function SequencerGrid(): React.ReactElement {
     parse: parseStepGrid,
     serialize: serializeStepGrid,
   })
+
+  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
 
   // Drag-paint: a press sets the paint value (opposite of the pressed cell);
   // entering further cells while held paints them the same. The whole drag is
@@ -151,6 +154,7 @@ export function SequencerGrid(): React.ReactElement {
                   aria-pressed={on}
                   aria-label={`${lane.sound} step ${stepIndex + 1}`}
                   data-seq-cell={`${laneIndex}:${stepIndex}`}
+                  data-playing={stepIndex === playingStep ? 'true' : undefined}
                   onPointerDown={(e) => {
                     e.preventDefault()
                     onCellDown(laneIndex, stepIndex, on)
@@ -160,13 +164,18 @@ export function SequencerGrid(): React.ReactElement {
                     width: 22,
                     height: 22,
                     padding: 0,
-                    border: '1px solid var(--border, #3a3a42)',
+                    border:
+                      stepIndex === playingStep
+                        ? '1px solid var(--foreground, #e6e6ea)'
+                        : '1px solid var(--border, #3a3a42)',
                     borderRadius: 3,
                     // subtle gap at each bar boundary
                     marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
                     background: on
                       ? 'var(--accent, #6ea8fe)'
-                      : 'var(--background-elevated, #26262c)',
+                      : stepIndex === playingStep
+                        ? 'var(--background, #34343c)'
+                        : 'var(--background-elevated, #26262c)',
                     cursor: 'pointer',
                   }}
                 />

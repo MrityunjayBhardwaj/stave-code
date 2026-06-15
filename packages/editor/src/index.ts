@@ -495,6 +495,11 @@ export {
   subscribeToBottomPanelTabs,
 } from './workspace/bottomPanel/bottomPanelRegistry'
 
+// Live transport-cycle accessor registry (#391) — the app registers its
+// current-cycle accessor here so the bottom-panel grids can highlight the
+// playing step.
+export { setCurrentCycleAccessor, readCurrentCycle } from './workspace/currentCycle'
+
 // Visual-editing spine (#379) — chunk detection + tagged writeback + notation.
 // The durable layer the musician-facing write-back panels sit on; panels live
 // in @stave/app and import these via @stave/editor.

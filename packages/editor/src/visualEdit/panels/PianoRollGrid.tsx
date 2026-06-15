@@ -28,6 +28,7 @@ import type { ChunkInfo } from '../chunkDetect'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID, VISUAL_EDIT_TABS } from './tabs'
 import { useGridModel } from './useGridModel'
+import { usePlayingStep } from './usePlayingStep'
 import { placeNote } from '../notation/place'
 
 const ROLL_HINT =
@@ -82,6 +83,7 @@ export function PianoRollGrid(): React.ReactElement {
   })
 
   const dragRef = React.useRef<DragState | null>(null)
+  const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
 
   // Sticky pitch range: expand to fit, never shrink within a binding; reset on
   // statement change (#391).
@@ -213,6 +215,7 @@ export function PianoRollGrid(): React.ReactElement {
                       aria-pressed={on}
                       aria-label={`${midiToPitch(midi)} step ${step + 1}`}
                       data-roll-cell={`${midi}:${step}`}
+                      data-playing={step === playingStep ? 'true' : undefined}
                       onPointerDown={(e) => {
                         e.preventDefault()
                         onCellDown(midi, step)
@@ -222,13 +225,18 @@ export function PianoRollGrid(): React.ReactElement {
                         width: 18,
                         height: 16,
                         padding: 0,
-                        border: '1px solid var(--border, #3a3a42)',
+                        border:
+                          step === playingStep
+                            ? '1px solid var(--foreground, #e6e6ea)'
+                            : '1px solid var(--border, #3a3a42)',
                         borderRadius: 2,
                         background: on
                           ? 'var(--accent, #6ea8fe)'
-                          : black
-                            ? 'var(--background, #1c1c20)'
-                            : 'var(--background-elevated, #26262c)',
+                          : step === playingStep
+                            ? 'var(--background, #34343c)'
+                            : black
+                              ? 'var(--background, #1c1c20)'
+                              : 'var(--background-elevated, #26262c)',
                         opacity: on && !isHead ? 0.7 : 1,
                         cursor: 'pointer',
                       }}
