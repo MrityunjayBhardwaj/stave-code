@@ -33,6 +33,45 @@ const MAX_STEPS = 64
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
 const lcm = (a: number, b: number): number => (a / gcd(a, b)) * b
 
+/**
+ * Bjørklund's algorithm: distribute `k` pulses over `n` steps as evenly as
+ * possible, returning the on/off pattern as a boolean array of length `n`.
+ * Degenerate cases: `k <= 0` → all rests, `k >= n` → all pulses. This is the
+ * deterministic distribution behind euclidean rhythms — `bjorklund(3, 8)` is
+ * `[1,0,0,1,0,0,1,0]` (`bd ~ ~ bd ~ ~ bd ~`).
+ */
+export function bjorklund(k: number, n: number): boolean[] {
+  if (k <= 0) return Array(n).fill(false)
+  if (k >= n) return Array(n).fill(true)
+  // seed: k groups of [pulse], (n-k) groups of [rest]; merge the smaller run
+  // into the larger until the remainder is at most one group.
+  let a: boolean[][] = Array.from({ length: k }, () => [true])
+  let b: boolean[][] = Array.from({ length: n - k }, () => [false])
+  while (b.length > 1) {
+    const count = Math.min(a.length, b.length)
+    const merged: boolean[][] = []
+    for (let i = 0; i < count; i++) merged.push([...a[i], ...b[i]])
+    const restA = a.slice(count)
+    const restB = b.slice(count)
+    a = merged
+    b = restA.length ? restA : restB
+  }
+  return [...a, ...b].flat()
+}
+
+/**
+ * Rotate a euclid pattern to match Strudel's `euclidRot`, so an unedited
+ * `atom(k,n,rot)` shows exactly the cells the audio plays. Strudel applies
+ * `rotate(b, -rot)` where `rotate` left-rotates — i.e. a *right* rotation by
+ * `rot`. (Source: @strudel/core euclid.mjs `_euclidRot` → util.mjs `rotate`.)
+ */
+const rotateEuclid = (pattern: boolean[], rot: number): boolean[] => {
+  const n = pattern.length
+  if (n === 0) return pattern
+  const k = (((-rot) % n) + n) % n
+  return pattern.slice(k).concat(pattern.slice(0, k))
+}
+
 /** one slot inside a `[...]` sub-sequence */
 interface Slot {
   /** atoms played together; empty = rest */
@@ -66,15 +105,16 @@ function closeBracket(src: string, open: number): number {
   return -1
 }
 
-/** split on commas that sit outside every bracket */
+/** split on commas that sit outside every bracket and euclid `(k,n)` paren */
 function splitTopLevel(src: string): string[] {
   const out: string[] = []
   let depth = 0
   let from = 0
   for (let i = 0; i < src.length; i++) {
-    if (src[i] === '[') depth++
-    else if (src[i] === ']') depth--
-    else if (src[i] === ',' && depth === 0) {
+    const c = src[i]
+    if (c === '[' || c === '(') depth++
+    else if (c === ']' || c === ')') depth--
+    else if (c === ',' && depth === 0) {
       out.push(src.slice(from, i))
       from = i + 1
     }
@@ -118,6 +158,32 @@ function readMultiplier(
   const value = parseInt(digits[0], 10)
   if (value < 1) return { ok: false, reason: 'invalid * multiplier' }
   return { ok: true, value, next: i + 1 + digits[0].length }
+}
+
+/**
+ * Read an optional euclid spec `(k,n)` or `(k,n,rot)` at `i`; absent → null.
+ * Like `*n`, `atom(k,n)` is pure input sugar: it lowers onto the existing
+ * sub-sequence machinery (see the atom branch in `tokenize`) — one step whose
+ * `n` single-unit slots carry the atom at the `k` Bjørklund pulse positions —
+ * and serializes back as the expanded sequence, so there is no `(` on output.
+ */
+function readEuclid(
+  src: string,
+  i: number,
+):
+  | { ok: true; spec: { k: number; n: number; rot: number } | null; next: number }
+  | { ok: false; reason: string } {
+  if (src[i] !== '(') return { ok: true, spec: null, next: i }
+  const close = src.indexOf(')', i)
+  if (close === -1) return { ok: false, reason: 'unbalanced euclid parens' }
+  const inner = src.slice(i + 1, close)
+  const m = inner.match(/^\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?$/)
+  if (!m) return { ok: false, reason: 'invalid euclid (k,n) arguments' }
+  const k = parseInt(m[1], 10)
+  const n = parseInt(m[2], 10)
+  if (n < 1) return { ok: false, reason: 'invalid euclid step count' }
+  const rot = m[3] !== undefined ? parseInt(m[3], 10) : 0
+  return { ok: true, spec: { k, n, rot }, next: close + 1 }
 }
 
 /** parse the contents of one `[...]`: a `[a,b]` chord, or a sub-sequence */
@@ -170,7 +236,7 @@ function parseGroup(inner: string, elongation: number): Step | { reason: string 
       slots.push({ atoms, units: elong.value })
       continue
     }
-    const match = inner.slice(i).match(/^[^\s[\]@,*]+/)
+    const match = inner.slice(i).match(/^[^\s[\]@,*(]+/)
     if (!match || !ATOM.test(match[0])) {
       return { reason: `unsupported token "${match?.[0] ?? ch}"` }
     }
@@ -192,7 +258,9 @@ function parseGroup(inner: string, elongation: number): Step | { reason: string 
 function tokenize(mini: string): Tokenized {
   const src = mini.trim()
   if (src === '') return { ok: true, steps: [] }
-  if (/[<>{}/!?()%._|]/.test(src)) {
+  // `(` / `)` are NOT rejected here — `atom(k,n)` euclid is handled in the atom
+  // branch below; a stray `(` still rejects via the atom-match exclusion.
+  if (/[<>{}/!?%._|]/.test(src)) {
     return { ok: false, reason: 'uses mini-notation features beyond the editable subset' }
   }
   const steps: Step[] = []
@@ -221,18 +289,30 @@ function tokenize(mini: string): Tokenized {
       steps.push(group)
       continue
     }
-    const match = src.slice(i).match(/^[^\s[\]@,*]+/)
+    const match = src.slice(i).match(/^[^\s[\]@,*(]+/)
     if (!match || !ATOM.test(match[0])) {
       return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` }
     }
     i += match[0].length
+    const euclid = readEuclid(src, i)
+    if (!euclid.ok) return { ok: false, reason: euclid.reason }
+    i = euclid.next
     const mult = readMultiplier(src, i)
     if (!mult.ok) return { ok: false, reason: mult.reason }
     i = mult.next
     const elong = readElongation(src, i)
     if (!elong.ok) return { ok: false, reason: elong.reason }
     i = elong.next
-    if (mult.value > 1) {
+    if (euclid.spec) {
+      if (mult.value > 1 || elong.value > 1) {
+        return { ok: false, reason: 'euclid combined with * or @ is beyond the editable subset' }
+      }
+      // `atom(k,n[,rot])` ≡ a sub-sequence of n single-unit slots: the atom at
+      // the Bjørklund pulse positions (rotated by `rot`), rests everywhere else.
+      const hits = rotateEuclid(bjorklund(euclid.spec.k, euclid.spec.n), euclid.spec.rot)
+      const slots: Slot[] = hits.map((on) => ({ atoms: on ? [match[0]] : [], units: 1 }))
+      steps.push({ atoms: [], elongation: 1, sub: slots })
+    } else if (mult.value > 1) {
       if (elong.value > 1) {
         return { ok: false, reason: '* combined with @ is beyond the editable subset' }
       }
