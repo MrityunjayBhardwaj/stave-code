@@ -23795,7 +23795,18 @@ function detectChunk(doc, pos) {
   const statements = parseTopLevel(doc);
   if (!statements) return null;
   for (const node of statements) {
-    if (pos >= node.start && pos <= node.end) return buildChunk(doc, node);
+    if (pos >= node.start && pos <= node.end) {
+      let label = null;
+      let body = node;
+      if (node.type === "LabeledStatement") {
+        label = node.label.name;
+        body = node.body;
+      }
+      if (body.type !== "ExpressionStatement") return null;
+      const topExpr = body.expression;
+      const target = innermostChainUnder(doc, topExpr, pos);
+      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end]);
+    }
   }
   return null;
 }
@@ -23814,7 +23825,10 @@ function buildChunk(doc, node) {
     body = node.body;
   }
   if (body.type !== "ExpressionStatement") return null;
-  const expr = body.expression;
+  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
+}
+__name(buildChunk, "buildChunk");
+function buildChunkFromExpr(doc, expr, label, stmtRange) {
   const headNode = { ref: null };
   const chain = collectChain(doc, expr, headNode);
   const headFn = chain.length > 0 ? chain[0].name : null;
@@ -23830,8 +23844,8 @@ function buildChunk(doc, node) {
     }
   }
   const info = {
-    statementRange: [node.start, node.end],
-    statementText: doc.slice(node.start, node.end),
+    statementRange: stmtRange,
+    statementText: doc.slice(stmtRange[0], stmtRange[1]),
     exprRange: [expr.start, expr.end],
     label,
     headFn,
@@ -23843,7 +23857,20 @@ function buildChunk(doc, node) {
   info.type = classifyChunk(info);
   return info;
 }
-__name(buildChunk, "buildChunk");
+__name(buildChunkFromExpr, "buildChunkFromExpr");
+function innermostChainUnder(doc, expr, pos) {
+  const headOut = { ref: null };
+  collectChain(doc, expr, headOut);
+  const head = headOut.ref;
+  if (!head || !Array.isArray(head.arguments)) return expr;
+  for (const arg of head.arguments) {
+    if (arg && arg.type === "CallExpression" && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
+      return innermostChainUnder(doc, arg, pos);
+    }
+  }
+  return expr;
+}
+__name(innermostChainUnder, "innermostChainUnder");
 function collectChain(doc, expr, headOut) {
   const calls = [];
   let node = expr;

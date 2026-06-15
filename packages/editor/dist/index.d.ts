@@ -7508,7 +7508,11 @@ declare function docParses(doc: string): boolean;
  * Every write MUST check this first.
  */
 declare function isChunkFresh(doc: string, chunk: ChunkInfo): boolean;
-/** The chunk whose statement contains `pos`, or null. */
+/**
+ * The innermost editable chunk under `pos`, or null. Descends into combinator
+ * arguments — a cursor on a track inside `stack(...)` binds THAT track, not the
+ * whole `$: stack(...)` statement (#395). A top-level cursor is unchanged.
+ */
 declare function detectChunk(doc: string, pos: number): ChunkInfo | null;
 /** Every editable chunk in the doc, in source order. */
 declare function detectAllChunks(doc: string): ChunkInfo[];

@@ -46,6 +46,72 @@ describe('chunkDetect — statement detection', () => {
   })
 })
 
+describe('chunkDetect — nested in combinators (#395)', () => {
+  const stackDoc = `$: stack(\n  s("hh*8").gain(0.3),\n  s("bd ~ sd ~").gain(0.5),\n  note("c3 e3").s("piano")\n).viz("wordfall")`
+
+  it('binds the INNER drum track when the cursor is inside stack(...)', () => {
+    const c = detectChunk(stackDoc, stackDoc.indexOf('bd ~ sd'))!
+    expect(c.headFn).toBe('s')
+    expect(c.miniString).toBe('bd ~ sd ~')
+    expect(c.label).toBeNull() // nested target carries no `$:`
+    // the chunk's range is the inner track expression, not the whole statement
+    expect(doc(c, stackDoc)).toBe('s("bd ~ sd ~").gain(0.5)')
+    expect(c.type).toBe('step')
+  })
+
+  it('binds the INNER melody track for note(...) inside stack(...)', () => {
+    const c = detectChunk(stackDoc, stackDoc.indexOf('c3 e3'))!
+    expect(c.headFn).toBe('note')
+    expect(c.miniString).toBe('c3 e3')
+    expect(c.type).toBe('roll')
+    expect(doc(c, stackDoc)).toBe('note("c3 e3").s("piano")')
+  })
+
+  it('a cursor on the inner mini string still binds that inner track', () => {
+    // mini is a Literal (not a CallExpression) → stays on the enclosing chain
+    const c = detectChunk(stackDoc, stackDoc.indexOf('hh*8') + 1)!
+    expect(c.headFn).toBe('s')
+    expect(c.miniString).toBe('hh*8')
+  })
+
+  it('keeps the OUTER statement when the cursor is on the combinator head', () => {
+    const c = detectChunk(stackDoc, stackDoc.indexOf('stack') + 1)!
+    expect(c.headFn).toBe('stack')
+    expect(c.label).toBe('$')
+    expect(doc(c, stackDoc)).toBe(stackDoc)
+  })
+
+  it("a nested chunk's miniRange points at the inner mini (write-back target)", () => {
+    const c = detectChunk(stackDoc, stackDoc.indexOf('bd ~ sd'))!
+    expect(stackDoc.slice(c.miniRange![0], c.miniRange![1])).toBe('bd ~ sd ~')
+    expect(isChunkFresh(stackDoc, c)).toBe(true)
+  })
+
+  it('a nested chunk goes STALE after its inner expression text changes', () => {
+    const c = detectChunk(stackDoc, stackDoc.indexOf('bd ~ sd'))!
+    const edited = stackDoc.replace('bd ~ sd ~', 'bd bd sd ~')
+    expect(isChunkFresh(edited, c)).toBe(false)
+  })
+
+  it('descends through nested combinators (stack inside stack)', () => {
+    const d = `$: stack(s("hh"), stack(s("bd*2"), note("c3"))).gain(0.4)`
+    const c = detectChunk(d, d.indexOf('bd*2'))!
+    expect(c.headFn).toBe('s')
+    expect(c.miniString).toBe('bd*2')
+    expect(doc(c, d)).toBe('s("bd*2")')
+  })
+
+  it('detectAllChunks still returns ONE chunk per top-level statement', () => {
+    // nested detection is cursor-only; the doc-wide list is unchanged
+    expect(detectAllChunks(stackDoc)).toHaveLength(1)
+  })
+})
+
+/** slice a chunk's statementRange out of the doc */
+function doc(c: ChunkInfo, source: string): string {
+  return source.slice(c.statementRange[0], c.statementRange[1])
+}
+
 describe('chunkDetect — mini-notation extraction', () => {
   it('extracts the head string contents, quotes excluded, with correct range', () => {
     const doc = `s("bd ~ sd ~")`

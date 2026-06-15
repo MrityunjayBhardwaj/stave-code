@@ -89,12 +89,32 @@ export function isChunkFresh(doc: string, chunk: ChunkInfo): boolean {
   return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText
 }
 
-/** The chunk whose statement contains `pos`, or null. */
+/**
+ * The innermost editable chunk under `pos`, or null. Descends into combinator
+ * arguments — a cursor on a track inside `stack(...)` binds THAT track, not the
+ * whole `$: stack(...)` statement (#395). A top-level cursor is unchanged.
+ */
 export function detectChunk(doc: string, pos: number): ChunkInfo | null {
   const statements = parseTopLevel(doc)
   if (!statements) return null
   for (const node of statements) {
-    if (pos >= node.start && pos <= node.end) return buildChunk(doc, node)
+    if (pos >= node.start && pos <= node.end) {
+      let label: string | null = null
+      let body = node
+      if (node.type === 'LabeledStatement') {
+        label = node.label.name
+        body = node.body
+      }
+      if (body.type !== 'ExpressionStatement') return null
+      const topExpr = body.expression
+      const target = innermostChainUnder(doc, topExpr, pos)
+      // The top-level statement keeps its full range (incl. the `$:` label) so
+      // the freshness guard watches the whole statement; a nested target is
+      // anchored to its own expression span and carries no label.
+      return target === topExpr
+        ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end])
+        : buildChunkFromExpr(doc, target, null, [target.start, target.end])
+    }
   }
   return null
 }
@@ -116,8 +136,20 @@ function buildChunk(doc: string, node: any): ChunkInfo | null {
     body = node.body
   }
   if (body.type !== 'ExpressionStatement') return null
-  const expr = body.expression
+  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end])
+}
 
+/**
+ * Build a ChunkInfo from a pattern expression node. `stmtRange` is the source
+ * span the freshness guard watches: the whole statement (incl. `$:`) for a
+ * top-level chunk, or just the expression for a nested one (#395).
+ */
+function buildChunkFromExpr(
+  doc: string,
+  expr: any,
+  label: string | null,
+  stmtRange: [number, number],
+): ChunkInfo {
   const headNode = { ref: null as any }
   const chain = collectChain(doc, expr, headNode)
   const headFn = chain.length > 0 ? chain[0].name : null
@@ -136,8 +168,8 @@ function buildChunk(doc: string, node: any): ChunkInfo | null {
   }
 
   const info: ChunkInfo = {
-    statementRange: [node.start, node.end],
-    statementText: doc.slice(node.start, node.end),
+    statementRange: stmtRange,
+    statementText: doc.slice(stmtRange[0], stmtRange[1]),
     exprRange: [expr.start, expr.end],
     label,
     headFn,
@@ -148,6 +180,34 @@ function buildChunk(doc: string, node: any): ChunkInfo | null {
   }
   info.type = classifyChunk(info)
   return info
+}
+
+/**
+ * Descend to the innermost chain expression containing `pos`. When the cursor
+ * sits inside an argument of a combinator (`stack`, `cat`, `layer`, …) that is
+ * itself a pattern chain, recurse into that argument; otherwise return `expr`
+ * unchanged. This is what lets a panel bind to ONE track inside `stack(...)`
+ * rather than the whole statement (#395). Mini-notation strings and numeric
+ * args are Literals, not CallExpressions, so a cursor on them keeps the
+ * enclosing chain.
+ */
+function innermostChainUnder(doc: string, expr: any, pos: number): any {
+  const headOut = { ref: null as any }
+  collectChain(doc, expr, headOut)
+  const head = headOut.ref
+  if (!head || !Array.isArray(head.arguments)) return expr
+  for (const arg of head.arguments) {
+    if (
+      arg &&
+      arg.type === 'CallExpression' &&
+      typeof arg.start === 'number' &&
+      pos >= arg.start &&
+      pos <= arg.end
+    ) {
+      return innermostChainUnder(doc, arg, pos)
+    }
+  }
+  return expr
 }
 
 /**
