@@ -3,6 +3,9 @@ export type { IREvent, SourceLocation, IRPattern } from './ir'
 export { merge, transpose, timestretch, filter, scaleGain } from './ir'
 export type { PatternIR, PlayParams, CollectContext, ComponentBag, System } from './ir'
 export { IR, collect, collectCycles, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
+// Full-song analysis (#385)
+export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf } from './ir'
+export type { SongAnalysis, LaneActivity, SongSection, AnalyzeSongOptions } from './ir'
 export { parseMini, parseStrudel, classifyLiteralRhs, propagate, StrudelParseSystem, IREventCollectSystem } from './ir'
 
 // Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported

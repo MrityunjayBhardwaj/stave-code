@@ -14,6 +14,23 @@ export { collect, collectCycles } from './collect'
 export type { CollectContext } from './collect'
 export { toStrudel } from './toStrudel'
 
+// Full-song analysis (#385) — progressive-horizon period/section/lane analysis
+export {
+  analyzeSong,
+  analyzeEvents,
+  accumulateLanes,
+  cycleFingerprints,
+  detectPeriod,
+  computeSections,
+  laneKeyOf,
+} from './songAnalysis'
+export type {
+  SongAnalysis,
+  LaneActivity,
+  SongSection,
+  AnalyzeSongOptions,
+} from './songAnalysis'
+
 // Serialization
 export { patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './serialize'
 
