@@ -1114,7 +1114,9 @@ async function analyzeSong(ir, opts = {}) {
     if (events.length === 0) return analyzeEvents([], 0, false);
     const period = detectPeriod(cycleFingerprints(events, horizon));
     if (period !== null) {
-      return analyzeEvents(events, horizon, false);
+      const lanes = accumulateLanes(events, period);
+      const sections = computeSections(lanes, period);
+      return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false };
     }
     if (horizon >= cap) {
       return analyzeEvents(events, cap, true);
