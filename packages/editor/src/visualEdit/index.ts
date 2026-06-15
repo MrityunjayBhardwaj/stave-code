@@ -49,6 +49,9 @@ export type { VisualEditStandbyProps } from './panels/VisualEditStandby'
 export { Mixer } from './panels/Mixer'
 export { SequencerGrid } from './panels/SequencerGrid'
 export { PianoRollGrid } from './panels/PianoRollGrid'
+export { PatternPanel } from './panels/PatternPanel'
+export { patternKind, isStepChunk, isRollChunk } from './panels/patternKind'
+export type { PatternKind } from './panels/patternKind'
 export { useActiveChunk } from './panels/useActiveChunk'
 export type { ActiveChunk } from './panels/useActiveChunk'
 export { useGridModel } from './panels/useGridModel'
@@ -59,6 +62,7 @@ export { knobRangeFor } from './panels/knobRanges'
 export type { KnobRange } from './panels/knobRanges'
 export {
   VISUAL_EDIT_TABS,
+  PATTERN_TAB_ID,
   SEQUENCER_TAB_ID,
   MIXER_TAB_ID,
   PIANO_ROLL_TAB_ID,

@@ -24,20 +24,14 @@ import { parsePianoRoll } from '../notation/parse'
 import { serializePianoRoll } from '../notation/serialize'
 import type { PianoRollModel, RollNote } from '../notation/model'
 import { pitchToMidi, midiToPitch, isBlackKey } from '../notation/pitch'
-import type { ChunkInfo } from '../chunkDetect'
 import { VisualEditStandby } from './VisualEditStandby'
-import { PIANO_ROLL_TAB_ID, VISUAL_EDIT_TABS } from './tabs'
+import { PIANO_ROLL_TAB_ID } from './tabs'
+import { isRollChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { placeNote } from '../notation/place'
 
-const ROLL_HINT =
-  VISUAL_EDIT_TABS.find((t) => t.id === PIANO_ROLL_TAB_ID)?.hint ??
-  'Click a melody to edit its notes.'
-
-function isRollChunk(chunk: ChunkInfo): boolean {
-  return chunk.miniString !== null && (chunk.headFn === 'note' || chunk.headFn === 'n')
-}
+const ROLL_HINT = 'Click a melody to edit its notes.'
 
 const DEFAULT_LO = 48 // c3
 const DEFAULT_HI = 72 // c5

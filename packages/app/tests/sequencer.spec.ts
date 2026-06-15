@@ -59,7 +59,7 @@ async function strudelValue(page: Page): Promise<string> {
 async function openSequencer(page: Page) {
   const drawer = page.locator('[data-bottom-panel="root"]')
   await drawer.locator('[data-bottom-panel="toggle"]').click()
-  await drawer.locator('role=tab[name="Sequencer"]').click()
+  await drawer.locator('role=tab[name="Pattern"]').click()
   return drawer
 }
 

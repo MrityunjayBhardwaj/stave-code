@@ -22,20 +22,13 @@ import * as React from 'react'
 import { parseStepGrid } from '../notation/parse'
 import { serializeStepGrid } from '../notation/serialize'
 import type { StepGridModel } from '../notation/model'
-import type { ChunkInfo } from '../chunkDetect'
 import { VisualEditStandby } from './VisualEditStandby'
-import { SEQUENCER_TAB_ID, VISUAL_EDIT_TABS } from './tabs'
+import { SEQUENCER_TAB_ID } from './tabs'
+import { isStepChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 
-const SEQ_HINT =
-  VISUAL_EDIT_TABS.find((t) => t.id === SEQUENCER_TAB_ID)?.hint ??
-  'Click a drum pattern to edit it as a step grid.'
-
-/** the sequencer only edits sound/sample patterns; notes go to the Piano Roll */
-function isStepChunk(chunk: ChunkInfo): boolean {
-  return chunk.miniString !== null && (chunk.headFn === 's' || chunk.headFn === 'sound')
-}
+const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
 /** flip one cell, returning a new model (stable lane set preserved) */
 function toggleCell(

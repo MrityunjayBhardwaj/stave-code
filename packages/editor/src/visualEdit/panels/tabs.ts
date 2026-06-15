@@ -1,13 +1,15 @@
 /**
- * Single source of truth for the visual-editing bottom-panel tabs.
+ * Single source of truth for the visual-editing bottom-panel tab.
  *
- * The scaffold seeds these as standby tabs alongside "Timeline"; each panel
- * later re-registers its own id (idempotent replace) with a live UI. Keeping
+ * The scaffold seeds this as a standby tab alongside "Timeline"; the live
+ * Pattern panel re-registers the id (idempotent replace) with its UI. Keeping
  * id/title/hint/icon here means the seed and the real panel agree on identity
  * and musician-facing copy without duplication.
  *
- * Tab order is presentation order. Titles carry NO IR jargon (PV32 / D-06):
- * "Sequencer", "Mixer", "Piano Roll" — what a musician calls them.
+ * Since #398 there is ONE adaptive visual-editing tab — "Pattern" — that
+ * switches between the Sequencer and Piano Roll grids and pins the Mixer. The
+ * title carries NO IR jargon (PV32 / D-06): "Pattern" is what a musician calls
+ * the thing they're shaping (and Strudel's own vocabulary).
  */
 export interface VisualEditTabDef {
   readonly id: string
@@ -18,27 +20,23 @@ export interface VisualEditTabDef {
   readonly icon: string
 }
 
+/** the single adaptive visual-editing tab (#398) */
+export const PATTERN_TAB_ID = 'pattern'
+
+/**
+ * Inner panel ids — no longer separate tabs (#398), but kept as the stable
+ * `data-bottom-panel-tab` identity each grid/mixer renders inside the Pattern
+ * panel, and as the standby test hook.
+ */
 export const SEQUENCER_TAB_ID = 'sequencer'
 export const MIXER_TAB_ID = 'mixer'
 export const PIANO_ROLL_TAB_ID = 'piano-roll'
 
 export const VISUAL_EDIT_TABS: readonly VisualEditTabDef[] = [
   {
-    id: SEQUENCER_TAB_ID,
-    title: 'Sequencer',
-    hint: 'Click a drum pattern to edit it as a step grid.',
+    id: PATTERN_TAB_ID,
+    title: 'Pattern',
+    hint: 'Click a drum or melodic pattern to edit it here.',
     icon: 'symbol-array',
-  },
-  {
-    id: MIXER_TAB_ID,
-    title: 'Mixer',
-    hint: 'Click a pattern to adjust its sound with knobs.',
-    icon: 'settings',
-  },
-  {
-    id: PIANO_ROLL_TAB_ID,
-    title: 'Piano Roll',
-    hint: 'Click a melody to edit its notes.',
-    icon: 'music',
   },
 ]

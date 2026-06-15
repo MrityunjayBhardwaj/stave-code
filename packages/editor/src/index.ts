@@ -530,9 +530,14 @@ export {
   Mixer,
   SequencerGrid,
   PianoRollGrid,
+  PatternPanel,
+  patternKind,
+  isStepChunk,
+  isRollChunk,
   Knob,
   knobRangeFor,
   VISUAL_EDIT_TABS,
+  PATTERN_TAB_ID,
   SEQUENCER_TAB_ID,
   MIXER_TAB_ID,
   PIANO_ROLL_TAB_ID,
@@ -552,6 +557,7 @@ export type {
   ResizeMode,
   VisualEditStandbyProps,
   VisualEditTabDef,
+  PatternKind,
 } from './visualEdit'
 export {
   BOTTOM_PANEL_HEIGHT_KEY,
