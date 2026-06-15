@@ -1234,11 +1234,23 @@ declare class StrudelEngine implements LiveCodingEngine {
     private breakpointStore;
     private isPausedState;
     private pauseChangedListeners;
+    private transportOffset;
     private tierFlags;
     private lastAliasResolutions;
     private soundMapRef;
     /** Read-only snapshot of the tier flags consumed at this engine's init(). */
     getTierFlagsSnapshot(): Readonly<TierFlags> | null;
+    /**
+     * #384 — set the transport seek offset (cycles). Does NOT re-evaluate by
+     * itself: the runtime's `seekTo` calls this and then `play()`, whose
+     * re-eval re-reads `transportOffset` and applies the `.late()` wrap at the
+     * `.p` seam. Kept off the `LiveCodingEngine` interface (v1) and reached via
+     * `(engine as any).setTransportOffset?.()` so non-Strudel engines no-op,
+     * mirroring the pause/resume delegation convention.
+     */
+    setTransportOffset(offset: number): void;
+    /** #384 — current transport offset (cycles). `0` when no seek is active. */
+    getTransportOffset(): number;
     /**
      * Phase 20-14 β-2 — read-only snapshot of alias rewrites that have fired
      * during the current evaluate() window. Each entry is one hap rewrite;
@@ -6411,6 +6423,34 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * Phase 19-08 (#85). RESEARCH §2.
      */
     getCurrentCycle(): number | null;
+    /**
+     * #384 — raw scheduler clock, ungated by `isPlayingState`. The seek math
+     * needs the live wall-clock cycle at the instant the user clicks. Returns
+     * `null` only when the engine exposes no scheduler. Used by
+     * `seekTo`/`getSongPosition`.
+     */
+    private rawSchedulerNow;
+    /**
+     * #384 — seek the transport to song-cycle `targetCycle`. Sets the engine's
+     * transport offset to `now - targetCycle` (so `songPosition` becomes
+     * `targetCycle`) and re-evaluates via `play()` — the existing hot-swap
+     * path — which re-applies the `.late(offset)` wrap at the engine's `.p`
+     * seam. No-op on engines without `setTransportOffset` (non-Strudel) or
+     * before the scheduler exists.
+     *
+     * AUDIO NOTE: the audible jump is not observable in the test harness — the
+     * clock + no-error are; the audio half needs a manual check (design §10).
+     */
+    seekTo(targetCycle: number): Promise<{
+        error: Error | null;
+    }>;
+    /**
+     * #384 — current SONG position in cycles: `scheduler.now() - transportOffset`.
+     * The full-song timeline playhead reads this (vs `getCurrentCycle`'s raw
+     * window clock). Gated on `isPlayingState` like `getCurrentCycle` so the
+     * playhead clears on stop. `null` on non-Strudel engines / when stopped.
+     */
+    getSongPosition(): number | null;
     /**
      * Engine-owned HapStream, or `null` when the engine doesn't expose one
      * (non-Strudel runtimes / not yet initialized). Mirrors `getCurrentCycle`'s
