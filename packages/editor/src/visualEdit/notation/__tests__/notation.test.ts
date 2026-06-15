@@ -79,10 +79,42 @@ describe('step grid — parse', () => {
   })
 
   it('rejects features outside the subset', () => {
-    expect(parseStepGrid('bd*2').ok).toBe(false)
     expect(parseStepGrid('bd(3,8)').ok).toBe(false)
     expect(parseStepGrid('{bd hh}%4').ok).toBe(false)
     expect(parseStepGrid('bd@2 hh').ok).toBe(false) // elongation not a grid concept
+  })
+
+  it('expands `atom*n` into n columns of the atom', () => {
+    const r = parseStepGrid('hh*8')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(8)
+    expect(r.model.lanes).toEqual([{ sound: 'hh', cells: Array(8).fill(true) }])
+  })
+
+  it('packs `atom*n` into its own step alongside plain steps', () => {
+    const r = parseStepGrid('bd hh*4')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // bd holds the first half (4 cols), hh fires across the second half
+    expect(r.model.steps).toBe(8)
+    expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells).toEqual([
+      true, false, false, false, false, false, false, false,
+    ])
+    expect(r.model.lanes.find((l) => l.sound === 'hh')!.cells).toEqual([
+      false, false, false, false, true, true, true, true,
+    ])
+  })
+
+  it('rejects `*` combined with other modifiers (conservative scope)', () => {
+    expect(parseStepGrid('bd*2@2').ok).toBe(false) // * with @
+    expect(parseStepGrid('[bd hh]*2').ok).toBe(false) // group multiplier
+    expect(parseStepGrid('bd*0').ok).toBe(false) // zero multiplier
+    expect(parseStepGrid('bd*').ok).toBe(false) // missing count
+  })
+
+  it('rejects `atom*n` that expands past the step ceiling', () => {
+    expect(parseStepGrid('hh*128').ok).toBe(false)
   })
 })
 
@@ -98,6 +130,27 @@ describe('step grid — round-trip identity', () => {
     '<bd sn>',
   ]
   for (const s of canonical) it(`"${s}"`, () => gridRoundTrips(s))
+})
+
+describe('step grid — `*` is parse-only sugar', () => {
+  // `*` is INPUT sugar: it expands on parse and serializes back as the
+  // expanded sequence (no `*` on output). So the round-trip is parse → expand,
+  // not the identity law that holds for canonical strings.
+  it('serializes `hh*8` as the expanded sequence', () => {
+    const r = parseStepGrid('hh*8')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('hh hh hh hh hh hh hh hh')
+  })
+
+  it('the expanded form re-parses to the same model (stable, no reseed loop)', () => {
+    const sugar = parseStepGrid('hh*4')
+    const expanded = parseStepGrid('hh hh hh hh')
+    expect(sugar.ok && expanded.ok).toBe(true)
+    if (!sugar.ok || !expanded.ok) return
+    expect(sugar.model).toEqual(expanded.model)
+    expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+  })
 })
 
 describe('piano roll — parse', () => {
@@ -129,6 +182,19 @@ describe('piano roll — parse', () => {
     if (!r.ok) return
     expect(r.model.notes.map((n) => n.pitch)).toEqual(['c3', 'e3', 'g3'])
     expect(r.model.notes.every((n) => n.start === 0)).toBe(true)
+  })
+
+  it('expands `note*n` into n notes (shared tokenizer)', () => {
+    const r = parsePianoRoll('c3*4')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(4)
+    expect(r.model.notes).toEqual([
+      { pitch: 'c3', start: 0, duration: 1 },
+      { pitch: 'c3', start: 1, duration: 1 },
+      { pitch: 'c3', start: 2, duration: 1 },
+      { pitch: 'c3', start: 3, duration: 1 },
+    ])
   })
 
   it('rejects a non-note token', () => {

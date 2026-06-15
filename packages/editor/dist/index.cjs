@@ -24582,6 +24582,15 @@ function readElongation(src, i) {
   return { ok: true, value: parseInt(digits[0], 10), next: i + 1 + digits[0].length };
 }
 __name(readElongation, "readElongation");
+function readMultiplier(src, i) {
+  if (src[i] !== "*") return { ok: true, value: 1, next: i };
+  const digits = src.slice(i + 1).match(/^\d+/);
+  if (!digits) return { ok: false, reason: "invalid * multiplier" };
+  const value = parseInt(digits[0], 10);
+  if (value < 1) return { ok: false, reason: "invalid * multiplier" };
+  return { ok: true, value, next: i + 1 + digits[0].length };
+}
+__name(readMultiplier, "readMultiplier");
 function parseGroup(inner, elongation) {
   const commaParts = splitTopLevel(inner);
   if (commaParts.length > 1) {
@@ -24628,7 +24637,7 @@ function parseGroup(inner, elongation) {
       slots.push({ atoms, units: elong2.value });
       continue;
     }
-    const match = inner.slice(i).match(/^[^\s[\]@,]+/);
+    const match = inner.slice(i).match(/^[^\s[\]@,*]+/);
     if (!match || !ATOM.test(match[0])) {
       return { reason: `unsupported token "${match?.[0] ?? ch}"` };
     }
@@ -24648,7 +24657,7 @@ __name(parseGroup, "parseGroup");
 function tokenize2(mini) {
   const src = mini.trim();
   if (src === "") return { ok: true, steps: [] };
-  if (/[<>{}*/!?()%._|]/.test(src)) {
+  if (/[<>{}/!?()%._|]/.test(src)) {
     return { ok: false, reason: "uses mini-notation features beyond the editable subset" };
   }
   const steps = [];
@@ -24677,15 +24686,29 @@ function tokenize2(mini) {
       steps.push(group);
       continue;
     }
-    const match = src.slice(i).match(/^[^\s[\]@,]+/);
+    const match = src.slice(i).match(/^[^\s[\]@,*]+/);
     if (!match || !ATOM.test(match[0])) {
       return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` };
     }
     i += match[0].length;
+    const mult = readMultiplier(src, i);
+    if (!mult.ok) return { ok: false, reason: mult.reason };
+    i = mult.next;
     const elong = readElongation(src, i);
     if (!elong.ok) return { ok: false, reason: elong.reason };
     i = elong.next;
-    steps.push({ atoms: [match[0]], elongation: elong.value, sub: null });
+    if (mult.value > 1) {
+      if (elong.value > 1) {
+        return { ok: false, reason: "* combined with @ is beyond the editable subset" };
+      }
+      const slots = Array.from({ length: mult.value }, () => ({
+        atoms: [match[0]],
+        units: 1
+      }));
+      steps.push({ atoms: [], elongation: 1, sub: slots });
+    } else {
+      steps.push({ atoms: [match[0]], elongation: elong.value, sub: null });
+    }
   }
   return { ok: true, steps };
 }
