@@ -24153,7 +24153,12 @@ function bjorklund2(k, n) {
   return [...a, ...b].flat();
 }
 __name(bjorklund2, "bjorklund");
-var rotateLeft = /* @__PURE__ */ __name((pattern, rot) => pattern.map((_, i) => pattern[(i + rot) % pattern.length]), "rotateLeft");
+var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
+  const n = pattern.length;
+  if (n === 0) return pattern;
+  const k = (-rot % n + n) % n;
+  return pattern.slice(k).concat(pattern.slice(0, k));
+}, "rotateEuclid");
 var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
 var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
 function closeBracket(src, open) {
@@ -24330,7 +24335,7 @@ function tokenize2(mini) {
       if (mult.value > 1 || elong.value > 1) {
         return { ok: false, reason: "euclid combined with * or @ is beyond the editable subset" };
       }
-      const hits = rotateLeft(bjorklund2(euclid.spec.k, euclid.spec.n), euclid.spec.rot);
+      const hits = rotateEuclid(bjorklund2(euclid.spec.k, euclid.spec.n), euclid.spec.rot);
       const slots = hits.map((on) => ({ atoms: on ? [match[0]] : [], units: 1 }));
       steps.push({ atoms: [], elongation: 1, sub: slots });
     } else if (mult.value > 1) {
