@@ -24227,6 +24227,16 @@ function useActiveChunk() {
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
+
+// src/visualEdit/panels/quickTransforms.ts
+var QUICK_TRANSFORMS = [
+  { label: "Reverb", method: "room", value: 0.4 },
+  { label: "Filter", method: "lpf", value: 800 },
+  { label: "Distortion", method: "distort", value: 0.3 },
+  { label: "Delay", method: "delay", value: 0.4 },
+  { label: "Speed", method: "speed", value: 1.5 },
+  { label: "Gain", method: "gain", value: 0.8 }
+];
 var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
 function knobsFromChunk(chunk) {
   const knobs = [];
@@ -24259,39 +24269,73 @@ function Mixer() {
     },
     [applyEdit]
   );
-  if (knobs.length === 0) {
+  const addTransform = React16__namespace.useCallback(
+    (method, value) => {
+      applyEdit((fresh, wb) => {
+        if (fresh.chain.some((c) => c.name === method)) return;
+        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, "knob");
+      });
+    },
+    [applyEdit]
+  );
+  if (!chunk || chunk.chain.length === 0) {
     return React16__namespace.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
     });
   }
-  return /* @__PURE__ */ jsxRuntime.jsx(
+  const present = new Set(chunk.chain.map((c) => c.name));
+  return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
     {
       "data-bottom-panel-tab": "mixer",
       style: {
         display: "flex",
-        flexWrap: "wrap",
-        gap: 16,
-        alignItems: "flex-start",
+        flexDirection: "column",
+        gap: 14,
         padding: 16,
         height: "100%",
         overflowY: "auto",
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       },
-      children: knobs.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
-        Knob,
-        {
-          label: k.label,
-          value: k.value,
-          range: knobRangeFor(k.method, k.value),
-          onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
-          onGestureStart: beginGesture,
-          onGestureEnd: endGesture
-        },
-        `${k.chainIndex}:${k.argIndex}`
-      ))
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => /* @__PURE__ */ jsxRuntime.jsxs(
+          "button",
+          {
+            type: "button",
+            disabled: present.has(t.method),
+            "data-mixer-transform": t.method,
+            onClick: () => addTransform(t.method, t.value),
+            style: {
+              padding: "3px 10px",
+              fontSize: 11,
+              borderRadius: 4,
+              border: "1px solid var(--border, #3a3a42)",
+              background: present.has(t.method) ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+              color: present.has(t.method) ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
+              cursor: present.has(t.method) ? "default" : "pointer"
+            },
+            children: [
+              "+ ",
+              t.label
+            ]
+          },
+          t.method
+        )) }),
+        knobs.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }, children: knobs.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
+          Knob,
+          {
+            label: k.label,
+            value: k.value,
+            range: knobRangeFor(k.method, k.value),
+            onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
+            onGestureStart: beginGesture,
+            onGestureEnd: endGesture
+          },
+          `${k.chainIndex}:${k.argIndex}`
+        )) }) : /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: "Add an effect above, or drag a knob once the pattern has one." })
+      ]
     }
   );
 }
