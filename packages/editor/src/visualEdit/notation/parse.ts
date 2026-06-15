@@ -460,6 +460,54 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
   return { ok: true, model: { steps: total, lanes } }
 }
 
+/* ── velocity (.gain) read-back ────────────────────────────────── */
+
+/** a flat gain token: a non-negative number, or `~` (no gain event there) */
+const GAIN_TOKEN = /^\d+(\.\d+)?$/
+
+/**
+ * Parse a FLAT `.gain("…")` mini into `count` per-position velocities — the
+ * one-token-per-column shape the step grid writes. Returns null when the gain
+ * pattern isn't that shape (wrong token count, an `@`/`*`/`[` we didn't write,
+ * a non-numeric token, a broadcast `.gain("0.8")`); the caller then leaves the
+ * model neutral and flags the gain foreign so it's never rewritten or deleted.
+ * A `~` position reads as neutral `1` (its column is a rest — no audible gain).
+ */
+export function parseGainMini(mini: string, count: number): number[] | null {
+  const tokens = mini.trim().split(/\s+/).filter((t) => t !== '')
+  if (tokens.length !== count) return null
+  const out: number[] = []
+  for (const t of tokens) {
+    if (t === '~') {
+      out.push(1)
+      continue
+    }
+    if (!GAIN_TOKEN.test(t)) return null
+    out.push(parseFloat(t))
+  }
+  return out
+}
+
+/**
+ * Apply an existing `.gain("…")` string to a freshly-parsed step model.
+ * `gainMini` is the string arg's inner text, or null when there is no string
+ * `.gain`. `foreign` is set by the binding layer when a `.gain` we don't manage
+ * is present (a numeric `.gain(0.8)` knob) — that, or a string gain that
+ * doesn't align to the columns, flags `gainForeign` (hands off); an aligning
+ * gain becomes the per-column `gains`.
+ */
+export function applyStepGain(
+  model: StepGridModel,
+  gainMini: string | null,
+  foreign = false,
+): StepGridModel {
+  if (foreign) return { ...model, gainForeign: true }
+  if (gainMini === null) return model
+  const gains = parseGainMini(gainMini, model.steps)
+  if (gains === null) return { ...model, gainForeign: true }
+  return { ...model, gains }
+}
+
 /* ── piano roll ────────────────────────────────────────────────── */
 
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {

@@ -9,7 +9,19 @@
  * can't express (overlapping roll notes, a note straddling a bar line) returns
  * null and the panel keeps the document untouched.
  */
-import type { PianoRollModel, RollNote, StepGridModel, StepLane } from './model'
+import type { GainWrite, PianoRollModel, RollNote, StepGridModel, StepLane } from './model'
+
+/**
+ * Format a velocity for a `.gain("…")` token: 2 decimals, trailing zeros and
+ * any orphaned point stripped, so a drag's `0.5000001` comes out `0.5`. Local
+ * (not writeback's `formatNumber`) so the notation layer stays free of the
+ * binding layer; gain needs only 2 decimals.
+ */
+function fmtGain(v: number): string {
+  if (!Number.isFinite(v)) return '1'
+  if (Number.isInteger(v)) return String(v)
+  return v.toFixed(2).replace(/\.?0+$/, '')
+}
 
 /* ── drum grid ─────────────────────────────────────────────────── */
 
@@ -39,6 +51,30 @@ function gridColumns(lanes: StepLane[], steps: number): string[] {
     else cols.push(`[${active.join(',')}]`)
   }
   return cols
+}
+
+/**
+ * The `.gain("…")` mini for a step grid's per-column velocity, aligned 1:1 to
+ * the columns `serializeStepGrid` emits. Returns a `GainWrite` so the binding
+ * layer knows whether to upsert, remove, or leave the `.gain` alone:
+ *   - `skip`  — multi-bar or `,`-stack (we don't align gain across those yet),
+ *      or a `.gain` we couldn't parse onto the grid (`gainForeign`): hands off;
+ *   - `clear` — every column neutral (gain 1): remove our `.gain`;
+ *   - `write` — one token per column: a rest column → `~` (no gain event), else
+ *      the column's gain.
+ */
+export function serializeStepGain(model: StepGridModel): GainWrite {
+  if (model.gainForeign) return { kind: 'skip' }
+  const bars = model.bars ?? 1
+  const parts = new Set(model.lanes.map((l) => l.part ?? 0))
+  if (bars > 1 || parts.size > 1) return { kind: 'skip' }
+  const gains = model.gains
+  if (!gains || gains.length !== model.steps || gains.every((g) => g === 1)) {
+    return { kind: 'clear' }
+  }
+  const cols = gridColumns(model.lanes, model.steps)
+  const mini = cols.map((tok, i) => (tok === '~' ? '~' : fmtGain(gains[i]))).join(' ')
+  return { kind: 'write', mini }
 }
 
 /** `<...>` with one slot per bar; an all-rest bar collapses to `~` */

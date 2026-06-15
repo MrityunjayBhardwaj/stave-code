@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parseStepGrid, parsePianoRoll, bjorklund } from '../parse'
-import { serializeStepGrid, serializePianoRoll } from '../serialize'
+import { parseStepGrid, parsePianoRoll, bjorklund, parseGainMini, applyStepGain } from '../parse'
+import { serializeStepGrid, serializePianoRoll, serializeStepGain } from '../serialize'
 import { pitchToMidi, midiToPitch, isBlackKey } from '../pitch'
 import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
@@ -509,5 +509,101 @@ describe('resizeNote (single-note `@n` duration)', () => {
     const reparsed = parsePianoRoll(text)
     expect(reparsed.ok).toBe(true)
     if (reparsed.ok) expect(reparsed.model).toEqual(resized)
+  })
+})
+
+describe('step grid — velocity (.gain)', () => {
+  const base = (steps: number, gains?: number[]): StepGridModel => ({
+    steps,
+    lanes: [{ sound: 'bd', cells: Array<boolean>(steps).fill(true) }],
+    ...(gains ? { gains } : {}),
+  })
+
+  describe('parseGainMini', () => {
+    it('reads a flat numeric gain into per-position values', () => {
+      expect(parseGainMini('1 0.5 1 0.25', 4)).toEqual([1, 0.5, 1, 0.25])
+    })
+    it('reads a `~` (rest column) as neutral 1', () => {
+      expect(parseGainMini('1 ~ 0.5 ~', 4)).toEqual([1, 1, 0.5, 1])
+    })
+    it('rejects a wrong token count (a broadcast `.gain("0.8")`)', () => {
+      expect(parseGainMini('0.8', 4)).toBeNull()
+      expect(parseGainMini('1 0.5', 4)).toBeNull()
+    })
+    it('rejects a non-numeric / sub-divided gain we did not write', () => {
+      expect(parseGainMini('1 0.5@2 1', 3)).toBeNull()
+      expect(parseGainMini('1 [0.5 0.5] 1', 3)).toBeNull()
+      expect(parseGainMini('loud soft', 2)).toBeNull()
+    })
+  })
+
+  describe('serializeStepGain', () => {
+    it('clears (removes .gain) when every column is neutral', () => {
+      expect(serializeStepGain(base(4))).toEqual({ kind: 'clear' })
+      expect(serializeStepGain(base(4, [1, 1, 1, 1]))).toEqual({ kind: 'clear' })
+    })
+    it('writes one token per column, rest columns as `~`', () => {
+      const m: StepGridModel = {
+        steps: 4,
+        lanes: [{ sound: 'bd', cells: [true, false, true, true] }],
+        gains: [1, 1, 0.5, 0.25],
+      }
+      // column 1 is a rest (bd off) → `~`, regardless of its stored gain
+      expect(serializeStepGain(m)).toEqual({ kind: 'write', mini: '1 ~ 0.5 0.25' })
+    })
+    it('skips (leaves .gain untouched) for multi-bar, `,`-stack, or foreign', () => {
+      expect(serializeStepGain({ ...base(4, [1, 0.5, 1, 1]), bars: 2 })).toEqual({ kind: 'skip' })
+      expect(
+        serializeStepGain({
+          steps: 2,
+          lanes: [
+            { sound: 'bd', part: 0, cells: [true, false] },
+            { sound: 'hh', part: 1, cells: [true, true] },
+          ],
+          gains: [0.5, 0.5],
+        }),
+      ).toEqual({ kind: 'skip' })
+      expect(serializeStepGain({ ...base(4, [1, 0.5, 1, 1]), gainForeign: true })).toEqual({
+        kind: 'skip',
+      })
+    })
+  })
+
+  describe('applyStepGain', () => {
+    it('leaves the model neutral when there is no string .gain', () => {
+      const m = base(4)
+      expect(applyStepGain(m, null)).toBe(m)
+    })
+    it('reads an aligned .gain onto the columns', () => {
+      const r = applyStepGain(base(4), '1 0.5 1 0.25')
+      expect(r.gains).toEqual([1, 0.5, 1, 0.25])
+      expect(r.gainForeign).toBeUndefined()
+    })
+    it('flags foreign (hands off) when the .gain does not align', () => {
+      expect(applyStepGain(base(4), '0.8').gainForeign).toBe(true) // broadcast (1 ≠ 4)
+      expect(applyStepGain(base(3), '1 0.5@2 1').gainForeign).toBe(true) // sub-divided
+    })
+    it('flags foreign when told a numeric .gain is present', () => {
+      expect(applyStepGain(base(4), null, true).gainForeign).toBe(true)
+    })
+  })
+
+  it('round-trips: column gains → .gain mini → parse back ≡ gains', () => {
+    const stepMini = 'bd ~ sn hh'
+    const gains = [1, 1, 0.8, 0.5] // col 1 is a rest → serialized as `~`
+    const seed = parseStepGrid(stepMini)
+    expect(seed.ok).toBe(true)
+    if (!seed.ok) return
+    const withGain: StepGridModel = { ...seed.model, gains }
+    // the head mini is unchanged by velocity
+    expect(serializeStepGrid(withGain)).toBe(stepMini)
+    const g = serializeStepGain(withGain)
+    expect(g).toEqual({ kind: 'write', mini: '1 ~ 0.8 0.5' })
+    // re-reading the serialized gain reproduces the per-column values
+    if (g.kind !== 'write') return
+    const fresh = parseStepGrid(stepMini)
+    expect(fresh.ok).toBe(true)
+    if (!fresh.ok) return
+    expect(applyStepGain(fresh.model, g.mini).gains).toEqual([1, 1, 0.8, 0.5])
   })
 })
