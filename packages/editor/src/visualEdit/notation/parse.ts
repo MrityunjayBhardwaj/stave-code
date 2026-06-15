@@ -161,6 +161,25 @@ function readMultiplier(
 }
 
 /**
+ * Read an optional `!n` replicate at `i`; value defaults to 1. `atom!n` is pure
+ * input sugar for `n` SEPARATE copies of the atom as their own steps (unlike
+ * `*n`, which subdivides a single step) — it expands in the atom branch of
+ * `tokenize` and serializes back as the expanded sequence, so there is no `!`
+ * on output.
+ */
+function readReplicate(
+  src: string,
+  i: number,
+): { ok: true; value: number; next: number } | { ok: false; reason: string } {
+  if (src[i] !== '!') return { ok: true, value: 1, next: i }
+  const digits = src.slice(i + 1).match(/^\d+/)
+  if (!digits) return { ok: false, reason: 'invalid ! replicate' }
+  const value = parseInt(digits[0], 10)
+  if (value < 1) return { ok: false, reason: 'invalid ! replicate' }
+  return { ok: true, value, next: i + 1 + digits[0].length }
+}
+
+/**
  * Read an optional euclid spec `(k,n)` or `(k,n,rot)` at `i`; absent → null.
  * Like `*n`, `atom(k,n)` is pure input sugar: it lowers onto the existing
  * sub-sequence machinery (see the atom branch in `tokenize`) — one step whose
@@ -236,7 +255,7 @@ function parseGroup(inner: string, elongation: number): Step | { reason: string 
       slots.push({ atoms, units: elong.value })
       continue
     }
-    const match = inner.slice(i).match(/^[^\s[\]@,*(]+/)
+    const match = inner.slice(i).match(/^[^\s[\]@,*(!]+/)
     if (!match || !ATOM.test(match[0])) {
       return { reason: `unsupported token "${match?.[0] ?? ch}"` }
     }
@@ -258,9 +277,10 @@ function parseGroup(inner: string, elongation: number): Step | { reason: string 
 function tokenize(mini: string): Tokenized {
   const src = mini.trim()
   if (src === '') return { ok: true, steps: [] }
-  // `(` / `)` are NOT rejected here — `atom(k,n)` euclid is handled in the atom
-  // branch below; a stray `(` still rejects via the atom-match exclusion.
-  if (/[<>{}/!?%._|]/.test(src)) {
+  // `(` / `)` (euclid) and `!` (replicate) are NOT rejected here — both are
+  // handled in the atom branch below; a stray one still rejects via the
+  // atom-match exclusion.
+  if (/[<>{}/?%._|]/.test(src)) {
     return { ok: false, reason: 'uses mini-notation features beyond the editable subset' }
   }
   const steps: Step[] = []
@@ -289,7 +309,7 @@ function tokenize(mini: string): Tokenized {
       steps.push(group)
       continue
     }
-    const match = src.slice(i).match(/^[^\s[\]@,*(]+/)
+    const match = src.slice(i).match(/^[^\s[\]@,*(!]+/)
     if (!match || !ATOM.test(match[0])) {
       return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` }
     }
@@ -297,6 +317,9 @@ function tokenize(mini: string): Tokenized {
     const euclid = readEuclid(src, i)
     if (!euclid.ok) return { ok: false, reason: euclid.reason }
     i = euclid.next
+    const bang = readReplicate(src, i)
+    if (!bang.ok) return { ok: false, reason: bang.reason }
+    i = bang.next
     const mult = readMultiplier(src, i)
     if (!mult.ok) return { ok: false, reason: mult.reason }
     i = mult.next
@@ -304,14 +327,22 @@ function tokenize(mini: string): Tokenized {
     if (!elong.ok) return { ok: false, reason: elong.reason }
     i = elong.next
     if (euclid.spec) {
-      if (mult.value > 1 || elong.value > 1) {
-        return { ok: false, reason: 'euclid combined with * or @ is beyond the editable subset' }
+      if (mult.value > 1 || bang.value > 1 || elong.value > 1) {
+        return { ok: false, reason: 'euclid combined with * / ! / @ is beyond the editable subset' }
       }
       // `atom(k,n[,rot])` ≡ a sub-sequence of n single-unit slots: the atom at
       // the Bjørklund pulse positions (rotated by `rot`), rests everywhere else.
       const hits = rotateEuclid(bjorklund(euclid.spec.k, euclid.spec.n), euclid.spec.rot)
       const slots: Slot[] = hits.map((on) => ({ atoms: on ? [match[0]] : [], units: 1 }))
       steps.push({ atoms: [], elongation: 1, sub: slots })
+    } else if (bang.value > 1) {
+      if (mult.value > 1 || elong.value > 1) {
+        return { ok: false, reason: '! combined with * or @ is beyond the editable subset' }
+      }
+      // `atom!n` ≡ n SEPARATE plain steps of the atom (vs `*n`, one sub-step)
+      for (let r = 0; r < bang.value; r++) {
+        steps.push({ atoms: [match[0]], elongation: 1, sub: null })
+      }
     } else if (mult.value > 1) {
       if (elong.value > 1) {
         return { ok: false, reason: '* combined with @ is beyond the editable subset' }
