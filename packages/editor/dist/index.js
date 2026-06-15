@@ -24047,293 +24047,8 @@ var _Writeback = class _Writeback {
 };
 __name(_Writeback, "Writeback");
 var Writeback = _Writeback;
-var DRAG_SPAN_PX = 160;
-function toPosition(value, r) {
-  if (r.scale === "log" && r.min > 0 && value > 0) {
-    return Math.log(value / r.min) / Math.log(r.max / r.min);
-  }
-  return (value - r.min) / (r.max - r.min || 1);
-}
-__name(toPosition, "toPosition");
-function fromPosition(pos, r) {
-  const clamped = Math.max(0, Math.min(1, pos));
-  let value;
-  if (r.scale === "log" && r.min > 0) {
-    value = r.min * Math.pow(r.max / r.min, clamped);
-  } else {
-    value = r.min + clamped * (r.max - r.min);
-  }
-  const stepped = Math.round(value / r.step) * r.step;
-  const decimals = (String(r.step).split(".")[1] ?? "").length;
-  return Number(stepped.toFixed(decimals));
-}
-__name(fromPosition, "fromPosition");
-function Knob({
-  label,
-  value,
-  range,
-  onChange,
-  onGestureStart,
-  onGestureEnd
-}) {
-  const dragRef = React17.useRef(null);
-  const pos = Math.max(0, Math.min(1, toPosition(value, range)));
-  const angle = -135 + pos * 270;
-  const onPointerDown = /* @__PURE__ */ __name((e) => {
-    e.preventDefault();
-    e.target.setPointerCapture?.(e.pointerId);
-    dragRef.current = { startY: e.clientY, startPos: toPosition(value, range) };
-    onGestureStart?.();
-  }, "onPointerDown");
-  const onPointerMove = /* @__PURE__ */ __name((e) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const dy = drag.startY - e.clientY;
-    const nextPos = drag.startPos + dy / DRAG_SPAN_PX;
-    const next = fromPosition(nextPos, range);
-    if (next !== value) onChange(next);
-  }, "onPointerMove");
-  const endDrag = /* @__PURE__ */ __name((e) => {
-    if (!dragRef.current) return;
-    dragRef.current = null;
-    e.target.releasePointerCapture?.(e.pointerId);
-    onGestureEnd?.();
-  }, "endDrag");
-  const onKeyDown = /* @__PURE__ */ __name((e) => {
-    let next = value;
-    if (e.key === "ArrowUp" || e.key === "ArrowRight") next = value + range.step;
-    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") next = value - range.step;
-    else return;
-    e.preventDefault();
-    next = Math.max(range.min, Math.min(range.max, next));
-    const decimals = (String(range.step).split(".")[1] ?? "").length;
-    next = Number(next.toFixed(decimals));
-    if (next !== value) {
-      onGestureStart?.();
-      onChange(next);
-      onGestureEnd?.();
-    }
-  }, "onKeyDown");
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      "data-knob": label,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 4,
-        width: 64,
-        userSelect: "none"
-      },
-      children: [
-        /* @__PURE__ */ jsx(
-          "div",
-          {
-            role: "slider",
-            tabIndex: 0,
-            "aria-label": label,
-            "aria-valuemin": range.min,
-            "aria-valuemax": range.max,
-            "aria-valuenow": value,
-            onPointerDown,
-            onPointerMove,
-            onPointerUp: endDrag,
-            onPointerCancel: endDrag,
-            onKeyDown,
-            style: {
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              background: "var(--background-elevated, #26262c)",
-              border: "1px solid var(--border, #3a3a42)",
-              position: "relative",
-              cursor: "ns-resize",
-              touchAction: "none"
-            },
-            children: /* @__PURE__ */ jsx(
-              "div",
-              {
-                style: {
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  width: 2,
-                  height: 16,
-                  background: "var(--accent, #6ea8fe)",
-                  transformOrigin: "bottom center",
-                  transform: `translate(-50%, -100%) rotate(${angle}deg)`
-                }
-              }
-            )
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          "span",
-          {
-            style: {
-              fontSize: 10,
-              color: "var(--foreground, #e6e6ea)",
-              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-              maxWidth: 60,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap"
-            },
-            title: label,
-            children: label
-          }
-        ),
-        /* @__PURE__ */ jsx(
-          "span",
-          {
-            "data-knob-value": label,
-            style: {
-              fontSize: 10,
-              color: "var(--foreground-muted, #a0a0aa)",
-              fontVariantNumeric: "tabular-nums"
-            },
-            children: value
-          }
-        )
-      ]
-    }
-  );
-}
-__name(Knob, "Knob");
 
-// src/visualEdit/panels/knobRanges.ts
-var lin = /* @__PURE__ */ __name((min, max, step) => ({
-  min,
-  max,
-  step,
-  scale: "linear"
-}), "lin");
-var log = /* @__PURE__ */ __name((min, max) => ({ min, max, step: 1, scale: "log" }), "log");
-var RANGES = {
-  // levels
-  gain: lin(0, 1, 0.01),
-  velocity: lin(0, 1, 0.01),
-  pan: lin(0, 1, 0.01),
-  // reverb
-  room: lin(0, 1, 0.01),
-  size: lin(0, 1, 0.01),
-  roomsize: lin(0, 1, 0.01),
-  // delay
-  delay: lin(0, 1, 0.01),
-  delaytime: lin(0, 1, 0.01),
-  delayfeedback: lin(0, 1, 0.01),
-  // filters (logarithmic frequency)
-  lpf: log(20, 2e4),
-  cutoff: log(20, 2e4),
-  hpf: log(20, 2e4),
-  hcutoff: log(20, 2e4),
-  bandf: log(20, 2e4),
-  resonance: lin(0, 40, 0.5),
-  lpq: lin(0, 40, 0.5),
-  // tone / drive
-  shape: lin(0, 1, 0.01),
-  distort: lin(0, 1, 0.01),
-  crush: lin(1, 16, 1),
-  coarse: lin(1, 16, 1),
-  // envelope
-  attack: lin(0, 2, 0.01),
-  decay: lin(0, 2, 0.01),
-  sustain: lin(0, 1, 0.01),
-  release: lin(0, 4, 0.01),
-  // playback
-  speed: lin(-2, 2, 0.01),
-  accelerate: lin(-2, 2, 0.01),
-  begin: lin(0, 1, 0.01),
-  end: lin(0, 1, 0.01),
-  legato: lin(0, 2, 0.01),
-  // time
-  slow: lin(0.25, 8, 0.25),
-  fast: lin(0.25, 8, 0.25),
-  cps: lin(0.1, 4, 0.05),
-  // probability
-  degradeBy: lin(0, 1, 0.01),
-  sometimesBy: lin(0, 1, 0.01),
-  // discrete index
-  n: lin(0, 16, 1)
-};
-function niceStep(span) {
-  const raw = span / 100;
-  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
-  return pow || 0.01;
-}
-__name(niceStep, "niceStep");
-function knobRangeFor(method, value) {
-  const known = RANGES[method];
-  if (known) {
-    if (value > known.max) return { ...known, max: value };
-    if (value < known.min) return { ...known, min: value };
-    return known;
-  }
-  if (value >= 0 && value <= 1) return lin(0, 1, 0.01);
-  const min = value < 0 ? value * 2 : 0;
-  const max = Math.max(1, value * 2);
-  return lin(min, max, niceStep(max - min));
-}
-__name(knobRangeFor, "knobRangeFor");
-function VisualEditStandby({
-  panel,
-  hint,
-  icon
-}) {
-  return React17.createElement(
-    "div",
-    {
-      "data-bottom-panel-tab": `${panel}-standby`,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 10,
-        height: "100%",
-        minHeight: 96,
-        padding: 24,
-        textAlign: "center",
-        color: "var(--foreground-muted, #a0a0aa)",
-        fontSize: 12,
-        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-      }
-    },
-    icon ? React17.createElement("span", {
-      className: `codicon codicon-${icon}`,
-      "aria-hidden": true,
-      style: { fontSize: 22, opacity: 0.6 }
-    }) : null,
-    React17.createElement("span", null, hint)
-  );
-}
-__name(VisualEditStandby, "VisualEditStandby");
-
-// src/visualEdit/panels/tabs.ts
-var SEQUENCER_TAB_ID = "sequencer";
-var MIXER_TAB_ID = "mixer";
-var PIANO_ROLL_TAB_ID = "piano-roll";
-var VISUAL_EDIT_TABS = [
-  {
-    id: SEQUENCER_TAB_ID,
-    title: "Sequencer",
-    hint: "Click a drum pattern to edit it as a step grid.",
-    icon: "symbol-array"
-  },
-  {
-    id: MIXER_TAB_ID,
-    title: "Mixer",
-    hint: "Click a pattern to adjust its sound with knobs.",
-    icon: "settings"
-  },
-  {
-    id: PIANO_ROLL_TAB_ID,
-    title: "Piano Roll",
-    hint: "Click a melody to edit its notes.",
-    icon: "music"
-  }
-];
+// src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const [editor, setEditor] = React17.useState(() => getActiveEditor());
   const [chunk, setChunk] = React17.useState(null);
@@ -24398,118 +24113,22 @@ function useActiveChunk() {
 }
 __name(useActiveChunk, "useActiveChunk");
 
-// src/visualEdit/panels/quickTransforms.ts
-var QUICK_TRANSFORMS = [
-  { label: "Reverb", method: "room", value: 0.4 },
-  { label: "Filter", method: "lpf", value: 800 },
-  { label: "Distortion", method: "distort", value: 0.3 },
-  { label: "Delay", method: "delay", value: 0.4 },
-  { label: "Speed", method: "speed", value: 1.5 },
-  { label: "Gain", method: "gain", value: 0.8 }
-];
-var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
-function knobsFromChunk(chunk) {
-  const knobs = [];
-  chunk.chain.forEach((call, chainIndex) => {
-    const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
-    numericArgs.forEach(({ a, argIndex }) => {
-      knobs.push({
-        chainIndex,
-        argIndex,
-        method: call.name,
-        // disambiguate when a single call has several numeric args
-        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
-        value: a.numeric
-      });
-    });
-  });
-  return knobs;
+// src/visualEdit/panels/patternKind.ts
+function isStepChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
 }
-__name(knobsFromChunk, "knobsFromChunk");
-function Mixer() {
-  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const knobs = chunk ? knobsFromChunk(chunk) : [];
-  const writeKnob = React17.useCallback(
-    (chainIndex, argIndex, value) => {
-      applyEdit((fresh, wb) => {
-        const arg = fresh.chain[chainIndex]?.args[argIndex];
-        if (!arg) return;
-        wb.replaceRange(arg.range, formatNumber(value), "knob");
-      });
-    },
-    [applyEdit]
-  );
-  const addTransform = React17.useCallback(
-    (method, value) => {
-      applyEdit((fresh, wb) => {
-        if (fresh.chain.some((c) => c.name === method)) return;
-        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, "knob");
-      });
-    },
-    [applyEdit]
-  );
-  if (!chunk || chunk.chain.length === 0) {
-    return React17.createElement(VisualEditStandby, {
-      panel: MIXER_TAB_ID,
-      hint: MIXER_HINT,
-      icon: "settings"
-    });
-  }
-  const present = new Set(chunk.chain.map((c) => c.name));
-  return /* @__PURE__ */ jsxs(
-    "div",
-    {
-      "data-bottom-panel-tab": "mixer",
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 14,
-        padding: 16,
-        height: "100%",
-        overflowY: "auto",
-        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-      },
-      children: [
-        /* @__PURE__ */ jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => /* @__PURE__ */ jsxs(
-          "button",
-          {
-            type: "button",
-            disabled: present.has(t.method),
-            "data-mixer-transform": t.method,
-            onClick: () => addTransform(t.method, t.value),
-            style: {
-              padding: "3px 10px",
-              fontSize: 11,
-              borderRadius: 4,
-              border: "1px solid var(--border, #3a3a42)",
-              background: present.has(t.method) ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-              color: present.has(t.method) ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
-              cursor: present.has(t.method) ? "default" : "pointer"
-            },
-            children: [
-              "+ ",
-              t.label
-            ]
-          },
-          t.method
-        )) }),
-        knobs.length > 0 ? /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }, children: knobs.map((k) => /* @__PURE__ */ jsx(
-          Knob,
-          {
-            label: k.label,
-            value: k.value,
-            range: knobRangeFor(k.method, k.value),
-            onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
-            onGestureStart: beginGesture,
-            onGestureEnd: endGesture
-          },
-          `${k.chainIndex}:${k.argIndex}`
-        )) }) : /* @__PURE__ */ jsx("span", { style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: "Add an effect above, or drag a knob once the pattern has one." })
-      ]
-    }
-  );
+__name(isStepChunk, "isStepChunk");
+function isRollChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
 }
-__name(Mixer, "Mixer");
+__name(isRollChunk, "isRollChunk");
+function patternKind(chunk) {
+  if (!chunk) return null;
+  if (isStepChunk(chunk)) return "step";
+  if (isRollChunk(chunk)) return "roll";
+  return null;
+}
+__name(patternKind, "patternKind");
 
 // src/visualEdit/notation/parse.ts
 var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
@@ -24928,6 +24547,53 @@ function rollBars(groups, steps, bars) {
   return `<${slots.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
+function VisualEditStandby({
+  panel,
+  hint,
+  icon
+}) {
+  return React17.createElement(
+    "div",
+    {
+      "data-bottom-panel-tab": `${panel}-standby`,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        height: "100%",
+        minHeight: 96,
+        padding: 24,
+        textAlign: "center",
+        color: "var(--foreground-muted, #a0a0aa)",
+        fontSize: 12,
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      }
+    },
+    icon ? React17.createElement("span", {
+      className: `codicon codicon-${icon}`,
+      "aria-hidden": true,
+      style: { fontSize: 22, opacity: 0.6 }
+    }) : null,
+    React17.createElement("span", null, hint)
+  );
+}
+__name(VisualEditStandby, "VisualEditStandby");
+
+// src/visualEdit/panels/tabs.ts
+var PATTERN_TAB_ID = "pattern";
+var SEQUENCER_TAB_ID = "sequencer";
+var MIXER_TAB_ID = "mixer";
+var PIANO_ROLL_TAB_ID = "piano-roll";
+var VISUAL_EDIT_TABS = [
+  {
+    id: PATTERN_TAB_ID,
+    title: "Pattern",
+    hint: "Click a drum or melodic pattern to edit it here.",
+    icon: "symbol-array"
+  }
+];
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React17.useState(null);
@@ -25016,11 +24682,7 @@ function usePlayingStep(steps, bars) {
   return step;
 }
 __name(usePlayingStep, "usePlayingStep");
-var SEQ_HINT = VISUAL_EDIT_TABS.find((t) => t.id === SEQUENCER_TAB_ID)?.hint ?? "Click a drum pattern to edit it as a step grid.";
-function isStepChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
-}
-__name(isStepChunk, "isStepChunk");
+var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
@@ -25181,11 +24843,7 @@ function placeNote(model, pitch, start, duration) {
   return { ...model, notes };
 }
 __name(placeNote, "placeNote");
-var ROLL_HINT = VISUAL_EDIT_TABS.find((t) => t.id === PIANO_ROLL_TAB_ID)?.hint ?? "Click a melody to edit its notes.";
-function isRollChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
-}
-__name(isRollChunk, "isRollChunk");
+var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
@@ -25347,12 +25005,390 @@ function PianoRollGrid() {
   );
 }
 __name(PianoRollGrid, "PianoRollGrid");
+var DRAG_SPAN_PX = 160;
+function toPosition(value, r) {
+  if (r.scale === "log" && r.min > 0 && value > 0) {
+    return Math.log(value / r.min) / Math.log(r.max / r.min);
+  }
+  return (value - r.min) / (r.max - r.min || 1);
+}
+__name(toPosition, "toPosition");
+function fromPosition(pos, r) {
+  const clamped = Math.max(0, Math.min(1, pos));
+  let value;
+  if (r.scale === "log" && r.min > 0) {
+    value = r.min * Math.pow(r.max / r.min, clamped);
+  } else {
+    value = r.min + clamped * (r.max - r.min);
+  }
+  const stepped = Math.round(value / r.step) * r.step;
+  const decimals = (String(r.step).split(".")[1] ?? "").length;
+  return Number(stepped.toFixed(decimals));
+}
+__name(fromPosition, "fromPosition");
+function Knob({
+  label,
+  value,
+  range,
+  onChange,
+  onGestureStart,
+  onGestureEnd
+}) {
+  const dragRef = React17.useRef(null);
+  const pos = Math.max(0, Math.min(1, toPosition(value, range)));
+  const angle = -135 + pos * 270;
+  const onPointerDown = /* @__PURE__ */ __name((e) => {
+    e.preventDefault();
+    e.target.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startY: e.clientY, startPos: toPosition(value, range) };
+    onGestureStart?.();
+  }, "onPointerDown");
+  const onPointerMove = /* @__PURE__ */ __name((e) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dy = drag.startY - e.clientY;
+    const nextPos = drag.startPos + dy / DRAG_SPAN_PX;
+    const next = fromPosition(nextPos, range);
+    if (next !== value) onChange(next);
+  }, "onPointerMove");
+  const endDrag = /* @__PURE__ */ __name((e) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.target.releasePointerCapture?.(e.pointerId);
+    onGestureEnd?.();
+  }, "endDrag");
+  const onKeyDown = /* @__PURE__ */ __name((e) => {
+    let next = value;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") next = value + range.step;
+    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") next = value - range.step;
+    else return;
+    e.preventDefault();
+    next = Math.max(range.min, Math.min(range.max, next));
+    const decimals = (String(range.step).split(".")[1] ?? "").length;
+    next = Number(next.toFixed(decimals));
+    if (next !== value) {
+      onGestureStart?.();
+      onChange(next);
+      onGestureEnd?.();
+    }
+  }, "onKeyDown");
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-knob": label,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        width: 64,
+        userSelect: "none"
+      },
+      children: [
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            role: "slider",
+            tabIndex: 0,
+            "aria-label": label,
+            "aria-valuemin": range.min,
+            "aria-valuemax": range.max,
+            "aria-valuenow": value,
+            onPointerDown,
+            onPointerMove,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onKeyDown,
+            style: {
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "var(--background-elevated, #26262c)",
+              border: "1px solid var(--border, #3a3a42)",
+              position: "relative",
+              cursor: "ns-resize",
+              touchAction: "none"
+            },
+            children: /* @__PURE__ */ jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: 2,
+                  height: 16,
+                  background: "var(--accent, #6ea8fe)",
+                  transformOrigin: "bottom center",
+                  transform: `translate(-50%, -100%) rotate(${angle}deg)`
+                }
+              }
+            )
+          }
+        ),
+        /* @__PURE__ */ jsx(
+          "span",
+          {
+            style: {
+              fontSize: 10,
+              color: "var(--foreground, #e6e6ea)",
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+              maxWidth: 60,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            },
+            title: label,
+            children: label
+          }
+        ),
+        /* @__PURE__ */ jsx(
+          "span",
+          {
+            "data-knob-value": label,
+            style: {
+              fontSize: 10,
+              color: "var(--foreground-muted, #a0a0aa)",
+              fontVariantNumeric: "tabular-nums"
+            },
+            children: value
+          }
+        )
+      ]
+    }
+  );
+}
+__name(Knob, "Knob");
+
+// src/visualEdit/panels/knobRanges.ts
+var lin = /* @__PURE__ */ __name((min, max, step) => ({
+  min,
+  max,
+  step,
+  scale: "linear"
+}), "lin");
+var log = /* @__PURE__ */ __name((min, max) => ({ min, max, step: 1, scale: "log" }), "log");
+var RANGES = {
+  // levels
+  gain: lin(0, 1, 0.01),
+  velocity: lin(0, 1, 0.01),
+  pan: lin(0, 1, 0.01),
+  // reverb
+  room: lin(0, 1, 0.01),
+  size: lin(0, 1, 0.01),
+  roomsize: lin(0, 1, 0.01),
+  // delay
+  delay: lin(0, 1, 0.01),
+  delaytime: lin(0, 1, 0.01),
+  delayfeedback: lin(0, 1, 0.01),
+  // filters (logarithmic frequency)
+  lpf: log(20, 2e4),
+  cutoff: log(20, 2e4),
+  hpf: log(20, 2e4),
+  hcutoff: log(20, 2e4),
+  bandf: log(20, 2e4),
+  resonance: lin(0, 40, 0.5),
+  lpq: lin(0, 40, 0.5),
+  // tone / drive
+  shape: lin(0, 1, 0.01),
+  distort: lin(0, 1, 0.01),
+  crush: lin(1, 16, 1),
+  coarse: lin(1, 16, 1),
+  // envelope
+  attack: lin(0, 2, 0.01),
+  decay: lin(0, 2, 0.01),
+  sustain: lin(0, 1, 0.01),
+  release: lin(0, 4, 0.01),
+  // playback
+  speed: lin(-2, 2, 0.01),
+  accelerate: lin(-2, 2, 0.01),
+  begin: lin(0, 1, 0.01),
+  end: lin(0, 1, 0.01),
+  legato: lin(0, 2, 0.01),
+  // time
+  slow: lin(0.25, 8, 0.25),
+  fast: lin(0.25, 8, 0.25),
+  cps: lin(0.1, 4, 0.05),
+  // probability
+  degradeBy: lin(0, 1, 0.01),
+  sometimesBy: lin(0, 1, 0.01),
+  // discrete index
+  n: lin(0, 16, 1)
+};
+function niceStep(span) {
+  const raw = span / 100;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  return pow || 0.01;
+}
+__name(niceStep, "niceStep");
+function knobRangeFor(method, value) {
+  const known = RANGES[method];
+  if (known) {
+    if (value > known.max) return { ...known, max: value };
+    if (value < known.min) return { ...known, min: value };
+    return known;
+  }
+  if (value >= 0 && value <= 1) return lin(0, 1, 0.01);
+  const min = value < 0 ? value * 2 : 0;
+  const max = Math.max(1, value * 2);
+  return lin(min, max, niceStep(max - min));
+}
+__name(knobRangeFor, "knobRangeFor");
+
+// src/visualEdit/panels/quickTransforms.ts
+var QUICK_TRANSFORMS = [
+  { label: "Reverb", method: "room", value: 0.4 },
+  { label: "Filter", method: "lpf", value: 800 },
+  { label: "Distortion", method: "distort", value: 0.3 },
+  { label: "Delay", method: "delay", value: 0.4 },
+  { label: "Speed", method: "speed", value: 1.5 },
+  { label: "Gain", method: "gain", value: 0.8 }
+];
+var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
+function knobsFromChunk(chunk) {
+  const knobs = [];
+  chunk.chain.forEach((call, chainIndex) => {
+    const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
+    numericArgs.forEach(({ a, argIndex }) => {
+      knobs.push({
+        chainIndex,
+        argIndex,
+        method: call.name,
+        // disambiguate when a single call has several numeric args
+        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
+        value: a.numeric
+      });
+    });
+  });
+  return knobs;
+}
+__name(knobsFromChunk, "knobsFromChunk");
+function Mixer() {
+  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const knobs = chunk ? knobsFromChunk(chunk) : [];
+  const writeKnob = React17.useCallback(
+    (chainIndex, argIndex, value) => {
+      applyEdit((fresh, wb) => {
+        const arg = fresh.chain[chainIndex]?.args[argIndex];
+        if (!arg) return;
+        wb.replaceRange(arg.range, formatNumber(value), "knob");
+      });
+    },
+    [applyEdit]
+  );
+  const addTransform = React17.useCallback(
+    (method, value) => {
+      applyEdit((fresh, wb) => {
+        if (fresh.chain.some((c) => c.name === method)) return;
+        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, "knob");
+      });
+    },
+    [applyEdit]
+  );
+  if (!chunk || chunk.chain.length === 0) {
+    return React17.createElement(VisualEditStandby, {
+      panel: MIXER_TAB_ID,
+      hint: MIXER_HINT,
+      icon: "settings"
+    });
+  }
+  const present = new Set(chunk.chain.map((c) => c.name));
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-bottom-panel-tab": "mixer",
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+        padding: 16,
+        height: "100%",
+        overflowY: "auto",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: [
+        /* @__PURE__ */ jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => /* @__PURE__ */ jsxs(
+          "button",
+          {
+            type: "button",
+            disabled: present.has(t.method),
+            "data-mixer-transform": t.method,
+            onClick: () => addTransform(t.method, t.value),
+            style: {
+              padding: "3px 10px",
+              fontSize: 11,
+              borderRadius: 4,
+              border: "1px solid var(--border, #3a3a42)",
+              background: present.has(t.method) ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+              color: present.has(t.method) ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
+              cursor: present.has(t.method) ? "default" : "pointer"
+            },
+            children: [
+              "+ ",
+              t.label
+            ]
+          },
+          t.method
+        )) }),
+        knobs.length > 0 ? /* @__PURE__ */ jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }, children: knobs.map((k) => /* @__PURE__ */ jsx(
+          Knob,
+          {
+            label: k.label,
+            value: k.value,
+            range: knobRangeFor(k.method, k.value),
+            onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
+            onGestureStart: beginGesture,
+            onGestureEnd: endGesture
+          },
+          `${k.chainIndex}:${k.argIndex}`
+        )) }) : /* @__PURE__ */ jsx("span", { style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: "Add an effect above, or drag a knob once the pattern has one." })
+      ]
+    }
+  );
+}
+__name(Mixer, "Mixer");
+var MIXER_WIDTH = 300;
+function PatternPanel() {
+  const { chunk } = useActiveChunk();
+  const kind = patternKind(chunk);
+  const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, {}) : /* @__PURE__ */ jsx(
+    VisualEditStandby,
+    {
+      panel: PATTERN_TAB_ID,
+      hint: "Click a drum or melodic pattern to edit it here.",
+      icon: "symbol-array"
+    }
+  );
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "data-bottom-panel-tab": "pattern",
+      style: { display: "flex", height: "100%", width: "100%", minWidth: 0 },
+      children: [
+        /* @__PURE__ */ jsx("div", { "data-pattern-grid": true, style: { flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }, children: grid }),
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-pattern-mixer": true,
+            style: {
+              width: MIXER_WIDTH,
+              flexShrink: 0,
+              height: "100%",
+              overflow: "hidden",
+              borderLeft: "1px solid var(--border, #3a3a42)"
+            },
+            children: /* @__PURE__ */ jsx(Mixer, {})
+          }
+        )
+      ]
+    }
+  );
+}
+__name(PatternPanel, "PatternPanel");
 
 // src/workspace/bottomPanel/visualEditSeed.tsx
 var PANELS = {
-  [MIXER_TAB_ID]: Mixer,
-  [SEQUENCER_TAB_ID]: SequencerGrid,
-  [PIANO_ROLL_TAB_ID]: PianoRollGrid
+  [PATTERN_TAB_ID]: PatternPanel
 };
 function seedVisualEditTabs() {
   for (const tab of VISUAL_EDIT_TABS) {
@@ -31912,6 +31948,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllChunks, detectChunk, detectPeriod, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllChunks, detectChunk, detectPeriod, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
