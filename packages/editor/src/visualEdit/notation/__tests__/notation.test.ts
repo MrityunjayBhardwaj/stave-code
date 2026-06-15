@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseStepGrid, parsePianoRoll } from '../parse'
+import { parseStepGrid, parsePianoRoll, bjorklund } from '../parse'
 import { serializeStepGrid, serializePianoRoll } from '../serialize'
 import { pitchToMidi, midiToPitch, isBlackKey } from '../pitch'
 import { placeNote } from '../place'
@@ -79,7 +79,6 @@ describe('step grid — parse', () => {
   })
 
   it('rejects features outside the subset', () => {
-    expect(parseStepGrid('bd(3,8)').ok).toBe(false)
     expect(parseStepGrid('{bd hh}%4').ok).toBe(false)
     expect(parseStepGrid('bd@2 hh').ok).toBe(false) // elongation not a grid concept
   })
@@ -116,6 +115,65 @@ describe('step grid — parse', () => {
   it('rejects `atom*n` that expands past the step ceiling', () => {
     expect(parseStepGrid('hh*128').ok).toBe(false)
   })
+
+  it('expands `atom(k,n)` euclid into an n-step lane with k hits', () => {
+    const r = parseStepGrid('bd(3,8)')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(8)
+    // Bjørklund(3,8) = x . . x . . x .
+    expect(r.model.lanes).toEqual([
+      { sound: 'bd', cells: [true, false, false, true, false, false, true, false] },
+    ])
+  })
+
+  it('reads other euclid grooves (5,8) and (7,16)', () => {
+    const five = parseStepGrid('bd(5,8)')
+    expect(five.ok).toBe(true)
+    if (five.ok) {
+      expect(five.model.steps).toBe(8)
+      expect(five.model.lanes[0].cells.filter(Boolean).length).toBe(5)
+    }
+    const seven = parseStepGrid('hh(7,16)')
+    expect(seven.ok).toBe(true)
+    if (seven.ok) {
+      expect(seven.model.steps).toBe(16)
+      expect(seven.model.lanes[0].cells.filter(Boolean).length).toBe(7)
+    }
+  })
+
+  it('rotates the euclid pattern with the 3rd argument `(3,8,2)`', () => {
+    const r = parseStepGrid('bd(3,8,2)')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // base x..x..x. rotated left by 2 → .x..x.x.
+    expect(r.model.lanes[0].cells).toEqual([
+      false, true, false, false, true, false, true, false,
+    ])
+  })
+
+  it('packs euclid into its own step alongside plain steps', () => {
+    const r = parseStepGrid('bd sn(3,8)')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // bd holds the first half (8 cols), sn euclid fills the second half
+    expect(r.model.steps).toBe(16)
+    expect(r.model.lanes.find((l) => l.sound === 'bd')!.cells[0]).toBe(true)
+    expect(r.model.lanes.find((l) => l.sound === 'sn')!.cells.filter(Boolean).length).toBe(3)
+  })
+
+  it('rejects euclid combined with other modifiers / groups (conservative scope)', () => {
+    expect(parseStepGrid('bd(3,8)*2').ok).toBe(false) // euclid with *
+    expect(parseStepGrid('bd(3,8)@2').ok).toBe(false) // euclid with @
+    expect(parseStepGrid('[bd hh](3,8)').ok).toBe(false) // group euclid
+    expect(parseStepGrid('bd(3)').ok).toBe(false) // missing step count
+    expect(parseStepGrid('bd(3,8').ok).toBe(false) // unbalanced
+    expect(parseStepGrid('bd()').ok).toBe(false) // empty args
+  })
+
+  it('rejects euclid that expands past the step ceiling', () => {
+    expect(parseStepGrid('bd(3,128)').ok).toBe(false)
+  })
 })
 
 describe('step grid — round-trip identity', () => {
@@ -150,6 +208,58 @@ describe('step grid — `*` is parse-only sugar', () => {
     if (!sugar.ok || !expanded.ok) return
     expect(sugar.model).toEqual(expanded.model)
     expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+  })
+})
+
+describe('step grid — euclid is parse-only sugar', () => {
+  // `(k,n[,rot])` is INPUT sugar like `*`: it expands on parse and serializes
+  // back as the expanded sequence (no `(` on output). The round-trip is
+  // parse → expand, not the identity law that holds for canonical strings.
+  it('serializes `bd(3,8)` as the expanded sequence', () => {
+    const r = parseStepGrid('bd(3,8)')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('bd ~ ~ bd ~ ~ bd ~')
+  })
+
+  it('the expanded form re-parses to the same model (stable, no reseed loop)', () => {
+    const sugar = parseStepGrid('bd(3,8)')
+    const expanded = parseStepGrid('bd ~ ~ bd ~ ~ bd ~')
+    expect(sugar.ok && expanded.ok).toBe(true)
+    if (!sugar.ok || !expanded.ok) return
+    expect(sugar.model).toEqual(expanded.model)
+    expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+  })
+})
+
+describe('bjorklund (euclid distribution)', () => {
+  it('distributes (3,8) evenly: x . . x . . x .', () => {
+    expect(bjorklund(3, 8)).toEqual([
+      true, false, false, true, false, false, true, false,
+    ])
+  })
+
+  it('distributes (5,8): x . x x . x x .', () => {
+    expect(bjorklund(5, 8)).toEqual([true, false, true, true, false, true, true, false])
+  })
+
+  it('handles degenerate counts (all rests / all pulses)', () => {
+    expect(bjorklund(0, 4)).toEqual([false, false, false, false])
+    expect(bjorklund(4, 4)).toEqual([true, true, true, true])
+    expect(bjorklund(5, 4)).toEqual([true, true, true, true]) // k >= n
+  })
+
+  it('always places exactly k pulses across n steps', () => {
+    for (const [k, n] of [
+      [3, 8],
+      [5, 8],
+      [7, 16],
+      [4, 9],
+      [2, 5],
+    ]) {
+      expect(bjorklund(k, n).filter(Boolean).length).toBe(k)
+      expect(bjorklund(k, n)).toHaveLength(n)
+    }
   })
 })
 
@@ -194,6 +304,18 @@ describe('piano roll — parse', () => {
       { pitch: 'c3', start: 1, duration: 1 },
       { pitch: 'c3', start: 2, duration: 1 },
       { pitch: 'c3', start: 3, duration: 1 },
+    ])
+  })
+
+  it('expands `note(k,n)` euclid via the shared tokenizer', () => {
+    const r = parsePianoRoll('c3(3,8)')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.steps).toBe(8)
+    expect(r.model.notes).toEqual([
+      { pitch: 'c3', start: 0, duration: 1 },
+      { pitch: 'c3', start: 3, duration: 1 },
+      { pitch: 'c3', start: 6, duration: 1 },
     ])
   })
 
