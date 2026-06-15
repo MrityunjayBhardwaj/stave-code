@@ -8,7 +8,7 @@
  *      on `domcontentloaded`, not `load`, to catch first-paint flicker).
  *   4. Drag handle clamps to [80, 600] (Trap 6).
  *   5. Keyboard nav moves selection across tabs (multi-tab since #380 seeded
- *      the Sequencer/Mixer/Piano Roll siblings alongside Timeline).
+ *      the Pattern tab alongside Timeline).
  *   6. Closed-state pixel cost is exactly 29px (Trap 2 proxy — combined
  *      with the unit test that empty-registry returns null this covers
  *      "no editor-grid theft for users who haven't interacted").
@@ -193,12 +193,12 @@ test.describe('Bottom drawer — infra (Phase 20-01 PR-A)', () => {
     const tablist = page.locator('[role="tablist"][aria-label="Bottom panel tabs"]')
     await expect(tablist).toHaveCount(1)
     const timeline = tablist.locator('role=tab[name="Timeline"]')
-    const sequencer = tablist.locator('role=tab[name="Sequencer"]')
+    const pattern = tablist.locator('role=tab[name="Pattern"]')
     await timeline.focus()
     await expect(timeline).toHaveAttribute('aria-selected', 'true')
-    // ArrowRight advances to the next sibling tab (#380 seeded siblings).
+    // ArrowRight advances to the next sibling tab (#398 seeded the Pattern tab).
     await page.keyboard.press('ArrowRight')
-    await expect(sequencer).toHaveAttribute('aria-selected', 'true')
+    await expect(pattern).toHaveAttribute('aria-selected', 'true')
     await expect(timeline).toHaveAttribute('aria-selected', 'false')
     // ArrowLeft returns to Timeline.
     await page.keyboard.press('ArrowLeft')

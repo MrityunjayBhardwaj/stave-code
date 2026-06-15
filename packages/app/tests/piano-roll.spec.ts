@@ -59,7 +59,7 @@ async function strudelValue(page: Page): Promise<string> {
 async function openRoll(page: Page) {
   const drawer = page.locator('[data-bottom-panel="root"]')
   await drawer.locator('[data-bottom-panel="toggle"]').click()
-  await drawer.locator('role=tab[name="Piano Roll"]').click()
+  await drawer.locator('role=tab[name="Pattern"]').click()
   return drawer
 }
 
@@ -126,10 +126,23 @@ test.describe('Piano Roll (#383)', () => {
     await expect(grid.locator('[data-roll-cell="72:0"]')).toHaveCount(1)
   })
 
-  test('a sound pattern falls back to standby', async ({ page }) => {
+  test('a sound pattern adaptively shows the Sequencer, not the Piano Roll (#398)', async ({
+    page,
+  }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd ~ sn ~")')
     const drawer = await openRoll(page)
-    await expect(drawer.locator('[data-bottom-panel-tab="piano-roll-standby"]')).toHaveCount(1)
+    // the Pattern tab switches the grid by pattern kind: a drum pattern gets the
+    // Sequencer step grid — the Piano Roll is not shown.
+    await expect(drawer.locator('[data-bottom-panel-tab="sequencer"]')).toHaveCount(1)
+    await expect(drawer.locator('[data-bottom-panel-tab="piano-roll"]')).toHaveCount(0)
+  })
+
+  test('a melody adaptively shows the Piano Roll (#398)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 ~ e3 g3")')
+    const drawer = await openRoll(page)
+    await expect(drawer.locator('[data-bottom-panel-tab="piano-roll"]')).toHaveCount(1)
+    await expect(drawer.locator('[data-bottom-panel-tab="sequencer"]')).toHaveCount(0)
   })
 })

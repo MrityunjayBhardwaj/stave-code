@@ -24073,293 +24073,8 @@ var _Writeback = class _Writeback {
 };
 __name(_Writeback, "Writeback");
 var Writeback = _Writeback;
-var DRAG_SPAN_PX = 160;
-function toPosition(value, r) {
-  if (r.scale === "log" && r.min > 0 && value > 0) {
-    return Math.log(value / r.min) / Math.log(r.max / r.min);
-  }
-  return (value - r.min) / (r.max - r.min || 1);
-}
-__name(toPosition, "toPosition");
-function fromPosition(pos, r) {
-  const clamped = Math.max(0, Math.min(1, pos));
-  let value;
-  if (r.scale === "log" && r.min > 0) {
-    value = r.min * Math.pow(r.max / r.min, clamped);
-  } else {
-    value = r.min + clamped * (r.max - r.min);
-  }
-  const stepped = Math.round(value / r.step) * r.step;
-  const decimals = (String(r.step).split(".")[1] ?? "").length;
-  return Number(stepped.toFixed(decimals));
-}
-__name(fromPosition, "fromPosition");
-function Knob({
-  label,
-  value,
-  range,
-  onChange,
-  onGestureStart,
-  onGestureEnd
-}) {
-  const dragRef = React17__namespace.useRef(null);
-  const pos = Math.max(0, Math.min(1, toPosition(value, range)));
-  const angle = -135 + pos * 270;
-  const onPointerDown = /* @__PURE__ */ __name((e) => {
-    e.preventDefault();
-    e.target.setPointerCapture?.(e.pointerId);
-    dragRef.current = { startY: e.clientY, startPos: toPosition(value, range) };
-    onGestureStart?.();
-  }, "onPointerDown");
-  const onPointerMove = /* @__PURE__ */ __name((e) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const dy = drag.startY - e.clientY;
-    const nextPos = drag.startPos + dy / DRAG_SPAN_PX;
-    const next = fromPosition(nextPos, range);
-    if (next !== value) onChange(next);
-  }, "onPointerMove");
-  const endDrag = /* @__PURE__ */ __name((e) => {
-    if (!dragRef.current) return;
-    dragRef.current = null;
-    e.target.releasePointerCapture?.(e.pointerId);
-    onGestureEnd?.();
-  }, "endDrag");
-  const onKeyDown = /* @__PURE__ */ __name((e) => {
-    let next = value;
-    if (e.key === "ArrowUp" || e.key === "ArrowRight") next = value + range.step;
-    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") next = value - range.step;
-    else return;
-    e.preventDefault();
-    next = Math.max(range.min, Math.min(range.max, next));
-    const decimals = (String(range.step).split(".")[1] ?? "").length;
-    next = Number(next.toFixed(decimals));
-    if (next !== value) {
-      onGestureStart?.();
-      onChange(next);
-      onGestureEnd?.();
-    }
-  }, "onKeyDown");
-  return /* @__PURE__ */ jsxRuntime.jsxs(
-    "div",
-    {
-      "data-knob": label,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 4,
-        width: 64,
-        userSelect: "none"
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "div",
-          {
-            role: "slider",
-            tabIndex: 0,
-            "aria-label": label,
-            "aria-valuemin": range.min,
-            "aria-valuemax": range.max,
-            "aria-valuenow": value,
-            onPointerDown,
-            onPointerMove,
-            onPointerUp: endDrag,
-            onPointerCancel: endDrag,
-            onKeyDown,
-            style: {
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              background: "var(--background-elevated, #26262c)",
-              border: "1px solid var(--border, #3a3a42)",
-              position: "relative",
-              cursor: "ns-resize",
-              touchAction: "none"
-            },
-            children: /* @__PURE__ */ jsxRuntime.jsx(
-              "div",
-              {
-                style: {
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  width: 2,
-                  height: 16,
-                  background: "var(--accent, #6ea8fe)",
-                  transformOrigin: "bottom center",
-                  transform: `translate(-50%, -100%) rotate(${angle}deg)`
-                }
-              }
-            )
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "span",
-          {
-            style: {
-              fontSize: 10,
-              color: "var(--foreground, #e6e6ea)",
-              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-              maxWidth: 60,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap"
-            },
-            title: label,
-            children: label
-          }
-        ),
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "span",
-          {
-            "data-knob-value": label,
-            style: {
-              fontSize: 10,
-              color: "var(--foreground-muted, #a0a0aa)",
-              fontVariantNumeric: "tabular-nums"
-            },
-            children: value
-          }
-        )
-      ]
-    }
-  );
-}
-__name(Knob, "Knob");
 
-// src/visualEdit/panels/knobRanges.ts
-var lin = /* @__PURE__ */ __name((min, max, step) => ({
-  min,
-  max,
-  step,
-  scale: "linear"
-}), "lin");
-var log = /* @__PURE__ */ __name((min, max) => ({ min, max, step: 1, scale: "log" }), "log");
-var RANGES = {
-  // levels
-  gain: lin(0, 1, 0.01),
-  velocity: lin(0, 1, 0.01),
-  pan: lin(0, 1, 0.01),
-  // reverb
-  room: lin(0, 1, 0.01),
-  size: lin(0, 1, 0.01),
-  roomsize: lin(0, 1, 0.01),
-  // delay
-  delay: lin(0, 1, 0.01),
-  delaytime: lin(0, 1, 0.01),
-  delayfeedback: lin(0, 1, 0.01),
-  // filters (logarithmic frequency)
-  lpf: log(20, 2e4),
-  cutoff: log(20, 2e4),
-  hpf: log(20, 2e4),
-  hcutoff: log(20, 2e4),
-  bandf: log(20, 2e4),
-  resonance: lin(0, 40, 0.5),
-  lpq: lin(0, 40, 0.5),
-  // tone / drive
-  shape: lin(0, 1, 0.01),
-  distort: lin(0, 1, 0.01),
-  crush: lin(1, 16, 1),
-  coarse: lin(1, 16, 1),
-  // envelope
-  attack: lin(0, 2, 0.01),
-  decay: lin(0, 2, 0.01),
-  sustain: lin(0, 1, 0.01),
-  release: lin(0, 4, 0.01),
-  // playback
-  speed: lin(-2, 2, 0.01),
-  accelerate: lin(-2, 2, 0.01),
-  begin: lin(0, 1, 0.01),
-  end: lin(0, 1, 0.01),
-  legato: lin(0, 2, 0.01),
-  // time
-  slow: lin(0.25, 8, 0.25),
-  fast: lin(0.25, 8, 0.25),
-  cps: lin(0.1, 4, 0.05),
-  // probability
-  degradeBy: lin(0, 1, 0.01),
-  sometimesBy: lin(0, 1, 0.01),
-  // discrete index
-  n: lin(0, 16, 1)
-};
-function niceStep(span) {
-  const raw = span / 100;
-  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
-  return pow || 0.01;
-}
-__name(niceStep, "niceStep");
-function knobRangeFor(method, value) {
-  const known = RANGES[method];
-  if (known) {
-    if (value > known.max) return { ...known, max: value };
-    if (value < known.min) return { ...known, min: value };
-    return known;
-  }
-  if (value >= 0 && value <= 1) return lin(0, 1, 0.01);
-  const min = value < 0 ? value * 2 : 0;
-  const max = Math.max(1, value * 2);
-  return lin(min, max, niceStep(max - min));
-}
-__name(knobRangeFor, "knobRangeFor");
-function VisualEditStandby({
-  panel,
-  hint,
-  icon
-}) {
-  return React17__namespace.createElement(
-    "div",
-    {
-      "data-bottom-panel-tab": `${panel}-standby`,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 10,
-        height: "100%",
-        minHeight: 96,
-        padding: 24,
-        textAlign: "center",
-        color: "var(--foreground-muted, #a0a0aa)",
-        fontSize: 12,
-        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-      }
-    },
-    icon ? React17__namespace.createElement("span", {
-      className: `codicon codicon-${icon}`,
-      "aria-hidden": true,
-      style: { fontSize: 22, opacity: 0.6 }
-    }) : null,
-    React17__namespace.createElement("span", null, hint)
-  );
-}
-__name(VisualEditStandby, "VisualEditStandby");
-
-// src/visualEdit/panels/tabs.ts
-var SEQUENCER_TAB_ID = "sequencer";
-var MIXER_TAB_ID = "mixer";
-var PIANO_ROLL_TAB_ID = "piano-roll";
-var VISUAL_EDIT_TABS = [
-  {
-    id: SEQUENCER_TAB_ID,
-    title: "Sequencer",
-    hint: "Click a drum pattern to edit it as a step grid.",
-    icon: "symbol-array"
-  },
-  {
-    id: MIXER_TAB_ID,
-    title: "Mixer",
-    hint: "Click a pattern to adjust its sound with knobs.",
-    icon: "settings"
-  },
-  {
-    id: PIANO_ROLL_TAB_ID,
-    title: "Piano Roll",
-    hint: "Click a melody to edit its notes.",
-    icon: "music"
-  }
-];
+// src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const [editor, setEditor] = React17__namespace.useState(() => getActiveEditor());
   const [chunk, setChunk] = React17__namespace.useState(null);
@@ -24424,118 +24139,22 @@ function useActiveChunk() {
 }
 __name(useActiveChunk, "useActiveChunk");
 
-// src/visualEdit/panels/quickTransforms.ts
-var QUICK_TRANSFORMS = [
-  { label: "Reverb", method: "room", value: 0.4 },
-  { label: "Filter", method: "lpf", value: 800 },
-  { label: "Distortion", method: "distort", value: 0.3 },
-  { label: "Delay", method: "delay", value: 0.4 },
-  { label: "Speed", method: "speed", value: 1.5 },
-  { label: "Gain", method: "gain", value: 0.8 }
-];
-var MIXER_HINT = VISUAL_EDIT_TABS.find((t) => t.id === MIXER_TAB_ID)?.hint ?? "Click a pattern to adjust its sound with knobs.";
-function knobsFromChunk(chunk) {
-  const knobs = [];
-  chunk.chain.forEach((call, chainIndex) => {
-    const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
-    numericArgs.forEach(({ a, argIndex }) => {
-      knobs.push({
-        chainIndex,
-        argIndex,
-        method: call.name,
-        // disambiguate when a single call has several numeric args
-        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
-        value: a.numeric
-      });
-    });
-  });
-  return knobs;
+// src/visualEdit/panels/patternKind.ts
+function isStepChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
 }
-__name(knobsFromChunk, "knobsFromChunk");
-function Mixer() {
-  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const knobs = chunk ? knobsFromChunk(chunk) : [];
-  const writeKnob = React17__namespace.useCallback(
-    (chainIndex, argIndex, value) => {
-      applyEdit((fresh, wb) => {
-        const arg = fresh.chain[chainIndex]?.args[argIndex];
-        if (!arg) return;
-        wb.replaceRange(arg.range, formatNumber(value), "knob");
-      });
-    },
-    [applyEdit]
-  );
-  const addTransform = React17__namespace.useCallback(
-    (method, value) => {
-      applyEdit((fresh, wb) => {
-        if (fresh.chain.some((c) => c.name === method)) return;
-        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, "knob");
-      });
-    },
-    [applyEdit]
-  );
-  if (!chunk || chunk.chain.length === 0) {
-    return React17__namespace.createElement(VisualEditStandby, {
-      panel: MIXER_TAB_ID,
-      hint: MIXER_HINT,
-      icon: "settings"
-    });
-  }
-  const present = new Set(chunk.chain.map((c) => c.name));
-  return /* @__PURE__ */ jsxRuntime.jsxs(
-    "div",
-    {
-      "data-bottom-panel-tab": "mixer",
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 14,
-        padding: 16,
-        height: "100%",
-        overflowY: "auto",
-        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntime.jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => /* @__PURE__ */ jsxRuntime.jsxs(
-          "button",
-          {
-            type: "button",
-            disabled: present.has(t.method),
-            "data-mixer-transform": t.method,
-            onClick: () => addTransform(t.method, t.value),
-            style: {
-              padding: "3px 10px",
-              fontSize: 11,
-              borderRadius: 4,
-              border: "1px solid var(--border, #3a3a42)",
-              background: present.has(t.method) ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-              color: present.has(t.method) ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
-              cursor: present.has(t.method) ? "default" : "pointer"
-            },
-            children: [
-              "+ ",
-              t.label
-            ]
-          },
-          t.method
-        )) }),
-        knobs.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }, children: knobs.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
-          Knob,
-          {
-            label: k.label,
-            value: k.value,
-            range: knobRangeFor(k.method, k.value),
-            onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
-            onGestureStart: beginGesture,
-            onGestureEnd: endGesture
-          },
-          `${k.chainIndex}:${k.argIndex}`
-        )) }) : /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: "Add an effect above, or drag a knob once the pattern has one." })
-      ]
-    }
-  );
+__name(isStepChunk, "isStepChunk");
+function isRollChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
 }
-__name(Mixer, "Mixer");
+__name(isRollChunk, "isRollChunk");
+function patternKind(chunk) {
+  if (!chunk) return null;
+  if (isStepChunk(chunk)) return "step";
+  if (isRollChunk(chunk)) return "roll";
+  return null;
+}
+__name(patternKind, "patternKind");
 
 // src/visualEdit/notation/parse.ts
 var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
@@ -24954,6 +24573,53 @@ function rollBars(groups, steps, bars) {
   return `<${slots.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
+function VisualEditStandby({
+  panel,
+  hint,
+  icon
+}) {
+  return React17__namespace.createElement(
+    "div",
+    {
+      "data-bottom-panel-tab": `${panel}-standby`,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        height: "100%",
+        minHeight: 96,
+        padding: 24,
+        textAlign: "center",
+        color: "var(--foreground-muted, #a0a0aa)",
+        fontSize: 12,
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      }
+    },
+    icon ? React17__namespace.createElement("span", {
+      className: `codicon codicon-${icon}`,
+      "aria-hidden": true,
+      style: { fontSize: 22, opacity: 0.6 }
+    }) : null,
+    React17__namespace.createElement("span", null, hint)
+  );
+}
+__name(VisualEditStandby, "VisualEditStandby");
+
+// src/visualEdit/panels/tabs.ts
+var PATTERN_TAB_ID = "pattern";
+var SEQUENCER_TAB_ID = "sequencer";
+var MIXER_TAB_ID = "mixer";
+var PIANO_ROLL_TAB_ID = "piano-roll";
+var VISUAL_EDIT_TABS = [
+  {
+    id: PATTERN_TAB_ID,
+    title: "Pattern",
+    hint: "Click a drum or melodic pattern to edit it here.",
+    icon: "symbol-array"
+  }
+];
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React17__namespace.useState(null);
@@ -25042,11 +24708,7 @@ function usePlayingStep(steps, bars) {
   return step;
 }
 __name(usePlayingStep, "usePlayingStep");
-var SEQ_HINT = VISUAL_EDIT_TABS.find((t) => t.id === SEQUENCER_TAB_ID)?.hint ?? "Click a drum pattern to edit it as a step grid.";
-function isStepChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
-}
-__name(isStepChunk, "isStepChunk");
+var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
@@ -25207,11 +24869,7 @@ function placeNote(model, pitch, start, duration) {
   return { ...model, notes };
 }
 __name(placeNote, "placeNote");
-var ROLL_HINT = VISUAL_EDIT_TABS.find((t) => t.id === PIANO_ROLL_TAB_ID)?.hint ?? "Click a melody to edit its notes.";
-function isRollChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
-}
-__name(isRollChunk, "isRollChunk");
+var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
@@ -25373,12 +25031,390 @@ function PianoRollGrid() {
   );
 }
 __name(PianoRollGrid, "PianoRollGrid");
+var DRAG_SPAN_PX = 160;
+function toPosition(value, r) {
+  if (r.scale === "log" && r.min > 0 && value > 0) {
+    return Math.log(value / r.min) / Math.log(r.max / r.min);
+  }
+  return (value - r.min) / (r.max - r.min || 1);
+}
+__name(toPosition, "toPosition");
+function fromPosition(pos, r) {
+  const clamped = Math.max(0, Math.min(1, pos));
+  let value;
+  if (r.scale === "log" && r.min > 0) {
+    value = r.min * Math.pow(r.max / r.min, clamped);
+  } else {
+    value = r.min + clamped * (r.max - r.min);
+  }
+  const stepped = Math.round(value / r.step) * r.step;
+  const decimals = (String(r.step).split(".")[1] ?? "").length;
+  return Number(stepped.toFixed(decimals));
+}
+__name(fromPosition, "fromPosition");
+function Knob({
+  label,
+  value,
+  range,
+  onChange,
+  onGestureStart,
+  onGestureEnd
+}) {
+  const dragRef = React17__namespace.useRef(null);
+  const pos = Math.max(0, Math.min(1, toPosition(value, range)));
+  const angle = -135 + pos * 270;
+  const onPointerDown = /* @__PURE__ */ __name((e) => {
+    e.preventDefault();
+    e.target.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startY: e.clientY, startPos: toPosition(value, range) };
+    onGestureStart?.();
+  }, "onPointerDown");
+  const onPointerMove = /* @__PURE__ */ __name((e) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dy = drag.startY - e.clientY;
+    const nextPos = drag.startPos + dy / DRAG_SPAN_PX;
+    const next = fromPosition(nextPos, range);
+    if (next !== value) onChange(next);
+  }, "onPointerMove");
+  const endDrag = /* @__PURE__ */ __name((e) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.target.releasePointerCapture?.(e.pointerId);
+    onGestureEnd?.();
+  }, "endDrag");
+  const onKeyDown = /* @__PURE__ */ __name((e) => {
+    let next = value;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") next = value + range.step;
+    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") next = value - range.step;
+    else return;
+    e.preventDefault();
+    next = Math.max(range.min, Math.min(range.max, next));
+    const decimals = (String(range.step).split(".")[1] ?? "").length;
+    next = Number(next.toFixed(decimals));
+    if (next !== value) {
+      onGestureStart?.();
+      onChange(next);
+      onGestureEnd?.();
+    }
+  }, "onKeyDown");
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-knob": label,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        width: 64,
+        userSelect: "none"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            role: "slider",
+            tabIndex: 0,
+            "aria-label": label,
+            "aria-valuemin": range.min,
+            "aria-valuemax": range.max,
+            "aria-valuenow": value,
+            onPointerDown,
+            onPointerMove,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onKeyDown,
+            style: {
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "var(--background-elevated, #26262c)",
+              border: "1px solid var(--border, #3a3a42)",
+              position: "relative",
+              cursor: "ns-resize",
+              touchAction: "none"
+            },
+            children: /* @__PURE__ */ jsxRuntime.jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: 2,
+                  height: 16,
+                  background: "var(--accent, #6ea8fe)",
+                  transformOrigin: "bottom center",
+                  transform: `translate(-50%, -100%) rotate(${angle}deg)`
+                }
+              }
+            )
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "span",
+          {
+            style: {
+              fontSize: 10,
+              color: "var(--foreground, #e6e6ea)",
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+              maxWidth: 60,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            },
+            title: label,
+            children: label
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "span",
+          {
+            "data-knob-value": label,
+            style: {
+              fontSize: 10,
+              color: "var(--foreground-muted, #a0a0aa)",
+              fontVariantNumeric: "tabular-nums"
+            },
+            children: value
+          }
+        )
+      ]
+    }
+  );
+}
+__name(Knob, "Knob");
+
+// src/visualEdit/panels/knobRanges.ts
+var lin = /* @__PURE__ */ __name((min, max, step) => ({
+  min,
+  max,
+  step,
+  scale: "linear"
+}), "lin");
+var log = /* @__PURE__ */ __name((min, max) => ({ min, max, step: 1, scale: "log" }), "log");
+var RANGES = {
+  // levels
+  gain: lin(0, 1, 0.01),
+  velocity: lin(0, 1, 0.01),
+  pan: lin(0, 1, 0.01),
+  // reverb
+  room: lin(0, 1, 0.01),
+  size: lin(0, 1, 0.01),
+  roomsize: lin(0, 1, 0.01),
+  // delay
+  delay: lin(0, 1, 0.01),
+  delaytime: lin(0, 1, 0.01),
+  delayfeedback: lin(0, 1, 0.01),
+  // filters (logarithmic frequency)
+  lpf: log(20, 2e4),
+  cutoff: log(20, 2e4),
+  hpf: log(20, 2e4),
+  hcutoff: log(20, 2e4),
+  bandf: log(20, 2e4),
+  resonance: lin(0, 40, 0.5),
+  lpq: lin(0, 40, 0.5),
+  // tone / drive
+  shape: lin(0, 1, 0.01),
+  distort: lin(0, 1, 0.01),
+  crush: lin(1, 16, 1),
+  coarse: lin(1, 16, 1),
+  // envelope
+  attack: lin(0, 2, 0.01),
+  decay: lin(0, 2, 0.01),
+  sustain: lin(0, 1, 0.01),
+  release: lin(0, 4, 0.01),
+  // playback
+  speed: lin(-2, 2, 0.01),
+  accelerate: lin(-2, 2, 0.01),
+  begin: lin(0, 1, 0.01),
+  end: lin(0, 1, 0.01),
+  legato: lin(0, 2, 0.01),
+  // time
+  slow: lin(0.25, 8, 0.25),
+  fast: lin(0.25, 8, 0.25),
+  cps: lin(0.1, 4, 0.05),
+  // probability
+  degradeBy: lin(0, 1, 0.01),
+  sometimesBy: lin(0, 1, 0.01),
+  // discrete index
+  n: lin(0, 16, 1)
+};
+function niceStep(span) {
+  const raw = span / 100;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  return pow || 0.01;
+}
+__name(niceStep, "niceStep");
+function knobRangeFor(method, value) {
+  const known = RANGES[method];
+  if (known) {
+    if (value > known.max) return { ...known, max: value };
+    if (value < known.min) return { ...known, min: value };
+    return known;
+  }
+  if (value >= 0 && value <= 1) return lin(0, 1, 0.01);
+  const min = value < 0 ? value * 2 : 0;
+  const max = Math.max(1, value * 2);
+  return lin(min, max, niceStep(max - min));
+}
+__name(knobRangeFor, "knobRangeFor");
+
+// src/visualEdit/panels/quickTransforms.ts
+var QUICK_TRANSFORMS = [
+  { label: "Reverb", method: "room", value: 0.4 },
+  { label: "Filter", method: "lpf", value: 800 },
+  { label: "Distortion", method: "distort", value: 0.3 },
+  { label: "Delay", method: "delay", value: 0.4 },
+  { label: "Speed", method: "speed", value: 1.5 },
+  { label: "Gain", method: "gain", value: 0.8 }
+];
+var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
+function knobsFromChunk(chunk) {
+  const knobs = [];
+  chunk.chain.forEach((call, chainIndex) => {
+    const numericArgs = call.args.map((a, argIndex) => ({ a, argIndex })).filter((x) => x.a.numeric !== null);
+    numericArgs.forEach(({ a, argIndex }) => {
+      knobs.push({
+        chainIndex,
+        argIndex,
+        method: call.name,
+        // disambiguate when a single call has several numeric args
+        label: numericArgs.length > 1 ? `${call.name} ${argIndex + 1}` : call.name,
+        value: a.numeric
+      });
+    });
+  });
+  return knobs;
+}
+__name(knobsFromChunk, "knobsFromChunk");
+function Mixer() {
+  const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
+  const knobs = chunk ? knobsFromChunk(chunk) : [];
+  const writeKnob = React17__namespace.useCallback(
+    (chainIndex, argIndex, value) => {
+      applyEdit((fresh, wb) => {
+        const arg = fresh.chain[chainIndex]?.args[argIndex];
+        if (!arg) return;
+        wb.replaceRange(arg.range, formatNumber(value), "knob");
+      });
+    },
+    [applyEdit]
+  );
+  const addTransform = React17__namespace.useCallback(
+    (method, value) => {
+      applyEdit((fresh, wb) => {
+        if (fresh.chain.some((c) => c.name === method)) return;
+        wb.insertAt(fresh.exprRange[1], `.${method}(${formatNumber(value)})`, "knob");
+      });
+    },
+    [applyEdit]
+  );
+  if (!chunk || chunk.chain.length === 0) {
+    return React17__namespace.createElement(VisualEditStandby, {
+      panel: MIXER_TAB_ID,
+      hint: MIXER_HINT,
+      icon: "settings"
+    });
+  }
+  const present = new Set(chunk.chain.map((c) => c.name));
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-bottom-panel-tab": "mixer",
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+        padding: 16,
+        height: "100%",
+        overflowY: "auto",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx("div", { "data-mixer-transforms": true, style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: QUICK_TRANSFORMS.map((t) => /* @__PURE__ */ jsxRuntime.jsxs(
+          "button",
+          {
+            type: "button",
+            disabled: present.has(t.method),
+            "data-mixer-transform": t.method,
+            onClick: () => addTransform(t.method, t.value),
+            style: {
+              padding: "3px 10px",
+              fontSize: 11,
+              borderRadius: 4,
+              border: "1px solid var(--border, #3a3a42)",
+              background: present.has(t.method) ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+              color: present.has(t.method) ? "var(--foreground-muted, #6a6a72)" : "var(--foreground, #e6e6ea)",
+              cursor: present.has(t.method) ? "default" : "pointer"
+            },
+            children: [
+              "+ ",
+              t.label
+            ]
+          },
+          t.method
+        )) }),
+        knobs.length > 0 ? /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }, children: knobs.map((k) => /* @__PURE__ */ jsxRuntime.jsx(
+          Knob,
+          {
+            label: k.label,
+            value: k.value,
+            range: knobRangeFor(k.method, k.value),
+            onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
+            onGestureStart: beginGesture,
+            onGestureEnd: endGesture
+          },
+          `${k.chainIndex}:${k.argIndex}`
+        )) }) : /* @__PURE__ */ jsxRuntime.jsx("span", { style: { fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: "Add an effect above, or drag a knob once the pattern has one." })
+      ]
+    }
+  );
+}
+__name(Mixer, "Mixer");
+var MIXER_WIDTH = 300;
+function PatternPanel() {
+  const { chunk } = useActiveChunk();
+  const kind = patternKind(chunk);
+  const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, {}) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, {}) : /* @__PURE__ */ jsxRuntime.jsx(
+    VisualEditStandby,
+    {
+      panel: PATTERN_TAB_ID,
+      hint: "Click a drum or melodic pattern to edit it here.",
+      icon: "symbol-array"
+    }
+  );
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "data-bottom-panel-tab": "pattern",
+      style: { display: "flex", height: "100%", width: "100%", minWidth: 0 },
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx("div", { "data-pattern-grid": true, style: { flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }, children: grid }),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "div",
+          {
+            "data-pattern-mixer": true,
+            style: {
+              width: MIXER_WIDTH,
+              flexShrink: 0,
+              height: "100%",
+              overflow: "hidden",
+              borderLeft: "1px solid var(--border, #3a3a42)"
+            },
+            children: /* @__PURE__ */ jsxRuntime.jsx(Mixer, {})
+          }
+        )
+      ]
+    }
+  );
+}
+__name(PatternPanel, "PatternPanel");
 
 // src/workspace/bottomPanel/visualEditSeed.tsx
 var PANELS = {
-  [MIXER_TAB_ID]: Mixer,
-  [SEQUENCER_TAB_ID]: SequencerGrid,
-  [PIANO_ROLL_TAB_ID]: PianoRollGrid
+  [PATTERN_TAB_ID]: PatternPanel
 };
 function seedVisualEditTabs() {
   for (const tab of VISUAL_EDIT_TABS) {
@@ -31984,9 +32020,11 @@ exports.P5VizRenderer = P5VizRenderer;
 exports.P5_DOCS_INDEX = P5_DOCS_INDEX;
 exports.P5_VIZ = P5_VIZ;
 exports.PATTERN_IR_SCHEMA_VERSION = PATTERN_IR_SCHEMA_VERSION;
+exports.PATTERN_TAB_ID = PATTERN_TAB_ID;
 exports.PIANOROLL_P5_CODE = PIANOROLL_P5_CODE;
 exports.PIANO_ROLL_TAB_ID = PIANO_ROLL_TAB_ID;
 exports.PITCHWHEEL_P5_CODE = PITCHWHEEL_P5_CODE;
+exports.PatternPanel = PatternPanel;
 exports.PianoRollGrid = PianoRollGrid;
 exports.PreviewView = PreviewView;
 exports.SAMPLE_SOUND_LABEL = SAMPLE_SOUND_LABEL;
@@ -32164,7 +32202,9 @@ exports.isChunkFresh = isChunkFresh;
 exports.isDocReady = isDocReady;
 exports.isFileModifiedSinceHead = isFileModifiedSinceHead;
 exports.isP5DirectCanvasEnabled = isP5DirectCanvasEnabled;
+exports.isRollChunk = isRollChunk;
 exports.isSampleSoundPlaying = isSampleSoundPlaying;
+exports.isStepChunk = isStepChunk;
 exports.isViewing = isViewing;
 exports.isVizGovernorEnabled = isVizGovernorEnabled;
 exports.isVizLanguage = isVizLanguage;
@@ -32213,6 +32253,7 @@ exports.parseStepGrid = parseStepGrid;
 exports.parseStrudel = parseStrudel;
 exports.parseTopLevel = parseTopLevel;
 exports.patternFromJSON = patternFromJSON;
+exports.patternKind = patternKind;
 exports.patternToJSON = patternToJSON;
 exports.perf = perf;
 exports.pitchToMidi = pitchToMidi;

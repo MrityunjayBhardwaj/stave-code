@@ -8,9 +8,9 @@ import { seedVisualEditTabs } from '../visualEditSeed'
 import { VISUAL_EDIT_TABS } from '../../../visualEdit/panels/tabs'
 
 describe('VISUAL_EDIT_TABS metadata', () => {
-  it('defines exactly the three musician panels', () => {
-    expect(VISUAL_EDIT_TABS.map((t) => t.id)).toEqual(['sequencer', 'mixer', 'piano-roll'])
-    expect(VISUAL_EDIT_TABS.map((t) => t.title)).toEqual(['Sequencer', 'Mixer', 'Piano Roll'])
+  it('defines exactly the single adaptive Pattern tab (#398)', () => {
+    expect(VISUAL_EDIT_TABS.map((t) => t.id)).toEqual(['pattern'])
+    expect(VISUAL_EDIT_TABS.map((t) => t.title)).toEqual(['Pattern'])
   })
 
   it('has unique ids and a hint + icon per tab', () => {
@@ -34,25 +34,20 @@ describe('VISUAL_EDIT_TABS metadata', () => {
 describe('seedVisualEditTabs', () => {
   beforeEach(() => __resetBottomPanelRegistryForTest())
 
-  it('registers all three tabs', () => {
+  it('registers the single Pattern tab', () => {
     seedVisualEditTabs()
-    expect(listBottomPanelTabs().map((t) => t.id)).toEqual(['sequencer', 'mixer', 'piano-roll'])
+    expect(listBottomPanelTabs().map((t) => t.id)).toEqual(['pattern'])
   })
 
   it('appears alongside an already-seeded Timeline, after it', () => {
     registerBottomPanelTab({ id: 'musical-timeline', title: 'Timeline', content: null })
     seedVisualEditTabs()
-    expect(listBottomPanelTabs().map((t) => t.id)).toEqual([
-      'musical-timeline',
-      'sequencer',
-      'mixer',
-      'piano-roll',
-    ])
+    expect(listBottomPanelTabs().map((t) => t.id)).toEqual(['musical-timeline', 'pattern'])
   })
 
   it('is idempotent — re-seeding does not duplicate tabs', () => {
     seedVisualEditTabs()
     seedVisualEditTabs()
-    expect(listBottomPanelTabs().filter((t) => t.id === 'mixer')).toHaveLength(1)
+    expect(listBottomPanelTabs().filter((t) => t.id === 'pattern')).toHaveLength(1)
   })
 })

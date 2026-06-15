@@ -77,7 +77,7 @@ async function undo(page: Page): Promise<void> {
 async function openMixer(page: Page) {
   const drawer = page.locator('[data-bottom-panel="root"]')
   await drawer.locator('[data-bottom-panel="toggle"]').click()
-  await drawer.locator('role=tab[name="Mixer"]').click()
+  await drawer.locator('role=tab[name="Pattern"]').click()
   return drawer
 }
 
