@@ -91,6 +91,60 @@ const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
   { name: "Parsed",         run: runFinalStage         },
 ];
 
+// Phase 20-12 — the timeline collects across the same cycle window the live
+// monitor displays (WINDOW_CYCLES in musicalTimeline/timeAxis.ts is 2).
+// Duplicated here because chrome (app) and engine (editor) can't import each
+// other; if WINDOW_CYCLES changes there, update this to match.
+const TIMELINE_WINDOW_CYCLES = 2;
+
+/**
+ * Parse the file's current source into IR and publish an IRSnapshot for the
+ * Inspector + full-song timeline. parseStrudel + collect are pure and cheap on
+ * the source string, so this is safe to call outside the eval lifecycle — both
+ * the eval-success path AND on-demand (#394: the full-song view needs a
+ * snapshot the instant it opens, but a cold eval's `onEvaluateSuccess` lags
+ * ~2.5s behind the keypress, leaving the view empty in the meantime).
+ *
+ * Strudel-only, total: no-op for non-Strudel runtimes / missing files, and
+ * swallows parse errors (parseStrudel guarantees a graceful Code-node
+ * fallback; collect is total). `source` is the workspace fileId — NOT the
+ * human-visible path — because the Inspector's click-to-source keys by id.
+ */
+function captureAndPublishSnapshot(
+  fileId: string,
+  cycleCount: number | null,
+): void {
+  const fileNow = getFile(fileId);
+  if (!fileNow) return;
+  const runtimeId: RuntimeId =
+    fileNow.language === "sonicpi" ? "sonicpi" : "strudel";
+  if (runtimeId !== "strudel") return;
+  try {
+    // Phase 19-07 (#79) — pre-pass-0 seed: wrap raw source as a Code node so
+    // pass 0 (RAW) reads input.code and runs extractTracks. finalIR drives both
+    // `collect` and the `ir` alias — single source of truth (PV27).
+    const seed: PatternIR = IR.code(fileNow.content);
+    const passes = runPasses(seed, STRUDEL_PASSES);
+    const finalIR = passes[passes.length - 1].ir;
+    const events = collectCycles(finalIR, 0, TIMELINE_WINDOW_CYCLES);
+    publishIRSnapshot(
+      {
+        ts: Date.now(),
+        source: fileNow.id,
+        runtime: "strudel",
+        code: fileNow.content,
+        passes,
+        ir: finalIR, // alias of passes[last].ir per IRSnapshot contract
+        events,
+      },
+      { cycleCount },
+    );
+  } catch {
+    // parseStrudel guarantees graceful fallback to Code node; collect is
+    // total. Anything thrown here is unexpected — stay quiet.
+  }
+}
+
 /**
  * Intrinsic drawing aspect for bundled vizzes, keyed by preset name. The single
  * source of truth: the seed presets AND `registerAllVizFiles` both read it, so
@@ -170,6 +224,13 @@ interface StrudelEditorClientProps {
      */
     getSongPosition: () => number | null;
     onSeek: (cycle: number) => void;
+    /**
+     * #394 — on-demand IR snapshot capture for the full-song view. The view
+     * needs a snapshot the instant it opens, but a cold eval's
+     * `onEvaluateSuccess` lags ~2.5s; MusicalTimeline calls this when it
+     * enters song mode with no snapshot yet. No-op for non-Strudel runtimes.
+     */
+    onRequestSnapshot: () => void;
     /**
      * Phase 20-07 wave γ (R-2) — debugger accessors. Mirror the
      * `getHapStream` shape: closure-bound reads through `runtimesRef`
@@ -769,54 +830,12 @@ export default function StrudelEditorClient({
       // revealLineInFile keys by id; the Inspector's click-to-source
       // handler depends on this lookup matching.
       if (runtimeId === "strudel" && fileNow) {
-        try {
-          // Phase 19-07 (#79) — pre-pass-0 seed: wrap raw source as a
-          // Code node so pass 0 (RAW) reads input.code and runs
-          // extractTracks. runPasses signature unchanged. End-to-end
-          // FINAL output (passes[last].ir) is byte-identical to today's
-          // parseStrudel(code) (D-06 regression gate; verified by
-          // parity.test.ts + parseStrudel.stages.test.ts).
-          const seed: PatternIR = IR.code(fileNow.content);
-          const passes = runPasses(seed, STRUDEL_PASSES);
-          // finalIR drives both `collect` (events reflect post-pass IR
-          // when real passes land later) and the `ir` alias on the
-          // snapshot. Single source of truth — passes[last].ir and the
-          // alias cannot drift apart (PV27).
-          const finalIR = passes[passes.length - 1].ir;
-          // Phase 20-12 — collect across the same cycle window the
-          // timeline displays. WINDOW_CYCLES (musicalTimeline/timeAxis.ts)
-          // is currently 2; collecting only [0, 1) leaves the cycle-1
-          // column empty for static viz. `collectCycles` loops collect()
-          // once per cycle so cross-cycle alternation patterns
-          // (`<a b c>`), randomized patterns, and steady-state loops all
-          // render their full visible-window shape. The constant is
-          // duplicated here because chrome (app) and engine (editor)
-          // can't import each other; if WINDOW_CYCLES changes there,
-          // update this number to match.
-          const TIMELINE_WINDOW_CYCLES = 2;
-          const events = collectCycles(finalIR, 0, TIMELINE_WINDOW_CYCLES);
-          publishIRSnapshot(
-            {
-              ts: Date.now(),
-              source: fileNow.id,
-              runtime: "strudel",
-              code: fileNow.content,
-              passes,
-              ir: finalIR, // alias of passes[last].ir per IRSnapshot contract
-              events,
-            },
-            // Phase 19-08: cycleCount lands on the timeline capture entry
-            // (not on IRSnapshot) so PV27's per-snapshot alias contract
-            // stays untouched. `getCurrentCycle()` returns null when the
-            // scheduler is unavailable; the timeline tooltip falls back
-            // to wall-clock in that case.
-            { cycleCount: runtime.getCurrentCycle() },
-          );
-        } catch {
-          // parseStrudel guarantees graceful fallback to Code node;
-          // collect is total. Anything thrown here is unexpected — keep
-          // the eval-success path quiet.
-        }
+        // IR Inspector + full-song timeline snapshot. Factored into
+        // captureAndPublishSnapshot (module scope) so the on-demand
+        // song-view path (#394) publishes the identical shape — no drift.
+        // Phase 19-08: cycleCount lands on the timeline capture entry (not on
+        // IRSnapshot) so PV27's per-snapshot alias contract stays untouched.
+        captureAndPublishSnapshot(fileId, runtime.getCurrentCycle());
 
         // Code-driven backdrop — a non-underscore viz method (`.scope()`,
         // `.pianoroll()`, …) maps to Stave's backdrop; its absence clears it.
@@ -1133,6 +1152,13 @@ export default function StrudelEditorClient({
       onSeek: (cycle: number) => {
         void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
       },
+      // #394 — publish the active file's IR for the full-song view on demand.
+      onRequestSnapshot: () => {
+        captureAndPublishSnapshot(
+          accessorFid,
+          runtimesRef.current.get(accessorFid)?.getCurrentCycle?.() ?? null,
+        );
+      },
       // Phase 20-07 wave γ (R-2) — Inspector accessors. Mirror getHapStream's
       // closure shape so they read through runtimesRef on every invocation.
       getBreakpointStore: () =>
@@ -1235,6 +1261,14 @@ export default function StrudelEditorClient({
               ?.getSongPosition?.() ?? null,
           onSeek: (cycle: number) => {
             void runtimesRef.current.get(accessorFid)?.seekTo?.(cycle);
+          },
+          // #394 — on-demand snapshot capture (same shape as the useEffect
+          // builder above).
+          onRequestSnapshot: () => {
+            captureAndPublishSnapshot(
+              accessorFid,
+              runtimesRef.current.get(accessorFid)?.getCurrentCycle?.() ?? null,
+            );
           },
           // Phase 20-07 wave γ (R-2) — Inspector accessors. Mirrors the
           // useEffect closure builder above; both push the same shape to

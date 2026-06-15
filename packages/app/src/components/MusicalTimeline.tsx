@@ -112,6 +112,14 @@ export interface MusicalTimelineProps {
    * the full-song view renders read-only (clicks are ignored).
    */
   readonly onSeek?: (cycle: number) => void
+  /**
+   * #394 — request an immediate IR snapshot capture for the active file. The
+   * song view analyzes the published snapshot, but a cold eval publishes it
+   * ~2.5s late; the view calls this on entering song mode with no snapshot so
+   * it populates at once instead of sitting empty. Optional / no-op when the
+   * registration predates the fix or the runtime is non-Strudel.
+   */
+  readonly onRequestSnapshot?: () => void
 }
 
 const TAB_ID = 'musical-timeline'
@@ -600,6 +608,19 @@ export function MusicalTimeline(
   const accessorsRef = useRef(props)
   accessorsRef.current = props
 
+  // #394 — when the song view opens before its IR snapshot has been published
+  // (a cold eval lags ~2.5s behind the keypress), proactively ask the editor
+  // to capture one now. The publish flows back through subscribeIRSnapshot →
+  // setSnapshot → the analyze effect above, so the view populates at once
+  // instead of sitting empty until a later eval. Re-runs only on the
+  // viewMode/snapshot transition; once a snapshot exists this is a no-op, so
+  // there is no request loop.
+  useEffect(() => {
+    if (viewMode === 'song' && !snapshot) {
+      accessorsRef.current.onRequestSnapshot?.()
+    }
+  }, [viewMode, snapshot])
+
   const [currentCycle, setCurrentCycle] = useState<number | null>(null)
   const [currentCps, setCurrentCps] = useState<number | null>(null)
 
@@ -1008,7 +1029,10 @@ export function MusicalTimeline(
   if (viewMode === 'song') {
     let songText: string
     if (analyzing && !analysis) songText = 'SONG · analyzing…'
-    else if (!analysis) songText = 'SONG · press play'
+    // #394 — while a pattern is playing (bpm present) but the snapshot hasn't
+    // arrived yet, we're mid-capture, not idle: say "analyzing…", not the
+    // misleading "press play" (the user already pressed play).
+    else if (!analysis) songText = bpm != null ? 'SONG · analyzing…' : 'SONG · press play'
     else if (analysis.periodCycles != null)
       songText = `SONG · loop ${analysis.periodCycles} cycles`
     else

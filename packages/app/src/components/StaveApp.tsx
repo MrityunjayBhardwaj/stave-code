@@ -544,6 +544,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // are no-ops so non-Strudel runtimes (DemoEngine, SonicPi) are well-typed.
   const getSongPositionRef = useRef<() => number | null>(() => null);
   const onSeekRef = useRef<(cycle: number) => void>(() => {});
+  // #394 — on-demand IR snapshot capture so the full-song view can populate
+  // the instant it opens (cold eval publishes its snapshot ~2.5s late). No-op
+  // default until a runtime attaches.
+  const onRequestSnapshotRef = useRef<() => void>(() => {});
   // Phase 20-07 wave γ (R-2) — Inspector accessors. Live alongside
   // getHapStreamRef. Each ref holds a closure that reads through the
   // active runtime; default returns null/false so renders before the
@@ -573,6 +577,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             // #384/#385 — transport seek accessors (Strudel only).
             getSongPosition?: () => number | null;
             onSeek?: (cycle: number) => void;
+            onRequestSnapshot?: () => void;
             // Phase 20-07 wave γ (R-2) — debugger accessors. Optional
             // because non-Strudel runtimes (DemoEngine, SonicPi) skip
             // them; the default no-op refs survive a null assignment.
@@ -592,6 +597,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getHapStreamRef.current = s?.getHapStream ?? (() => null);
       getSongPositionRef.current = s?.getSongPosition ?? (() => null);
       onSeekRef.current = s?.onSeek ?? (() => {});
+      onRequestSnapshotRef.current = s?.onRequestSnapshot ?? (() => {});
       // Phase 20-07 wave γ (R-2) — Inspector accessor refs. When `s` is
       // null (runtime detached / non-Strudel tab), the no-op defaults
       // mean IRInspectorPanel renders without breakpoint / pulse / Resume
@@ -633,6 +639,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           getHapStream={() => getHapStreamRef.current()}
           getSongPosition={() => getSongPositionRef.current()}
           onSeek={(cycle) => onSeekRef.current(cycle)}
+          onRequestSnapshot={() => onRequestSnapshotRef.current()}
           getDrawerOpen={() => readPersistedOpen()}
           getActiveTabId={() => readPersistedActiveTabId()}
         />
