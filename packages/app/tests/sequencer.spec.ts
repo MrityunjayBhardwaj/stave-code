@@ -63,6 +63,38 @@ async function openSequencer(page: Page) {
   return drawer
 }
 
+/** Put the cursor on the first occurrence of `needle` in the strudel model. */
+async function placeCursorOn(page: Page, needle: string): Promise<void> {
+  const ok = await page.evaluate((needle) => {
+    const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } })
+      .monaco
+    const editors = (monaco?.editor?.getEditors?.() ?? []) as Array<{
+      getModel: () => {
+        getLanguageId?: () => string
+        getValue: () => string
+        getLineCount: () => number
+        getLineContent: (n: number) => string
+      } | null
+      focus: () => void
+      setPosition: (p: { lineNumber: number; column: number }) => void
+    }>
+    const t = editors.find((e) => e.getModel()?.getValue?.().includes(needle)) ?? editors[0]
+    const m = t?.getModel()
+    if (!m) return false
+    for (let ln = 1; ln <= m.getLineCount(); ln++) {
+      const idx = m.getLineContent(ln).indexOf(needle)
+      if (idx >= 0) {
+        t.focus()
+        t.setPosition({ lineNumber: ln, column: idx + 2 })
+        return true
+      }
+    }
+    return false
+  }, needle)
+  expect(ok).toBe(true)
+  await page.waitForTimeout(120)
+}
+
 test.describe('Sequencer (#382)', () => {
   test('renders one lane per sound with cells from the mini', async ({ page }) => {
     await boot(page)
@@ -107,5 +139,29 @@ test.describe('Sequencer (#382)', () => {
     await setStrudelCode(page, '$: s("bd*<2 3>")')
     const drawer = await openSequencer(page)
     await expect(drawer.locator('[data-bottom-panel-tab="sequencer-standby"]')).toHaveCount(1)
+  })
+
+  test('binds a drum track nested inside stack(...) and round-trips it (#395)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(
+      page,
+      '$: stack(\n  s("bd ~ ~ ~").gain(0.5),\n  s("hh*4")\n).slow(2)',
+    )
+    // Cursor on the FIRST drum track, which lives inside stack(...).
+    await placeCursorOn(page, 'bd ~ ~ ~')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1) // bound, not standby
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+
+    // Toggle step 2 on — the write-back must hit ONLY the inner mini, leaving
+    // the sibling track, the .gain() and the outer .slow(2) byte-identical.
+    await grid.locator('[data-seq-cell="0:2"]').click()
+    await page.waitForTimeout(100)
+    expect(await strudelValue(page)).toBe(
+      '$: stack(\n  s("bd ~ bd ~").gain(0.5),\n  s("hh*4")\n).slow(2)',
+    )
   })
 })
