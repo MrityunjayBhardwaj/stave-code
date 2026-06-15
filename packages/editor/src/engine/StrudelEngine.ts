@@ -165,6 +165,18 @@ export class StrudelEngine implements LiveCodingEngine {
   private isPausedState: boolean = false
   private pauseChangedListeners: Set<(paused: boolean) => void> = new Set()
 
+  // #384 — transport seek offset, in cycles. The song position the user sees
+  // is `scheduler.now() - transportOffset`; `0` means normal playback (no
+  // seek). Set by `setTransportOffset()` (the runtime's `seekTo` computes
+  // `now - targetCycle`). Applied at the `.p` capture seam inside evaluate()
+  // by wrapping the pattern with `.late(transportOffset)` — the IR-level
+  // transport wrap — so the scheduler plays song-cycle `songPosition` at
+  // wall-clock `now`. This is the ONLY place a time-shift touches
+  // Pattern.prototype; the runtime must never do so (PV2 / P2 source-grep
+  // guard). Exact only for stateless-cyclic patterns; state-accumulating
+  // patterns seek approximately (documented edge, design §7.4).
+  private transportOffset = 0
+
   // Phase 20-14 α-5 — tier flags read at boot. β-4 wires `midi` to call
   // enableWebMidi(); the other 7 (csound, tidal, osc, serial, gamepad,
   // motion, mqtt) land as one follow-up issue each. Mid-session toggle
@@ -190,6 +202,23 @@ export class StrudelEngine implements LiveCodingEngine {
   /** Read-only snapshot of the tier flags consumed at this engine's init(). */
   getTierFlagsSnapshot(): Readonly<TierFlags> | null {
     return this.tierFlags
+  }
+
+  /**
+   * #384 — set the transport seek offset (cycles). Does NOT re-evaluate by
+   * itself: the runtime's `seekTo` calls this and then `play()`, whose
+   * re-eval re-reads `transportOffset` and applies the `.late()` wrap at the
+   * `.p` seam. Kept off the `LiveCodingEngine` interface (v1) and reached via
+   * `(engine as any).setTransportOffset?.()` so non-Strudel engines no-op,
+   * mirroring the pause/resume delegation convention.
+   */
+  setTransportOffset(offset: number): void {
+    this.transportOffset = Number.isFinite(offset) ? offset : 0
+  }
+
+  /** #384 — current transport offset (cycles). `0` when no seek is active. */
+  getTransportOffset(): number {
+    return this.transportOffset
   }
 
   /**
@@ -561,6 +590,10 @@ export class StrudelEngine implements LiveCodingEngine {
     // rather than its own track. Numbers ≥ 100 + captureId keep the mapping
     // stable across evaluates.
     let autoOrbitNext = 100
+    // #384 — snapshot the seek offset for this evaluate. `this` is the engine
+    // here (evaluate's body); the `.p` value function below closes over this
+    // const, so each re-eval (every play()/seekTo) applies the current offset.
+    const transportOffset = this.transportOffset
     const probeExplicitOrbit = (pat: any): boolean => { // eslint-disable-line @typescript-eslint/no-explicit-any
       try {
         const haps = pat.queryArc(0, 1)
@@ -722,6 +755,20 @@ export class StrudelEngine implements LiveCodingEngine {
               if (vizName && typeof this.orbit === 'function' && !probeExplicitOrbit(this)) {
                 const autoOrbit = autoOrbitNext++
                 try { effectivePattern = this.orbit(autoOrbit) } catch { /* fall back to this */ }
+              }
+              // #384 — transport seek. Shift the whole captured pattern in time
+              // so the scheduler plays song-cycle `now - transportOffset` at
+              // wall-clock `now`. `.late(offset)` delays onsets by `offset`
+              // cycles (negative = seek forward, i.e. `.early`). Applied AFTER
+              // the auto-orbit wrap so routing is preserved, and to the SAME
+              // `effectivePattern` used for both audio (`strudelFn.call`) and
+              // capture (viz/timeline queryArc) — keeping every consumer in one
+              // coherent scheduler frame. Guarded: only when seeking, and only
+              // if `.late` is present (registered @strudel/core; exotic
+              // patterns may lack it → keep unshifted). PV2: this time-shift on
+              // Pattern.prototype lives engine-side only.
+              if (transportOffset !== 0 && typeof effectivePattern.late === 'function') {
+                try { effectivePattern = effectivePattern.late(transportOffset) } catch { /* keep unshifted */ }
               }
               capturedPatterns.set(captureId, effectivePattern)
               return strudelFn.call(effectivePattern, id)

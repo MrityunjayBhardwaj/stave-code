@@ -654,6 +654,57 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   }
 
   /**
+   * #384 — raw scheduler clock, ungated by `isPlayingState`. The seek math
+   * needs the live wall-clock cycle at the instant the user clicks. Returns
+   * `null` only when the engine exposes no scheduler. Used by
+   * `seekTo`/`getSongPosition`.
+   */
+  private rawSchedulerNow(): number | null {
+    const v = this.engine.components.queryable?.scheduler?.now()
+    return Number.isFinite(v) ? (v as number) : null
+  }
+
+  /**
+   * #384 — seek the transport to song-cycle `targetCycle`. Sets the engine's
+   * transport offset to `now - targetCycle` (so `songPosition` becomes
+   * `targetCycle`) and re-evaluates via `play()` — the existing hot-swap
+   * path — which re-applies the `.late(offset)` wrap at the engine's `.p`
+   * seam. No-op on engines without `setTransportOffset` (non-Strudel) or
+   * before the scheduler exists.
+   *
+   * AUDIO NOTE: the audible jump is not observable in the test harness — the
+   * clock + no-error are; the audio half needs a manual check (design §10).
+   */
+  async seekTo(targetCycle: number): Promise<{ error: Error | null }> {
+    if (!Number.isFinite(targetCycle)) return { error: null }
+    const now = this.rawSchedulerNow()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const setOffset = (this.engine as any).setTransportOffset as
+      | ((offset: number) => void)
+      | undefined
+    if (now === null || typeof setOffset !== 'function') return { error: null }
+    setOffset.call(this.engine, now - targetCycle)
+    // Re-eval through the normal hot-swap so the wrap takes effect. If we're
+    // not playing yet, play() also starts the transport at the sought cycle.
+    return this.play()
+  }
+
+  /**
+   * #384 — current SONG position in cycles: `scheduler.now() - transportOffset`.
+   * The full-song timeline playhead reads this (vs `getCurrentCycle`'s raw
+   * window clock). Gated on `isPlayingState` like `getCurrentCycle` so the
+   * playhead clears on stop. `null` on non-Strudel engines / when stopped.
+   */
+  getSongPosition(): number | null {
+    if (!this.isPlayingState) return null
+    const now = this.rawSchedulerNow()
+    if (now === null) return null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const offset = (this.engine as any).getTransportOffset?.() ?? 0
+    return now - (Number.isFinite(offset) ? offset : 0)
+  }
+
+  /**
    * Engine-owned HapStream, or `null` when the engine doesn't expose one
    * (non-Strudel runtimes / not yet initialized). Mirrors `getCurrentCycle`'s
    * shape — read-through accessor over the engine's components.

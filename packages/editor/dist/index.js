@@ -965,6 +965,142 @@ function collapseToMini(children) {
 }
 __name(collapseToMini, "collapseToMini");
 
+// src/ir/songAnalysis.ts
+function laneKeyOf(ev) {
+  return ev.trackId ?? ev.s ?? "$default";
+}
+__name(laneKeyOf, "laneKeyOf");
+function accumulateLanes(events, horizon) {
+  const order = [];
+  const byLane = /* @__PURE__ */ new Map();
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin);
+    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
+    const key = laneKeyOf(ev);
+    let counts = byLane.get(key);
+    if (!counts) {
+      counts = new Array(horizon).fill(0);
+      byLane.set(key, counts);
+      order.push(key);
+    }
+    counts[cycle] += 1;
+  }
+  return order.map((laneKey) => ({ laneKey, onsetsByCycle: byLane.get(laneKey) }));
+}
+__name(accumulateLanes, "accumulateLanes");
+function cycleFingerprints(events, horizon) {
+  const perCycle = Array.from({ length: horizon }, () => []);
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin);
+    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
+    const offset = Math.round((ev.begin - cycle) * 1e6);
+    const note = ev.note ?? "";
+    perCycle[cycle].push(`${laneKeyOf(ev)}@${offset}:${note}`);
+  }
+  return perCycle.map((tokens) => tokens.sort().join("|"));
+}
+__name(cycleFingerprints, "cycleFingerprints");
+function detectPeriod(fingerprints) {
+  const len = fingerprints.length;
+  if (fingerprints.every((fp) => fp === "")) return null;
+  for (let p = 1; p <= Math.floor(len / 2); p++) {
+    let repeats = true;
+    for (let c = 0; c + p < len; c++) {
+      if (fingerprints[c] !== fingerprints[c + p]) {
+        repeats = false;
+        break;
+      }
+    }
+    if (repeats) return p;
+  }
+  return null;
+}
+__name(detectPeriod, "detectPeriod");
+function computeSections(lanes, horizon) {
+  if (horizon <= 0) return [];
+  const signatureAt = /* @__PURE__ */ __name((cycle) => lanes.filter((l) => (l.onsetsByCycle[cycle] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
+  const sections = [];
+  let start = 0;
+  let sig = signatureAt(0);
+  let sigKey = sig.join("|");
+  for (let c = 1; c < horizon; c++) {
+    const nextSig = signatureAt(c);
+    const nextKey = nextSig.join("|");
+    if (nextKey !== sigKey) {
+      sections.push({ startCycle: start, endCycle: c, laneKeys: sig });
+      start = c;
+      sig = nextSig;
+      sigKey = nextKey;
+    }
+  }
+  sections.push({ startCycle: start, endCycle: horizon, laneKeys: sig });
+  return sections;
+}
+__name(computeSections, "computeSections");
+function analyzeEvents(events, horizon, reachedCap = false) {
+  const lanes = accumulateLanes(events, horizon);
+  const periodCycles = detectPeriod(cycleFingerprints(events, horizon));
+  const sections = computeSections(lanes, horizon);
+  return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap };
+}
+__name(analyzeEvents, "analyzeEvents");
+var DEFAULT_HINT = 8;
+var DEFAULT_CAP = 256;
+var DEFAULT_SLICE = 4;
+var DEFAULT_BUDGET_MS = 10;
+function defaultNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+}
+__name(defaultNow, "defaultNow");
+function defaultYield() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+__name(defaultYield, "defaultYield");
+async function analyzeSong(ir, opts = {}) {
+  const hint = Math.max(1, Math.floor(opts.hintCycles ?? DEFAULT_HINT));
+  const cap = Math.max(hint, Math.floor(opts.capCycles ?? DEFAULT_CAP));
+  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
+  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
+  const collectFn = opts.collectFn ?? ((s, e) => ir ? collectCycles(ir, s, e) : []);
+  const now2 = opts.now ?? defaultNow;
+  const yieldFn = opts.yieldFn ?? defaultYield;
+  const signal = opts.signal;
+  const events = [];
+  let collectedTo = 0;
+  let horizon = hint;
+  let lastYield = now2();
+  const collectUpTo = /* @__PURE__ */ __name(async (target) => {
+    while (collectedTo < target) {
+      if (signal?.aborted) return false;
+      const sliceEnd = Math.min(collectedTo + slice, target);
+      events.push(...collectFn(collectedTo, sliceEnd));
+      collectedTo = sliceEnd;
+      if (now2() - lastYield >= budgetMs && collectedTo < target) {
+        await yieldFn();
+        lastYield = now2();
+      }
+    }
+    return true;
+  }, "collectUpTo");
+  while (true) {
+    const ok = await collectUpTo(horizon);
+    if (!ok) break;
+    if (events.length === 0) return analyzeEvents([], 0, false);
+    const period = detectPeriod(cycleFingerprints(events, horizon));
+    if (period !== null) {
+      const lanes = accumulateLanes(events, period);
+      const sections = computeSections(lanes, period);
+      return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false };
+    }
+    if (horizon >= cap) {
+      return analyzeEvents(events, cap, true);
+    }
+    horizon = Math.min(horizon * 2, cap);
+  }
+  return analyzeEvents(events, Math.min(horizon, collectedTo), false);
+}
+__name(analyzeSong, "analyzeSong");
+
 // src/ir/serialize.ts
 var PATTERN_IR_SCHEMA_VERSION = "1.0";
 function patternToJSON(ir, pretty) {
@@ -3921,6 +4057,17 @@ var _StrudelEngine = class _StrudelEngine {
     // method. Idempotence guarded by setPaused().
     this.isPausedState = false;
     this.pauseChangedListeners = /* @__PURE__ */ new Set();
+    // #384 — transport seek offset, in cycles. The song position the user sees
+    // is `scheduler.now() - transportOffset`; `0` means normal playback (no
+    // seek). Set by `setTransportOffset()` (the runtime's `seekTo` computes
+    // `now - targetCycle`). Applied at the `.p` capture seam inside evaluate()
+    // by wrapping the pattern with `.late(transportOffset)` — the IR-level
+    // transport wrap — so the scheduler plays song-cycle `songPosition` at
+    // wall-clock `now`. This is the ONLY place a time-shift touches
+    // Pattern.prototype; the runtime must never do so (PV2 / P2 source-grep
+    // guard). Exact only for stateless-cyclic patterns; state-accumulating
+    // patterns seek approximately (documented edge, design §7.4).
+    this.transportOffset = 0;
     // Phase 20-14 α-5 — tier flags read at boot. β-4 wires `midi` to call
     // enableWebMidi(); the other 7 (csound, tidal, osc, serial, gamepad,
     // motion, mqtt) land as one follow-up issue each. Mid-session toggle
@@ -3944,6 +4091,21 @@ var _StrudelEngine = class _StrudelEngine {
   /** Read-only snapshot of the tier flags consumed at this engine's init(). */
   getTierFlagsSnapshot() {
     return this.tierFlags;
+  }
+  /**
+   * #384 — set the transport seek offset (cycles). Does NOT re-evaluate by
+   * itself: the runtime's `seekTo` calls this and then `play()`, whose
+   * re-eval re-reads `transportOffset` and applies the `.late()` wrap at the
+   * `.p` seam. Kept off the `LiveCodingEngine` interface (v1) and reached via
+   * `(engine as any).setTransportOffset?.()` so non-Strudel engines no-op,
+   * mirroring the pause/resume delegation convention.
+   */
+  setTransportOffset(offset) {
+    this.transportOffset = Number.isFinite(offset) ? offset : 0;
+  }
+  /** #384 — current transport offset (cycles). `0` when no seek is active. */
+  getTransportOffset() {
+    return this.transportOffset;
   }
   /**
    * Phase 20-14 β-2 — read-only snapshot of alias rewrites that have fired
@@ -4206,6 +4368,7 @@ var _StrudelEngine = class _StrudelEngine {
     let capturedBackdropVizOptions = null;
     let anonIndex = 0;
     let autoOrbitNext = 100;
+    const transportOffset = this.transportOffset;
     const probeExplicitOrbit = /* @__PURE__ */ __name((pat) => {
       try {
         const haps = pat.queryArc(0, 1);
@@ -4298,6 +4461,12 @@ var _StrudelEngine = class _StrudelEngine {
                 const autoOrbit = autoOrbitNext++;
                 try {
                   effectivePattern = this.orbit(autoOrbit);
+                } catch {
+                }
+              }
+              if (transportOffset !== 0 && typeof effectivePattern.late === "function") {
+                try {
+                  effectivePattern = effectivePattern.late(transportOffset);
                 } catch {
                 }
               }
@@ -27875,6 +28044,48 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     return Number.isFinite(v) ? v : null;
   }
   /**
+   * #384 — raw scheduler clock, ungated by `isPlayingState`. The seek math
+   * needs the live wall-clock cycle at the instant the user clicks. Returns
+   * `null` only when the engine exposes no scheduler. Used by
+   * `seekTo`/`getSongPosition`.
+   */
+  rawSchedulerNow() {
+    const v = this.engine.components.queryable?.scheduler?.now();
+    return Number.isFinite(v) ? v : null;
+  }
+  /**
+   * #384 — seek the transport to song-cycle `targetCycle`. Sets the engine's
+   * transport offset to `now - targetCycle` (so `songPosition` becomes
+   * `targetCycle`) and re-evaluates via `play()` — the existing hot-swap
+   * path — which re-applies the `.late(offset)` wrap at the engine's `.p`
+   * seam. No-op on engines without `setTransportOffset` (non-Strudel) or
+   * before the scheduler exists.
+   *
+   * AUDIO NOTE: the audible jump is not observable in the test harness — the
+   * clock + no-error are; the audio half needs a manual check (design §10).
+   */
+  async seekTo(targetCycle) {
+    if (!Number.isFinite(targetCycle)) return { error: null };
+    const now2 = this.rawSchedulerNow();
+    const setOffset = this.engine.setTransportOffset;
+    if (now2 === null || typeof setOffset !== "function") return { error: null };
+    setOffset.call(this.engine, now2 - targetCycle);
+    return this.play();
+  }
+  /**
+   * #384 — current SONG position in cycles: `scheduler.now() - transportOffset`.
+   * The full-song timeline playhead reads this (vs `getCurrentCycle`'s raw
+   * window clock). Gated on `isPlayingState` like `getCurrentCycle` so the
+   * playhead clears on stop. `null` on non-Strudel engines / when stopped.
+   */
+  getSongPosition() {
+    if (!this.isPlayingState) return null;
+    const now2 = this.rawSchedulerNow();
+    if (now2 === null) return null;
+    const offset = this.engine.getTransportOffset?.() ?? 0;
+    return now2 - (Number.isFinite(offset) ? offset : 0);
+  }
+  /**
    * Engine-owned HapStream, or `null` when the engine doesn't expose one
    * (non-Strudel runtimes / not yet initialized). Mirrors `getCurrentCycle`'s
    * shape — read-through accessor over the engine's components.
@@ -31651,6 +31862,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllChunks, detectChunk, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllChunks, detectChunk, detectPeriod, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

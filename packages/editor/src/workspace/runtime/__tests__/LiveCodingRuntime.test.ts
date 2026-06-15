@@ -859,4 +859,136 @@ describe('LiveCodingRuntime', () => {
       runtimeB.dispose()
     })
   })
+
+  // -------------------------------------------------------------------------
+  // #384 — transport seek (seekTo / getSongPosition). The engine owns the
+  // `.late()` wrap; the runtime owns the seek arithmetic (offset = now -
+  // target), the isPlayingState gate, and the optional-delegate convention
+  // (non-Strudel engines no-op). We mock the engine with a controllable
+  // scheduler clock + transport-offset methods to test the wiring in
+  // isolation — the audible jump is observed end-to-end (design §10), not here.
+  // -------------------------------------------------------------------------
+  describe('transport seek (#384)', () => {
+    // Build a mock engine whose scheduler.now() is controllable and that
+    // carries the optional setTransportOffset/getTransportOffset methods the
+    // runtime delegates to. Returns helpers to drive the clock + read offset.
+    function makeSeekEngine() {
+      const engine = createMockEngine()
+      let nowVal = 0
+      let offset = 0
+      engine.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+        queryable: {
+          scheduler: {
+            now: () => nowVal,
+            query: () => [],
+          },
+        } as unknown as EngineComponents['queryable'],
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(engine as any).setTransportOffset = (o: number) => {
+        offset = Number.isFinite(o) ? o : 0
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(engine as any).getTransportOffset = () => offset
+      return {
+        engine,
+        setNow: (n: number) => {
+          nowVal = n
+        },
+        getOffset: () => offset,
+      }
+    }
+
+    it('seekTo sets offset = now - target and re-evals via play()', async () => {
+      const { engine, setNow, getOffset } = makeSeekEngine()
+      const runtime = new LiveCodingRuntime('seek-1', engine, () => 'code')
+      await runtime.play()
+      const playsBefore = engine.playFn.mock.calls.length
+
+      setNow(10) // wall-clock cycle 10
+      const res = await runtime.seekTo(3) // want songPosition = 3
+      expect(res.error).toBeNull()
+      // offset = now(10) - target(3) = 7
+      expect(getOffset()).toBe(7)
+      // seekTo re-evals through play() (the hot-swap path)
+      expect(engine.playFn.mock.calls.length).toBe(playsBefore + 1)
+      runtime.dispose()
+    })
+
+    it('getSongPosition = now - offset after a seek', async () => {
+      const { engine, setNow } = makeSeekEngine()
+      const runtime = new LiveCodingRuntime('seek-2', engine, () => 'code')
+      await runtime.play()
+
+      setNow(10)
+      await runtime.seekTo(3) // offset becomes 7
+      // clock advances two cycles past the seek instant
+      setNow(12)
+      // songPosition = now(12) - offset(7) = 5 (= target 3 + 2 elapsed)
+      expect(runtime.getSongPosition()).toBe(5)
+      runtime.dispose()
+    })
+
+    it('seeking forward yields a negative offset (.early)', async () => {
+      const { engine, setNow, getOffset } = makeSeekEngine()
+      const runtime = new LiveCodingRuntime('seek-3', engine, () => 'code')
+      await runtime.play()
+
+      setNow(4)
+      await runtime.seekTo(9) // seek FORWARD past now
+      expect(getOffset()).toBe(-5) // now(4) - target(9)
+      runtime.dispose()
+    })
+
+    it('getSongPosition is null when stopped (gated on isPlayingState)', async () => {
+      const { engine, setNow } = makeSeekEngine()
+      const runtime = new LiveCodingRuntime('seek-4', engine, () => 'code')
+      await runtime.play()
+      setNow(8)
+      await runtime.seekTo(2)
+      expect(runtime.getSongPosition()).not.toBeNull()
+      runtime.stop()
+      expect(runtime.getSongPosition()).toBeNull()
+      runtime.dispose()
+    })
+
+    it('seekTo ignores a non-finite target (no offset change, no re-eval)', async () => {
+      const { engine, setNow, getOffset } = makeSeekEngine()
+      const runtime = new LiveCodingRuntime('seek-5', engine, () => 'code')
+      await runtime.play()
+      setNow(10)
+      await runtime.seekTo(3)
+      const offsetAfterValid = getOffset()
+      const playsBefore = engine.playFn.mock.calls.length
+
+      const res = await runtime.seekTo(Number.NaN)
+      expect(res.error).toBeNull()
+      expect(getOffset()).toBe(offsetAfterValid) // unchanged
+      expect(engine.playFn.mock.calls.length).toBe(playsBefore) // no re-eval
+      runtime.dispose()
+    })
+
+    it('seekTo no-ops on an engine without setTransportOffset (non-Strudel)', async () => {
+      // Plain mock engine — no transport methods attached.
+      const engine = createMockEngine()
+      engine.setComponents({
+        streaming: makeStreamingComponent(),
+        audio: makeAudioComponent(),
+        queryable: makeQueryableComponent(),
+      })
+      const runtime = new LiveCodingRuntime('seek-6', engine, () => 'code')
+      await runtime.play()
+      const playsBefore = engine.playFn.mock.calls.length
+
+      const res = await runtime.seekTo(5)
+      expect(res.error).toBeNull()
+      // No transport method → no re-eval, no throw. getSongPosition falls
+      // back to raw now (offset defaults to 0).
+      expect(engine.playFn.mock.calls.length).toBe(playsBefore)
+      expect(runtime.getSongPosition()).toBe(0) // makeQueryableComponent now() = 0
+      runtime.dispose()
+    })
+  })
 })
