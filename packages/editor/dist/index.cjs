@@ -24917,6 +24917,18 @@ function placeNote(model, pitch, start, duration) {
   return { ...model, notes };
 }
 __name(placeNote, "placeNote");
+function resizeNote(model, start, duration) {
+  const nextStart = Math.min(
+    ...model.notes.filter((n) => n.start > start).map((n) => n.start),
+    model.steps
+  );
+  const capped = Math.max(1, Math.min(duration, nextStart - start));
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, duration: capped } : n)
+  };
+}
+__name(resizeNote, "resizeNote");
 var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
@@ -24969,7 +24981,7 @@ function PianoRollGrid() {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
-      if (!d.moved) mutate((prev) => ({ ...prev, notes: d.baseNotes }));
+      if (!d.moved && d.mode === "move") mutate((prev) => ({ ...prev, notes: d.baseNotes }));
       endGesture();
     }, "onUp");
     window.addEventListener("pointerup", onUp);
@@ -24980,6 +24992,7 @@ function PianoRollGrid() {
     const note = noteAt(model, midi, step);
     if (note) {
       dragRef.current = {
+        mode: "move",
         baseNotes: model.notes.filter((n) => n !== note),
         duration: note.duration,
         steps: model.steps,
@@ -24993,9 +25006,29 @@ function PianoRollGrid() {
       mutate((prev) => placeNote(prev, midiToPitch(midi), step, 1));
     }
   }, "onCellDown");
+  const onResizeDown = /* @__PURE__ */ __name((note) => {
+    if (!model) return;
+    dragRef.current = {
+      mode: "resize",
+      baseNotes: model.notes.filter((n) => n !== note),
+      duration: note.duration,
+      steps: model.steps,
+      grabOffset: 0,
+      origPitch: note.pitch,
+      origStart: note.start,
+      moved: false
+    };
+    beginGesture();
+  }, "onResizeDown");
   const onCellEnter = /* @__PURE__ */ __name((midi, step) => {
     const d = dragRef.current;
     if (!d || !model) return;
+    if (d.mode === "resize") {
+      const dur2 = step - d.origStart + 1;
+      mutate((prev) => resizeNote(prev, d.origStart, dur2));
+      d.moved = true;
+      return;
+    }
     const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
     const newPitch = midiToPitch(midi);
     const dur = Math.max(1, Math.min(d.duration, d.steps - newStart));
@@ -25046,6 +25079,7 @@ function PianoRollGrid() {
             const note = noteAt(model, midi, step);
             const on = note !== void 0;
             const isHead = on && note.start === step;
+            const isTail = on && note.start + note.duration - 1 === step;
             return /* @__PURE__ */ jsxRuntime.jsx(
               "button",
               {
@@ -25060,6 +25094,7 @@ function PianoRollGrid() {
                 },
                 onPointerEnter: () => onCellEnter(midi, step),
                 style: {
+                  position: "relative",
                   width: 18,
                   height: 16,
                   padding: 0,
@@ -25068,7 +25103,30 @@ function PianoRollGrid() {
                   background: on ? "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
                   opacity: on && !isHead ? 0.7 : 1,
                   cursor: "pointer"
-                }
+                },
+                children: isTail && /* @__PURE__ */ jsxRuntime.jsx(
+                  "span",
+                  {
+                    "data-roll-resize": `${midi}:${note.start}`,
+                    "aria-label": `resize ${midiToPitch(midi)}`,
+                    onPointerDown: (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onResizeDown(note);
+                    },
+                    style: {
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      right: 0,
+                      width: 5,
+                      cursor: "ew-resize",
+                      background: "var(--foreground, #e6e6ea)",
+                      opacity: 0.45,
+                      borderRadius: "0 2px 2px 0"
+                    }
+                  }
+                )
               },
               step
             );
