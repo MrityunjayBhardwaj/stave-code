@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parseStepGrid, parsePianoRoll, bjorklund } from '../parse'
 import { serializeStepGrid, serializePianoRoll } from '../serialize'
 import { pitchToMidi, midiToPitch, isBlackKey } from '../pitch'
-import { placeNote } from '../place'
+import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
 import type { StepGridModel, PianoRollModel } from '../model'
 
@@ -395,5 +395,55 @@ describe('resize', () => {
     const model: PianoRollModel = { steps: 2, notes: [{ pitch: 'c3', start: 1, duration: 1 }] }
     const next = resizeRoll(model, 4, 'spread')
     expect(next.notes[0].start).toBe(2)
+  })
+})
+
+describe('resizeNote (single-note `@n` duration)', () => {
+  it('grows a note up to the grid end', () => {
+    const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 1 }] }
+    const next = resizeNote(model, 0, 3)
+    expect(next.notes[0].duration).toBe(3)
+    // serializes as `@n`
+    expect(serializePianoRoll(next)).toBe('c3@3 ~')
+  })
+
+  it('caps the duration at the next note (no overlap)', () => {
+    const model: PianoRollModel = {
+      steps: 4,
+      notes: [
+        { pitch: 'c3', start: 0, duration: 1 },
+        { pitch: 'e3', start: 2, duration: 1 },
+      ],
+    }
+    const next = resizeNote(model, 0, 4) // would overlap e3@2 → capped to 2
+    expect(next.notes.find((n) => n.start === 0)!.duration).toBe(2)
+    expect(serializePianoRoll(next)).toBe('c3@2 e3 ~')
+  })
+
+  it('floors the duration at 1 when shrinking', () => {
+    const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 3 }] }
+    expect(resizeNote(model, 0, 0).notes[0].duration).toBe(1)
+  })
+
+  it('resizes all chord members sharing a start together', () => {
+    const model: PianoRollModel = {
+      steps: 4,
+      notes: [
+        { pitch: 'c3', start: 0, duration: 1 },
+        { pitch: 'e3', start: 0, duration: 1 },
+      ],
+    }
+    const next = resizeNote(model, 0, 3)
+    expect(next.notes.every((n) => n.duration === 3)).toBe(true)
+    expect(serializePianoRoll(next)).toBe('[c3,e3]@3 ~')
+  })
+
+  it('the resized model re-parses to the same model (stable)', () => {
+    const model: PianoRollModel = { steps: 4, notes: [{ pitch: 'c3', start: 0, duration: 1 }] }
+    const resized = resizeNote(model, 0, 2)
+    const text = serializePianoRoll(resized)!
+    const reparsed = parsePianoRoll(text)
+    expect(reparsed.ok).toBe(true)
+    if (reparsed.ok) expect(reparsed.model).toEqual(resized)
   })
 })
