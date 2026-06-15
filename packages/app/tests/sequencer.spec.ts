@@ -186,4 +186,30 @@ test.describe('Sequencer (#382)', () => {
     expect(await strudelValue(page)).toBe('$: s("hh hh hh ~ hh hh hh hh")')
     await expect(grid.locator('[data-seq-cell="0:3"]')).toHaveAttribute('aria-pressed', 'false')
   })
+
+  test('binds `bd(3,8)` euclid as an 8-step lane with 3 hits and expands on toggle (#399)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd(3,8)")')
+    await placeCursorOn(page, 'bd(3,8)')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1) // bound, not standby
+    // Bjørklund(3,8) = x . . x . . x . — hits at steps 0, 3, 6
+    const on = [0, 3, 6]
+    for (let s = 0; s < 8; s++) {
+      await expect(grid.locator(`[data-seq-cell="0:${s}"]`)).toHaveAttribute(
+        'aria-pressed',
+        on.includes(s) ? 'true' : 'false',
+      )
+    }
+    await expect(grid.locator('[data-seq-cell="0:8"]')).toHaveCount(0) // no 9th column
+
+    // turning step 1 on expands the euclid sugar into the canonical sequence
+    await grid.locator('[data-seq-cell="0:1"]').click()
+    await page.waitForTimeout(100)
+    expect(await strudelValue(page)).toBe('$: s("bd bd ~ bd ~ ~ bd ~")')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'true')
+  })
 })
