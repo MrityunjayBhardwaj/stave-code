@@ -24136,6 +24136,24 @@ var NOTE = /^[a-gA-G][bs#]?-?\d$/;
 var MAX_STEPS = 64;
 var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
 var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
+function bjorklund2(k, n) {
+  if (k <= 0) return Array(n).fill(false);
+  if (k >= n) return Array(n).fill(true);
+  let a = Array.from({ length: k }, () => [true]);
+  let b = Array.from({ length: n - k }, () => [false]);
+  while (b.length > 1) {
+    const count = Math.min(a.length, b.length);
+    const merged = [];
+    for (let i = 0; i < count; i++) merged.push([...a[i], ...b[i]]);
+    const restA = a.slice(count);
+    const restB = b.slice(count);
+    a = merged;
+    b = restA.length ? restA : restB;
+  }
+  return [...a, ...b].flat();
+}
+__name(bjorklund2, "bjorklund");
+var rotateLeft = /* @__PURE__ */ __name((pattern, rot) => pattern.map((_, i) => pattern[(i + rot) % pattern.length]), "rotateLeft");
 var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
 var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
 function closeBracket(src, open) {
@@ -24152,9 +24170,10 @@ function splitTopLevel(src) {
   let depth = 0;
   let from = 0;
   for (let i = 0; i < src.length; i++) {
-    if (src[i] === "[") depth++;
-    else if (src[i] === "]") depth--;
-    else if (src[i] === "," && depth === 0) {
+    const c = src[i];
+    if (c === "[" || c === "(") depth++;
+    else if (c === "]" || c === ")") depth--;
+    else if (c === "," && depth === 0) {
       out.push(src.slice(from, i));
       from = i + 1;
     }
@@ -24184,6 +24203,20 @@ function readMultiplier(src, i) {
   return { ok: true, value, next: i + 1 + digits[0].length };
 }
 __name(readMultiplier, "readMultiplier");
+function readEuclid(src, i) {
+  if (src[i] !== "(") return { ok: true, spec: null, next: i };
+  const close = src.indexOf(")", i);
+  if (close === -1) return { ok: false, reason: "unbalanced euclid parens" };
+  const inner = src.slice(i + 1, close);
+  const m = inner.match(/^\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?$/);
+  if (!m) return { ok: false, reason: "invalid euclid (k,n) arguments" };
+  const k = parseInt(m[1], 10);
+  const n = parseInt(m[2], 10);
+  if (n < 1) return { ok: false, reason: "invalid euclid step count" };
+  const rot = m[3] !== void 0 ? parseInt(m[3], 10) : 0;
+  return { ok: true, spec: { k, n, rot }, next: close + 1 };
+}
+__name(readEuclid, "readEuclid");
 function parseGroup(inner, elongation) {
   const commaParts = splitTopLevel(inner);
   if (commaParts.length > 1) {
@@ -24230,7 +24263,7 @@ function parseGroup(inner, elongation) {
       slots.push({ atoms, units: elong2.value });
       continue;
     }
-    const match = inner.slice(i).match(/^[^\s[\]@,*]+/);
+    const match = inner.slice(i).match(/^[^\s[\]@,*(]+/);
     if (!match || !ATOM.test(match[0])) {
       return { reason: `unsupported token "${match?.[0] ?? ch}"` };
     }
@@ -24250,7 +24283,7 @@ __name(parseGroup, "parseGroup");
 function tokenize2(mini) {
   const src = mini.trim();
   if (src === "") return { ok: true, steps: [] };
-  if (/[<>{}/!?()%._|]/.test(src)) {
+  if (/[<>{}/!?%._|]/.test(src)) {
     return { ok: false, reason: "uses mini-notation features beyond the editable subset" };
   }
   const steps = [];
@@ -24279,18 +24312,28 @@ function tokenize2(mini) {
       steps.push(group);
       continue;
     }
-    const match = src.slice(i).match(/^[^\s[\]@,*]+/);
+    const match = src.slice(i).match(/^[^\s[\]@,*(]+/);
     if (!match || !ATOM.test(match[0])) {
       return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` };
     }
     i += match[0].length;
+    const euclid = readEuclid(src, i);
+    if (!euclid.ok) return { ok: false, reason: euclid.reason };
+    i = euclid.next;
     const mult = readMultiplier(src, i);
     if (!mult.ok) return { ok: false, reason: mult.reason };
     i = mult.next;
     const elong = readElongation(src, i);
     if (!elong.ok) return { ok: false, reason: elong.reason };
     i = elong.next;
-    if (mult.value > 1) {
+    if (euclid.spec) {
+      if (mult.value > 1 || elong.value > 1) {
+        return { ok: false, reason: "euclid combined with * or @ is beyond the editable subset" };
+      }
+      const hits = rotateLeft(bjorklund2(euclid.spec.k, euclid.spec.n), euclid.spec.rot);
+      const slots = hits.map((on) => ({ atoms: on ? [match[0]] : [], units: 1 }));
+      steps.push({ atoms: [], elongation: 1, sub: slots });
+    } else if (mult.value > 1) {
       if (elong.value > 1) {
         return { ok: false, reason: "* combined with @ is beyond the editable subset" };
       }
