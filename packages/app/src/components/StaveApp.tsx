@@ -56,6 +56,7 @@ import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
+import { ResizableSidebar } from "./ResizableSidebar";
 import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
 import { ConsolePanel } from "./ConsolePanel";
 import { IRInspectorPanel } from "./IRInspectorPanel";
@@ -1032,68 +1033,74 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             }}
           />
         )}
-        {!zenMode && activePanelId === "explorer" && (
-          <FileTree
-            ref={fileTreeRef}
-            projectName={activeProject.name}
-            onOpenFile={handleOpenFile}
-            activeFileId={activeFileId}
-            onToggleCollapse={() => setActivePanelId(null)}
-            onImportZipProject={handleImportZip}
-            onFileHistory={(fileId) => {
-              setFileHistoryTarget(fileId);
-              setActivePanelId("snapshots");
-            }}
-          />
-        )}
-        {!zenMode && activePanelId === "search" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>SEARCH</div>
-            <WorkspaceSearchView
-              ref={searchViewRef}
-              compact
-              onOpenFile={(id) => handleOpenFile(id, { preview: true })}
-            />
-          </div>
-        )}
-        {!zenMode && activePanelId === "snapshots" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>VERSION HISTORY</div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <HistoryPanel
-                onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+        {/* The left panel's width is owned in ONE place — ResizableSidebar —
+            so resize/collapse behave identically regardless of which tab is
+            active (#341). Switching tabs swaps only the content. */}
+        {!zenMode && activePanelId !== null && (
+          <ResizableSidebar onCollapse={() => setActivePanelId(null)}>
+            {activePanelId === "explorer" && (
+              <FileTree
+                ref={fileTreeRef}
+                projectName={activeProject.name}
+                onOpenFile={handleOpenFile}
+                activeFileId={activeFileId}
+                onImportZipProject={handleImportZip}
+                onFileHistory={(fileId) => {
+                  setFileHistoryTarget(fileId);
+                  setActivePanelId("snapshots");
+                }}
               />
-            </div>
-          </div>
-        )}
-        {!zenMode && activePanelId === "console" && <ConsolePanel />}
-        {!zenMode && activePanelId === "ir-inspector" && (
-          <IRInspectorPanel
-            getHapStream={() => getHapStreamRef.current()}
-            getBreakpointStore={() => getBreakpointStoreRef.current()}
-            getIsPaused={() => getIsPausedRef.current()}
-            onResume={() => onResumeRef.current()}
-            onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
-          />
-        )}
-        {!zenMode && activePanelId === "outline" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>OUTLINE</div>
-            <OutlineView
-              activeFileId={activeFileId}
-              onJump={(fileId, line) => {
-                handleOpenFile(fileId, { preview: false });
-                // The tab may need a tick to mount its Monaco instance;
-                // retry up to a few times until the editor is registered.
-                let tries = 0;
-                const tick = () => {
-                  if (revealLineInFile(fileId, line)) return;
-                  if (++tries < 10) setTimeout(tick, 40);
-                };
-                setTimeout(tick, 50);
-              }}
-            />
-          </div>
+            )}
+            {activePanelId === "search" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>SEARCH</div>
+                <WorkspaceSearchView
+                  ref={searchViewRef}
+                  compact
+                  onOpenFile={(id) => handleOpenFile(id, { preview: true })}
+                />
+              </div>
+            )}
+            {activePanelId === "snapshots" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>VERSION HISTORY</div>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <HistoryPanel
+                    onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+                  />
+                </div>
+              </div>
+            )}
+            {activePanelId === "console" && <ConsolePanel />}
+            {activePanelId === "ir-inspector" && (
+              <IRInspectorPanel
+                getHapStream={() => getHapStreamRef.current()}
+                getBreakpointStore={() => getBreakpointStoreRef.current()}
+                getIsPaused={() => getIsPausedRef.current()}
+                onResume={() => onResumeRef.current()}
+                onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
+              />
+            )}
+            {activePanelId === "outline" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>OUTLINE</div>
+                <OutlineView
+                  activeFileId={activeFileId}
+                  onJump={(fileId, line) => {
+                    handleOpenFile(fileId, { preview: false });
+                    // The tab may need a tick to mount its Monaco instance;
+                    // retry up to a few times until the editor is registered.
+                    let tries = 0;
+                    const tick = () => {
+                      if (revealLineInFile(fileId, line)) return;
+                      if (++tries < 10) setTimeout(tick, 40);
+                    };
+                    setTimeout(tick, 50);
+                  }}
+                />
+              </div>
+            )}
+          </ResizableSidebar>
         )}
 
         <div style={styles.editorArea}>
@@ -1412,10 +1419,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   panelRoot: {
-    width: 240,
+    // Width + right border are owned by the ResizableSidebar wrapper (#341);
+    // the panel content just fills it.
+    width: "100%",
     height: "100%",
     background: "var(--bg-panel)",
-    borderRight: "1px solid var(--border-subtle)",
     display: "flex",
     flexDirection: "column",
     fontFamily: "system-ui, -apple-system, sans-serif",
