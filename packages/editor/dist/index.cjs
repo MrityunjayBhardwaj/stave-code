@@ -3,10 +3,10 @@
 var core = require('@strudel/core');
 var React17 = require('react');
 var p5 = require('p5');
+var acorn = require('acorn');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
 var Y3 = require('yjs');
-var acorn = require('acorn');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
@@ -5902,6 +5902,292 @@ var _VizGovernor = class _VizGovernor {
 __name(_VizGovernor, "VizGovernor");
 var VizGovernor = _VizGovernor;
 var vizGovernor = new VizGovernor();
+function parseTopLevel(doc) {
+  try {
+    const program = acorn.parse(doc, {
+      ecmaVersion: "latest",
+      allowAwaitOutsideFunction: true
+    });
+    return program.body;
+  } catch {
+    return null;
+  }
+}
+__name(parseTopLevel, "parseTopLevel");
+function docParses(doc) {
+  return parseTopLevel(doc) !== null;
+}
+__name(docParses, "docParses");
+function isChunkFresh(doc, chunk) {
+  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
+}
+__name(isChunkFresh, "isChunkFresh");
+function detectChunk(doc, pos) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  for (const node of statements) {
+    if (pos >= node.start && pos <= node.end) {
+      let label = null;
+      let body = node;
+      if (node.type === "LabeledStatement") {
+        label = node.label.name;
+        body = node.body;
+      }
+      if (body.type !== "ExpressionStatement") return null;
+      const topExpr = body.expression;
+      const target = innermostChainUnder(doc, topExpr, pos);
+      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end]);
+    }
+  }
+  return null;
+}
+__name(detectChunk, "detectChunk");
+function detectAllChunks(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return [];
+  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
+}
+__name(detectAllChunks, "detectAllChunks");
+function buildChunk(doc, node) {
+  let label = null;
+  let body = node;
+  if (node.type === "LabeledStatement") {
+    label = node.label.name;
+    body = node.body;
+  }
+  if (body.type !== "ExpressionStatement") return null;
+  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
+}
+__name(buildChunk, "buildChunk");
+function buildChunkFromExpr(doc, expr, label, stmtRange) {
+  const headNode = { ref: null };
+  const chain = collectChain(doc, expr, headNode);
+  const headFn = chain.length > 0 ? chain[0].name : null;
+  let miniRange = null;
+  let miniString = null;
+  if (headNode.ref) {
+    const firstString = headNode.ref.arguments.find(
+      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
+    );
+    if (firstString) {
+      miniRange = [firstString.start + 1, firstString.end - 1];
+      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
+    }
+  }
+  const info = {
+    statementRange: stmtRange,
+    statementText: doc.slice(stmtRange[0], stmtRange[1]),
+    exprRange: [expr.start, expr.end],
+    label,
+    headFn,
+    miniRange,
+    miniString,
+    chain,
+    type: "unknown"
+  };
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildChunkFromExpr, "buildChunkFromExpr");
+function innermostChainUnder(doc, expr, pos) {
+  const headOut = { ref: null };
+  collectChain(doc, expr, headOut);
+  const head = headOut.ref;
+  if (!head || !Array.isArray(head.arguments)) return expr;
+  for (const arg of head.arguments) {
+    if (arg && arg.type === "CallExpression" && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
+      return innermostChainUnder(doc, arg, pos);
+    }
+  }
+  return expr;
+}
+__name(innermostChainUnder, "innermostChainUnder");
+function collectChain(doc, expr, headOut) {
+  const calls = [];
+  let node = expr;
+  while (node) {
+    if (node.type === "CallExpression") {
+      const callee = node.callee;
+      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
+        const dot = doc.lastIndexOf(".", callee.property.start);
+        calls.push({
+          name: callee.property.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [dot, node.end]
+        });
+        node = callee.object;
+        continue;
+      }
+      if (callee.type === "Identifier") {
+        calls.push({
+          name: callee.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [node.start, node.end]
+        });
+        headOut.ref = node;
+      }
+    }
+    break;
+  }
+  return calls.reverse();
+}
+__name(collectChain, "collectChain");
+function toArg(doc, node) {
+  let numeric = null;
+  if (node.type === "Literal" && typeof node.value === "number") {
+    numeric = node.value;
+  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
+    numeric = -node.argument.value;
+  }
+  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
+}
+__name(toArg, "toArg");
+function classifyChunk(info) {
+  const head = info.headFn;
+  if (info.miniString !== null) {
+    if (head === "note" || head === "n") return "roll";
+    if (head === "s" || head === "sound") return "step";
+  }
+  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
+  return "unknown";
+}
+__name(classifyChunk, "classifyChunk");
+
+// src/visualEdit/writeback.ts
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+function applyEdits(doc, edits) {
+  const sorted = normalizeEdits(edits);
+  let out = doc;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const { range, text } = sorted[i];
+    out = out.slice(0, range[0]) + text + out.slice(range[1]);
+  }
+  return out;
+}
+__name(applyEdits, "applyEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+  }
+  /** Close the gesture, sealing all its edits as one undo step. */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range, text, source) {
+    this.apply([{ range, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range, source) {
+    this.apply([{ range, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
 
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
@@ -5964,6 +6250,18 @@ function revealLineInFile(fileId, line) {
   }
 }
 __name(revealLineInFile, "revealLineInFile");
+function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
+  const editor = editors.get(fileId);
+  if (!editor || !monacoNs || edits.length === 0) return false;
+  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) return false;
+  try {
+    new Writeback(editor, monacoNs).replaceRanges(edits, source);
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(applyOffsetEditsToFile, "applyOffsetEditsToFile");
 var DEFAULT_FONT_SIZE = 14;
 var FONT_SIZE_STORAGE = "stave:editorFontSize";
 var MINIMAP_STORAGE = "stave:editorMinimap";
@@ -23934,294 +24232,6 @@ registerBottomPanelTab({
   title: "Timeline",
   content: React17__namespace.createElement(EmptyTimelineStub)
 });
-function parseTopLevel(doc) {
-  try {
-    const program = acorn.parse(doc, {
-      ecmaVersion: "latest",
-      allowAwaitOutsideFunction: true
-    });
-    return program.body;
-  } catch {
-    return null;
-  }
-}
-__name(parseTopLevel, "parseTopLevel");
-function docParses(doc) {
-  return parseTopLevel(doc) !== null;
-}
-__name(docParses, "docParses");
-function isChunkFresh(doc, chunk) {
-  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
-}
-__name(isChunkFresh, "isChunkFresh");
-function detectChunk(doc, pos) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return null;
-  for (const node of statements) {
-    if (pos >= node.start && pos <= node.end) {
-      let label = null;
-      let body = node;
-      if (node.type === "LabeledStatement") {
-        label = node.label.name;
-        body = node.body;
-      }
-      if (body.type !== "ExpressionStatement") return null;
-      const topExpr = body.expression;
-      const target = innermostChainUnder(doc, topExpr, pos);
-      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end]);
-    }
-  }
-  return null;
-}
-__name(detectChunk, "detectChunk");
-function detectAllChunks(doc) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return [];
-  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
-}
-__name(detectAllChunks, "detectAllChunks");
-function buildChunk(doc, node) {
-  let label = null;
-  let body = node;
-  if (node.type === "LabeledStatement") {
-    label = node.label.name;
-    body = node.body;
-  }
-  if (body.type !== "ExpressionStatement") return null;
-  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
-}
-__name(buildChunk, "buildChunk");
-function buildChunkFromExpr(doc, expr, label, stmtRange) {
-  const headNode = { ref: null };
-  const chain = collectChain(doc, expr, headNode);
-  const headFn = chain.length > 0 ? chain[0].name : null;
-  let miniRange = null;
-  let miniString = null;
-  if (headNode.ref) {
-    const firstString = headNode.ref.arguments.find(
-      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
-    );
-    if (firstString) {
-      miniRange = [firstString.start + 1, firstString.end - 1];
-      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
-    }
-  }
-  const info = {
-    statementRange: stmtRange,
-    statementText: doc.slice(stmtRange[0], stmtRange[1]),
-    exprRange: [expr.start, expr.end],
-    label,
-    headFn,
-    miniRange,
-    miniString,
-    chain,
-    type: "unknown"
-  };
-  info.type = classifyChunk(info);
-  return info;
-}
-__name(buildChunkFromExpr, "buildChunkFromExpr");
-function innermostChainUnder(doc, expr, pos) {
-  const headOut = { ref: null };
-  collectChain(doc, expr, headOut);
-  const head = headOut.ref;
-  if (!head || !Array.isArray(head.arguments)) return expr;
-  for (const arg of head.arguments) {
-    if (arg && arg.type === "CallExpression" && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
-      return innermostChainUnder(doc, arg, pos);
-    }
-  }
-  return expr;
-}
-__name(innermostChainUnder, "innermostChainUnder");
-function collectChain(doc, expr, headOut) {
-  const calls = [];
-  let node = expr;
-  while (node) {
-    if (node.type === "CallExpression") {
-      const callee = node.callee;
-      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
-        const dot = doc.lastIndexOf(".", callee.property.start);
-        calls.push({
-          name: callee.property.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [dot, node.end]
-        });
-        node = callee.object;
-        continue;
-      }
-      if (callee.type === "Identifier") {
-        calls.push({
-          name: callee.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [node.start, node.end]
-        });
-        headOut.ref = node;
-      }
-    }
-    break;
-  }
-  return calls.reverse();
-}
-__name(collectChain, "collectChain");
-function toArg(doc, node) {
-  let numeric = null;
-  if (node.type === "Literal" && typeof node.value === "number") {
-    numeric = node.value;
-  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
-    numeric = -node.argument.value;
-  }
-  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
-}
-__name(toArg, "toArg");
-function classifyChunk(info) {
-  const head = info.headFn;
-  if (info.miniString !== null) {
-    if (head === "note" || head === "n") return "roll";
-    if (head === "s" || head === "sound") return "step";
-  }
-  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
-  return "unknown";
-}
-__name(classifyChunk, "classifyChunk");
-
-// src/visualEdit/writeback.ts
-function formatNumber(v, maxDecimals = 4) {
-  if (!Number.isFinite(v)) return "0";
-  if (Number.isInteger(v)) return String(v);
-  const fixed = v.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, "");
-}
-__name(formatNumber, "formatNumber");
-function normalizeEdits(edits) {
-  for (const e of edits) {
-    if (e.range[0] > e.range[1]) {
-      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
-    }
-  }
-  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].range;
-    const cur = sorted[i].range;
-    if (cur[0] < prev[1]) {
-      throw new Error(
-        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
-      );
-    }
-  }
-  return sorted;
-}
-__name(normalizeEdits, "normalizeEdits");
-function applyEdits(doc, edits) {
-  const sorted = normalizeEdits(edits);
-  let out = doc;
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const { range, text } = sorted[i];
-    out = out.slice(0, range[0]) + text + out.slice(range[1]);
-  }
-  return out;
-}
-__name(applyEdits, "applyEdits");
-var _Writeback = class _Writeback {
-  constructor(editor, monaco) {
-    this.editor = editor;
-    this.monaco = monaco;
-    this.writingSource = null;
-    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
-    this.inGesture = false;
-  }
-  /**
-   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
-   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
-   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
-   * the undo grouping is affected. Idempotent if already in a gesture.
-   */
-  beginGesture() {
-    if (this.inGesture) return;
-    const model = this.editor.getModel();
-    if (!model) return;
-    model.pushStackElement();
-    this.inGesture = true;
-  }
-  /** Close the gesture, sealing all its edits as one undo step. */
-  endGesture() {
-    if (!this.inGesture) return;
-    this.inGesture = false;
-    this.editor.getModel()?.pushStackElement();
-  }
-  /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
-   */
-  get currentSource() {
-    return this.writingSource;
-  }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range, text, source) {
-    this.apply([{ range, text }], source);
-  }
-  /**
-   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-   * the whole gesture).
-   */
-  replaceRanges(edits, source) {
-    this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range, source) {
-    this.apply([{ range, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
-    return true;
-  }
-  apply(edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return;
-    const normalized = normalizeEdits(edits);
-    const ops = normalized.map((e) => {
-      const start = model.getPositionAt(e.range[0]);
-      const end = model.getPositionAt(e.range[1]);
-      return {
-        range: new this.monaco.Range(
-          start.lineNumber,
-          start.column,
-          end.lineNumber,
-          end.column
-        ),
-        text: e.text,
-        forceMoveMarkers: true
-      };
-    });
-    if (!this.inGesture) model.pushStackElement();
-    this.writingSource = source;
-    try {
-      model.pushEditOperations([], ops, () => null);
-    } finally {
-      this.writingSource = null;
-    }
-    if (!this.inGesture) model.pushStackElement();
-  }
-};
-__name(_Writeback, "Writeback");
-var Writeback = _Writeback;
-
-// src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const [editor, setEditor] = React17__namespace.useState(() => getActiveEditor());
   const [chunk, setChunk] = React17__namespace.useState(null);
@@ -32861,6 +32871,7 @@ exports.accumulateLanes = accumulateLanes;
 exports.analyzeEvents = analyzeEvents;
 exports.analyzeSong = analyzeSong;
 exports.applyEdits = applyEdits;
+exports.applyOffsetEditsToFile = applyOffsetEditsToFile;
 exports.applyPersistedAdaptivePerf = applyPersistedAdaptivePerf;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;
 exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
