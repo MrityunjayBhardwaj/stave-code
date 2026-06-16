@@ -107,11 +107,67 @@ export function scrollLeftForZoom(params: {
   return Math.max(0, Math.min(maxScroll, next))
 }
 
+// ── Follow / auto-scroll (#415) ──────────────────────────────────────────────
+//
+// When zoomed in, the playhead can advance past the right edge of the viewport
+// while playing. "Follow" mode auto-scrolls to keep it in view. This helper is
+// renderer-agnostic — it only computes a target `scrollLeft` from the playhead's
+// CONTENT-space x (already produced by `songCycleToX` against `contentWidth`),
+// so it carries straight into the canvas view (the timeline never re-derives it).
+//
+// A centered dead-zone band avoids churn: while the playhead drifts within the
+// band the current offset is returned unchanged (so the caller's `prev === next`
+// guard short-circuits). Once it exits the band the playhead is recentered,
+// clamped to the scrollable range — at the song's ends it simply pins to the
+// edge (no oscillation, because the clamped target equals the clamped current).
+
+export interface FollowOptions {
+  /** Width of the centered no-scroll band as a fraction of the viewport. The
+   *  playhead may drift within this band without triggering an auto-scroll.
+   *  0 = recenter on every step; 1 = only scroll once it leaves the viewport.
+   *  Clamped to [0, 1]. Default 0.6 (the middle 60%). */
+  readonly deadZone?: number
+}
+
+const DEFAULT_DEAD_ZONE = 0.6
+
+/**
+ * Target horizontal scroll offset that keeps the playhead within a centered
+ * dead-zone band. `playheadX` is the playhead's content-space x (e.g. from
+ * `songCycleToX(pos, displayCycles, contentWidth)`). Returns the (clamped)
+ * current offset when the playhead is already in-band or there is nothing to
+ * scroll (`contentWidth ≤ viewportWidth`), so callers can no-op on no change.
+ */
+export function followScrollLeft(
+  playheadX: number,
+  viewportWidth: number,
+  contentWidth: number,
+  currentScrollLeft: number,
+  opts: FollowOptions = {},
+): number {
+  const maxScroll = Math.max(0, contentWidth - viewportWidth)
+  const clampedCurrent = Math.max(0, Math.min(maxScroll, Number.isFinite(currentScrollLeft) ? currentScrollLeft : 0))
+  // Nothing to scroll (not zoomed) or degenerate input → pin to a valid offset.
+  if (viewportWidth <= 0 || maxScroll <= 0 || !Number.isFinite(playheadX)) return clampedCurrent
+  const band = Math.max(0, Math.min(1, opts.deadZone ?? DEFAULT_DEAD_ZONE))
+  const playheadViewportX = playheadX - clampedCurrent
+  const lowEdge = viewportWidth * (0.5 - band / 2)
+  const highEdge = viewportWidth * (0.5 + band / 2)
+  // In-band → no churn (return the clamped current offset unchanged).
+  if (playheadViewportX >= lowEdge && playheadViewportX <= highEdge) return clampedCurrent
+  // Out of band → recenter the playhead, clamped to the scrollable range.
+  return Math.max(0, Math.min(maxScroll, playheadX - viewportWidth / 2))
+}
+
 // ── Ruler ticks (#412) ───────────────────────────────────────────────────────
 
 /** Beats per bar for the BARS ruler. Strudel has no fixed meter (one cycle is
  *  one bar), so beats are a display subdivision; 4 is the universal DAW default. */
 export const BEATS_PER_BAR = 4
+
+/** Upper bound on the total number of ruler ticks (majors + beats) at any zoom,
+ *  so a long-horizon song can't flood the DOM with ~1k+ tick divs (#415). */
+export const MAX_TICKS = 600
 
 export interface RulerTick {
   /** Song cycle position (fractional for beat ticks). */
@@ -141,8 +197,17 @@ export function rulerTicks(
   const BEAT_MIN_PX = 14
   let step = 1
   while (step * pxPerCycle < MIN_MAJOR_PX) step *= 2
+  // Density cap (#415): a long song at high zoom can otherwise emit ~1k+ divs
+  // (e.g. 256 cycles × 4 beats). Thin majors by powers of two until the major
+  // count fits the budget, and only show beats if they fit too — so the total
+  // tick count never exceeds MAX_TICKS regardless of zoom/horizon.
+  while (displayCycles / step > MAX_TICKS) step *= 2
+  const majorCount = Math.ceil(displayCycles / step)
   const showBeats =
-    mode === 'bars' && step === 1 && pxPerCycle / BEATS_PER_BAR >= BEAT_MIN_PX
+    mode === 'bars' &&
+    step === 1 &&
+    pxPerCycle / BEATS_PER_BAR >= BEAT_MIN_PX &&
+    majorCount * BEATS_PER_BAR <= MAX_TICKS
   const ticks: RulerTick[] = []
   for (let c = 0; c < displayCycles; c += step) {
     ticks.push({ cycle: c, label: mode === 'bars' ? String(c + 1) : String(c), major: true })

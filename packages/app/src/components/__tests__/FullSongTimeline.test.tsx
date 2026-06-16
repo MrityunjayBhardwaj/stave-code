@@ -151,6 +151,32 @@ describe('FullSongTimeline', () => {
     expect((container.querySelector('[data-full-song-zoom-fit]') as HTMLButtonElement).disabled).toBe(false)
   })
 
+  // ── Follow toggle (#415) ───────────────────────────────────────────────────
+
+  it('renders the Follow toggle defaulting to on', async () => {
+    const { container } = renderFull()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const toggle = container.querySelector('[data-full-song-follow-toggle]') as HTMLButtonElement
+    expect(toggle).not.toBeNull()
+    expect(toggle.getAttribute('data-follow')).toBe('on')
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('flips Follow off on click', async () => {
+    const { container } = renderFull()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const toggle = container.querySelector('[data-full-song-follow-toggle]') as HTMLButtonElement
+    await act(async () => {
+      toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(toggle.getAttribute('data-follow')).toBe('off')
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+  })
+
   it('toggles CYCLES ↔ BARS and adds beat ticks in bars mode', async () => {
     const { container } = renderFull()
     await act(async () => {
