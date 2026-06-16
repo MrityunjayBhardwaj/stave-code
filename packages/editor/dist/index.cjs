@@ -24513,6 +24513,36 @@ function applyStepGain(model, gainMini, foreign = false) {
   return { ...model, gains };
 }
 __name(applyStepGain, "applyStepGain");
+function applyRollGain(model, gainMini, foreign = false) {
+  if (foreign) return { ...model, gainForeign: true };
+  if (gainMini === null) return model;
+  if (model.bars != null) return { ...model, gainForeign: true };
+  const byStart = /* @__PURE__ */ new Map();
+  let col = 0;
+  for (const t of gainMini.trim().split(/\s+/).filter((s) => s !== "")) {
+    if (t === "~") {
+      col += 1;
+      continue;
+    }
+    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/);
+    if (!m) return { ...model, gainForeign: true };
+    byStart.set(col, parseFloat(m[1]));
+    col += m[2] ? parseInt(m[2], 10) : 1;
+  }
+  if (col !== model.steps) return { ...model, gainForeign: true };
+  const noteStarts = new Set(model.notes.map((n) => n.start));
+  for (const [c, v] of byStart) {
+    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true };
+  }
+  return {
+    ...model,
+    notes: model.notes.map((n) => {
+      const v = byStart.get(n.start);
+      return v != null && v !== 1 ? { ...n, gain: v } : n;
+    })
+  };
+}
+__name(applyRollGain, "applyRollGain");
 function parsePianoRoll(mini) {
   const alt = unwrapAlternation(mini);
   const tok = tokenize2(alt ?? mini);
@@ -24684,6 +24714,38 @@ function rollBars(groups, steps, bars) {
   return `<${slots.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
+function serializeRollGain(model) {
+  if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: "skip" };
+  const groups = /* @__PURE__ */ new Map();
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return { kind: "skip" };
+    }
+    const gain = note.gain ?? 1;
+    const g = groups.get(note.start);
+    if (!g) groups.set(note.start, { duration: note.duration, gain });
+    else if (g.duration !== note.duration || g.gain !== gain) return { kind: "skip" };
+  }
+  if ([...groups.values()].every((g) => g.gain === 1)) return { kind: "clear" };
+  const cols = [];
+  let col = 0;
+  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
+    if (start < col) return { kind: "skip" };
+    while (col < start) {
+      cols.push("~");
+      col++;
+    }
+    const g = groups.get(start);
+    cols.push(g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${g.duration}`);
+    col += g.duration;
+  }
+  while (col < model.steps) {
+    cols.push("~");
+    col++;
+  }
+  return { kind: "write", mini: cols.join(" ") };
+}
+__name(serializeRollGain, "serializeRollGain");
 function VisualEditStandby({
   panel,
   hint,
@@ -25127,6 +25189,24 @@ var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
+var LANE_HEIGHT = 48;
+var VELOCITY_FULL_PX2 = 80;
+var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+function gainInScope2(model) {
+  return !model.gainForeign && (model.bars ?? 1) === 1;
+}
+__name(gainInScope2, "gainInScope");
+function gainAtStart(model, start) {
+  return model.notes.find((n) => n.start === start)?.gain ?? 1;
+}
+__name(gainAtStart, "gainAtStart");
+function setGroupGain(model, start, gain) {
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, gain } : n)
+  };
+}
+__name(setGroupGain, "setGroupGain");
 function contentRange(model) {
   const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
   if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
@@ -25146,9 +25226,12 @@ function PianoRollGrid() {
     source: "roll",
     eligible: isRollChunk,
     parse: parsePianoRoll,
-    serialize: serializePianoRoll
+    serialize: serializePianoRoll,
+    applyGain: applyRollGain,
+    serializeGain: serializeRollGain
   });
   const dragRef = React17__namespace.useRef(null);
+  const velRef = React17__namespace.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [range, setRange] = React17__namespace.useState({
     lo: DEFAULT_LO,
@@ -25181,6 +25264,30 @@ function PianoRollGrid() {
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
+  React17__namespace.useEffect(() => {
+    const onMove = /* @__PURE__ */ __name((e) => {
+      const v = velRef.current;
+      if (!v) return;
+      const next = clamp012(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
+      mutate((prev) => setGroupGain(prev, v.start, next));
+    }, "onMove");
+    const onUp = /* @__PURE__ */ __name(() => {
+      if (!velRef.current) return;
+      velRef.current = null;
+      endGesture();
+    }, "onUp");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [mutate, endGesture]);
+  const onBarDown = /* @__PURE__ */ __name((start, e) => {
+    if (!model) return;
+    velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) };
+    beginGesture();
+  }, "onBarDown");
   const onCellDown = /* @__PURE__ */ __name((midi, step) => {
     if (!model) return;
     const note = noteAt(model, midi, step);
@@ -25254,81 +25361,147 @@ function PianoRollGrid() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
-      children: /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" }, children: rows.map((midi) => {
-        const black = isBlackKey(midi);
-        return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-          /* @__PURE__ */ jsxRuntime.jsx(
-            "span",
-            {
-              style: {
-                width: 36,
-                fontSize: 9,
-                textAlign: "right",
-                color: black ? "var(--foreground-muted, #a0a0aa)" : "var(--foreground, #e6e6ea)"
-              },
-              children: midiToPitch(midi)
-            }
-          ),
-          /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
-            const note = noteAt(model, midi, step);
-            const on = note !== void 0;
-            const isHead = on && note.start === step;
-            const isTail = on && note.start + note.duration - 1 === step;
-            return /* @__PURE__ */ jsxRuntime.jsx(
-              "button",
+      children: /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" }, children: [
+        rows.map((midi) => {
+          const black = isBlackKey(midi);
+          return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "span",
               {
-                type: "button",
-                "aria-pressed": on,
-                "aria-label": `${midiToPitch(midi)} step ${step + 1}`,
-                "data-roll-cell": `${midi}:${step}`,
-                "data-playing": step === playingStep ? "true" : void 0,
-                onPointerDown: (e) => {
-                  e.preventDefault();
-                  onCellDown(midi, step);
-                },
-                onPointerEnter: () => onCellEnter(midi, step),
                 style: {
-                  position: "relative",
-                  flex: "1 1 0",
-                  minWidth: 12,
-                  maxWidth: 44,
-                  height: 16,
-                  padding: 0,
-                  border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                  borderRadius: 2,
-                  background: on ? "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                  opacity: on && !isHead ? 0.7 : 1,
-                  cursor: "pointer"
+                  width: 36,
+                  fontSize: 9,
+                  textAlign: "right",
+                  color: black ? "var(--foreground-muted, #a0a0aa)" : "var(--foreground, #e6e6ea)"
                 },
-                children: isTail && /* @__PURE__ */ jsxRuntime.jsx(
-                  "span",
-                  {
-                    "data-roll-resize": `${midi}:${note.start}`,
-                    "aria-label": `resize ${midiToPitch(midi)}`,
-                    onPointerDown: (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onResizeDown(note);
-                    },
-                    style: {
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      right: 0,
-                      width: 5,
-                      cursor: "ew-resize",
-                      background: "var(--foreground, #e6e6ea)",
-                      opacity: 0.45,
-                      borderRadius: "0 2px 2px 0"
+                children: midiToPitch(midi)
+              }
+            ),
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
+              const note = noteAt(model, midi, step);
+              const on = note !== void 0;
+              const isHead = on && note.start === step;
+              const isTail = on && note.start + note.duration - 1 === step;
+              return /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  "aria-pressed": on,
+                  "aria-label": `${midiToPitch(midi)} step ${step + 1}`,
+                  "data-roll-cell": `${midi}:${step}`,
+                  "data-playing": step === playingStep ? "true" : void 0,
+                  onPointerDown: (e) => {
+                    e.preventDefault();
+                    onCellDown(midi, step);
+                  },
+                  onPointerEnter: () => onCellEnter(midi, step),
+                  style: {
+                    position: "relative",
+                    flex: "1 1 0",
+                    minWidth: 12,
+                    maxWidth: 44,
+                    height: 16,
+                    padding: 0,
+                    border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                    borderRadius: 2,
+                    background: on ? "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+                    opacity: on && !isHead ? 0.7 : 1,
+                    cursor: "pointer"
+                  },
+                  children: isTail && /* @__PURE__ */ jsxRuntime.jsx(
+                    "span",
+                    {
+                      "data-roll-resize": `${midi}:${note.start}`,
+                      "aria-label": `resize ${midiToPitch(midi)}`,
+                      onPointerDown: (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onResizeDown(note);
+                      },
+                      style: {
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        right: 0,
+                        width: 5,
+                        cursor: "ew-resize",
+                        background: "var(--foreground, #e6e6ea)",
+                        opacity: 0.45,
+                        borderRadius: "0 2px 2px 0"
+                      }
                     }
-                  }
-                )
-              },
-              step
-            );
-          }) })
-        ] }, midi);
-      }) })
+                  )
+                },
+                step
+              );
+            }) })
+          ] }, midi);
+        }),
+        gainInScope2(model) && /* @__PURE__ */ jsxRuntime.jsxs(
+          "div",
+          {
+            "data-roll-velocity-lane": true,
+            style: { display: "flex", alignItems: "flex-end", gap: 6, marginTop: 8 },
+            children: [
+              /* @__PURE__ */ jsxRuntime.jsx(
+                "span",
+                {
+                  style: {
+                    width: 36,
+                    fontSize: 9,
+                    textAlign: "right",
+                    color: "var(--foreground-muted, #a0a0aa)"
+                  },
+                  children: "vel"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
+                const isStart = model.notes.some((n) => n.start === col);
+                const g = gainAtStart(model, col);
+                return /* @__PURE__ */ jsxRuntime.jsx(
+                  "div",
+                  {
+                    "data-vel-col": col,
+                    onPointerDown: isStart ? (e) => {
+                      e.preventDefault();
+                      onBarDown(col, e);
+                    } : void 0,
+                    style: {
+                      position: "relative",
+                      flex: "1 1 0",
+                      minWidth: 12,
+                      maxWidth: 44,
+                      height: "100%",
+                      borderRadius: 2,
+                      background: "var(--background-elevated, #26262c)",
+                      cursor: isStart ? "ns-resize" : "default"
+                    },
+                    children: isStart && // bottom-anchored bar = the note group's velocity (full = neutral)
+                    /* @__PURE__ */ jsxRuntime.jsx(
+                      "span",
+                      {
+                        "data-vel-bar": col,
+                        "data-gain": g,
+                        style: {
+                          position: "absolute",
+                          left: 1,
+                          right: 1,
+                          bottom: 0,
+                          height: `${clamp012(g) * 100}%`,
+                          background: "var(--accent, #6ea8fe)",
+                          borderRadius: 2,
+                          pointerEvents: "none"
+                        }
+                      }
+                    )
+                  },
+                  col
+                );
+              }) })
+            ]
+          }
+        )
+      ] })
     }
   );
 }
