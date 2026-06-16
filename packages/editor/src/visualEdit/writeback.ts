@@ -99,6 +99,25 @@ export function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[] {
 }
 
 /**
+ * Apply a batch of offset edits to a string and return the result. Pure mirror
+ * of what `Writeback.apply` does to a Monaco model — used by callers that edit
+ * plain text (arrangement round-trip / parity tests) and to preview an edit
+ * before it touches the document. Edits are validated + sorted by
+ * `normalizeEdits`, then spliced from the END so earlier offsets stay valid.
+ *
+ * Pure — no Monaco.
+ */
+export function applyEdits(doc: string, edits: OffsetEdit[]): string {
+  const sorted = normalizeEdits(edits)
+  let out = doc
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const { range, text } = sorted[i]
+    out = out.slice(0, range[0]) + text + out.slice(range[1])
+  }
+  return out
+}
+
+/**
  * Monaco-bound edit sink. One per editor. Construct with the editor instance
  * and the `monaco` namespace (for `Range`). All edits go through `apply`, which
  * keeps the origin flag up across the synchronous content-change event.
