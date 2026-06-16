@@ -486,11 +486,13 @@ describe('toStrudel', () => {
     expect(result).toContain('.room(0.8)')
   })
 
-  // --- Fixed: non-collapsible Seq uses cat() not invalid space-join ---
-  it('non-collapsible Seq uses cat()', () => {
+  // --- #434: non-collapsible Seq uses fastcat() (one cycle), not cat() ---
+  // Seq is FASTCAT semantics — all children share ONE cycle. Emitting cat()
+  // (slowcat, one cycle PER child) would stretch a 1-cycle sequence to N.
+  it('non-collapsible Seq uses fastcat() not cat()', () => {
     const tree = IR.seq(IR.fast(2, IR.play('c4')), IR.play('e4'))
     const result = toStrudel(tree)
-    expect(result).toBe('cat(note("c4").fast(2), note("e4"))')
+    expect(result).toBe('fastcat(note("c4").fast(2), note("e4"))')
   })
 
   // --- Choice with Pure else_ uses sometimesBy (per-cycle) ---
