@@ -12,6 +12,7 @@ import type { PatternIR } from '../ir/PatternIR'
 import type { IREvent } from '../ir/IREvent'
 import { getTierFlags, type TierFlags } from './tierFlags'
 import { resolveAlias } from './aliases'
+import { buildLabelBlockRequests } from './labelBlocks'
 
 type HapHandler = (event: HapEvent) => void
 
@@ -889,48 +890,16 @@ export class StrudelEngine implements LiveCodingEngine {
   }
 
   /**
-   * Scans code for $: blocks and maps each track's viz request to the line
-   * after the last line of that block. Mirrors the line-scanning logic in
-   * viewZones.ts but returns structured data instead of creating DOM zones.
+   * Maps each track's viz request to the line after the last line of its
+   * source block. Delegates to the shared label-block scanner so this stays
+   * in lockstep with viewZones.ts and supports named labels (`foo:`), not just
+   * anonymous `$:` (#418).
    */
   private buildVizRequestsWithLines(
     requests: Map<string, string>,
     code: string,
   ): Map<string, { vizId: string; afterLine: number; contentHash: string; options?: Record<string, unknown> }> {
-    const result = new Map<string, { vizId: string; afterLine: number; contentHash: string; options?: Record<string, unknown> }>()
-    const lines = code.split('\n')
-    let anonIndex = 0
-
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].trim().startsWith('$:')) continue
-
-      const key = `$${anonIndex}`
-      anonIndex++
-
-      const vizId = requests.get(key)
-      if (!vizId) continue
-
-      // Find last line of this pattern block (continuation lines).
-      // Blank lines are allowed within a block — only break on a new block
-      // start ($:, setcps) or end of file. This handles multi-line patterns
-      // with arbitrary whitespace.
-      let lastLineIdx = i
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim()
-        if (next.startsWith('$:') || next.startsWith('setcps')) break
-        if (next !== '' && !next.startsWith('//')) lastLineIdx = j
-      }
-
-      // Content hash — first 120 chars of the block, whitespace-normalized.
-      // Used by pruneZoneOverrides to detect block reordering.
-      const blockLines = lines.slice(i, lastLineIdx + 1).join(' ').replace(/\s+/g, ' ').trim()
-      const contentHash = blockLines.slice(0, 120)
-
-      const options = this.vizOptions.get(key)
-      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...(options ? { options } : {}) })
-    }
-
-    return result
+    return buildLabelBlockRequests(code, requests, this.vizOptions)
   }
 
   play(): void {
