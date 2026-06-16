@@ -199,4 +199,48 @@ function rollBars(groups: Map<number, Group>, steps: number, bars: number): stri
   return `<${slots.join(' ')}>`
 }
 
+/**
+ * The `.gain("…")` mini for a roll's per-note velocity, mirroring the structure
+ * `serializePianoRoll` emits for a single-bar roll: one token per note GROUP at
+ * its start column (with `@duration` when held), `~` at rest columns. Chord
+ * members (shared start) must share a gain — like duration — else the gain is
+ * inexpressible (`skip`). Returns:
+ *   - `skip`  — multi-bar, a `.gain` we don't manage (`gainForeign`), an
+ *      out-of-range / chord-gain-mismatch shape; leave any `.gain` untouched;
+ *   - `clear` — every note neutral (gain 1): remove our `.gain`;
+ *   - `write` — the column-aligned gain mini.
+ */
+export function serializeRollGain(model: PianoRollModel): GainWrite {
+  if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: 'skip' }
+  const groups = new Map<number, { duration: number; gain: number }>()
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return { kind: 'skip' } // inexpressible (serializePianoRoll returns null here too)
+    }
+    const gain = note.gain ?? 1
+    const g = groups.get(note.start)
+    if (!g) groups.set(note.start, { duration: note.duration, gain })
+    else if (g.duration !== note.duration || g.gain !== gain) return { kind: 'skip' }
+  }
+  if ([...groups.values()].every((g) => g.gain === 1)) return { kind: 'clear' }
+
+  const cols: string[] = []
+  let col = 0
+  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
+    if (start < col) return { kind: 'skip' } // overlap
+    while (col < start) {
+      cols.push('~')
+      col++
+    }
+    const g = groups.get(start)!
+    cols.push(g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${g.duration}`)
+    col += g.duration
+  }
+  while (col < model.steps) {
+    cols.push('~')
+    col++
+  }
+  return { kind: 'write', mini: cols.join(' ') }
+}
+
 export type { RollNote }

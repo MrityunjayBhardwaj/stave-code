@@ -1,6 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { parseStepGrid, parsePianoRoll, bjorklund, parseGainMini, applyStepGain } from '../parse'
-import { serializeStepGrid, serializePianoRoll, serializeStepGain } from '../serialize'
+import {
+  parseStepGrid,
+  parsePianoRoll,
+  bjorklund,
+  parseGainMini,
+  applyStepGain,
+  applyRollGain,
+} from '../parse'
+import {
+  serializeStepGrid,
+  serializePianoRoll,
+  serializeStepGain,
+  serializeRollGain,
+} from '../serialize'
 import { pitchToMidi, midiToPitch, isBlackKey } from '../pitch'
 import { placeNote, resizeNote } from '../place'
 import { resizeGrid, resizeRoll } from '../resize'
@@ -605,5 +617,93 @@ describe('step grid — velocity (.gain)', () => {
     expect(fresh.ok).toBe(true)
     if (!fresh.ok) return
     expect(applyStepGain(fresh.model, g.mini).gains).toEqual([1, 1, 0.8, 0.5])
+  })
+})
+
+describe('piano roll — velocity (.gain)', () => {
+  const withGains = (mini: string, gains: Record<number, number>): PianoRollModel => {
+    const r = parsePianoRoll(mini)
+    if (!r.ok) throw new Error(`expected ${mini} to parse`)
+    return {
+      ...r.model,
+      notes: r.model.notes.map((n) => (gains[n.start] != null ? { ...n, gain: gains[n.start] } : n)),
+    }
+  }
+
+  describe('serializeRollGain', () => {
+    it('clears when every note is neutral', () => {
+      expect(serializeRollGain(withGains('c3 e3 g3', {}))).toEqual({ kind: 'clear' })
+    })
+    it('writes one token per note group, rests as `~`', () => {
+      // c3@0, e3@2 (col1 is a rest)
+      const m = withGains('c3 ~ e3', { 0: 1, 2: 0.5 })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', mini: '1 ~ 0.5' })
+    })
+    it('mirrors `@n` holds in the gain token', () => {
+      const m = withGains('c3@2 e3', { 0: 0.5, 2: 1 })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', mini: '0.5@2 1' })
+    })
+    it('emits one shared token for a chord (per-chord velocity)', () => {
+      // [c3,e3] is one group at col 0 → one gain token for both
+      const m = withGains('[c3,e3] g3', { 0: 0.66 })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', mini: '0.66 1' })
+    })
+    it('skips a chord whose members carry different gains (inexpressible)', () => {
+      const r = parsePianoRoll('[c3,e3]')
+      if (!r.ok) throw new Error('parse')
+      const m: PianoRollModel = {
+        ...r.model,
+        notes: [
+          { ...r.model.notes[0], gain: 0.5 },
+          { ...r.model.notes[1], gain: 0.8 },
+        ],
+      }
+      expect(serializeRollGain(m)).toEqual({ kind: 'skip' })
+    })
+    it('skips multi-bar and foreign', () => {
+      const alt = withGains('<c3 e3>', {})
+      expect(serializeRollGain({ ...alt, bars: 2, notes: alt.notes.map((n) => ({ ...n, gain: 0.5 })) })).toEqual({ kind: 'skip' })
+      expect(serializeRollGain({ ...withGains('c3 e3', { 0: 0.5 }), gainForeign: true })).toEqual({ kind: 'skip' })
+    })
+  })
+
+  describe('applyRollGain', () => {
+    it('reads an aligned .gain onto the notes by start column', () => {
+      const r = parsePianoRoll('c3 ~ e3')
+      if (!r.ok) throw new Error('parse')
+      const m = applyRollGain(r.model, '1 ~ 0.5')
+      expect(m.notes.find((n) => n.start === 2)!.gain).toBe(0.5)
+      expect(m.notes.find((n) => n.start === 0)!.gain).toBeUndefined() // neutral stays bare
+      expect(m.gainForeign).toBeUndefined()
+    })
+    it('applies one chord gain to all its members', () => {
+      const r = parsePianoRoll('[c3,e3] g3')
+      if (!r.ok) throw new Error('parse')
+      const m = applyRollGain(r.model, '0.66 1')
+      const chord = m.notes.filter((n) => n.start === 0)
+      expect(chord.length).toBe(2)
+      expect(chord.every((n) => n.gain === 0.66)).toBe(true)
+    })
+    it('flags foreign for a grid-mismatched or non-numeric gain', () => {
+      const r = parsePianoRoll('c3 e3')
+      if (!r.ok) throw new Error('parse')
+      expect(applyRollGain(r.model, '1 0.5 1').gainForeign).toBe(true) // 3 tokens vs 2 cols
+      expect(applyRollGain(r.model, 'loud soft').gainForeign).toBe(true)
+    })
+  })
+
+  it('round-trips: note gains → .gain mini → parse back ≡ gains', () => {
+    const rollMini = 'c3 ~ [c4,e4]@2'
+    const m = withGains(rollMini, { 0: 0.8, 2: 0.4 })
+    expect(serializePianoRoll(m)).toBe(rollMini) // head mini unchanged by velocity
+    const g = serializeRollGain(m)
+    expect(g).toEqual({ kind: 'write', mini: '0.8 ~ 0.4@2' })
+    if (g.kind !== 'write') return
+    const fresh = parsePianoRoll(rollMini)
+    expect(fresh.ok).toBe(true)
+    if (!fresh.ok) return
+    const reread = applyRollGain(fresh.model, g.mini)
+    expect(reread.notes.find((n) => n.start === 0)!.gain).toBe(0.8)
+    expect(reread.notes.filter((n) => n.start === 2).every((n) => n.gain === 0.4)).toBe(true)
   })
 })

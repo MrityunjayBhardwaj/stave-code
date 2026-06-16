@@ -508,6 +508,53 @@ export function applyStepGain(
   return { ...model, gains }
 }
 
+/**
+ * Apply an existing `.gain("…")` string to a freshly-parsed roll model. Walks
+ * the gain mini the same way `parsePianoRoll` walks notes (so `@n` holds and
+ * rests line up), building a start-column → gain map, then assigns each note the
+ * gain at its start (chord members at one start share it). Flags `gainForeign`
+ * — leaving the `.gain` byte-identical — when the gain can't be cleanly mapped
+ * (multi-bar, non-numeric token, a total that doesn't match the note grid, or a
+ * non-neutral value at a column where no note starts).
+ */
+export function applyRollGain(
+  model: PianoRollModel,
+  gainMini: string | null,
+  foreign = false,
+): PianoRollModel {
+  if (foreign) return { ...model, gainForeign: true }
+  if (gainMini === null) return model
+  if (model.bars != null) return { ...model, gainForeign: true } // multi-bar gain unmanaged
+  // The gain mini is a FLAT sequence the roll serializer emits: a number, a
+  // `~` rest, or `num@dur` for a held note. (The note tokenizer can't read it —
+  // it requires letter-start atoms.) Anything else → foreign, hands off.
+  const byStart = new Map<number, number>()
+  let col = 0
+  for (const t of gainMini.trim().split(/\s+/).filter((s) => s !== '')) {
+    if (t === '~') {
+      col += 1
+      continue
+    }
+    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/)
+    if (!m) return { ...model, gainForeign: true }
+    byStart.set(col, parseFloat(m[1]))
+    col += m[2] ? parseInt(m[2], 10) : 1
+  }
+  if (col !== model.steps) return { ...model, gainForeign: true } // grid mismatch
+  const noteStarts = new Set(model.notes.map((n) => n.start))
+  for (const [c, v] of byStart) {
+    // a non-neutral gain at a column with no note onset isn't ours to manage
+    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true }
+  }
+  return {
+    ...model,
+    notes: model.notes.map((n) => {
+      const v = byStart.get(n.start)
+      return v != null && v !== 1 ? { ...n, gain: v } : n
+    }),
+  }
+}
+
 /* ── piano roll ────────────────────────────────────────────────── */
 
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
