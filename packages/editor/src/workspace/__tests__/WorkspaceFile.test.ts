@@ -22,6 +22,8 @@ import {
   subscribe,
   __resetWorkspaceFilesForTests,
   setZoneCropOverride,
+  setZoneHeightOverride,
+  getZoneHeightOverride,
   pruneZoneOverrides,
   subscribeToZoneOverrides,
   getTrackMeta,
@@ -183,6 +185,32 @@ describe('WorkspaceFile store', () => {
     // mutation is internal bookkeeping, not a user-driven change.
     expect(overrideCb).not.toHaveBeenCalled()
     unsub()
+  })
+
+  // Regression for the prism→pianoroll resize-bar-detach bug: a height override
+  // planted on one viz must be pruned when the block switches to another viz —
+  // even when the .viz() call sits PAST the 120-char contentHash window, so the
+  // hashes match and only the vizId differs. Before the fix, setZoneHeightOverride
+  // stored no vizId, so prune's vizId branch couldn't fire and the stale (tall)
+  // height stuck onto the new (short) viz, detaching its resize bar.
+  it('pruneZoneOverrides drops a height override on viz switch via vizId (identical contentHash)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    const SAME_HASH = '$: s("sawtooth sawtooth sawtooth sawtooth sawtooth")' // shared 120-prefix
+    setZoneHeightOverride('f1', '$0', 476, SAME_HASH, 'prism')
+    expect(getZoneHeightOverride('f1', '$0')).toBe(476)
+
+    // Same trackKey, same contentHash (the .viz name is past char 120), but a
+    // DIFFERENT vizId → prune must remove it on the vizId branch alone.
+    pruneZoneOverrides('f1', new Map([['$0', { vizId: 'pianoroll', contentHash: SAME_HASH }]]))
+    expect(getZoneHeightOverride('f1', '$0')).toBeUndefined()
+  })
+
+  it('pruneZoneOverrides keeps a height override when the same viz is re-evaluated', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setZoneHeightOverride('f1', '$0', 300, 'hash-a', 'prism')
+    // Same vizId → not a switch → the user-set height must survive.
+    pruneZoneOverrides('f1', new Map([['$0', { vizId: 'prism', contentHash: 'hash-a' }]]))
+    expect(getZoneHeightOverride('f1', '$0')).toBe(300)
   })
 
   it('setZoneCropOverride still notifies subscribers (user-driven path unaffected)', () => {

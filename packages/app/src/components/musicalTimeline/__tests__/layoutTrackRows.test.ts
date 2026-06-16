@@ -15,6 +15,7 @@ import {
   layoutTrackRows,
   ROW_HEIGHT,
   SUB_ROW_HEIGHT,
+  TRACK_GAP,
 } from '../layoutTrackRows'
 
 function evt(partial: Partial<IREvent>): IREvent {
@@ -94,7 +95,7 @@ describe('20-12 β-2 — layoutTrackRows', () => {
     }
   })
 
-  it('cursor advances across multiple tracks (track2.top = track1.top + track1.height)', () => {
+  it('cursor advances across multiple tracks with a TRACK_GAP between lanes (#342)', () => {
     const result = layoutTrackRows(
       [
         { trackId: 'd1', body: PURE, events: [] }, // expanded → 1 * SUB_ROW
@@ -106,10 +107,13 @@ describe('20-12 β-2 — layoutTrackRows', () => {
     const [t1, t2, t3] = result.tracks
     expect(t1.top).toBe(0)
     expect(t1.height).toBe(SUB_ROW_HEIGHT)
-    expect(t2.top).toBe(t1.top + t1.height)
+    // #342 — each subsequent lane is offset by its predecessor's height
+    // PLUS the inter-lane gap, so bars don't bleed into the next track.
+    expect(t2.top).toBe(t1.top + t1.height + TRACK_GAP)
     expect(t2.height).toBe(2 * SUB_ROW_HEIGHT)
-    expect(t3.top).toBe(t2.top + t2.height)
+    expect(t3.top).toBe(t2.top + t2.height + TRACK_GAP)
     expect(t3.height).toBe(ROW_HEIGHT)
+    // No trailing gap after the last lane.
     expect(result.totalHeight).toBe(t3.top + t3.height)
   })
 
