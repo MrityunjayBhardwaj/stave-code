@@ -36,6 +36,11 @@ import { extractPitch } from './pitch'
  *  acceptable per planner G-2. */
 export const ROW_HEIGHT = 24
 export const SUB_ROW_HEIGHT = 18
+/** Vertical gap between adjacent track lanes (#342). Without it, a track's
+ *  pitch-band butts directly against the next track's, so bars read as one
+ *  continuous striped block (bleed). A few px of empty grid between lanes
+ *  gives each track a clean top/bottom edge — Ableton-style lane spacing. */
+export const TRACK_GAP = 6
 
 export interface LeafLayout {
   /** 0-based index into `flattenLeafVoices(track.body)`. */
@@ -103,7 +108,14 @@ export function layoutTrackRows(
 ): LayoutTrackRowsResult {
   const out: TrackLayout[] = []
   let cursor = 0
+  let firstTrack = true
   for (const t of tracks) {
+    // Insert a vertical gap between adjacent lanes so bars don't bleed
+    // into the next track (#342). Applied before every track except the
+    // first, so it sits cleanly between lanes regardless of which branch
+    // (collapsed / empty-Stack / expanded) sizes the row below.
+    if (!firstTrack) cursor += TRACK_GAP
+    firstTrack = false
     const collapsed = collapsedFor(t.trackId)
     if (collapsed || !t.body) {
       out.push({

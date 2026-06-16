@@ -100,6 +100,11 @@ const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
 const BUNDLED_VIZ_NATIVE_SIZE: Record<string, { w: number; h: number }> = {
   "Piano Roll": { w: 1200, h: 200 },
   "Piano Roll (Hydra)": { w: 1400, h: 400 },
+  // Pitchwheel — a centred wheel. Without a declared native it falls to
+  // DEFAULT_NATIVE (1200×600 → a ~530px-tall strip), which paired with the
+  // createCanvas(stave.width,stave.height) fix would fill that whole box with a
+  // giant wheel. A wide-ish 5:1 strip keeps it a comfortable inline height.
+  pitchwheel: { w: 1200, h: 240 },
 };
 
 
@@ -337,6 +342,9 @@ export default function StrudelEditorClient({
   const [bgPopover, setBgPopover] = useState<{
     rect: DOMRect;
     fileId: string;
+    // #372 — set when opened from a VIZ FILE tab's settings caret: the
+    // file IS the backdrop source, so hide the picker (no "set/swap").
+    noPicker?: boolean;
   } | null>(null);
 
   // Persist the per-tab map (best-effort). Re-runs only when the map changes.
@@ -1128,6 +1136,12 @@ export default function StrudelEditorClient({
       onCropViz={onCropViz}
       onBackgroundFileChange={handleBackgroundFileChange}
       onActiveBackdropChange={onActiveBackdropChange}
+      // #372 — viz-file-tab settings caret opens the SAME BackdropPopover,
+      // in no-picker mode (the file is its own backdrop source). The tab is
+      // active, so the popover's controls drive the active group's backdrop.
+      onOpenBackdropSettings={(fileId, rect) =>
+        setBgPopover({ rect, fileId, noPicker: true })
+      }
       backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
         const fid =
@@ -1225,6 +1239,7 @@ export default function StrudelEditorClient({
         }
         onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
         onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
+        hidePicker={bgPopover.noPicker}
       />
     )}
     </>
