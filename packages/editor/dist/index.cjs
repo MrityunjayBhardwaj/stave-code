@@ -24397,6 +24397,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
   onActiveTabChange,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  onOpenPopoutPreview,
   onOpenBackdropSettings,
   backgroundCrop,
   onTabClose,
@@ -24817,9 +24818,13 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       splitGroupWithTab,
       updateGroupBackground,
       closeTab: closeTabById,
-      findTabByFileId
+      findTabByFileId,
+      // #240 — forward Cmd+K W to the app host (which owns the runtime + audio
+      // bus needed to mount the popout). Undefined when the host doesn't wire
+      // it → the command's `shell.openPopoutPreview?.()` no-ops.
+      openPopoutPreview: onOpenPopoutPreview
     }),
-    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId]
+    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
   const getActiveTab = React8.useCallback(() => activeTab, [activeTab]);
@@ -27896,6 +27901,99 @@ function compilePreset(preset) {
   throw new Error(`Unknown renderer: ${renderer}`);
 }
 __name(compilePreset, "compilePreset");
+function usePopoutPreview({
+  descriptor,
+  hapStream,
+  analyser,
+  scheduler,
+  onClose,
+  theme = "dark"
+}) {
+  const windowRef = React8.useRef(null);
+  const rendererRef = React8.useRef(null);
+  const rafRef = React8.useRef(null);
+  const cleanup = React8.useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    rendererRef.current?.destroy();
+    rendererRef.current = null;
+    if (windowRef.current && !windowRef.current.closed) {
+      windowRef.current.close();
+    }
+    windowRef.current = null;
+  }, []);
+  React8.useEffect(() => {
+    if (!descriptor) {
+      cleanup();
+      return;
+    }
+    const popup = window.open(
+      "",
+      `viz-popout-${descriptor.id}`,
+      "width=800,height=600,menubar=no,toolbar=no,location=no,status=no"
+    );
+    if (!popup) {
+      console.warn("Pop-out blocked by browser \u2014 allow popups for this site");
+      onClose();
+      return;
+    }
+    windowRef.current = popup;
+    popup.document.title = `Viz: ${descriptor.label}`;
+    popup.document.body.style.margin = "0";
+    popup.document.body.style.padding = "0";
+    popup.document.body.style.overflow = "hidden";
+    const container = popup.document.createElement("div");
+    container.style.width = "100vw";
+    container.style.height = "100vh";
+    container.style.position = "relative";
+    popup.document.body.appendChild(container);
+    applyTheme(container, theme);
+    popup.document.body.style.background = container.style.getPropertyValue("--background") || "#090912";
+    try {
+      const renderer = descriptor.factory();
+      rendererRef.current = renderer;
+      const components = {};
+      if (hapStream) components.streaming = { hapStream };
+      if (analyser) components.audio = { analyser, audioCtx: analyser.context };
+      if (scheduler) components.queryable = { scheduler };
+      renderer.mount(
+        container,
+        components,
+        { w: 800, h: 600 },
+        (err) => console.error("Viz popout error:", err)
+      );
+      const onResize = /* @__PURE__ */ __name(() => {
+        renderer.resize(popup.innerWidth, popup.innerHeight);
+      }, "onResize");
+      popup.addEventListener("resize", onResize);
+    } catch (e) {
+      console.error("Failed to mount viz in popout:", e);
+    }
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed);
+        cleanup();
+        onClose();
+      }
+    }, 500);
+    return () => {
+      clearInterval(checkClosed);
+      cleanup();
+    };
+  }, [descriptor?.id]);
+  React8.useEffect(() => {
+    if (!rendererRef.current) return;
+    const components = {};
+    if (hapStream) components.streaming = { hapStream };
+    if (analyser) components.audio = { analyser, audioCtx: analyser.context };
+    if (scheduler) components.queryable = { scheduler };
+    rendererRef.current.update(components);
+  }, [hapStream, analyser, scheduler]);
+  return { cleanup };
+}
+__name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
   const subscribe3 = React8.useCallback(
@@ -30344,6 +30442,7 @@ exports.undo = undo;
 exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
 exports.updateVizConfig = updateVizConfig;
+exports.usePopoutPreview = usePopoutPreview;
 exports.useTrackMeta = useTrackMeta;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;

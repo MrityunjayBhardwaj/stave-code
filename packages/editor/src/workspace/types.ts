@@ -946,6 +946,16 @@ export interface WorkspaceShellProps {
   readonly onActiveBackdropChange?: (fileId: string | null) => void
 
   /**
+   * #240 — open a viz file's preview in a pop-out browser window. The shell
+   * forwards the Cmd+K W command (`workspace.openPreviewInWindow` →
+   * `shell.openPopoutPreview(fileId)`) to this host callback; the app compiles
+   * a descriptor + subscribes the audio bus and drives `usePopoutPreview`.
+   * Optional: when the host omits it, Cmd+K W is a no-op (the command guards
+   * on `shell.openPopoutPreview?.`).
+   */
+  readonly onOpenPopoutPreview?: (fileId: string) => void
+
+  /**
    * #372 — open the host's backdrop controls popover for a viz file tab
    * whose file is the active group's backdrop. The shell forwards the
    * viz chrome's settings-button click here with the tab's `fileId` and

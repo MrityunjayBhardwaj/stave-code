@@ -738,6 +738,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   onActiveTabChange,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  onOpenPopoutPreview,
   onOpenBackdropSettings,
   backgroundCrop,
   onTabClose,
@@ -1484,8 +1485,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       updateGroupBackground,
       closeTab: closeTabById,
       findTabByFileId,
+      // #240 — forward Cmd+K W to the app host (which owns the runtime + audio
+      // bus needed to mount the popout). Undefined when the host doesn't wire
+      // it → the command's `shell.openPopoutPreview?.()` no-ops.
+      openPopoutPreview: onOpenPopoutPreview,
     }),
-    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId],
+    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview],
   )
   shellActionsRef.current = shellActions
 
