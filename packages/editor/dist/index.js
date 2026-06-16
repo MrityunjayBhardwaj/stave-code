@@ -6981,7 +6981,11 @@ ${d.stack}` : "");
         // singleton reflects the user's quality/LOD settings, not the bundle default.
         config: pickWorkerVizConfig(),
         // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
-        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled()
+        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled(),
+        // #388 — per-render viz options → stave.options (p5 only). Previously dropped
+        // on the worker path, so `.viz(name, {opts})` had no effect once worker viz
+        // became the default. Mirrors P5VizRenderer reading `components.options`.
+        options: components.options ?? {}
       };
       worker.postMessage(mountMsg, [offscreen]);
       this.configUnsub = onVizConfigChange(() => {
@@ -6995,6 +6999,10 @@ ${d.stack}` : "");
   update(components) {
     if (!this.worker) return;
     this.bindSampler(components);
+    this.worker.postMessage({
+      type: "options",
+      options: components.options ?? {}
+    });
   }
   resize(w, h) {
     this.size = { w, h };
@@ -12669,7 +12677,14 @@ function draw() {
 var PITCHWHEEL_P5_CODE = `// Stave p5 viz \u2014 Pitchwheel
 const ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)
 function setup() {
-  createCanvas(300, 200)
+  // Fill the size Stave provides (like every other built-in) so the canvas
+  // matches its zone. A hardcoded createCanvas(300, 200) left the canvas at a
+  // fixed aspect that didn't match the zone \u2014 on the OffscreenCanvas worker path
+  // (where the presenting canvas can't be measured to self-correct) the zone
+  // stayed sized for the descriptor's default aspect and the canvas floated
+  // inside it, detaching the resize bar. The wheel itself uses min(width,height),
+  // so it stays centred and round at any aspect.
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
 }
 function freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }
@@ -13482,7 +13497,10 @@ var DEFAULT_VIZ_DESCRIPTORS = [
   { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(FSCOPE_P5_CODE, "fscope"), "factory") },
   { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPECTRUM_P5_CODE, "spectrum"), "factory") },
   { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPIRAL_P5_CODE, "spiral"), "factory") },
-  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
+  // nativeSize gives the zone a defined aspect so it isn't sized from
+  // DEFAULT_NATIVE (1200×600 → a 530px-tall strip). The wheel is centred via
+  // min(width,height), so a wide-ish strip keeps it round and a comfortable size.
+  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], nativeSize: { w: 1200, h: 240 }, factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
   // Hydra renderers (WebGL shader-based) — compiled from bundled code STRINGS
   // (#252) so `makeHydraRenderer` can offload them to an OffscreenCanvas worker
   // (a HydraPatternFn closure can't cross to a worker; on the main thread a heavy
@@ -14293,7 +14311,7 @@ function getZoneHeightOverride(fileId, trackKey) {
   return entry?.heightPx;
 }
 __name(getZoneHeightOverride, "getZoneHeightOverride");
-function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
+function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash, vizId) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
   if (!overrides) return;
@@ -14305,7 +14323,12 @@ function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
       if (Object.keys(rest).length === 0) overrides.delete(trackKey);
       else overrides.set(trackKey, rest);
     } else {
-      overrides.set(trackKey, { ...existing, heightPx, ...contentHash ? { contentHash } : {} });
+      overrides.set(trackKey, {
+        ...existing,
+        heightPx,
+        ...contentHash ? { contentHash } : {},
+        ...vizId ? { vizId } : {}
+      });
     }
   }, HEIGHT_RESIZE_ORIGIN);
 }
@@ -20657,16 +20680,17 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const onMove = /* @__PURE__ */ __name((ev) => {
           ev.preventDefault();
           const delta = ev.clientY - startY;
-          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
-          entry.container.style.height = `${newH}px`;
-          entry.zoneDesc.heightInPx = newH;
-          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
+          const dragH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
           const nw = entry.native.w, nh = entry.native.h;
           const cropW = Math.max(0.01, entry.crop.w);
           const cropH = Math.max(0.01, entry.crop.h);
           const scaleByW = contentW2 / (cropW * nw);
-          const scaleByH = newH / (cropH * nh);
+          const scaleByH = dragH / (cropH * nh);
           const scale = Math.min(scaleByW, scaleByH);
+          const dispH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, Math.round(cropH * nh * scale)));
+          entry.container.style.height = `${dispH}px`;
+          entry.zoneDesc.heightInPx = dispH;
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           const tx3 = -entry.crop.x * nw * scale;
           const ty = -entry.crop.y * nh * scale;
           applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
@@ -20680,7 +20704,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           resizeHandle.style.opacity = "1";
           if (fileId) {
             const hash = entry.container.getAttribute("data-viz-zone-hash") ?? void 0;
-            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash);
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash, entry.vizId);
           }
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           delete entry.container.dataset.resizing;
@@ -20693,20 +20717,36 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const tryRefine = /* @__PURE__ */ __name(() => {
         refineAttempts++;
         const actual = readCanvasNative(entry.container);
-        if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
-          entry.native = actual;
-          entry.canvas = entry.container.querySelector("canvas");
-          const contentW2 = editor.getLayoutInfo().contentWidth || 400;
-          const refined = computeLayout(contentW2, entry.native, entry.crop);
-          editor.changeViewZones((acc) => {
-            entry.zoneDesc.heightInPx = refined.zoneH;
-            entry.container.style.height = `${refined.zoneH}px`;
-            acc.layoutZone(entry.zoneId);
-          });
-          applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
-          return;
+        if (actual) {
+          if (actual.w !== entry.native.w || actual.h !== entry.native.h) {
+            entry.native = actual;
+            entry.canvas = entry.container.querySelector("canvas");
+            const contentW2 = editor.getLayoutInfo().contentWidth || 400;
+            const refined = computeLayout(contentW2, entry.native, entry.crop);
+            const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+            editor.changeViewZones((acc) => {
+              if (hOverride == null) {
+                entry.zoneDesc.heightInPx = refined.zoneH;
+                entry.container.style.height = `${refined.zoneH}px`;
+              }
+              acc.layoutZone(entry.zoneId);
+            });
+            if (hOverride == null) {
+              applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
+            } else {
+              const nw = entry.native.w, nh = entry.native.h;
+              const cropW = Math.max(0.01, entry.crop.w);
+              const cropH = Math.max(0.01, entry.crop.h);
+              const scale = Math.min(contentW2 / (cropW * nw), hOverride / (cropH * nh));
+              applyLayout(entry.container, entry.container.querySelector("canvas"), {
+                scale,
+                tx: -entry.crop.x * nw * scale,
+                ty: -entry.crop.y * nh * scale
+              });
+            }
+          }
         }
-        if (refineAttempts < 10) requestAnimationFrame(tryRefine);
+        if (refineAttempts < 180) requestAnimationFrame(tryRefine);
       }, "tryRefine");
       requestAnimationFrame(tryRefine);
     }
@@ -24332,6 +24372,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
   onBackgroundFileChange,
   onActiveBackdropChange,
   onOpenPopoutPreview,
+  onOpenBackdropSettings,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -25128,6 +25169,11 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                     });
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // #372 — forward the viz chrome's settings click to the host
+                  // popover, tagged with this tab's fileId so the app opens the
+                  // controls for the right backdrop (no-picker; the file is the
+                  // source). Omitted when the host supplies no handler.
+                  onOpenBackdropSettings: onOpenBackdropSettings ? (rect) => onOpenBackdropSettings(tab.fileId, rect) : void 0,
                   onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
                   }, "onSave")
@@ -28704,18 +28750,6 @@ async function touchProject(id) {
   db.close();
 }
 __name(touchProject, "touchProject");
-async function setProjectBackgroundCrop(id, crop) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing;
-    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
-    await wrap4(store.put(next));
-  }
-  db.close();
-}
-__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
 async function renameProject(id, name) {
   const db = await openDb4();
   const store = tx2(db, "readwrite");
@@ -29241,7 +29275,8 @@ function VizEditorChrome({
   onTogglePausePreview,
   onChangePreviewSource,
   onToggleBackground,
-  isBackground
+  isBackground,
+  onOpenBackdropSettings
 }) {
   const [liveOn, setLiveOn] = useState(() => getVizLive(file.id));
   useEffect(() => {
@@ -29381,6 +29416,28 @@ function VizEditorChrome({
                 border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
               },
               children: isBackground ? "\u25A0 bg" : "\u25A0"
+            }
+          ),
+          isBackground && onOpenBackdropSettings && /* @__PURE__ */ jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-bg-settings",
+              onClick: (e) => onOpenBackdropSettings(e.currentTarget.getBoundingClientRect()),
+              title: "Backdrop controls (opacity, quality, crop\\u2026)",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "3px 6px",
+                borderRadius: 3,
+                fontSize: 9,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: "none",
+                color: "var(--accent-strong, var(--accent))",
+                border: "1px solid var(--accent-dim)"
+              },
+              children: "\u25BE"
             }
           ),
           /* @__PURE__ */ jsx(
@@ -30014,6 +30071,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MainSignalSampler, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PIANOROLL_P5_CODE, PITCHWHEEL_P5_CODE, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectWorkerVizCapabilities, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBundledPresetId, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isSampleSoundPlaying, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, mountVizRenderer, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parseStackLocation, parseStrudel, patternFromJSON, patternToJSON, perf, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializeShellState, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

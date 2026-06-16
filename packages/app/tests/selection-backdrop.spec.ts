@@ -6,22 +6,35 @@
  */
 import { test, expect } from '@playwright/test'
 
+// #175 — the default workspace opens a single Strudel tab, not the old
+// 11-tab wall, so a viz tab must be OPENED via the file tree rather than
+// found among already-open tabs. Mirrors backdrop-viz-chrome's clickHydraTab.
+async function openVizTab(page: import('@playwright/test').Page, ext: RegExp, fileTreeMatch: string) {
+  const tabs = page.locator('[data-workspace-tab]')
+  const count = await tabs.count()
+  for (let i = 0; i < count; i++) {
+    const t = await tabs.nth(i).textContent()
+    if (t && ext.test(t)) {
+      await tabs.nth(i).click()
+      await page.waitForTimeout(300)
+      return
+    }
+  }
+  const item = page.locator(`[data-file-tree-item*="${fileTreeMatch}"]`).first()
+  if ((await item.count()) === 0) {
+    throw new Error(`no ${fileTreeMatch} preset file in default project`)
+  }
+  await item.dblclick()
+  await page.waitForTimeout(500)
+}
+
 test('selection highlight visible with backdrop active', async ({ page }) => {
   await page.goto('/')
   await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 15000 })
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
 
   // Pin a hydra file as backdrop.
-  const tabs = page.locator('[data-workspace-tab]')
-  const count = await tabs.count()
-  for (let i = 0; i < count; i++) {
-    const t = await tabs.nth(i).textContent()
-    if (t && /\.hydra/.test(t)) {
-      await tabs.nth(i).click()
-      break
-    }
-  }
-  await page.waitForTimeout(200)
+  await openVizTab(page, /\.hydra/, 'hydra')
   await page.locator('[data-testid="viz-chrome-bg-toggle"]').first().click()
   await page.locator('[data-workspace-background]').first().waitFor({ timeout: 5000 })
 

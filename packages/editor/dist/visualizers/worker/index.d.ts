@@ -92,6 +92,12 @@ interface MountMessage {
      *  The main side sets this from `isP5DirectCanvasEnabled()` (default ON; escape
      *  hatch `localStorage['stave.viz.p5direct']='0'` reverts to the blit path). */
     p5DirectCanvas?: boolean;
+    /** #388 — per-render viz options (`.viz(name, { background, labels, … })` →
+     *  `stave.options`). p5-only (P5VizRenderer reads `components.options`; hydra/glsl
+     *  don't). The worker path previously dropped these — `stave.options` was always
+     *  `{}` in-worker — so a `.viz()` option had no effect once worker viz became the
+     *  default. Carried at mount; live changes (re-eval) come via `OptionsMessage`. */
+    options?: Record<string, unknown>;
 }
 /** MAIN → WORKER: the preview pane resized / DPR changed. */
 interface ResizeMessage {
@@ -119,7 +125,15 @@ interface ConfigMessage {
     type: 'config';
     patch: Partial<WorkerVizConfig>;
 }
-type WorkerControlMessage = MountMessage | ResizeMessage | PauseMessage | ResumeMessage | DestroyMessage | ConfigMessage;
+/** MAIN → WORKER: live update of the per-render viz options (#388). Posted on
+ *  `update()` (re-eval) so a changed `.viz(name, {opts})` reaches `stave.options`
+ *  WITHOUT a remount — mirrors how `P5VizRenderer.update` re-reads
+ *  `components.options` into its `optionsRef`. p5-only. */
+interface OptionsMessage {
+    type: 'options';
+    options: Record<string, unknown>;
+}
+type WorkerControlMessage = MountMessage | ResizeMessage | PauseMessage | ResumeMessage | DestroyMessage | ConfigMessage | OptionsMessage;
 /** WORKER → MAIN: diagnostics (sketch compile/runtime error, first-frame ready).
  *  B-3 forwards worker errors to the main console; richer engineLog bridging is
  *  Phase B-7 (#230 profiler-in-worker). */

@@ -380,7 +380,6 @@ export {
   renameProject,
   deleteProject,
   duplicateProject,
-  setProjectBackgroundCrop,
   type ProjectMeta,
 } from './workspace/projectRegistry'
 

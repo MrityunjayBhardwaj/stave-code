@@ -635,6 +635,7 @@ export function setZoneHeightOverride(
   trackKey: string,
   heightPx: number | null,
   contentHash?: string,
+  vizId?: string,
 ): void {
   ensureDoc()
   const overrides = ensureZoneOverridesMap(fileId)
@@ -647,7 +648,18 @@ export function setZoneHeightOverride(
       if (Object.keys(rest).length === 0) overrides.delete(trackKey)
       else overrides.set(trackKey, rest)
     } else {
-      overrides.set(trackKey, { ...existing, heightPx, ...(contentHash ? { contentHash } : {}) })
+      // Stamp the vizId (like setZoneCropOverride) so pruneZoneOverrides can
+      // discard this height when the user switches .viz("A") → .viz("B") on the
+      // same block — a height sized for A's aspect is wrong for B. The contentHash
+      // fallback alone misses this when the .viz() call sits past the 120-char
+      // hash window (long patterns), leaving the resize bar detached from the new,
+      // shorter canvas until the user nudges the bar.
+      overrides.set(trackKey, {
+        ...existing,
+        heightPx,
+        ...(contentHash ? { contentHash } : {}),
+        ...(vizId ? { vizId } : {}),
+      })
     }
   }, HEIGHT_RESIZE_ORIGIN)
 }

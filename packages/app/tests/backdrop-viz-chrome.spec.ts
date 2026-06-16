@@ -156,4 +156,56 @@ test.describe('Backdrop viz-chrome toggle', () => {
       .first()
       .click()
   })
+
+  test('#372 — settings caret opens controls popover with NO picker (file is its own source)', async ({
+    page,
+  }) => {
+    await gotoApp(page)
+    await clickHydraTab(page)
+
+    // Caret is absent until this file is the backdrop.
+    await expect(
+      page.locator('[data-testid="viz-chrome-bg-settings"]'),
+    ).toHaveCount(0)
+
+    // Pin via the toggle — that's the whole "use this file" step.
+    await page.locator('[data-testid="viz-chrome-bg-toggle"]').first().click()
+    await expect(
+      page.locator('[data-workspace-background]').first(),
+    ).toBeVisible({ timeout: 5000 })
+
+    // Caret appears; click it to open the controls popover.
+    const settings = page
+      .locator('[data-testid="viz-chrome-bg-settings"]')
+      .first()
+    await expect(settings).toBeVisible()
+    await settings.click()
+
+    const popover = page.locator('[data-testid="backdrop-popover"]').first()
+    await expect(popover).toBeVisible()
+
+    // The #372 contract: NO viz-file picker (the source is this file),
+    // but a read-only source label + the tuning controls are present.
+    await expect(
+      page.locator('[data-testid="backdrop-popover-picker"]'),
+    ).toHaveCount(0)
+    await expect(
+      page.locator('[data-testid="backdrop-popover-source"]'),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="backdrop-chrome-quality"]'),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="backdrop-chrome-crop"]'),
+    ).toBeVisible()
+
+    // Quality change routes through the shell without error and the
+    // backdrop stays mounted (the controls operate on the active group).
+    await page
+      .locator('[data-testid="backdrop-chrome-quality"]')
+      .selectOption('quarter')
+    await expect(
+      page.locator('[data-workspace-background]').first(),
+    ).toBeVisible()
+  })
 })
