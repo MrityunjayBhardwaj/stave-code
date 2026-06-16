@@ -24,19 +24,33 @@ test('screenshot: p5 sketch as backdrop', async ({ page }) => {
   })
   await page.locator('.monaco-editor').waitFor({ timeout: 15000 })
 
-  // Step 1 — switch to p5 and overwrite the sketch with one that
+  // Step 1 — open a p5 viz tab and overwrite the sketch with one that
   // draws BIG visible shapes even without a playing pattern, since
   // headless chromium won't start audio without a trusted gesture.
   // This verifies the backdrop render pipeline independently of the
   // scheduler wiring (which has its own E2E coverage).
+  //
+  // #175 — the default workspace opens a single Strudel tab, so the p5
+  // preset must be OPENED via the file tree (its fileId
+  // `viz:__bundled_piano_roll_p5__` matches `*="p5"`), not found among
+  // already-open tabs. Mirrors backdrop-viz-chrome's clickHydraTab.
   const tabs = page.locator('[data-workspace-tab]')
   const count = await tabs.count()
+  let opened = false
   for (let i = 0; i < count; i++) {
     const t = await tabs.nth(i).textContent()
     if (t && /\.p5/.test(t)) {
       await tabs.nth(i).click()
+      opened = true
       break
     }
+  }
+  if (!opened) {
+    const p5Item = page.locator('[data-file-tree-item*="p5"]').first()
+    if ((await p5Item.count()) === 0) {
+      throw new Error('no p5 preset file in default project')
+    }
+    await p5Item.dblclick()
   }
   await page.waitForTimeout(400)
 

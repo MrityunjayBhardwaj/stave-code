@@ -445,7 +445,14 @@ function draw() {
 export const PITCHWHEEL_P5_CODE = `// Stave p5 viz — Pitchwheel
 const ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)
 function setup() {
-  createCanvas(300, 200)
+  // Fill the size Stave provides (like every other built-in) so the canvas
+  // matches its zone. A hardcoded createCanvas(300, 200) left the canvas at a
+  // fixed aspect that didn't match the zone — on the OffscreenCanvas worker path
+  // (where the presenting canvas can't be measured to self-correct) the zone
+  // stayed sized for the descriptor's default aspect and the canvas floated
+  // inside it, detaching the resize bar. The wheel itself uses min(width,height),
+  // so it stays centred and round at any aspect.
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
 }
 function freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }
