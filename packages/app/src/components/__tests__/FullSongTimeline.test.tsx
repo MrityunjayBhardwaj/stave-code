@@ -122,4 +122,51 @@ describe('FullSongTimeline', () => {
     const meta = container.querySelector('[data-full-song-period]')
     expect(meta?.getAttribute('data-full-song-period')).toBe('loop 4')
   })
+
+  // ── Zoom + ruler controls (#412) ───────────────────────────────────────────
+
+  it('renders zoom controls at 100% with Fit/zoom-out disabled', async () => {
+    const { container } = renderFull()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const cluster = container.querySelector('[data-full-song-zoom]') as HTMLElement
+    expect(cluster.getAttribute('data-full-song-zoom')).toBe('100')
+    expect((container.querySelector('[data-full-song-zoom-fit]') as HTMLButtonElement).disabled).toBe(true)
+    expect((container.querySelector('[data-full-song-zoom-out]') as HTMLButtonElement).disabled).toBe(true)
+    expect((container.querySelector('[data-full-song-zoom-in]') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('zooms in on the + button (enables Fit/zoom-out)', async () => {
+    const { container } = renderFull()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const zoomIn = container.querySelector('[data-full-song-zoom-in]') as HTMLButtonElement
+    await act(async () => {
+      zoomIn.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    // default ZOOM_STEP is 1.5 → 150%
+    expect(container.querySelector('[data-full-song-zoom]')?.getAttribute('data-full-song-zoom')).toBe('150')
+    expect((container.querySelector('[data-full-song-zoom-fit]') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('toggles CYCLES ↔ BARS and adds beat ticks in bars mode', async () => {
+    const { container } = renderFull()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const toggle = container.querySelector('[data-full-song-units-toggle]') as HTMLButtonElement
+    expect(toggle.textContent).toBe('CYCLES')
+    // CYCLES: 4 major ticks (period 4 across 800px → 200px/cycle), no beats.
+    expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(4)
+    expect(container.querySelectorAll('[data-full-song-tick="beat"]').length).toBe(0)
+    await act(async () => {
+      toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(toggle.textContent).toBe('BARS')
+    // BARS: 4 majors + 4×3 interior beat ticks (200/4 = 50px/beat ≥ 14).
+    expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(4)
+    expect(container.querySelectorAll('[data-full-song-tick="beat"]').length).toBe(12)
+  })
 })
