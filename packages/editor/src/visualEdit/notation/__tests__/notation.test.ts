@@ -524,6 +524,12 @@ describe('resizeNote (single-note `@n` duration)', () => {
   })
 })
 
+/** ChunkGain constructors for the apply* tests */
+const strGain = (mini: string) => ({ mini, numeric: null, foreign: false })
+const numGain = (n: number) => ({ mini: null, numeric: n, foreign: false })
+const noGain = { mini: null, numeric: null, foreign: false }
+const foreignGain = { mini: null, numeric: null, foreign: true }
+
 describe('step grid — velocity (.gain)', () => {
   const base = (steps: number, gains?: number[]): StepGridModel => ({
     steps,
@@ -554,14 +560,30 @@ describe('step grid — velocity (.gain)', () => {
       expect(serializeStepGain(base(4))).toEqual({ kind: 'clear' })
       expect(serializeStepGain(base(4, [1, 1, 1, 1]))).toEqual({ kind: 'clear' })
     })
-    it('writes one token per column, rest columns as `~`', () => {
+    it('collapses a uniform non-1 level to a scalar .gain(v)', () => {
+      expect(serializeStepGain(base(4, [0.4, 0.4, 0.4, 0.4]))).toEqual({
+        kind: 'write',
+        value: '0.4',
+        quoted: false,
+      })
+    })
+    it('writes a quoted per-column string for mixed levels, rests as `~`', () => {
       const m: StepGridModel = {
         steps: 4,
         lanes: [{ sound: 'bd', cells: [true, false, true, true] }],
         gains: [1, 1, 0.5, 0.25],
       }
       // column 1 is a rest (bd off) → `~`, regardless of its stored gain
-      expect(serializeStepGain(m)).toEqual({ kind: 'write', mini: '1 ~ 0.5 0.25' })
+      expect(serializeStepGain(m)).toEqual({ kind: 'write', value: '1 ~ 0.5 0.25', quoted: true })
+    })
+    it('ignores rest columns when deciding uniform-collapse', () => {
+      // active columns 0 & 2 both 0.4 (col 1 is a rest) → collapses to a scalar
+      const m: StepGridModel = {
+        steps: 3,
+        lanes: [{ sound: 'bd', cells: [true, false, true] }],
+        gains: [0.4, 1, 0.4],
+      }
+      expect(serializeStepGain(m)).toEqual({ kind: 'write', value: '0.4', quoted: false })
     })
     it('skips (leaves .gain untouched) for multi-bar, `,`-stack, or foreign', () => {
       expect(serializeStepGain({ ...base(4, [1, 0.5, 1, 1]), bars: 2 })).toEqual({ kind: 'skip' })
@@ -582,21 +604,24 @@ describe('step grid — velocity (.gain)', () => {
   })
 
   describe('applyStepGain', () => {
-    it('leaves the model neutral when there is no string .gain', () => {
+    it('leaves the model neutral when there is no .gain', () => {
       const m = base(4)
-      expect(applyStepGain(m, null)).toBe(m)
+      expect(applyStepGain(m, noGain)).toBe(m)
     })
-    it('reads an aligned .gain onto the columns', () => {
-      const r = applyStepGain(base(4), '1 0.5 1 0.25')
+    it('reads a scalar .gain(0.4) as a uniform base on every column', () => {
+      expect(applyStepGain(base(4), numGain(0.4)).gains).toEqual([0.4, 0.4, 0.4, 0.4])
+    })
+    it('reads an aligned string .gain onto the columns', () => {
+      const r = applyStepGain(base(4), strGain('1 0.5 1 0.25'))
       expect(r.gains).toEqual([1, 0.5, 1, 0.25])
       expect(r.gainForeign).toBeUndefined()
     })
-    it('flags foreign (hands off) when the .gain does not align', () => {
-      expect(applyStepGain(base(4), '0.8').gainForeign).toBe(true) // broadcast (1 ≠ 4)
-      expect(applyStepGain(base(3), '1 0.5@2 1').gainForeign).toBe(true) // sub-divided
+    it('flags foreign (hands off) when the string .gain does not align', () => {
+      expect(applyStepGain(base(4), strGain('0.8')).gainForeign).toBe(true) // broadcast (1 ≠ 4)
+      expect(applyStepGain(base(3), strGain('1 0.5@2 1')).gainForeign).toBe(true) // sub-divided
     })
-    it('flags foreign when told a numeric .gain is present', () => {
-      expect(applyStepGain(base(4), null, true).gainForeign).toBe(true)
+    it('flags foreign for a .gain arg we do not manage (a signal)', () => {
+      expect(applyStepGain(base(4), foreignGain).gainForeign).toBe(true)
     })
   })
 
@@ -610,13 +635,20 @@ describe('step grid — velocity (.gain)', () => {
     // the head mini is unchanged by velocity
     expect(serializeStepGrid(withGain)).toBe(stepMini)
     const g = serializeStepGain(withGain)
-    expect(g).toEqual({ kind: 'write', mini: '1 ~ 0.8 0.5' })
+    expect(g).toEqual({ kind: 'write', value: '1 ~ 0.8 0.5', quoted: true })
     // re-reading the serialized gain reproduces the per-column values
     if (g.kind !== 'write') return
     const fresh = parseStepGrid(stepMini)
     expect(fresh.ok).toBe(true)
     if (!fresh.ok) return
-    expect(applyStepGain(fresh.model, g.mini).gains).toEqual([1, 1, 0.8, 0.5])
+    expect(applyStepGain(fresh.model, strGain(g.value)).gains).toEqual([1, 1, 0.8, 0.5])
+  })
+
+  it('round-trips a scalar base: .gain(0.4) → uniform gains → .gain(0.4)', () => {
+    const seed = parseStepGrid('bd hh sn hh')
+    if (!seed.ok) return
+    const m = applyStepGain(seed.model, numGain(0.4))
+    expect(serializeStepGain(m)).toEqual({ kind: 'write', value: '0.4', quoted: false })
   })
 })
 
@@ -634,19 +666,23 @@ describe('piano roll — velocity (.gain)', () => {
     it('clears when every note is neutral', () => {
       expect(serializeRollGain(withGains('c3 e3 g3', {}))).toEqual({ kind: 'clear' })
     })
-    it('writes one token per note group, rests as `~`', () => {
+    it('collapses a uniform non-1 level to a scalar .gain(v)', () => {
+      const m = withGains('c3 e3 g3', { 0: 0.4, 1: 0.4, 2: 0.4 })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', value: '0.4', quoted: false })
+    })
+    it('writes a quoted token per note group, rests as `~`', () => {
       // c3@0, e3@2 (col1 is a rest)
       const m = withGains('c3 ~ e3', { 0: 1, 2: 0.5 })
-      expect(serializeRollGain(m)).toEqual({ kind: 'write', mini: '1 ~ 0.5' })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', value: '1 ~ 0.5', quoted: true })
     })
     it('mirrors `@n` holds in the gain token', () => {
       const m = withGains('c3@2 e3', { 0: 0.5, 2: 1 })
-      expect(serializeRollGain(m)).toEqual({ kind: 'write', mini: '0.5@2 1' })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', value: '0.5@2 1', quoted: true })
     })
     it('emits one shared token for a chord (per-chord velocity)', () => {
       // [c3,e3] is one group at col 0 → one gain token for both
       const m = withGains('[c3,e3] g3', { 0: 0.66 })
-      expect(serializeRollGain(m)).toEqual({ kind: 'write', mini: '0.66 1' })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', value: '0.66 1', quoted: true })
     })
     it('skips a chord whose members carry different gains (inexpressible)', () => {
       const r = parsePianoRoll('[c3,e3]')
@@ -668,10 +704,16 @@ describe('piano roll — velocity (.gain)', () => {
   })
 
   describe('applyRollGain', () => {
-    it('reads an aligned .gain onto the notes by start column', () => {
+    it('reads a scalar .gain(0.4) as a uniform base on every note', () => {
+      const r = parsePianoRoll('c3 e3 g3')
+      if (!r.ok) throw new Error('parse')
+      const m = applyRollGain(r.model, numGain(0.4))
+      expect(m.notes.every((n) => n.gain === 0.4)).toBe(true)
+    })
+    it('reads an aligned string .gain onto the notes by start column', () => {
       const r = parsePianoRoll('c3 ~ e3')
       if (!r.ok) throw new Error('parse')
-      const m = applyRollGain(r.model, '1 ~ 0.5')
+      const m = applyRollGain(r.model, strGain('1 ~ 0.5'))
       expect(m.notes.find((n) => n.start === 2)!.gain).toBe(0.5)
       expect(m.notes.find((n) => n.start === 0)!.gain).toBeUndefined() // neutral stays bare
       expect(m.gainForeign).toBeUndefined()
@@ -679,7 +721,7 @@ describe('piano roll — velocity (.gain)', () => {
     it('applies one chord gain to all its members', () => {
       const r = parsePianoRoll('[c3,e3] g3')
       if (!r.ok) throw new Error('parse')
-      const m = applyRollGain(r.model, '0.66 1')
+      const m = applyRollGain(r.model, strGain('0.66 1'))
       const chord = m.notes.filter((n) => n.start === 0)
       expect(chord.length).toBe(2)
       expect(chord.every((n) => n.gain === 0.66)).toBe(true)
@@ -687,8 +729,8 @@ describe('piano roll — velocity (.gain)', () => {
     it('flags foreign for a grid-mismatched or non-numeric gain', () => {
       const r = parsePianoRoll('c3 e3')
       if (!r.ok) throw new Error('parse')
-      expect(applyRollGain(r.model, '1 0.5 1').gainForeign).toBe(true) // 3 tokens vs 2 cols
-      expect(applyRollGain(r.model, 'loud soft').gainForeign).toBe(true)
+      expect(applyRollGain(r.model, strGain('1 0.5 1')).gainForeign).toBe(true) // 3 tokens vs 2 cols
+      expect(applyRollGain(r.model, strGain('loud soft')).gainForeign).toBe(true)
     })
   })
 
@@ -697,12 +739,12 @@ describe('piano roll — velocity (.gain)', () => {
     const m = withGains(rollMini, { 0: 0.8, 2: 0.4 })
     expect(serializePianoRoll(m)).toBe(rollMini) // head mini unchanged by velocity
     const g = serializeRollGain(m)
-    expect(g).toEqual({ kind: 'write', mini: '0.8 ~ 0.4@2' })
+    expect(g).toEqual({ kind: 'write', value: '0.8 ~ 0.4@2', quoted: true })
     if (g.kind !== 'write') return
     const fresh = parsePianoRoll(rollMini)
     expect(fresh.ok).toBe(true)
     if (!fresh.ok) return
-    const reread = applyRollGain(fresh.model, g.mini)
+    const reread = applyRollGain(fresh.model, strGain(g.value))
     expect(reread.notes.find((n) => n.start === 0)!.gain).toBe(0.8)
     expect(reread.notes.filter((n) => n.start === 2).every((n) => n.gain === 0.4)).toBe(true)
   })

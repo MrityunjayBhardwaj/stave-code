@@ -15,6 +15,7 @@
  * parts preserved). Everything else → `{ ok: false }`.
  */
 import type {
+  ChunkGain,
   ParseResult,
   PianoRollModel,
   RollNote,
@@ -489,21 +490,19 @@ export function parseGainMini(mini: string, count: number): number[] | null {
 }
 
 /**
- * Apply an existing `.gain("…")` string to a freshly-parsed step model.
- * `gainMini` is the string arg's inner text, or null when there is no string
- * `.gain`. `foreign` is set by the binding layer when a `.gain` we don't manage
- * is present (a numeric `.gain(0.8)` knob) — that, or a string gain that
- * doesn't align to the columns, flags `gainForeign` (hands off); an aligning
- * gain becomes the per-column `gains`.
+ * Apply an existing `.gain` to a freshly-parsed step model. A scalar
+ * `.gain(0.4)` reads as a UNIFORM base (every column 0.4); a string `.gain("…")`
+ * reads per-column. A `.gain` we don't manage (`foreign`) or a string that
+ * doesn't align to the columns flags `gainForeign` (hands off). `.gain(1)` is
+ * neutral and leaves the model bare.
  */
-export function applyStepGain(
-  model: StepGridModel,
-  gainMini: string | null,
-  foreign = false,
-): StepGridModel {
-  if (foreign) return { ...model, gainForeign: true }
-  if (gainMini === null) return model
-  const gains = parseGainMini(gainMini, model.steps)
+export function applyStepGain(model: StepGridModel, gain: ChunkGain): StepGridModel {
+  if (gain.foreign) return { ...model, gainForeign: true }
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, gains: Array<number>(model.steps).fill(gain.numeric) }
+  }
+  if (gain.mini === null) return model
+  const gains = parseGainMini(gain.mini, model.steps)
   if (gains === null) return { ...model, gainForeign: true }
   return { ...model, gains }
 }
@@ -517,20 +516,22 @@ export function applyStepGain(
  * (multi-bar, non-numeric token, a total that doesn't match the note grid, or a
  * non-neutral value at a column where no note starts).
  */
-export function applyRollGain(
-  model: PianoRollModel,
-  gainMini: string | null,
-  foreign = false,
-): PianoRollModel {
-  if (foreign) return { ...model, gainForeign: true }
-  if (gainMini === null) return model
+export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRollModel {
+  if (gain.foreign) return { ...model, gainForeign: true }
+  if (gain.numeric !== null) {
+    // scalar `.gain(0.4)` → uniform base on every note
+    return gain.numeric === 1
+      ? model
+      : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric as number })) }
+  }
+  if (gain.mini === null) return model
   if (model.bars != null) return { ...model, gainForeign: true } // multi-bar gain unmanaged
   // The gain mini is a FLAT sequence the roll serializer emits: a number, a
   // `~` rest, or `num@dur` for a held note. (The note tokenizer can't read it —
   // it requires letter-start atoms.) Anything else → foreign, hands off.
   const byStart = new Map<number, number>()
   let col = 0
-  for (const t of gainMini.trim().split(/\s+/).filter((s) => s !== '')) {
+  for (const t of gain.mini.trim().split(/\s+/).filter((s) => s !== '')) {
     if (t === '~') {
       col += 1
       continue

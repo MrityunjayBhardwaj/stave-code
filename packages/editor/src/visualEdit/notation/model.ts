@@ -88,16 +88,36 @@ export interface PianoRollModel {
 export type ParseResult<M> = { ok: true; model: M } | { ok: false; reason: string }
 
 /**
- * What a model's velocity wants done to the pattern's `.gain("…")` method.
- * Discriminated so the binding layer can coordinate the second write-back range
- * unambiguously:
- *   - `write` — upsert `.gain("mini")` (replace an existing string arg, or
- *      insert `.gain("…")` after the expression);
- *   - `clear` — every level is neutral on an in-scope model → remove our
- *      `.gain("…")` method (no redundant `.gain("1 1 1 1")`);
- *   - `skip` — gain is out of scope for this model (multi-bar, `,`-stack, or a
- *      shape we don't manage) → leave any existing `.gain` byte-identical.
- * The `skip`/`clear` split is what stops a cell toggle on, say, a multi-bar
- * pattern from deleting a hand-written `.gain`.
+ * What a model's velocity wants done to the pattern's `.gain` method. A single
+ * `.gain` carries the level at two granularities — a SCALAR `.gain(0.4)` (a
+ * uniform track level, the Mixer-knob form) or a per-column STRING
+ * `.gain("0.4 0.2 …")`. They can't coexist (Strudel's `.gain` overrides, last
+ * wins), so velocity expands the scalar to a string on edit and collapses back
+ * when the columns are uniform again. Discriminated so the binding layer can
+ * coordinate the second write-back range unambiguously:
+ *   - `write` — upsert `.gain(value)`; `quoted` picks the form: `false` →
+ *      `.gain(0.4)` (collapsed/scalar), `true` → `.gain("0.4 0.2 …")` (per
+ *      column). Replaces an existing managed arg in place, else inserts after
+ *      the expression;
+ *   - `clear` — every level neutral (1) → remove our `.gain` (no `.gain(1)` /
+ *      `.gain("1 1 …")`);
+ *   - `skip` — gain is out of scope (multi-bar, `,`-stack, or a `.gain` we
+ *      don't manage, e.g. a signal arg) → leave it byte-identical.
  */
-export type GainWrite = { kind: 'write'; mini: string } | { kind: 'clear' } | { kind: 'skip' }
+export type GainWrite =
+  | { kind: 'write'; value: string; quoted: boolean }
+  | { kind: 'clear' }
+  | { kind: 'skip' }
+
+/**
+ * The `.gain` argument read off a chunk's chain, normalized for the velocity
+ * layer: `numeric` for a scalar `.gain(0.4)` (a uniform base), `mini` for a
+ * string `.gain("…")`, `foreign` when a `.gain` is present in a form we don't
+ * manage (a signal/identifier arg) and must leave untouched. All null/false =
+ * no `.gain`.
+ */
+export interface ChunkGain {
+  mini: string | null
+  numeric: number | null
+  foreign: boolean
+}

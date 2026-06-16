@@ -69,12 +69,18 @@ export function serializeStepGain(model: StepGridModel): GainWrite {
   const parts = new Set(model.lanes.map((l) => l.part ?? 0))
   if (bars > 1 || parts.size > 1) return { kind: 'skip' }
   const gains = model.gains
-  if (!gains || gains.length !== model.steps || gains.every((g) => g === 1)) {
-    return { kind: 'clear' }
-  }
+  if (!gains || gains.length !== model.steps) return { kind: 'clear' }
   const cols = gridColumns(model.lanes, model.steps)
+  // only the active (non-rest) columns carry an audible gain
+  const active = gains.filter((_, i) => cols[i] !== '~')
+  if (active.length === 0 || active.every((g) => g === 1)) return { kind: 'clear' }
+  // uniform non-1 level → collapse to a scalar `.gain(v)` (the track-level form)
+  if (active.every((g) => g === active[0])) {
+    return { kind: 'write', value: fmtGain(active[0]), quoted: false }
+  }
+  // mixed → per-column string, rest columns as `~`
   const mini = cols.map((tok, i) => (tok === '~' ? '~' : fmtGain(gains[i]))).join(' ')
-  return { kind: 'write', mini }
+  return { kind: 'write', value: mini, quoted: true }
 }
 
 /** `<...>` with one slot per bar; an all-rest bar collapses to `~` */
@@ -222,7 +228,12 @@ export function serializeRollGain(model: PianoRollModel): GainWrite {
     if (!g) groups.set(note.start, { duration: note.duration, gain })
     else if (g.duration !== note.duration || g.gain !== gain) return { kind: 'skip' }
   }
-  if ([...groups.values()].every((g) => g.gain === 1)) return { kind: 'clear' }
+  const vals = [...groups.values()].map((g) => g.gain)
+  if (vals.length === 0 || vals.every((g) => g === 1)) return { kind: 'clear' }
+  // uniform non-1 level → collapse to a scalar `.gain(v)`
+  if (vals.every((g) => g === vals[0])) {
+    return { kind: 'write', value: fmtGain(vals[0]), quoted: false }
+  }
 
   const cols: string[] = []
   let col = 0
@@ -240,7 +251,7 @@ export function serializeRollGain(model: PianoRollModel): GainWrite {
     cols.push('~')
     col++
   }
-  return { kind: 'write', mini: cols.join(' ') }
+  return { kind: 'write', value: cols.join(' '), quoted: true }
 }
 
 export type { RollNote }

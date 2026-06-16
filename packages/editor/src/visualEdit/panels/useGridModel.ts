@@ -30,7 +30,7 @@
 import * as React from 'react'
 
 import type { ChunkInfo } from '../chunkDetect'
-import type { GainWrite, ParseResult } from '../notation/model'
+import type { ChunkGain, GainWrite, ParseResult } from '../notation/model'
 import type { OffsetEdit, WriteSource } from '../writeback'
 import { useActiveChunk } from './useActiveChunk'
 
@@ -43,12 +43,10 @@ export interface GridModelOptions<M> {
   /** model → mini, or null when the model can't be expressed in the subset */
   serialize: (model: M) => string | null
   /**
-   * Read an existing `.gain("…")` onto the freshly-parsed model. `gainMini` is
-   * the string arg's inner text (null when absent or non-string); `foreign` is
-   * true when a `.gain` is present that we don't manage (numeric knob form).
-   * Omit to opt the panel out of velocity entirely.
+   * Read an existing `.gain` (scalar or per-column) onto the freshly-parsed
+   * model. Omit to opt the panel out of velocity entirely.
    */
-  applyGain?: (model: M, gainMini: string | null, foreign: boolean) => M
+  applyGain?: (model: M, gain: ChunkGain) => M
   /** model → what to do with the `.gain` method (write / clear / skip) */
   serializeGain?: (model: M) => GainWrite
 }
@@ -63,56 +61,50 @@ export interface GridModel<M> {
 }
 
 /**
- * The inner text of a `.gain("…")` string arg in the chain, and whether a
- * `.gain` we DON'T manage is present. `{ mini, foreign }`:
- *   - no `.gain`            → { null,  false }
- *   - string `.gain("…")`   → { inner, false }  (applyGain decides if it aligns)
- *   - numeric `.gain(0.8)`  → { null,  true  }   (a whole-pattern knob — hands off)
+ * Read a chunk's `.gain` argument into a normalized `ChunkGain`:
+ *   - no `.gain`            → { mini:null, numeric:null, foreign:false }
+ *   - scalar `.gain(0.4)`   → { numeric:0.4 }   (a uniform base — velocity reads it)
+ *   - string `.gain("…")`   → { mini:inner }    (per-column; applyGain checks alignment)
+ *   - any other arg         → { foreign:true }  (a signal/expr — hands off)
  */
-function readChunkGain(chunk: ChunkInfo): { mini: string | null; foreign: boolean } {
+function readChunkGain(chunk: ChunkInfo): ChunkGain {
   const call = chunk.chain.find((c) => c.name === 'gain')
   const arg = call?.args[0]
-  if (!call || !arg) return { mini: null, foreign: false }
-  if (arg.numeric !== null) return { mini: null, foreign: true } // numeric knob gain
-  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), foreign: false }
-  return { mini: null, foreign: true } // some other expression — don't touch
+  if (!call || !arg) return { mini: null, numeric: null, foreign: false }
+  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false }
+  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false }
+  return { mini: null, numeric: null, foreign: true } // some other expression
 }
 
-/**
- * The doc offsets velocity may edit on a fresh chunk: the inner range of a
- * string `.gain` arg (replace target) and the full `.gain(...)` call range
- * (removal target). Both null unless a string `.gain` we authored is present.
- */
-function gainTargets(chunk: ChunkInfo): {
-  argInner: [number, number] | null
-  callRange: [number, number] | null
-} {
+/** is the `.gain` arg one velocity manages (a scalar number or a string)? */
+function managedGainArg(chunk: ChunkInfo): { call: ChunkInfo['chain'][number]; argRange: [number, number] } | null {
   const call = chunk.chain.find((c) => c.name === 'gain')
   const arg = call?.args[0]
-  if (!call || !arg || arg.numeric !== null || !/^["'`]/.test(arg.raw)) {
-    return { argInner: null, callRange: null }
-  }
-  return { argInner: [arg.range[0] + 1, arg.range[1] - 1], callRange: call.range }
+  if (!call || !arg) return null
+  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range }
+  return null
 }
 
 /** the gain edits for one `mutate`, given the model's `GainWrite` intent */
 function gainEdits(fresh: ChunkInfo, g: GainWrite): OffsetEdit[] {
   if (g.kind === 'skip') return []
-  const t = gainTargets(fresh)
+  const managed = managedGainArg(fresh)
   if (g.kind === 'clear') {
-    // remove ONLY a string `.gain` we authored; absent/numeric → nothing to do
-    return t.callRange ? [{ range: t.callRange, text: '' }] : []
+    // remove ONLY a `.gain` we manage (scalar/string); absent/foreign → nothing
+    return managed ? [{ range: managed.call.range, text: '' }] : []
   }
-  if (t.argInner) return [{ range: t.argInner, text: g.mini }] // replace existing arg
-  // no string `.gain` present → append `.gain("…")` after the expression
-  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain("${g.mini}")` }]
+  const lit = g.quoted ? `"${g.value}"` : g.value
+  // replace the whole managed arg in place (swaps scalar↔string as needed)…
+  if (managed) return [{ range: managed.argRange, text: lit }]
+  // …else append `.gain(…)` after the expression (the Mixer's quick-transform idiom)
+  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }]
 }
 
 /** does prev's gain intent already match the chunk's current `.gain`? */
-function gainUnchanged(g: GainWrite, chunkMini: string | null): boolean {
+function gainUnchanged(g: GainWrite, cur: ChunkGain): boolean {
   if (g.kind === 'skip') return true // not managing it → never force a reseed
-  if (g.kind === 'clear') return chunkMini === null
-  return chunkMini === g.mini
+  if (g.kind === 'clear') return cur.mini === null && cur.numeric === null
+  return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value)
 }
 
 export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
@@ -143,9 +135,7 @@ export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
       return
     }
     const chunkGain = readChunkGain(chunk)
-    const fresh = o.applyGain
-      ? o.applyGain(parsed.model, chunkGain.mini, chunkGain.foreign)
-      : parsed.model
+    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model
 
     // Keep the in-progress model only when BOTH the mini and the `.gain` still
     // match what we'd serialize; any external change to either reseeds.
@@ -154,7 +144,7 @@ export function useGridModel<M>(opts: GridModelOptions<M>): GridModel<M> {
     const sameGain =
       prev == null || !o.serializeGain
         ? true
-        : gainUnchanged(o.serializeGain(prev), chunkGain.mini)
+        : gainUnchanged(o.serializeGain(prev), chunkGain)
     const next = prev && sameMini && sameGain ? prev : fresh
     modelRef.current = next
     setModel(next)
