@@ -24479,21 +24479,27 @@ function parseGainMini(mini, count) {
   return out;
 }
 __name(parseGainMini, "parseGainMini");
-function applyStepGain(model, gainMini, foreign = false) {
-  if (foreign) return { ...model, gainForeign: true };
-  if (gainMini === null) return model;
-  const gains = parseGainMini(gainMini, model.steps);
+function applyStepGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, gains: Array(model.steps).fill(gain.numeric) };
+  }
+  if (gain.mini === null) return model;
+  const gains = parseGainMini(gain.mini, model.steps);
   if (gains === null) return { ...model, gainForeign: true };
   return { ...model, gains };
 }
 __name(applyStepGain, "applyStepGain");
-function applyRollGain(model, gainMini, foreign = false) {
-  if (foreign) return { ...model, gainForeign: true };
-  if (gainMini === null) return model;
+function applyRollGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric })) };
+  }
+  if (gain.mini === null) return model;
   if (model.bars != null) return { ...model, gainForeign: true };
   const byStart = /* @__PURE__ */ new Map();
   let col = 0;
-  for (const t of gainMini.trim().split(/\s+/).filter((s) => s !== "")) {
+  for (const t of gain.mini.trim().split(/\s+/).filter((s) => s !== "")) {
     if (t === "~") {
       col += 1;
       continue;
@@ -24582,12 +24588,15 @@ function serializeStepGain(model) {
   const parts = new Set(model.lanes.map((l) => l.part ?? 0));
   if (bars > 1 || parts.size > 1) return { kind: "skip" };
   const gains = model.gains;
-  if (!gains || gains.length !== model.steps || gains.every((g) => g === 1)) {
-    return { kind: "clear" };
-  }
+  if (!gains || gains.length !== model.steps) return { kind: "clear" };
   const cols = gridColumns(model.lanes, model.steps);
+  const active2 = gains.filter((_, i) => cols[i] !== "~");
+  if (active2.length === 0 || active2.every((g) => g === 1)) return { kind: "clear" };
+  if (active2.every((g) => g === active2[0])) {
+    return { kind: "write", value: fmtGain(active2[0]), quoted: false };
+  }
   const mini = cols.map((tok, i) => tok === "~" ? "~" : fmtGain(gains[i])).join(" ");
-  return { kind: "write", mini };
+  return { kind: "write", value: mini, quoted: true };
 }
 __name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bars) {
@@ -24700,7 +24709,11 @@ function serializeRollGain(model) {
     if (!g) groups.set(note.start, { duration: note.duration, gain });
     else if (g.duration !== note.duration || g.gain !== gain) return { kind: "skip" };
   }
-  if ([...groups.values()].every((g) => g.gain === 1)) return { kind: "clear" };
+  const vals = [...groups.values()].map((g) => g.gain);
+  if (vals.length === 0 || vals.every((g) => g === 1)) return { kind: "clear" };
+  if (vals.every((g) => g === vals[0])) {
+    return { kind: "write", value: fmtGain(vals[0]), quoted: false };
+  }
   const cols = [];
   let col = 0;
   for (const start of [...groups.keys()].sort((a, b) => a - b)) {
@@ -24717,7 +24730,7 @@ function serializeRollGain(model) {
     cols.push("~");
     col++;
   }
-  return { kind: "write", mini: cols.join(" ") };
+  return { kind: "write", value: cols.join(" "), quoted: true };
 }
 __name(serializeRollGain, "serializeRollGain");
 function VisualEditStandby({
@@ -24770,35 +24783,35 @@ var VISUAL_EDIT_TABS = [
 function readChunkGain(chunk) {
   const call = chunk.chain.find((c) => c.name === "gain");
   const arg = call?.args[0];
-  if (!call || !arg) return { mini: null, foreign: false };
-  if (arg.numeric !== null) return { mini: null, foreign: true };
-  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), foreign: false };
-  return { mini: null, foreign: true };
+  if (!call || !arg) return { mini: null, numeric: null, foreign: false };
+  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false };
+  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false };
+  return { mini: null, numeric: null, foreign: true };
 }
 __name(readChunkGain, "readChunkGain");
-function gainTargets(chunk) {
+function managedGainArg(chunk) {
   const call = chunk.chain.find((c) => c.name === "gain");
   const arg = call?.args[0];
-  if (!call || !arg || arg.numeric !== null || !/^["'`]/.test(arg.raw)) {
-    return { argInner: null, callRange: null };
-  }
-  return { argInner: [arg.range[0] + 1, arg.range[1] - 1], callRange: call.range };
+  if (!call || !arg) return null;
+  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range };
+  return null;
 }
-__name(gainTargets, "gainTargets");
+__name(managedGainArg, "managedGainArg");
 function gainEdits(fresh, g) {
   if (g.kind === "skip") return [];
-  const t = gainTargets(fresh);
+  const managed = managedGainArg(fresh);
   if (g.kind === "clear") {
-    return t.callRange ? [{ range: t.callRange, text: "" }] : [];
+    return managed ? [{ range: managed.call.range, text: "" }] : [];
   }
-  if (t.argInner) return [{ range: t.argInner, text: g.mini }];
-  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain("${g.mini}")` }];
+  const lit = g.quoted ? `"${g.value}"` : g.value;
+  if (managed) return [{ range: managed.argRange, text: lit }];
+  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }];
 }
 __name(gainEdits, "gainEdits");
-function gainUnchanged(g, chunkMini) {
+function gainUnchanged(g, cur) {
   if (g.kind === "skip") return true;
-  if (g.kind === "clear") return chunkMini === null;
-  return chunkMini === g.mini;
+  if (g.kind === "clear") return cur.mini === null && cur.numeric === null;
+  return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value);
 }
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
@@ -24824,10 +24837,10 @@ function useGridModel(opts) {
       return;
     }
     const chunkGain = readChunkGain(chunk);
-    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain.mini, chunkGain.foreign) : parsed.model;
+    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model;
     const prev = modelRef.current;
     const sameMini = prev != null && o.serialize(prev) === chunk.miniString;
-    const sameGain = prev == null || !o.serializeGain ? true : gainUnchanged(o.serializeGain(prev), chunkGain.mini);
+    const sameGain = prev == null || !o.serializeGain ? true : gainUnchanged(o.serializeGain(prev), chunkGain);
     const next = prev && sameMini && sameGain ? prev : fresh;
     modelRef.current = next;
     setModel(next);
