@@ -44,6 +44,12 @@ export interface DrawTheme {
   readonly section: string
   readonly sectionAlt: string
   readonly gridline: string
+  /** Fill behind a read-only clip segment (#386) — a subtle translucent band so
+   *  the lane's note marks stay legible on top. */
+  readonly clipFill: string
+  /** Border at clip boundaries (left/right edges) — makes segments read as
+   *  discrete clips (design §4.2). */
+  readonly clipBorder: string
 }
 
 /** Below this per-cycle width, individual note marks would smear sub-pixel, so
@@ -128,6 +134,10 @@ export function drawTimeline(
       ctx.fillStyle = theme.rowAlt
       ctx.fillRect(0, top, viewportWidth, rowHeight)
     }
+    // Read-only clip segments (#386) — behind the note marks. A bare track has
+    // one implicit clip (no visible seams); an arrangement track shows a rect
+    // per arm with bordered edges.
+    drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, toScreenX)
     const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
     if (expanded) {
       drawBeatGrid(ctx, top, rowHeight, pxPerCycle, firstCycle, lastCycle, viewportWidth, theme, toScreenX)
@@ -143,6 +153,39 @@ export function drawTimeline(
       drawMarks(ctx, lane, top, rowHeight, expanded, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
     }
   })
+}
+
+/** Read-only clip segments for one lane (#386). Each clip is a filled band
+ *  (`clipFill`) with bordered left/right edges (`clipBorder`) so an arrangement
+ *  reads as discrete movable segments (design §4.2). The single implicit clip of
+ *  a bare track spans the whole lane → its edges sit at the song boundaries
+ *  (effectively seamless). Pure: positions via the shared `toScreenX` (PV116).
+ *  Drawn BEHIND marks so note content stays legible on top. */
+function drawClips(
+  ctx: CanvasRenderingContext2D,
+  lane: SceneLane,
+  top: number,
+  rowHeight: number,
+  viewportWidth: number,
+  theme: DrawTheme,
+  toScreenX: (cycle: number) => number,
+): void {
+  for (const clip of lane.clips) {
+    const x0 = toScreenX(clip.startCycle)
+    const x1 = toScreenX(clip.endCycle)
+    if (x1 <= 0 || x0 >= viewportWidth) continue
+    const left = Math.max(0, x0)
+    const right = Math.min(viewportWidth, x1)
+    const width = right - left
+    if (width <= 0) continue
+    ctx.fillStyle = theme.clipFill
+    ctx.fillRect(left, top, width, rowHeight)
+    // Vertical borders at the real (unclamped) clip edges only — so a clip
+    // clipped off-screen doesn't draw a false edge at the viewport margin.
+    ctx.fillStyle = theme.clipBorder
+    if (x0 >= 0 && x0 <= viewportWidth) ctx.fillRect(x0, top, 1, rowHeight)
+    if (x1 >= 0 && x1 <= viewportWidth) ctx.fillRect(x1 - 1, top, 1, rowHeight)
+  }
 }
 
 /** Faint per-beat vertical guides inside an expanded lane (rhythm readability).

@@ -95,6 +95,10 @@ export function summarize(node: PatternIR): string {
       return node.args !== undefined ? `${node.kind}(${node.args})` : node.kind
     case 'Builder':
       return `${node.kind}(${node.args})`
+    // Phase 5a (#386) — developer chrome: combinator + arm weights so the
+    // structure (clip extents) is visible at a glance.
+    case 'Arrange':
+      return `${node.mode}(${node.arms.map((a) => a.weight).join(',')})`
   }
 }
 
@@ -103,6 +107,7 @@ export function children(node: PatternIR): readonly PatternIR[] {
     case 'Seq':   return node.children
     case 'Stack': return node.tracks
     case 'Cycle': return node.items
+    case 'Arrange': return node.arms.map((a) => a.pattern)
     case 'Choice': return [node.then, node.else_]
     case 'Every': return node.default_ ? [node.body, node.default_] : [node.body]
     case 'When':  return [node.body]

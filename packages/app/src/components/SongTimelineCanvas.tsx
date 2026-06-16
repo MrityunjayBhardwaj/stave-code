@@ -46,6 +46,8 @@ const DEFAULT_THEME: DrawTheme = {
   section: 'rgba(255,255,255,0.04)',
   sectionAlt: 'rgba(255,255,255,0.07)',
   gridline: 'rgba(255,255,255,0.06)',
+  clipFill: 'rgba(255,255,255,0.035)',
+  clipBorder: 'rgba(255,255,255,0.18)',
 }
 
 /** Cap the backing-store DPR — 2D fills are cheap, but matching the viz

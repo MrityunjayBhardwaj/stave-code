@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { SongAnalysis } from '@stave/editor'
-import { buildTimelineScene, type SceneNote, type CollectedMarks } from '../timelineScene'
+import { buildTimelineScene, clipAtCycle, type SceneNote, type SceneClip, type SceneLane, type CollectedMarks } from '../timelineScene'
 
 const analysisFixture: SongAnalysis = {
   periodCycles: 4,
@@ -20,10 +20,12 @@ function marks(
   entries: Record<string, SceneNote[]>,
   capped = false,
   sources: Record<string, number> = {},
+  clips: Record<string, SceneClip[]> = {},
 ): CollectedMarks {
   return {
     marksByLane: new Map(Object.entries(entries)),
     sourceByLane: new Map(Object.entries(sources)),
+    clipsByLane: new Map(Object.entries(clips)),
     capped,
   }
 }
@@ -166,3 +168,46 @@ describe('buildTimelineScene', () => {
 // unit-tested here (importing it would pull the editor bundle into this suite).
 // Its null-IR guard is trivial; the real collection path is covered by the
 // Playwright spec against a real evaluated song.
+
+describe('clips (#386)', () => {
+  it('synthesises ONE implicit clip per bare track spanning the whole song', () => {
+    const scene = buildTimelineScene(analysisFixture) // no clipsByLane
+    for (const lane of scene.lanes) {
+      expect(lane.clips).toEqual([
+        { armIndex: -1, startCycle: 0, endCycle: 4, label: null },
+      ])
+    }
+  })
+
+  it('uses the derived per-arm clips when the track is an arrangement', () => {
+    const bdClips: SceneClip[] = [
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'bd' },
+      { armIndex: 1, startCycle: 2, endCycle: 4, label: 'sd' },
+    ]
+    const scene = buildTimelineScene(analysisFixture, marks({}, false, {}, { bd: bdClips }))
+    const bd = scene.lanes.find((l) => l.laneKey === 'bd')!
+    expect(bd.clips).toEqual(bdClips)
+    // the other lane has no derived clips → still one implicit clip
+    const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
+    expect(lead.clips).toEqual([{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }])
+  })
+})
+
+describe('clipAtCycle', () => {
+  const lane = {
+    clips: [
+      { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
+      { armIndex: 1, startCycle: 2, endCycle: 3, label: 'b' },
+    ],
+  } as unknown as SceneLane
+  it('returns the clip whose [start, end) contains the cycle', () => {
+    expect(clipAtCycle(lane, 0)?.armIndex).toBe(0)
+    expect(clipAtCycle(lane, 1.9)?.armIndex).toBe(0)
+    expect(clipAtCycle(lane, 2)?.armIndex).toBe(1) // boundary is exclusive on the left clip
+    expect(clipAtCycle(lane, 2.5)?.armIndex).toBe(1)
+  })
+  it('returns null outside every clip', () => {
+    expect(clipAtCycle(lane, 3)).toBeNull() // endCycle exclusive
+    expect(clipAtCycle(lane, -1)).toBeNull()
+  })
+})
