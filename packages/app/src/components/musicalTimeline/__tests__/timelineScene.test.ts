@@ -102,6 +102,63 @@ describe('buildTimelineScene', () => {
     const scene = buildTimelineScene(analysisFixture)
     expect(scene.lanes.every((l) => l.sourceOffset === null)).toBe(true)
   })
+
+  // ── Per-voice grouping (#424) ──────────────────────────────────────────────
+
+  it('groups a lane’s marks into ordered voice sub-groups by sample name', () => {
+    const scene = buildTimelineScene(
+      analysisFixture,
+      marks({
+        // 'bd' lane carries a $: drum stack: distinct s per voice, percussive.
+        bd: [
+          { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'bd' },
+          { cycle: 0.5, end: 0.75, pitch: null, gain: 1, voice: 'hh' },
+          { cycle: 1, end: 1.25, pitch: null, gain: 1, voice: 'bd' }, // bd again
+          { cycle: 1.5, end: 1.75, pitch: null, gain: 1, voice: 'sd' },
+        ],
+      }),
+    )
+    const lane = scene.lanes.find((l) => l.laneKey === 'bd')!
+    // First-seen order, deduped: bd, hh, sd.
+    expect(lane.voices.map((v) => v.key)).toEqual(['bd', 'hh', 'sd'])
+    expect(lane.voices.every((v) => !v.melodic)).toBe(true)
+    expect(lane.voices.every((v) => v.pitchMin === null)).toBe(true)
+  })
+
+  it('marks a pitched voice melodic with its own pitch range', () => {
+    const scene = buildTimelineScene(
+      analysisFixture,
+      marks({
+        lead: [
+          { cycle: 0, end: 0.5, pitch: 60, gain: 1, voice: 'square' },
+          { cycle: 1, end: 1.5, pitch: 67, gain: 1, voice: 'square' },
+        ],
+      }),
+    )
+    const lane = scene.lanes.find((l) => l.laneKey === 'lead')!
+    expect(lane.voices.length).toBe(1)
+    expect(lane.voices[0]).toMatchObject({ key: 'square', melodic: true, pitchMin: 60, pitchMax: 67 })
+  })
+
+  it('pools marks with no sample name into a single voice', () => {
+    const scene = buildTimelineScene(
+      analysisFixture,
+      marks({
+        lead: [
+          { cycle: 0, end: 0.5, pitch: 60, gain: 1 }, // no voice → NO_VOICE group
+          { cycle: 1, end: 1.5, pitch: 64, gain: 1 },
+        ],
+      }),
+    )
+    const lane = scene.lanes.find((l) => l.laneKey === 'lead')!
+    expect(lane.voices.length).toBe(1)
+    expect(lane.voices[0].melodic).toBe(true)
+  })
+
+  it('gives a note-less lane an empty voices list', () => {
+    const scene = buildTimelineScene(analysisFixture)
+    expect(scene.lanes.every((l) => l.voices.length === 0)).toBe(true)
+  })
 })
 
 // `collectNoteMarks` (timelineMarks.ts) needs the runtime `collectCycles` from

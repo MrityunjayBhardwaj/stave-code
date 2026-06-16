@@ -63,7 +63,18 @@ export function collectNoteMarks(
       continue
     }
     const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
-    arr.push({ cycle, end, pitch: extractPitch(ev)?.midi ?? null, gain: clamp01(ev.gain ?? 1) })
+    // `voice` = the sample name (`ev.s`), the per-voice partition key (#424). A
+    // `$:` drum stack shares one lane key (`trackId`) but distinct `s` per voice,
+    // so this recovers bd/sd/hh as sub-rows. `ev.s` is a native IREvent field —
+    // reading it here (the runtime consumer) keeps the pure scene module out of
+    // the editor-bundle / gifenc import (P172).
+    arr.push({
+      cycle,
+      end,
+      pitch: extractPitch(ev)?.midi ?? null,
+      gain: clamp01(ev.gain ?? 1),
+      voice: ev.s ?? null,
+    })
   }
   return { marksByLane, sourceByLane, capped }
 }
