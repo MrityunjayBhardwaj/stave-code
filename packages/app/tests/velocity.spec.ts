@@ -151,6 +151,26 @@ test.describe('velocity — Sequencer (#409)', () => {
     await expect(grid.locator('[data-seq-cell="1:3"]')).toHaveAttribute('data-gain', '0.25')
     await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('data-gain', '1')
   })
+
+  test('reads a scalar .gain(0.4) as a uniform base and expands it on drag', async ({ page }) => {
+    await boot(page)
+    // a track-level numeric .gain (the Mixer-knob form, as in the starter patterns)
+    await setStrudelCode(page, '$: s("bd hh sn hh").gain(0.4)')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1)
+    // every cell reads the 0.4 base (velocity is enabled, fills at 40%)
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('data-gain', '0.4')
+    await expect(grid.locator('[data-seq-cell="2:2"]')).toHaveAttribute('data-gain', '0.4')
+
+    // drag the sn column down → the scalar expands to a per-column string,
+    // the base 0.4 preserved on the untouched columns
+    await dragVertical(page, grid.locator('[data-seq-cell="2:2"]'), 16)
+    const code = await strudelValue(page)
+    expect(code).toMatch(/^\$: s\("bd hh sn hh"\)\.gain\("0\.4 0\.4 [\d.]+ 0\.4"\)$/)
+    const softened = Number(code.match(/\.gain\("0\.4 0\.4 ([\d.]+) 0\.4"\)/)![1])
+    expect(softened).toBeLessThan(0.4)
+  })
 })
 
 test.describe('velocity — Piano Roll (#409)', () => {
