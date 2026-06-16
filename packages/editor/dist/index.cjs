@@ -7007,7 +7007,11 @@ ${d.stack}` : "");
         // singleton reflects the user's quality/LOD settings, not the bundle default.
         config: pickWorkerVizConfig(),
         // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
-        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled()
+        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled(),
+        // #388 — per-render viz options → stave.options (p5 only). Previously dropped
+        // on the worker path, so `.viz(name, {opts})` had no effect once worker viz
+        // became the default. Mirrors P5VizRenderer reading `components.options`.
+        options: components.options ?? {}
       };
       worker.postMessage(mountMsg, [offscreen]);
       this.configUnsub = onVizConfigChange(() => {
@@ -7021,6 +7025,10 @@ ${d.stack}` : "");
   update(components) {
     if (!this.worker) return;
     this.bindSampler(components);
+    this.worker.postMessage({
+      type: "options",
+      options: components.options ?? {}
+    });
   }
   resize(w, h) {
     this.size = { w, h };

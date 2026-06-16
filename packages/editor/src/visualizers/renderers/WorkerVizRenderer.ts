@@ -255,6 +255,10 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
         config: pickWorkerVizConfig(),
         // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
         p5DirectCanvas: this.kind === 'p5' && isP5DirectCanvasEnabled(),
+        // #388 — per-render viz options → stave.options (p5 only). Previously dropped
+        // on the worker path, so `.viz(name, {opts})` had no effect once worker viz
+        // became the default. Mirrors P5VizRenderer reading `components.options`.
+        options: (components.options ?? {}) as Record<string, unknown>,
       }
       worker.postMessage(mountMsg, [offscreen])
 
@@ -273,6 +277,13 @@ export class WorkerVizRenderer implements VizRenderer, PumpDriven {
   update(components: Partial<EngineComponents>): void {
     if (!this.worker) return
     this.bindSampler(components)
+    // #388 — re-eval can change the viz options (e.g. `.viz(name, {background})`);
+    // push them so `stave.options` updates live without a remount (mirrors
+    // P5VizRenderer.update re-reading components.options into its optionsRef).
+    this.worker.postMessage({
+      type: 'options',
+      options: (components.options ?? {}) as Record<string, unknown>,
+    })
   }
 
   resize(w: number, h: number): void {
