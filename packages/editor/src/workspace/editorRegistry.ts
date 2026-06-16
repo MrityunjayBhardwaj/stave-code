@@ -24,6 +24,11 @@ import {
   updateVizConfig,
   type VizQualityLevel,
 } from '../visualizers/vizConfig'
+// Direct file import (not the visualEdit barrel) so the registry pulls only the
+// lightweight Writeback (monaco types + acorn chunkDetect), never the React
+// panels — useActiveChunk imports getActiveEditor from HERE, so the barrel would
+// be a cycle.
+import { Writeback, type OffsetEdit, type WriteSource } from '../visualEdit/writeback'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
@@ -112,6 +117,34 @@ export function revealLineInFile(fileId: string, line: number): boolean {
     editor.revealLineInCenter?.(line)
     editor.setPosition?.({ lineNumber: line, column: 1 })
     editor.focus?.()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Apply a batch of surgical offset edits to the model of `fileId`'s editor as
+ * ONE undo step, tagged with `source`. Returns false (no-op) when the editor
+ * isn't mounted, the monaco namespace hasn't been captured, there are no edits,
+ * or `expectedDoc` is given and the live model text no longer matches it (the
+ * offsets are stale — applying them would corrupt unrelated code). This is the
+ * arrangement timeline's write-back seam: the canvas hands up the edits (built
+ * by `visualEdit/arrange`), the registry routes them through the same surgical
+ * `Writeback` the panels use, and the runtime's debounced re-eval picks the
+ * change up (no explicit eval call needed). PV122 #2.
+ */
+export function applyOffsetEditsToFile(
+  fileId: string,
+  edits: OffsetEdit[],
+  source: WriteSource,
+  expectedDoc?: string,
+): boolean {
+  const editor = editors.get(fileId)
+  if (!editor || !monacoNs || edits.length === 0) return false
+  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) return false
+  try {
+    new Writeback(editor, monacoNs).replaceRanges(edits, source)
     return true
   } catch {
     return false

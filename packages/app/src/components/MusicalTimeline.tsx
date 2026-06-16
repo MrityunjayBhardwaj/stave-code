@@ -48,6 +48,9 @@ import {
   subscribeIRSnapshot,
   subscribeToTrackMeta,
   revealLineInFile,
+  applyOffsetEditsToFile,
+  detectArrangeAt,
+  setWeight,
   useTrackMeta,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
@@ -1015,6 +1018,26 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // Trim a clip on the Song canvas (Phase 5b, #437): the timeline hands up the
+  // dragged clip's source anchor (a lane offset inside the combinator call), its
+  // arm index, and the new whole-cycle weight. We parse the arrangement at that
+  // anchor against the SAME snapshot text the offsets came from, build a surgical
+  // set-weight edit (cat→arrange promotion handled by the serializer), and route
+  // it through the editor registry's write-back — guarded against a stale model
+  // (`snapshot.code`). The runtime's debounced re-eval then republishes the IR
+  // and the timeline re-derives the clip's new extent (PV122 #2/#3).
+  const handleTrimClip = React.useCallback(
+    (req: { sourceOffset: number | null; armIndex: number; weight: number }) => {
+      if (!snapshot?.source || req.sourceOffset == null) return
+      const call = detectArrangeAt(snapshot.code, req.sourceOffset)
+      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
+      const edits = setWeight(snapshot.code, call, req.armIndex, req.weight)
+      if (edits.length === 0) return
+      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.weights', snapshot.code)
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -1094,6 +1117,7 @@ export function MusicalTimeline(
           onSeek={props.onSeek ?? (() => {})}
           getDrawerOpen={props.getDrawerOpen}
           getActiveTabId={props.getActiveTabId}
+          onTrimClip={handleTrimClip}
           onBindLane={handleBindLane}
         />
       ) : (
