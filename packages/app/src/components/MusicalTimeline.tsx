@@ -1002,6 +1002,19 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // Expand-to-bind for the Song view (#422, design §3.1): the canvas timeline
+  // hands up a lane's representative source offset; the SAME cursor-move seam as
+  // handleNoteClick reveals it, which re-detects the active chunk and rebinds the
+  // Pattern panel (Sequencer/Piano Roll) to that track. No second note editor.
+  const handleBindLane = React.useCallback(
+    (sourceOffset: number | null) => {
+      if (!snapshot?.source || sourceOffset == null) return
+      const line = countLines(snapshot.code, sourceOffset)
+      revealLineInFile(snapshot.source, line)
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -1081,6 +1094,7 @@ export function MusicalTimeline(
           onSeek={props.onSeek ?? (() => {})}
           getDrawerOpen={props.getDrawerOpen}
           getActiveTabId={props.getActiveTabId}
+          onBindLane={handleBindLane}
         />
       ) : (
         <>

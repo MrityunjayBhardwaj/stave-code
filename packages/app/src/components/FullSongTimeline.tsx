@@ -28,6 +28,7 @@ import type { SongAnalysis, PatternIR } from '@stave/editor'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene } from './musicalTimeline/timelineScene'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
+import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import { SongTimelineCanvas } from './SongTimelineCanvas'
 import {
   songCycleToX,
@@ -50,6 +51,9 @@ const CONTROLS_HEIGHT = 26
 const TOPBAR_HEIGHT = 28
 const GUTTER_WIDTH = 90
 const ROW_HEIGHT = 22
+/** Height of an expanded ("accordion") lane — tall enough for the read-only
+ *  note detail (pitch spread + per-beat grid) to be legible (#422, design §4.5). */
+const EXPANDED_ROW_HEIGHT = 96
 const FONT_MONO = '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
 
 /** Ruler units (#412). CYCLES = Strudel's native numbering; BARS = DAW
@@ -70,6 +74,12 @@ export interface FullSongTimelineProps {
   readonly getDrawerOpen: () => boolean
   /** Active tab id — must equal the timeline tab for the rAF loop to run. */
   readonly getActiveTabId: () => string | null
+  /** Bind a clicked lane into the Pattern panel (#422, design §3.1). Receives the
+   *  lane's representative source-character offset (or null when the IR has no
+   *  source provenance). The parent maps it to a line and moves the editor
+   *  cursor, which re-detects the active chunk and rebinds the Sequencer/Piano
+   *  Roll. Optional — the view degrades to display-only when unset. */
+  readonly onBindLane?: (sourceOffset: number | null) => void
 }
 
 /** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
@@ -299,7 +309,6 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [displayCycles, onSeek],
   )
 
-  const lanes = analysis?.lanes ?? []
   const sections = analysis?.sections ?? []
 
   // Canvas scene: per-lane density (from analysis) + capped mini-note marks
@@ -308,6 +317,55 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // zoom (those only move the shared transform the canvas already redraws against).
   const marks = useMemo(() => collectNoteMarks(props.ir ?? null, displayCycles), [props.ir, displayCycles])
   const scene = useMemo(() => buildTimelineScene(analysis, marks), [analysis, marks])
+
+  // ── Expand + bind (#422) ─────────────────────────────────────────────────
+  // Click/expand a lane → accordion it taller (read-only note detail) AND bind
+  // its pattern into the Pattern panel. Multi-expand is a Set (cross-track
+  // alignment). The layout is the single vertical source of truth shared by the
+  // canvas draw, the canvas host height, the DOM lane labels, and the hit-test.
+  const { onBindLane } = props
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  const layout = useMemo(
+    () => computeLaneLayout(scene.lanes, expanded, ROW_HEIGHT, EXPANDED_ROW_HEIGHT),
+    [scene.lanes, expanded],
+  )
+  // Refs so the double-click hit-test reads live scene/layout without stale
+  // closures (mirrors the scrollLeftRef/zoomRef pattern above).
+  const sceneRef = useRef(scene)
+  sceneRef.current = scene
+  const layoutRef = useRef<LaneLayout>(layout)
+  layoutRef.current = layout
+
+  // Toggle a lane's expansion and bind it into the Pattern panel. Binding fires
+  // on every activation (expand OR collapse) — clicking a lane selects it.
+  const activateLane = React.useCallback(
+    (laneKey: string) => {
+      const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
+      onBindLane?.(lane?.sourceOffset ?? null)
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        if (next.has(laneKey)) next.delete(laneKey)
+        else next.add(laneKey)
+        return next
+      })
+    },
+    [onBindLane],
+  )
+
+  // Double-click in the grid body → hit-test the Y to a lane (the spatial index
+  // is the layout) → activate it. Single click stays a seek (seek-anywhere).
+  const handleExpandAtClientY = React.useCallback(
+    (clientY: number) => {
+      const el = areaRef.current
+      if (!el) return
+      // The grid is full-height (vertical scroll lives on the parent body, which
+      // moves the grid's rect), so content-Y is just clientY minus the rect top.
+      const contentY = clientY - el.getBoundingClientRect().top
+      const laneKey = laneAtY(layoutRef.current, contentY)
+      if (laneKey != null) activateLane(laneKey)
+    },
+    [activateLane],
+  )
 
   const periodLabel =
     analysis == null
@@ -453,23 +511,34 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       {/* Body: lane labels + onset heatmap grid */}
       <div style={styles.body}>
         <div data-full-song="lane-labels" style={styles.labels}>
-          {lanes.length === 0 ? (
+          {layout.boxes.length === 0 ? (
             <div style={styles.emptyLabel}>No song to map yet — press play.</div>
           ) : (
-            lanes.map((lane) => (
+            layout.boxes.map((box) => (
               <div
-                key={lane.laneKey}
-                data-full-song-lane={lane.laneKey}
-                style={styles.laneLabel}
-                title={lane.laneKey}
+                key={box.laneKey}
+                data-full-song-lane={box.laneKey}
+                data-expanded={box.expanded ? 'true' : 'false'}
+                style={{ ...styles.laneLabel, height: box.height }}
+                title={box.laneKey}
               >
+                <button
+                  type="button"
+                  data-full-song-lane-expand={box.laneKey}
+                  aria-pressed={box.expanded}
+                  aria-label={box.expanded ? `Collapse ${box.laneKey}` : `Expand ${box.laneKey} to view its notes`}
+                  onClick={() => activateLane(box.laneKey)}
+                  style={styles.laneCaret}
+                >
+                  {box.expanded ? '▾' : '▸'}
+                </button>
                 <span
                   style={{
                     ...styles.laneDot,
-                    background: paletteForTrack(trackIndexOf(lane.laneKey), lane.laneKey),
+                    background: paletteForTrack(trackIndexOf(box.laneKey), box.laneKey),
                   }}
                 />
-                <span style={styles.laneName}>{lane.laneKey}</span>
+                <span style={styles.laneName}>{box.laneKey}</span>
               </div>
             ))
           )}
@@ -480,6 +549,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           style={styles.grid}
           onScroll={handleGridScroll}
           onPointerDown={(e) => handleSeekAtClientX(e.clientX)}
+          onDoubleClick={(e) => handleExpandAtClientY(e.clientY)}
         >
           {/* Inner content is contentWidth wide (the scroll spacer for the native
               scrollbar); the canvas sits sticky inside and redraws the visible
@@ -496,7 +566,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 scrollLeft={scrollLeft}
                 contentWidth={contentWidth}
                 viewportWidth={areaWidth}
-                rowHeight={ROW_HEIGHT}
+                layout={layout}
               />
             )}
             {playheadVisible && (
@@ -664,13 +734,29 @@ const styles = {
   },
   laneLabel: {
     height: ROW_HEIGHT,
-    padding: '0 8px',
+    padding: '5px 8px 0',
     display: 'flex',
-    alignItems: 'center',
-    gap: 6,
+    // Top-align so the dot/name sit at the lane's TOP edge — when a lane is
+    // expanded (taller) the label still lines up with the canvas row top.
+    alignItems: 'flex-start',
+    gap: 5,
     borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
+    overflow: 'hidden',
   },
-  laneDot: { width: 7, height: 7, borderRadius: '50%', flexShrink: 0, display: 'inline-block' },
+  laneCaret: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    lineHeight: 1,
+    padding: 0,
+    marginTop: 1,
+    width: 11,
+    flexShrink: 0,
+    border: 'none',
+    background: 'transparent',
+    color: 'var(--text-tertiary, rgba(255,255,255,0.45))',
+    cursor: 'pointer' as const,
+  },
+  laneDot: { width: 7, height: 7, borderRadius: '50%', flexShrink: 0, display: 'inline-block', marginTop: 2 },
   laneName: {
     color: 'var(--text-tertiary, rgba(255,255,255,0.4))',
     fontSize: 10,

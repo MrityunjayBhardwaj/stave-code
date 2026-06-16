@@ -41,6 +41,11 @@ export interface SceneLane {
    *  or null when the lane has no pitched marks (percussive). */
   readonly pitchMin: number | null
   readonly pitchMax: number | null
+  /** Source-character offset of a representative event for this lane (the first
+   *  collected event carrying a `loc`), or null when the IR has no source
+   *  provenance. Drives expand-to-bind: lane → offset → editor cursor → the
+   *  Pattern panel rebinds (#422, design §3.1). Not used for drawing. */
+  readonly sourceOffset: number | null
 }
 
 /** The full scene the canvas renderer draws. */
@@ -60,12 +65,19 @@ export interface TimelineScene {
 
 export interface CollectedMarks {
   readonly marksByLane: ReadonlyMap<string, SceneNote[]>
+  /** Per-lane representative source offset (first event's `loc[0].start`) for
+   *  expand-to-bind. Absent lane → no source provenance (hand-built IR). */
+  readonly sourceByLane: ReadonlyMap<string, number>
   /** True if any lane hit the cap (marks dropped — surfaced, not silent). */
   readonly capped: boolean
 }
 
 /** A shared empty collection (the no-IR / no-marks default). */
-export const EMPTY_MARKS: CollectedMarks = { marksByLane: new Map(), capped: false }
+export const EMPTY_MARKS: CollectedMarks = {
+  marksByLane: new Map(),
+  sourceByLane: new Map(),
+  capped: false,
+}
 
 /**
  * Build the render scene from the analysis (density, sections, span, period)
@@ -104,6 +116,7 @@ export function buildTimelineScene(
       notes,
       pitchMin,
       pitchMax,
+      sourceOffset: marks.sourceByLane.get(lane.laneKey) ?? null,
     }
   })
 

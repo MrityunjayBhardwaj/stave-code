@@ -22,6 +22,7 @@
 import * as React from 'react'
 import { useEffect, useRef } from 'react'
 import type { TimelineScene } from './musicalTimeline/timelineScene'
+import type { LaneLayout } from './musicalTimeline/laneLayout'
 import { drawTimeline, type DrawTheme } from './musicalTimeline/drawTimeline'
 
 export interface SongTimelineCanvasProps {
@@ -32,8 +33,9 @@ export interface SongTimelineCanvasProps {
   readonly contentWidth: number
   /** Visible width (the grid's clientWidth). */
   readonly viewportWidth: number
-  /** Per-lane row height (CSS px). */
-  readonly rowHeight: number
+  /** Per-lane vertical layout (top/height, total) — the single source the draw,
+   *  the host height, the DOM labels and the hit-test all share (#422). */
+  readonly layout: LaneLayout
 }
 
 /** Literal dark-theme colors (canvas can't read CSS custom properties); these
@@ -51,9 +53,9 @@ const DEFAULT_THEME: DrawTheme = {
 const MAX_DPR = 2
 
 export function SongTimelineCanvas(props: SongTimelineCanvasProps): React.ReactElement {
-  const { scene, scrollLeft, contentWidth, viewportWidth, rowHeight } = props
+  const { scene, scrollLeft, contentWidth, viewportWidth, layout } = props
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const height = Math.max(rowHeight, scene.lanes.length * rowHeight)
+  const height = layout.totalHeight
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -70,15 +72,10 @@ export function SongTimelineCanvas(props: SongTimelineCanvasProps): React.ReactE
       const ctx = canvas.getContext('2d')
       if (!ctx) return
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0) // draw in CSS px
-      drawTimeline(
-        ctx,
-        scene,
-        { scrollLeft, contentWidth, viewportWidth: cssW, rowHeight, height: cssH },
-        DEFAULT_THEME,
-      )
+      drawTimeline(ctx, scene, { scrollLeft, contentWidth, viewportWidth: cssW }, DEFAULT_THEME, layout)
     })
     return () => cancelAnimationFrame(raf)
-  }, [scene, scrollLeft, contentWidth, viewportWidth, rowHeight, height])
+  }, [scene, scrollLeft, contentWidth, viewportWidth, layout, height])
 
   return (
     <canvas
@@ -88,9 +85,12 @@ export function SongTimelineCanvas(props: SongTimelineCanvasProps): React.ReactE
       // surface is the DOM overlay (lane labels, period, ruler) — design §4.3.
       aria-hidden="true"
       style={{
+        // Sticky LEFT only (not top): it pins horizontally as the grid scrolls
+        // X, but must scroll vertically WITH the lane labels when expanded lanes
+        // grow the content past the viewport — a `top` anchor would freeze it
+        // against the body's vertical scroll and desync the rows (#422).
         position: 'sticky',
         left: 0,
-        top: 0,
         display: 'block',
         width: viewportWidth,
         height,

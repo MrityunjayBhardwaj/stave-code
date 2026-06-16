@@ -16,8 +16,16 @@ const analysisFixture: SongAnalysis = {
   ],
 }
 
-function marks(entries: Record<string, SceneNote[]>, capped = false): CollectedMarks {
-  return { marksByLane: new Map(Object.entries(entries)), capped }
+function marks(
+  entries: Record<string, SceneNote[]>,
+  capped = false,
+  sources: Record<string, number> = {},
+): CollectedMarks {
+  return {
+    marksByLane: new Map(Object.entries(entries)),
+    sourceByLane: new Map(Object.entries(sources)),
+    capped,
+  }
 }
 
 describe('buildTimelineScene', () => {
@@ -80,6 +88,19 @@ describe('buildTimelineScene', () => {
   it('propagates the capped flag', () => {
     const scene = buildTimelineScene(analysisFixture, marks({ bd: [] }, true))
     expect(scene.notesCapped).toBe(true)
+  })
+
+  it('merges the per-lane source offset for binding (null when absent)', () => {
+    const scene = buildTimelineScene(analysisFixture, marks({}, false, { bd: 42 }))
+    const bd = scene.lanes.find((l) => l.laneKey === 'bd')!
+    const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
+    expect(bd.sourceOffset).toBe(42) // bound to source char offset 42
+    expect(lead.sourceOffset).toBeNull() // no source provenance for this lane
+  })
+
+  it('leaves every lane source offset null when no marks were collected', () => {
+    const scene = buildTimelineScene(analysisFixture)
+    expect(scene.lanes.every((l) => l.sourceOffset === null)).toBe(true)
   })
 })
 

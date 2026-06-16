@@ -38,12 +38,21 @@ export function collectNoteMarks(
 ): CollectedMarks {
   if (!ir || !Number.isFinite(displayCycles) || displayCycles <= 0) return EMPTY_MARKS
   const marksByLane = new Map<string, SceneNote[]>()
+  // Per-lane representative source offset for expand-to-bind: the FIRST event of
+  // the lane that carries a `loc` (char offsets into the evaluated source). The
+  // bind maps this → editor cursor → the Pattern panel rebinds (#422). First-
+  // wins so the anchor is stable (doesn't jump as later events stream in).
+  const sourceByLane = new Map<string, number>()
   let capped = false
   const events = collectCycles(ir, 0, Math.ceil(displayCycles))
   for (const ev of events) {
     const cycle = ev.begin
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
     const key = laneKeyOf(ev)
+    if (!sourceByLane.has(key)) {
+      const offset = ev.loc?.[0]?.start
+      if (typeof offset === 'number' && Number.isFinite(offset)) sourceByLane.set(key, offset)
+    }
     let arr = marksByLane.get(key)
     if (!arr) {
       arr = []
@@ -55,5 +64,5 @@ export function collectNoteMarks(
     }
     arr.push({ cycle, pitch: extractPitch(ev)?.midi ?? null, gain: clamp01(ev.gain ?? 1) })
   }
-  return { marksByLane, capped }
+  return { marksByLane, sourceByLane, capped }
 }
