@@ -133,6 +133,19 @@ test('full-song view: zoom widens + scrolls, Fit refits, bars toggle adds beat t
   expect(refit.scrollWidth).toBeLessThanOrEqual(refit.clientWidth + 1)
   expect(refit.scrollLeft).toBe(0)
 
+  // (4b) ⌘/Ctrl + wheel zooms via the native non-passive listener (the unique
+  //      glue the buttons don't exercise: preventDefault + cursor-x).
+  const box = await grid.boundingBox()
+  if (box) {
+    await page.keyboard.down(MOD)
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -120) // wheel up → zoom in
+    await page.keyboard.up(MOD)
+    await page.waitForTimeout(120)
+    expect(Number(await zoomCluster.getAttribute('data-full-song-zoom'))).toBeGreaterThan(100)
+    await page.locator('[data-full-song-zoom-fit]').click() // reset for the bars step
+  }
+
   // (5) Bars toggle adds beat ticks (zoom in first so beats clear the px floor).
   await page.locator('[data-full-song-zoom-in]').click()
   await page.locator('[data-full-song-zoom-in]').click()
