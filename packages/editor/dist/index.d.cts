@@ -7641,11 +7641,14 @@ declare class Writeback {
  * own, parsed from and serialized back to mini-notation.
  *
  * These are deliberately a STRICT SUBSET of Strudel mini-notation: only the
- * idioms that survive a lossless text round-trip live here. Anything richer
- * (`{}` polymeter, `*`/`/` speed, `!` replicate, `?` degrade, euclids, deep
- * nesting) parses to `{ ok: false }` and the panel falls back to code-only
- * editing rather than guess and corrupt the source. This is the conservatism
- * the whole text-writeback substrate depends on (design doc §4, §5.3).
+ * idioms that survive a lossless text round-trip live here. `*n` speed, `!n`
+ * replicate, and euclid `(k,n[,rot])` are accepted as input sugar — expanded
+ * onto the grid and serialized back in expanded form (so they round-trip as
+ * the expansion, not the source token). Anything richer (`{}` polymeter, `/`
+ * slow, `?` degrade, deep nesting) parses to `{ ok: false }` and the panel
+ * falls back to code-only editing rather than guess and corrupt the source.
+ * This is the conservatism the whole text-writeback substrate depends on
+ * (design doc §4, §5.3).
  */
 /** Drum/step grid: lanes (sounds) × steps (columns). */
 interface StepGridModel {
@@ -7660,6 +7663,23 @@ interface StepGridModel {
      * round-trips as the user wrote it instead of being flattened.
      */
     lanes: StepLane[];
+    /**
+     * Per-COLUMN velocity, length `steps`, indexed by serialized column (NOT by
+     * lane — a stacked `[bd,sn]` column shares one gain). `1` is neutral; a model
+     * with every gain at `1` (or `gains` absent) emits no `.gain`. Read from /
+     * written to a parallel `.gain("v1 v2 …")` mini aligned to the columns the
+     * grid serializes (rest columns serialize as `~`). Only single-part,
+     * single-bar grids carry gain in the first cut; richer shapes leave any
+     * existing `.gain` untouched (see `serializeStepGain`).
+     */
+    gains?: number[];
+    /**
+     * Set when a `.gain("…")` string was present on read-back but did NOT align
+     * to the grid columns (wrong length, a broadcast `.gain("0.8")`, an `@`/`*`
+     * we didn't write). The grid then leaves that `.gain` byte-identical and the
+     * velocity drag is disabled — we never delete a gain we didn't author.
+     */
+    gainForeign?: boolean;
 }
 interface StepLane {
     sound: string;
@@ -7674,6 +7694,14 @@ interface RollNote {
     start: number;
     /** length in columns (1 = one step; emitted as `@n` elongation) */
     duration: number;
+    /**
+     * Per-note velocity. `1` (or absent) is neutral and emits no `.gain`. Chord
+     * members sharing a `start` share one gain (like duration); on read-back the
+     * group's gain is applied to all its members. Written to a parallel
+     * `.gain("…")` mini that mirrors the note sequence's group/`@n`/rest
+     * structure. Only single-bar rolls carry gain in the first cut.
+     */
+    gain?: number;
 }
 /** Pitched (melodic) grid: notes placed on a pitch × time grid. */
 interface PianoRollModel {
@@ -7682,6 +7710,8 @@ interface PianoRollModel {
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
     notes: RollNote[];
+    /** see `StepGridModel.gainForeign` — a `.gain` we read but don't manage. */
+    gainForeign?: boolean;
 }
 /**
  * Parse outcome. `ok: false` is a first-class result, not an exception — every
@@ -7817,23 +7847,25 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
 declare function Mixer(): React.ReactElement;
 
 /**
- * Sequencer — drum/step grid (#382).
+ * Sequencer — drum/step grid (#382, per-column velocity #409).
  *
  * Parses the mini-notation of the `s(...)` / `sound(...)` statement under the
  * cursor into a `StepGridModel` and renders lanes × steps. Toggling a cell
  * re-serializes the model and writes it back over the mini-notation range
  * (`'seq'`); a drag paints multiple cells as ONE undo step. Anything outside
- * the editable grid subset (`{}`, `*`, euclids, …) → standby, code-only — the
+ * the editable grid subset (`{}`, `/`, …) → standby, code-only — the
  * conservatism rule.
  *
- * The model lives in component state, not derived per-render from the chunk, so
- * a lane the user clears completely keeps its row (its sound vanishes from the
- * serialized mini, but the row stays editable). The model is reseeded only on
- * EXTERNAL edits — detected by comparing what we'd serialize against the
- * incoming mini; our own write-back echoes leave it untouched.
+ * Velocity: an ON cell shows its level as a bottom-anchored fill; dragging it
+ * vertically sets the column's gain (DAW velocity-lane behaviour — drag down to
+ * soften). The level is written to a parallel `.gain("…")` mini aligned to the
+ * serialized columns; when every column returns to neutral the `.gain` is
+ * removed. Gain is single-part / single-bar only; richer shapes keep toggling
+ * but the `.gain` is left untouched.
  *
- * Live-playhead step highlighting is a follow-up (needs the runtime clock,
- * which this editor-seeded panel doesn't yet receive).
+ * The model lives in component state, not derived per-render from the chunk, so
+ * a lane the user clears completely keeps its row. The model is reseeded only
+ * on EXTERNAL edits — see `useGridModel`.
  */
 
 declare function SequencerGrid(): React.ReactElement;

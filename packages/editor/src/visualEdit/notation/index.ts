@@ -8,9 +8,15 @@ export type {
   PianoRollModel,
   RollNote,
   ParseResult,
+  GainWrite,
 } from './model'
-export { parseStepGrid, parsePianoRoll } from './parse'
-export { serializeStepGrid, serializePianoRoll } from './serialize'
+export { parseStepGrid, parsePianoRoll, parseGainMini, applyStepGain, applyRollGain } from './parse'
+export {
+  serializeStepGrid,
+  serializePianoRoll,
+  serializeStepGain,
+  serializeRollGain,
+} from './serialize'
 export { pitchToMidi, midiToPitch, isBlackKey } from './pitch'
 export { placeNote } from './place'
 export { resizeGrid, resizeRoll, type ResizeMode } from './resize'

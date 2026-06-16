@@ -15,6 +15,7 @@
  * parts preserved). Everything else → `{ ok: false }`.
  */
 import type {
+  ChunkGain,
   ParseResult,
   PianoRollModel,
   RollNote,
@@ -458,6 +459,101 @@ function gridFromStack(parts: string[]): ParseResult<StepGridModel> {
     lanes.push(...lanesFromCells(stretched, part))
   })
   return { ok: true, model: { steps: total, lanes } }
+}
+
+/* ── velocity (.gain) read-back ────────────────────────────────── */
+
+/** a flat gain token: a non-negative number, or `~` (no gain event there) */
+const GAIN_TOKEN = /^\d+(\.\d+)?$/
+
+/**
+ * Parse a FLAT `.gain("…")` mini into `count` per-position velocities — the
+ * one-token-per-column shape the step grid writes. Returns null when the gain
+ * pattern isn't that shape (wrong token count, an `@`/`*`/`[` we didn't write,
+ * a non-numeric token, a broadcast `.gain("0.8")`); the caller then leaves the
+ * model neutral and flags the gain foreign so it's never rewritten or deleted.
+ * A `~` position reads as neutral `1` (its column is a rest — no audible gain).
+ */
+export function parseGainMini(mini: string, count: number): number[] | null {
+  const tokens = mini.trim().split(/\s+/).filter((t) => t !== '')
+  if (tokens.length !== count) return null
+  const out: number[] = []
+  for (const t of tokens) {
+    if (t === '~') {
+      out.push(1)
+      continue
+    }
+    if (!GAIN_TOKEN.test(t)) return null
+    out.push(parseFloat(t))
+  }
+  return out
+}
+
+/**
+ * Apply an existing `.gain` to a freshly-parsed step model. A scalar
+ * `.gain(0.4)` reads as a UNIFORM base (every column 0.4); a string `.gain("…")`
+ * reads per-column. A `.gain` we don't manage (`foreign`) or a string that
+ * doesn't align to the columns flags `gainForeign` (hands off). `.gain(1)` is
+ * neutral and leaves the model bare.
+ */
+export function applyStepGain(model: StepGridModel, gain: ChunkGain): StepGridModel {
+  if (gain.foreign) return { ...model, gainForeign: true }
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, gains: Array<number>(model.steps).fill(gain.numeric) }
+  }
+  if (gain.mini === null) return model
+  const gains = parseGainMini(gain.mini, model.steps)
+  if (gains === null) return { ...model, gainForeign: true }
+  return { ...model, gains }
+}
+
+/**
+ * Apply an existing `.gain("…")` string to a freshly-parsed roll model. Walks
+ * the gain mini the same way `parsePianoRoll` walks notes (so `@n` holds and
+ * rests line up), building a start-column → gain map, then assigns each note the
+ * gain at its start (chord members at one start share it). Flags `gainForeign`
+ * — leaving the `.gain` byte-identical — when the gain can't be cleanly mapped
+ * (multi-bar, non-numeric token, a total that doesn't match the note grid, or a
+ * non-neutral value at a column where no note starts).
+ */
+export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRollModel {
+  if (gain.foreign) return { ...model, gainForeign: true }
+  if (gain.numeric !== null) {
+    // scalar `.gain(0.4)` → uniform base on every note
+    return gain.numeric === 1
+      ? model
+      : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric as number })) }
+  }
+  if (gain.mini === null) return model
+  if (model.bars != null) return { ...model, gainForeign: true } // multi-bar gain unmanaged
+  // The gain mini is a FLAT sequence the roll serializer emits: a number, a
+  // `~` rest, or `num@dur` for a held note. (The note tokenizer can't read it —
+  // it requires letter-start atoms.) Anything else → foreign, hands off.
+  const byStart = new Map<number, number>()
+  let col = 0
+  for (const t of gain.mini.trim().split(/\s+/).filter((s) => s !== '')) {
+    if (t === '~') {
+      col += 1
+      continue
+    }
+    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/)
+    if (!m) return { ...model, gainForeign: true }
+    byStart.set(col, parseFloat(m[1]))
+    col += m[2] ? parseInt(m[2], 10) : 1
+  }
+  if (col !== model.steps) return { ...model, gainForeign: true } // grid mismatch
+  const noteStarts = new Set(model.notes.map((n) => n.start))
+  for (const [c, v] of byStart) {
+    // a non-neutral gain at a column with no note onset isn't ours to manage
+    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true }
+  }
+  return {
+    ...model,
+    notes: model.notes.map((n) => {
+      const v = byStart.get(n.start)
+      return v != null && v !== 1 ? { ...n, gain: v } : n
+    }),
+  }
 }
 
 /* ── piano roll ────────────────────────────────────────────────── */

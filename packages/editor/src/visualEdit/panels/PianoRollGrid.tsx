@@ -18,8 +18,8 @@
  */
 import * as React from 'react'
 
-import { parsePianoRoll } from '../notation/parse'
-import { serializePianoRoll } from '../notation/serialize'
+import { parsePianoRoll, applyRollGain } from '../notation/parse'
+import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
 import type { PianoRollModel, RollNote } from '../notation/model'
 import { pitchToMidi, midiToPitch, isBlackKey } from '../notation/pitch'
 import { VisualEditStandby } from './VisualEditStandby'
@@ -34,6 +34,30 @@ const ROLL_HINT = 'Click a melody to edit its notes.'
 const DEFAULT_LO = 48 // c3
 const DEFAULT_HI = 72 // c5
 const MIN_SPAN = 12
+
+/** velocity lane height (px) and the drag distance that spans the full 0→1 */
+const LANE_HEIGHT = 48
+const VELOCITY_FULL_PX = 80
+
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
+
+/** velocity is grid-aligned only for single-bar, non-foreign rolls */
+function gainInScope(model: PianoRollModel): boolean {
+  return !model.gainForeign && (model.bars ?? 1) === 1
+}
+
+/** the gain shared by the note group starting at `start` (chord members share) */
+function gainAtStart(model: PianoRollModel, start: number): number {
+  return model.notes.find((n) => n.start === start)?.gain ?? 1
+}
+
+/** set the gain on every note of the group at `start` (chord shares one gain) */
+function setGroupGain(model: PianoRollModel, start: number, gain: number): PianoRollModel {
+  return {
+    ...model,
+    notes: model.notes.map((n) => (n.start === start ? { ...n, gain } : n)),
+  }
+}
 
 /** content pitch range padded around the notes */
 function contentRange(model: PianoRollModel): { lo: number; hi: number } {
@@ -74,9 +98,13 @@ export function PianoRollGrid(): React.ReactElement {
     eligible: isRollChunk,
     parse: parsePianoRoll,
     serialize: serializePianoRoll,
+    applyGain: applyRollGain,
+    serializeGain: serializeRollGain,
   })
 
   const dragRef = React.useRef<DragState | null>(null)
+  // A velocity-lane drag: vertical drag on a note's bar sets that group's gain.
+  const velRef = React.useRef<{ start: number; startY: number; startGain: number } | null>(null)
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1)
 
   // Sticky pitch range: expand to fit, never shrink within a binding; reset on
@@ -118,6 +146,34 @@ export function PianoRollGrid(): React.ReactElement {
     window.addEventListener('pointerup', onUp)
     return () => window.removeEventListener('pointerup', onUp)
   }, [mutate, endGesture])
+
+  // Velocity-lane drag: vertical drag on a note's bar sets its group's gain
+  // (down = softer, up to a neutral-1 ceiling). One undo step per drag.
+  React.useEffect(() => {
+    const onMove = (e: PointerEvent): void => {
+      const v = velRef.current
+      if (!v) return
+      const next = clamp01(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX)
+      mutate((prev) => setGroupGain(prev, v.start, next))
+    }
+    const onUp = (): void => {
+      if (!velRef.current) return
+      velRef.current = null
+      endGesture()
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [mutate, endGesture])
+
+  const onBarDown = (start: number, e: React.PointerEvent): void => {
+    if (!model) return
+    velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) }
+    beginGesture()
+  }
 
   const onCellDown = (midi: number, step: number): void => {
     if (!model) return
@@ -207,7 +263,7 @@ export function PianoRollGrid(): React.ReactElement {
         touchAction: 'none',
       }}
     >
-      <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 1 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
         {rows.map((midi) => {
           const black = isBlackKey(midi)
           return (
@@ -224,7 +280,7 @@ export function PianoRollGrid(): React.ReactElement {
               >
                 {midiToPitch(midi)}
               </span>
-              <div style={{ display: 'flex', gap: 1 }}>
+              <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
                 {Array.from({ length: model.steps }, (_, step) => {
                   const note = noteAt(model, midi, step)
                   const on = note !== undefined
@@ -245,7 +301,9 @@ export function PianoRollGrid(): React.ReactElement {
                       onPointerEnter={() => onCellEnter(midi, step)}
                       style={{
                         position: 'relative',
-                        width: 18,
+                        flex: '1 1 0',
+                        minWidth: 12,
+                        maxWidth: 44,
                         height: 16,
                         padding: 0,
                         border:
@@ -293,6 +351,71 @@ export function PianoRollGrid(): React.ReactElement {
             </div>
           )
         })}
+        {gainInScope(model) && (
+          <div
+            data-roll-velocity-lane
+            style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginTop: 8 }}
+          >
+            <span
+              style={{
+                width: 36,
+                fontSize: 9,
+                textAlign: 'right',
+                color: 'var(--foreground-muted, #a0a0aa)',
+              }}
+            >
+              vel
+            </span>
+            <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }}>
+              {Array.from({ length: model.steps }, (_, col) => {
+                const isStart = model.notes.some((n) => n.start === col)
+                const g = gainAtStart(model, col)
+                return (
+                  <div
+                    key={col}
+                    data-vel-col={col}
+                    onPointerDown={
+                      isStart
+                        ? (e) => {
+                            e.preventDefault()
+                            onBarDown(col, e)
+                          }
+                        : undefined
+                    }
+                    style={{
+                      position: 'relative',
+                      flex: '1 1 0',
+                      minWidth: 12,
+                      maxWidth: 44,
+                      height: '100%',
+                      borderRadius: 2,
+                      background: 'var(--background-elevated, #26262c)',
+                      cursor: isStart ? 'ns-resize' : 'default',
+                    }}
+                  >
+                    {isStart && (
+                      // bottom-anchored bar = the note group's velocity (full = neutral)
+                      <span
+                        data-vel-bar={col}
+                        data-gain={g}
+                        style={{
+                          position: 'absolute',
+                          left: 1,
+                          right: 1,
+                          bottom: 0,
+                          height: `${clamp01(g) * 100}%`,
+                          background: 'var(--accent, #6ea8fe)',
+                          borderRadius: 2,
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

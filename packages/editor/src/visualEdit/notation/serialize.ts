@@ -9,7 +9,19 @@
  * can't express (overlapping roll notes, a note straddling a bar line) returns
  * null and the panel keeps the document untouched.
  */
-import type { PianoRollModel, RollNote, StepGridModel, StepLane } from './model'
+import type { GainWrite, PianoRollModel, RollNote, StepGridModel, StepLane } from './model'
+
+/**
+ * Format a velocity for a `.gain("…")` token: 2 decimals, trailing zeros and
+ * any orphaned point stripped, so a drag's `0.5000001` comes out `0.5`. Local
+ * (not writeback's `formatNumber`) so the notation layer stays free of the
+ * binding layer; gain needs only 2 decimals.
+ */
+function fmtGain(v: number): string {
+  if (!Number.isFinite(v)) return '1'
+  if (Number.isInteger(v)) return String(v)
+  return v.toFixed(2).replace(/\.?0+$/, '')
+}
 
 /* ── drum grid ─────────────────────────────────────────────────── */
 
@@ -39,6 +51,36 @@ function gridColumns(lanes: StepLane[], steps: number): string[] {
     else cols.push(`[${active.join(',')}]`)
   }
   return cols
+}
+
+/**
+ * The `.gain("…")` mini for a step grid's per-column velocity, aligned 1:1 to
+ * the columns `serializeStepGrid` emits. Returns a `GainWrite` so the binding
+ * layer knows whether to upsert, remove, or leave the `.gain` alone:
+ *   - `skip`  — multi-bar or `,`-stack (we don't align gain across those yet),
+ *      or a `.gain` we couldn't parse onto the grid (`gainForeign`): hands off;
+ *   - `clear` — every column neutral (gain 1): remove our `.gain`;
+ *   - `write` — one token per column: a rest column → `~` (no gain event), else
+ *      the column's gain.
+ */
+export function serializeStepGain(model: StepGridModel): GainWrite {
+  if (model.gainForeign) return { kind: 'skip' }
+  const bars = model.bars ?? 1
+  const parts = new Set(model.lanes.map((l) => l.part ?? 0))
+  if (bars > 1 || parts.size > 1) return { kind: 'skip' }
+  const gains = model.gains
+  if (!gains || gains.length !== model.steps) return { kind: 'clear' }
+  const cols = gridColumns(model.lanes, model.steps)
+  // only the active (non-rest) columns carry an audible gain
+  const active = gains.filter((_, i) => cols[i] !== '~')
+  if (active.length === 0 || active.every((g) => g === 1)) return { kind: 'clear' }
+  // uniform non-1 level → collapse to a scalar `.gain(v)` (the track-level form)
+  if (active.every((g) => g === active[0])) {
+    return { kind: 'write', value: fmtGain(active[0]), quoted: false }
+  }
+  // mixed → per-column string, rest columns as `~`
+  const mini = cols.map((tok, i) => (tok === '~' ? '~' : fmtGain(gains[i]))).join(' ')
+  return { kind: 'write', value: mini, quoted: true }
 }
 
 /** `<...>` with one slot per bar; an all-rest bar collapses to `~` */
@@ -161,6 +203,55 @@ function rollBars(groups: Map<number, Group>, steps: number, bars: number): stri
     b++
   }
   return `<${slots.join(' ')}>`
+}
+
+/**
+ * The `.gain("…")` mini for a roll's per-note velocity, mirroring the structure
+ * `serializePianoRoll` emits for a single-bar roll: one token per note GROUP at
+ * its start column (with `@duration` when held), `~` at rest columns. Chord
+ * members (shared start) must share a gain — like duration — else the gain is
+ * inexpressible (`skip`). Returns:
+ *   - `skip`  — multi-bar, a `.gain` we don't manage (`gainForeign`), an
+ *      out-of-range / chord-gain-mismatch shape; leave any `.gain` untouched;
+ *   - `clear` — every note neutral (gain 1): remove our `.gain`;
+ *   - `write` — the column-aligned gain mini.
+ */
+export function serializeRollGain(model: PianoRollModel): GainWrite {
+  if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: 'skip' }
+  const groups = new Map<number, { duration: number; gain: number }>()
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return { kind: 'skip' } // inexpressible (serializePianoRoll returns null here too)
+    }
+    const gain = note.gain ?? 1
+    const g = groups.get(note.start)
+    if (!g) groups.set(note.start, { duration: note.duration, gain })
+    else if (g.duration !== note.duration || g.gain !== gain) return { kind: 'skip' }
+  }
+  const vals = [...groups.values()].map((g) => g.gain)
+  if (vals.length === 0 || vals.every((g) => g === 1)) return { kind: 'clear' }
+  // uniform non-1 level → collapse to a scalar `.gain(v)`
+  if (vals.every((g) => g === vals[0])) {
+    return { kind: 'write', value: fmtGain(vals[0]), quoted: false }
+  }
+
+  const cols: string[] = []
+  let col = 0
+  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
+    if (start < col) return { kind: 'skip' } // overlap
+    while (col < start) {
+      cols.push('~')
+      col++
+    }
+    const g = groups.get(start)!
+    cols.push(g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${g.duration}`)
+    col += g.duration
+  }
+  while (col < model.steps) {
+    cols.push('~')
+    col++
+  }
+  return { kind: 'write', value: cols.join(' '), quoted: true }
 }
 
 export type { RollNote }

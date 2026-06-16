@@ -24463,6 +24463,66 @@ function gridFromStack(parts) {
   return { ok: true, model: { steps: total, lanes } };
 }
 __name(gridFromStack, "gridFromStack");
+var GAIN_TOKEN = /^\d+(\.\d+)?$/;
+function parseGainMini(mini, count) {
+  const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length !== count) return null;
+  const out = [];
+  for (const t of tokens) {
+    if (t === "~") {
+      out.push(1);
+      continue;
+    }
+    if (!GAIN_TOKEN.test(t)) return null;
+    out.push(parseFloat(t));
+  }
+  return out;
+}
+__name(parseGainMini, "parseGainMini");
+function applyStepGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, gains: Array(model.steps).fill(gain.numeric) };
+  }
+  if (gain.mini === null) return model;
+  const gains = parseGainMini(gain.mini, model.steps);
+  if (gains === null) return { ...model, gainForeign: true };
+  return { ...model, gains };
+}
+__name(applyStepGain, "applyStepGain");
+function applyRollGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric })) };
+  }
+  if (gain.mini === null) return model;
+  if (model.bars != null) return { ...model, gainForeign: true };
+  const byStart = /* @__PURE__ */ new Map();
+  let col = 0;
+  for (const t of gain.mini.trim().split(/\s+/).filter((s) => s !== "")) {
+    if (t === "~") {
+      col += 1;
+      continue;
+    }
+    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/);
+    if (!m) return { ...model, gainForeign: true };
+    byStart.set(col, parseFloat(m[1]));
+    col += m[2] ? parseInt(m[2], 10) : 1;
+  }
+  if (col !== model.steps) return { ...model, gainForeign: true };
+  const noteStarts = new Set(model.notes.map((n) => n.start));
+  for (const [c, v] of byStart) {
+    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true };
+  }
+  return {
+    ...model,
+    notes: model.notes.map((n) => {
+      const v = byStart.get(n.start);
+      return v != null && v !== 1 ? { ...n, gain: v } : n;
+    })
+  };
+}
+__name(applyRollGain, "applyRollGain");
 function parsePianoRoll(mini) {
   const alt = unwrapAlternation(mini);
   const tok = tokenize2(alt ?? mini);
@@ -24492,6 +24552,12 @@ function parsePianoRoll(mini) {
 __name(parsePianoRoll, "parsePianoRoll");
 
 // src/visualEdit/notation/serialize.ts
+function fmtGain(v) {
+  if (!Number.isFinite(v)) return "1";
+  if (Number.isInteger(v)) return String(v);
+  return v.toFixed(2).replace(/\.?0+$/, "");
+}
+__name(fmtGain, "fmtGain");
 function serializeStepGrid(model) {
   const bars = model.bars ?? 1;
   if (bars > 1) return gridBars(model, bars);
@@ -24516,6 +24582,23 @@ function gridColumns(lanes, steps) {
   return cols;
 }
 __name(gridColumns, "gridColumns");
+function serializeStepGain(model) {
+  if (model.gainForeign) return { kind: "skip" };
+  const bars = model.bars ?? 1;
+  const parts = new Set(model.lanes.map((l) => l.part ?? 0));
+  if (bars > 1 || parts.size > 1) return { kind: "skip" };
+  const gains = model.gains;
+  if (!gains || gains.length !== model.steps) return { kind: "clear" };
+  const cols = gridColumns(model.lanes, model.steps);
+  const active2 = gains.filter((_, i) => cols[i] !== "~");
+  if (active2.length === 0 || active2.every((g) => g === 1)) return { kind: "clear" };
+  if (active2.every((g) => g === active2[0])) {
+    return { kind: "write", value: fmtGain(active2[0]), quoted: false };
+  }
+  const mini = cols.map((tok, i) => tok === "~" ? "~" : fmtGain(gains[i])).join(" ");
+  return { kind: "write", value: mini, quoted: true };
+}
+__name(serializeStepGain, "serializeStepGain");
 function gridBars(model, bars) {
   const perBar = model.steps / bars;
   const cols = gridColumns(model.lanes, model.steps);
@@ -24614,6 +24697,42 @@ function rollBars(groups, steps, bars) {
   return `<${slots.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
+function serializeRollGain(model) {
+  if (model.gainForeign || (model.bars ?? 1) > 1) return { kind: "skip" };
+  const groups = /* @__PURE__ */ new Map();
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return { kind: "skip" };
+    }
+    const gain = note.gain ?? 1;
+    const g = groups.get(note.start);
+    if (!g) groups.set(note.start, { duration: note.duration, gain });
+    else if (g.duration !== note.duration || g.gain !== gain) return { kind: "skip" };
+  }
+  const vals = [...groups.values()].map((g) => g.gain);
+  if (vals.length === 0 || vals.every((g) => g === 1)) return { kind: "clear" };
+  if (vals.every((g) => g === vals[0])) {
+    return { kind: "write", value: fmtGain(vals[0]), quoted: false };
+  }
+  const cols = [];
+  let col = 0;
+  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
+    if (start < col) return { kind: "skip" };
+    while (col < start) {
+      cols.push("~");
+      col++;
+    }
+    const g = groups.get(start);
+    cols.push(g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${g.duration}`);
+    col += g.duration;
+  }
+  while (col < model.steps) {
+    cols.push("~");
+    col++;
+  }
+  return { kind: "write", value: cols.join(" "), quoted: true };
+}
+__name(serializeRollGain, "serializeRollGain");
 function VisualEditStandby({
   panel,
   hint,
@@ -24661,6 +24780,40 @@ var VISUAL_EDIT_TABS = [
     icon: "symbol-array"
   }
 ];
+function readChunkGain(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain");
+  const arg = call?.args[0];
+  if (!call || !arg) return { mini: null, numeric: null, foreign: false };
+  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false };
+  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false };
+  return { mini: null, numeric: null, foreign: true };
+}
+__name(readChunkGain, "readChunkGain");
+function managedGainArg(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain");
+  const arg = call?.args[0];
+  if (!call || !arg) return null;
+  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range };
+  return null;
+}
+__name(managedGainArg, "managedGainArg");
+function gainEdits(fresh, g) {
+  if (g.kind === "skip") return [];
+  const managed = managedGainArg(fresh);
+  if (g.kind === "clear") {
+    return managed ? [{ range: managed.call.range, text: "" }] : [];
+  }
+  const lit = g.quoted ? `"${g.value}"` : g.value;
+  if (managed) return [{ range: managed.argRange, text: lit }];
+  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }];
+}
+__name(gainEdits, "gainEdits");
+function gainUnchanged(g, cur) {
+  if (g.kind === "skip") return true;
+  if (g.kind === "clear") return cur.mini === null && cur.numeric === null;
+  return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value);
+}
+__name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React17.useState(null);
@@ -24683,8 +24836,12 @@ function useGridModel(opts) {
       setModel(null);
       return;
     }
+    const chunkGain = readChunkGain(chunk);
+    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model;
     const prev = modelRef.current;
-    const next = prev && o.serialize(prev) === chunk.miniString ? prev : parsed.model;
+    const sameMini = prev != null && o.serialize(prev) === chunk.miniString;
+    const sameGain = prev == null || !o.serializeGain ? true : gainUnchanged(o.serializeGain(prev), chunkGain);
+    const next = prev && sameMini && sameGain ? prev : fresh;
     modelRef.current = next;
     setModel(next);
   }, [chunk]);
@@ -24700,7 +24857,10 @@ function useGridModel(opts) {
       modelRef.current = next;
       setModel(next);
       applyEdit((fresh, wb) => {
-        if (fresh.miniRange) wb.replaceRange(fresh.miniRange, mini, o.source);
+        if (!fresh.miniRange) return;
+        const edits = [{ range: fresh.miniRange, text: mini }];
+        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(next)));
+        wb.replaceRanges(edits, o.source);
       });
     },
     [applyEdit]
@@ -24750,6 +24910,9 @@ function usePlayingStep(steps, bars) {
 }
 __name(usePlayingStep, "usePlayingStep");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
+var VELOCITY_FULL_PX = 80;
+var DRAG_THRESHOLD = 4;
+var clamp01 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
 function toggleCell(model, laneIndex, stepIndex, value) {
   return {
     ...model,
@@ -24759,27 +24922,30 @@ function toggleCell(model, laneIndex, stepIndex, value) {
   };
 }
 __name(toggleCell, "toggleCell");
+function setColumnGain(model, stepIndex, gain) {
+  const gains = model.gains ? [...model.gains] : Array(model.steps).fill(1);
+  if (gains[stepIndex] === gain) return model;
+  gains[stepIndex] = gain;
+  return { ...model, gains };
+}
+__name(setColumnGain, "setColumnGain");
+function gainInScope(model) {
+  if (model.gainForeign || (model.bars ?? 1) > 1) return false;
+  return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
+}
+__name(gainInScope, "gainInScope");
 function SequencerGrid() {
   const { chunk, model, mutate, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: isStepChunk,
     parse: parseStepGrid,
-    serialize: serializeStepGrid
+    serialize: serializeStepGrid,
+    applyGain: applyStepGain,
+    serializeGain: serializeStepGain
   });
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
-  const paintRef = React17.useRef({
-    active: false,
-    value: true
-  });
-  React17.useEffect(() => {
-    const onUp = /* @__PURE__ */ __name(() => {
-      if (!paintRef.current.active) return;
-      paintRef.current.active = false;
-      endGesture();
-    }, "onUp");
-    window.addEventListener("pointerup", onUp);
-    return () => window.removeEventListener("pointerup", onUp);
-  }, [endGesture]);
+  const gestureRef = React17.useRef(null);
+  const gainScoped = model ? gainInScope(model) : false;
   const paintCell = React17.useCallback(
     (laneIndex, stepIndex, value) => {
       mutate((prev) => {
@@ -24792,14 +24958,71 @@ function SequencerGrid() {
     },
     [mutate]
   );
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current3) => {
-    paintRef.current = { active: true, value: !current3 };
+  React17.useEffect(() => {
+    const onMove = /* @__PURE__ */ __name((e) => {
+      const g = gestureRef.current;
+      if (!g) return;
+      const dx = e.clientX - g.startX;
+      const dy = e.clientY - g.startY;
+      if (g.mode === "pending") {
+        if (gainScoped && Math.abs(dy) > DRAG_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
+          g.mode = "velocity";
+        } else if (Math.abs(dx) > DRAG_THRESHOLD) {
+          g.mode = "paint";
+          paintCell(g.lane, g.step, g.paintValue);
+          return;
+        } else {
+          return;
+        }
+      }
+      if (g.mode === "velocity") {
+        const next = clamp01(g.startGain - dy / VELOCITY_FULL_PX);
+        mutate((prev) => setColumnGain(prev, g.step, next));
+      }
+    }, "onMove");
+    const onUp = /* @__PURE__ */ __name(() => {
+      const g = gestureRef.current;
+      if (!g) return;
+      gestureRef.current = null;
+      if (g.mode === "pending") paintCell(g.lane, g.step, g.paintValue);
+      endGesture();
+    }, "onUp");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [mutate, paintCell, endGesture, gainScoped]);
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current3, e) => {
     beginGesture();
-    paintCell(laneIndex, stepIndex, !current3);
+    if (current3) {
+      gestureRef.current = {
+        lane: laneIndex,
+        step: stepIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        startGain: model?.gains?.[stepIndex] ?? 1,
+        mode: "pending",
+        paintValue: false
+      };
+    } else {
+      gestureRef.current = {
+        lane: laneIndex,
+        step: stepIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        startGain: 1,
+        mode: "paint",
+        paintValue: true
+      };
+      paintCell(laneIndex, stepIndex, true);
+    }
   }, "onCellDown");
   const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
-    if (!paintRef.current.active) return;
-    paintCell(laneIndex, stepIndex, paintRef.current.value);
+    const g = gestureRef.current;
+    if (!g || g.mode !== "paint") return;
+    paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
   if (!model) {
     return React17.createElement(VisualEditStandby, {
@@ -24820,7 +25043,7 @@ function SequencerGrid() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
-      children: /* @__PURE__ */ jsx("div", { style: { display: "inline-flex", flexDirection: "column", gap: 4 }, children: model.lanes.map((lane, laneIndex) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+      children: /* @__PURE__ */ jsx("div", { style: { display: "flex", flexDirection: "column", gap: 4, width: "100%" }, children: model.lanes.map((lane, laneIndex) => /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
         /* @__PURE__ */ jsx(
           "span",
           {
@@ -24837,33 +25060,60 @@ function SequencerGrid() {
             children: lane.sound
           }
         ),
-        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2 }, children: lane.cells.map((on, stepIndex) => /* @__PURE__ */ jsx(
-          "button",
-          {
-            type: "button",
-            "aria-pressed": on,
-            "aria-label": `${lane.sound} step ${stepIndex + 1}`,
-            "data-seq-cell": `${laneIndex}:${stepIndex}`,
-            "data-playing": stepIndex === playingStep ? "true" : void 0,
-            onPointerDown: (e) => {
-              e.preventDefault();
-              onCellDown(laneIndex, stepIndex, on);
+        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((on, stepIndex) => {
+          const gain = model.gains?.[stepIndex] ?? 1;
+          const isPlaying = stepIndex === playingStep;
+          return /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              "aria-pressed": on,
+              "aria-label": `${lane.sound} step ${stepIndex + 1}`,
+              "data-seq-cell": `${laneIndex}:${stepIndex}`,
+              "data-gain": on && gainScoped ? gain : void 0,
+              "data-playing": isPlaying ? "true" : void 0,
+              onPointerDown: (e) => {
+                e.preventDefault();
+                onCellDown(laneIndex, stepIndex, on, e);
+              },
+              onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+              style: {
+                position: "relative",
+                flex: "1 1 0",
+                minWidth: 16,
+                maxWidth: 56,
+                height: 22,
+                padding: 0,
+                overflow: "hidden",
+                border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                borderRadius: 3,
+                // subtle gap at each bar boundary
+                marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
+                background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
+                cursor: gainScoped && on ? "ns-resize" : "pointer"
+              },
+              children: on && // bottom-anchored fill = velocity (full when neutral); when
+              // gain is out of scope it always reads full, so the cell
+              // looks exactly like the pre-velocity solid square.
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  "data-seq-fill": true,
+                  style: {
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
+                    background: "var(--accent, #6ea8fe)",
+                    pointerEvents: "none"
+                  }
+                }
+              )
             },
-            onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
-            style: {
-              width: 22,
-              height: 22,
-              padding: 0,
-              border: stepIndex === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-              borderRadius: 3,
-              // subtle gap at each bar boundary
-              marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
-              background: on ? "var(--accent, #6ea8fe)" : stepIndex === playingStep ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-              cursor: "pointer"
-            }
-          },
-          stepIndex
-        )) })
+            stepIndex
+          );
+        }) })
       ] }, `${lane.sound}:${lane.part ?? 0}`)) })
     }
   );
@@ -24926,6 +25176,24 @@ var ROLL_HINT = "Click a melody to edit its notes.";
 var DEFAULT_LO = 48;
 var DEFAULT_HI = 72;
 var MIN_SPAN = 12;
+var LANE_HEIGHT = 48;
+var VELOCITY_FULL_PX2 = 80;
+var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
+function gainInScope2(model) {
+  return !model.gainForeign && (model.bars ?? 1) === 1;
+}
+__name(gainInScope2, "gainInScope");
+function gainAtStart(model, start) {
+  return model.notes.find((n) => n.start === start)?.gain ?? 1;
+}
+__name(gainAtStart, "gainAtStart");
+function setGroupGain(model, start, gain) {
+  return {
+    ...model,
+    notes: model.notes.map((n) => n.start === start ? { ...n, gain } : n)
+  };
+}
+__name(setGroupGain, "setGroupGain");
 function contentRange(model) {
   const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
   if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
@@ -24945,9 +25213,12 @@ function PianoRollGrid() {
     source: "roll",
     eligible: isRollChunk,
     parse: parsePianoRoll,
-    serialize: serializePianoRoll
+    serialize: serializePianoRoll,
+    applyGain: applyRollGain,
+    serializeGain: serializeRollGain
   });
   const dragRef = React17.useRef(null);
+  const velRef = React17.useRef(null);
   const playingStep = usePlayingStep(model?.steps ?? 0, model?.bars ?? 1);
   const [range, setRange] = React17.useState({
     lo: DEFAULT_LO,
@@ -24980,6 +25251,30 @@ function PianoRollGrid() {
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
+  React17.useEffect(() => {
+    const onMove = /* @__PURE__ */ __name((e) => {
+      const v = velRef.current;
+      if (!v) return;
+      const next = clamp012(v.startGain - (e.clientY - v.startY) / VELOCITY_FULL_PX2);
+      mutate((prev) => setGroupGain(prev, v.start, next));
+    }, "onMove");
+    const onUp = /* @__PURE__ */ __name(() => {
+      if (!velRef.current) return;
+      velRef.current = null;
+      endGesture();
+    }, "onUp");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [mutate, endGesture]);
+  const onBarDown = /* @__PURE__ */ __name((start, e) => {
+    if (!model) return;
+    velRef.current = { start, startY: e.clientY, startGain: gainAtStart(model, start) };
+    beginGesture();
+  }, "onBarDown");
   const onCellDown = /* @__PURE__ */ __name((midi, step) => {
     if (!model) return;
     const note = noteAt(model, midi, step);
@@ -25053,79 +25348,147 @@ function PianoRollGrid() {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
-      children: /* @__PURE__ */ jsx("div", { style: { display: "inline-flex", flexDirection: "column", gap: 1 }, children: rows.map((midi) => {
-        const black = isBlackKey(midi);
-        return /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-          /* @__PURE__ */ jsx(
-            "span",
-            {
-              style: {
-                width: 36,
-                fontSize: 9,
-                textAlign: "right",
-                color: black ? "var(--foreground-muted, #a0a0aa)" : "var(--foreground, #e6e6ea)"
-              },
-              children: midiToPitch(midi)
-            }
-          ),
-          /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1 }, children: Array.from({ length: model.steps }, (_, step) => {
-            const note = noteAt(model, midi, step);
-            const on = note !== void 0;
-            const isHead = on && note.start === step;
-            const isTail = on && note.start + note.duration - 1 === step;
-            return /* @__PURE__ */ jsx(
-              "button",
+      children: /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" }, children: [
+        rows.map((midi) => {
+          const black = isBlackKey(midi);
+          return /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
+            /* @__PURE__ */ jsx(
+              "span",
               {
-                type: "button",
-                "aria-pressed": on,
-                "aria-label": `${midiToPitch(midi)} step ${step + 1}`,
-                "data-roll-cell": `${midi}:${step}`,
-                "data-playing": step === playingStep ? "true" : void 0,
-                onPointerDown: (e) => {
-                  e.preventDefault();
-                  onCellDown(midi, step);
-                },
-                onPointerEnter: () => onCellEnter(midi, step),
                 style: {
-                  position: "relative",
-                  width: 18,
-                  height: 16,
-                  padding: 0,
-                  border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                  borderRadius: 2,
-                  background: on ? "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                  opacity: on && !isHead ? 0.7 : 1,
-                  cursor: "pointer"
+                  width: 36,
+                  fontSize: 9,
+                  textAlign: "right",
+                  color: black ? "var(--foreground-muted, #a0a0aa)" : "var(--foreground, #e6e6ea)"
                 },
-                children: isTail && /* @__PURE__ */ jsx(
-                  "span",
-                  {
-                    "data-roll-resize": `${midi}:${note.start}`,
-                    "aria-label": `resize ${midiToPitch(midi)}`,
-                    onPointerDown: (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onResizeDown(note);
-                    },
-                    style: {
-                      position: "absolute",
-                      top: 0,
-                      bottom: 0,
-                      right: 0,
-                      width: 5,
-                      cursor: "ew-resize",
-                      background: "var(--foreground, #e6e6ea)",
-                      opacity: 0.45,
-                      borderRadius: "0 2px 2px 0"
+                children: midiToPitch(midi)
+              }
+            ),
+            /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
+              const note = noteAt(model, midi, step);
+              const on = note !== void 0;
+              const isHead = on && note.start === step;
+              const isTail = on && note.start + note.duration - 1 === step;
+              return /* @__PURE__ */ jsx(
+                "button",
+                {
+                  type: "button",
+                  "aria-pressed": on,
+                  "aria-label": `${midiToPitch(midi)} step ${step + 1}`,
+                  "data-roll-cell": `${midi}:${step}`,
+                  "data-playing": step === playingStep ? "true" : void 0,
+                  onPointerDown: (e) => {
+                    e.preventDefault();
+                    onCellDown(midi, step);
+                  },
+                  onPointerEnter: () => onCellEnter(midi, step),
+                  style: {
+                    position: "relative",
+                    flex: "1 1 0",
+                    minWidth: 12,
+                    maxWidth: 44,
+                    height: 16,
+                    padding: 0,
+                    border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                    borderRadius: 2,
+                    background: on ? "var(--accent, #6ea8fe)" : step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+                    opacity: on && !isHead ? 0.7 : 1,
+                    cursor: "pointer"
+                  },
+                  children: isTail && /* @__PURE__ */ jsx(
+                    "span",
+                    {
+                      "data-roll-resize": `${midi}:${note.start}`,
+                      "aria-label": `resize ${midiToPitch(midi)}`,
+                      onPointerDown: (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onResizeDown(note);
+                      },
+                      style: {
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        right: 0,
+                        width: 5,
+                        cursor: "ew-resize",
+                        background: "var(--foreground, #e6e6ea)",
+                        opacity: 0.45,
+                        borderRadius: "0 2px 2px 0"
+                      }
                     }
-                  }
-                )
-              },
-              step
-            );
-          }) })
-        ] }, midi);
-      }) })
+                  )
+                },
+                step
+              );
+            }) })
+          ] }, midi);
+        }),
+        gainInScope2(model) && /* @__PURE__ */ jsxs(
+          "div",
+          {
+            "data-roll-velocity-lane": true,
+            style: { display: "flex", alignItems: "flex-end", gap: 6, marginTop: 8 },
+            children: [
+              /* @__PURE__ */ jsx(
+                "span",
+                {
+                  style: {
+                    width: 36,
+                    fontSize: 9,
+                    textAlign: "right",
+                    color: "var(--foreground-muted, #a0a0aa)"
+                  },
+                  children: "vel"
+                }
+              ),
+              /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0, height: LANE_HEIGHT }, children: Array.from({ length: model.steps }, (_, col) => {
+                const isStart = model.notes.some((n) => n.start === col);
+                const g = gainAtStart(model, col);
+                return /* @__PURE__ */ jsx(
+                  "div",
+                  {
+                    "data-vel-col": col,
+                    onPointerDown: isStart ? (e) => {
+                      e.preventDefault();
+                      onBarDown(col, e);
+                    } : void 0,
+                    style: {
+                      position: "relative",
+                      flex: "1 1 0",
+                      minWidth: 12,
+                      maxWidth: 44,
+                      height: "100%",
+                      borderRadius: 2,
+                      background: "var(--background-elevated, #26262c)",
+                      cursor: isStart ? "ns-resize" : "default"
+                    },
+                    children: isStart && // bottom-anchored bar = the note group's velocity (full = neutral)
+                    /* @__PURE__ */ jsx(
+                      "span",
+                      {
+                        "data-vel-bar": col,
+                        "data-gain": g,
+                        style: {
+                          position: "absolute",
+                          left: 1,
+                          right: 1,
+                          bottom: 0,
+                          height: `${clamp012(g) * 100}%`,
+                          background: "var(--accent, #6ea8fe)",
+                          borderRadius: 2,
+                          pointerEvents: "none"
+                        }
+                      }
+                    )
+                  },
+                  col
+                );
+              }) })
+            ]
+          }
+        )
+      ] })
     }
   );
 }
