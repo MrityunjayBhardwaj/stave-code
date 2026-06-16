@@ -20,8 +20,19 @@ export {
 } from './chunkDetect'
 export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from './chunkDetect'
 
-export { Writeback, formatNumber, normalizeEdits } from './writeback'
+export { Writeback, formatNumber, normalizeEdits, applyEdits } from './writeback'
 export type { WriteSource, OffsetEdit } from './writeback'
+
+export {
+  detectArrangeAt,
+  detectAllArrangeCalls,
+  setWeight,
+  reorderArm,
+  insertArm,
+  removeArm,
+  wrapBare,
+} from './arrange'
+export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
 
 export {
   parseStepGrid,

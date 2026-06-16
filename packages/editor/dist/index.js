@@ -2,10 +2,10 @@ import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core'
 import * as React17 from 'react';
 import React17__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
+import { parse } from 'acorn';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
 import * as Y3 from 'yjs';
-import { parse } from 'acorn';
 
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -124,6 +124,9 @@ var IR = {
   scramble: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Scramble", n, body }, meta), "scramble"),
   chop: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Chop", n, body }, meta), "chop"),
   loop: /* @__PURE__ */ __name((body, meta) => attachMeta({ tag: "Loop", body }, meta), "loop"),
+  // Phase 5a (#386) — unified time-sequence constructor. `mode` is the literal
+  // combinator name; `cat`/`slowcat` callers pass arms with weight 1.
+  arrange: /* @__PURE__ */ __name((mode, arms, meta) => attachMeta({ tag: "Arrange", mode, arms }, meta), "arrange"),
   code: /* @__PURE__ */ __name((code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta), "code"),
   // Phase 20-18 Wave A — signal/builder chain-ROOT smart constructors.
   // Mirror the `attachMeta` convention: only set each field when truthy
@@ -298,7 +301,10 @@ function makeEvent(ctx, note, params) {
     // produced events. MusicalTimeline uses this as the slot identity
     // when present so `.p()` rename doesn't relocate the row.
     ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
-    ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {}
+    ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
+    // Phase 5a — conditional spread (mirrors leafIndex). Absent for tracks
+    // with no arrangement combinator → timeline treats them as one clip.
+    ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {}
   };
 }
 __name(makeEvent, "makeEvent");
@@ -474,6 +480,30 @@ function walk(ir, ctx) {
       if (ir.items.length === 0) return [];
       const item = ir.items[ctx.cycle % ir.items.length];
       return withWrapperLoc(walk(item, ctx), ir.loc);
+    }
+    case "Arrange": {
+      if (ir.arms.length === 0) return [];
+      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      let acc = 0;
+      let armIndex = 0;
+      let localCycle = 0;
+      for (let i = 0; i < ir.arms.length; i++) {
+        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0;
+        if (pos < acc + w) {
+          armIndex = i;
+          localCycle = pos - acc;
+          break;
+        }
+        acc += w;
+      }
+      const childCtx = {
+        ...ctx,
+        cycle: localCycle,
+        armIndex
+      };
+      return withWrapperLoc(walk(ir.arms[armIndex].pattern, childCtx), ir.loc);
     }
     case "When": {
       const slots = ir.gate.trim().split(/\s+/);
@@ -775,6 +805,11 @@ function gen(ir) {
       return ir.args !== void 0 ? `${ir.kind}(${ir.args})` : ir.kind;
     case "Builder":
       return `${ir.kind}(${ir.args})`;
+    case "Arrange": {
+      if (ir.arms.length === 0) return `${ir.mode}()`;
+      const parts = ir.mode === "arrange" ? ir.arms.map((a) => `[${a.weight}, ${gen(a.pattern)}]`) : ir.arms.map((a) => gen(a.pattern));
+      return `${ir.mode}(${parts.join(", ")})`;
+    }
     case "Track": {
       if (ir.userMethod === "p") {
         return `${gen(ir.body)}.p("${ir.trackId}")`;
@@ -1152,7 +1187,9 @@ var VALID_TAGS = /* @__PURE__ */ new Set([
   // since `VALID_TAGS.has(node.tag)` is the gate at line 71 — without
   // these, a deserialise of a Signal/Builder node throws "unknown tag").
   "Signal",
-  "Builder"
+  "Builder",
+  // Phase 5a (#386) — unified time-sequence node (arrange/cat/slowcat).
+  "Arrange"
 ]);
 function validateNode(raw, path) {
   if (typeof raw !== "object" || raw === null) {
@@ -1396,6 +1433,33 @@ function validateNode(raw, path) {
       if (typeof node.body === "object" && node.body !== null) {
         out.body = validateNode(node.body, `${path}.body`);
       }
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
+    }
+    case "Arrange": {
+      requireField(node, "mode", ["string"], path);
+      requireArray(node, "arms", path);
+      const arms = node.arms.map((a, i) => {
+        if (typeof a !== "object" || a === null) {
+          throw new Error(`${path}.arms[${i}]: expected object`);
+        }
+        const arm = a;
+        if (typeof arm.weight !== "number") {
+          throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
+        }
+        const out2 = {
+          weight: arm.weight,
+          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
+        };
+        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
+        return out2;
+      });
+      const out = {
+        tag: "Arrange",
+        mode: node.mode,
+        arms
+      };
       if (Array.isArray(node.loc)) out.loc = node.loc;
       if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
       return out;
@@ -2261,6 +2325,58 @@ function parseExpression(expr, baseOffset = 0, isSampleKey, bindings, opts) {
   }
 }
 __name(parseExpression, "parseExpression");
+function parseArrangeArm(raw, absOffset, bindings, opts) {
+  const lb = raw.indexOf("[");
+  const rb = raw.lastIndexOf("]");
+  if (lb < 0 || rb <= lb) return null;
+  const innerAbs = absOffset + lb + 1;
+  const parts = splitArgsWithOffsets(raw.slice(lb + 1, rb));
+  if (parts.length < 2) return null;
+  const weight = Number(parts[0].value.trim());
+  if (!Number.isFinite(weight)) return null;
+  const patPart = parts[1];
+  const pattern = parseExpression(patPart.value, innerAbs + patPart.offset, void 0, bindings, opts);
+  return { weight, pattern, loc: [{ start: absOffset + lb, end: absOffset + rb + 1 }] };
+}
+__name(parseArrangeArm, "parseArrangeArm");
+function parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts) {
+  const m = trimmed.match(/^(arrange|cat|slowcat|fastcat)\s*\(/);
+  if (!m) return null;
+  const fn = m[1];
+  const openIdx = trimmed.indexOf("(", m[0].length - 1);
+  const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1;
+  if (closeIdx <= openIdx) return null;
+  const innerAbs = baseOffset + leadingWs + openIdx + 1;
+  const args = splitArgsWithOffsets(trimmed.slice(openIdx + 1, closeIdx));
+  if (args.length === 0) return null;
+  const nodeStart = baseOffset + leadingWs;
+  const nodeLoc = { start: nodeStart, end: nodeStart + closeIdx + 1 };
+  if (fn === "fastcat") {
+    const children = args.map(
+      (a) => parseExpression(a.value, innerAbs + a.offset, void 0, bindings, opts)
+    );
+    if (children.length === 1) return children[0];
+    return { tag: "Seq", children, loc: [nodeLoc], userMethod: "fastcat" };
+  }
+  const arms = [];
+  for (const a of args) {
+    if (fn === "arrange") {
+      const arm = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts);
+      if (!arm) return null;
+      arms.push(arm);
+    } else {
+      const armStart = innerAbs + a.offset;
+      arms.push({
+        weight: 1,
+        pattern: parseExpression(a.value, armStart, void 0, bindings, opts),
+        loc: [{ start: armStart, end: armStart + a.value.length }]
+      });
+    }
+  }
+  if (arms.length === 0) return null;
+  return { tag: "Arrange", mode: fn, arms, loc: [nodeLoc], userMethod: fn };
+}
+__name(parseTimeSequenceRoot, "parseTimeSequenceRoot");
 function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
   const trimmed = root.trim();
   const leadingWs = root.length - root.trimStart().length;
@@ -2271,6 +2387,8 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
   if (bindings && /^[A-Za-z_$][\w$]*$/.test(trimmed) && bindings.has(trimmed)) {
     return bindings.get(trimmed);
   }
+  const timeSeq = parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts);
+  if (timeSeq) return timeSeq;
   const recognised = CHAIN_ROOT_RECOGNISER.get(trimmed);
   if (recognised) {
     const rootStart = baseOffset + leadingWs;
@@ -2490,6 +2608,25 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       const n = parseFloat(subbedArgs.trim());
       if (!isNaN(n)) return IR.slow(n, ir, tagMeta(method, callSiteRange));
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
+    }
+    case "cat":
+    case "slowcat":
+    case "fastcat": {
+      const argList = splitArgsWithOffsets(args);
+      const moreArms = argList.map(
+        (a) => parseExpression(a.value, baseOffset + a.offset, void 0, bindings)
+      );
+      if (moreArms.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
+      if (method === "fastcat") {
+        return {
+          tag: "Seq",
+          children: [ir, ...moreArms],
+          loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+          userMethod: "fastcat"
+        };
+      }
+      const arms = [ir, ...moreArms].map((pattern) => ({ weight: 1, pattern }));
+      return IR.arrange(method, arms, tagMeta(method, callSiteRange));
     }
     case "every": {
       const [nStr, transformStr] = splitFirstArg(args);
@@ -5739,6 +5876,292 @@ var _VizGovernor = class _VizGovernor {
 __name(_VizGovernor, "VizGovernor");
 var VizGovernor = _VizGovernor;
 var vizGovernor = new VizGovernor();
+function parseTopLevel(doc) {
+  try {
+    const program = parse(doc, {
+      ecmaVersion: "latest",
+      allowAwaitOutsideFunction: true
+    });
+    return program.body;
+  } catch {
+    return null;
+  }
+}
+__name(parseTopLevel, "parseTopLevel");
+function docParses(doc) {
+  return parseTopLevel(doc) !== null;
+}
+__name(docParses, "docParses");
+function isChunkFresh(doc, chunk) {
+  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
+}
+__name(isChunkFresh, "isChunkFresh");
+function detectChunk(doc, pos) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  for (const node of statements) {
+    if (pos >= node.start && pos <= node.end) {
+      let label = null;
+      let body = node;
+      if (node.type === "LabeledStatement") {
+        label = node.label.name;
+        body = node.body;
+      }
+      if (body.type !== "ExpressionStatement") return null;
+      const topExpr = body.expression;
+      const target = innermostChainUnder(doc, topExpr, pos);
+      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end]);
+    }
+  }
+  return null;
+}
+__name(detectChunk, "detectChunk");
+function detectAllChunks(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return [];
+  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
+}
+__name(detectAllChunks, "detectAllChunks");
+function buildChunk(doc, node) {
+  let label = null;
+  let body = node;
+  if (node.type === "LabeledStatement") {
+    label = node.label.name;
+    body = node.body;
+  }
+  if (body.type !== "ExpressionStatement") return null;
+  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
+}
+__name(buildChunk, "buildChunk");
+function buildChunkFromExpr(doc, expr, label, stmtRange) {
+  const headNode = { ref: null };
+  const chain = collectChain(doc, expr, headNode);
+  const headFn = chain.length > 0 ? chain[0].name : null;
+  let miniRange = null;
+  let miniString = null;
+  if (headNode.ref) {
+    const firstString = headNode.ref.arguments.find(
+      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
+    );
+    if (firstString) {
+      miniRange = [firstString.start + 1, firstString.end - 1];
+      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
+    }
+  }
+  const info = {
+    statementRange: stmtRange,
+    statementText: doc.slice(stmtRange[0], stmtRange[1]),
+    exprRange: [expr.start, expr.end],
+    label,
+    headFn,
+    miniRange,
+    miniString,
+    chain,
+    type: "unknown"
+  };
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildChunkFromExpr, "buildChunkFromExpr");
+function innermostChainUnder(doc, expr, pos) {
+  const headOut = { ref: null };
+  collectChain(doc, expr, headOut);
+  const head = headOut.ref;
+  if (!head || !Array.isArray(head.arguments)) return expr;
+  for (const arg of head.arguments) {
+    if (arg && arg.type === "CallExpression" && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
+      return innermostChainUnder(doc, arg, pos);
+    }
+  }
+  return expr;
+}
+__name(innermostChainUnder, "innermostChainUnder");
+function collectChain(doc, expr, headOut) {
+  const calls = [];
+  let node = expr;
+  while (node) {
+    if (node.type === "CallExpression") {
+      const callee = node.callee;
+      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
+        const dot = doc.lastIndexOf(".", callee.property.start);
+        calls.push({
+          name: callee.property.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [dot, node.end]
+        });
+        node = callee.object;
+        continue;
+      }
+      if (callee.type === "Identifier") {
+        calls.push({
+          name: callee.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [node.start, node.end]
+        });
+        headOut.ref = node;
+      }
+    }
+    break;
+  }
+  return calls.reverse();
+}
+__name(collectChain, "collectChain");
+function toArg(doc, node) {
+  let numeric = null;
+  if (node.type === "Literal" && typeof node.value === "number") {
+    numeric = node.value;
+  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
+    numeric = -node.argument.value;
+  }
+  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
+}
+__name(toArg, "toArg");
+function classifyChunk(info) {
+  const head = info.headFn;
+  if (info.miniString !== null) {
+    if (head === "note" || head === "n") return "roll";
+    if (head === "s" || head === "sound") return "step";
+  }
+  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
+  return "unknown";
+}
+__name(classifyChunk, "classifyChunk");
+
+// src/visualEdit/writeback.ts
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+function applyEdits(doc, edits) {
+  const sorted = normalizeEdits(edits);
+  let out = doc;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const { range, text } = sorted[i];
+    out = out.slice(0, range[0]) + text + out.slice(range[1]);
+  }
+  return out;
+}
+__name(applyEdits, "applyEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+  }
+  /** Close the gesture, sealing all its edits as one undo step. */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range, text, source) {
+    this.apply([{ range, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range, source) {
+    this.apply([{ range, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
 
 // src/workspace/editorRegistry.ts
 var editors = /* @__PURE__ */ new Map();
@@ -5801,6 +6224,18 @@ function revealLineInFile(fileId, line) {
   }
 }
 __name(revealLineInFile, "revealLineInFile");
+function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
+  const editor = editors.get(fileId);
+  if (!editor || !monacoNs || edits.length === 0) return false;
+  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) return false;
+  try {
+    new Writeback(editor, monacoNs).replaceRanges(edits, source);
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(applyOffsetEditsToFile, "applyOffsetEditsToFile");
 var DEFAULT_FONT_SIZE = 14;
 var FONT_SIZE_STORAGE = "stave:editorFontSize";
 var MINIMAP_STORAGE = "stave:editorMinimap";
@@ -21227,14 +21662,14 @@ function headOf(h, branch = h.currentBranch) {
 }
 __name(headOf, "headOf");
 function getFileContentAt(h, fileId, commitId) {
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
       return c.files[fileId];
     }
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return null;
 }
@@ -21242,15 +21677,15 @@ __name(getFileContentAt, "getFileContentAt");
 function snapshotAt(h, commitId) {
   const files = {};
   let order;
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     for (const f of Object.keys(c.files)) {
       if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
     }
     if (order === void 0 && c.order !== void 0) order = c.order;
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return { files, order };
 }
@@ -21259,12 +21694,12 @@ function listCommits(h, branch = h.currentBranch) {
   const head = h.branches[branch]?.head;
   if (!head) return [];
   const out = [];
-  let walk2 = head;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = head;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     if (!c.pinned) out.push(c);
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return out;
 }
@@ -21284,24 +21719,24 @@ function fileHistory(h, fileId) {
 }
 __name(fileHistory, "fileHistory");
 function nearestWriter(h, fromCommit, fileId) {
-  let walk2 = fromCommit;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = fromCommit;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk2;
-    walk2 = c.parent;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk3;
+    walk3 = c.parent;
   }
   return null;
 }
 __name(nearestWriter, "nearestWriter");
 function filesAliveAt(h, commitId) {
   const alive = /* @__PURE__ */ new Set();
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     for (const f of Object.keys(c.files)) alive.add(f);
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return alive;
 }
@@ -21428,9 +21863,9 @@ function prune(h, now2, opts = {}) {
   }
   const keep = /* @__PURE__ */ new Set([...display, ...needed]);
   const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
-    let walk2 = start;
-    while (walk2 !== null && !keep.has(walk2)) walk2 = h.commits[walk2]?.parent ?? null;
-    return walk2;
+    let walk3 = start;
+    while (walk3 !== null && !keep.has(walk3)) walk3 = h.commits[walk3]?.parent ?? null;
+    return walk3;
   }, "nearestKeptAncestor");
   let mutated = keep.size !== all.length;
   const commits = {};
@@ -23771,284 +24206,6 @@ registerBottomPanelTab({
   title: "Timeline",
   content: React17.createElement(EmptyTimelineStub)
 });
-function parseTopLevel(doc) {
-  try {
-    const program = parse(doc, {
-      ecmaVersion: "latest",
-      allowAwaitOutsideFunction: true
-    });
-    return program.body;
-  } catch {
-    return null;
-  }
-}
-__name(parseTopLevel, "parseTopLevel");
-function docParses(doc) {
-  return parseTopLevel(doc) !== null;
-}
-__name(docParses, "docParses");
-function isChunkFresh(doc, chunk) {
-  return doc.slice(chunk.statementRange[0], chunk.statementRange[1]) === chunk.statementText;
-}
-__name(isChunkFresh, "isChunkFresh");
-function detectChunk(doc, pos) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return null;
-  for (const node of statements) {
-    if (pos >= node.start && pos <= node.end) {
-      let label = null;
-      let body = node;
-      if (node.type === "LabeledStatement") {
-        label = node.label.name;
-        body = node.body;
-      }
-      if (body.type !== "ExpressionStatement") return null;
-      const topExpr = body.expression;
-      const target = innermostChainUnder(doc, topExpr, pos);
-      return target === topExpr ? buildChunkFromExpr(doc, topExpr, label, [node.start, node.end]) : buildChunkFromExpr(doc, target, null, [target.start, target.end]);
-    }
-  }
-  return null;
-}
-__name(detectChunk, "detectChunk");
-function detectAllChunks(doc) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return [];
-  return statements.map((node) => buildChunk(doc, node)).filter((c) => c !== null);
-}
-__name(detectAllChunks, "detectAllChunks");
-function buildChunk(doc, node) {
-  let label = null;
-  let body = node;
-  if (node.type === "LabeledStatement") {
-    label = node.label.name;
-    body = node.body;
-  }
-  if (body.type !== "ExpressionStatement") return null;
-  return buildChunkFromExpr(doc, body.expression, label, [node.start, node.end]);
-}
-__name(buildChunk, "buildChunk");
-function buildChunkFromExpr(doc, expr, label, stmtRange) {
-  const headNode = { ref: null };
-  const chain = collectChain(doc, expr, headNode);
-  const headFn = chain.length > 0 ? chain[0].name : null;
-  let miniRange = null;
-  let miniString = null;
-  if (headNode.ref) {
-    const firstString = headNode.ref.arguments.find(
-      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
-    );
-    if (firstString) {
-      miniRange = [firstString.start + 1, firstString.end - 1];
-      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
-    }
-  }
-  const info = {
-    statementRange: stmtRange,
-    statementText: doc.slice(stmtRange[0], stmtRange[1]),
-    exprRange: [expr.start, expr.end],
-    label,
-    headFn,
-    miniRange,
-    miniString,
-    chain,
-    type: "unknown"
-  };
-  info.type = classifyChunk(info);
-  return info;
-}
-__name(buildChunkFromExpr, "buildChunkFromExpr");
-function innermostChainUnder(doc, expr, pos) {
-  const headOut = { ref: null };
-  collectChain(doc, expr, headOut);
-  const head = headOut.ref;
-  if (!head || !Array.isArray(head.arguments)) return expr;
-  for (const arg of head.arguments) {
-    if (arg && arg.type === "CallExpression" && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
-      return innermostChainUnder(doc, arg, pos);
-    }
-  }
-  return expr;
-}
-__name(innermostChainUnder, "innermostChainUnder");
-function collectChain(doc, expr, headOut) {
-  const calls = [];
-  let node = expr;
-  while (node) {
-    if (node.type === "CallExpression") {
-      const callee = node.callee;
-      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
-        const dot = doc.lastIndexOf(".", callee.property.start);
-        calls.push({
-          name: callee.property.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [dot, node.end]
-        });
-        node = callee.object;
-        continue;
-      }
-      if (callee.type === "Identifier") {
-        calls.push({
-          name: callee.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [node.start, node.end]
-        });
-        headOut.ref = node;
-      }
-    }
-    break;
-  }
-  return calls.reverse();
-}
-__name(collectChain, "collectChain");
-function toArg(doc, node) {
-  let numeric = null;
-  if (node.type === "Literal" && typeof node.value === "number") {
-    numeric = node.value;
-  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
-    numeric = -node.argument.value;
-  }
-  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
-}
-__name(toArg, "toArg");
-function classifyChunk(info) {
-  const head = info.headFn;
-  if (info.miniString !== null) {
-    if (head === "note" || head === "n") return "roll";
-    if (head === "s" || head === "sound") return "step";
-  }
-  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
-  return "unknown";
-}
-__name(classifyChunk, "classifyChunk");
-
-// src/visualEdit/writeback.ts
-function formatNumber(v, maxDecimals = 4) {
-  if (!Number.isFinite(v)) return "0";
-  if (Number.isInteger(v)) return String(v);
-  const fixed = v.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, "");
-}
-__name(formatNumber, "formatNumber");
-function normalizeEdits(edits) {
-  for (const e of edits) {
-    if (e.range[0] > e.range[1]) {
-      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
-    }
-  }
-  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].range;
-    const cur = sorted[i].range;
-    if (cur[0] < prev[1]) {
-      throw new Error(
-        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
-      );
-    }
-  }
-  return sorted;
-}
-__name(normalizeEdits, "normalizeEdits");
-var _Writeback = class _Writeback {
-  constructor(editor, monaco) {
-    this.editor = editor;
-    this.monaco = monaco;
-    this.writingSource = null;
-    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
-    this.inGesture = false;
-  }
-  /**
-   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
-   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
-   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
-   * the undo grouping is affected. Idempotent if already in a gesture.
-   */
-  beginGesture() {
-    if (this.inGesture) return;
-    const model = this.editor.getModel();
-    if (!model) return;
-    model.pushStackElement();
-    this.inGesture = true;
-  }
-  /** Close the gesture, sealing all its edits as one undo step. */
-  endGesture() {
-    if (!this.inGesture) return;
-    this.inGesture = false;
-    this.editor.getModel()?.pushStackElement();
-  }
-  /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
-   */
-  get currentSource() {
-    return this.writingSource;
-  }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range, text, source) {
-    this.apply([{ range, text }], source);
-  }
-  /**
-   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-   * the whole gesture).
-   */
-  replaceRanges(edits, source) {
-    this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range, source) {
-    this.apply([{ range, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
-    return true;
-  }
-  apply(edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return;
-    const normalized = normalizeEdits(edits);
-    const ops = normalized.map((e) => {
-      const start = model.getPositionAt(e.range[0]);
-      const end = model.getPositionAt(e.range[1]);
-      return {
-        range: new this.monaco.Range(
-          start.lineNumber,
-          start.column,
-          end.lineNumber,
-          end.column
-        ),
-        text: e.text,
-        forceMoveMarkers: true
-      };
-    });
-    if (!this.inGesture) model.pushStackElement();
-    this.writingSource = source;
-    try {
-      model.pushEditOperations([], ops, () => null);
-    } finally {
-      this.writingSource = null;
-    }
-    if (!this.inGesture) model.pushStackElement();
-  }
-};
-__name(_Writeback, "Writeback");
-var Writeback = _Writeback;
-
-// src/visualEdit/panels/useActiveChunk.ts
 function useActiveChunk() {
   const [editor, setEditor] = React17.useState(() => getActiveEditor());
   const [chunk, setChunk] = React17.useState(null);
@@ -32178,6 +32335,163 @@ function emitFromGlobal(err, _kind) {
   });
 }
 __name(emitFromGlobal, "emitFromGlobal");
+var COMBINATORS = /* @__PURE__ */ new Set(["arrange", "cat", "slowcat"]);
+function parseProgram(doc) {
+  try {
+    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+  } catch {
+    return null;
+  }
+}
+__name(parseProgram, "parseProgram");
+function isCombinatorCall(node) {
+  return node && node.type === "CallExpression" && node.callee?.type === "Identifier" && COMBINATORS.has(node.callee.name);
+}
+__name(isCombinatorCall, "isCombinatorCall");
+function walk2(node, visit) {
+  if (!node || typeof node !== "object") return;
+  if (typeof node.type === "string" && typeof node.start === "number") visit(node);
+  for (const key of Object.keys(node)) {
+    if (key === "type" || key === "start" || key === "end") continue;
+    const child = node[key];
+    if (Array.isArray(child)) {
+      for (const c of child) walk2(c, visit);
+    } else if (child && typeof child === "object") {
+      walk2(child, visit);
+    }
+  }
+}
+__name(walk2, "walk");
+function armFromArg(mode, arg) {
+  if (mode === "arrange") {
+    if (arg.type !== "ArrayExpression" || arg.elements.length < 2) return null;
+    const weight = arg.elements[0];
+    const pat = arg.elements[1];
+    if (!weight || !pat) return null;
+    return {
+      weightRange: [weight.start, weight.end],
+      patternRange: [pat.start, pat.end],
+      armRange: [arg.start, arg.end]
+    };
+  }
+  return {
+    weightRange: null,
+    patternRange: [arg.start, arg.end],
+    armRange: [arg.start, arg.end]
+  };
+}
+__name(armFromArg, "armFromArg");
+function buildCall(doc, node) {
+  const mode = node.callee.name;
+  if (node.arguments.length === 0) return null;
+  const arms = [];
+  for (const arg of node.arguments) {
+    const arm = armFromArg(mode, arg);
+    if (!arm) return null;
+    arms.push(arm);
+  }
+  const open = doc.indexOf("(", node.callee.end);
+  if (open < 0) return null;
+  return {
+    mode,
+    callRange: [node.start, node.end],
+    calleeRange: [node.callee.start, node.callee.end],
+    argsRange: [open + 1, node.end - 1],
+    arms
+  };
+}
+__name(buildCall, "buildCall");
+function detectArrangeAt(doc, pos) {
+  const program = parseProgram(doc);
+  if (!program) return null;
+  let best = null;
+  walk2(program, (n) => {
+    if (!isCombinatorCall(n)) return;
+    if (pos < n.start || pos > n.end) return;
+    if (!best || n.start > best.start) best = n;
+  });
+  return best ? buildCall(doc, best) : null;
+}
+__name(detectArrangeAt, "detectArrangeAt");
+function detectAllArrangeCalls(doc) {
+  const program = parseProgram(doc);
+  if (!program) return [];
+  const nodes = [];
+  walk2(program, (n) => {
+    if (isCombinatorCall(n)) nodes.push(n);
+  });
+  nodes.sort((a, b) => a.start - b.start);
+  return nodes.map((n) => buildCall(doc, n)).filter((c) => c !== null);
+}
+__name(detectAllArrangeCalls, "detectAllArrangeCalls");
+
+// src/visualEdit/arrange/serialize.ts
+function asWeight(n) {
+  return Math.max(1, Math.round(n));
+}
+__name(asWeight, "asWeight");
+function armText(doc, call, i) {
+  return doc.slice(call.arms[i].armRange[0], call.arms[i].armRange[1]);
+}
+__name(armText, "armText");
+function setWeight(doc, call, i, weight) {
+  const w = asWeight(weight);
+  const arm = call.arms[i];
+  if (!arm) return [];
+  if (call.mode === "arrange") {
+    if (!arm.weightRange) return [];
+    return [{ range: arm.weightRange, text: String(w) }];
+  }
+  if (w === 1) return [];
+  const edits = [{ range: call.calleeRange, text: "arrange" }];
+  for (let j = 0; j < call.arms.length; j++) {
+    const aw = j === i ? w : 1;
+    const pat = call.arms[j];
+    edits.push({ range: [pat.armRange[0], pat.armRange[0]], text: `[${aw}, ` });
+    edits.push({ range: [pat.armRange[1], pat.armRange[1]], text: `]` });
+  }
+  return edits;
+}
+__name(setWeight, "setWeight");
+function reorderArm(doc, call, from, to) {
+  const n = call.arms.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return [];
+  const order = Array.from({ length: n }, (_, k) => k);
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  const text = order.map((k) => armText(doc, call, k)).join(", ");
+  return [{ range: call.argsRange, text }];
+}
+__name(reorderArm, "reorderArm");
+function insertArm(doc, call, at, armSource) {
+  const n = call.arms.length;
+  const idx = Math.max(0, Math.min(at, n));
+  if (n === 0) return [{ range: [call.argsRange[0], call.argsRange[1]], text: armSource }];
+  if (idx === n) {
+    const end = call.arms[n - 1].armRange[1];
+    return [{ range: [end, end], text: `, ${armSource}` }];
+  }
+  const start = call.arms[idx].armRange[0];
+  return [{ range: [start, start], text: `${armSource}, ` }];
+}
+__name(insertArm, "insertArm");
+function removeArm(doc, call, i) {
+  const n = call.arms.length;
+  if (i < 0 || i >= n || n <= 1) return [];
+  if (i < n - 1) {
+    return [{ range: [call.arms[i].armRange[0], call.arms[i + 1].armRange[0]], text: "" }];
+  }
+  return [{ range: [call.arms[i - 1].armRange[1], call.arms[i].armRange[1]], text: "" }];
+}
+__name(removeArm, "removeArm");
+function wrapBare(patternRange, leadingWeight, patternWeight) {
+  const lead = asWeight(leadingWeight);
+  const pw = asWeight(patternWeight);
+  return [
+    { range: [patternRange[0], patternRange[0]], text: `arrange([${lead}, silence], [${pw}, ` },
+    { range: [patternRange[1], patternRange[1]], text: `])` }
+  ];
+}
+__name(wrapBare, "wrapBare");
 
 // src/visualEdit/notation/resize.ts
 function resizeGrid(model, nextSteps, mode) {
@@ -32436,6 +32750,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllChunks, detectChunk, detectPeriod, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, renameProject, renameWorkspaceFile, rendererForLanguage, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectArrangeAt, detectChunk, detectPeriod, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

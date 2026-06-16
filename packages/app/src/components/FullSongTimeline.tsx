@@ -26,7 +26,7 @@ import * as React from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SongAnalysis, PatternIR } from '@stave/editor'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
-import { buildTimelineScene } from './musicalTimeline/timelineScene'
+import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
 import { computeLaneLayout, laneAtY, SUB_ROW_HEIGHT, type LaneLayout } from './musicalTimeline/laneLayout'
 import { SongTimelineCanvas } from './SongTimelineCanvas'
@@ -54,6 +54,8 @@ const ROW_HEIGHT = 22
 /** Height of an expanded ("accordion") lane — tall enough for the read-only
  *  note detail (pitch spread + per-beat grid) to be legible (#422, design §4.5). */
 const EXPANDED_ROW_HEIGHT = 96
+/** Content-px grip zone around a clip's right edge that arms a trim drag (#437). */
+const CLIP_EDGE_GRIP_PX = 6
 const FONT_MONO = '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
 
 /** Ruler units (#412). CYCLES = Strudel's native numbering; BARS = DAW
@@ -80,6 +82,17 @@ export interface FullSongTimelineProps {
    *  cursor, which re-detects the active chunk and rebinds the Sequencer/Piano
    *  Roll. Optional — the view degrades to display-only when unset. */
   readonly onBindLane?: (sourceOffset: number | null) => void
+  /** Trim a clip by dragging its right edge (Phase 5b, #437). Receives the
+   *  clip's lane source anchor (an offset inside the combinator call), its arm
+   *  index, and the new whole-cycle weight. The parent parses the arrangement at
+   *  the anchor and writes a surgical set-weight edit. Optional — without it the
+   *  clips stay read-only (no trim grips). Only real `arrange`/`cat` arms
+   *  (`armIndex ≥ 0`) are trimmable; a bare track's implicit clip is not. */
+  readonly onTrimClip?: (req: {
+    sourceOffset: number | null
+    armIndex: number
+    weight: number
+  }) => void
 }
 
 /** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
@@ -367,6 +380,132 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [activateLane],
   )
 
+  // ── Trim a clip: drag its right edge → set the arm's cycle weight (#437) ───
+  // The first arrangement EDIT gesture. A clip is one arm of an arrange/cat
+  // combinator, so trimming changes the arm's whole-cycle span (the weight `n`).
+  // The hit-test + drag run in content space over the shared transform (PV116);
+  // the commit hands the new weight up to `onTrimClip`, which writes a surgical
+  // set-weight edit. The implicit clip of a bare track (`armIndex < 0`) is NOT
+  // trimmable here — wrapping it in a combinator is a later op (§2.1).
+  const { onTrimClip } = props
+  const [trimEdgeX, setTrimEdgeX] = useState<number | null>(null)
+  const trimDragRef = useRef<{
+    pointerId: number
+    sourceOffset: number | null
+    armIndex: number
+    startCycle: number
+    origWeight: number
+    weight: number
+  } | null>(null)
+
+  // Hit-test a clip's right edge under a client point → the draggable clip, or
+  // null. We scan the lane's clips and match proximity to each clip's RIGHT EDGE
+  // directly (not `clipAtCycle`): that grabs the LAST clip's edge too (its end is
+  // the song end, contained in no clip) and disambiguates a shared boundary to
+  // the clip whose edge is nearest. Reads live refs so it's closure-stable.
+  const clipEdgeAt = React.useCallback(
+    (clientX: number, clientY: number): { lane: (typeof sceneRef.current.lanes)[number]; clip: NonNullable<ReturnType<typeof clipAtCycle>> } | null => {
+      if (!onTrimClip) return null
+      const el = areaRef.current
+      if (!el) return null
+      const rect = el.getBoundingClientRect()
+      const cw = contentWidthFor(rect.width, zoomRef.current)
+      const contentX = clientX - rect.left + scrollLeftRef.current
+      const laneKey = laneAtY(layoutRef.current, clientY - rect.top)
+      if (laneKey == null) return null
+      const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
+      if (!lane) return null
+      let best: NonNullable<ReturnType<typeof clipAtCycle>> | null = null
+      let bestDist = CLIP_EDGE_GRIP_PX
+      for (const clip of lane.clips) {
+        if (clip.armIndex < 0) continue // implicit/bare clip: not trimmable
+        const dist = Math.abs(contentX - songCycleToX(clip.endCycle, displayCycles, cw))
+        if (dist <= bestDist) {
+          best = clip
+          bestDist = dist
+        }
+      }
+      return best ? { lane, clip: best } : null
+    },
+    [onTrimClip, displayCycles],
+  )
+
+  const handleGridPointerDown = React.useCallback(
+    (e: React.PointerEvent) => {
+      const hit = clipEdgeAt(e.clientX, e.clientY)
+      if (!hit) {
+        handleSeekAtClientX(e.clientX) // not on a clip edge → seek (unchanged)
+        return
+      }
+      // Begin a trim drag: capture the pointer so the whole gesture is ours and
+      // suspend follow so auto-scroll doesn't fight it mid-drag.
+      e.preventDefault()
+      try {
+        areaRef.current?.setPointerCapture?.(e.pointerId)
+      } catch {
+        /* capture is best-effort (jsdom / inactive pointer) — drag still works */
+      }
+      userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
+      const w = hit.clip.endCycle - hit.clip.startCycle
+      trimDragRef.current = {
+        pointerId: e.pointerId,
+        sourceOffset: hit.lane.sourceOffset,
+        armIndex: hit.clip.armIndex,
+        startCycle: hit.clip.startCycle,
+        origWeight: w,
+        weight: w,
+      }
+      const cw = contentWidthFor(areaRef.current!.getBoundingClientRect().width, zoomRef.current)
+      setTrimEdgeX(songCycleToX(hit.clip.endCycle, displayCycles, cw))
+    },
+    [clipEdgeAt, handleSeekAtClientX, displayCycles],
+  )
+
+  const handleGridPointerMove = React.useCallback(
+    (e: React.PointerEvent) => {
+      const el = areaRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const cw = contentWidthFor(rect.width, zoomRef.current)
+      const drag = trimDragRef.current
+      if (drag && e.pointerId === drag.pointerId) {
+        const contentX = e.clientX - rect.left + scrollLeftRef.current
+        const cyc = xToSongCycle(contentX, displayCycles, cw)
+        // Snap to whole cycles (clip boundaries are cycle-aligned), floor at 1.
+        const newEnd = Math.max(drag.startCycle + 1, Math.round(cyc))
+        drag.weight = newEnd - drag.startCycle
+        setTrimEdgeX(songCycleToX(newEnd, displayCycles, cw))
+        return
+      }
+      // Not dragging: show the col-resize affordance over a clip edge. Direct
+      // style write (no React state) so hover never churns re-renders.
+      el.style.cursor = clipEdgeAt(e.clientX, e.clientY) ? 'col-resize' : ''
+    },
+    [clipEdgeAt, displayCycles],
+  )
+
+  const endTrimDrag = React.useCallback(
+    (e: React.PointerEvent, commit: boolean) => {
+      const drag = trimDragRef.current
+      if (!drag || e.pointerId !== drag.pointerId) return
+      trimDragRef.current = null
+      setTrimEdgeX(null)
+      try {
+        areaRef.current?.releasePointerCapture?.(e.pointerId)
+      } catch {
+        /* best-effort */
+      }
+      if (commit && drag.weight !== drag.origWeight) {
+        onTrimClip?.({
+          sourceOffset: drag.sourceOffset,
+          armIndex: drag.armIndex,
+          weight: drag.weight,
+        })
+      }
+    },
+    [onTrimClip],
+  )
+
   const periodLabel =
     analysis == null
       ? '—'
@@ -571,7 +710,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           ref={areaRef}
           style={styles.grid}
           onScroll={handleGridScroll}
-          onPointerDown={(e) => handleSeekAtClientX(e.clientX)}
+          onPointerDown={handleGridPointerDown}
+          onPointerMove={handleGridPointerMove}
+          onPointerUp={(e) => endTrimDrag(e, true)}
+          onPointerCancel={(e) => endTrimDrag(e, false)}
           onDoubleClick={(e) => handleExpandAtClientY(e.clientY)}
         >
           {/* Inner content is contentWidth wide (the scroll spacer for the native
@@ -594,6 +736,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             )}
             {playheadVisible && (
               <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX }} />
+            )}
+            {trimEdgeX != null && (
+              <div data-full-song="trim-edge" style={{ ...styles.trimEdge, left: trimEdgeX }} />
             )}
           </div>
         </div>
@@ -837,6 +982,18 @@ const styles = {
     background: 'var(--text-primary, rgba(255,255,255,0.7))',
     opacity: 0.7,
     boxShadow: '0 0 4px var(--text-primary, rgba(255,255,255,0.4))',
+    pointerEvents: 'none' as const,
+  },
+  // The live edge ghost while trimming a clip (#437): a brighter accent line at
+  // the snapped new boundary, distinct from the playhead.
+  trimEdge: {
+    position: 'absolute' as const,
+    top: 0,
+    bottom: 0,
+    width: 2,
+    background: 'var(--accent, #6ea8fe)',
+    opacity: 0.9,
+    boxShadow: '0 0 6px var(--accent, rgba(110,168,254,0.6))',
     pointerEvents: 'none' as const,
   },
 } satisfies Record<string, React.CSSProperties>
