@@ -12,7 +12,7 @@
 import type { PatternIR } from '@stave/editor'
 import { collectCycles, laneKeyOf } from '@stave/editor'
 import { extractPitch } from './pitch'
-import { EMPTY_MARKS, type CollectedMarks, type SceneNote } from './timelineScene'
+import { EMPTY_MARKS, type CollectedMarks, type SceneClip, type SceneNote } from './timelineScene'
 
 /** Per-lane mini-note-mark cap, so a long/dense song can't retain unbounded
  *  marks. Density (per-cycle counts) always covers the full span regardless. */
@@ -43,8 +43,18 @@ export function collectNoteMarks(
   // bind maps this → editor cursor → the Pattern panel rebinds (#422). First-
   // wins so the anchor is stable (doesn't jump as later events stream in).
   const sourceByLane = new Map<string, number>()
+  // Clip derivation (#386): per lane, the active arrange-arm index for each
+  // integer cycle (events of one arm share a cycle; arms span whole cycles —
+  // grounded). Run-length-encoded into clips below. Only lanes whose events
+  // carry `armIndex` (an arrangement combinator) appear here; bare tracks get
+  // an implicit clip from the pure builder. `label` = the arm's first event's
+  // sample/note (read from the runtime event, like `voice`, so the pure module
+  // stays out of the editor bundle — P172).
+  const nCycles = Math.ceil(displayCycles)
+  const armByCycleByLane = new Map<string, Array<number | undefined>>()
+  const armLabelByLane = new Map<string, Map<number, string>>()
   let capped = false
-  const events = collectCycles(ir, 0, Math.ceil(displayCycles))
+  const events = collectCycles(ir, 0, nCycles)
   for (const ev of events) {
     const cycle = ev.begin
     if (!Number.isFinite(cycle) || cycle < 0 || cycle >= displayCycles) continue
@@ -52,6 +62,24 @@ export function collectNoteMarks(
     if (!sourceByLane.has(key)) {
       const offset = ev.loc?.[0]?.start
       if (typeof offset === 'number' && Number.isFinite(offset)) sourceByLane.set(key, offset)
+    }
+    if (typeof ev.armIndex === 'number') {
+      let byCycle = armByCycleByLane.get(key)
+      if (!byCycle) {
+        byCycle = new Array<number | undefined>(nCycles)
+        armByCycleByLane.set(key, byCycle)
+      }
+      const ci = Math.floor(cycle)
+      if (ci >= 0 && ci < nCycles) byCycle[ci] = ev.armIndex
+      let labels = armLabelByLane.get(key)
+      if (!labels) {
+        labels = new Map()
+        armLabelByLane.set(key, labels)
+      }
+      if (!labels.has(ev.armIndex)) {
+        const lbl = ev.s ?? (ev.note != null ? String(ev.note) : null)
+        if (lbl != null) labels.set(ev.armIndex, lbl)
+      }
     }
     let arr = marksByLane.get(key)
     if (!arr) {
@@ -76,5 +104,37 @@ export function collectNoteMarks(
       voice: ev.s ?? null,
     })
   }
-  return { marksByLane, sourceByLane, capped }
+  // Run-length-encode each lane's per-cycle arm index into contiguous clips.
+  // A change in arm index (or a silent cycle) closes the current clip; this
+  // yields one clip per arm-occurrence per period (so a song shown over
+  // multiple periods repeats its clips, matching the timeline). Silent cycles
+  // inside an arm split it — acceptable for read-only display this PR.
+  const clipsByLane = new Map<string, SceneClip[]>()
+  for (const [key, byCycle] of armByCycleByLane) {
+    const labels = armLabelByLane.get(key)
+    const clips: SceneClip[] = []
+    let runArm: number | undefined
+    let runStart = 0
+    const flush = (endCycle: number): void => {
+      if (runArm !== undefined) {
+        clips.push({
+          armIndex: runArm,
+          startCycle: runStart,
+          endCycle,
+          label: labels?.get(runArm) ?? null,
+        })
+      }
+    }
+    for (let c = 0; c < nCycles; c++) {
+      const arm = byCycle[c]
+      if (arm !== runArm) {
+        flush(c)
+        runArm = arm
+        runStart = c
+      }
+    }
+    flush(nCycles)
+    if (clips.length > 0) clipsByLane.set(key, clips)
+  }
+  return { marksByLane, sourceByLane, clipsByLane, capped }
 }

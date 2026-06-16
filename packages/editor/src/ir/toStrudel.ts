@@ -36,6 +36,17 @@ function gen(ir: PatternIR): string {
     case 'Builder':
       return `${ir.kind}(${ir.args})`
 
+    case 'Arrange': {
+      // Phase 5a (#386) — re-emit the literal combinator. `arrange` wraps each
+      // arm in a `[weight, pattern]` tuple; `cat`/`slowcat` take bare patterns
+      // (all weights are 1 by construction, so no tuple is needed).
+      if (ir.arms.length === 0) return `${ir.mode}()`
+      const parts = ir.mode === 'arrange'
+        ? ir.arms.map(a => `[${a.weight}, ${gen(a.pattern)}]`)
+        : ir.arms.map(a => gen(a.pattern))
+      return `${ir.mode}(${parts.join(', ')})`
+    }
+
     case 'Track': {
       // Phase 20-11 D-02 — userMethod discriminates the two wrapper sources:
       //   - 'p'      → user wrote .p("name") — re-emit `${gen(body)}.p("name")`.

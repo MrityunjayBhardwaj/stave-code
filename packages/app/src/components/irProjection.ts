@@ -178,6 +178,12 @@ export function projectedLabel(node: PatternIR): string | undefined {
     case 'Signal':
     case 'Builder':
       return node.kind
+    // Phase 5a (#386) — time-sequence combinator. The userMethod short-circuit
+    // above returns 'arrange'/'cat'/'slowcat' for parser-produced nodes; this
+    // arm covers hand-built nodes with no userMethod. The musician sees the
+    // combinator name (the source token), never the IR tag (PV32).
+    case 'Arrange':
+      return node.mode
     default: {
       // Exhaustiveness check — TS error if a tag is missing.
       const _exhaustive: never = node
@@ -299,6 +305,10 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
     case 'Signal':
     case 'Builder':
       return []
+    // Phase 5a (#386) — the inspector tree drills into each clip: the arms'
+    // patterns ARE the structural children (ordered, one per timeline clip).
+    case 'Arrange':
+      return node.arms.map((a) => a.pattern)
     default: {
       const _exhaustive: never = node
       return _exhaustive

@@ -9,6 +9,8 @@ const theme: DrawTheme = {
   section: '#222',
   sectionAlt: '#333',
   gridline: '#444',
+  clipFill: '#555',
+  clipBorder: '#666',
 }
 
 interface Rect { x: number; y: number; w: number; h: number }
@@ -47,6 +49,7 @@ const scene: TimelineScene = {
       pitchMin: 60,
       pitchMax: 72,
       voices: [{ key: 'lead', label: 'lead', melodic: true, pitchMin: 60, pitchMax: 72 }],
+      clips: [],
       sourceOffset: null,
     },
   ],
@@ -180,6 +183,7 @@ describe('drawTimeline', () => {
             { key: 'bd', label: 'bd', melodic: false, pitchMin: null, pitchMax: null },
             { key: 'sd', label: 'sd', melodic: false, pitchMin: null, pitchMax: null },
           ],
+          clips: [],
           sourceOffset: null,
         },
       ],
@@ -198,5 +202,45 @@ describe('drawTimeline', () => {
     // Sub-row 0 baseline sits in [0,22), sub-row 1 in [22,44) — no overlap.
     expect(ys[0]).toBeLessThan(22)
     expect(ys[1]).toBeGreaterThanOrEqual(22)
+  })
+})
+
+describe('drawClips (#386)', () => {
+  const vw = 400
+  it('draws a bordered filled rect per clip segment over the shared transform', () => {
+    // Two clips: arm 0 cycles [0,2), arm 1 [2,4). 100px/cycle (contentWidth 400).
+    const clipScene: TimelineScene = {
+      ...scene,
+      lanes: [
+        {
+          ...scene.lanes[0],
+          notes: [],
+          clips: [
+            { armIndex: 0, startCycle: 0, endCycle: 2, label: 'a' },
+            { armIndex: 1, startCycle: 2, endCycle: 4, label: 'b' },
+          ],
+        },
+      ],
+    }
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, clipScene, { scrollLeft: 0, contentWidth: 400, viewportWidth: vw }, theme, flat)
+    // Clip fills span their cycle range: arm0 [0,200), arm1 [200,400).
+    const fill0 = rects.find((r) => r.x === 0 && r.w === 200 && r.h === 22)
+    const fill1 = rects.find((r) => r.x === 200 && r.w === 200 && r.h === 22)
+    expect(fill0).toBeDefined()
+    expect(fill1).toBeDefined()
+    // Border at the internal boundary cycle 2 (x=200), full row height.
+    const borderAt200 = rects.find((r) => Math.abs(r.x - 200) < 1 && r.w === 1 && r.h === 22)
+    expect(borderAt200).toBeDefined()
+  })
+
+  it('an implicit single clip fills the whole lane (bare track, seamless)', () => {
+    const oneClip: TimelineScene = {
+      ...scene,
+      lanes: [{ ...scene.lanes[0], notes: [], clips: [{ armIndex: -1, startCycle: 0, endCycle: 4, label: null }] }],
+    }
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, oneClip, { scrollLeft: 0, contentWidth: 400, viewportWidth: vw }, theme, flat)
+    expect(rects.some((r) => r.x === 0 && r.w === 400 && r.h === 22)).toBe(true)
   })
 })

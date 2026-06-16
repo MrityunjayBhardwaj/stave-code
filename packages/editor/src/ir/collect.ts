@@ -206,6 +206,14 @@ export interface CollectContext {
    * the parent's counter (sequential numbering across recursion).
    */
   leafIndex?: number
+  /**
+   * Phase 5a (#386) — set by the Arrange arm to the index of the active
+   * time-sequence arm (clip) for the current cycle. Threaded onto produced
+   * events so the timeline can attribute events to clips. Unlike leafIndex it
+   * is NOT reset at Track entry — an Arrange typically IS the Track body, so
+   * its arm index must reach the leaves below it.
+   */
+  armIndex?: number
 }
 
 const DEFAULT_CONTEXT: CollectContext = {
@@ -334,6 +342,9 @@ function makeEvent(ctx: CollectContext, note: string | number, params: Record<st
     // when present so `.p()` rename doesn't relocate the row.
     ...(ctx.dollarPos !== undefined ? { dollarPos: ctx.dollarPos } : {}),
     ...(ctx.leafIndex !== undefined ? { leafIndex: ctx.leafIndex } : {}),
+    // Phase 5a — conditional spread (mirrors leafIndex). Absent for tracks
+    // with no arrangement combinator → timeline treats them as one clip.
+    ...(ctx.armIndex !== undefined ? { armIndex: ctx.armIndex } : {}),
   }
 }
 
@@ -678,6 +689,42 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       if (ir.items.length === 0) return []
       const item = ir.items[ctx.cycle % ir.items.length]
       return withWrapperLoc(walk(item, ctx), ir.loc)
+    }
+
+    case 'Arrange': {
+      // Phase 5a (#386) — weighted multi-cycle alternation (slowcat family).
+      // GROUNDED 2026-06-17 against real haps (pattern.mjs:1469-1473):
+      //   period P = Σ weight; arm i occupies cycles [start_i, start_i+w_i);
+      //   within its span the arm plays at NATURAL rate and its INTERNAL
+      //   cycle ADVANCES (so an alternating arm `<a b>` over weight 2 yields
+      //   a then b, NOT a then a — verified). So: select the arm by the
+      //   modular cycle position, recurse with cycle := localCycle (position
+      //   within the arm), keep time/duration so events land in THIS cycle.
+      // This is `Cycle` generalised with per-arm weights + arm tagging. The
+      // whole-node loc wraps produced events (PV36); each event also carries
+      // `armIndex` for clip attribution (the timeline's horizontal partition).
+      if (ir.arms.length === 0) return []
+      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0)
+      if (period <= 0) return []
+      const pos = ((ctx.cycle % period) + period) % period
+      let acc = 0
+      let armIndex = 0
+      let localCycle = 0
+      for (let i = 0; i < ir.arms.length; i++) {
+        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0
+        if (pos < acc + w) {
+          armIndex = i
+          localCycle = pos - acc
+          break
+        }
+        acc += w
+      }
+      const childCtx: CollectContext = {
+        ...ctx,
+        cycle: localCycle,
+        armIndex,
+      }
+      return withWrapperLoc(walk(ir.arms[armIndex].pattern, childCtx), ir.loc)
     }
 
     case 'When': {

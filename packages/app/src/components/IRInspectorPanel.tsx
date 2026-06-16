@@ -143,6 +143,10 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
   // land in the design-system pass, same as Track's placeholder.
   Signal:   "var(--ir-signal, #818cf8)",
   Builder:  "var(--ir-builder, #4ade80)",
+  // Phase 5a (#386) — Arrange tag (arrange/cat/slowcat time-sequence /
+  // timeline-clip combinator). Teal-300 placeholder, distinct from Cycle's
+  // cyan (#06b6d4) and Builder's green; final token lands in the design pass.
+  Arrange:  "var(--ir-arrange, #2dd4bf)",
 };
 
 // summarize / children moved to IRInspectorChrome.ts (Phase 20-04 wave δ)

@@ -61,6 +61,8 @@ const VALID_TAGS = new Set([
   // since `VALID_TAGS.has(node.tag)` is the gate at line 71 — without
   // these, a deserialise of a Signal/Builder node throws "unknown tag").
   'Signal', 'Builder',
+  // Phase 5a (#386) — unified time-sequence node (arrange/cat/slowcat).
+  'Arrange',
 ])
 
 function validateNode(raw: unknown, path: string): PatternIR {
@@ -347,6 +349,36 @@ function validateNode(raw: unknown, path: string): PatternIR {
       if (typeof node.body === 'object' && node.body !== null) {
         (out as Extract<PatternIR, { tag: 'Builder' }>).body =
           validateNode(node.body, `${path}.body`)
+      }
+      if (Array.isArray(node.loc)) out.loc = node.loc as SourceLocation[]
+      if (typeof node.userMethod === 'string') out.userMethod = node.userMethod
+      return out
+    }
+
+    case 'Arrange': {
+      // Phase 5a (#386) — unified time-sequence node. Validate mode + arms;
+      // each arm is { weight:number, pattern:PatternIR, loc? }.
+      requireField(node, 'mode', ['string'], path)
+      requireArray(node, 'arms', path)
+      const arms = (node.arms as unknown[]).map((a, i) => {
+        if (typeof a !== 'object' || a === null) {
+          throw new Error(`${path}.arms[${i}]: expected object`)
+        }
+        const arm = a as Record<string, unknown>
+        if (typeof arm.weight !== 'number') {
+          throw new Error(`${path}.arms[${i}]: field "weight" must be a number`)
+        }
+        const out: Extract<PatternIR, { tag: 'Arrange' }>['arms'][number] = {
+          weight: arm.weight,
+          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`),
+        }
+        if (Array.isArray(arm.loc)) out.loc = arm.loc as SourceLocation[]
+        return out
+      })
+      const out: PatternIR = {
+        tag: 'Arrange',
+        mode: node.mode as Extract<PatternIR, { tag: 'Arrange' }>['mode'],
+        arms,
       }
       if (Array.isArray(node.loc)) out.loc = node.loc as SourceLocation[]
       if (typeof node.userMethod === 'string') out.userMethod = node.userMethod

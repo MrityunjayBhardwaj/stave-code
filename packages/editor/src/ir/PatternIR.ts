@@ -14,6 +14,22 @@
 
 import type { SourceLocation } from './IREvent'
 
+/** One arm of an `Arrange` time-sequence node = one timeline clip. Phase 5a. */
+export interface ArrangeArm {
+  /** Cycle weight — how many WHOLE cycles this arm spans (the `n` in
+   *  `arrange([n, pat])`). `1` for every `cat`/`slowcat` arm. The arm occupies
+   *  the cycle range `[Σweight_before, Σweight_before + weight)`; the whole
+   *  node's period is `Σ weight`. */
+  weight: number
+  /** The arm's pattern sub-IR. Plays at its natural rate within the arm's span
+   *  (its internal cycle advances across the span — grounded). */
+  pattern: PatternIR
+  /** Source range. For `arrange` arms this is the `[n, pat]` TUPLE range (so
+   *  write-back can edit the weight `n`); for `cat`/`slowcat` arms it is the
+   *  pattern-expression range. Optional only for hand-built fixtures. */
+  loc?: SourceLocation[]
+}
+
 export interface PlayParams {
   s?: string            // instrument/sample name
   gain?: number         // 0-1
@@ -144,6 +160,28 @@ export type PatternIR =
       args: string                                 // RAW (untrimmed) arg slice — code-invariance (the Code.via.args convention)
       body?: PatternIR                             // OPTIONAL — only for builders whose arg is a recursable pattern (no current kind populates this — `chord`/`arrange` are grounded args-RAW-only per Ground Truth §5)
       loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+  // Phase 5a (#386) — UNIFIED TIME-SEQUENCE node: the structured form of the
+  // `arrange`/`cat`/`slowcat` combinators (the timeline-clip family). GROUNDED
+  // 2026-06-17 against real haps (@strudel/core@1.2.6 pattern.mjs:1469-1473):
+  //   `arrange([n, pat], …)` — arm i spans `n` WHOLE cycles at the pattern's
+  //      natural rate (internal cycle advances across the span); period = Σn.
+  //   `cat`/`slowcat`(p, …) — each arm spans 1 cycle; period = N. PROVEN
+  //      EQUAL to `arrange` with all weights 1 (locked decision 2026-06-16).
+  // `fastcat` is DELIBERATELY EXCLUDED — it is one-cycle weight-slicing, which
+  // IS the existing `Seq` node (fastcat ≡ Seq, grounded); the parser routes
+  // fastcat → Seq, not here. The opaque `Builder{kind:'arrange'}` above stays
+  // a valid hand-built/round-trip shape (byte-unchanged); the PARSER now emits
+  // this structured node for real `arrange(…)` source instead.
+  // `mode` preserves the literal combinator the user wrote (write-back
+  // fidelity for P5b/c). Each arm carries its OWN source `loc` (the `[n, pat]`
+  // tuple range for arrange; the pattern-expression range for cat) — mandatory
+  // so the reserved `arrange.weights`/`arrange.structure` write-back sources
+  // can target individual arms. Distinct from `Cycle` (mini-notation `<a b>`
+  // alternation — CONTENT layer, inside one pattern) per design §3 layering.
+  | { tag: 'Arrange'
+      mode: 'arrange' | 'cat' | 'slowcat'          // literal combinator name (round-trip fidelity)
+      arms: ArrangeArm[]                           // ordered clips; ≥1
+      loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
 
 /**
  * Optional metadata accepted by every non-rest-spread smart constructor
@@ -247,6 +285,13 @@ export const IR = {
     attachMeta({ tag: 'Chop', n, body }, meta),
   loop: (body: PatternIR, meta?: TagMeta): PatternIR =>
     attachMeta({ tag: 'Loop', body }, meta),
+  // Phase 5a (#386) — unified time-sequence constructor. `mode` is the literal
+  // combinator name; `cat`/`slowcat` callers pass arms with weight 1.
+  arrange: (
+    mode: 'arrange' | 'cat' | 'slowcat',
+    arms: ArrangeArm[],
+    meta?: TagMeta,
+  ): PatternIR => attachMeta({ tag: 'Arrange', mode, arms }, meta),
   code: (code: string, meta?: TagMeta): PatternIR =>
     attachMeta({ tag: 'Code', code, lang: 'strudel' }, meta),
   // Phase 20-18 Wave A — signal/builder chain-ROOT smart constructors.
