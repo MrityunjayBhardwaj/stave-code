@@ -66,6 +66,7 @@ async function openSequencer(page: Page): Promise<Locator> {
 
 /** Press on a cell, drag vertically by `dy` px (down = positive = softer), release. */
 async function dragVertical(page: Page, cell: Locator, dy: number): Promise<void> {
+  await cell.scrollIntoViewIfNeeded() // the roll's velocity lane sits below the fold
   const box = await cell.boundingBox()
   if (!box) throw new Error('cell has no box')
   const cx = box.x + box.width / 2
@@ -149,5 +150,58 @@ test.describe('velocity — Sequencer (#409)', () => {
     await expect(grid.locator('[data-seq-cell="1:1"]')).toHaveAttribute('data-gain', '0.5')
     await expect(grid.locator('[data-seq-cell="1:3"]')).toHaveAttribute('data-gain', '0.25')
     await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('data-gain', '1')
+  })
+})
+
+test.describe('velocity — Piano Roll (#409)', () => {
+  test('dragging a note bar down writes a structure-aligned .gain', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 c4")')
+    const drawer = await openSequencer(page) // the Pattern tab adapts to the roll
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    await expect(roll.locator('[data-roll-velocity-lane]')).toHaveCount(1)
+    expect(await strudelValue(page)).toBe('$: note("c3 e3 g3 c4")') // neutral, no .gain
+
+    // drag the col-1 (e3) velocity bar down → softer
+    await dragVertical(page, roll.locator('[data-vel-col="1"]'), 40)
+    const code = await strudelValue(page)
+    expect(code).toMatch(/^\$: note\("c3 e3 g3 c4"\)\.gain\("1 [\d.]+ 1 1"\)$/)
+    const v = Number(code.match(/\.gain\("1 ([\d.]+) 1 1"\)/)![1])
+    expect(v).toBeGreaterThan(0)
+    expect(v).toBeLessThan(1)
+  })
+
+  test('per-chord: one bar drives both chord notes (shared gain)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("[c3,e3] g3")')
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    // one bar at col 0 for the whole [c3,e3] chord
+    await dragVertical(page, roll.locator('[data-vel-col="0"]'), 40)
+    // a single shared gain token for the chord, the other note neutral
+    expect(await strudelValue(page)).toMatch(/^\$: note\("\[c3,e3\] g3"\)\.gain\("[\d.]+ 1"\)$/)
+  })
+
+  test('dragging back to neutral removes the .gain method', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3 c4")')
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await dragVertical(page, roll.locator('[data-vel-col="1"]'), 40)
+    expect(await strudelValue(page)).toMatch(/\.gain\(/)
+    await dragVertical(page, roll.locator('[data-vel-col="1"]'), -60)
+    expect(await strudelValue(page)).toBe('$: note("c3 e3 g3 c4")')
+  })
+
+  test('reads an existing .gain back onto the lane bars', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c3 e3 g3").gain("1 0.5 1")')
+    const drawer = await openSequencer(page)
+    const roll = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(roll).toHaveCount(1)
+    await expect(roll.locator('[data-vel-bar="1"]')).toHaveAttribute('data-gain', '0.5')
+    await expect(roll.locator('[data-vel-bar="0"]')).toHaveAttribute('data-gain', '1')
   })
 })
