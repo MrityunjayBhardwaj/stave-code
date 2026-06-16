@@ -150,6 +150,9 @@ var IR = {
   scramble: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Scramble", n, body }, meta), "scramble"),
   chop: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Chop", n, body }, meta), "chop"),
   loop: /* @__PURE__ */ __name((body, meta) => attachMeta({ tag: "Loop", body }, meta), "loop"),
+  // Phase 5a (#386) — unified time-sequence constructor. `mode` is the literal
+  // combinator name; `cat`/`slowcat` callers pass arms with weight 1.
+  arrange: /* @__PURE__ */ __name((mode, arms, meta) => attachMeta({ tag: "Arrange", mode, arms }, meta), "arrange"),
   code: /* @__PURE__ */ __name((code, meta) => attachMeta({ tag: "Code", code, lang: "strudel" }, meta), "code"),
   // Phase 20-18 Wave A — signal/builder chain-ROOT smart constructors.
   // Mirror the `attachMeta` convention: only set each field when truthy
@@ -324,7 +327,10 @@ function makeEvent(ctx, note, params) {
     // produced events. MusicalTimeline uses this as the slot identity
     // when present so `.p()` rename doesn't relocate the row.
     ...ctx.dollarPos !== void 0 ? { dollarPos: ctx.dollarPos } : {},
-    ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {}
+    ...ctx.leafIndex !== void 0 ? { leafIndex: ctx.leafIndex } : {},
+    // Phase 5a — conditional spread (mirrors leafIndex). Absent for tracks
+    // with no arrangement combinator → timeline treats them as one clip.
+    ...ctx.armIndex !== void 0 ? { armIndex: ctx.armIndex } : {}
   };
 }
 __name(makeEvent, "makeEvent");
@@ -500,6 +506,30 @@ function walk(ir, ctx) {
       if (ir.items.length === 0) return [];
       const item = ir.items[ctx.cycle % ir.items.length];
       return withWrapperLoc(walk(item, ctx), ir.loc);
+    }
+    case "Arrange": {
+      if (ir.arms.length === 0) return [];
+      const period = ir.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      let acc = 0;
+      let armIndex = 0;
+      let localCycle = 0;
+      for (let i = 0; i < ir.arms.length; i++) {
+        const w = ir.arms[i].weight > 0 ? ir.arms[i].weight : 0;
+        if (pos < acc + w) {
+          armIndex = i;
+          localCycle = pos - acc;
+          break;
+        }
+        acc += w;
+      }
+      const childCtx = {
+        ...ctx,
+        cycle: localCycle,
+        armIndex
+      };
+      return withWrapperLoc(walk(ir.arms[armIndex].pattern, childCtx), ir.loc);
     }
     case "When": {
       const slots = ir.gate.trim().split(/\s+/);
@@ -801,6 +831,11 @@ function gen(ir) {
       return ir.args !== void 0 ? `${ir.kind}(${ir.args})` : ir.kind;
     case "Builder":
       return `${ir.kind}(${ir.args})`;
+    case "Arrange": {
+      if (ir.arms.length === 0) return `${ir.mode}()`;
+      const parts = ir.mode === "arrange" ? ir.arms.map((a) => `[${a.weight}, ${gen(a.pattern)}]`) : ir.arms.map((a) => gen(a.pattern));
+      return `${ir.mode}(${parts.join(", ")})`;
+    }
     case "Track": {
       if (ir.userMethod === "p") {
         return `${gen(ir.body)}.p("${ir.trackId}")`;
@@ -1178,7 +1213,9 @@ var VALID_TAGS = /* @__PURE__ */ new Set([
   // since `VALID_TAGS.has(node.tag)` is the gate at line 71 — without
   // these, a deserialise of a Signal/Builder node throws "unknown tag").
   "Signal",
-  "Builder"
+  "Builder",
+  // Phase 5a (#386) — unified time-sequence node (arrange/cat/slowcat).
+  "Arrange"
 ]);
 function validateNode(raw, path) {
   if (typeof raw !== "object" || raw === null) {
@@ -1422,6 +1459,33 @@ function validateNode(raw, path) {
       if (typeof node.body === "object" && node.body !== null) {
         out.body = validateNode(node.body, `${path}.body`);
       }
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
+    }
+    case "Arrange": {
+      requireField(node, "mode", ["string"], path);
+      requireArray(node, "arms", path);
+      const arms = node.arms.map((a, i) => {
+        if (typeof a !== "object" || a === null) {
+          throw new Error(`${path}.arms[${i}]: expected object`);
+        }
+        const arm = a;
+        if (typeof arm.weight !== "number") {
+          throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
+        }
+        const out2 = {
+          weight: arm.weight,
+          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
+        };
+        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
+        return out2;
+      });
+      const out = {
+        tag: "Arrange",
+        mode: node.mode,
+        arms
+      };
       if (Array.isArray(node.loc)) out.loc = node.loc;
       if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
       return out;
@@ -2287,6 +2351,58 @@ function parseExpression(expr, baseOffset = 0, isSampleKey, bindings, opts) {
   }
 }
 __name(parseExpression, "parseExpression");
+function parseArrangeArm(raw, absOffset, bindings, opts) {
+  const lb = raw.indexOf("[");
+  const rb = raw.lastIndexOf("]");
+  if (lb < 0 || rb <= lb) return null;
+  const innerAbs = absOffset + lb + 1;
+  const parts = splitArgsWithOffsets(raw.slice(lb + 1, rb));
+  if (parts.length < 2) return null;
+  const weight = Number(parts[0].value.trim());
+  if (!Number.isFinite(weight)) return null;
+  const patPart = parts[1];
+  const pattern = parseExpression(patPart.value, innerAbs + patPart.offset, void 0, bindings, opts);
+  return { weight, pattern, loc: [{ start: absOffset + lb, end: absOffset + rb + 1 }] };
+}
+__name(parseArrangeArm, "parseArrangeArm");
+function parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts) {
+  const m = trimmed.match(/^(arrange|cat|slowcat|fastcat)\s*\(/);
+  if (!m) return null;
+  const fn = m[1];
+  const openIdx = trimmed.indexOf("(", m[0].length - 1);
+  const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1;
+  if (closeIdx <= openIdx) return null;
+  const innerAbs = baseOffset + leadingWs + openIdx + 1;
+  const args = splitArgsWithOffsets(trimmed.slice(openIdx + 1, closeIdx));
+  if (args.length === 0) return null;
+  const nodeStart = baseOffset + leadingWs;
+  const nodeLoc = { start: nodeStart, end: nodeStart + closeIdx + 1 };
+  if (fn === "fastcat") {
+    const children = args.map(
+      (a) => parseExpression(a.value, innerAbs + a.offset, void 0, bindings, opts)
+    );
+    if (children.length === 1) return children[0];
+    return { tag: "Seq", children, loc: [nodeLoc], userMethod: "fastcat" };
+  }
+  const arms = [];
+  for (const a of args) {
+    if (fn === "arrange") {
+      const arm = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts);
+      if (!arm) return null;
+      arms.push(arm);
+    } else {
+      const armStart = innerAbs + a.offset;
+      arms.push({
+        weight: 1,
+        pattern: parseExpression(a.value, armStart, void 0, bindings, opts),
+        loc: [{ start: armStart, end: armStart + a.value.length }]
+      });
+    }
+  }
+  if (arms.length === 0) return null;
+  return { tag: "Arrange", mode: fn, arms, loc: [nodeLoc], userMethod: fn };
+}
+__name(parseTimeSequenceRoot, "parseTimeSequenceRoot");
 function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
   const trimmed = root.trim();
   const leadingWs = root.length - root.trimStart().length;
@@ -2297,6 +2413,8 @@ function parseRoot(root, baseOffset = 0, isSampleKey, bindings, opts) {
   if (bindings && /^[A-Za-z_$][\w$]*$/.test(trimmed) && bindings.has(trimmed)) {
     return bindings.get(trimmed);
   }
+  const timeSeq = parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts);
+  if (timeSeq) return timeSeq;
   const recognised = CHAIN_ROOT_RECOGNISER.get(trimmed);
   if (recognised) {
     const rootStart = baseOffset + leadingWs;
@@ -2516,6 +2634,25 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       const n = parseFloat(subbedArgs.trim());
       if (!isNaN(n)) return IR.slow(n, ir, tagMeta(method, callSiteRange));
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
+    }
+    case "cat":
+    case "slowcat":
+    case "fastcat": {
+      const argList = splitArgsWithOffsets(args);
+      const moreArms = argList.map(
+        (a) => parseExpression(a.value, baseOffset + a.offset, void 0, bindings)
+      );
+      if (moreArms.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
+      if (method === "fastcat") {
+        return {
+          tag: "Seq",
+          children: [ir, ...moreArms],
+          loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+          userMethod: "fastcat"
+        };
+      }
+      const arms = [ir, ...moreArms].map((pattern) => ({ weight: 1, pattern }));
+      return IR.arrange(method, arms, tagMeta(method, callSiteRange));
     }
     case "every": {
       const [nStr, transformStr] = splitFirstArg(args);
@@ -21253,14 +21390,14 @@ function headOf(h, branch = h.currentBranch) {
 }
 __name(headOf, "headOf");
 function getFileContentAt(h, fileId, commitId) {
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
       return c.files[fileId];
     }
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return null;
 }
@@ -21268,15 +21405,15 @@ __name(getFileContentAt, "getFileContentAt");
 function snapshotAt(h, commitId) {
   const files = {};
   let order;
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     for (const f of Object.keys(c.files)) {
       if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
     }
     if (order === void 0 && c.order !== void 0) order = c.order;
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return { files, order };
 }
@@ -21285,12 +21422,12 @@ function listCommits(h, branch = h.currentBranch) {
   const head = h.branches[branch]?.head;
   if (!head) return [];
   const out = [];
-  let walk2 = head;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = head;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     if (!c.pinned) out.push(c);
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return out;
 }
@@ -21310,24 +21447,24 @@ function fileHistory(h, fileId) {
 }
 __name(fileHistory, "fileHistory");
 function nearestWriter(h, fromCommit, fileId) {
-  let walk2 = fromCommit;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = fromCommit;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk2;
-    walk2 = c.parent;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk3;
+    walk3 = c.parent;
   }
   return null;
 }
 __name(nearestWriter, "nearestWriter");
 function filesAliveAt(h, commitId) {
   const alive = /* @__PURE__ */ new Set();
-  let walk2 = commitId;
-  while (walk2 !== null) {
-    const c = h.commits[walk2];
+  let walk3 = commitId;
+  while (walk3 !== null) {
+    const c = h.commits[walk3];
     if (!c) break;
     for (const f of Object.keys(c.files)) alive.add(f);
-    walk2 = c.parent;
+    walk3 = c.parent;
   }
   return alive;
 }
@@ -21454,9 +21591,9 @@ function prune(h, now2, opts = {}) {
   }
   const keep = /* @__PURE__ */ new Set([...display, ...needed]);
   const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
-    let walk2 = start;
-    while (walk2 !== null && !keep.has(walk2)) walk2 = h.commits[walk2]?.parent ?? null;
-    return walk2;
+    let walk3 = start;
+    while (walk3 !== null && !keep.has(walk3)) walk3 = h.commits[walk3]?.parent ?? null;
+    return walk3;
   }, "nearestKeptAncestor");
   let mutated = keep.size !== all.length;
   const commits = {};
@@ -23975,6 +24112,16 @@ function normalizeEdits(edits) {
   return sorted;
 }
 __name(normalizeEdits, "normalizeEdits");
+function applyEdits(doc, edits) {
+  const sorted = normalizeEdits(edits);
+  let out = doc;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const { range, text } = sorted[i];
+    out = out.slice(0, range[0]) + text + out.slice(range[1]);
+  }
+  return out;
+}
+__name(applyEdits, "applyEdits");
 var _Writeback = class _Writeback {
   constructor(editor, monaco) {
     this.editor = editor;
@@ -32204,6 +32351,163 @@ function emitFromGlobal(err, _kind) {
   });
 }
 __name(emitFromGlobal, "emitFromGlobal");
+var COMBINATORS = /* @__PURE__ */ new Set(["arrange", "cat", "slowcat"]);
+function parseProgram(doc) {
+  try {
+    return acorn.parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+  } catch {
+    return null;
+  }
+}
+__name(parseProgram, "parseProgram");
+function isCombinatorCall(node) {
+  return node && node.type === "CallExpression" && node.callee?.type === "Identifier" && COMBINATORS.has(node.callee.name);
+}
+__name(isCombinatorCall, "isCombinatorCall");
+function walk2(node, visit) {
+  if (!node || typeof node !== "object") return;
+  if (typeof node.type === "string" && typeof node.start === "number") visit(node);
+  for (const key of Object.keys(node)) {
+    if (key === "type" || key === "start" || key === "end") continue;
+    const child = node[key];
+    if (Array.isArray(child)) {
+      for (const c of child) walk2(c, visit);
+    } else if (child && typeof child === "object") {
+      walk2(child, visit);
+    }
+  }
+}
+__name(walk2, "walk");
+function armFromArg(mode, arg) {
+  if (mode === "arrange") {
+    if (arg.type !== "ArrayExpression" || arg.elements.length < 2) return null;
+    const weight = arg.elements[0];
+    const pat = arg.elements[1];
+    if (!weight || !pat) return null;
+    return {
+      weightRange: [weight.start, weight.end],
+      patternRange: [pat.start, pat.end],
+      armRange: [arg.start, arg.end]
+    };
+  }
+  return {
+    weightRange: null,
+    patternRange: [arg.start, arg.end],
+    armRange: [arg.start, arg.end]
+  };
+}
+__name(armFromArg, "armFromArg");
+function buildCall(doc, node) {
+  const mode = node.callee.name;
+  if (node.arguments.length === 0) return null;
+  const arms = [];
+  for (const arg of node.arguments) {
+    const arm = armFromArg(mode, arg);
+    if (!arm) return null;
+    arms.push(arm);
+  }
+  const open = doc.indexOf("(", node.callee.end);
+  if (open < 0) return null;
+  return {
+    mode,
+    callRange: [node.start, node.end],
+    calleeRange: [node.callee.start, node.callee.end],
+    argsRange: [open + 1, node.end - 1],
+    arms
+  };
+}
+__name(buildCall, "buildCall");
+function detectArrangeAt(doc, pos) {
+  const program = parseProgram(doc);
+  if (!program) return null;
+  let best = null;
+  walk2(program, (n) => {
+    if (!isCombinatorCall(n)) return;
+    if (pos < n.start || pos > n.end) return;
+    if (!best || n.start > best.start) best = n;
+  });
+  return best ? buildCall(doc, best) : null;
+}
+__name(detectArrangeAt, "detectArrangeAt");
+function detectAllArrangeCalls(doc) {
+  const program = parseProgram(doc);
+  if (!program) return [];
+  const nodes = [];
+  walk2(program, (n) => {
+    if (isCombinatorCall(n)) nodes.push(n);
+  });
+  nodes.sort((a, b) => a.start - b.start);
+  return nodes.map((n) => buildCall(doc, n)).filter((c) => c !== null);
+}
+__name(detectAllArrangeCalls, "detectAllArrangeCalls");
+
+// src/visualEdit/arrange/serialize.ts
+function asWeight(n) {
+  return Math.max(1, Math.round(n));
+}
+__name(asWeight, "asWeight");
+function armText(doc, call, i) {
+  return doc.slice(call.arms[i].armRange[0], call.arms[i].armRange[1]);
+}
+__name(armText, "armText");
+function setWeight(doc, call, i, weight) {
+  const w = asWeight(weight);
+  const arm = call.arms[i];
+  if (!arm) return [];
+  if (call.mode === "arrange") {
+    if (!arm.weightRange) return [];
+    return [{ range: arm.weightRange, text: String(w) }];
+  }
+  if (w === 1) return [];
+  const edits = [{ range: call.calleeRange, text: "arrange" }];
+  for (let j = 0; j < call.arms.length; j++) {
+    const aw = j === i ? w : 1;
+    const pat = call.arms[j];
+    edits.push({ range: [pat.armRange[0], pat.armRange[0]], text: `[${aw}, ` });
+    edits.push({ range: [pat.armRange[1], pat.armRange[1]], text: `]` });
+  }
+  return edits;
+}
+__name(setWeight, "setWeight");
+function reorderArm(doc, call, from, to) {
+  const n = call.arms.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return [];
+  const order = Array.from({ length: n }, (_, k) => k);
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  const text = order.map((k) => armText(doc, call, k)).join(", ");
+  return [{ range: call.argsRange, text }];
+}
+__name(reorderArm, "reorderArm");
+function insertArm(doc, call, at, armSource) {
+  const n = call.arms.length;
+  const idx = Math.max(0, Math.min(at, n));
+  if (n === 0) return [{ range: [call.argsRange[0], call.argsRange[1]], text: armSource }];
+  if (idx === n) {
+    const end = call.arms[n - 1].armRange[1];
+    return [{ range: [end, end], text: `, ${armSource}` }];
+  }
+  const start = call.arms[idx].armRange[0];
+  return [{ range: [start, start], text: `${armSource}, ` }];
+}
+__name(insertArm, "insertArm");
+function removeArm(doc, call, i) {
+  const n = call.arms.length;
+  if (i < 0 || i >= n || n <= 1) return [];
+  if (i < n - 1) {
+    return [{ range: [call.arms[i].armRange[0], call.arms[i + 1].armRange[0]], text: "" }];
+  }
+  return [{ range: [call.arms[i - 1].armRange[1], call.arms[i].armRange[1]], text: "" }];
+}
+__name(removeArm, "removeArm");
+function wrapBare(patternRange, leadingWeight, patternWeight) {
+  const lead = asWeight(leadingWeight);
+  const pw = asWeight(patternWeight);
+  return [
+    { range: [patternRange[0], patternRange[0]], text: `arrange([${lead}, silence], [${pw}, ` },
+    { range: [patternRange[1], patternRange[1]], text: `])` }
+  ];
+}
+__name(wrapBare, "wrapBare");
 
 // src/visualEdit/notation/resize.ts
 function resizeGrid(model, nextSteps, mode) {
@@ -32556,6 +32860,7 @@ exports.Writeback = Writeback;
 exports.accumulateLanes = accumulateLanes;
 exports.analyzeEvents = analyzeEvents;
 exports.analyzeSong = analyzeSong;
+exports.applyEdits = applyEdits;
 exports.applyPersistedAdaptivePerf = applyPersistedAdaptivePerf;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;
 exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
@@ -32595,7 +32900,9 @@ exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
 exports.deriveVizQuality = deriveVizQuality;
+exports.detectAllArrangeCalls = detectAllArrangeCalls;
 exports.detectAllChunks = detectAllChunks;
+exports.detectArrangeAt = detectArrangeAt;
 exports.detectChunk = detectChunk;
 exports.detectPeriod = detectPeriod;
 exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
@@ -32682,6 +32989,7 @@ exports.initProjectDoc = initProjectDoc;
 exports.initProjectDocSync = initProjectDocSync;
 exports.injectedGlobalByToken = injectedGlobalByToken;
 exports.injectedGlobals = injectedGlobals;
+exports.insertArm = insertArm;
 exports.installEngineLogMarkers = installEngineLogMarkers;
 exports.installGlobalErrorCatch = installGlobalErrorCatch;
 exports.isBlackKey = isBlackKey;
@@ -32759,9 +33067,11 @@ exports.registerNamedViz = registerNamedViz;
 exports.registerPresetAsNamedViz = registerPresetAsNamedViz;
 exports.registerPreviewProvider = registerPreviewProvider;
 exports.registerRuntimeProvider = registerRuntimeProvider;
+exports.removeArm = removeArm;
 exports.renameProject = renameProject;
 exports.renameWorkspaceFile = renameWorkspaceFile;
 exports.rendererForLanguage = rendererForLanguage;
+exports.reorderArm = reorderArm;
 exports.resetFileStore = resetFileStore;
 exports.resetHistoryState = resetHistoryState;
 exports.resetUndoManager = resetUndoManager;
@@ -32818,6 +33128,7 @@ exports.setVizConfig = setVizConfig;
 exports.setVizInputsLiveValuesEnabled = setVizInputsLiveValuesEnabled;
 exports.setVizQuality = setVizQuality;
 exports.setVizWorkerFactory = setVizWorkerFactory;
+exports.setWeight = setWeight;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.shellStateKeyFor = shellStateKeyFor;
@@ -32858,5 +33169,6 @@ exports.validatePersistedState = validatePersistedState;
 exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
 exports.workspaceFileIdForPreset = workspaceFileIdForPreset;
+exports.wrapBare = wrapBare;
 //# sourceMappingURL=index.cjs.map
 //# sourceMappingURL=index.cjs.map
