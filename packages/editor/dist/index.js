@@ -12669,7 +12669,14 @@ function draw() {
 var PITCHWHEEL_P5_CODE = `// Stave p5 viz \u2014 Pitchwheel
 const ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)
 function setup() {
-  createCanvas(300, 200)
+  // Fill the size Stave provides (like every other built-in) so the canvas
+  // matches its zone. A hardcoded createCanvas(300, 200) left the canvas at a
+  // fixed aspect that didn't match the zone \u2014 on the OffscreenCanvas worker path
+  // (where the presenting canvas can't be measured to self-correct) the zone
+  // stayed sized for the descriptor's default aspect and the canvas floated
+  // inside it, detaching the resize bar. The wheel itself uses min(width,height),
+  // so it stays centred and round at any aspect.
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
 }
 function freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }
@@ -13482,7 +13489,10 @@ var DEFAULT_VIZ_DESCRIPTORS = [
   { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(FSCOPE_P5_CODE, "fscope"), "factory") },
   { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPECTRUM_P5_CODE, "spectrum"), "factory") },
   { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPIRAL_P5_CODE, "spiral"), "factory") },
-  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
+  // nativeSize gives the zone a defined aspect so it isn't sized from
+  // DEFAULT_NATIVE (1200×600 → a 530px-tall strip). The wheel is centred via
+  // min(width,height), so a wide-ish strip keeps it round and a comfortable size.
+  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], nativeSize: { w: 1200, h: 240 }, factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
   // Hydra renderers (WebGL shader-based) — compiled from bundled code STRINGS
   // (#252) so `makeHydraRenderer` can offload them to an OffscreenCanvas worker
   // (a HydraPatternFn closure can't cross to a worker; on the main thread a heavy
@@ -14293,7 +14303,7 @@ function getZoneHeightOverride(fileId, trackKey) {
   return entry?.heightPx;
 }
 __name(getZoneHeightOverride, "getZoneHeightOverride");
-function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
+function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash, vizId) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
   if (!overrides) return;
@@ -14305,7 +14315,12 @@ function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
       if (Object.keys(rest).length === 0) overrides.delete(trackKey);
       else overrides.set(trackKey, rest);
     } else {
-      overrides.set(trackKey, { ...existing, heightPx, ...contentHash ? { contentHash } : {} });
+      overrides.set(trackKey, {
+        ...existing,
+        heightPx,
+        ...contentHash ? { contentHash } : {},
+        ...vizId ? { vizId } : {}
+      });
     }
   }, HEIGHT_RESIZE_ORIGIN);
 }
@@ -20681,7 +20696,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           resizeHandle.style.opacity = "1";
           if (fileId) {
             const hash = entry.container.getAttribute("data-viz-zone-hash") ?? void 0;
-            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash);
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash, entry.vizId);
           }
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           delete entry.container.dataset.resizing;
@@ -20694,20 +20709,36 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const tryRefine = /* @__PURE__ */ __name(() => {
         refineAttempts++;
         const actual = readCanvasNative(entry.container);
-        if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
-          entry.native = actual;
-          entry.canvas = entry.container.querySelector("canvas");
-          const contentW2 = editor.getLayoutInfo().contentWidth || 400;
-          const refined = computeLayout(contentW2, entry.native, entry.crop);
-          editor.changeViewZones((acc) => {
-            entry.zoneDesc.heightInPx = refined.zoneH;
-            entry.container.style.height = `${refined.zoneH}px`;
-            acc.layoutZone(entry.zoneId);
-          });
-          applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
-          return;
+        if (actual) {
+          if (actual.w !== entry.native.w || actual.h !== entry.native.h) {
+            entry.native = actual;
+            entry.canvas = entry.container.querySelector("canvas");
+            const contentW2 = editor.getLayoutInfo().contentWidth || 400;
+            const refined = computeLayout(contentW2, entry.native, entry.crop);
+            const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+            editor.changeViewZones((acc) => {
+              if (hOverride == null) {
+                entry.zoneDesc.heightInPx = refined.zoneH;
+                entry.container.style.height = `${refined.zoneH}px`;
+              }
+              acc.layoutZone(entry.zoneId);
+            });
+            if (hOverride == null) {
+              applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
+            } else {
+              const nw = entry.native.w, nh = entry.native.h;
+              const cropW = Math.max(0.01, entry.crop.w);
+              const cropH = Math.max(0.01, entry.crop.h);
+              const scale = Math.min(contentW2 / (cropW * nw), hOverride / (cropH * nh));
+              applyLayout(entry.container, entry.container.querySelector("canvas"), {
+                scale,
+                tx: -entry.crop.x * nw * scale,
+                ty: -entry.crop.y * nh * scale
+              });
+            }
+          }
         }
-        if (refineAttempts < 10) requestAnimationFrame(tryRefine);
+        if (refineAttempts < 180) requestAnimationFrame(tryRefine);
       }, "tryRefine");
       requestAnimationFrame(tryRefine);
     }

@@ -548,7 +548,10 @@ export function addInlineViewZones(
           resizeHandle.style.opacity = '1'
           if (fileId) {
             const hash = entry.container.getAttribute('data-viz-zone-hash') ?? undefined
-            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash)
+            // Stamp vizId so pruneZoneOverrides drops this height when the user
+            // switches .viz("A") → .viz("B") on this block (the height is sized for
+            // A's aspect; contentHash alone misses it when .viz() is past char 120).
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash, entry.vizId)
           }
           // Keep resizing flag ON during changeViewZones so the
           // triggered recomputeAllZones skips this zone. Clear after.
@@ -561,28 +564,59 @@ export function addInlineViewZones(
       container.appendChild(resizeHandle)
 
       // p5's createCanvas(W, H) may pick dimensions that differ from the
-      // preset's declared nativeSize. The transform math MUST use the
-      // canvas's ACTUAL intrinsic size or the viz overflows its zone.
-      // Poll via rAF for up to 10 frames (~170ms) — once the canvas
-      // appears with non-zero dims, refine entry.native and recompute.
+      // descriptor's declared nativeSize. The transform math MUST use the
+      // canvas's ACTUAL intrinsic size or the viz overflows / underflows its zone.
+      //
+      // Poll via rAF until the canvas size STABILISES — NOT just until the first
+      // change. On the OffscreenCanvas worker path the canvas doesn't even appear
+      // until the worker has spun up (~1s), first at the mount render-size (whose
+      // aspect matches the default), and the worker's own createCanvas(W,H) then
+      // resizes it a few frames LATER (an extra postMessage round-trip). The old
+      // code stopped at the first reading, so a sketch whose canvas aspect differs
+      // from the render aspect (e.g. a hardcoded createCanvas) stayed stuck at the
+      // wrong zone height and its resize bar floated far below the canvas. So:
+      // re-refine on EVERY size change for the WHOLE window (~180 frames ≈ 3s,
+      // generous for worker spin-up). We deliberately do NOT stop early when the
+      // size looks stable: the worker holds the render-size for a variable plateau
+      // (~100-180ms) BEFORE its createCanvas resize lands, so any "stable for N
+      // frames" stop races that plateau and quits too soon. The per-frame cost is
+      // a querySelector + offsetWidth read (a no-op once settled), so polling the
+      // full window is cheap and removes the timing fragility.
       let refineAttempts = 0
       const tryRefine = () => {
         refineAttempts++
         const actual = readCanvasNative(entry.container)
-        if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
-          entry.native = actual
-          entry.canvas = entry.container.querySelector<HTMLCanvasElement>('canvas')
-          const contentW = editor.getLayoutInfo().contentWidth || 400
-          const refined = computeLayout(contentW, entry.native, entry.crop)
-          editor.changeViewZones((acc) => {
-            entry.zoneDesc.heightInPx = refined.zoneH
-            entry.container.style.height = `${refined.zoneH}px`
-            acc.layoutZone(entry.zoneId)
-          })
-          applyLayout(entry.container, entry.container.querySelector('canvas'), refined)
-          return
+        if (actual) {
+          if (actual.w !== entry.native.w || actual.h !== entry.native.h) {
+            entry.native = actual
+            entry.canvas = entry.container.querySelector<HTMLCanvasElement>('canvas')
+            const contentW = editor.getLayoutInfo().contentWidth || 400
+            const refined = computeLayout(contentW, entry.native, entry.crop)
+            // A user drag-resize override wins over the computed fit (P159/P161):
+            // refine the aspect + canvas transform, but don't stomp the user's
+            // chosen height. Without override, the computed fit sets both.
+            const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : undefined
+            editor.changeViewZones((acc) => {
+              if (hOverride == null) {
+                entry.zoneDesc.heightInPx = refined.zoneH
+                entry.container.style.height = `${refined.zoneH}px`
+              }
+              acc.layoutZone(entry.zoneId)
+            })
+            if (hOverride == null) {
+              applyLayout(entry.container, entry.container.querySelector('canvas'), refined)
+            } else {
+              const nw = entry.native.w, nh = entry.native.h
+              const cropW = Math.max(0.01, entry.crop.w)
+              const cropH = Math.max(0.01, entry.crop.h)
+              const scale = Math.min(contentW / (cropW * nw), hOverride / (cropH * nh))
+              applyLayout(entry.container, entry.container.querySelector('canvas'), {
+                scale, tx: -entry.crop.x * nw * scale, ty: -entry.crop.y * nh * scale,
+              })
+            }
+          }
         }
-        if (refineAttempts < 10) requestAnimationFrame(tryRefine)
+        if (refineAttempts < 180) requestAnimationFrame(tryRefine)
       }
       requestAnimationFrame(tryRefine)
     }

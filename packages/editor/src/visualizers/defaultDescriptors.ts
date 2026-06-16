@@ -47,7 +47,10 @@ export const DEFAULT_VIZ_DESCRIPTORS: VizDescriptor[] = [
   { id: 'fscope',     label: 'FScope',      renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(FSCOPE_P5_CODE, 'fscope') },
   { id: 'spectrum',   label: 'Spectrum',    renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(SPECTRUM_P5_CODE, 'spectrum') },
   { id: 'spiral',     label: 'Spiral',      renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(SPIRAL_P5_CODE, 'spiral') },
-  { id: 'pitchwheel', label: 'Pitchwheel',  renderer: 'p5', requires: ['streaming'], factory: () => makeP5Renderer(PITCHWHEEL_P5_CODE, 'pitchwheel') },
+  // nativeSize gives the zone a defined aspect so it isn't sized from
+  // DEFAULT_NATIVE (1200×600 → a 530px-tall strip). The wheel is centred via
+  // min(width,height), so a wide-ish strip keeps it round and a comfortable size.
+  { id: 'pitchwheel', label: 'Pitchwheel',  renderer: 'p5', requires: ['streaming'], nativeSize: { w: 1200, h: 240 }, factory: () => makeP5Renderer(PITCHWHEEL_P5_CODE, 'pitchwheel') },
 
   // Hydra renderers (WebGL shader-based) — compiled from bundled code STRINGS
   // (#252) so `makeHydraRenderer` can offload them to an OffscreenCanvas worker
