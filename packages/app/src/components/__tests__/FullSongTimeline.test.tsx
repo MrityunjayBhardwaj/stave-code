@@ -129,6 +129,41 @@ describe('FullSongTimeline', () => {
     expect(typeof onSeek.mock.calls[0][0]).toBe('number')
   })
 
+  it('toggles a lane expansion and binds it when the disclosure caret is clicked', async () => {
+    const onBindLane = vi.fn()
+    const { container } = renderFull({ onBindLane })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const row = () => container.querySelector('[data-full-song-lane="bd"]') as HTMLElement
+    expect(row().getAttribute('data-expanded')).toBe('false')
+    const caret = container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement
+    await act(async () => {
+      caret.click()
+    })
+    expect(row().getAttribute('data-expanded')).toBe('true') // accordion expanded
+    expect(onBindLane).toHaveBeenCalledTimes(1) // bound into the Pattern panel
+    // no `ir` in this fixture → no source provenance, so the offset is null.
+    expect(onBindLane).toHaveBeenLastCalledWith(null)
+    await act(async () => {
+      ;(container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+    })
+    expect(row().getAttribute('data-expanded')).toBe('false') // collapses again
+  })
+
+  it('supports multi-expand (two lanes expanded for cross-track alignment)', async () => {
+    const { container } = renderFull()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+      ;(container.querySelector('[data-full-song-lane-expand="hh"]') as HTMLElement).click()
+    })
+    expect(container.querySelector('[data-full-song-lane="bd"]')!.getAttribute('data-expanded')).toBe('true')
+    expect(container.querySelector('[data-full-song-lane="hh"]')!.getAttribute('data-expanded')).toBe('true')
+  })
+
   it('exposes the loop length for observation', async () => {
     const { container } = renderFull()
     await act(async () => {

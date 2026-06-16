@@ -16,8 +16,16 @@ const analysisFixture: SongAnalysis = {
   ],
 }
 
-function marks(entries: Record<string, SceneNote[]>, capped = false): CollectedMarks {
-  return { marksByLane: new Map(Object.entries(entries)), capped }
+function marks(
+  entries: Record<string, SceneNote[]>,
+  capped = false,
+  sources: Record<string, number> = {},
+): CollectedMarks {
+  return {
+    marksByLane: new Map(Object.entries(entries)),
+    sourceByLane: new Map(Object.entries(sources)),
+    capped,
+  }
 }
 
 describe('buildTimelineScene', () => {
@@ -51,11 +59,11 @@ describe('buildTimelineScene', () => {
     const scene = buildTimelineScene(
       analysisFixture,
       marks({
-        bd: [{ cycle: 0, pitch: null, gain: 1 }], // percussive → no pitch range
+        bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }], // percussive → no pitch range
         lead: [
-          { cycle: 0, pitch: 60, gain: 0.5 },
-          { cycle: 1, pitch: 72, gain: 1 },
-          { cycle: 2, pitch: 64, gain: 0.8 },
+          { cycle: 0, end: 0.5, pitch: 60, gain: 0.5 },
+          { cycle: 1, end: 1.5, pitch: 72, gain: 1 },
+          { cycle: 2, end: 2.5, pitch: 64, gain: 0.8 },
         ],
       }),
     )
@@ -70,7 +78,7 @@ describe('buildTimelineScene', () => {
   })
 
   it('assigns a stable color per lane and leaves note-less lanes empty', () => {
-    const scene = buildTimelineScene(analysisFixture, marks({ bd: [{ cycle: 0, pitch: null, gain: 1 }] }))
+    const scene = buildTimelineScene(analysisFixture, marks({ bd: [{ cycle: 0, end: 0.5, pitch: null, gain: 1 }] }))
     expect(typeof scene.lanes[0].color).toBe('string')
     expect(scene.lanes[0].color.length).toBeGreaterThan(0)
     const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
@@ -80,6 +88,19 @@ describe('buildTimelineScene', () => {
   it('propagates the capped flag', () => {
     const scene = buildTimelineScene(analysisFixture, marks({ bd: [] }, true))
     expect(scene.notesCapped).toBe(true)
+  })
+
+  it('merges the per-lane source offset for binding (null when absent)', () => {
+    const scene = buildTimelineScene(analysisFixture, marks({}, false, { bd: 42 }))
+    const bd = scene.lanes.find((l) => l.laneKey === 'bd')!
+    const lead = scene.lanes.find((l) => l.laneKey === 'lead')!
+    expect(bd.sourceOffset).toBe(42) // bound to source char offset 42
+    expect(lead.sourceOffset).toBeNull() // no source provenance for this lane
+  })
+
+  it('leaves every lane source offset null when no marks were collected', () => {
+    const scene = buildTimelineScene(analysisFixture)
+    expect(scene.lanes.every((l) => l.sourceOffset === null)).toBe(true)
   })
 })
 

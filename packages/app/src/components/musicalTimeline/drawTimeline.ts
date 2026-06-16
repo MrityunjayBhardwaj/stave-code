@@ -1,5 +1,5 @@
 /**
- * drawTimeline — pure canvas renderer for the Song timeline scene (#419).
+ * drawTimeline — pure canvas renderer for the Song timeline scene (#419, #422).
  *
  * Draws a `TimelineScene` against the shared content-space transform (PV116):
  * section bands, cycle gridlines, then per lane either the coarse onset DENSITY
@@ -10,13 +10,23 @@
  * so this function never touches `devicePixelRatio` — which also keeps it pure
  * and testable against a recording mock context.
  *
+ * Per-lane VERTICAL geometry comes from a `LaneLayout` (expand + bind, #422):
+ * each lane has its own `top`/`height`, and an expanded ("accordion") lane
+ * renders RICHER read-only detail — forced mini-note marks with full pitch
+ * spread over the taller band, plus faint per-beat gridlines for rhythm
+ * readability (design §4.5). Collapsed lanes are unchanged. The same layout
+ * drives the host height, the DOM labels, and the hit-test, so nothing drifts.
+ *
  * No React, no DOM, no canvas creation — just draw calls. The host
  * (`SongTimelineCanvas`) owns the surface, sizing, and dirty-flagged scheduling.
  */
 
-import type { TimelineScene } from './timelineScene'
+import type { TimelineScene, SceneLane } from './timelineScene'
+import type { LaneLayout } from './laneLayout'
+import { BEATS_PER_BAR } from './songAxis'
 
-/** The view transform + geometry the draw needs, all in CSS pixels. */
+/** The HORIZONTAL view transform + viewport, all in CSS pixels. Vertical
+ *  geometry (per-lane top/height, total height) lives in the `LaneLayout`. */
 export interface DrawTransform {
   /** Horizontal scroll offset (content px hidden to the left). */
   readonly scrollLeft: number
@@ -24,10 +34,6 @@ export interface DrawTransform {
   readonly contentWidth: number
   /** Visible canvas width (CSS px). */
   readonly viewportWidth: number
-  /** Per-lane row height (CSS px). */
-  readonly rowHeight: number
-  /** Total canvas height (CSS px) = `lanes.length * rowHeight`. */
-  readonly height: number
 }
 
 /** Resolved literal colors (canvas can't read CSS custom properties). */
@@ -43,12 +49,27 @@ export interface DrawTheme {
  *  the lane falls back to coarse density blocks (design §4.2 readability). */
 export const COARSEN_PX = 28
 
+/** Minimum mark width (px) so a zero/near-zero-duration trigger still shows and
+ *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
+export const MIN_MARK_W = 2
+
+/** Minimum px between per-beat gridlines in an expanded lane — below this they
+ *  crowd into a smear, so they're suppressed (rhythm grid only when legible). */
+const BEAT_GRID_MIN_PX = 10
+
 /**
  * Which rendering a lane uses at a given zoom. Pure + exported so the readability
  * switchover is unit-tested directly. A lane with no marks always draws density.
+ * An EXPANDED lane with marks always draws marks (detail on demand overrides the
+ * zoom coarsening — the user asked to see this lane's notes).
  */
-export function laneRenderMode(pxPerCycle: number, hasNotes: boolean): 'density' | 'marks' {
+export function laneRenderMode(
+  pxPerCycle: number,
+  hasNotes: boolean,
+  expanded = false,
+): 'density' | 'marks' {
   if (!hasNotes || !Number.isFinite(pxPerCycle)) return 'density'
+  if (expanded) return 'marks'
   return pxPerCycle >= COARSEN_PX ? 'marks' : 'density'
 }
 
@@ -58,8 +79,10 @@ export function drawTimeline(
   scene: TimelineScene,
   transform: DrawTransform,
   theme: DrawTheme,
+  layout: LaneLayout,
 ): void {
-  const { scrollLeft, contentWidth, viewportWidth, rowHeight, height } = transform
+  const { scrollLeft, contentWidth, viewportWidth } = transform
+  const height = layout.totalHeight
   ctx.clearRect(0, 0, viewportWidth, height)
   const dc = scene.displayCycles
   if (dc <= 0 || contentWidth <= 0 || viewportWidth <= 0) return
@@ -95,24 +118,57 @@ export function drawTimeline(
     ctx.fillRect(x, 0, 1, height)
   }
 
-  // Lanes.
+  // Lanes — each at its own top/height from the layout.
   scene.lanes.forEach((lane, idx) => {
-    const top = idx * rowHeight
+    const box = layout.boxes[idx]
+    if (!box || box.height <= 0) return
+    const { top, height: rowHeight, expanded } = box
     if (idx % 2 === 1) {
       ctx.fillStyle = theme.rowAlt
       ctx.fillRect(0, top, viewportWidth, rowHeight)
     }
-    if (laneRenderMode(pxPerCycle, lane.notes.length > 0) === 'density') {
+    const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
+    if (expanded) {
+      drawBeatGrid(ctx, top, rowHeight, pxPerCycle, firstCycle, lastCycle, viewportWidth, theme, toScreenX)
+    }
+    if (mode === 'density') {
       drawDensity(ctx, lane, top, rowHeight, pxPerCycle, scene.peakDensity, firstCycle, lastCycle, toScreenX)
     } else {
-      drawMarks(ctx, lane, top, rowHeight, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
+      drawMarks(ctx, lane, top, rowHeight, expanded, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
     }
   })
 }
 
+/** Faint per-beat vertical guides inside an expanded lane (rhythm readability).
+ *  Cycle boundaries are already drawn by the global gridlines; this adds the
+ *  in-between beats (BEATS_PER_BAR subdivisions), suppressed when they'd crowd. */
+function drawBeatGrid(
+  ctx: CanvasRenderingContext2D,
+  top: number,
+  rowHeight: number,
+  pxPerCycle: number,
+  firstCycle: number,
+  lastCycle: number,
+  viewportWidth: number,
+  theme: DrawTheme,
+  toScreenX: (c: number) => number,
+): void {
+  if (pxPerCycle / BEATS_PER_BAR < BEAT_GRID_MIN_PX) return
+  ctx.fillStyle = theme.gridline
+  ctx.globalAlpha = 0.5
+  for (let c = Math.floor(firstCycle); c < lastCycle; c++) {
+    for (let b = 1; b < BEATS_PER_BAR; b++) {
+      const x = toScreenX(c + b / BEATS_PER_BAR)
+      if (x < 0 || x > viewportWidth) continue
+      ctx.fillRect(x, top, 1, rowHeight)
+    }
+  }
+  ctx.globalAlpha = 1
+}
+
 function drawDensity(
   ctx: CanvasRenderingContext2D,
-  lane: TimelineScene['lanes'][number],
+  lane: SceneLane,
   top: number,
   rowHeight: number,
   pxPerCycle: number,
@@ -138,9 +194,10 @@ function drawDensity(
 
 function drawMarks(
   ctx: CanvasRenderingContext2D,
-  lane: TimelineScene['lanes'][number],
+  lane: SceneLane,
   top: number,
   rowHeight: number,
+  expanded: boolean,
   pxPerCycle: number,
   viewportWidth: number,
   firstCycle: number,
@@ -148,8 +205,9 @@ function drawMarks(
   toScreenX: (c: number) => number,
 ): void {
   const padY = 3
-  const markH = 3
-  const markW = Math.max(2, Math.min(6, pxPerCycle * 0.12))
+  // Expanded lanes draw a slightly taller mark over the much taller band, so
+  // the pitch spread reads as a clear note layout rather than a thin smear.
+  const markH = expanded ? 4 : 3
   const bandTop = top + padY
   const bandH = Math.max(1, rowHeight - 2 * padY - markH)
   const hasPitch =
@@ -158,6 +216,11 @@ function drawMarks(
   for (const n of lane.notes) {
     if (n.cycle < firstCycle || n.cycle >= lastCycle) continue
     const x = toScreenX(n.cycle)
+    // DURATION-proportional width (mirrors the live view's `eventToRect`): a
+    // sustained note reads as a long bar, a one-shot as a short one. Floored at
+    // MIN_MARK_W so a zero-duration trigger still shows; canvas clips the right
+    // edge, so a note crossing the viewport just truncates.
+    const markW = Math.max(MIN_MARK_W, (n.end - n.cycle) * pxPerCycle)
     if (x < -markW || x > viewportWidth) continue
     let y: number
     if (n.pitch != null && hasPitch) {
