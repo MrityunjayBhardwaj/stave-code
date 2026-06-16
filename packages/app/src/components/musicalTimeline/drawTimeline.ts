@@ -49,6 +49,10 @@ export interface DrawTheme {
  *  the lane falls back to coarse density blocks (design §4.2 readability). */
 export const COARSEN_PX = 28
 
+/** Minimum mark width (px) so a zero/near-zero-duration trigger still shows and
+ *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
+export const MIN_MARK_W = 2
+
 /** Minimum px between per-beat gridlines in an expanded lane — below this they
  *  crowd into a smear, so they're suppressed (rhythm grid only when legible). */
 const BEAT_GRID_MIN_PX = 10
@@ -204,7 +208,6 @@ function drawMarks(
   // Expanded lanes draw a slightly taller mark over the much taller band, so
   // the pitch spread reads as a clear note layout rather than a thin smear.
   const markH = expanded ? 4 : 3
-  const markW = Math.max(2, Math.min(6, pxPerCycle * 0.12))
   const bandTop = top + padY
   const bandH = Math.max(1, rowHeight - 2 * padY - markH)
   const hasPitch =
@@ -213,6 +216,11 @@ function drawMarks(
   for (const n of lane.notes) {
     if (n.cycle < firstCycle || n.cycle >= lastCycle) continue
     const x = toScreenX(n.cycle)
+    // DURATION-proportional width (mirrors the live view's `eventToRect`): a
+    // sustained note reads as a long bar, a one-shot as a short one. Floored at
+    // MIN_MARK_W so a zero-duration trigger still shows; canvas clips the right
+    // edge, so a note crossing the viewport just truncates.
+    const markW = Math.max(MIN_MARK_W, (n.end - n.cycle) * pxPerCycle)
     if (x < -markW || x > viewportWidth) continue
     let y: number
     if (n.pitch != null && hasPitch) {

@@ -23,6 +23,10 @@ import { paletteForTrack, trackIndexOf } from './colors'
 export interface SceneNote {
   /** Fractional song cycle of the onset (event `begin`), in `[0, displayCycles)`. */
   readonly cycle: number
+  /** Fractional song cycle of the offset (event `end`), `≥ cycle`. The mark's
+   *  width is `(end − cycle) × pxPerCycle` — DURATION-proportional, mirroring the
+   *  live view's note blocks (`eventToRect`), not a fixed dab. */
+  readonly end: number
   /** MIDI pitch for in-lane vertical placement, or null for percussive events. */
   readonly pitch: number | null
   /** Gain 0–1 — drives mark intensity. */

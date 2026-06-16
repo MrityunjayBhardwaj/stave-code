@@ -62,7 +62,8 @@ export function collectNoteMarks(
       capped = true
       continue
     }
-    arr.push({ cycle, pitch: extractPitch(ev)?.midi ?? null, gain: clamp01(ev.gain ?? 1) })
+    const end = Number.isFinite(ev.end) && ev.end > cycle ? ev.end : cycle
+    arr.push({ cycle, end, pitch: extractPitch(ev)?.midi ?? null, gain: clamp01(ev.gain ?? 1) })
   }
   return { marksByLane, sourceByLane, capped }
 }
