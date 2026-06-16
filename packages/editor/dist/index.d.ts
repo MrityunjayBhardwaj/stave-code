@@ -1257,9 +1257,10 @@ declare class StrudelEngine implements LiveCodingEngine {
     }>;
     get components(): Partial<EngineComponents>;
     /**
-     * Scans code for $: blocks and maps each track's viz request to the line
-     * after the last line of that block. Mirrors the line-scanning logic in
-     * viewZones.ts but returns structured data instead of creating DOM zones.
+     * Maps each track's viz request to the line after the last line of its
+     * source block. Delegates to the shared label-block scanner so this stays
+     * in lockstep with viewZones.ts and supports named labels (`foo:`), not just
+     * anonymous `$:` (#418).
      */
     private buildVizRequestsWithLines;
     play(): void;

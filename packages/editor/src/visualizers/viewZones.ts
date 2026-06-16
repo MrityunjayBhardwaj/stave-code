@@ -4,6 +4,7 @@ import type { VizRenderer, VizDescriptor } from './types'
 import { resolveDescriptor } from './resolveDescriptor'
 import { attachVizLifecycle } from './attachVizLifecycle'
 import { BufferedScheduler } from '../engine/BufferedScheduler'
+import { blockLabelAt } from '../engine/labelBlocks'
 import { VizPresetStore, type CropRegion, type VizPreset } from './vizPreset'
 import { getZoneCropOverride, getZoneHeightOverride, setZoneHeightOverride, pruneZoneOverrides } from '../workspace/WorkspaceFile'
 import { getInlineVizResolution, getInlineVizTeardownMs } from '../workspace/editorRegistry'
@@ -780,12 +781,12 @@ export function addInlineViewZones(
       const vizLineIdx = ranges[0].startLineNumber - 1 // back to 0-indexed
       if (vizLineIdx < 0 || vizLineIdx >= lines.length) continue
 
-      // Walk backward to the $: that opens this block.
+      // Walk backward to the label that opens this block (`$:`, `foo:`, …).
       let blockStart = vizLineIdx
-      while (blockStart >= 0 && !lines[blockStart].trim().startsWith('$:')) {
+      while (blockStart >= 0 && blockLabelAt(lines[blockStart]) == null) {
         blockStart--
       }
-      if (blockStart < 0) continue // decoration sits above any $:, bail
+      if (blockStart < 0) continue // decoration sits above any block opener, bail
 
       // Scan forward for the block's last non-empty, non-comment line.
       // Stop at the .viz() call — anything typed after it is new content,
@@ -795,7 +796,7 @@ export function addInlineViewZones(
       let foundViz = false
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim()
-        if (j > blockStart && (next.startsWith('$:') || next.startsWith('setcps'))) break
+        if (j > blockStart && (blockLabelAt(lines[j]) != null || next.startsWith('setcps'))) break
         if (next !== '' && !next.startsWith('//')) blockEnd = j
         if (/\.viz\s*\(/.test(next)) { foundViz = true; blockEnd = j; break }
       }
@@ -804,7 +805,7 @@ export function addInlineViewZones(
         blockEnd = blockStart
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim()
-          if (next.startsWith('$:') || next.startsWith('setcps')) break
+          if (blockLabelAt(lines[j]) != null || next.startsWith('setcps')) break
           if (next !== '' && !next.startsWith('//')) blockEnd = j
         }
       }

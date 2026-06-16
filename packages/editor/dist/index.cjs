@@ -3849,6 +3849,39 @@ function resolveAlias(rawS) {
 }
 __name(resolveAlias, "resolveAlias");
 
+// src/engine/labelBlocks.ts
+var LABEL_RE = /^([A-Za-z_$][A-Za-z0-9_$]*)\s*:/;
+function blockLabelAt(line) {
+  if (line.length === 0 || /^\s/.test(line)) return null;
+  const m = LABEL_RE.exec(line);
+  return m ? m[1] : null;
+}
+__name(blockLabelAt, "blockLabelAt");
+function buildLabelBlockRequests(code, requests, vizOptions) {
+  const result = /* @__PURE__ */ new Map();
+  const lines = code.split("\n");
+  let anonIndex = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const label = blockLabelAt(lines[i]);
+    if (label == null) continue;
+    const key = label.includes("$") ? `$${anonIndex++}` : label;
+    const vizId = requests.get(key);
+    if (!vizId) continue;
+    let lastLineIdx = i;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (blockLabelAt(lines[j]) != null || lines[j].trim().startsWith("setcps")) break;
+      const next = lines[j].trim();
+      if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
+    }
+    const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
+    const contentHash = blockLines.slice(0, 120);
+    const options = vizOptions?.get(key);
+    result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
+  }
+  return result;
+}
+__name(buildLabelBlockRequests, "buildLabelBlockRequests");
+
 // src/engine/StrudelEngine.ts
 function extractVizName(rawArg) {
   if (typeof rawArg === "string") return rawArg || void 0;
@@ -4441,32 +4474,13 @@ var _StrudelEngine = class _StrudelEngine {
     return bag;
   }
   /**
-   * Scans code for $: blocks and maps each track's viz request to the line
-   * after the last line of that block. Mirrors the line-scanning logic in
-   * viewZones.ts but returns structured data instead of creating DOM zones.
+   * Maps each track's viz request to the line after the last line of its
+   * source block. Delegates to the shared label-block scanner so this stays
+   * in lockstep with viewZones.ts and supports named labels (`foo:`), not just
+   * anonymous `$:` (#418).
    */
   buildVizRequestsWithLines(requests, code) {
-    const result = /* @__PURE__ */ new Map();
-    const lines = code.split("\n");
-    let anonIndex = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].trim().startsWith("$:")) continue;
-      const key = `$${anonIndex}`;
-      anonIndex++;
-      const vizId = requests.get(key);
-      if (!vizId) continue;
-      let lastLineIdx = i;
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim();
-        if (next.startsWith("$:") || next.startsWith("setcps")) break;
-        if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
-      }
-      const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
-      const contentHash = blockLines.slice(0, 120);
-      const options = this.vizOptions.get(key);
-      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
-    }
-    return result;
+    return buildLabelBlockRequests(code, requests, this.vizOptions);
   }
   play() {
     this.repl?.scheduler?.start();
@@ -20886,7 +20900,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const vizLineIdx = ranges[0].startLineNumber - 1;
       if (vizLineIdx < 0 || vizLineIdx >= lines.length) continue;
       let blockStart = vizLineIdx;
-      while (blockStart >= 0 && !lines[blockStart].trim().startsWith("$:")) {
+      while (blockStart >= 0 && blockLabelAt(lines[blockStart]) == null) {
         blockStart--;
       }
       if (blockStart < 0) continue;
@@ -20894,7 +20908,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let foundViz = false;
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (j > blockStart && (next.startsWith("$:") || next.startsWith("setcps"))) break;
+        if (j > blockStart && (blockLabelAt(lines[j]) != null || next.startsWith("setcps"))) break;
         if (next !== "" && !next.startsWith("//")) blockEnd = j;
         if (/\.viz\s*\(/.test(next)) {
           foundViz = true;
@@ -20906,7 +20920,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         blockEnd = blockStart;
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim();
-          if (next.startsWith("$:") || next.startsWith("setcps")) break;
+          if (blockLabelAt(lines[j]) != null || next.startsWith("setcps")) break;
           if (next !== "" && !next.startsWith("//")) blockEnd = j;
         }
       }
