@@ -28,7 +28,7 @@ import type { SongAnalysis, PatternIR } from '@stave/editor'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene } from './musicalTimeline/timelineScene'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
-import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
+import { computeLaneLayout, laneAtY, SUB_ROW_HEIGHT, type LaneLayout } from './musicalTimeline/laneLayout'
 import { SongTimelineCanvas } from './SongTimelineCanvas'
 import {
   songCycleToX,
@@ -326,7 +326,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const { onBindLane } = props
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const layout = useMemo(
-    () => computeLaneLayout(scene.lanes, expanded, ROW_HEIGHT, EXPANDED_ROW_HEIGHT),
+    () => computeLaneLayout(scene.lanes, expanded, ROW_HEIGHT, EXPANDED_ROW_HEIGHT, SUB_ROW_HEIGHT),
     [scene.lanes, expanded],
   )
   // Refs so the double-click hit-test reads live scene/layout without stale
@@ -514,33 +514,56 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           {layout.boxes.length === 0 ? (
             <div style={styles.emptyLabel}>No song to map yet — press play.</div>
           ) : (
-            layout.boxes.map((box) => (
-              <div
-                key={box.laneKey}
-                data-full-song-lane={box.laneKey}
-                data-expanded={box.expanded ? 'true' : 'false'}
-                style={{ ...styles.laneLabel, height: box.height }}
-                title={box.laneKey}
-              >
-                <button
-                  type="button"
-                  data-full-song-lane-expand={box.laneKey}
-                  aria-pressed={box.expanded}
-                  aria-label={box.expanded ? `Collapse ${box.laneKey}` : `Expand ${box.laneKey} to view its notes`}
-                  onClick={() => activateLane(box.laneKey)}
-                  style={styles.laneCaret}
+            layout.boxes.map((box) => {
+              // An expanded multi-voice lane (#424) shows its identity on sub-row
+              // 0 (`laneKey · voice0`, like the live monitor) and an indented
+              // label per remaining voice, positioned from the SAME layout so
+              // they line up with the canvas sub-rows exactly (PV120). A
+              // collapsed / single-voice lane renders the plain header.
+              const subRows = box.subRows
+              const headerHeight = subRows ? subRows[0].height : box.height
+              const headerName = subRows ? `${box.laneKey} · ${subRows[0].label}` : box.laneKey
+              return (
+                <div
+                  key={box.laneKey}
+                  data-full-song-lane={box.laneKey}
+                  data-expanded={box.expanded ? 'true' : 'false'}
+                  data-full-song-voices={subRows ? subRows.length : undefined}
+                  style={{ ...styles.laneRow, height: box.height }}
+                  title={box.laneKey}
                 >
-                  {box.expanded ? '▾' : '▸'}
-                </button>
-                <span
-                  style={{
-                    ...styles.laneDot,
-                    background: paletteForTrack(trackIndexOf(box.laneKey), box.laneKey),
-                  }}
-                />
-                <span style={styles.laneName}>{box.laneKey}</span>
-              </div>
-            ))
+                  <div style={{ ...styles.laneHeader, height: headerHeight }}>
+                    <button
+                      type="button"
+                      data-full-song-lane-expand={box.laneKey}
+                      aria-pressed={box.expanded}
+                      aria-label={box.expanded ? `Collapse ${box.laneKey}` : `Expand ${box.laneKey} to view its notes`}
+                      onClick={() => activateLane(box.laneKey)}
+                      style={styles.laneCaret}
+                    >
+                      {box.expanded ? '▾' : '▸'}
+                    </button>
+                    <span
+                      style={{
+                        ...styles.laneDot,
+                        background: paletteForTrack(trackIndexOf(box.laneKey), box.laneKey),
+                      }}
+                    />
+                    <span style={styles.laneName}>{headerName}</span>
+                  </div>
+                  {subRows?.slice(1).map((sr) => (
+                    <div
+                      key={sr.voiceKey}
+                      data-full-song-voice={sr.voiceKey}
+                      style={{ ...styles.voiceLabel, top: sr.top - box.top, height: sr.height }}
+                      title={sr.label}
+                    >
+                      {sr.label}
+                    </div>
+                  ))}
+                </div>
+              )
+            })
           )}
         </div>
         <div
@@ -732,16 +755,42 @@ const styles = {
     display: 'flex',
     flexDirection: 'column' as const,
   },
-  laneLabel: {
-    height: ROW_HEIGHT,
+  // Outer lane label box (relative so the per-voice sub-labels can absolutely
+  // position against the lane top, lining up with the canvas sub-rows — #424).
+  laneRow: {
+    position: 'relative' as const,
+    borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
+    overflow: 'hidden',
+  },
+  // The lane identity row (caret + dot + name). Sits on sub-row 0 when the lane
+  // is expanded into voices; fills the box otherwise.
+  laneHeader: {
     padding: '5px 8px 0',
     display: 'flex',
     // Top-align so the dot/name sit at the lane's TOP edge — when a lane is
     // expanded (taller) the label still lines up with the canvas row top.
     alignItems: 'flex-start',
     gap: 5,
-    borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.08))',
     overflow: 'hidden',
+    boxSizing: 'border-box' as const,
+  },
+  // A per-voice sub-row label, indented past the caret/dot column so the
+  // hierarchy reads "lane → voices" (mirrors the live monitor's leaf rail).
+  voiceLabel: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    paddingLeft: 29, // caret(11) + gap(5) + dot(7) + gap(5) + leftpad(8) − fudge
+    paddingRight: 8,
+    display: 'flex',
+    alignItems: 'center',
+    fontSize: 10,
+    color: 'var(--text-secondary, rgba(255,255,255,0.5))',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+    pointerEvents: 'none' as const,
+    boxSizing: 'border-box' as const,
   },
   laneCaret: {
     fontFamily: FONT_MONO,

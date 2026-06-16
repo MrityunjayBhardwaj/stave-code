@@ -46,6 +46,7 @@ const scene: TimelineScene = {
       ],
       pitchMin: 60,
       pitchMax: 72,
+      voices: [{ key: 'lead', label: 'lead', melodic: true, pitchMin: 60, pitchMax: 72 }],
       sourceOffset: null,
     },
   ],
@@ -156,5 +157,46 @@ describe('drawTimeline', () => {
     expect(short.w).toBe(MIN_MARK_W) // floored
     expect(long.w).toBe(1000) // (2 − 1) cycles × 1000 px/cycle
     expect(long.w).toBeGreaterThan(short.w)
+  })
+
+  it('places each voice of an expanded multi-voice lane on its own sub-band baseline (#424)', () => {
+    // A drum lane with two percussive voices (bd, sd) at the same cycle. Before
+    // #424 both landed on ONE centered baseline; now each draws in its own
+    // sub-row, so the two marks sit at DIFFERENT y.
+    const drumScene: TimelineScene = {
+      ...scene,
+      lanes: [
+        {
+          laneKey: 'drums',
+          color: '#fa0',
+          density: [2, 0, 0, 0],
+          notes: [
+            { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'bd' },
+            { cycle: 0, end: 0.25, pitch: null, gain: 1, voice: 'sd' },
+          ],
+          pitchMin: null,
+          pitchMax: null,
+          voices: [
+            { key: 'bd', label: 'bd', melodic: false, pitchMin: null, pitchMax: null },
+            { key: 'sd', label: 'sd', melodic: false, pitchMin: null, pitchMax: null },
+          ],
+          sourceOffset: null,
+        },
+      ],
+    }
+    // Expanded with 2 voices → sub-rows (22px each → 44px lane). 1000px/cycle → marks.
+    const layout = computeLaneLayout(drumScene.lanes, new Set(['drums']), 22, 88, 22)
+    expect(layout.boxes[0].subRows?.length).toBe(2)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, drumScene, { scrollLeft: 0, contentWidth: 4000, viewportWidth: 4000 }, theme, layout)
+    // Marks are the short (h=3) rects at x≈0 (cycle 0). The two voices must land
+    // on DIFFERENT baselines — bd in sub-row 0, sd in sub-row 1.
+    const marks = rects.filter((r) => r.h === 3 && Math.abs(r.x - 0) < 1)
+    expect(marks.length).toBe(2)
+    const ys = marks.map((r) => r.y).sort((a, b) => a - b)
+    expect(ys[1] - ys[0]).toBeGreaterThanOrEqual(20) // ~one SUB_ROW_HEIGHT apart
+    // Sub-row 0 baseline sits in [0,22), sub-row 1 in [22,44) — no overlap.
+    expect(ys[0]).toBeLessThan(22)
+    expect(ys[1]).toBeGreaterThanOrEqual(22)
   })
 })

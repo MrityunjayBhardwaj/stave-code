@@ -71,3 +71,55 @@ describe('laneAtY', () => {
     expect(laneAtY(computeLaneLayout([], new Set(), 22, 88), 5)).toBeNull()
   })
 })
+
+describe('computeLaneLayout — per-voice sub-rows (#424)', () => {
+  const v = (key: string, melodic = false) => ({ key, label: key, melodic })
+  const drums = [
+    { laneKey: 'drums', voices: [v('bd'), v('sd'), v('hh')] },
+    { laneKey: 'lead', voices: [v('square', true)] },
+  ]
+
+  it('splits an EXPANDED lane with ≥2 voices into per-voice sub-rows', () => {
+    const layout = computeLaneLayout(drums, new Set(['drums']), 22, 96, 20)
+    const box = layout.boxes[0]
+    expect(box.height).toBe(60) // 3 voices × 20
+    expect(box.subRows?.map((s) => s.voiceKey)).toEqual(['bd', 'sd', 'hh'])
+    // Sub-rows stack from the lane top in absolute content space, no gaps.
+    expect(box.subRows?.map((s) => s.top)).toEqual([0, 20, 40])
+    expect(box.subRows?.every((s) => s.height === 20)).toBe(true)
+    // 'lead' (single voice) follows the 60px drum lane.
+    expect(layout.boxes[1].top).toBe(60)
+  })
+
+  it('carries the voice label + melodic flag onto each sub-row', () => {
+    const layout = computeLaneLayout(
+      [{ laneKey: 'mix', voices: [v('bd'), v('square', true)] }],
+      new Set(['mix']),
+      22,
+      96,
+      20,
+    )
+    const sub = layout.boxes[0].subRows!
+    expect(sub[0]).toMatchObject({ voiceKey: 'bd', label: 'bd', melodic: false })
+    expect(sub[1]).toMatchObject({ voiceKey: 'square', label: 'square', melodic: true })
+  })
+
+  it('keeps a single-voice expanded lane as ONE band (no sub-rows)', () => {
+    const layout = computeLaneLayout(drums, new Set(['lead']), 22, 96, 20)
+    const lead = layout.boxes[1]
+    expect(lead.height).toBe(96) // expandedHeight single band
+    expect(lead.subRows).toBeUndefined()
+  })
+
+  it('does not split a COLLAPSED multi-voice lane', () => {
+    const layout = computeLaneLayout(drums, new Set(), 22, 96, 20)
+    expect(layout.boxes[0].height).toBe(22)
+    expect(layout.boxes[0].subRows).toBeUndefined()
+  })
+
+  it('falls back to the single band when subRowHeight is degenerate', () => {
+    const layout = computeLaneLayout(drums, new Set(['drums']), 22, 96, 0)
+    expect(layout.boxes[0].height).toBe(96)
+    expect(layout.boxes[0].subRows).toBeUndefined()
+  })
+})
