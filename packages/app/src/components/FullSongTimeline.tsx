@@ -33,12 +33,16 @@ import {
   clampZoom,
   contentWidthFor,
   scrollLeftForZoom,
+  followScrollLeft,
   rulerTicks,
   MIN_ZOOM,
   ZOOM_STEP,
 } from './musicalTimeline/songAxis'
 
 const TAB_ID = 'musical-timeline'
+/** How long a manual scroll/seek suspends follow (#415), so auto-scroll never
+ *  fights the user mid-gesture, then resumes once they've settled. */
+const USER_SCROLL_GUARD_MS = 1200
 const CONTROLS_HEIGHT = 26
 const TOPBAR_HEIGHT = 28
 const GUTTER_WIDTH = 90
@@ -105,6 +109,23 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const areaWidthRef = useRef(areaWidth)
   areaWidthRef.current = areaWidth
 
+  // ── Follow / auto-scroll (#415) ──────────────────────────────────────────
+  // When zoomed, the playhead can advance off the right edge. Follow nudges
+  // scrollLeft to keep it in a centered dead-zone band (followScrollLeft). It
+  // pauses briefly while the user manually scrolls/seeks so it never fights
+  // their navigation. displayCyclesRef lets the rAF loop read the live span
+  // without re-creating the loop per analysis change.
+  const [follow, setFollow] = useState(true)
+  const followRef = useRef(follow)
+  followRef.current = follow
+  const displayCyclesRef = useRef(displayCycles)
+  displayCyclesRef.current = displayCycles
+  // Suspends follow until this timestamp (set on user scroll/seek).
+  const userScrollUntilRef = useRef(0)
+  // The last scrollLeft *we* wrote to the DOM — lets the scroll handler tell a
+  // follow/zoom-driven scroll (don't suspend) from a user drag/wheel (suspend).
+  const programmaticScrollRef = useRef(-1)
+
   const contentWidth = contentWidthFor(areaWidth, zoom)
   const pxPerCycle = displayCycles > 0 ? contentWidth / displayCycles : 0
   const ticks = rulerTicks(displayCycles, pxPerCycle, units)
@@ -167,6 +188,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const maxScroll = Math.max(0, contentWidthFor(areaWidth, zoom) - areaWidth)
     const clamped = Math.max(0, Math.min(maxScroll, scrollLeftRef.current))
     scrollLeftRef.current = clamped
+    // This is a programmatic (zoom/resize-driven) scroll, not a user drag —
+    // mark it so the scroll handler doesn't suspend follow.
+    programmaticScrollRef.current = clamped
     if (el.scrollLeft !== clamped) el.scrollLeft = clamped
     setScrollLeft((prev) => (prev === clamped ? prev : clamped))
   }, [zoom, areaWidth])
@@ -175,6 +199,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     const sl = e.currentTarget.scrollLeft
     scrollLeftRef.current = sl
     setScrollLeft((prev) => (prev === sl ? prev : sl))
+    // A scroll we didn't write (> 1px from our last programmatic value) is a
+    // user drag/wheel-pan → suspend follow briefly so it doesn't fight them.
+    if (Math.abs(sl - programmaticScrollRef.current) > 1) {
+      userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
+    }
   }, [])
 
   // ── rAF playhead, gated on drawer-open + active-tab (DB-02 parity) ───────
@@ -184,6 +213,28 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   useEffect(() => {
     let cancelled = false
     let raf: number | null = null
+    // Auto-scroll the grid so the playhead stays in a centered band, unless
+    // follow is off or the user just scrolled/seeked. The DOM write is tagged
+    // programmatic (via programmaticScrollRef) so the scroll handler doesn't
+    // mistake it for a user drag and suspend follow. Reads live state through
+    // refs; the playhead element itself stays put in content space, so the grid
+    // scroll is the only motion. No-op when not zoomed (followScrollLeft → cur).
+    const applyFollow = (pos: number | null): void => {
+      if (!followRef.current || pos == null) return
+      if (Date.now() < userScrollUntilRef.current) return
+      const dc = displayCyclesRef.current
+      const vw = areaWidthRef.current
+      const cw = contentWidthFor(vw, zoomRef.current)
+      const ph = songCycleToX(wrapSongPosition(pos, dc), dc, cw)
+      const target = followScrollLeft(ph, vw, cw, scrollLeftRef.current)
+      if (Math.abs(target - scrollLeftRef.current) < 1) return
+      const el = areaRef.current
+      if (!el) return
+      programmaticScrollRef.current = target
+      scrollLeftRef.current = target
+      el.scrollLeft = target
+      setScrollLeft((prev) => (prev === target ? prev : target))
+    }
     const tick = (): void => {
       if (cancelled) return
       const a = accessorsRef.current
@@ -193,6 +244,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       const pos = a.getSongPosition()
       setSongPos((prev) => (prev === pos ? prev : pos))
+      applyFollow(pos)
       raf = requestAnimationFrame(tick)
     }
     if (props.getDrawerOpen() && props.getActiveTabId() === TAB_ID) {
@@ -233,6 +285,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const rect = el.getBoundingClientRect()
       const contentX = clientX - rect.left + scrollLeftRef.current
       const cycle = xToSongCycle(contentX, displayCycles, contentWidthFor(rect.width, zoomRef.current))
+      // A manual seek is user navigation — suspend follow briefly so it doesn't
+      // immediately yank the view back as the sought playhead resumes.
+      userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
       onSeek(cycle)
     },
     [displayCycles, onSeek],
@@ -283,6 +338,20 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           {units === 'cycles' ? 'CYCLES' : 'BARS'}
         </button>
         <div style={styles.zoomCluster} data-full-song-zoom={zoomPercent}>
+          <button
+            type="button"
+            data-full-song-follow-toggle
+            data-follow={follow ? 'on' : 'off'}
+            aria-pressed={follow}
+            onClick={() => setFollow((f) => !f)}
+            style={{
+              ...styles.unitsToggle,
+              ...(follow ? styles.followOn : null),
+            }}
+            title={follow ? 'Following the playhead — click to stop' : 'Follow the playhead while playing'}
+          >
+            FOLLOW
+          </button>
           <button
             type="button"
             data-full-song-zoom-fit
@@ -509,6 +578,13 @@ const styles = {
     background: 'var(--bg-input, rgba(255,255,255,0.04))',
     color: 'var(--text-tertiary, rgba(255,255,255,0.55))',
     cursor: 'pointer' as const,
+  },
+  followOn: {
+    // Use the `border` shorthand (the base unitsToggle also sets `border`) —
+    // mixing it with the `borderColor` longhand warns on rerender in React.
+    border: '1px solid var(--accent, #6ea8fe)',
+    color: 'var(--accent, #6ea8fe)',
+    background: 'var(--accent-faint, rgba(110,168,254,0.12))',
   },
   zoomCluster: { display: 'flex', alignItems: 'center', gap: 4 },
   zoomButton: {
