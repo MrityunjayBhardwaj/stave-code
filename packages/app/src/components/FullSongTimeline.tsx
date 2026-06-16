@@ -23,16 +23,31 @@
 'use client'
 
 import * as React from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { SongAnalysis } from '@stave/editor'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
-import { songCycleToX, xToSongCycle, wrapSongPosition } from './musicalTimeline/songAxis'
+import {
+  songCycleToX,
+  xToSongCycle,
+  wrapSongPosition,
+  clampZoom,
+  contentWidthFor,
+  scrollLeftForZoom,
+  rulerTicks,
+  MIN_ZOOM,
+  ZOOM_STEP,
+} from './musicalTimeline/songAxis'
 
 const TAB_ID = 'musical-timeline'
+const CONTROLS_HEIGHT = 26
 const TOPBAR_HEIGHT = 28
 const GUTTER_WIDTH = 90
 const ROW_HEIGHT = 22
 const FONT_MONO = '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
+
+/** Ruler units (#412). CYCLES = Strudel's native numbering; BARS = DAW
+ *  convention (one cycle ≈ one bar) with quarter-cycle beat ticks. */
+type RulerUnits = 'cycles' | 'bars'
 
 export interface FullSongTimelineProps {
   /** Whole-song analysis, or null before the first analysis completes. */
@@ -75,6 +90,93 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     return () => ro.disconnect()
   }, [])
 
+  // ── Zoom + horizontal scroll + ruler units (#412) ────────────────────────
+  // zoom=1 fits the whole loop; >1 widens `contentWidth` past the viewport and
+  // the grid scrolls horizontally. The ruler tracks the grid's scrollLeft (one
+  // scrollbar, on the grid). Refs mirror state so the imperative wheel/button
+  // handlers and the seek math read live values without stale closures.
+  const [zoom, setZoom] = useState(MIN_ZOOM)
+  const [scrollLeft, setScrollLeft] = useState(0)
+  const [units, setUnits] = useState<RulerUnits>('cycles')
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  const scrollLeftRef = useRef(scrollLeft)
+  scrollLeftRef.current = scrollLeft
+  const areaWidthRef = useRef(areaWidth)
+  areaWidthRef.current = areaWidth
+
+  const contentWidth = contentWidthFor(areaWidth, zoom)
+  const pxPerCycle = displayCycles > 0 ? contentWidth / displayCycles : 0
+  const ticks = rulerTicks(displayCycles, pxPerCycle, units)
+
+  // Apply a new zoom, keeping the song point under `cursorX` (viewport-relative)
+  // pinned beneath the cursor. State drives the new content width; the layout
+  // effect below pushes the matching scrollLeft onto the DOM after it grows.
+  const applyZoom = React.useCallback((rawZoom: number, cursorX: number): void => {
+    const vw = areaWidthRef.current
+    const oldZoom = zoomRef.current
+    const newZoom = clampZoom(rawZoom)
+    if (newZoom === oldZoom) return
+    const next = Math.round(
+      scrollLeftForZoom({
+        oldZoom,
+        newZoom,
+        scrollLeft: scrollLeftRef.current,
+        cursorX,
+        viewportWidth: vw,
+      }),
+    )
+    zoomRef.current = newZoom
+    scrollLeftRef.current = next
+    setZoom(newZoom)
+    setScrollLeft(next)
+  }, [])
+
+  // Buttons zoom around the viewport centre; the gesture is identical to wheel
+  // zoom with the cursor parked mid-view.
+  const zoomBy = React.useCallback(
+    (factor: number) => applyZoom(zoomRef.current * factor, areaWidthRef.current / 2),
+    [applyZoom],
+  )
+  const fitZoom = React.useCallback(() => applyZoom(MIN_ZOOM, areaWidthRef.current / 2), [applyZoom])
+
+  // Ctrl/⌘ + wheel = cursor-centred zoom. A native non-passive listener is
+  // required: React's synthetic onWheel is passive, so preventDefault (which
+  // suppresses the browser's page-zoom) would be ignored.
+  useEffect(() => {
+    const el = areaRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!(e.ctrlKey || e.metaKey)) return // plain wheel → native horizontal scroll
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const cursorX = e.clientX - rect.left
+      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP
+      applyZoom(zoomRef.current * factor, cursorX)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [applyZoom])
+
+  // Push scrollLeft onto the DOM after a zoom/resize changes the content width,
+  // clamping into the (possibly shrunk) scrollable range. Keyed on zoom+width
+  // only, so user scrolling (which sets scrollLeft via onScroll) never refights.
+  useLayoutEffect(() => {
+    const el = areaRef.current
+    if (!el) return
+    const maxScroll = Math.max(0, contentWidthFor(areaWidth, zoom) - areaWidth)
+    const clamped = Math.max(0, Math.min(maxScroll, scrollLeftRef.current))
+    scrollLeftRef.current = clamped
+    if (el.scrollLeft !== clamped) el.scrollLeft = clamped
+    setScrollLeft((prev) => (prev === clamped ? prev : clamped))
+  }, [zoom, areaWidth])
+
+  const handleGridScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const sl = e.currentTarget.scrollLeft
+    scrollLeftRef.current = sl
+    setScrollLeft((prev) => (prev === sl ? prev : sl))
+  }, [])
+
   // ── rAF playhead, gated on drawer-open + active-tab (DB-02 parity) ───────
   const accessorsRef = useRef(props)
   accessorsRef.current = props
@@ -115,16 +217,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   }, [])
 
   const wrappedPos = wrapSongPosition(songPos, displayCycles)
-  const playheadX = songCycleToX(wrappedPos, displayCycles, areaWidth)
+  // Playhead lives in CONTENT space (inside the scrolled/translated inner div),
+  // so it maps against contentWidth, not the viewport width.
+  const playheadX = songCycleToX(wrappedPos, displayCycles, contentWidth)
   const playheadVisible = wrappedPos != null
 
   // ── Click → seek (relaxes DV-10) ─────────────────────────────────────────
+  // The ruler and grid share the grid's scrollLeft and the same left edge, so a
+  // click anywhere resolves through the grid's rect: viewport-x + scrollLeft is
+  // the content-x, inverted against contentWidth.
   const handleSeekAtClientX = React.useCallback(
     (clientX: number) => {
       const el = areaRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const cycle = xToSongCycle(clientX - rect.left, displayCycles, rect.width)
+      const contentX = clientX - rect.left + scrollLeftRef.current
+      const cycle = xToSongCycle(contentX, displayCycles, contentWidthFor(rect.width, zoomRef.current))
       onSeek(cycle)
     },
     [displayCycles, onSeek],
@@ -150,14 +258,65 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           ? `${analysis.horizonCycles}+ cycles`
           : `${analysis.horizonCycles} cycles`
 
+  const cellW = displayCycles > 0 ? contentWidth / displayCycles : 0
+  const zoomPercent = Math.round(zoom * 100)
+  const majorTicks = ticks.filter((t) => t.major)
+
   return (
     <div data-full-song="root" role="region" aria-label="Song" style={styles.root}>
       {/* Status lives in the parent's unified bar (with the view toggle); this
-          view renders the ruler + heatmap only. `periodLabel` is surfaced via
-          the data attribute below for Playwright observation. */}
+          view renders the controls + ruler + heatmap only. `periodLabel` is
+          surfaced via the data attribute below for Playwright observation. */}
       <div data-full-song-period={periodLabel} style={{ display: 'none' }} />
 
-      {/* Ruler: section chips + cycle ticks + clickable seek surface + playhead */}
+      {/* Controls: units toggle (left) + zoom (right). Discoverable buttons over
+          shortcuts; ⌘/Ctrl+wheel also zooms. */}
+      <div data-full-song="controls" style={styles.controls}>
+        <button
+          type="button"
+          data-full-song-units-toggle
+          data-units={units}
+          onClick={() => setUnits((u) => (u === 'cycles' ? 'bars' : 'cycles'))}
+          style={styles.unitsToggle}
+          title={units === 'cycles' ? 'Show bars & beats' : 'Show cycles'}
+        >
+          {units === 'cycles' ? 'CYCLES' : 'BARS'}
+        </button>
+        <div style={styles.zoomCluster} data-full-song-zoom={zoomPercent}>
+          <button
+            type="button"
+            data-full-song-zoom-fit
+            onClick={fitZoom}
+            disabled={zoom <= MIN_ZOOM}
+            style={styles.zoomButton}
+            title="Fit the whole song"
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            data-full-song-zoom-out
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+            disabled={zoom <= MIN_ZOOM}
+            style={styles.zoomButton}
+            title="Zoom out"
+          >
+            −
+          </button>
+          <span style={styles.zoomReadout}>{zoomPercent}%</span>
+          <button
+            type="button"
+            data-full-song-zoom-in
+            onClick={() => zoomBy(ZOOM_STEP)}
+            style={styles.zoomButton}
+            title="Zoom in"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      {/* Ruler: section bands + cycle/bar ticks + clickable seek surface + playhead */}
       <div data-full-song="ruler" style={styles.topbar}>
         <div style={styles.gutter}>
           <span style={styles.caption}>SONG</span>
@@ -167,36 +326,55 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           style={styles.rulerArea}
           onPointerDown={(e) => handleSeekAtClientX(e.clientX)}
         >
-          {areaWidth > 0 &&
-            sections.map((s, i) => {
-              const left = songCycleToX(s.startCycle, displayCycles, areaWidth)
-              const right = songCycleToX(s.endCycle, displayCycles, areaWidth)
-              return (
+          {/* Inner content tracks the grid's horizontal scroll via translateX */}
+          <div
+            data-full-song="ruler-content"
+            style={{ ...styles.scrollContent, width: contentWidth, transform: `translateX(${-scrollLeft}px)` }}
+          >
+            {areaWidth > 0 &&
+              sections.map((s, i) => {
+                const left = songCycleToX(s.startCycle, displayCycles, contentWidth)
+                const right = songCycleToX(s.endCycle, displayCycles, contentWidth)
+                return (
+                  <div
+                    key={`section-${s.startCycle}-${s.endCycle}`}
+                    data-full-song-section={i}
+                    title={`Section ${i + 1} · cycles ${s.startCycle}–${s.endCycle - 1}`}
+                    style={{
+                      ...styles.sectionChip,
+                      left,
+                      width: Math.max(0, right - left),
+                      // alternate tint so adjacent sections read as distinct
+                      background:
+                        i % 2 === 0
+                          ? 'var(--bg-input, rgba(255,255,255,0.04))'
+                          : 'var(--bg-panel, rgba(255,255,255,0.08))',
+                    }}
+                  >
+                    <span style={styles.sectionLabel}>{i + 1}</span>
+                  </div>
+                )
+              })}
+            {areaWidth > 0 &&
+              ticks.map((t) => (
                 <div
-                  key={`section-${s.startCycle}-${s.endCycle}`}
-                  data-full-song-section={i}
-                  title={`Section ${i + 1} · cycles ${s.startCycle}–${s.endCycle - 1}`}
+                  key={`tick-${t.cycle}`}
+                  data-full-song-tick={t.major ? 'major' : 'beat'}
                   style={{
-                    ...styles.sectionChip,
-                    left,
-                    width: Math.max(0, right - left),
-                    // alternate tint so adjacent sections read as distinct
-                    background:
-                      i % 2 === 0
-                        ? 'var(--bg-input, rgba(255,255,255,0.04))'
-                        : 'var(--bg-panel, rgba(255,255,255,0.08))',
+                    ...(t.major ? styles.tickMajor : styles.tickBeat),
+                    left: songCycleToX(t.cycle, displayCycles, contentWidth),
                   }}
                 >
-                  <span style={styles.sectionLabel}>{i + 1}</span>
+                  {t.label != null && <span style={styles.tickLabel}>{t.label}</span>}
                 </div>
-              )
-            })}
-          {playheadVisible && (
-            <div
-              data-full-song="ruler-playhead-arrow"
-              style={{ ...styles.playheadArrow, left: playheadX }}
-            />
-          )}
+              ))}
+            {playheadVisible && (
+              <div
+                data-full-song="ruler-playhead-arrow"
+                style={{ ...styles.playheadArrow, left: playheadX }}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -223,61 +401,75 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           data-full-song="grid"
           ref={areaRef}
           style={styles.grid}
+          onScroll={handleGridScroll}
           onPointerDown={(e) => handleSeekAtClientX(e.clientX)}
         >
-          {/* Section bands (full height, behind cells) */}
-          {areaWidth > 0 &&
-            sections.map((s) => {
-              const left = songCycleToX(s.startCycle, displayCycles, areaWidth)
-              const right = songCycleToX(s.endCycle, displayCycles, areaWidth)
-              return (
+          {/* Inner content is contentWidth wide; the grid scrolls it horizontally */}
+          <div
+            data-full-song="grid-content"
+            style={{ ...styles.scrollContent, width: contentWidth }}
+          >
+            {/* Section bands (full height, behind cells) */}
+            {areaWidth > 0 &&
+              sections.map((s) => {
+                const left = songCycleToX(s.startCycle, displayCycles, contentWidth)
+                const right = songCycleToX(s.endCycle, displayCycles, contentWidth)
+                return (
+                  <div
+                    key={`band-${s.startCycle}`}
+                    style={{
+                      ...styles.sectionBand,
+                      left,
+                      width: Math.max(0, right - left),
+                    }}
+                  />
+                )
+              })}
+            {/* Bar/cycle gridlines (faint, behind cells) — orientation when zoomed */}
+            {areaWidth > 0 &&
+              majorTicks.map((t) => (
                 <div
-                  key={`band-${s.startCycle}`}
-                  style={{
-                    ...styles.sectionBand,
-                    left,
-                    width: Math.max(0, right - left),
-                  }}
+                  key={`gridline-${t.cycle}`}
+                  style={{ ...styles.gridline, left: songCycleToX(t.cycle, displayCycles, contentWidth) }}
                 />
-              )
-            })}
-          {/* Per-lane onset heatmap — sparse: a cell only where onsets > 0 */}
-          {areaWidth > 0 &&
-            lanes.map((lane, laneIdx) => {
-              const color = paletteForTrack(trackIndexOf(lane.laneKey), lane.laneKey)
-              const cellW = areaWidth / displayCycles
-              return (
-                <div
-                  key={lane.laneKey}
-                  data-full-song-lane={lane.laneKey}
-                  style={{ ...styles.laneRow, top: laneIdx * ROW_HEIGHT }}
-                >
-                  {lane.onsetsByCycle.map((count, cycle) =>
-                    // Guard: only render cells within the displayed span so a
-                    // wider analysis horizon can never pile cells onto the edge
-                    // (the period-trim in analyzeSong keeps these equal, but the
-                    // view must not depend on that holding).
-                    count > 0 && cycle < displayCycles ? (
-                      <div
-                        key={cycle}
-                        data-full-song-cell={`${lane.laneKey}:${cycle}`}
-                        title={`${lane.laneKey} · cycle ${cycle} · ${count} onset${count === 1 ? '' : 's'}`}
-                        style={{
-                          ...styles.cell,
-                          left: songCycleToX(cycle, displayCycles, areaWidth),
-                          width: Math.max(1, cellW - 1),
-                          background: color,
-                          opacity: 0.25 + 0.75 * (count / peak),
-                        }}
-                      />
-                    ) : null,
-                  )}
-                </div>
-              )
-            })}
-          {playheadVisible && (
-            <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX }} />
-          )}
+              ))}
+            {/* Per-lane onset heatmap — sparse: a cell only where onsets > 0 */}
+            {areaWidth > 0 &&
+              lanes.map((lane, laneIdx) => {
+                const color = paletteForTrack(trackIndexOf(lane.laneKey), lane.laneKey)
+                return (
+                  <div
+                    key={lane.laneKey}
+                    data-full-song-lane={lane.laneKey}
+                    style={{ ...styles.laneRow, top: laneIdx * ROW_HEIGHT }}
+                  >
+                    {lane.onsetsByCycle.map((count, cycle) =>
+                      // Guard: only render cells within the displayed span so a
+                      // wider analysis horizon can never pile cells onto the edge
+                      // (the period-trim in analyzeSong keeps these equal, but the
+                      // view must not depend on that holding).
+                      count > 0 && cycle < displayCycles ? (
+                        <div
+                          key={cycle}
+                          data-full-song-cell={`${lane.laneKey}:${cycle}`}
+                          title={`${lane.laneKey} · cycle ${cycle} · ${count} onset${count === 1 ? '' : 's'}`}
+                          style={{
+                            ...styles.cell,
+                            left: songCycleToX(cycle, displayCycles, contentWidth),
+                            width: Math.max(1, cellW - 1),
+                            background: color,
+                            opacity: 0.25 + 0.75 * (count / peak),
+                          }}
+                        />
+                      ) : null,
+                    )}
+                  </div>
+                )
+              })}
+            {playheadVisible && (
+              <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX }} />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -295,6 +487,52 @@ const styles = {
     fontSize: 11,
     color: 'var(--text-body, #e2e8f0)',
     background: 'var(--bg-app, #090912)',
+  },
+  controls: {
+    height: CONTROLS_HEIGHT,
+    minHeight: CONTROLS_HEIGHT,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    padding: '0 8px',
+    background: 'var(--bg-app, #090912)',
+    borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.06))',
+  },
+  unitsToggle: {
+    fontFamily: FONT_MONO,
+    fontSize: 9,
+    letterSpacing: '0.08em',
+    padding: '2px 8px',
+    borderRadius: 3,
+    border: '1px solid var(--border-subtle, rgba(255,255,255,0.14))',
+    background: 'var(--bg-input, rgba(255,255,255,0.04))',
+    color: 'var(--text-tertiary, rgba(255,255,255,0.55))',
+    cursor: 'pointer' as const,
+  },
+  zoomCluster: { display: 'flex', alignItems: 'center', gap: 4 },
+  zoomButton: {
+    fontFamily: FONT_MONO,
+    fontSize: 11,
+    lineHeight: 1,
+    minWidth: 22,
+    padding: '3px 6px',
+    borderRadius: 3,
+    border: '1px solid var(--border-subtle, rgba(255,255,255,0.14))',
+    background: 'var(--bg-input, rgba(255,255,255,0.04))',
+    color: 'var(--text-tertiary, rgba(255,255,255,0.55))',
+    cursor: 'pointer' as const,
+  },
+  zoomReadout: {
+    fontSize: 9,
+    minWidth: 36,
+    textAlign: 'center' as const,
+    color: 'var(--text-tertiary, rgba(255,255,255,0.4))',
+  },
+  scrollContent: {
+    position: 'relative' as const,
+    height: '100%',
+    minHeight: '100%',
   },
   topbar: {
     height: TOPBAR_HEIGHT,
@@ -334,6 +572,31 @@ const styles = {
     pointerEvents: 'none' as const,
   },
   sectionLabel: { fontSize: 9, color: 'var(--text-tertiary, rgba(255,255,255,0.4))' },
+  tickMajor: {
+    position: 'absolute' as const,
+    bottom: 0,
+    top: 0,
+    width: 1,
+    borderLeft: '1px solid var(--border-subtle, rgba(255,255,255,0.18))',
+    pointerEvents: 'none' as const,
+    display: 'flex',
+    alignItems: 'flex-end',
+  },
+  tickBeat: {
+    position: 'absolute' as const,
+    bottom: 0,
+    height: 5,
+    width: 1,
+    borderLeft: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+    pointerEvents: 'none' as const,
+  },
+  tickLabel: {
+    fontSize: 9,
+    lineHeight: 1,
+    paddingLeft: 3,
+    paddingBottom: 2,
+    color: 'var(--text-tertiary, rgba(255,255,255,0.5))',
+  },
   playheadArrow: {
     position: 'absolute' as const,
     top: 4,
@@ -386,7 +649,8 @@ const styles = {
     flex: 1,
     minWidth: 200,
     position: 'relative' as const,
-    overflow: 'hidden',
+    overflowX: 'auto' as const,
+    overflowY: 'hidden' as const,
     background: 'var(--bg-input, #0f0f1a)',
     cursor: 'pointer' as const,
   },
@@ -394,6 +658,14 @@ const styles = {
     position: 'absolute' as const,
     top: 0,
     bottom: 0,
+    borderLeft: '1px solid var(--border-subtle, rgba(255,255,255,0.05))',
+    pointerEvents: 'none' as const,
+  },
+  gridline: {
+    position: 'absolute' as const,
+    top: 0,
+    bottom: 0,
+    width: 1,
     borderLeft: '1px solid var(--border-subtle, rgba(255,255,255,0.05))',
     pointerEvents: 'none' as const,
   },

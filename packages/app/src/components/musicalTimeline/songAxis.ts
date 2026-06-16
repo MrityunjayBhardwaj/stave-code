@@ -58,3 +58,99 @@ export function wrapSongPosition(
   const wrapped = songPosition % displayCycles
   return wrapped < 0 ? wrapped + displayCycles : wrapped
 }
+
+// ── Zoom (#412) ────────────────────────────────────────────────────────────
+//
+// zoom = 1 fits the whole loop to the viewport (the existing fit-to-width
+// default). zoom > 1 widens the content (`contentWidth = viewportWidth * zoom`)
+// past the viewport, revealing a horizontal scrollbar. All the cycle↔pixel
+// helpers above are width-agnostic, so the view simply passes `contentWidth`
+// where it used to pass the raw viewport width.
+
+/** Minimum zoom — fit the whole song to the viewport. */
+export const MIN_ZOOM = 1
+/** Maximum zoom — far enough to inspect individual cycles on a long song. */
+export const MAX_ZOOM = 64
+/** Multiplier per zoom-button press / wheel notch. */
+export const ZOOM_STEP = 1.5
+
+/** Clamp a zoom factor to `[MIN_ZOOM, MAX_ZOOM]`; non-finite → MIN_ZOOM. */
+export function clampZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return MIN_ZOOM
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom))
+}
+
+/** Content width at a given zoom (`viewportWidth * zoom`, never below the viewport). */
+export function contentWidthFor(viewportWidth: number, zoom: number): number {
+  if (viewportWidth <= 0) return 0
+  return viewportWidth * Math.max(MIN_ZOOM, zoom)
+}
+
+/**
+ * The new horizontal scroll offset after a zoom change that keeps the song
+ * point currently under `cursorX` pinned beneath the cursor (cursor-centered
+ * zoom). `cursorX` is viewport-relative (0 = left edge of the scroll area).
+ * Result is clamped to the scrollable range `[0, contentWidth - viewportWidth]`.
+ */
+export function scrollLeftForZoom(params: {
+  oldZoom: number
+  newZoom: number
+  scrollLeft: number
+  cursorX: number
+  viewportWidth: number
+}): number {
+  const { oldZoom, newZoom, scrollLeft, cursorX, viewportWidth } = params
+  if (viewportWidth <= 0 || oldZoom <= 0 || newZoom <= 0) return 0
+  const contentX = scrollLeft + cursorX // content-space x under the cursor pre-zoom
+  const next = contentX * (newZoom / oldZoom) - cursorX
+  const maxScroll = Math.max(0, viewportWidth * newZoom - viewportWidth)
+  return Math.max(0, Math.min(maxScroll, next))
+}
+
+// ── Ruler ticks (#412) ───────────────────────────────────────────────────────
+
+/** Beats per bar for the BARS ruler. Strudel has no fixed meter (one cycle is
+ *  one bar), so beats are a display subdivision; 4 is the universal DAW default. */
+export const BEATS_PER_BAR = 4
+
+export interface RulerTick {
+  /** Song cycle position (fractional for beat ticks). */
+  readonly cycle: number
+  /** Label text, or null for an unlabeled minor (beat) tick. */
+  readonly label: string | null
+  /** Major ticks sit on cycle/bar boundaries, draw taller, and carry a label. */
+  readonly major: boolean
+}
+
+/**
+ * Tick marks for the song ruler. `pxPerCycle` (= contentWidth / displayCycles)
+ * drives density: majors stay ≥ ~40px apart by stepping in powers of two when
+ * zoomed out, and beat subdivisions only appear once each beat clears ~14px.
+ *
+ * CYCLES mode → 0-indexed labels (matches Strudel cycle numbering and the cell
+ *   tooltips); no beats. BARS mode → 1-indexed labels (DAW convention: bar 1 is
+ *   the first bar) with beat ticks at multiples of 1/BEATS_PER_BAR.
+ */
+export function rulerTicks(
+  displayCycles: number,
+  pxPerCycle: number,
+  mode: 'cycles' | 'bars',
+): RulerTick[] {
+  if (displayCycles <= 0 || !Number.isFinite(pxPerCycle) || pxPerCycle <= 0) return []
+  const MIN_MAJOR_PX = 40
+  const BEAT_MIN_PX = 14
+  let step = 1
+  while (step * pxPerCycle < MIN_MAJOR_PX) step *= 2
+  const showBeats =
+    mode === 'bars' && step === 1 && pxPerCycle / BEATS_PER_BAR >= BEAT_MIN_PX
+  const ticks: RulerTick[] = []
+  for (let c = 0; c < displayCycles; c += step) {
+    ticks.push({ cycle: c, label: mode === 'bars' ? String(c + 1) : String(c), major: true })
+    if (showBeats) {
+      for (let b = 1; b < BEATS_PER_BAR; b++) {
+        ticks.push({ cycle: c + b / BEATS_PER_BAR, label: null, major: false })
+      }
+    }
+  }
+  return ticks
+}

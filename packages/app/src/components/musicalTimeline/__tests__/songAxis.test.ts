@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { songCycleToX, xToSongCycle, wrapSongPosition } from '../songAxis'
+import {
+  songCycleToX,
+  xToSongCycle,
+  wrapSongPosition,
+  clampZoom,
+  contentWidthFor,
+  scrollLeftForZoom,
+  rulerTicks,
+  MIN_ZOOM,
+  MAX_ZOOM,
+  BEATS_PER_BAR,
+} from '../songAxis'
 
 describe('songCycleToX', () => {
   it('maps a cycle linearly across the width', () => {
@@ -61,5 +72,95 @@ describe('wrapSongPosition', () => {
     expect(wrapSongPosition(null, 8)).toBeNull()
     expect(wrapSongPosition(Number.NaN, 8)).toBeNull()
     expect(wrapSongPosition(4, 0)).toBeNull()
+  })
+})
+
+describe('clampZoom', () => {
+  it('clamps to [MIN_ZOOM, MAX_ZOOM]', () => {
+    expect(clampZoom(0.2)).toBe(MIN_ZOOM)
+    expect(clampZoom(1000)).toBe(MAX_ZOOM)
+    expect(clampZoom(4)).toBe(4)
+  })
+  it('falls back to MIN_ZOOM for non-finite (incl. infinity)', () => {
+    expect(clampZoom(Number.NaN)).toBe(MIN_ZOOM)
+    expect(clampZoom(Number.POSITIVE_INFINITY)).toBe(MIN_ZOOM)
+  })
+})
+
+describe('contentWidthFor', () => {
+  it('returns the viewport width at zoom 1 and widens proportionally', () => {
+    expect(contentWidthFor(800, 1)).toBe(800)
+    expect(contentWidthFor(800, 2)).toBe(1600)
+  })
+  it('never shrinks below the viewport, and degenerates to 0', () => {
+    expect(contentWidthFor(800, 0.5)).toBe(800)
+    expect(contentWidthFor(0, 4)).toBe(0)
+  })
+})
+
+describe('scrollLeftForZoom (cursor-centered)', () => {
+  it('keeps the content point under the cursor pinned when zooming in', () => {
+    // viewport 800, at zoom 1 the cursor at x=400 sits over content x=400.
+    // Zoom to 2 → that content point is now at 800; to keep it under x=400 we
+    // scroll to 800 - 400 = 400.
+    const next = scrollLeftForZoom({
+      oldZoom: 1,
+      newZoom: 2,
+      scrollLeft: 0,
+      cursorX: 400,
+      viewportWidth: 800,
+    })
+    expect(next).toBe(400)
+  })
+  it('clamps to the scrollable range', () => {
+    // far-right cursor zooming in would push past max scroll → clamp.
+    const next = scrollLeftForZoom({
+      oldZoom: 1,
+      newZoom: 2,
+      scrollLeft: 0,
+      cursorX: 800,
+      viewportWidth: 800,
+    })
+    expect(next).toBe(800) // maxScroll = 800*2 - 800
+  })
+  it('never goes negative and handles degenerate inputs', () => {
+    expect(
+      scrollLeftForZoom({ oldZoom: 2, newZoom: 1, scrollLeft: 0, cursorX: 0, viewportWidth: 800 }),
+    ).toBe(0)
+    expect(
+      scrollLeftForZoom({ oldZoom: 1, newZoom: 2, scrollLeft: 0, cursorX: 400, viewportWidth: 0 }),
+    ).toBe(0)
+  })
+})
+
+describe('rulerTicks', () => {
+  it('emits a 0-indexed major per cycle when there is room (CYCLES)', () => {
+    const ticks = rulerTicks(4, 200, 'cycles')
+    expect(ticks.map((t) => t.label)).toEqual(['0', '1', '2', '3'])
+    expect(ticks.every((t) => t.major)).toBe(true)
+  })
+  it('uses 1-indexed bar labels and adds beat ticks when zoomed in (BARS)', () => {
+    const ticks = rulerTicks(2, 200, 'bars') // 200px/cycle → 50px/beat ≥ 14
+    const majors = ticks.filter((t) => t.major)
+    expect(majors.map((t) => t.label)).toEqual(['1', '2'])
+    const beats = ticks.filter((t) => !t.major)
+    // 2 bars × (BEATS_PER_BAR - 1) interior beat ticks
+    expect(beats.length).toBe(2 * (BEATS_PER_BAR - 1))
+    expect(beats.map((t) => t.cycle)).toContain(0.25)
+    expect(beats.every((t) => t.label === null)).toBe(true)
+  })
+  it('drops beat ticks when each beat is too narrow', () => {
+    const ticks = rulerTicks(2, 40, 'bars') // 40/4 = 10px/beat < 14 → no beats
+    expect(ticks.every((t) => t.major)).toBe(true)
+  })
+  it('thins majors by powers of two when zoomed out', () => {
+    // 64 cycles across 800px → 12.5px/cycle; step doubles until ≥40 → step 4.
+    const ticks = rulerTicks(64, 12.5, 'cycles')
+    expect(ticks.map((t) => t.cycle)).toEqual([0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60])
+  })
+  it('returns [] for degenerate inputs', () => {
+    expect(rulerTicks(0, 100, 'cycles')).toEqual([])
+    expect(rulerTicks(4, 0, 'cycles')).toEqual([])
+    expect(rulerTicks(4, Number.NaN, 'cycles')).toEqual([])
   })
 })
