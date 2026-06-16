@@ -89,7 +89,8 @@ test('Song view populates right after a cold eval — no round-trip, no empty ga
   // while still failing if the old multi-second empty gap regressed.
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 3_000 })
   expect(await page.locator('[data-full-song-lane]').count()).toBeGreaterThanOrEqual(1)
-  expect(await page.locator('[data-full-song-cell]').count()).toBeGreaterThan(0)
+  // Activity is drawn on the canvas now (#419); assert the surface mounted.
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 3_000 })
 
   // A loop length / horizon is surfaced (not the misleading "press play").
   const period = await page

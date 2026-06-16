@@ -1076,6 +1076,7 @@ export function MusicalTimeline(
       {viewMode === 'song' ? (
         <FullSongTimeline
           analysis={analysis}
+          ir={snapshot?.ir ?? null}
           getSongPosition={props.getSongPosition ?? (() => null)}
           onSeek={props.onSeek ?? (() => {})}
           getDrawerOpen={props.getDrawerOpen}

@@ -23,9 +23,12 @@
 'use client'
 
 import * as React from 'react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { SongAnalysis } from '@stave/editor'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { SongAnalysis, PatternIR } from '@stave/editor'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
+import { buildTimelineScene } from './musicalTimeline/timelineScene'
+import { collectNoteMarks } from './musicalTimeline/timelineMarks'
+import { SongTimelineCanvas } from './SongTimelineCanvas'
 import {
   songCycleToX,
   xToSongCycle,
@@ -56,6 +59,9 @@ type RulerUnits = 'cycles' | 'bars'
 export interface FullSongTimelineProps {
   /** Whole-song analysis, or null before the first analysis completes. */
   readonly analysis: SongAnalysis | null
+  /** The evaluated IR snapshot — source of the mini-note marks the canvas draws
+   *  (collected app-side over the display span). Null before the first eval. */
+  readonly ir?: PatternIR | null
   /** Transport-offset-aware song position (cycles), or null when stopped. */
   readonly getSongPosition: () => number | null
   /** Seek the transport to an absolute song cycle. */
@@ -296,13 +302,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const lanes = analysis?.lanes ?? []
   const sections = analysis?.sections ?? []
 
-  // Peak onset count across all lanes — normalises heatmap intensity so the
-  // busiest cell is full-opacity and quieter cells fade proportionally.
-  const peak = (() => {
-    let m = 1
-    for (const l of lanes) for (const c of l.onsetsByCycle) if (c > m) m = c
-    return m
-  })()
+  // Canvas scene: per-lane density (from analysis) + capped mini-note marks
+  // (collected app-side from the IR over the display span). Memoised so the
+  // collect + build run only when the analysis or IR changes — NOT on scroll or
+  // zoom (those only move the shared transform the canvas already redraws against).
+  const marks = useMemo(() => collectNoteMarks(props.ir ?? null, displayCycles), [props.ir, displayCycles])
+  const scene = useMemo(() => buildTimelineScene(analysis, marks), [analysis, marks])
 
   const periodLabel =
     analysis == null
@@ -313,9 +318,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           ? `${analysis.horizonCycles}+ cycles`
           : `${analysis.horizonCycles} cycles`
 
-  const cellW = displayCycles > 0 ? contentWidth / displayCycles : 0
   const zoomPercent = Math.round(zoom * 100)
-  const majorTicks = ticks.filter((t) => t.major)
 
   return (
     <div data-full-song="root" role="region" aria-label="Song" style={styles.root}>
@@ -454,7 +457,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             <div style={styles.emptyLabel}>No song to map yet — press play.</div>
           ) : (
             lanes.map((lane) => (
-              <div key={lane.laneKey} style={styles.laneLabel} title={lane.laneKey}>
+              <div
+                key={lane.laneKey}
+                data-full-song-lane={lane.laneKey}
+                style={styles.laneLabel}
+                title={lane.laneKey}
+              >
                 <span
                   style={{
                     ...styles.laneDot,
@@ -473,68 +481,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           onScroll={handleGridScroll}
           onPointerDown={(e) => handleSeekAtClientX(e.clientX)}
         >
-          {/* Inner content is contentWidth wide; the grid scrolls it horizontally */}
+          {/* Inner content is contentWidth wide (the scroll spacer for the native
+              scrollbar); the canvas sits sticky inside and redraws the visible
+              slice, while the playhead stays a DOM element in content space. */}
           <div
             data-full-song="grid-content"
             style={{ ...styles.scrollContent, width: contentWidth }}
           >
-            {/* Section bands (full height, behind cells) */}
-            {areaWidth > 0 &&
-              sections.map((s) => {
-                const left = songCycleToX(s.startCycle, displayCycles, contentWidth)
-                const right = songCycleToX(s.endCycle, displayCycles, contentWidth)
-                return (
-                  <div
-                    key={`band-${s.startCycle}`}
-                    style={{
-                      ...styles.sectionBand,
-                      left,
-                      width: Math.max(0, right - left),
-                    }}
-                  />
-                )
-              })}
-            {/* Bar/cycle gridlines (faint, behind cells) — orientation when zoomed */}
-            {areaWidth > 0 &&
-              majorTicks.map((t) => (
-                <div
-                  key={`gridline-${t.cycle}`}
-                  style={{ ...styles.gridline, left: songCycleToX(t.cycle, displayCycles, contentWidth) }}
-                />
-              ))}
-            {/* Per-lane onset heatmap — sparse: a cell only where onsets > 0 */}
-            {areaWidth > 0 &&
-              lanes.map((lane, laneIdx) => {
-                const color = paletteForTrack(trackIndexOf(lane.laneKey), lane.laneKey)
-                return (
-                  <div
-                    key={lane.laneKey}
-                    data-full-song-lane={lane.laneKey}
-                    style={{ ...styles.laneRow, top: laneIdx * ROW_HEIGHT }}
-                  >
-                    {lane.onsetsByCycle.map((count, cycle) =>
-                      // Guard: only render cells within the displayed span so a
-                      // wider analysis horizon can never pile cells onto the edge
-                      // (the period-trim in analyzeSong keeps these equal, but the
-                      // view must not depend on that holding).
-                      count > 0 && cycle < displayCycles ? (
-                        <div
-                          key={cycle}
-                          data-full-song-cell={`${lane.laneKey}:${cycle}`}
-                          title={`${lane.laneKey} · cycle ${cycle} · ${count} onset${count === 1 ? '' : 's'}`}
-                          style={{
-                            ...styles.cell,
-                            left: songCycleToX(cycle, displayCycles, contentWidth),
-                            width: Math.max(1, cellW - 1),
-                            background: color,
-                            opacity: 0.25 + 0.75 * (count / peak),
-                          }}
-                        />
-                      ) : null,
-                    )}
-                  </div>
-                )
-              })}
+            {/* Canvas draws lanes (density + mini-note marks), sections, gridlines
+                — all the high-volume mass — over the shared transform (PV116). */}
+            {areaWidth > 0 && (
+              <SongTimelineCanvas
+                scene={scene}
+                scrollLeft={scrollLeft}
+                contentWidth={contentWidth}
+                viewportWidth={areaWidth}
+                rowHeight={ROW_HEIGHT}
+              />
+            )}
             {playheadVisible && (
               <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX }} />
             )}
@@ -729,35 +693,6 @@ const styles = {
     overflowY: 'hidden' as const,
     background: 'var(--bg-input, #0f0f1a)',
     cursor: 'pointer' as const,
-  },
-  sectionBand: {
-    position: 'absolute' as const,
-    top: 0,
-    bottom: 0,
-    borderLeft: '1px solid var(--border-subtle, rgba(255,255,255,0.05))',
-    pointerEvents: 'none' as const,
-  },
-  gridline: {
-    position: 'absolute' as const,
-    top: 0,
-    bottom: 0,
-    width: 1,
-    borderLeft: '1px solid var(--border-subtle, rgba(255,255,255,0.05))',
-    pointerEvents: 'none' as const,
-  },
-  laneRow: {
-    position: 'absolute' as const,
-    left: 0,
-    right: 0,
-    height: ROW_HEIGHT,
-    borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.06))',
-  },
-  cell: {
-    position: 'absolute' as const,
-    top: 4,
-    height: ROW_HEIGHT - 8,
-    borderRadius: 2,
-    pointerEvents: 'none' as const,
   },
   playhead: {
     position: 'absolute' as const,
