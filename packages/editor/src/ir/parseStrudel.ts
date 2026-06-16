@@ -14,7 +14,7 @@
  * Unsupported fragments fall back to Code nodes (never throws).
  */
 
-import { IR, type PatternIR } from './PatternIR'
+import { IR, type PatternIR, type ArrangeArm } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseMini } from './parseMini'
 
@@ -1279,6 +1279,95 @@ export function parseExpression(
 }
 
 // ---------------------------------------------------------------------------
+// Time-sequence combinators (Phase 5a / #386)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse one `arrange` arm — a `[weight, pattern]` tuple. `raw` is the tuple
+ * source (e.g. `[2, note("c3")]`); `absOffset` is the absolute file offset of
+ * `raw[0]`. Returns the arm with weight, parsed pattern sub-IR, and the WHOLE
+ * tuple range as `loc` (so write-back can edit the weight `n`), or `null` if
+ * the tuple is malformed (caller falls back to the opaque Builder path).
+ */
+function parseArrangeArm(
+  raw: string,
+  absOffset: number,
+  bindings?: ReadonlyMap<string, PatternIR>,
+  opts?: { recogniseGeneralChainRoots?: boolean },
+): ArrangeArm | null {
+  const lb = raw.indexOf('[')
+  const rb = raw.lastIndexOf(']')
+  if (lb < 0 || rb <= lb) return null
+  const innerAbs = absOffset + lb + 1
+  const parts = splitArgsWithOffsets(raw.slice(lb + 1, rb))
+  if (parts.length < 2) return null
+  const weight = Number(parts[0].value.trim())
+  if (!Number.isFinite(weight)) return null
+  const patPart = parts[1]
+  const pattern = parseExpression(patPart.value, innerAbs + patPart.offset, undefined, bindings, opts)
+  return { weight, pattern, loc: [{ start: absOffset + lb, end: absOffset + rb + 1 }] }
+}
+
+/**
+ * Phase 5a (#386) — recognise the time-sequence combinators
+ * `arrange(…)` / `cat(…)` / `slowcat(…)` / `fastcat(…)` at the root and parse
+ * them into the structured `Arrange` node (or `Seq` for `fastcat`, which is
+ * one-cycle weight-slicing ≡ Seq, grounded). Returns `null` when the token is
+ * not one of these combinators OR the args don't parse (caller then falls
+ * through to the existing recogniser → opaque `Builder`, preserving today's
+ * behaviour for malformed input). GROUNDED 2026-06-17 (see PatternIR.Arrange).
+ */
+function parseTimeSequenceRoot(
+  trimmed: string,
+  baseOffset: number,
+  leadingWs: number,
+  bindings?: ReadonlyMap<string, PatternIR>,
+  opts?: { recogniseGeneralChainRoots?: boolean },
+): PatternIR | null {
+  const m = trimmed.match(/^(arrange|cat|slowcat|fastcat)\s*\(/)
+  if (!m) return null
+  const fn = m[1] as 'arrange' | 'cat' | 'slowcat' | 'fastcat'
+  const openIdx = trimmed.indexOf('(', m[0].length - 1)
+  const closeIdx = openIdx >= 0 ? findMatchingParen(trimmed, openIdx) : -1
+  if (closeIdx <= openIdx) return null
+  const innerAbs = baseOffset + leadingWs + openIdx + 1
+  const args = splitArgsWithOffsets(trimmed.slice(openIdx + 1, closeIdx))
+  if (args.length === 0) return null
+
+  const nodeStart = baseOffset + leadingWs
+  const nodeLoc: SourceLocation = { start: nodeStart, end: nodeStart + closeIdx + 1 }
+
+  // fastcat ≡ Seq (one cycle, weight-proportional) — reuse the existing node
+  // so the proven Seq collect / round-trip applies; NOT a clip producer.
+  if (fn === 'fastcat') {
+    const children = args.map(a =>
+      parseExpression(a.value, innerAbs + a.offset, undefined, bindings, opts),
+    )
+    if (children.length === 1) return children[0]
+    return { tag: 'Seq', children, loc: [nodeLoc], userMethod: 'fastcat' }
+  }
+
+  // arrange / cat / slowcat → Arrange node (the multi-cycle clip family).
+  const arms: ArrangeArm[] = []
+  for (const a of args) {
+    if (fn === 'arrange') {
+      const arm = parseArrangeArm(a.value, innerAbs + a.offset, bindings, opts)
+      if (!arm) return null // malformed tuple → opaque fallback upstream
+      arms.push(arm)
+    } else {
+      const armStart = innerAbs + a.offset
+      arms.push({
+        weight: 1,
+        pattern: parseExpression(a.value, armStart, undefined, bindings, opts),
+        loc: [{ start: armStart, end: armStart + a.value.length }],
+      })
+    }
+  }
+  if (arms.length === 0) return null
+  return { tag: 'Arrange', mode: fn, arms, loc: [nodeLoc], userMethod: fn }
+}
+
+// ---------------------------------------------------------------------------
 // Root parser
 // ---------------------------------------------------------------------------
 
@@ -1346,6 +1435,16 @@ export function parseRoot(
   if (bindings && /^[A-Za-z_$][\w$]*$/.test(trimmed) && bindings.has(trimmed)) {
     return bindings.get(trimmed) as PatternIR
   }
+
+  // Phase 5a (#386) — time-sequence combinators (`arrange`/`cat`/`slowcat`/
+  // `fastcat`). Placed AFTER the G2 bound-ident arm (a user shadow wins) and
+  // BEFORE the curated recogniser, which still lists `arrange`→Builder as the
+  // opaque fallback: a malformed combinator returns null here and falls
+  // through to that Builder path (behaviour-preserving). Real source now
+  // parses into the structured `Arrange`/`Seq` node — fixes the arrange=blank
+  // gap (collect previously returned [] for the opaque Builder).
+  const timeSeq = parseTimeSequenceRoot(trimmed, baseOffset, leadingWs, bindings, opts)
+  if (timeSeq) return timeSeq
 
   // 20-18 Wave B-1 (D-01 curated chain-root recogniser) — emit
   // `{tag:'Signal'|'Builder', kind, args?}` for the FROZEN Wave-0 curated
@@ -1895,6 +1994,31 @@ function applyMethod(
       const n = parseFloat(subbedArgs.trim())
       if (!isNaN(n)) return IR.slow(n, ir, tagMeta(method, callSiteRange))
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (P33 / PV37)
+    }
+
+    case 'cat':
+    case 'slowcat':
+    case 'fastcat': {
+      // Phase 5a (#386) — method forms. The receiver `ir` is the FIRST arm;
+      // each comma-separated arg is a further arm (weight 1). GROUNDED:
+      // `a.cat(b)` ≡ `cat(a, b)` (slowcat, c3@[0,1] e3@[1,2]); `a.fastcat(b)`
+      // ≡ `fastcat(a, b)` ≡ Seq (one cycle). args offsets are absolute via
+      // baseOffset (the offset of `args[0]` in the user's code).
+      const argList = splitArgsWithOffsets(args)
+      const moreArms = argList.map(a =>
+        parseExpression(a.value, baseOffset + a.offset, undefined, bindings),
+      )
+      if (moreArms.length === 0) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
+      if (method === 'fastcat') {
+        return {
+          tag: 'Seq' as const,
+          children: [ir, ...moreArms],
+          loc: [{ start: callSiteRange[0], end: callSiteRange[1] }],
+          userMethod: 'fastcat',
+        }
+      }
+      const arms: ArrangeArm[] = [ir, ...moreArms].map(pattern => ({ weight: 1, pattern }))
+      return IR.arrange(method, arms, tagMeta(method, callSiteRange))
     }
 
     case 'every': {
