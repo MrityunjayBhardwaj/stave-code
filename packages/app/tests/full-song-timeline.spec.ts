@@ -119,9 +119,12 @@ test('full-song view: analysis renders, loop detected, ruler seek fires without 
   const laneCount = await page.locator('[data-full-song-lane]').count()
   expect(laneCount).toBeGreaterThanOrEqual(2)
 
-  // (2) Onset cells render.
-  const cellCount = await page.locator('[data-full-song-cell]').count()
-  expect(cellCount).toBeGreaterThan(0)
+  // (2) The lane activity is drawn on the canvas (the per-cell DOM heatmap was
+  //     replaced by SongTimelineCanvas in #419). Detailed canvas content/zoom
+  //     observation lives in full-song-canvas.spec.ts; here just assert the
+  //     surface mounted and the old DOM cells are gone.
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  expect(await page.locator('[data-full-song-cell]').count()).toBe(0)
 
   // (3) A loop length is detected and surfaced.
   const period = await page

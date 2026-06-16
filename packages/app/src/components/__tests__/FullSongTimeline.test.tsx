@@ -13,6 +13,17 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as React from 'react'
 import { act, render, cleanup } from '@testing-library/react'
 import type { SongAnalysis } from '@stave/editor'
+
+// FullSongTimeline now pulls the editor runtime (collectCycles/laneKeyOf, via
+// timelineMarks) into its import graph; the real module drags in a CJS dep
+// (gifenc) that breaks vitest's loader. These props never pass a real `ir`, so
+// the stubs are loaded but never called — the mini-note collection path is
+// covered by the Playwright spec against a real song.
+vi.mock('@stave/editor', () => ({
+  collectCycles: () => [],
+  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
+}))
+
 import { FullSongTimeline } from '../FullSongTimeline'
 
 let mockGridWidth = 800
@@ -79,14 +90,18 @@ describe('FullSongTimeline', () => {
     expect(container.querySelector('[data-full-song-lane="hh"]')).not.toBeNull()
   })
 
-  it('renders section chips and onset cells once a width is known', async () => {
+  it('renders section chips on the ruler and mounts the canvas body', async () => {
     const { container } = renderFull()
     await act(async () => {
       await Promise.resolve()
     })
+    // Section chips live on the (DOM) ruler overlay.
     expect(container.querySelectorAll('[data-full-song-section]').length).toBe(2)
-    // bd has onsets in cycles 0 and 2 → 2 cells; hh in all 4 → 4 cells.
-    expect(container.querySelectorAll('[data-full-song-cell]').length).toBe(6)
+    // The onset heatmap is now drawn on the canvas (the per-cell DOM nodes are
+    // gone). Assert the canvas surface mounted; pixel output is covered by the
+    // drawTimeline unit tests + the Playwright screenshot.
+    expect(container.querySelector('[data-full-song-canvas]')).not.toBeNull()
+    expect(container.querySelectorAll('[data-full-song-cell]').length).toBe(0)
   })
 
   it('shows an empty state when there is no analysis', async () => {
