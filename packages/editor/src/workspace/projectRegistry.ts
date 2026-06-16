@@ -16,22 +16,11 @@ export interface ProjectMeta {
   readonly name: string
   readonly createdAt: number
   readonly lastOpenedAt: number
-  /**
-   * Per-project crop region for the pinned backdrop. All values 0–1
-   * fractional of the viz's full viewport. Absent when the backdrop
-   * should render full-rect (default). Kept on project metadata (not in
-   * the Y.Doc) because the crop is a per-user view preference rather than
-   * authored content — shouldn't sync across collaborators when
-   * multi-user arrives. (The backdrop *file* is no longer stored here:
-   * #347 made it per-tab in StrudelEditorClient, and #371 retired the
-   * old project-global `backgroundFileId` slot.)
-   */
-  readonly backgroundCrop?: {
-    readonly x: number
-    readonly y: number
-    readonly w: number
-    readonly h: number
-  }
+  // Backdrop view-state (pinned file + crop) is NO LONGER stored on project
+  // metadata: #347 moved the backdrop file per-tab (StrudelEditorClient
+  // localStorage), #371 retired the project-global `backgroundFileId`, and
+  // #372 retired the project-global `backgroundCrop` (crop is now per-viz-file
+  // in StaveApp localStorage). ProjectMeta is pure project identity again.
 }
 
 // ── IDB helpers ──────────────────────────────────────────────────────
@@ -110,29 +99,6 @@ export async function touchProject(id: string): Promise<void> {
   const existing = await wrap<ProjectMeta | undefined>(store.get(id))
   if (existing) {
     await wrap(store.put({ ...existing, lastOpenedAt: Date.now() }))
-  }
-  db.close()
-}
-
-/**
- * Save or clear the backdrop crop region. `null` removes the field
- * (backdrop renders full-rect). No-op when the project doesn't
- * exist or has no backdrop file pinned.
- */
-export async function setProjectBackgroundCrop(
-  id: string,
-  crop: { x: number; y: number; w: number; h: number } | null,
-): Promise<void> {
-  const db = await openDb()
-  const store = tx(db, 'readwrite')
-  const existing = await wrap<ProjectMeta | undefined>(store.get(id))
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing
-    const next: ProjectMeta =
-      crop == null
-        ? (rest as ProjectMeta)
-        : { ...rest, backgroundCrop: crop }
-    await wrap(store.put(next))
   }
   db.close()
 }

@@ -946,12 +946,23 @@ export interface WorkspaceShellProps {
   readonly onActiveBackdropChange?: (fileId: string | null) => void
 
   /**
+   * #372 — open the host's backdrop controls popover for a viz file tab
+   * whose file is the active group's backdrop. The shell forwards the
+   * viz chrome's settings-button click here with the tab's `fileId` and
+   * the button's anchor rect; the app opens its `BackdropPopover` (in
+   * no-picker mode — the source is the file itself). Optional: when the
+   * host omits it, the viz chrome renders no settings affordance.
+   */
+  readonly onOpenBackdropSettings?: (fileId: string, rect: DOMRect) => void
+
+  /**
    * Crop region applied to the pinned backdrop — 0–1 fractional
    * `{x, y, w, h}`. Absent means render the full viz rect. The
    * shell's backdrop wrapper scales/positions its inner div so
    * only the cropped sub-rect fills the viewport, preserving the
-   * quality-ladder transform math. Purely presentational; app
-   * owns persistence via ProjectMeta.backgroundCrop.
+   * quality-ladder transform math. Purely presentational; the app
+   * owns persistence (per-viz-file localStorage, #372) and passes the
+   * RESOLVED crop for whatever backdrop is currently rendered.
    */
   readonly backgroundCrop?: {
     readonly x: number

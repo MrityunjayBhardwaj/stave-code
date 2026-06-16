@@ -24389,6 +24389,7 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
   onActiveTabChange,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  onOpenBackdropSettings,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -25181,6 +25182,11 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                     });
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // #372 — forward the viz chrome's settings click to the host
+                  // popover, tagged with this tab's fileId so the app opens the
+                  // controls for the right backdrop (no-picker; the file is the
+                  // source). Omitted when the host supplies no handler.
+                  onOpenBackdropSettings: onOpenBackdropSettings ? (rect) => onOpenBackdropSettings(tab.fileId, rect) : void 0,
                   onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
                   }, "onSave")
@@ -28664,18 +28670,6 @@ async function touchProject(id) {
   db.close();
 }
 __name(touchProject, "touchProject");
-async function setProjectBackgroundCrop(id, crop) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing;
-    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
-    await wrap4(store.put(next));
-  }
-  db.close();
-}
-__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
 async function renameProject(id, name) {
   const db = await openDb4();
   const store = tx2(db, "readwrite");
@@ -29201,7 +29195,8 @@ function VizEditorChrome({
   onTogglePausePreview,
   onChangePreviewSource,
   onToggleBackground,
-  isBackground
+  isBackground,
+  onOpenBackdropSettings
 }) {
   const [liveOn, setLiveOn] = React8.useState(() => getVizLive(file.id));
   React8.useEffect(() => {
@@ -29341,6 +29336,28 @@ function VizEditorChrome({
                 border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
               },
               children: isBackground ? "\u25A0 bg" : "\u25A0"
+            }
+          ),
+          isBackground && onOpenBackdropSettings && /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-bg-settings",
+              onClick: (e) => onOpenBackdropSettings(e.currentTarget.getBoundingClientRect()),
+              title: "Backdrop controls (opacity, quality, crop\\u2026)",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "3px 6px",
+                borderRadius: 3,
+                fontSize: 9,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: "none",
+                color: "var(--accent-strong, var(--accent))",
+                border: "1px solid var(--accent-dim)"
+              },
+              children: "\u25BE"
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsx(
@@ -30278,7 +30295,6 @@ exports.setInlineVizResolution = setInlineVizResolution;
 exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
-exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setSignalAliases = setSignalAliases;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
