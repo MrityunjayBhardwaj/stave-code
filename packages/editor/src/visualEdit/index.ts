@@ -26,6 +26,7 @@ export type { WriteSource, OffsetEdit } from './writeback'
 export {
   detectArrangeAt,
   detectAllArrangeCalls,
+  detectBarePattern,
   setWeight,
   reorderArm,
   insertArm,

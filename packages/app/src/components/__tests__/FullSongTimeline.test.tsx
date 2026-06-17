@@ -23,16 +23,24 @@ import type { SongAnalysis } from '@stave/editor'
 // cycles [0,2), arm 1 over [2,4). The events carry `armIndex` + `loc` so
 // collectNoteMarks builds real clips (armIndex ≥ 0 = trimmable). Returned only
 // when an `ir` is passed, so the no-`ir` tests above still see no marks.
-const { TRIM_EVENTS } = vi.hoisted(() => ({
+const { TRIM_EVENTS, BARE_EVENTS } = vi.hoisted(() => ({
   TRIM_EVENTS: [
     { begin: 0, end: 1, s: 'bd', armIndex: 0, loc: [{ start: 9, end: 21 }] },
     { begin: 1, end: 2, s: 'bd', armIndex: 0, loc: [{ start: 9, end: 21 }] },
     { begin: 2, end: 3, s: 'bd', armIndex: 1, loc: [{ start: 23, end: 35 }] },
     { begin: 3, end: 4, s: 'bd', armIndex: 1, loc: [{ start: 23, end: 35 }] },
   ],
+  // A BARE track: events with NO armIndex → no clipsByLane entry → the scene
+  // synthesises ONE implicit clip (armIndex −1) spanning the song. Used for the
+  // §2.1 wrap (move-on-a-bare-track) test.
+  BARE_EVENTS: [
+    { begin: 0, end: 1, s: 'bd', loc: [{ start: 0, end: 9 }] },
+    { begin: 1, end: 2, s: 'bd', loc: [{ start: 0, end: 9 }] },
+  ],
 }))
 vi.mock('@stave/editor', () => ({
-  collectCycles: (ir: unknown) => (ir ? TRIM_EVENTS : []),
+  collectCycles: (ir: { bare?: boolean } | null) =>
+    ir?.bare ? BARE_EVENTS : ir ? TRIM_EVENTS : [],
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
@@ -413,5 +421,75 @@ describe('FullSongTimeline — delete a clip (select body + Delete → remove-ar
     fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
     fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
     expect(onSeek).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('FullSongTimeline — move a clip (drag body → reorder / §2.1 wrap, #386)', () => {
+  // Reorder fixture: the same two-arm bd lane (arm 0 [0,2), arm 1 [2,4)) at
+  // 200px/cycle. Dragging arm 0's body (x≈200) right into arm 1's span (x≈600 =
+  // cycle 3) reorders it to slot 1.
+  function renderReorderable(onMoveClip: ReturnType<typeof vi.fn>) {
+    const utils = renderFull({ ir: {} as never, onMoveClip })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    return { ...utils, grid }
+  }
+  // Wrap fixture: a BARE track (no armIndex) → one implicit clip spanning [0,4).
+  function renderWrappable(onMoveClip: ReturnType<typeof vi.fn>) {
+    const utils = renderFull({ ir: { bare: true } as never, onMoveClip })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    return { ...utils, grid }
+  }
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  it('dragging arm 0’s body into arm 1’s span → onMoveClip reorder(0 → 1)', async () => {
+    const onMoveClip = vi.fn()
+    const { grid } = renderReorderable(onMoveClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 }) // arm 0 body
+    fireEvent.pointerMove(grid, { clientX: 600, clientY: 10, pointerId: 1 }) // cycle 3 = arm 1 span
+    fireEvent.pointerUp(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    expect(onMoveClip).toHaveBeenCalledTimes(1)
+    expect(onMoveClip).toHaveBeenCalledWith({ kind: 'reorder', sourceOffset: 9, fromIndex: 0, toIndex: 1 })
+  })
+
+  it('a body press that does not travel is a click (select), not a move', async () => {
+    const onMoveClip = vi.fn()
+    const { grid, container } = renderReorderable(onMoveClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 202, clientY: 10, pointerId: 1 }) // 2px < threshold
+    fireEvent.pointerUp(grid, { clientX: 202, clientY: 10, pointerId: 1 })
+    expect(onMoveClip).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
+  })
+
+  it('dropping a clip back on its own span does not fire onMoveClip', async () => {
+    const onMoveClip = vi.fn()
+    const { grid } = renderReorderable(onMoveClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 100, clientY: 10, pointerId: 1 }) // still arm 0 span
+    fireEvent.pointerUp(grid, { clientX: 100, clientY: 10, pointerId: 1 })
+    expect(onMoveClip).not.toHaveBeenCalled()
+  })
+
+  it('dragging a BARE track’s clip → onMoveClip wrap (§2.1, lead = drop cycle)', async () => {
+    const onMoveClip = vi.fn()
+    const { grid } = renderWrappable(onMoveClip)
+    await settle()
+    // The implicit clip spans [0,4); drag it to start at cycle 3.
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 600, clientY: 10, pointerId: 1 }) // cycle 3
+    fireEvent.pointerUp(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    expect(onMoveClip).toHaveBeenCalledWith({
+      kind: 'wrap',
+      sourceOffset: 0,
+      leadingWeight: 3,
+      patternWeight: 1,
+    })
   })
 })

@@ -56,6 +56,9 @@ const ROW_HEIGHT = 22
 const EXPANDED_ROW_HEIGHT = 96
 /** Content-px grip zone around a clip's right edge that arms a trim drag (#437). */
 const CLIP_EDGE_GRIP_PX = 6
+/** Pointer travel (px) before a clip-body press becomes a MOVE drag rather than a
+ *  click (select/seek). Below this it stays a click so seek-anywhere is intact. */
+const CLIP_MOVE_THRESHOLD_PX = 4
 const FONT_MONO = '"JetBrains Mono", "Fira Code", ui-monospace, monospace'
 
 /** Ruler units (#412). CYCLES = Strudel's native numbering; BARS = DAW
@@ -103,6 +106,19 @@ export interface FullSongTimelineProps {
     sourceOffset: number | null
     armIndex: number
   }) => void
+  /** Move a clip by dragging its body horizontally (Phase 5c, #386). Two shapes:
+   *   - `reorder`: the clip is a real arm — swap it to a new slot in the combinator
+   *     (`reorderArm(fromIndex → toIndex)`). Clip time-order = arm order (PV122 #1).
+   *   - `wrap`: the clip is a bare track's implicit clip — there is no combinator
+   *     yet, so the first placement WRAPS the pattern (§2.1 `wrapBare`):
+   *     `pattern → arrange([leadingWeight, silence], [patternWeight, pattern])`.
+   *   The parent resolves the anchor and writes the surgical edit. Optional —
+   *   without it clips can't be dragged (trim/select/delete still work). */
+  readonly onMoveClip?: (
+    req:
+      | { kind: 'reorder'; sourceOffset: number | null; fromIndex: number; toIndex: number }
+      | { kind: 'wrap'; sourceOffset: number | null; leadingWeight: number; patternWeight: number },
+  ) => void
 }
 
 /** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
@@ -414,18 +430,42 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // (`armIndex ≥ 0`) are selectable; a bare track's implicit clip has no arm to
   // remove. Selection is keyed by lane + arm; the highlight rect is re-derived
   // in render from the live scene/layout so it tracks zoom, scroll, and re-eval.
-  const { onDeleteClip } = props
+  const { onDeleteClip, onMoveClip } = props
   const [selected, setSelected] = useState<{
     laneKey: string
     armIndex: number
     sourceOffset: number | null
   } | null>(null)
 
+  // ── Move a clip: drag its body horizontally (Phase 5c, #386) ──────────────
+  // A body press starts a PENDING gesture: if the pointer travels past the
+  // threshold it becomes a MOVE drag (reorder a real arm, or wrap a bare track,
+  // §2.1); otherwise it stays a click (select + seek). The ghost rect previews
+  // where the clip will land. Reads live refs so the handlers are closure-stable.
+  const moveDragRef = useRef<{
+    pointerId: number
+    sourceOffset: number | null
+    armIndex: number // dragged clip's arm; < 0 = bare implicit clip (→ wrap)
+    laneKey: string
+    startClientX: number
+    startCycle: number
+    endCycle: number
+    dragging: boolean
+    toIndex: number // reorder target (real arm)
+    leadCycle: number // wrap lead (bare clip)
+  } | null>(null)
+  const [moveGhost, setMoveGhost] = useState<{
+    left: number
+    width: number
+    top: number
+    height: number
+  } | null>(null)
+
   // Hit-test a clip BODY (not its edge) under a client point → { lane, clip },
-  // or null. Mirrors `clipEdgeAt` but matches CONTAINMENT (`clipAtCycle`) and
-  // skips the bare implicit clip. Reads live refs so it stays closure-stable.
+  // or null. Matches CONTAINMENT (`clipAtCycle`). `includeBare` keeps the bare
+  // implicit clip (armIndex < 0) — wanted for MOVE (wrap), not for select/delete.
   const clipBodyAt = React.useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number, includeBare = false) => {
       const el = areaRef.current
       if (!el) return null
       const rect = el.getBoundingClientRect()
@@ -437,10 +477,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!lane) return null
       const cyc = xToSongCycle(contentX, displayCycles, cw)
       const clip = clipAtCycle(lane, cyc)
-      if (!clip || clip.armIndex < 0) return null
+      if (!clip || (clip.armIndex < 0 && !includeBare)) return null
       return { lane, clip }
     },
     [displayCycles],
+  )
+
+  // The combinator's arms as time-spans, in arm order — gathered across ALL
+  // lanes (each arm is one clip, but different `s` arms land in different lanes).
+  // The drop target for a reorder is the arm whose span the pointer falls in.
+  const armSpansNow = React.useCallback(
+    () =>
+      sceneRef.current.lanes
+        .flatMap((l) => l.clips)
+        .filter((c) => c.armIndex >= 0)
+        .sort((a, b) => a.armIndex - b.armIndex),
+    [],
   )
 
   // Hit-test a clip's right edge under a client point → the draggable clip, or
@@ -479,14 +531,34 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     (e: React.PointerEvent) => {
       const hit = clipEdgeAt(e.clientX, e.clientY)
       if (!hit) {
-        // Not on a clip edge → select a clip body (Phase 5c) if over one, then
-        // seek (seek-anywhere preserved). Empty space clears the selection.
-        const body = onDeleteClip ? clipBodyAt(e.clientX, e.clientY) : null
-        setSelected(
-          body
-            ? { laneKey: body.lane.laneKey, armIndex: body.clip.armIndex, sourceOffset: body.lane.sourceOffset }
-            : null,
-        )
+        // Not a clip edge. A press on a clip BODY begins a PENDING gesture that
+        // resolves on pointer-up: a MOVE drag if the pointer travelled, else a
+        // click (select + seek). A press off any clip clears selection + seeks.
+        const interactive = !!(onDeleteClip || onMoveClip)
+        const body = interactive ? clipBodyAt(e.clientX, e.clientY, !!onMoveClip) : null
+        if (body) {
+          e.preventDefault()
+          try {
+            areaRef.current?.setPointerCapture?.(e.pointerId)
+          } catch {
+            /* best-effort (jsdom / inactive pointer) */
+          }
+          userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
+          moveDragRef.current = {
+            pointerId: e.pointerId,
+            sourceOffset: body.lane.sourceOffset,
+            armIndex: body.clip.armIndex,
+            laneKey: body.lane.laneKey,
+            startClientX: e.clientX,
+            startCycle: body.clip.startCycle,
+            endCycle: body.clip.endCycle,
+            dragging: false,
+            toIndex: body.clip.armIndex,
+            leadCycle: body.clip.startCycle,
+          }
+          return
+        }
+        setSelected(null)
         handleSeekAtClientX(e.clientX)
         return
       }
@@ -511,7 +583,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const cw = contentWidthFor(areaRef.current!.getBoundingClientRect().width, zoomRef.current)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, displayCycles, cw))
     },
-    [clipEdgeAt, clipBodyAt, handleSeekAtClientX, displayCycles, onDeleteClip],
+    [clipEdgeAt, clipBodyAt, handleSeekAtClientX, displayCycles, onDeleteClip, onMoveClip],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -530,11 +602,54 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         setTrimEdgeX(songCycleToX(newEnd, displayCycles, cw))
         return
       }
-      // Not dragging: show the col-resize affordance over a clip edge. Direct
-      // style write (no React state) so hover never churns re-renders.
-      el.style.cursor = clipEdgeAt(e.clientX, e.clientY) ? 'col-resize' : ''
+      // Move drag (Phase 5c): once the press travels past the threshold, preview
+      // the destination — a reorder slot for a real arm, or the wrap lead for a
+      // bare clip — and stash the target on the ref for commit.
+      const mv = moveDragRef.current
+      if (mv && e.pointerId === mv.pointerId) {
+        if (!mv.dragging && Math.abs(e.clientX - mv.startClientX) < CLIP_MOVE_THRESHOLD_PX) return
+        mv.dragging = true
+        const contentX = e.clientX - rect.left + scrollLeftRef.current
+        const cyc = xToSongCycle(contentX, displayCycles, cw)
+        const box = layoutRef.current.boxes.find((b) => b.laneKey === mv.laneKey)
+        if (mv.armIndex >= 0) {
+          const spans = armSpansNow()
+          let to = mv.armIndex
+          if (spans.length) {
+            const inSpan = spans.find((s) => cyc >= s.startCycle && cyc < s.endCycle)
+            to = inSpan
+              ? inSpan.armIndex
+              : cyc < spans[0].startCycle
+                ? spans[0].armIndex
+                : spans[spans.length - 1].armIndex
+          }
+          mv.toIndex = to
+          const tgt = spans.find((s) => s.armIndex === to)
+          if (box && tgt) {
+            const left = songCycleToX(tgt.startCycle, displayCycles, cw)
+            const right = songCycleToX(tgt.endCycle, displayCycles, cw)
+            setMoveGhost({ left, width: Math.max(2, right - left), top: box.top, height: box.height })
+          }
+        } else {
+          const lead = Math.max(0, Math.round(cyc))
+          mv.leadCycle = lead
+          if (box) {
+            const left = songCycleToX(lead, displayCycles, cw)
+            const right = songCycleToX(lead + 1, displayCycles, cw)
+            setMoveGhost({ left, width: Math.max(2, right - left), top: box.top, height: box.height })
+          }
+        }
+        return
+      }
+      // Not dragging: cursor affordance — col-resize over an edge, grab over a
+      // movable body. Direct style write (no React state) so hover never churns.
+      el.style.cursor = clipEdgeAt(e.clientX, e.clientY)
+        ? 'col-resize'
+        : onMoveClip && clipBodyAt(e.clientX, e.clientY, true)
+          ? 'grab'
+          : ''
     },
-    [clipEdgeAt, displayCycles],
+    [clipEdgeAt, clipBodyAt, armSpansNow, displayCycles, onMoveClip],
   )
 
   const endTrimDrag = React.useCallback(
@@ -557,6 +672,63 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
     },
     [onTrimClip],
+  )
+
+  // End a body gesture (Phase 5c). A non-drag is a CLICK → select (real arm) +
+  // seek. A drag commits a MOVE: reorder a real arm, or wrap a bare clip (§2.1).
+  const endBodyDrag = React.useCallback(
+    (e: React.PointerEvent, commit: boolean) => {
+      const mv = moveDragRef.current
+      if (!mv || e.pointerId !== mv.pointerId) return
+      moveDragRef.current = null
+      setMoveGhost(null)
+      try {
+        areaRef.current?.releasePointerCapture?.(e.pointerId)
+      } catch {
+        /* best-effort */
+      }
+      if (!mv.dragging) {
+        setSelected(
+          mv.armIndex >= 0
+            ? { laneKey: mv.laneKey, armIndex: mv.armIndex, sourceOffset: mv.sourceOffset }
+            : null,
+        )
+        handleSeekAtClientX(e.clientX)
+        return
+      }
+      if (!commit) return
+      if (mv.armIndex >= 0) {
+        if (mv.toIndex !== mv.armIndex) {
+          onMoveClip?.({ kind: 'reorder', sourceOffset: mv.sourceOffset, fromIndex: mv.armIndex, toIndex: mv.toIndex })
+        }
+      } else if (mv.leadCycle > 0) {
+        onMoveClip?.({ kind: 'wrap', sourceOffset: mv.sourceOffset, leadingWeight: mv.leadCycle, patternWeight: 1 })
+      }
+    },
+    [handleSeekAtClientX, onMoveClip],
+  )
+
+  // Unified pointer end: a live trim drag wins; otherwise resolve the body
+  // gesture. Cancel discards (no commit).
+  const handleGridPointerUp = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (trimDragRef.current) {
+        endTrimDrag(e, true)
+        return
+      }
+      endBodyDrag(e, true)
+    },
+    [endTrimDrag, endBodyDrag],
+  )
+  const handleGridPointerCancel = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (trimDragRef.current) {
+        endTrimDrag(e, false)
+        return
+      }
+      endBodyDrag(e, false)
+    },
+    [endTrimDrag, endBodyDrag],
   )
 
   // Delete/Backspace on the focused grid removes the selected clip. The grid is
@@ -792,8 +964,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           onScroll={handleGridScroll}
           onPointerDown={handleGridPointerDown}
           onPointerMove={handleGridPointerMove}
-          onPointerUp={(e) => endTrimDrag(e, true)}
-          onPointerCancel={(e) => endTrimDrag(e, false)}
+          onPointerUp={handleGridPointerUp}
+          onPointerCancel={handleGridPointerCancel}
           onKeyDown={handleGridKeyDown}
           onDoubleClick={(e) => handleExpandAtClientY(e.clientY)}
         >
@@ -830,6 +1002,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   width: selectionRect.width,
                   top: selectionRect.top,
                   height: selectionRect.height,
+                }}
+              />
+            )}
+            {moveGhost && (
+              <div
+                data-full-song="clip-move-ghost"
+                style={{
+                  ...styles.moveGhost,
+                  left: moveGhost.left,
+                  width: moveGhost.width,
+                  top: moveGhost.top,
+                  height: moveGhost.height,
                 }}
               />
             )}
@@ -1097,6 +1281,16 @@ const styles = {
     borderRadius: 2,
     background: 'var(--accent-faint, rgba(110,168,254,0.14))',
     boxShadow: '0 0 6px var(--accent, rgba(110,168,254,0.5))',
+    pointerEvents: 'none' as const,
+    boxSizing: 'border-box' as const,
+  },
+  // Move-drag destination preview (Phase 5c): a dashed accent outline marking
+  // where the dragged clip will land (a reorder slot, or the wrap lead span).
+  moveGhost: {
+    position: 'absolute' as const,
+    border: '1.5px dashed var(--accent, #6ea8fe)',
+    borderRadius: 2,
+    background: 'var(--accent-faint, rgba(110,168,254,0.10))',
     pointerEvents: 'none' as const,
     boxSizing: 'border-box' as const,
   },

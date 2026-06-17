@@ -169,3 +169,39 @@ export function detectAllArrangeCalls(doc: string): ArrangeCall[] {
   nodes.sort((a, b) => a.start - b.start)
   return nodes.map((n) => buildCall(doc, n)).filter((c): c is ArrangeCall => c !== null)
 }
+
+/**
+ * The bare PATTERN expression of the top-level track statement containing `pos`,
+ * when that track is NOT already a combinator (so there is no `arrange`/`cat` to
+ * reorder). Returns the expression's absolute `[start, end)` — the range §2.1
+ * `wrapBare` wraps to INTRODUCE a combinator when a steady pattern is first
+ * placed in time (the "move-on-a-bare-track" case).
+ *
+ * Returns null when: the doc doesn't parse; `pos` isn't inside a top-level
+ * expression statement; or that statement already contains a combinator (then
+ * `detectArrangeAt` owns the edit). A `$:`/label prefix and any trailing
+ * statements are excluded — we return the EXPRESSION range only, so a wrap edits
+ * just the pattern and leaves the rest of the line byte-identical.
+ */
+export function detectBarePattern(
+  doc: string,
+  pos: number,
+): { patternRange: [number, number] } | null {
+  const program = parseProgram(doc)
+  if (!program?.body) return null
+  for (const stmt of program.body as any[]) {
+    // Unwrap `$: expr` (LabeledStatement) → its ExpressionStatement.
+    const exprStmt = stmt?.type === 'LabeledStatement' ? stmt.body : stmt
+    if (exprStmt?.type !== 'ExpressionStatement') continue
+    const expr = exprStmt.expression
+    if (!expr || pos < expr.start || pos > expr.end) continue
+    // A combinator anywhere inside → not bare; detectArrangeAt handles it.
+    let hasCombinator = false
+    walk(expr, (n) => {
+      if (isCombinatorCall(n)) hasCombinator = true
+    })
+    if (hasCombinator) return null
+    return { patternRange: [expr.start, expr.end] }
+  }
+  return null
+}

@@ -520,6 +520,7 @@ export {
   applyEdits,
   detectArrangeAt,
   detectAllArrangeCalls,
+  detectBarePattern,
   setWeight,
   reorderArm,
   insertArm,

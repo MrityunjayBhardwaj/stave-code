@@ -50,8 +50,11 @@ import {
   revealLineInFile,
   applyOffsetEditsToFile,
   detectArrangeAt,
+  detectBarePattern,
   setWeight,
   removeArm,
+  reorderArm,
+  wrapBare,
   useTrackMeta,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
@@ -1059,6 +1062,38 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // Move a clip on the Song canvas (Phase 5c, #386): two shapes.
+  //  - `reorder`: the dragged clip is a real arm — swap it to a new slot in the
+  //    combinator (reorderArm fromIndex→toIndex). Clip time-order = arm order.
+  //  - `wrap`: the clip is a bare track's implicit clip — there is no combinator
+  //    yet, so we INTRODUCE one (§2.1): detectBarePattern finds the pattern's
+  //    range and wrapBare rewrites `pattern` → `arrange([lead, silence], [pw, pattern])`.
+  // Both parse against the SAME snapshot the offsets came from and route through
+  // the structural write-back; the debounced re-eval re-derives the clips.
+  const handleMoveClip = React.useCallback(
+    (
+      req:
+        | { kind: 'reorder'; sourceOffset: number | null; fromIndex: number; toIndex: number }
+        | { kind: 'wrap'; sourceOffset: number | null; leadingWeight: number; patternWeight: number },
+    ) => {
+      if (!snapshot?.source || req.sourceOffset == null) return
+      if (req.kind === 'reorder') {
+        const call = detectArrangeAt(snapshot.code, req.sourceOffset)
+        if (!call) return
+        const edits = reorderArm(snapshot.code, call, req.fromIndex, req.toIndex)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+      } else {
+        const bare = detectBarePattern(snapshot.code, req.sourceOffset)
+        if (!bare) return
+        const edits = wrapBare(bare.patternRange, req.leadingWeight, req.patternWeight)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+      }
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -1140,6 +1175,7 @@ export function MusicalTimeline(
           getActiveTabId={props.getActiveTabId}
           onTrimClip={handleTrimClip}
           onDeleteClip={handleDeleteClip}
+          onMoveClip={handleMoveClip}
           onBindLane={handleBindLane}
         />
       ) : (

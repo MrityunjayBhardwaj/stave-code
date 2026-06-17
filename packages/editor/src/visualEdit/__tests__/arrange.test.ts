@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest'
 import {
   detectArrangeAt,
   detectAllArrangeCalls,
+  detectBarePattern,
   setWeight,
   reorderArm,
   insertArm,
@@ -79,6 +80,47 @@ describe('arrange parser — detectArrangeAt', () => {
     const doc = '$: cat(s("a"), s("b"))\n$: arrange([2, s("c")], [1, s("d")])'
     const calls = detectAllArrangeCalls(doc)
     expect(calls.map((c) => c.mode)).toEqual(['cat', 'arrange'])
+  })
+})
+
+describe('arrange parser — detectBarePattern (§2.1 wrap target)', () => {
+  it('returns the bare pattern expression range', () => {
+    const doc = 's("bd hh")'
+    const bare = detectBarePattern(doc, 3)
+    expect(bare).not.toBeNull()
+    expect(slice(doc, bare!.patternRange)).toBe('s("bd hh")')
+  })
+
+  it('excludes a `$:` label — returns only the EXPRESSION range', () => {
+    const doc = '$: s("bd hh")'
+    const bare = detectBarePattern(doc, doc.indexOf('bd'))
+    expect(slice(doc, bare!.patternRange)).toBe('s("bd hh")')
+  })
+
+  it('returns the whole expression for a `.p()`-named bare track', () => {
+    const doc = 's("bd hh").p("drums")'
+    const bare = detectBarePattern(doc, 3)
+    expect(slice(doc, bare!.patternRange)).toBe('s("bd hh").p("drums")')
+  })
+
+  it('picks the top-level track CONTAINING pos in a multi-track doc', () => {
+    const doc = '$: s("bd")\n$: note("c3 e3")'
+    const bare = detectBarePattern(doc, doc.indexOf('c3'))
+    expect(slice(doc, bare!.patternRange)).toBe('note("c3 e3")')
+  })
+
+  it('returns null inside a combinator track (detectArrangeAt owns it)', () => {
+    const doc = 'arrange([2, s("bd")], [1, s("hh")])'
+    expect(detectBarePattern(doc, doc.indexOf('bd'))).toBeNull()
+  })
+
+  it('wrap path: detectBarePattern → wrapBare introduces the combinator', () => {
+    const doc = 's("bd hh")'
+    const bare = detectBarePattern(doc, 3)!
+    // Move the bare track to start at cycle 3 (lead 3), 1-cycle clip.
+    expect(applyEdits(doc, wrapBare(bare.patternRange, 3, 1))).toBe(
+      'arrange([3, silence], [1, s("bd hh")])',
+    )
   })
 })
 
