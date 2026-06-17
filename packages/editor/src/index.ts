@@ -526,6 +526,7 @@ export {
   insertArm,
   removeArm,
   wrapBare,
+  splitArm,
   parseStepGrid,
   parsePianoRoll,
   serializeStepGrid,

@@ -127,6 +127,15 @@ export interface FullSongTimelineProps {
     sourceOffset: number | null
     armIndex: number
   }) => void
+  /** Split a clip (Phase 5c, #386). Fired on `S` with a clip selected: slice the
+   *  arm at a whole-cycle boundary into two (`splitArm`). `firstWeight` is the
+   *  first half's cycle count (the gesture uses the clip midpoint). Only a clip
+   *  spanning ≥ 2 cycles is splittable. Optional. */
+  readonly onSplitClip?: (req: {
+    sourceOffset: number | null
+    armIndex: number
+    firstWeight: number
+  }) => void
 }
 
 /** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
@@ -438,7 +447,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // (`armIndex ≥ 0`) are selectable; a bare track's implicit clip has no arm to
   // remove. Selection is keyed by lane + arm; the highlight rect is re-derived
   // in render from the live scene/layout so it tracks zoom, scroll, and re-eval.
-  const { onDeleteClip, onMoveClip, onDuplicateClip } = props
+  const { onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip } = props
   const [selected, setSelected] = useState<{
     laneKey: string
     armIndex: number
@@ -542,7 +551,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         // Not a clip edge. A press on a clip BODY begins a PENDING gesture that
         // resolves on pointer-up: a MOVE drag if the pointer travelled, else a
         // click (select + seek). A press off any clip clears selection + seeks.
-        const interactive = !!(onDeleteClip || onMoveClip || onDuplicateClip)
+        const interactive = !!(onDeleteClip || onMoveClip || onDuplicateClip || onSplitClip)
         const body = interactive ? clipBodyAt(e.clientX, e.clientY, !!onMoveClip) : null
         if (body) {
           e.preventDefault()
@@ -756,9 +765,26 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         e.preventDefault()
         onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
         setSelected(null)
+        return
+      }
+      // `S` splits the selected clip at its midpoint (whole-cycle boundary). Only
+      // a clip ≥ 2 cycles is splittable — derive the span from the live scene.
+      if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (!onSplitClip) return
+        const lane = sceneRef.current.lanes.find((l) => l.laneKey === selected.laneKey)
+        const clip = lane?.clips.find((c) => c.armIndex === selected.armIndex)
+        if (!clip) return
+        const weight = clip.endCycle - clip.startCycle
+        if (weight < 2) return
+        e.preventDefault()
+        onSplitClip({
+          sourceOffset: selected.sourceOffset,
+          armIndex: selected.armIndex,
+          firstWeight: Math.floor(weight / 2),
+        })
       }
     },
-    [selected, onDeleteClip, onDuplicateClip],
+    [selected, onDeleteClip, onDuplicateClip, onSplitClip],
   )
 
   // The selection highlight rect, derived from the LIVE scene + layout so it

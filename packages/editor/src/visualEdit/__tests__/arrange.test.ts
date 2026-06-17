@@ -18,6 +18,7 @@ import {
   insertArm,
   removeArm,
   wrapBare,
+  splitArm,
   applyEdits,
 } from '../index'
 import { parseStrudel } from '../../ir'
@@ -194,6 +195,34 @@ describe('arrange serializer — surgical, byte-fidelity', () => {
     expect(applyEdits(doc, reorderArm(doc, call, 2, 0))).toBe(
       'arrange([1, s("cp")], [2, s("bd")], [1, s("hh")])',
     )
+  })
+
+  it('split-arm slices [n, pat] → [n₁, pat], [n₂, pat], pattern verbatim', () => {
+    const doc = 'arrange([4, s("bd")], [2, s("hh")])'
+    const call = detectArrangeAt(doc, 0)!
+    expect(applyEdits(doc, splitArm(doc, call, 0, 1))).toBe(
+      'arrange([1, s("bd")], [3, s("bd")], [2, s("hh")])',
+    )
+    // midpoint split of the weight-2 arm
+    expect(applyEdits(doc, splitArm(doc, call, 1, 1))).toBe(
+      'arrange([4, s("bd")], [1, s("hh")], [1, s("hh")])',
+    )
+  })
+
+  it('split-arm clamps firstWeight into [1, n−1]', () => {
+    const doc = 'arrange([3, s("bd")], [1, s("hh")])'
+    const call = detectArrangeAt(doc, 0)!
+    // firstWeight 9 → clamped to n−1 = 2
+    expect(applyEdits(doc, splitArm(doc, call, 0, 9))).toBe(
+      'arrange([2, s("bd")], [1, s("bd")], [1, s("hh")])',
+    )
+  })
+
+  it('split-arm refuses a weight-1 arm and a cat arm (indivisible)', () => {
+    const arr = 'arrange([1, s("bd")], [2, s("hh")])'
+    expect(splitArm(arr, detectArrangeAt(arr, 0)!, 0, 1)).toEqual([]) // weight 1
+    const cat = 'cat(s("bd"), s("hh"))'
+    expect(splitArm(cat, detectArrangeAt(cat, 0)!, 0, 1)).toEqual([]) // cat arm: weight 1
   })
 })
 

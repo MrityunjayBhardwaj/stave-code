@@ -32,6 +32,7 @@ export {
   insertArm,
   removeArm,
   wrapBare,
+  splitArm,
 } from './arrange'
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
 
