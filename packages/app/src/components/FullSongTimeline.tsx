@@ -119,6 +119,14 @@ export interface FullSongTimelineProps {
       | { kind: 'reorder'; sourceOffset: number | null; fromIndex: number; toIndex: number }
       | { kind: 'wrap'; sourceOffset: number | null; leadingWeight: number; patternWeight: number },
   ) => void
+  /** Duplicate a clip (Phase 5c, #386). Fired on ⌘/Ctrl-D with a clip selected:
+   *  insert a verbatim clone of the arm right after it (`insertArm`). Receives the
+   *  clip's lane source anchor + arm index. Real arms only — a bare track's
+   *  implicit clip has no arm to clone. Optional. */
+  readonly onDuplicateClip?: (req: {
+    sourceOffset: number | null
+    armIndex: number
+  }) => void
 }
 
 /** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
@@ -430,7 +438,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // (`armIndex ≥ 0`) are selectable; a bare track's implicit clip has no arm to
   // remove. Selection is keyed by lane + arm; the highlight rect is re-derived
   // in render from the live scene/layout so it tracks zoom, scroll, and re-eval.
-  const { onDeleteClip, onMoveClip } = props
+  const { onDeleteClip, onMoveClip, onDuplicateClip } = props
   const [selected, setSelected] = useState<{
     laneKey: string
     armIndex: number
@@ -534,7 +542,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         // Not a clip edge. A press on a clip BODY begins a PENDING gesture that
         // resolves on pointer-up: a MOVE drag if the pointer travelled, else a
         // click (select + seek). A press off any clip clears selection + seeks.
-        const interactive = !!(onDeleteClip || onMoveClip)
+        const interactive = !!(onDeleteClip || onMoveClip || onDuplicateClip)
         const body = interactive ? clipBodyAt(e.clientX, e.clientY, !!onMoveClip) : null
         if (body) {
           e.preventDefault()
@@ -735,13 +743,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // focusable (tabIndex) so a click-to-select leaves it ready for the keystroke.
   const handleGridKeyDown = React.useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return
-      if (!selected || !onDeleteClip) return
-      e.preventDefault()
-      onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
-      setSelected(null)
+      if (!selected) return
+      // ⌘/Ctrl-D duplicates the selected clip (insert a clone arm after it).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
+        if (!onDuplicateClip) return
+        e.preventDefault()
+        onDuplicateClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
+        return
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!onDeleteClip) return
+        e.preventDefault()
+        onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
+        setSelected(null)
+      }
     },
-    [selected, onDeleteClip],
+    [selected, onDeleteClip, onDuplicateClip],
   )
 
   // The selection highlight rect, derived from the LIVE scene + layout so it

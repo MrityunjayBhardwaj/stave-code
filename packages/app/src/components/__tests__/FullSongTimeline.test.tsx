@@ -493,3 +493,43 @@ describe('FullSongTimeline — move a clip (drag body → reorder / §2.1 wrap, 
     })
   })
 })
+
+describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert arm, #386)', () => {
+  function renderDuplicatable(onDuplicateClip: ReturnType<typeof vi.fn>) {
+    const utils = renderFull({ ir: {} as never, onDuplicateClip })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    return { ...utils, grid }
+  }
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  it('selecting arm 0 then ⌘-D → onDuplicateClip(arm 0)', async () => {
+    const onDuplicateClip = vi.fn()
+    const { grid } = renderDuplicatable(onDuplicateClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 }) // select arm 0
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 'd', metaKey: true })
+    expect(onDuplicateClip).toHaveBeenCalledTimes(1)
+    expect(onDuplicateClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0 })
+  })
+
+  it('Ctrl-D also duplicates (arm 1)', async () => {
+    const onDuplicateClip = vi.fn()
+    const { grid } = renderDuplicatable(onDuplicateClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 600, clientY: 10, pointerId: 1 }) // arm 1
+    fireEvent.pointerUp(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 'd', ctrlKey: true })
+    expect(onDuplicateClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 1 })
+  })
+
+  it('⌘-D with nothing selected is a no-op', async () => {
+    const onDuplicateClip = vi.fn()
+    const { grid } = renderDuplicatable(onDuplicateClip)
+    await settle()
+    fireEvent.keyDown(grid, { key: 'd', metaKey: true })
+    expect(onDuplicateClip).not.toHaveBeenCalled()
+  })
+})
