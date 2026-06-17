@@ -360,6 +360,13 @@ const REGRESSION_FIXTURES: readonly string[] = [
   '$: note("c d")\n$: s("bd hh")',
   'stack(s("bd"), s("hh"))',
   's("bd hh sd cp").layer(x => x.add("0,2"))',
+  // #113 — a bare pattern PRECEDED by a prelude statement must lift the same
+  // way in the staged pipeline as in parseStrudel (strip the prelude). Before
+  // the fix the pipeline lifted the whole source as opaque Code → empty
+  // timeline; parseStrudel already stripped it, so these fixtures pin parity.
+  'setcps(120/240)\ns("bd hh sd")',
+  'setcps(120/240)\nsound("bd hh sd")',
+  '// my tune\ns("bd hh sd")',
 ]
 
 describe('parseStrudel stages — regression sentinel (T-05.c, D-06)', () => {
