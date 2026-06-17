@@ -1078,19 +1078,29 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       if (ir.entries.length === 0) return []
       const selectorEvents = walk(ir.selector, ctx)
       if (selectorEvents.length === 0) return [] // rest arm this cycle → silence
-      let innerCycle = ctx.cycle // pick / pickReset = continuous global cycle
-      if (ir.method === 'pickRestart' && ir.selector.tag === 'Cycle' && ir.selector.items.length > 0) {
+      // From the weighted `<…@w …>` control (a Cycle, PV126) derive, for this
+      // cycle: the active ARM INDEX (#463 Stage 2 — clip attribution; each
+      // control section is a timeline clip) and the dwell-local cycle (the
+      // restart inner cycle). A non-Cycle selector yields neither (no clips,
+      // continuous timing).
+      let selectedArm: number | undefined
+      let dwellLocal = ctx.cycle
+      if (ir.selector.tag === 'Cycle' && ir.selector.items.length > 0) {
         const weights = ir.selector.items.map(it => (it.tag === 'Elongate' && it.factor > 0 ? it.factor : 1))
         const period = weights.reduce((s, w) => s + w, 0)
         if (period > 0) {
           const pos = ((ctx.cycle % period) + period) % period
           let acc = 0
-          for (const w of weights) {
-            if (pos < acc + w) { innerCycle = pos - acc; break }
-            acc += w
+          for (let k = 0; k < weights.length; k++) {
+            if (pos < acc + weights[k]) { selectedArm = k; dwellLocal = pos - acc; break }
+            acc += weights[k]
           }
         }
       }
+      const innerCycle = ir.method === 'pickRestart' ? dwellLocal : ctx.cycle
+      // Outermost combinator wins (#451): a nested NamedPick inherits the OUTER
+      // arm index; flat tracks use this control's arm.
+      const armIndex = ctx.armIndex ?? selectedArm
       const out: IREvent[] = []
       for (const sel of selectorEvents) {
         const key = sel.note == null ? null : String(sel.note)
@@ -1105,6 +1115,7 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
           duration: sel.end - sel.begin,
           begin: sel.begin,
           end: sel.end,
+          ...(armIndex !== undefined ? { armIndex } : {}),
         }
         const subEvents = walk(entry.pattern, subCtx)
         // loc layering (PV36 / D-01): section atom innermost (loc[0]), then the
