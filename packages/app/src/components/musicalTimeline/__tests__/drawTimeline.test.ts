@@ -89,10 +89,12 @@ describe('drawTimeline', () => {
     const { ctx: ctx2, rects: rects2 } = mockCtx()
     drawTimeline(ctx2, scene, { ...transform, scrollLeft: 2400 }, theme, flat)
     const screenXof = (cycle: number) => (cycle / 4) * 4000 - 2400
-    const markAt25 = rects2.some((r) => Math.abs(r.x - screenXof(2.5)) < 1 && r.h === 3)
+    // #459 — mark height now scales with the row: at rowHeight 22 it's
+    // barHeightForBand(22 − 2·3) = max(3, 16 − 12) = 4 (was a fixed 3).
+    const markAt25 = rects2.some((r) => Math.abs(r.x - screenXof(2.5)) < 1 && r.h === 4)
     expect(markAt25).toBe(true)
-    // sanity: marks are short (h=3), unlike full-height bands/gridlines.
-    expect(rects2.some((r) => r.h === 3)).toBe(true)
+    // sanity: marks are short (h=4), unlike full-height bands/gridlines.
+    expect(rects2.some((r) => r.h === 4)).toBe(true)
     expect(rects.length).toBeGreaterThan(0)
   })
 
@@ -155,7 +157,7 @@ describe('drawTimeline', () => {
     // 4000px / 4 cycles = 1000 px/cycle ≫ COARSEN_PX → marks mode.
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, durScene, { scrollLeft: 0, contentWidth: 4000, viewportWidth: 4000 }, theme, flat)
-    const marks = rects.filter((r) => r.h === 3) // mark height (collapsed)
+    const marks = rects.filter((r) => r.h === 4) // mark height (collapsed, rowHeight 22 → 4; #459)
     const short = marks.find((r) => Math.abs(r.x - 0) < 1)!
     const long = marks.find((r) => Math.abs(r.x - 1000) < 1)! // cycle 1 → x=1000
     expect(short.w).toBe(MIN_MARK_W) // floored
@@ -195,9 +197,10 @@ describe('drawTimeline', () => {
     expect(layout.boxes[0].subRows?.length).toBe(2)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, drumScene, { scrollLeft: 0, contentWidth: 4000, viewportWidth: 4000 }, theme, layout)
-    // Marks are the short (h=3) rects at x≈0 (cycle 0). The two voices must land
-    // on DIFFERENT baselines — bd in sub-row 0, sd in sub-row 1.
-    const marks = rects.filter((r) => r.h === 3 && Math.abs(r.x - 0) < 1)
+    // Marks are the short rects at x≈0 (cycle 0). #459 — the sub-row mark scales
+    // with the sub-row height: barHeightForBand(22 − 2·2) = max(3, 18 − 12) = 6.
+    // The two voices must land on DIFFERENT baselines — bd sub-row 0, sd sub-row 1.
+    const marks = rects.filter((r) => r.h === 6 && Math.abs(r.x - 0) < 1)
     expect(marks.length).toBe(2)
     const ys = marks.map((r) => r.y).sort((a, b) => a - b)
     expect(ys[1] - ys[0]).toBeGreaterThanOrEqual(20) // ~one SUB_ROW_HEIGHT apart

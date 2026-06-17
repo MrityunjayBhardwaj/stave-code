@@ -25,10 +25,14 @@
 import * as React from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SongAnalysis, PatternIR } from '@stave/editor'
+import {
+  getMusicalTimelineSubRowHeight,
+  onMusicalTimelineSubRowHeightChange,
+} from '@stave/editor'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
-import { computeLaneLayout, laneAtY, SUB_ROW_HEIGHT, type LaneLayout } from './musicalTimeline/laneLayout'
+import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import { SongTimelineCanvas } from './SongTimelineCanvas'
 import {
   songCycleToX,
@@ -50,7 +54,6 @@ const USER_SCROLL_GUARD_MS = 1200
 const CONTROLS_HEIGHT = 26
 const TOPBAR_HEIGHT = 28
 const GUTTER_WIDTH = 90
-const ROW_HEIGHT = 22
 /** Height of an expanded ("accordion") lane — tall enough for the read-only
  *  note detail (pitch spread + per-beat grid) to be legible (#422, design §4.5). */
 const EXPANDED_ROW_HEIGHT = 96
@@ -381,9 +384,17 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // canvas draw, the canvas host height, the DOM lane labels, and the hit-test.
   const { onBindLane } = props
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  // Lane + per-voice sub-row height follow the shared "timeline row height"
+  // editor setting (#459) — the same source the Live monitor reads — so the
+  // Song view matches it instead of a private constant. The setting governs
+  // every row in the Live view (each leaf voice is one `subRowHeight`), so it
+  // feeds BOTH the collapsed lane height and the expanded sub-row height here;
+  // the EXPANDED single-band note-detail height stays a fixed zoom.
+  const [rowH, setRowH] = useState<number>(() => getMusicalTimelineSubRowHeight())
+  useEffect(() => onMusicalTimelineSubRowHeightChange(setRowH), [])
   const layout = useMemo(
-    () => computeLaneLayout(scene.lanes, expanded, ROW_HEIGHT, EXPANDED_ROW_HEIGHT, SUB_ROW_HEIGHT),
-    [scene.lanes, expanded],
+    () => computeLaneLayout(scene.lanes, expanded, rowH, EXPANDED_ROW_HEIGHT, rowH),
+    [scene.lanes, expanded, rowH],
   )
   // Refs so the double-click hit-test reads live scene/layout without stale
   // closures (mirrors the scrollLeftRef/zoomRef pattern above).

@@ -54,6 +54,11 @@ vi.mock('@stave/editor', () => ({
   collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : [],
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
+  // #459 — Song view now reads the shared timeline row-height setting. Mock it
+  // to 22 (the height these layout assertions were written for) + a no-op
+  // subscribe, mirroring MusicalTimeline.test's mock.
+  getMusicalTimelineSubRowHeight: () => 22,
+  onMusicalTimelineSubRowHeightChange: () => () => {},
 }))
 
 import { FullSongTimeline } from '../FullSongTimeline'

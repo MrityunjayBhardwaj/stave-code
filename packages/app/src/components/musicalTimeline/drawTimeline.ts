@@ -60,6 +60,18 @@ export const COARSEN_PX = 28
  *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
 export const MIN_MARK_W = 2
 
+/** Note-bar height scales with its band — mirrors the live monitor's
+ *  `leafBarHeight` (MusicalTimeline): the bar fills most of the band, reserving
+ *  ~`BAR_PITCH_RESERVE`px for melodic pitch motion, floored so a tiny band still
+ *  shows a mark. This is what makes resizing the timeline row-height setting grow
+ *  the Song bars, just like it grows the live monitor's bars (#459). At the
+ *  default row height the result is ~3px (unchanged); larger rows → taller bars. */
+const BAR_PITCH_RESERVE = 12
+const BAR_HEIGHT_MIN = 3
+function barHeightForBand(bandHeight: number): number {
+  return Math.max(BAR_HEIGHT_MIN, bandHeight - BAR_PITCH_RESERVE)
+}
+
 /** Minimum px between per-beat gridlines in an expanded lane — below this they
  *  crowd into a smear, so they're suppressed (rhythm grid only when legible). */
 const BEAT_GRID_MIN_PX = 10
@@ -254,9 +266,11 @@ function drawMarks(
   toScreenX: (c: number) => number,
 ): void {
   const padY = 3
-  // Expanded lanes draw a slightly taller mark over the much taller band, so
-  // the pitch spread reads as a clear note layout rather than a thin smear.
-  const markH = expanded ? 4 : 3
+  // Collapsed lane: the bar scales with the row height, so the timeline
+  // row-height setting grows it like the live monitor (#459). An expanded
+  // single-band lane keeps a thin mark so its pitch spread reads as a contour
+  // over the much taller note-detail band, not one fat bar.
+  const markH = expanded ? 4 : barHeightForBand(rowHeight - 2 * padY)
   placeMarks(
     ctx,
     lane.notes,
@@ -293,11 +307,13 @@ function drawVoiceMarks(
   toScreenX: (c: number) => number,
 ): void {
   const padY = 2
-  const markH = 3
   const voiceByKey = new Map(lane.voices.map((v) => [v.key, v]))
   for (const sr of subRows) {
     const voice = voiceByKey.get(sr.voiceKey)
     const notes = lane.notes.filter((n) => (n.voice ?? NO_VOICE) === sr.voiceKey)
+    // Per-voice bar scales with the sub-row height, so resizing the row-height
+    // setting grows the sub-row bars just like the live monitor's (#459).
+    const markH = barHeightForBand(sr.height - 2 * padY)
     placeMarks(
       ctx,
       notes,
