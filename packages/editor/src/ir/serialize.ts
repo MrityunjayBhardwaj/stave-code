@@ -89,7 +89,15 @@ function validateNode(raw: unknown, path: string): PatternIR {
       const children = (node.children as unknown[]).map((c, i) =>
         validateNode(c, `${path}.children[${i}]`)
       )
-      return { tag: 'Seq', children }
+      // #434 — carry `userMethod` + `loc` through the JSON round-trip (P33-class
+      // silent-drop otherwise, same trap the Track case warns about below).
+      // `userMethod: 'fastcat'` distinguishes a parsed fastcat from a
+      // mini-/seq-derived Seq; dropping it would erase the combinator the
+      // round-trip is meant to preserve.
+      const out: PatternIR = { tag: 'Seq', children }
+      if (Array.isArray(node.loc)) out.loc = node.loc as SourceLocation[]
+      if (typeof node.userMethod === 'string') out.userMethod = node.userMethod
+      return out
     }
 
     case 'Stack': {

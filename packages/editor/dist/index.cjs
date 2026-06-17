@@ -862,7 +862,7 @@ function gen(ir) {
         return collapseToMini(ir.children);
       }
       const parts = ir.children.map(gen);
-      return `cat(${parts.join(", ")})`;
+      return `fastcat(${parts.join(", ")})`;
     }
     case "Stack": {
       if (ir.tracks.length === 0) return '""';
@@ -1236,7 +1236,10 @@ function validateNode(raw, path) {
       const children = node.children.map(
         (c, i) => validateNode(c, `${path}.children[${i}]`)
       );
-      return { tag: "Seq", children };
+      const out = { tag: "Seq", children };
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
     }
     case "Stack": {
       requireArray(node, "tracks", path);
