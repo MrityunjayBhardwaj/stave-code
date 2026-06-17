@@ -1062,6 +1062,68 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       return out
     }
 
+    case 'NamedPick': {
+      // #463 Stage 1 — object/named-key pick family (`sel.pickRestart({…})`).
+      // Resolve the active section by the selector's STRING value, then play
+      // that section's sub-IR at the selector event's slot. Inner-cycle timing
+      // per variant, GROUNDED 2026-06-18 against real @strudel/core haps:
+      //   pick       (innerJoin)   — inner cycle = the GLOBAL cycle (continuous)
+      //   pickReset  (resetJoin)   — identical value stream at per-cycle grain
+      //   pickRestart(restartJoin) — inner RESTARTS on each section entry → the
+      //                              inner cycle is the LOCAL dwell position.
+      // The selector is canonically the weighted `<…@w …>` control (a Cycle);
+      // walking it yields the active key (robust for any selector). For the
+      // restart dwell-local cycle we read the Cycle's weighted span (PV126);
+      // a non-Cycle selector falls back to the global cycle.
+      if (ir.entries.length === 0) return []
+      const selectorEvents = walk(ir.selector, ctx)
+      if (selectorEvents.length === 0) return [] // rest arm this cycle → silence
+      let innerCycle = ctx.cycle // pick / pickReset = continuous global cycle
+      if (ir.method === 'pickRestart' && ir.selector.tag === 'Cycle' && ir.selector.items.length > 0) {
+        const weights = ir.selector.items.map(it => (it.tag === 'Elongate' && it.factor > 0 ? it.factor : 1))
+        const period = weights.reduce((s, w) => s + w, 0)
+        if (period > 0) {
+          const pos = ((ctx.cycle % period) + period) % period
+          let acc = 0
+          for (const w of weights) {
+            if (pos < acc + w) { innerCycle = pos - acc; break }
+            acc += w
+          }
+        }
+      }
+      const out: IREvent[] = []
+      for (const sel of selectorEvents) {
+        const key = sel.note == null ? null : String(sel.note)
+        // Unknown key OR a rest arm (no key) → silence; matches Strudel, where
+        // a missing lookup entry produces nothing for that cycle.
+        const entry = key == null ? undefined : ir.entries.find(e => e.key === key)
+        if (!entry) continue
+        const subCtx: CollectContext = {
+          ...ctx,
+          time: sel.begin,
+          cycle: innerCycle,
+          duration: sel.end - sel.begin,
+          begin: sel.begin,
+          end: sel.end,
+        }
+        const subEvents = walk(entry.pattern, subCtx)
+        // loc layering (PV36 / D-01): section atom innermost (loc[0]), then the
+        // selector event's loc, then the NamedPick call-site.
+        const selectorLoc = sel.loc?.[0]
+        const wrapperLoc = ir.loc?.[0]
+        for (const e of subEvents) {
+          const childLoc = e.loc ?? []
+          const newLoc = [
+            ...childLoc,
+            ...(selectorLoc ? [selectorLoc] : []),
+            ...(wrapperLoc ? [wrapperLoc] : []),
+          ]
+          out.push(newLoc.length > 0 ? { ...e, loc: newLoc } : e)
+        }
+      }
+      return out
+    }
+
     case 'Struct': {
       // Strudel's `struct(mask)` (pattern.mjs:1161-1163):
       //   struct(mask, pat) = pat.keepif.out(mask)

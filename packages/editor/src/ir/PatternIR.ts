@@ -30,6 +30,18 @@ export interface ArrangeArm {
   loc?: SourceLocation[]
 }
 
+/** One named arm of a `NamedPick` (object-form pick family). #463 Stage 1. */
+export interface NamedPickEntry {
+  /** The lookup key — the bare/quoted object key, normalized to its string
+   *  form. The selector's per-cycle STRING value (`ev.note`) matches this. */
+  key: string
+  /** The section's sub-IR (the object value expression, e.g. `s("bd sd")`). */
+  pattern: PatternIR
+  /** Source range of the key token (`verse` in `{verse: …}`) — lets a clip
+   *  gesture bind the section's content back to its definition site. */
+  keyLoc?: SourceLocation
+}
+
 export interface PlayParams {
   s?: string            // instrument/sample name
   gain?: number         // 0-1
@@ -78,6 +90,7 @@ export type PatternIR =
   | { tag: 'Chunk';  n: number; transform: PatternIR; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 — per-cycle slot rotation; `transform` is the body with the user transform pre-applied
   | { tag: 'Ply';    n: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 — repeats each event of body n times within its own slot (pattern.mjs:1905-1911)
   | { tag: 'Pick';   selector: PatternIR; lookup: PatternIR[]; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 — for each event of selector, pick lookup[clamp(round(value), 0, len-1)] and play at the selector event's slot (pick.mjs:44-54). First list-of-sub-IRs shape.
+  | { tag: 'NamedPick'; selector: PatternIR; entries: NamedPickEntry[]; method: string; rawArgs: string; loc?: SourceLocation[]; userMethod?: string }  // #463 Stage 1 — object/named-key pick family (`sel.pickRestart({verse:…, chorus:…})`). selector's STRING value keys `entries`; `method` ∈ pick(innerJoin)/pickRestart(restartJoin)/pickReset(resetJoin) drives inner-cycle timing. `rawArgs` = verbatim object-literal source for byte-faithful toStrudel (matches the opaque-Code precedent it replaces).
   | { tag: 'Struct'; mask: string; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 — re-times body's value-stream to mask onsets (pattern.mjs:1161, this.keepif.out). Distinct from When/mask which only gates.
   | { tag: 'Swing';  n: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 — narrow tag per D-03; pattern.mjs:2193 swing(n) = pat.swingBy(1/3, n) = pat.inside(n, late(seq(0, 1/6))). Inside primitive deferred.
   | { tag: 'Shuffle';  n: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }  // Tier 4 (Phase 19-04 T-05) — signal.mjs:392 shuffle(n) = _rearrangeWith(randrun(n), n, pat); per-cycle permutation of n slices, each played exactly once per cycle.
@@ -273,6 +286,8 @@ export const IR = {
     attachMeta({ tag: 'Ply', n, body }, meta),
   pick: (selector: PatternIR, lookup: PatternIR[], meta?: TagMeta): PatternIR =>
     attachMeta({ tag: 'Pick', selector, lookup }, meta),
+  namedPick: (selector: PatternIR, entries: NamedPickEntry[], method: string, rawArgs: string, meta?: TagMeta): PatternIR =>
+    attachMeta({ tag: 'NamedPick', selector, entries, method, rawArgs }, meta),
   struct: (mask: string, body: PatternIR, meta?: TagMeta): PatternIR =>
     attachMeta({ tag: 'Struct', mask, body }, meta),
   swing: (n: number, body: PatternIR, meta?: TagMeta): PatternIR =>

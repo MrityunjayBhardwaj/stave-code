@@ -270,6 +270,14 @@ function gen(ir: PatternIR): string {
       return `${sel}.pick([${elems.join(', ')}])`
     }
 
+    case 'NamedPick':
+      // #463 Stage 1 — object/named-key pick family. Re-emit
+      // `${gen(selector)}.${method}(${rawArgs})` using the VERBATIM object-
+      // literal source (rawArgs), so the round-trip is byte-identical to the
+      // opaque Code node this replaced (PV37 preserved — collect reads the
+      // structured `entries`, round-trip reads the raw string).
+      return `${gen(ir.selector)}.${ir.method}(${ir.rawArgs})`
+
     case 'Struct': {
       // Tier 4 (Phase 19-04 T-03) — `struct(mask)` (pattern.mjs:1161-1163).
       // 1:1 method↔tag mapping with mask carried as a raw string (matches
