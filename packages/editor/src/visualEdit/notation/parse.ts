@@ -28,6 +28,16 @@ const ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/
 /** a melodic note token for the roll */
 const NOTE = /^[a-gA-G][bs#]?-?\d$/
 
+/**
+ * A bare `-` is a rest, identical to `~` — grounded against real `@strudel`
+ * haps: `s("bd - bd")` and `s("bd ~ bd")` produce byte-identical events (the
+ * `-` slots are silent; the tie/sustain token is `_`, handled elsewhere).
+ * It is a rest ONLY as a STANDALONE token: `-7` is a negative melodic value,
+ * so a `-` that continues into an atom is left for the atom/note path.
+ */
+const isBareRest = (s: string, i: number): boolean =>
+  s[i] === '-' && (i + 1 >= s.length || /[\s[\]@,*(!]/.test(s[i + 1]))
+
 /** ceiling on expanded columns so `[7 hits][11 hits]` can't blow up the grid */
 const MAX_STEPS = 64
 
@@ -230,7 +240,7 @@ function parseGroup(inner: string, elongation: number): Step | { reason: string 
       i++
       continue
     }
-    if (ch === '~') {
+    if (ch === '~' || isBareRest(inner, i)) {
       slots.push({ atoms: [], units: 1 })
       i++
       continue
@@ -292,7 +302,7 @@ function tokenize(mini: string): Tokenized {
       i++
       continue
     }
-    if (ch === '~') {
+    if (ch === '~' || isBareRest(src, i)) {
       steps.push({ atoms: [], elongation: 1, sub: null })
       i++
       continue
