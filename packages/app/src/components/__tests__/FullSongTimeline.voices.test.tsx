@@ -22,6 +22,10 @@ const DRUM_EVENTS = [
 vi.mock('@stave/editor', () => ({
   collectCycles: () => DRUM_EVENTS,
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
+  // #459 — Song view reads the shared timeline row-height setting; mock to 22
+  // (the SUB_ROW_HEIGHT these sub-row layout assertions were written for).
+  getMusicalTimelineSubRowHeight: () => 22,
+  onMusicalTimelineSubRowHeightChange: () => () => {},
 }))
 
 import { FullSongTimeline } from '../FullSongTimeline'
