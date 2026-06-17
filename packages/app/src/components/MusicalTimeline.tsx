@@ -54,6 +54,7 @@ import {
   setWeight,
   removeArm,
   reorderArm,
+  insertArm,
   wrapBare,
   useTrackMeta,
   getMusicalTimelineSubRowHeight,
@@ -1094,6 +1095,24 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // Duplicate a clip on the Song canvas (Phase 5c, #386): clone the selected
+  // arm's VERBATIM source and insert it right after, via insertArm. The clone is
+  // byte-identical (same weight + pattern), so the song gains a repeat of that
+  // clip. Real arms only — a bare track has no arm to clone (move-wrap first).
+  const handleDuplicateClip = React.useCallback(
+    (req: { sourceOffset: number | null; armIndex: number }) => {
+      if (!snapshot?.source || req.sourceOffset == null) return
+      const call = detectArrangeAt(snapshot.code, req.sourceOffset)
+      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
+      const arm = call.arms[req.armIndex]
+      const armSource = snapshot.code.slice(arm.armRange[0], arm.armRange[1])
+      const edits = insertArm(snapshot.code, call, req.armIndex + 1, armSource)
+      if (edits.length === 0) return
+      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -1176,6 +1195,7 @@ export function MusicalTimeline(
           onTrimClip={handleTrimClip}
           onDeleteClip={handleDeleteClip}
           onMoveClip={handleMoveClip}
+          onDuplicateClip={handleDuplicateClip}
           onBindLane={handleBindLane}
         />
       ) : (
