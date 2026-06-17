@@ -1,24 +1,15 @@
 /**
- * Full-song view: DELETE a clip by selecting it + pressing Delete (#386 /
- * Phase 5c) — Playwright observation (AnviDev observe gate).
+ * Full-song view: edit a NESTED combinator arm (#451) — Playwright observation
+ * (AnviDev observe gate).
  *
- * The unit tests cover the substrate (editor arrange.test.ts: removeArm) and the
- * gesture (FullSongTimeline.test.tsx: select body + Delete → onDeleteClip). This
- * drives the REAL app end-to-end to prove the whole write-back loop works:
- *   click a clip body → select → Delete → remove-arm serializer → registry
- *   write-back → the editor SOURCE loses that arm → the debounced re-eval
- *   republishes the IR → the lane disappears.
- *
- * We TYPE the song (not setValue) so the onChange → file store → IR-snapshot
- * path fires (same reason as the trim spec).
+ * `arrange([2, cat(s("bd"), s("sd"))], [1, s("hh")]).p('drums')`: arm 0's pattern
+ * is itself a `cat`. The song timeline must treat that as ONE outer clip (the cat
+ * block, cycles [0,2)) and edit the OUTER arrange — NOT the inner cat (which
+ * previously made trim/split silent no-ops). This drives the REAL app end-to-end:
+ * splitting the cat block slices the OUTER arm `[2, cat(...)]` into two halves,
+ * the inner cat preserved verbatim in each.
  */
 import { test, expect, type Page } from '@playwright/test'
-
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
-
-// Two arms, period 2 + 2 = 4. Arm 0 (bd) spans cycles [0,2) → its body sits in
-// the first half of the first lane. Bare patterns so the body isn't obscured.
-const ARRANGE_SONG = 'arrange([2, s("bd")], [2, s("hh")])'
 
 async function bootShell(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -39,6 +30,7 @@ async function bootShell(page: Page): Promise<void> {
 }
 
 async function typeSongAndEval(page: Page, code: string): Promise<void> {
+  const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
   await page.evaluate(() => {
     const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; focus: () => void }> } } }).monaco?.editor?.getEditors?.()) ?? []
     const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
@@ -61,7 +53,7 @@ function strudelSource(page: Page): Promise<string> {
   })
 }
 
-test('selecting arm 0’s clip and pressing Delete removes the arm from the source', async ({ page }) => {
+test('splitting a nested cat-block clip slices the OUTER arrange arm, inner cat preserved', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
@@ -69,34 +61,29 @@ test('selecting arm 0’s clip and pressing Delete removes the arm from the sour
   })
 
   await bootShell(page)
-  await typeSongAndEval(page, ARRANGE_SONG)
+  // `.p('drums')` names the whole arrange ONE track → one lane, so the cat block
+  // is a single clip (arm 0, cycles [0,2)); period = 2 + 1 = 3.
+  await typeSongAndEval(page, "arrange([2, cat(s(\"bd\"), s(\"sd\"))], [1, s(\"hh\")]).p('drums')")
 
   await page.locator('[data-musical-timeline="view-toggle"]').click()
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
   await page.waitForTimeout(400)
 
-  expect(await strudelSource(page)).toContain('arrange([2, s("bd")]')
-
-  // Click arm 0's body (the bd lane, first half = cycle ~1 of 4 → 0.25·W) to
-  // select it — well clear of the edges at 0 and 0.5·W so it's a body, not a trim.
+  // Select the cat block (arm 0, cycle ~0.5 = 0.5/3 ≈ 0.17·W), then press S.
   const grid = page.locator('[data-full-song="grid"]')
   const box = await grid.boundingBox()
   if (!box) throw new Error('no grid box')
-  const y = box.y + 8 // first (bd) lane row
-  await page.mouse.click(box.x + box.width * 0.25, y)
+  await page.mouse.click(box.x + box.width * 0.17, box.y + 8)
   await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
+  await grid.press('s')
 
-  // Delete the selected clip → the arm (and one separator) is removed. Use
-  // grid.press (focuses the widget first) not page.keyboard.press after a
-  // mouse.click — the latter dispatches to document.body (P178).
-  await grid.press('Delete')
+  // OUTER arm 0 `[2, cat(...)]` slices at its midpoint into two weight-1 arms,
+  // each keeping the inner cat verbatim. (Before #451 this was a silent no-op.)
+  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain(
+    "arrange([1, cat(s(\"bd\"), s(\"sd\"))], [1, cat(s(\"bd\"), s(\"sd\"))], [1, s(\"hh\")]).p('drums')",
+  )
 
-  // The remove-arm edit applied to the model; the debounced re-eval follows.
-  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain('arrange([2, s("hh")])')
-  // arm 0 (bd) is gone entirely.
-  expect(await strudelSource(page)).not.toContain('s("bd")')
-
-  await page.screenshot({ path: 'test-results/arrange-delete.png' })
+  await page.screenshot({ path: 'test-results/arrange-nested-split.png' })
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })

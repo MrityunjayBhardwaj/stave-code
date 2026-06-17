@@ -43,6 +43,15 @@ export function collectNoteMarks(
   // bind maps this → editor cursor → the Pattern panel rebinds (#422). First-
   // wins so the anchor is stable (doesn't jump as later events stream in).
   const sourceByLane = new Map<string, number>()
+  // Per-lane OUTERMOST combinator offset for clip gestures (#451). `loc` is
+  // ordered leaf→…→outermost wrappers, but the LAST entry can be a non-combinator
+  // suffix (`.p('x')`, `.gain(…)`), so we take the MINIMUM start instead: the
+  // outermost `arrange`/`cat` call begins earliest in the source, while leaves,
+  // inner combinators and suffix methods all start later. `detectArrangeAt(min)`
+  // then resolves the OUTER combinator (that offset lies only inside it, not the
+  // inner one) so a nested combinator arm edits as one outer clip. `sourceByLane`
+  // keeps the innermost (content) anchor for expand→bind. First-event-wins.
+  const arrangeByLane = new Map<string, number>()
   // Clip derivation (#386): per lane, the active arrange-arm index for each
   // integer cycle (events of one arm share a cycle; arms span whole cycles —
   // grounded). Run-length-encoded into clips below. Only lanes whose events
@@ -62,6 +71,14 @@ export function collectNoteMarks(
     if (!sourceByLane.has(key)) {
       const offset = ev.loc?.[0]?.start
       if (typeof offset === 'number' && Number.isFinite(offset)) sourceByLane.set(key, offset)
+    }
+    if (!arrangeByLane.has(key) && ev.loc && ev.loc.length > 0) {
+      let outer: number | undefined
+      for (const l of ev.loc) {
+        const s = l?.start
+        if (typeof s === 'number' && Number.isFinite(s) && (outer === undefined || s < outer)) outer = s
+      }
+      if (outer !== undefined) arrangeByLane.set(key, outer)
     }
     if (typeof ev.armIndex === 'number') {
       let byCycle = armByCycleByLane.get(key)
@@ -136,5 +153,5 @@ export function collectNoteMarks(
     flush(nCycles)
     if (clips.length > 0) clipsByLane.set(key, clips)
   }
-  return { marksByLane, sourceByLane, clipsByLane, capped }
+  return { marksByLane, sourceByLane, arrangeByLane, clipsByLane, capped }
 }

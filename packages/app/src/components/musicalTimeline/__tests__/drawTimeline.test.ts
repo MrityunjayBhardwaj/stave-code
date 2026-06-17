@@ -51,6 +51,7 @@ const scene: TimelineScene = {
       voices: [{ key: 'lead', label: 'lead', melodic: true, pitchMin: 60, pitchMax: 72 }],
       clips: [],
       sourceOffset: null,
+      arrangeOffset: null,
     },
   ],
 }
@@ -185,6 +186,7 @@ describe('drawTimeline', () => {
           ],
           clips: [],
           sourceOffset: null,
+          arrangeOffset: null,
         },
       ],
     }

@@ -76,12 +76,16 @@ export interface IREvent {
    *  events on leaf 0". Phase 20-12 sub-row partition support. */
   leafIndex?: number
   /** Index of the time-sequence ARM (clip) that produced this event, within
-   *  its enclosing `Arrange` node (`arrange`/`cat`/`slowcat` combinator). Set
-   *  by collect.ts's Arrange arm — mirrors `leafIndex`, but partitions a
-   *  track HORIZONTALLY (which clip along the timeline) rather than vertically
-   *  (which voice). Absent for tracks with no arrangement combinator — the
-   *  timeline treats a bare track as one implicit clip (design §5 option b).
-   *  Together with the lane key it identifies a clip. Phase 5a (#386). */
+   *  the OUTERMOST `Arrange` node (`arrange`/`cat`/`slowcat` combinator) of its
+   *  track. Set by collect.ts's Arrange arm — mirrors `leafIndex`, but
+   *  partitions a track HORIZONTALLY (which clip along the timeline) rather than
+   *  vertically (which voice). For a NESTED combinator (an arm whose pattern is
+   *  itself a combinator) the OUTER index wins — the inner combinator does NOT
+   *  overwrite it (#451) — so the whole nested block reads as one outer clip and
+   *  the song timeline binds the outer combinator. Absent for tracks with no
+   *  arrangement combinator — the timeline treats a bare track as one implicit
+   *  clip (design §5 option b). Together with the lane key it identifies a clip.
+   *  Phase 5a (#386). */
   armIndex?: number
   /** Engine-specific extended parameters */
   params?: Record<string, unknown>

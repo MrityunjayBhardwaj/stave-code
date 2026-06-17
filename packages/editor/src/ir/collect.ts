@@ -722,7 +722,13 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
       const childCtx: CollectContext = {
         ...ctx,
         cycle: localCycle,
-        armIndex,
+        // Outermost combinator wins (#451): a nested arrange/cat inherits the
+        // OUTER arm index rather than overwriting it, so the song timeline sees
+        // the top-level arm as ONE clip (the whole nested block) and the clip
+        // gesture binds the OUTER combinator. `armIndex` is timeline-only, so
+        // this is safe; flat (non-nested) cases keep `ctx.armIndex` undefined
+        // here and so use this level's index unchanged.
+        armIndex: ctx.armIndex ?? armIndex,
       }
       return withWrapperLoc(walk(ir.arms[armIndex].pattern, childCtx), ir.loc)
     }
