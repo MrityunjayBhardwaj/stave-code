@@ -685,10 +685,39 @@ function walk(ir: PatternIR, ctx: CollectContext): IREvent[] {
     }
 
     case 'Cycle': {
-      // Alternation: pick item based on current cycle
+      // Alternation (`<a b c>` / weighted `<a@2 b>`): pick the arm for the
+      // current cycle. GROUNDED 2026-06-18 against real `@strudel/mini` haps:
+      // mini `<…>` is a slowcat where `x@n` lists `x` for n WHOLE cycles.
+      // Period P = Σ weights; arm i occupies cycles [start_i, start_i+w_i)
+      // within each period. Verified streams:
+      //   `<a@2 b@2>`       ⇒ a a b b …          (NOT a b a b)
+      //   `<bd <hh cp>>`    ⇒ bd hh bd cp …       (nested arm advances)
+      //   `<<a b>@2 c@2>`   ⇒ a a c c b b c c …   (weighted + nested)
+      // The KEY semantic: a multi-cycle / nested arm sees its INTERNAL cycle
+      // advance ONCE PER PERIOD — not per position-within-span — so the inner
+      // cycle is `floor(globalCycle / period)` (every slowcat slot of the same
+      // arm in one period shares it). This differs from `Arrange` (the JS
+      // `arrange/cat` combinator), whose arm advances every cycle of its span.
+      // An item's weight is the `Elongate` factor wrapping it (parseMini
+      // attaches `@n` as `Elongate(n, body)`); unwrap so the body sees the slot.
       if (ir.items.length === 0) return []
-      const item = ir.items[ctx.cycle % ir.items.length]
-      return withWrapperLoc(walk(item, ctx), ir.loc)
+      const weights = ir.items.map(it => (it.tag === 'Elongate' && it.factor > 0 ? it.factor : 1))
+      const period = weights.reduce((s, w) => s + w, 0)
+      if (period <= 0) return []
+      const pos = ((ctx.cycle % period) + period) % period
+      const innerCycle = Math.floor(ctx.cycle / period)
+      let acc = 0
+      let selected = 0
+      for (let k = 0; k < ir.items.length; k++) {
+        if (pos < acc + weights[k]) {
+          selected = k
+          break
+        }
+        acc += weights[k]
+      }
+      const item = ir.items[selected]
+      const target = item.tag === 'Elongate' ? item.body : item
+      return withWrapperLoc(walk(target, { ...ctx, cycle: innerCycle }), ir.loc)
     }
 
     case 'Arrange': {

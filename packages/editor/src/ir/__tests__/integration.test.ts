@@ -1310,19 +1310,17 @@ describe('20-10 wave γ — Param sub-IR slot-table semantics', () => {
     expect(evs[1].gain).toBeCloseTo(0.7)
   })
 
-  // 5. Nested mini `<bd <hh cp>>` — observed cycle behavior (PINNED).
-  // Strudel runtime semantics: outer `<...>` advances inner only on visit,
-  // yielding [bd, hh, bd, cp] over 4 cycles. Stave's current implementation
-  // uses ctx.cycle uniformly at every Cycle level (no per-Cycle counter),
-  // so the inner Cycle picks index `cycle % 2` directly, yielding
-  // [bd, cp, bd, cp]. This is a slot-table semantics divergence from
-  // Strudel runtime, not a 20-10 deliverable. Tracked under issue #109's
-  // family (nested-mini handling). The test pins observed behavior so a
-  // future fix that aligns with Strudel runtime updates the expectation
-  // explicitly.
-  it('note("c").s("<bd <hh cp>>") cycles per Stave implementation (divergent from Strudel runtime — issue #109 family)', () => {
+  // 5. Nested mini `<bd <hh cp>>` — now ALIGNED with Strudel runtime.
+  // Outer `<...>` advances its inner arm only ONCE PER PERIOD (on visit),
+  // so the inner `<hh cp>` sees cycle `floor(globalCycle / period)`:
+  // [bd, hh, bd, cp] over 4 cycles. VERIFIED against real `@strudel/mini`
+  // haps (#463 Stage 0). Previously the Cycle collect reused ctx.cycle at
+  // every level, giving the divergent [bd, cp, bd, cp] (issue #109 family);
+  // the weighted-slowcat fix in collect.ts now passes the per-period inner
+  // cycle, matching the runtime exactly.
+  it('note("c").s("<bd <hh cp>>") cycles — aligned with Strudel runtime (#463 Stage 0)', () => {
     const cycles = collectCycles(parseStrudel('note("c").s("<bd <hh cp>>")'), 0, 4)
-    expect(cycles.map((e) => e.s)).toEqual(['bd', 'cp', 'bd', 'cp'])
+    expect(cycles.map((e) => e.s)).toEqual(['bd', 'hh', 'bd', 'cp'])
   })
 
   // 6. Param with mini-fast `s("hh*8")` — Fast-as-repeat semantics fixed.
