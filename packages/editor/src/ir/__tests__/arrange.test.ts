@@ -116,6 +116,48 @@ describe('Phase 5a — collect timing + armIndex', () => {
       { note: 'e3', begin: 1, end: 2, arm: 1 },
     ])
   })
+
+  it('a NESTED combinator arm tags the OUTER armIndex, not the inner (#451)', () => {
+    // arrange arm 0 (weight 2) is itself a `cat` → c3 then e3 over cycles 0,1;
+    // arm 1 (weight 1) is g3 at cycle 2. The inner cat must NOT overwrite the
+    // outer arm index: both c3 and e3 belong to OUTER arm 0 (one clip), g3 to
+    // outer arm 1 — so the timeline sees the cat block as a single outer clip.
+    const ir = parse('arrange([2, cat(note("c3"), note("e3"))], [1, note("g3")])')
+    const evs = onsets(collectCycles(ir, 0, 3))
+    expect(evs).toEqual([
+      { note: 'c3', begin: 0, end: 1, arm: 0 },
+      { note: 'e3', begin: 1, end: 2, arm: 0 }, // inner cat arm 1, but OUTER arm 0
+      { note: 'g3', begin: 2, end: 3, arm: 1 },
+    ])
+  })
+
+  it('the OUTER index does NOT leak to a sibling track without an arrange (#451)', () => {
+    // childCtx.armIndex is scoped to the arrange's own subtree — a sibling track
+    // (here a bare note) is walked from the stack's ctx, so it must carry NO
+    // armIndex (else `ctx.armIndex ?? armIndex` would wrongly propagate).
+    const ir = parse('stack(arrange([2, note("c3")], [1, note("e3")]), note("g3"))')
+    const evs = collectCycles(ir, 0, 3)
+    const g3 = evs.filter((e) => e.note === 'g3')
+    expect(g3.length).toBeGreaterThan(0)
+    expect(g3.every((e) => e.armIndex === undefined)).toBe(true)
+    // the arrange track still tags its arms
+    expect(evs.find((e) => e.note === 'c3')?.armIndex).toBe(0)
+    expect(evs.find((e) => e.note === 'e3')?.armIndex).toBe(1)
+  })
+
+  it('a nested arm carries loc INNERMOST→OUTERMOST (loc[last] = outer combinator)', () => {
+    // loc is ordered leaf→…→outermost: [note "c3", cat(…), arrange(…)]. The
+    // timeline's clip anchor is loc[last] (the OUTER arrange); the inner cat is
+    // an interior entry. (Bind uses loc[0], the content leaf.)
+    const code = 'arrange([2, cat(note("c3"), note("e3"))], [1, note("g3")])'
+    const ir = parse(code)
+    const ev = collectCycles(ir, 0, 1).find((e) => e.note === 'c3')!
+    expect(ev.loc!.length).toBeGreaterThanOrEqual(2)
+    const outer = ev.loc![ev.loc!.length - 1]!
+    expect(code.slice(outer.start, outer.start + 'arrange('.length)).toBe('arrange(')
+    // the inner cat is present as an interior loc entry (not the outermost)
+    expect(ev.loc!.some((l) => code.slice(l.start, l.start + 'cat('.length) === 'cat(')).toBe(true)
+  })
 })
 
 describe('Phase 5a — parity with real Strudel haps', () => {

@@ -563,7 +563,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
           moveDragRef.current = {
             pointerId: e.pointerId,
-            sourceOffset: body.lane.sourceOffset,
+            // Clip gestures bind the OUTER combinator (#451) so a nested
+            // arrange-of-cat arm edits as one outer clip; falls back to the
+            // inner anchor (equal for a non-nested lane). Bind keeps `sourceOffset`.
+            sourceOffset: body.lane.arrangeOffset ?? body.lane.sourceOffset,
             armIndex: body.clip.armIndex,
             laneKey: body.lane.laneKey,
             startClientX: e.clientX,
@@ -591,7 +594,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const w = hit.clip.endCycle - hit.clip.startCycle
       trimDragRef.current = {
         pointerId: e.pointerId,
-        sourceOffset: hit.lane.sourceOffset,
+        // Outer-combinator anchor for the arrange op (#451); see move ref above.
+        sourceOffset: hit.lane.arrangeOffset ?? hit.lane.sourceOffset,
         armIndex: hit.clip.armIndex,
         startCycle: hit.clip.startCycle,
         origWeight: w,

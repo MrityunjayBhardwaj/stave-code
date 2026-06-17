@@ -23,7 +23,7 @@ import type { SongAnalysis } from '@stave/editor'
 // cycles [0,2), arm 1 over [2,4). The events carry `armIndex` + `loc` so
 // collectNoteMarks builds real clips (armIndex ≥ 0 = trimmable). Returned only
 // when an `ir` is passed, so the no-`ir` tests above still see no marks.
-const { TRIM_EVENTS, BARE_EVENTS } = vi.hoisted(() => ({
+const { TRIM_EVENTS, BARE_EVENTS, NESTED_EVENTS } = vi.hoisted(() => ({
   TRIM_EVENTS: [
     { begin: 0, end: 1, s: 'bd', armIndex: 0, loc: [{ start: 9, end: 21 }] },
     { begin: 1, end: 2, s: 'bd', armIndex: 0, loc: [{ start: 9, end: 21 }] },
@@ -37,10 +37,22 @@ const { TRIM_EVENTS, BARE_EVENTS } = vi.hoisted(() => ({
     { begin: 0, end: 1, s: 'bd', loc: [{ start: 0, end: 9 }] },
     { begin: 1, end: 2, s: 'bd', loc: [{ start: 0, end: 9 }] },
   ],
+  // A NESTED combinator (#451), mimicking the real collector output for
+  // `arrange([2, cat(s("bd"),s("sd"))], [1, s("hh")])`: ONE track lane
+  // (shared `trackId`), the cat block's events carry the OUTER arm index 0
+  // (outermost-wins) and `loc` = [inner cat {12,39}, outer arrange {0,58}];
+  // `hh` is the outer arm 1, non-nested (`loc` = [arrange]). So the lane RLEs
+  // into ONE clip for arm 0 spanning cycles [0,2) and one for arm 1 at [2,3),
+  // and its `arrangeOffset` (loc[last]) = 0 → detectArrangeAt resolves the outer.
+  NESTED_EVENTS: [
+    { begin: 0, end: 1, s: 'bd', trackId: 'song', armIndex: 0, loc: [{ start: 12, end: 39 }, { start: 0, end: 58 }] },
+    { begin: 1, end: 2, s: 'sd', trackId: 'song', armIndex: 0, loc: [{ start: 12, end: 39 }, { start: 0, end: 58 }] },
+    { begin: 2, end: 3, s: 'hh', trackId: 'song', armIndex: 1, loc: [{ start: 0, end: 58 }] },
+  ],
 }))
 vi.mock('@stave/editor', () => ({
-  collectCycles: (ir: { bare?: boolean } | null) =>
-    ir?.bare ? BARE_EVENTS : ir ? TRIM_EVENTS : [],
+  collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) =>
+    ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : [],
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
@@ -98,6 +110,15 @@ const analysisFixture: SongAnalysis = {
     { startCycle: 0, endCycle: 1, laneKeys: ['bd', 'hh'] },
     { startCycle: 1, endCycle: 4, laneKeys: ['hh'] },
   ],
+}
+
+// One-lane song for the NESTED fixture (period 3: cat block [0,2) + hh [2,3)).
+const nestedAnalysis: SongAnalysis = {
+  periodCycles: 3,
+  horizonCycles: 6,
+  reachedCap: false,
+  lanes: [{ laneKey: 'song', onsetsByCycle: [1, 1, 1] }],
+  sections: [{ startCycle: 0, endCycle: 3, laneKeys: ['song'] }],
 }
 
 function renderFull(overrides?: Partial<React.ComponentProps<typeof FullSongTimeline>>) {
@@ -610,5 +631,57 @@ describe('FullSongTimeline — split a clip (select + S → split arm at midpoin
     fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
     fireEvent.keyDown(grid, { key: 's', metaKey: true })
     expect(onSplitClip).not.toHaveBeenCalled()
+  })
+})
+
+describe('FullSongTimeline — NESTED combinator arm binds the OUTER arrange (#451)', () => {
+  // `arrange([2, cat(s("bd"),s("sd"))], [1, s("hh")])`: the cat block is ONE
+  // outer clip (arm 0, cycles [0,2)). Gestures must bind the OUTER arrange
+  // (sourceOffset = 0, the `arrange(` token) — NOT the inner cat at offset 12 —
+  // so the op edits the outer arm. Period 3 over 800px → 266.7px/cycle.
+  function renderNested(overrides: Partial<React.ComponentProps<typeof FullSongTimeline>>) {
+    const utils = renderFull({ ir: { nested: true } as never, analysis: nestedAnalysis, ...overrides })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    return { ...utils, grid }
+  }
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  it('the cat block is ONE clip spanning the outer weight (split → firstWeight 1)', async () => {
+    // Splitting at the midpoint yields floor(weight/2). firstWeight 1 holds ONLY
+    // if the cat block clip has weight 2 (the whole outer arm) — i.e. bd/sd did
+    // NOT become separate 1-cycle clips. Also confirms the OUTER offset (0).
+    const onSplitClip = vi.fn()
+    const { grid } = renderNested({ onSplitClip })
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 133, clientY: 10, pointerId: 1 }) // select cat block
+    fireEvent.pointerUp(grid, { clientX: 133, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 's' })
+    expect(onSplitClip).toHaveBeenCalledWith({ sourceOffset: 0, armIndex: 0, firstWeight: 1 })
+  })
+
+  it('⌘-D on the cat block dispatches the OUTER arrange offset (0), not the inner cat (12)', async () => {
+    const onDuplicateClip = vi.fn()
+    const { grid } = renderNested({ onDuplicateClip })
+    await settle()
+    // Click inside the cat block (cycle ~0.5 → x≈133), song row (y≈10).
+    fireEvent.pointerDown(grid, { clientX: 133, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 133, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 'd', metaKey: true })
+    expect(onDuplicateClip).toHaveBeenCalledWith({ sourceOffset: 0, armIndex: 0 })
+  })
+
+  it('trimming the cat block’s right edge dispatches the OUTER arrange offset (0)', async () => {
+    const onTrimClip = vi.fn()
+    const { grid } = renderNested({ onTrimClip })
+    await settle()
+    // arm 0's right edge is cycle 2 → x = 2*266.7 ≈ 533; grab 2px inside, drag
+    // to cycle 1 (x≈267) → shrink the OUTER arm 0 to weight 1.
+    fireEvent.pointerDown(grid, { clientX: 531, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 267, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 267, clientY: 10, pointerId: 1 })
+    expect(onTrimClip).toHaveBeenCalledTimes(1)
+    expect(onTrimClip).toHaveBeenCalledWith({ sourceOffset: 0, armIndex: 0, weight: 1 })
   })
 })

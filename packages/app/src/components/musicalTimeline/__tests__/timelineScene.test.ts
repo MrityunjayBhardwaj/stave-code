@@ -21,10 +21,14 @@ function marks(
   capped = false,
   sources: Record<string, number> = {},
   clips: Record<string, SceneClip[]> = {},
+  // Outer-combinator anchors (#451); default = `sources` (equal for a
+  // non-nested lane, where loc[0] === loc[last]).
+  arranges: Record<string, number> = sources,
 ): CollectedMarks {
   return {
     marksByLane: new Map(Object.entries(entries)),
     sourceByLane: new Map(Object.entries(sources)),
+    arrangeByLane: new Map(Object.entries(arranges)),
     clipsByLane: new Map(Object.entries(clips)),
     capped,
   }
