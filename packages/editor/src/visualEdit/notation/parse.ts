@@ -38,6 +38,16 @@ const NOTE = /^[a-gA-G][bs#]?-?\d$/
 const isBareRest = (s: string, i: number): boolean =>
   s[i] === '-' && (i + 1 >= s.length || /[\s[\]@,*(!]/.test(s[i + 1]))
 
+/** a bare integer (`60`, `0`, `-7`) — a numeric note value for the roll (#469) */
+const NUMERIC = /^-?\d+$/
+/**
+ * A token allowed in a lane. Sounds/notes always pass; bare integers pass only
+ * where the consumer opts in (`allowNumeric`) — the Piano Roll (`note`/`n`),
+ * never the step grid (numeric `s` isn't a sound).
+ */
+const isAtomToken = (t: string, allowNumeric: boolean): boolean =>
+  ATOM.test(t) || (allowNumeric && NUMERIC.test(t))
+
 /** ceiling on expanded columns so `[7 hits][11 hits]` can't blow up the grid */
 const MAX_STEPS = 64
 
@@ -217,14 +227,18 @@ function readEuclid(
 }
 
 /** parse the contents of one `[...]`: a `[a,b]` chord, or a sub-sequence */
-function parseGroup(inner: string, elongation: number): Step | { reason: string } {
+function parseGroup(
+  inner: string,
+  elongation: number,
+  allowNumeric = false,
+): Step | { reason: string } {
   const commaParts = splitTopLevel(inner)
   if (commaParts.length > 1) {
     // `[bd,hh]` — atoms that sound together; no nesting inside
     const atoms: string[] = []
     for (const raw of commaParts) {
       const token = raw.trim()
-      if (/[\s[\]]/.test(token) || !ATOM.test(token)) {
+      if (/[\s[\]]/.test(token) || !isAtomToken(token, allowNumeric)) {
         return { reason: 'stacked sub-sequences are beyond the editable subset' }
       }
       atoms.push(token)
@@ -260,14 +274,14 @@ function parseGroup(inner: string, elongation: number): Step | { reason: string 
       const atoms: string[] = []
       for (const raw of chord.split(',')) {
         const token = raw.trim()
-        if (!ATOM.test(token)) return { reason: `unsupported token "${token}"` }
+        if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` }
         atoms.push(token)
       }
       slots.push({ atoms, units: elong.value })
       continue
     }
     const match = inner.slice(i).match(/^[^\s[\]@,*(!]+/)
-    if (!match || !ATOM.test(match[0])) {
+    if (!match || !isAtomToken(match[0], allowNumeric)) {
       return { reason: `unsupported token "${match?.[0] ?? ch}"` }
     }
     i += match[0].length
@@ -285,7 +299,7 @@ function parseGroup(inner: string, elongation: number): Step | { reason: string 
 }
 
 /** tokenize a flat sequence (one cycle / one stack part / one alternation slot) */
-function tokenize(mini: string): Tokenized {
+function tokenize(mini: string, allowNumeric = false): Tokenized {
   const src = mini.trim()
   if (src === '') return { ok: true, steps: [] }
   // `(` / `)` (euclid) and `!` (replicate) are NOT rejected here — both are
@@ -315,13 +329,13 @@ function tokenize(mini: string): Tokenized {
       const elong = readElongation(src, i)
       if (!elong.ok) return { ok: false, reason: elong.reason }
       i = elong.next
-      const group = parseGroup(inner, elong.value)
+      const group = parseGroup(inner, elong.value, allowNumeric)
       if ('reason' in group) return { ok: false, reason: group.reason }
       steps.push(group)
       continue
     }
     const match = src.slice(i).match(/^[^\s[\]@,*(!]+/)
-    if (!match || !ATOM.test(match[0])) {
+    if (!match || !isAtomToken(match[0], allowNumeric)) {
       return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` }
     }
     i += match[0].length
@@ -570,7 +584,7 @@ export function applyRollGain(model: PianoRollModel, gain: ChunkGain): PianoRoll
 
 export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   const alt = unwrapAlternation(mini)
-  const tok = tokenize(alt ?? mini)
+  const tok = tokenize(alt ?? mini, /* allowNumeric */ true)
   if (!tok.ok) return tok
   if (alt !== null && tok.steps.length === 0) return { ok: false, reason: 'empty alternation' }
 
@@ -581,17 +595,39 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
   }
   const notes: RollNote[] = []
   let col = 0
+  // A pattern is numeric (`note("60 62")` / `n("0 1 2")`) or note-named
+  // (`c3 e3`), never both — mixing is rejected. New/dragged notes must emit
+  // the same convention so the pattern round-trips (#469).
+  let sawNumeric = false
+  let sawNamed = false
   for (const step of tok.steps) {
     const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }]
     const total = stepUnits(step)
     for (const slot of slots) {
       const span = (step.elongation * div * slot.units) / total
       for (const token of slot.atoms) {
-        if (!NOTE.test(token)) return { ok: false, reason: `"${token}" is not a note name` }
-        notes.push({ pitch: token.toLowerCase(), start: col, duration: span })
+        const isNum = /^-?\d+$/.test(token)
+        if (!isNum && !NOTE.test(token)) {
+          return { ok: false, reason: `"${token}" is not a note name` }
+        }
+        if (isNum) sawNumeric = true
+        else sawNamed = true
+        // numbers have no case; only fold note names
+        notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span })
       }
       col += span
     }
   }
-  return { ok: true, model: { steps: col, ...(alt !== null ? { bars } : {}), notes } }
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: 'mixed numeric and note-name tokens are beyond the editable subset' }
+  }
+  return {
+    ok: true,
+    model: {
+      steps: col,
+      ...(alt !== null ? { bars } : {}),
+      notes,
+      ...(sawNumeric ? { numeric: true } : {}),
+    },
+  }
 }
