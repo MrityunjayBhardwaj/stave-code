@@ -279,6 +279,16 @@ export interface PreviewEditorChromeContext {
    * the label just can't flip).
    */
   readonly isBackground?: boolean
+  /**
+   * #372 — open the backdrop controls popover for THIS file (opacity /
+   * quality / crop / reveal / clear). Anchored to the rect the chrome
+   * passes (its settings button). Only meaningful when `isBackground`
+   * is true — a viz file is its own backdrop source, so there is no
+   * "pick a file" step here (that's the pattern-tab popover's job).
+   * Optional: callers that don't host a backdrop popover omit it and
+   * the chrome simply doesn't render the settings affordance.
+   */
+  readonly onOpenBackdropSettings?: (rect: DOMRect) => void
   /** Save the file back to its persistent store (VizPresetStore). */
   readonly onSave: () => void
   /**

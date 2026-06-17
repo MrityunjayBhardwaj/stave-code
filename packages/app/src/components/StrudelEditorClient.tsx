@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useVizRefWatcher } from "../useVizRefWatcher";
 import { BackdropPopover } from "./BackdropPopover";
+import { PopoutPreviewController } from "./PopoutPreviewController";
 import { registerVizWorker } from "../visualizers/registerVizWorker";
 import {
   WorkspaceShell,
@@ -36,6 +37,8 @@ import {
   flushToPreset,
   getPresetIdForFile,
   isVizLanguage,
+  rendererForLanguage,
+  compilePreset,
   registerPresetAsNamedViz,
   emitLog,
   emitFixed,
@@ -58,6 +61,7 @@ import {
   type WorkspaceTab,
   type ChromeContext,
   type VizPreset,
+  type VizDescriptor,
   type PreviewProvider,
   type HapStream,
   type BreakpointStore,
@@ -100,6 +104,11 @@ const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
 const BUNDLED_VIZ_NATIVE_SIZE: Record<string, { w: number; h: number }> = {
   "Piano Roll": { w: 1200, h: 200 },
   "Piano Roll (Hydra)": { w: 1400, h: 400 },
+  // Pitchwheel — a centred wheel. Without a declared native it falls to
+  // DEFAULT_NATIVE (1200×600 → a ~530px-tall strip), which paired with the
+  // createCanvas(stave.width,stave.height) fix would fill that whole box with a
+  // giant wheel. A wide-ish 5:1 strip keeps it a comfortable inline height.
+  pitchwheel: { w: 1200, h: 240 },
 };
 
 
@@ -337,7 +346,39 @@ export default function StrudelEditorClient({
   const [bgPopover, setBgPopover] = useState<{
     rect: DOMRect;
     fileId: string;
+    // #372 — set when opened from a VIZ FILE tab's settings caret: the
+    // file IS the backdrop source, so hide the picker (no "set/swap").
+    noPicker?: boolean;
   } | null>(null);
+
+  // #240 — viz pop-out (Cmd+K W). The compiled descriptor for the file being
+  // popped out; non-null while a pop-out window is open. Driven by
+  // `handleOpenPopout` (wired to the shell's openPopoutPreview action).
+  const [popout, setPopout] = useState<{
+    fileId: string;
+    descriptor: VizDescriptor;
+  } | null>(null);
+
+  const handleOpenPopout = useCallback((fileId: string) => {
+    const file = getFile(fileId);
+    if (!file || !isVizLanguage(file.language)) return;
+    const renderer = rendererForLanguage(file.language);
+    if (!renderer) return;
+    // Compile a fresh descriptor from the file's current content. The popup
+    // mounts a MAIN-THREAD renderer (a separate window can't share the
+    // OffscreenCanvas worker transfer); compilePreset's factory downgrades to
+    // the main-thread path automatically there.
+    const preset: VizPreset = {
+      id: file.id,
+      name: file.path,
+      renderer,
+      code: file.content,
+      requires: [],
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    setPopout({ fileId, descriptor: compilePreset(preset) });
+  }, []);
 
   // Persist the per-tab map (best-effort). Re-runs only when the map changes.
   useEffect(() => {
@@ -1128,6 +1169,13 @@ export default function StrudelEditorClient({
       onCropViz={onCropViz}
       onBackgroundFileChange={handleBackgroundFileChange}
       onActiveBackdropChange={onActiveBackdropChange}
+      onOpenPopoutPreview={handleOpenPopout}
+      // #372 — viz-file-tab settings caret opens the SAME BackdropPopover,
+      // in no-picker mode (the file is its own backdrop source). The tab is
+      // active, so the popover's controls drive the active group's backdrop.
+      onOpenBackdropSettings={(fileId, rect) =>
+        setBgPopover({ rect, fileId, noPicker: true })
+      }
       backgroundCrop={backgroundCrop}
       onActiveTabChange={(tab) => {
         const fid =
@@ -1225,6 +1273,17 @@ export default function StrudelEditorClient({
         }
         onSetOpacity={(v) => shellRef?.current?.setBackdropOpacity?.(v)}
         onSetQuality={(v) => shellRef?.current?.setBackdropQuality?.(v)}
+        hidePicker={bgPopover.noPicker}
+      />
+    )}
+    {/* #240 — viz pop-out window. Mounted only while open; unmount/onClose
+        closes the window via the hook's cleanup. */}
+    {popout && (
+      <PopoutPreviewController
+        key={popout.fileId}
+        descriptor={popout.descriptor}
+        theme={resolvedTheme}
+        onClose={() => setPopout(null)}
       />
     )}
     </>

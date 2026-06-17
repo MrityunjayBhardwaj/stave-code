@@ -77,6 +77,7 @@ export function VizEditorChrome({
   onChangePreviewSource,
   onToggleBackground,
   isBackground,
+  onOpenBackdropSettings,
 }: PreviewEditorChromeContext): React.ReactElement {
   // Subscribe to the per-file hot-reload toggle so other surfaces
   // (command palette, future settings) stay in sync with the button.
@@ -313,6 +314,38 @@ export function VizEditorChrome({
       >
         {isBackground ? '\u25A0 bg' : '\u25A0'}
       </button>
+
+      {/*
+       * #372 \u2014 backdrop controls. Only shown when this file IS the
+       * group backdrop (toggle on) and the host wired a popover. There's
+       * no "set/pick" affordance here: the backdrop source is this very
+       * file, so the toggle above is the whole "use this" step. The
+       * caret opens opacity / quality / crop / reveal / clear.
+       */}
+      {isBackground && onOpenBackdropSettings && (
+        <button
+          data-testid="viz-chrome-bg-settings"
+          onClick={(e) =>
+            onOpenBackdropSettings(e.currentTarget.getBoundingClientRect())
+          }
+          title="Backdrop controls (opacity, quality, crop\u2026)"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '3px 6px',
+            borderRadius: 3,
+            fontSize: 9,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            userSelect: 'none',
+            background: 'none',
+            color: 'var(--accent-strong, var(--accent))',
+            border: '1px solid var(--accent-dim)',
+          }}
+        >
+          {'\u25BE'}
+        </button>
+      )}
 
       {/*
        * Hot reload: togglable badge. On → preview rebuilds on every

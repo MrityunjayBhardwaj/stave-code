@@ -1,10 +1,17 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page, type Locator } from '@playwright/test'
 
 // Strudel-official viz methods (#174). Pasted Strudel viz code must work
 // out of the gate, mirroring Strudel's inline-vs-fullscreen semantic:
 //   - `._name()` (underscore) → inline viz zone
 //   - `.name()`  (non-underscore) → Stave backdrop ("set bg") + UI update
 // and NEVER strudel's own fullscreen `#test-canvas` (which Stave doesn't load).
+
+// #368/P122 — worker viz runs on the shared GPU; over a long sequential run of
+// 24 worker-viz mounts the headless Chromium GPU process can crash once
+// (`GPU process exited unexpectedly`), failing whatever test is mid-flight. That
+// is INFRA flakiness, not test logic (every test here passes in isolation). A
+// genuine regression fails all attempts; a one-off GPU crash recovers on retry.
+test.describe.configure({ retries: 2 })
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
@@ -25,6 +32,198 @@ async function runCode(page: Page): Promise<void> {
   await page.evaluate(() => (window as any).monaco?.editor?.getEditors?.()?.[0]?.focus())
   await page.keyboard.press(`${MOD}+Enter`)
   await page.waitForTimeout(2500)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Compositor pixel observation (#368 — PV90).
+//
+// Worker viz renders to a `transferControlToOffscreen()` canvas, so an
+// in-browser `el.getContext('2d').getImageData(...)` THROWS ("Cannot get
+// context from a canvas that has transferred its control to offscreen"), and an
+// element-level `locator.screenshot()` forces an off-paint readback that returns
+// inconsistent bytes (the artifact that misdiagnosed P121). The only correct
+// pixel source is the COMPOSITOR — `page.screenshot({ clip })`, the last
+// PRESENTED frame, exactly what the user sees — decoded by the browser's own PNG
+// decoder. See `_vizFrames.ts` / `viz-worker-pixels.spec.ts` for the same idiom.
+// ─────────────────────────────────────────────────────────────────────────
+
+type RGBBounds = {
+  rMin?: number; rMax?: number
+  gMin?: number; gMax?: number
+  bMin?: number; bMax?: number
+  // OR-style "any painted pixel" gate: matches when (r+g+b) > lumMin. Combined
+  // with the per-channel AND bounds when both are present. Use for "non-dark
+  // background" probes where a single colour predicate doesn't apply.
+  lumMin?: number
+}
+
+type ScanResult = {
+  match: number   // pixels inside `bounds`
+  total: number   // all decoded pixels
+  cx: number      // mean x of matched pixels (−1 if none) — for centroid probes
+  minY: number    // top-most matched row (height if none)
+  maxY: number    // bottom-most matched row (−1 if none)
+  height: number  // decoded clip height (for span fractions)
+}
+
+// Compositor-capture `locator`'s bounding box, decode it in-browser, and count
+// pixels whose channels fall inside `bounds` — computing the count, centroid-x,
+// and vertical span in a single pass. NOTE: the compositor flattens alpha (it
+// composites over the page), so bounds are RGB-only; an alpha gate from the old
+// worker-canvas readback has no compositor equivalent and is dropped.
+async function compositorScan(
+  page: Page,
+  locator: Locator,
+  bounds: RGBBounds,
+): Promise<ScanResult> {
+  const box = await locator.first().boundingBox()
+  const empty: ScanResult = { match: 0, total: 0, cx: -1, minY: 0, maxY: -1, height: 0 }
+  if (!box || box.width < 2 || box.height < 2) return empty
+  const clip = { x: box.x, y: box.y, width: box.width, height: box.height }
+  const png = await page.screenshot({ clip }).catch(() => Buffer.from([]))
+  if (png.length === 0) return empty
+  const b64 = png.toString('base64')
+  return page.evaluate(
+    async ({ data, b }) => {
+      const img = new Image()
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res()
+        img.onerror = () => rej(new Error('decode failed'))
+        img.src = `data:image/png;base64,${data}`
+      })
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      const ctx = c.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      const px = ctx.getImageData(0, 0, c.width, c.height).data
+      const rMin = b.rMin ?? -1, rMax = b.rMax ?? 256
+      const gMin = b.gMin ?? -1, gMax = b.gMax ?? 256
+      const bMin = b.bMin ?? -1, bMax = b.bMax ?? 256
+      const lumMin = b.lumMin ?? -1
+      let match = 0, sx = 0, minY = c.height, maxY = -1
+      const total = c.width * c.height
+      for (let p = 0; p < px.length; p += 4) {
+        const r = px[p], g = px[p + 1], bl = px[p + 2]
+        if (
+          r > rMin && r < rMax && g > gMin && g < gMax && bl > bMin && bl < bMax &&
+          r + g + bl > lumMin
+        ) {
+          match++
+          const idx = p / 4
+          sx += idx % c.width
+          const y = Math.floor(idx / c.width)
+          if (y < minY) minY = y
+          if (y > maxY) maxY = y
+        }
+      }
+      return {
+        match, total,
+        cx: match ? sx / match : -1,
+        minY: match ? minY : c.height,
+        maxY,
+        height: c.height,
+      }
+    },
+    { data: b64, b: bounds },
+  )
+}
+
+// Convenience: fraction (0..1) of compositor pixels inside `bounds`.
+async function compositorFraction(
+  page: Page,
+  locator: Locator,
+  bounds: RGBBounds,
+): Promise<number> {
+  const r = await compositorScan(page, locator, bounds)
+  return r.total ? r.match / r.total : 0
+}
+
+// Fraction (0..1) of a canvas's interior that BLENDS with the editor background
+// sampled just BELOW it (the empty editor rows under the inline viz zone — a clean
+// reference, unlike the syntax-highlighted code line above). The compositor
+// flattens alpha, so a clear() (transparent) sketch is observed as the editor bg
+// showing through its sparsely-painted area; an opaque background() fill instead
+// makes the canvas a distinct box that does NOT match the bg strip below. `pad`
+// CSS-px below the canvas is the bg reference.
+async function compositorBlendFraction(
+  page: Page,
+  locator: Locator,
+  pad = 24,
+  tol = 30,
+): Promise<number> {
+  const box = await locator.first().boundingBox()
+  if (!box || box.width < 2 || box.height < 2) return 0
+  const clip = { x: box.x, y: box.y, width: box.width, height: box.height + pad }
+  // Fraction of the clip height that is the bg reference strip (below the canvas).
+  const botFrac = clip.height > 0 ? pad / clip.height : 0
+  const png = await page.screenshot({ clip }).catch(() => Buffer.from([]))
+  if (png.length === 0) return 0
+  const b64 = png.toString('base64')
+  return page.evaluate(
+    async ({ data, bf, t }) => {
+      const img = new Image()
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res()
+        img.onerror = () => rej(new Error('decode failed'))
+        img.src = `data:image/png;base64,${data}`
+      })
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      const ctx = c.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      const px = ctx.getImageData(0, 0, c.width, c.height).data
+      const botRows = Math.max(2, Math.floor(c.height * bf))
+      const refStart = c.height - botRows
+      let br = 0, bg = 0, bb = 0, bn = 0
+      for (let y = refStart; y < c.height; y++)
+        for (let x = 0; x < c.width; x++) {
+          const p = (y * c.width + x) * 4
+          br += px[p]; bg += px[p + 1]; bb += px[p + 2]; bn++
+        }
+      br /= bn; bg /= bn; bb /= bn
+      let blend = 0, total = 0
+      for (let y = 0; y < refStart; y++)
+        for (let x = 0; x < c.width; x++) {
+          const p = (y * c.width + x) * 4
+          total++
+          if (Math.abs(px[p] - br) + Math.abs(px[p + 1] - bg) + Math.abs(px[p + 2] - bb) < t) blend++
+        }
+      return total ? blend / total : 0
+    },
+    { data: b64, bf: botFrac, t: tol },
+  )
+}
+
+// Mean per-pixel luminance (Σ(r+g+b) / pixels, 0..765) of a COMPOSITOR capture
+// of `locator`'s bounding box. Replaces the old element-screenshot `screenshotLum`
+// for the WebGL (hydra) canvas: a `preserveDrawingBuffer:false` GL context reads
+// back BLACK via getImageData, but the compositor has the real presented pixels.
+async function compositorLum(page: Page, locator: Locator): Promise<number> {
+  const box = await locator.first().boundingBox()
+  if (!box || box.width < 2 || box.height < 2) return 0
+  const clip = { x: box.x, y: box.y, width: box.width, height: box.height }
+  const png = await page.screenshot({ clip }).catch(() => Buffer.from([]))
+  if (png.length === 0) return 0
+  const b64 = png.toString('base64')
+  return page.evaluate(async (data) => {
+    const img = new Image()
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res()
+      img.onerror = () => rej(new Error('decode failed'))
+      img.src = `data:image/png;base64,${data}`
+    })
+    const c = document.createElement('canvas')
+    c.width = Math.min(img.width, 200)
+    c.height = Math.min(img.height, 150)
+    const ctx = c.getContext('2d')!
+    ctx.drawImage(img, 0, 0, c.width, c.height)
+    const d = ctx.getImageData(0, 0, c.width, c.height).data
+    let s = 0
+    for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]
+    return s / (d.length / 4)
+  }, b64)
 }
 
 test.beforeEach(async ({ page }) => {
@@ -60,29 +259,57 @@ test('backdrop .pianoroll({ opts }) threads options to the backdrop sketch (#214
   // Non-underscore .pianoroll(opts) pins a backdrop that renders through
   // compiledVizProvider (not viewZones). Its options live in
   // inlineViz.backdropRequest.options and must reach the renderer's component
-  // bag → stave.options. A custom `background` only paints if they do —
-  // frame-independent, like the inline #215 check.
-  const redFrac = async () =>
-    page.locator('[data-workspace-background] canvas').first().evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const ctx = c.getContext('2d'); if (!ctx) return -1
-      const d = ctx.getImageData(0, 0, c.width, c.height).data
-      let red = 0, total = 0
-      for (let i = 0; i < d.length; i += 4) { total++; if (d[i] > 120 && d[i + 1] < 80 && d[i + 2] < 90) red++ }
-      return total ? red / total : -1
-    })
+  // bag → stave.options (the worker path now threads them — #388).
+  //
+  // #368/PV90: the backdrop renders in the worker AND is OCCLUDED by the editor
+  // in the compositor, so neither a worker-canvas getContext read nor a page
+  // screenshot can see its pixels. Observe option-threading at the RENDERER:
+  // override the Piano Roll backdrop sketch with a probe that THROWS
+  // stave.options.background; the p5 compiler routes the draw throw to the worker
+  // engineLog, re-emitted to MAIN via `vizlog` (#257), readable via __staveGetLog.
+  await page.addInitScript(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(window as any).__STAVE_E2E__ = true
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+  await page.waitForTimeout(800)
+
+  const probe = `
+function setup() { createCanvas(stave.width, stave.height) }
+function draw() {
+  const o = stave.options || {}
+  throw new Error('STAVE_214_BG=' + (o.background || 'none'))
+}`
+  const overridden = await page.evaluate(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (code) => (window as any).__staveOverrideVizFile('pianoroll', code),
+    probe,
+  )
+  expect(overridden, 'bundled Piano Roll.p5 should exist to override').toBeTruthy()
+  await page.waitForTimeout(400)
+
+  const sawBg = (v: string) =>
+    page.evaluate((want) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const log = (window as any).__staveGetLog?.() ?? []
+      return log.some(
+        (e: { message?: string }) =>
+          typeof e.message === 'string' && e.message.includes('STAVE_214_BG=' + want),
+      )
+    }, v)
 
   await setCode(page, `$: note("c4 e4 g4 c5").s("sawtooth").pianoroll({ background: '#cc1133' })`)
   await runCode(page)
-  await page.locator('[data-workspace-background] canvas').first().waitFor({ timeout: 8000 })
-  await expect.poll(redFrac, { timeout: 6000 }).toBeGreaterThan(0.4)
+  // The option threaded → the backdrop sketch saw stave.options.background.
+  await expect.poll(() => sawBg('#cc1133'), { timeout: 8000 }).toBe(true)
 
-  // Control: no option → the (transparent) default backdrop is not red.
+  // Control: no option → the backdrop sketch sees an EMPTY options bag (no bg).
   await setCode(page, `$: note("c4 e4 g4 c5").s("sawtooth").pianoroll()`)
   await page.keyboard.press(`${MOD}+.`)
   await page.waitForTimeout(500)
   await runCode(page)
-  await expect.poll(redFrac, { timeout: 6000 }).toBeLessThan(0.05)
+  await expect.poll(() => sawBg('none'), { timeout: 8000 }).toBe(true)
 })
 
 test('removing the non-underscore method clears the backdrop (code is source of truth)', async ({ page }) => {
@@ -171,17 +398,13 @@ test('preset p5 viz draw on a transparent background (clear(), not opaque fill)'
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const fracTransparent = await canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const ctx = c.getContext('2d')
-    if (!ctx) return 0
-    const { data } = ctx.getImageData(0, 0, c.width, c.height)
-    let clearPx = 0, total = 0
-    for (let i = 3; i < data.length; i += 4) { total++; if (data[i] === 0) clearPx++ }
-    return total ? clearPx / total : 0
-  })
-  // sparse notes on a transparent surface → most pixels fully transparent.
-  expect(fracTransparent).toBeGreaterThan(0.4)
+  // #368/PV90: the compositor flattens alpha, so observe transparency as BLEND —
+  // a clear() sketch lets the editor bg show through its sparsely-painted area, so
+  // most of the canvas interior matches the editor bg sampled in the empty rows
+  // just below the viz zone. An opaque background(9,9,18) box would NOT match →
+  // low blend fraction. (The option-driven fill path is covered by #215.)
+  const blendFrac = await compositorBlendFraction(page, canvas)
+  expect(blendFrac).toBeGreaterThan(0.4)
 })
 
 test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze on c4 (#216)', async ({ page }) => {
@@ -192,16 +415,11 @@ test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze o
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const sampleX = () => canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-    let sx = 0, n = 0
-    for (let i = 0; i < d.length; i += 4) {
-      // bright, fully-opaque blue = the active line/dot (static dots are alpha 64)
-      if (d[i + 2] > 180 && d[i + 3] > 200) { sx += (i / 4) % c.width; n++ }
-    }
-    return n ? sx / n : -1
-  })
+  // #368/PV90: centroid-x of the bright active indicator from the COMPOSITOR.
+  // The static dots were drawn semi-transparent (alpha 64) → composited over the
+  // dark bg they fall well below this blue threshold; the active line/dot is
+  // bright, blue-dominant. cx is in compositor-clip pixels.
+  const sampleX = async () => (await compositorScan(page, canvas, { bMin: 150, rMax: 160 })).cx
   const xs: number[] = []
   for (let k = 0; k < 7; k++) { xs.push(await sampleX()); await page.waitForTimeout(380) }
   const valid = xs.filter(x => x >= 0)
@@ -239,20 +457,13 @@ test('.viz("name", { opts }) threads options to the sketch — not just ._pianor
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const reddish = await canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const ctx = c.getContext('2d')
-    if (!ctx) return false
-    const { data } = ctx.getImageData(0, 0, c.width, c.height)
-    let red = 0, total = 0
-    for (let i = 0; i < data.length; i += 4) {
-      total++
-      // background #cc1133 → strongly red-dominant, low green/blue
-      if (data[i] > 120 && data[i + 1] < 80 && data[i + 2] < 90) red++
-    }
-    return total > 0 && red / total > 0.3 // ≥30% of pixels are the red bg
-  })
-  expect(reddish).toBe(true)
+  // #368/PV90: read the #cc1133 background fill from the COMPOSITOR — red-dominant,
+  // low green/blue. ≥30% of pixels are the red bg if the option reached the sketch.
+  // #368/PV90: read the #cc1133 background fill from the COMPOSITOR — red-dominant,
+  // low green/blue. ≥30% of pixels are the red bg if the option reached the sketch.
+  // NOTE: currently RED ABSENT — options are dropped on the worker render path (#388).
+  const redFrac = await compositorFraction(page, canvas, { rMin: 120, gMax: 80, bMax: 90 })
+  expect(redFrac).toBeGreaterThan(0.3)
 })
 
 test('pianoroll folds drum patterns so sounds spread across lanes, not one (#214)', async ({ page }) => {
@@ -264,25 +475,11 @@ test('pianoroll folds drum patterns so sounds spread across lanes, not one (#214
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
   await expect(canvas).toBeVisible({ timeout: 6000 })
-  const span = await canvas.evaluate((el) => {
-    const c = el as HTMLCanvasElement
-    const ctx = c.getContext('2d')
-    if (!ctx) return 0
-    const { data } = ctx.getImageData(0, 0, c.width, c.height)
-    let minY = c.height, maxY = 0
-    for (let y = 0; y < c.height; y++) {
-      for (let x = 0; x < c.width; x++) {
-        const i = (y * c.width + x) * 4
-        // any non-background pixel (bg is ~#09090f) that's clearly painted
-        if (data[i] > 60 || data[i + 1] > 60 || data[i + 2] > 60) {
-          if (y < minY) minY = y
-          if (y > maxY) maxY = y
-          break
-        }
-      }
-    }
-    return (maxY - minY) / c.height // fraction of height the notes occupy
-  })
+  // #368/PV90: measure the vertical span of painted (non-dark-bg) pixels from the
+  // COMPOSITOR. bg is ~#09090f (sum ~30); a clearly-painted note pixel sums well
+  // above that. lumMin 180 ≈ any channel ~60, matching the old per-channel gate.
+  const scan = await compositorScan(page, canvas, { lumMin: 180 })
+  const span = scan.height ? (scan.maxY - scan.minY) / scan.height : 0
   // collapsed-to-one-lane would be a sliver (<0.2); multiple lanes span ≥0.4.
   expect(span).toBeGreaterThan(0.4)
 })
@@ -340,31 +537,10 @@ test.describe('Phase 21 — named signal bus (T5 end-to-end observation)', () =>
     await page.waitForTimeout(1200)
   })
 
-  // Mean luminance of a locator's screenshot, decoded in-browser via an Image.
-  // Used for the WebGL (hydra) canvas: a WebGL context with the default
-  // preserveDrawingBuffer:false reads back BLACK via getImageData/drawImage, but
-  // the browser compositor (what `screenshot()` captures) has the real pixels.
-  async function screenshotLum(page: Page, sel: string): Promise<number> {
-    const buf = await page.locator(sel).first().screenshot()
-    const b64 = buf.toString('base64')
-    return page.evaluate(async (data) => {
-      const img = new Image()
-      await new Promise<void>((res, rej) => {
-        img.onload = () => res()
-        img.onerror = () => rej(new Error('img decode failed'))
-        img.src = 'data:image/png;base64,' + data
-      })
-      const c = document.createElement('canvas')
-      c.width = Math.min(img.width, 160)
-      c.height = Math.min(img.height, 120)
-      const ctx = c.getContext('2d')!
-      ctx.drawImage(img, 0, 0, c.width, c.height)
-      const d = ctx.getImageData(0, 0, c.width, c.height).data
-      let s = 0
-      for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]
-      return s / (d.length / 4)
-    }, b64)
-  }
+  // #368/PV90: mean luminance via the COMPOSITOR (not an element screenshot — that
+  // forces an off-paint readback of the worker canvas). Delegates to the shared
+  // `compositorLum`; kept as a thin (page, sel) wrapper for the hydra callers.
+  const screenshotLum = (page: Page, sel: string) => compositorLum(page, page.locator(sel))
 
   test('T5-A — sig.kick is reactive in a p5 inline sketch (size varies over frames)', async ({ page }) => {
     // A `.viz()` p5 sketch draws a circle whose radius = sig.kick·(canvas span).
@@ -390,15 +566,9 @@ function draw() {
     const canvas = page.locator('[data-viz-zone-track] canvas').first()
     await canvas.waitFor({ timeout: 8000 })
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // #368/PV90: count the bright-red circle pixels from the COMPOSITOR.
+    const brightCount = async () =>
+      (await compositorScan(page, canvas, { rMin: 140, gMax: 110, bMax: 110 })).match
     const samples: number[] = []
     for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
 
@@ -453,25 +623,30 @@ function draw() {
     expect(range).toBeGreaterThan(40)
   })
 
-  test('T5-C — backdrop paints per-codeblock color from sig.tracks + .color() (the headline)', async ({ page }, testInfo) => {
+  test('T5-C — backdrop paints per-codeblock color from sig.tracks + .color() (the headline)', async ({ page }) => {
     // Override the bundled `spectrum.p5` with a backdrop sketch that walks
-    // `sig.tracks` and fills a vertical band per track in `sig.track(id).color`.
-    // Two codeblocks, each `.color()`-tinted differently; the 2nd pins
-    // `.spectrum()` as the backdrop. Both tints must appear in the BACKDROP
-    // canvas — proving T4's compiledVizProvider trackSchedulers threading
-    // reaches the bus on the full-screen surface (PV64/P95), not just inline.
+    // `sig.tracks` and reads `sig.track(id).color` per track. Two codeblocks, each
+    // `.color()`-tinted differently; the 2nd pins `.spectrum()` as the backdrop.
+    // Both tints must reach the BACKDROP sketch — proving T4's compiledVizProvider
+    // trackSchedulers threading reaches the bus on the full-screen surface
+    // (PV64/P95), not just inline.
+    //
+    // #368/PV90: the backdrop renders in the worker and is OCCLUDED in the
+    // compositor, so its pixels aren't readable. Observe the threaded COLORS at the
+    // renderer: the probe resolves each track colour to RGB (via p5 `color()`) and
+    // THROWS the list; it surfaces in the MAIN engineLog (`vizlog` → __staveGetLog).
     const sketch = `
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
-  clear(); noStroke()
   const tracks = sig.tracks || []
-  const n = tracks.length
-  if (n === 0) { fill(40, 40, 40); rect(0, 0, 24, 24); return }
-  for (let i = 0; i < n; i++) {
+  const out = []
+  for (let i = 0; i < tracks.length; i++) {
     const col = sig.track(tracks[i]).color
-    if (col) fill(col); else fill(120, 120, 120)
-    rect((i / n) * width, 0, width / n, height)
+    if (!col) { out.push('none'); continue }
+    const c = color(col)
+    out.push(Math.round(red(c)) + '_' + Math.round(green(c)) + '_' + Math.round(blue(c)))
   }
+  throw new Error('STAVE_5C=' + out.join('|'))
 }`
     const overridden = await page.evaluate((code) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -480,50 +655,47 @@ function draw() {
     expect(overridden).toBeTruthy() // the bundled spectrum.p5 file exists
     await page.waitForTimeout(400)
 
+    // All distinct per-track colour-set payloads the backdrop sketch reported.
+    const colorSets = () =>
+      page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const log = (window as any).__staveGetLog?.() ?? []
+        return log
+          .map((e: { message?: string }) => e.message)
+          .filter((m: unknown): m is string => typeof m === 'string' && m.includes('STAVE_5C='))
+          .map((m: string) => m.slice(m.indexOf('STAVE_5C=') + 'STAVE_5C='.length))
+      })
+    const parse = (p: string) =>
+      p.split('|').filter(Boolean).map((s) => s.split('_').map(Number))
+    const isRed = ([r, g, b]: number[]) => r > 140 && g < 110 && b < 110
+    const isCyan = ([r, g, b]: number[]) => r < 110 && g > 110 && b > 110
+    // A payload where BOTH the red and cyan .color() tints reached the backdrop.
+    const hasBothTints = async () =>
+      (await colorSets()).some((p: string) => {
+        const cols = parse(p)
+        return cols.some(isRed) && cols.some(isCyan)
+      })
+
     await setCode(
       page,
       `$: s("bd*4").color('red')\n$: s("hh*8").color('cyan').spectrum()`,
     )
     await runCode(page)
-    const bd = page.locator('[data-workspace-background] canvas').first()
-    await bd.waitFor({ timeout: 8000 })
-    await page.waitForTimeout(1500)
+    await page.locator('[data-workspace-background] canvas').first().waitFor({ timeout: 8000 })
+    await expect.poll(hasBothTints, { timeout: 8000 }).toBe(true)
 
-    const counts = () => bd.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let red = 0, cyan = 0
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3]
-        if (a < 20) continue
-        if (r > 140 && g < 110 && b < 110) red++
-        else if (r < 110 && g > 110 && b > 110) cyan++
-      }
-      return { red, cyan, total: d.length / 4 }
-    })
-
-    const { red, cyan, total } = await counts()
-    // BOTH tints present — the two .color() codeblocks each paint their own
-    // backdrop band. Each band is ~half the canvas; require a clear fraction
-    // of each so neither tint is a stray antialias pixel.
-    expect(red / total).toBeGreaterThan(0.2)
-    expect(cyan / total).toBeGreaterThan(0.2)
-
-    // P74 — capture a screenshot as a test artifact so the per-codeblock
-    // colors can be eyeballed (a pixel count alone doesn't confirm the colors
-    // are the ones the music code set).
-    const shot = await page.locator('[data-workspace-background]').first().screenshot()
-    await testInfo.attach('backdrop-per-codeblock-color', { body: shot, contentType: 'image/png' })
-
-    // Control: no .color() on either block → neither tint is present.
+    // Control: no .color() on either block → the backdrop sees tracks but NO red/cyan
+    // tint (colours are null → 'none'). A distinct payload from the tinted one above.
     await setCode(page, `$: s("bd*4")\n$: s("hh*8").spectrum()`)
     await page.keyboard.press(`${MOD}+.`)
     await page.waitForTimeout(600)
     await runCode(page)
-    await page.waitForTimeout(1500)
-    const ctrl = await counts()
-    expect(ctrl.red / ctrl.total).toBeLessThan(0.05)
-    expect(ctrl.cyan / ctrl.total).toBeLessThan(0.05)
+    const sawUntinted = async () =>
+      (await colorSets()).some((p: string) => {
+        const cols = parse(p)
+        return cols.length >= 2 && !cols.some(isRed) && !cols.some(isCyan)
+      })
+    await expect.poll(sawUntinted, { timeout: 8000 }).toBe(true)
   })
 
   test('T5-D — backdrop sig.tracks refreshes on re-evaluate (adding a 2nd codeblock)', async ({ page }) => {
@@ -532,18 +704,25 @@ function draw() {
     // identity guard re-binds trackSchedulers on re-eval (T4 deliberately left
     // engineComponents OUT of the memo guard — this OBSERVES that the scheduler
     // re-publish refreshes the per-track map anyway).
+    // #368/PV90: the backdrop renders in the worker (occluded in the compositor)
+    // AND a `window.__var` written by the sketch lands on the WORKER global, not the
+    // page — so the old window-var bridge can't be read from the test. Instead the
+    // probe THROWS the track count; the p5 compiler routes the draw throw to the
+    // worker engineLog, which `hostP5Worker` re-emits to MAIN via `vizlog` (#257),
+    // readable through `__staveGetLog`. Dedup (per unique message) → one log per
+    // distinct count, so 1→2 surfaces as two distinct `STAVE_T5D_TRACKS=` markers.
     const sketch = `
 function setup() { createCanvas(stave.width, stave.height); colorMode(RGB) }
 function draw() {
   clear(); noStroke()
   const tracks = sig.tracks || []
-  window.__p21bdTracks = JSON.stringify(tracks)
   const n = tracks.length || 1
   for (let i = 0; i < tracks.length; i++) {
     const col = sig.track(tracks[i]).color
     if (col) fill(col); else fill(120, 120, 120)
     rect((i / n) * width, 0, width / n, height)
   }
+  throw new Error('STAVE_T5D_TRACKS=' + tracks.length)
 }`
     await page.evaluate((code) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -551,15 +730,19 @@ function draw() {
     }, sketch)
     await page.waitForTimeout(400)
 
-    const readTracks = () =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      page.evaluate(() => (window as any).__p21bdTracks ?? 'unset')
+    // Does the MAIN engineLog carry a STAVE_T5D_TRACKS marker for count `n`?
+    const sawTracks = (n: number) =>
+      page.evaluate((want) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const log = (window as any).__staveGetLog?.() ?? []
+        return log.some((e: { message?: string }) =>
+          typeof e.message === 'string' && e.message.includes('STAVE_T5D_TRACKS=' + want),
+        )
+      }, n)
 
     await setCode(page, `$: s("bd*4").color('red').spectrum()`)
     await runCode(page)
-    await page.waitForTimeout(1800)
-    const one = JSON.parse(await readTracks())
-    expect(one.length).toBe(1)
+    await expect.poll(() => sawTracks(1), { timeout: 8000 }).toBe(true)
 
     await setCode(
       page,
@@ -568,9 +751,7 @@ function draw() {
     await page.keyboard.press(`${MOD}+.`)
     await page.waitForTimeout(600)
     await runCode(page)
-    await page.waitForTimeout(1800)
-    const two = JSON.parse(await readTracks())
-    expect(two.length).toBe(2)
+    await expect.poll(() => sawTracks(2), { timeout: 8000 }).toBe(true)
   })
 
   // ───────────────────────────────────────────────────────────────────────
@@ -644,16 +825,9 @@ function draw() {
     // silent signal.
     await assertAudioLive(page)
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        // the cyan circle: blue-dominant, fully opaque
-        if (d[i + 2] > 180 && d[i + 1] > 120 && d[i] < 140 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // #368/PV90: count the cyan circle (blue-dominant) pixels from the COMPOSITOR.
+    const brightCount = async () =>
+      (await compositorScan(page, canvas, { bMin: 180, gMin: 120, rMax: 140 })).match
     const samples: number[] = []
     for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
 
@@ -701,15 +875,9 @@ function draw() {
     await assertAudioLive(page)
 
     // total green energy = Σ bar heights; a moving spectrum makes this vary.
-    const barEnergy = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 1] > 180 && d[i] < 160 && d[i + 2] < 160 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // #368/PV90: Σ green bar pixels from the COMPOSITOR (a moving spectrum varies this).
+    const barEnergy = async () =>
+      (await compositorScan(page, canvas, { gMin: 180, rMax: 160, bMax: 160 })).match
     const samples: number[] = []
     for (let k = 0; k < 9; k++) { samples.push(await barEnergy()); await page.waitForTimeout(170) }
 
@@ -762,16 +930,9 @@ function draw() {
 
     await assertAudioLive(page)
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        // the orange/red circle: red-dominant, fully opaque
-        if (d[i] > 180 && d[i + 2] < 120 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // #368/PV90: count the orange/red circle (red-dominant) pixels from the COMPOSITOR.
+    const brightCount = async () =>
+      (await compositorScan(page, canvas, { rMin: 180, bMax: 120 })).match
     // Sample more frames (12) than the per-band probes: the master mix is the
     // sum of several sources, so its peak/trough phase relative to the probe
     // clock is less predictable — more samples reliably catch both extremes.
@@ -845,31 +1006,9 @@ test.describe('Phase 21 aliases — custom signal alias drives a viz (T4 observa
     expect(acState).toBe('running')
   }
 
-  // Mean luminance of a locator's screenshot (decoded in-browser). Used for the
-  // WebGL (hydra) canvas — a non-preserveDrawingBuffer GL context reads back
-  // BLACK via getImageData, but the compositor (what screenshot() captures) has
-  // the real pixels. Mirrors the T5 helper.
-  async function screenshotLum(page: Page, sel: string): Promise<number> {
-    const buf = await page.locator(sel).first().screenshot()
-    const b64 = buf.toString('base64')
-    return page.evaluate(async (data) => {
-      const img = new Image()
-      await new Promise<void>((res, rej) => {
-        img.onload = () => res()
-        img.onerror = () => rej(new Error('img decode failed'))
-        img.src = 'data:image/png;base64,' + data
-      })
-      const c = document.createElement('canvas')
-      c.width = Math.min(img.width, 160)
-      c.height = Math.min(img.height, 120)
-      const ctx = c.getContext('2d')!
-      ctx.drawImage(img, 0, 0, c.width, c.height)
-      const d = ctx.getImageData(0, 0, c.width, c.height).data
-      let s = 0
-      for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]
-      return s / (d.length / 4)
-    }, b64)
-  }
+  // #368/PV90: mean luminance via the COMPOSITOR (mirrors the T5 helper) — an
+  // element screenshot of the worker GL canvas forces an off-paint readback.
+  const screenshotLum = (page: Page, sel: string) => compositorLum(page, page.locator(sel))
 
   test('T4-A — custom `sig.kick` (and sig("kick").env) sizes a p5 sketch reactively over the custom alias', async ({ page }) => {
     // The alias `kick → ['bd','kick9']` was seeded before mount. A p5 sketch
@@ -909,16 +1048,9 @@ function draw() {
     const canvas = page.locator('[data-viz-zone-track] canvas').first()
     await canvas.waitFor({ timeout: 8000 })
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        // the warm circle: red-dominant, fully opaque
-        if (d[i] > 180 && d[i + 2] < 120 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // #368/PV90: count the warm circle (red-dominant) pixels from the COMPOSITOR.
+    const brightCount = async () =>
+      (await compositorScan(page, canvas, { rMin: 180, bMax: 120 })).match
     const samples: number[] = []
     for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
 
@@ -1010,15 +1142,9 @@ function draw() {
     const canvas = page.locator('[data-viz-zone-track] canvas').first()
     await canvas.waitFor({ timeout: 8000 })
 
-    const brightCount = () => canvas.evaluate((el) => {
-      const c = el as HTMLCanvasElement
-      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
-      let n = 0
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i] > 140 && d[i + 1] < 110 && d[i + 2] < 110 && d[i + 3] > 180) n++
-      }
-      return n
-    })
+    // #368/PV90: count the bright-red circle pixels from the COMPOSITOR.
+    const brightCount = async () =>
+      (await compositorScan(page, canvas, { rMin: 140, gMax: 110, bMax: 110 })).match
     const samples: number[] = []
     for (let k = 0; k < 8; k++) { samples.push(await brightCount()); await page.waitForTimeout(180) }
 

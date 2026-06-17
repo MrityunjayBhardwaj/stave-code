@@ -3849,6 +3849,39 @@ function resolveAlias(rawS) {
 }
 __name(resolveAlias, "resolveAlias");
 
+// src/engine/labelBlocks.ts
+var LABEL_RE = /^([A-Za-z_$][A-Za-z0-9_$]*)\s*:/;
+function blockLabelAt(line) {
+  if (line.length === 0 || /^\s/.test(line)) return null;
+  const m = LABEL_RE.exec(line);
+  return m ? m[1] : null;
+}
+__name(blockLabelAt, "blockLabelAt");
+function buildLabelBlockRequests(code, requests, vizOptions) {
+  const result = /* @__PURE__ */ new Map();
+  const lines = code.split("\n");
+  let anonIndex = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const label = blockLabelAt(lines[i]);
+    if (label == null) continue;
+    const key = label.includes("$") ? `$${anonIndex++}` : label;
+    const vizId = requests.get(key);
+    if (!vizId) continue;
+    let lastLineIdx = i;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (blockLabelAt(lines[j]) != null || lines[j].trim().startsWith("setcps")) break;
+      const next = lines[j].trim();
+      if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
+    }
+    const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
+    const contentHash = blockLines.slice(0, 120);
+    const options = vizOptions?.get(key);
+    result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
+  }
+  return result;
+}
+__name(buildLabelBlockRequests, "buildLabelBlockRequests");
+
 // src/engine/StrudelEngine.ts
 function extractVizName(rawArg) {
   if (typeof rawArg === "string") return rawArg || void 0;
@@ -4441,32 +4474,13 @@ var _StrudelEngine = class _StrudelEngine {
     return bag;
   }
   /**
-   * Scans code for $: blocks and maps each track's viz request to the line
-   * after the last line of that block. Mirrors the line-scanning logic in
-   * viewZones.ts but returns structured data instead of creating DOM zones.
+   * Maps each track's viz request to the line after the last line of its
+   * source block. Delegates to the shared label-block scanner so this stays
+   * in lockstep with viewZones.ts and supports named labels (`foo:`), not just
+   * anonymous `$:` (#418).
    */
   buildVizRequestsWithLines(requests, code) {
-    const result = /* @__PURE__ */ new Map();
-    const lines = code.split("\n");
-    let anonIndex = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].trim().startsWith("$:")) continue;
-      const key = `$${anonIndex}`;
-      anonIndex++;
-      const vizId = requests.get(key);
-      if (!vizId) continue;
-      let lastLineIdx = i;
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim();
-        if (next.startsWith("$:") || next.startsWith("setcps")) break;
-        if (next !== "" && !next.startsWith("//")) lastLineIdx = j;
-      }
-      const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
-      const contentHash = blockLines.slice(0, 120);
-      const options = this.vizOptions.get(key);
-      result.set(key, { vizId, afterLine: lastLineIdx + 1, contentHash, ...options ? { options } : {} });
-    }
-    return result;
+    return buildLabelBlockRequests(code, requests, this.vizOptions);
   }
   play() {
     this.repl?.scheduler?.start();
@@ -7007,7 +7021,11 @@ ${d.stack}` : "");
         // singleton reflects the user's quality/LOD settings, not the bundle default.
         config: pickWorkerVizConfig(),
         // #325 Tier A — p5 renders direct into `canvas` (default ON); hydra/glsl already do.
-        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled()
+        p5DirectCanvas: this.kind === "p5" && isP5DirectCanvasEnabled(),
+        // #388 — per-render viz options → stave.options (p5 only). Previously dropped
+        // on the worker path, so `.viz(name, {opts})` had no effect once worker viz
+        // became the default. Mirrors P5VizRenderer reading `components.options`.
+        options: components.options ?? {}
       };
       worker.postMessage(mountMsg, [offscreen]);
       this.configUnsub = onVizConfigChange(() => {
@@ -7021,6 +7039,10 @@ ${d.stack}` : "");
   update(components) {
     if (!this.worker) return;
     this.bindSampler(components);
+    this.worker.postMessage({
+      type: "options",
+      options: components.options ?? {}
+    });
   }
   resize(w, h) {
     this.size = { w, h };
@@ -12695,7 +12717,14 @@ function draw() {
 var PITCHWHEEL_P5_CODE = `// Stave p5 viz \u2014 Pitchwheel
 const ROOT_FREQ = 440 * pow(2, (36 - 69) / 12)
 function setup() {
-  createCanvas(300, 200)
+  // Fill the size Stave provides (like every other built-in) so the canvas
+  // matches its zone. A hardcoded createCanvas(300, 200) left the canvas at a
+  // fixed aspect that didn't match the zone \u2014 on the OffscreenCanvas worker path
+  // (where the presenting canvas can't be measured to self-correct) the zone
+  // stayed sized for the descriptor's default aspect and the canvas floated
+  // inside it, detaching the resize bar. The wheel itself uses min(width,height),
+  // so it stays centred and round at any aspect.
+  createCanvas(stave.width, stave.height)
   pixelDensity(window.devicePixelRatio || 1)
 }
 function freq2angle(f) { return 0.5 - (log(f / ROOT_FREQ) / log(2) % 1) }
@@ -13508,7 +13537,10 @@ var DEFAULT_VIZ_DESCRIPTORS = [
   { id: "fscope", label: "FScope", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(FSCOPE_P5_CODE, "fscope"), "factory") },
   { id: "spectrum", label: "Spectrum", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPECTRUM_P5_CODE, "spectrum"), "factory") },
   { id: "spiral", label: "Spiral", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(SPIRAL_P5_CODE, "spiral"), "factory") },
-  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
+  // nativeSize gives the zone a defined aspect so it isn't sized from
+  // DEFAULT_NATIVE (1200×600 → a 530px-tall strip). The wheel is centred via
+  // min(width,height), so a wide-ish strip keeps it round and a comfortable size.
+  { id: "pitchwheel", label: "Pitchwheel", renderer: "p5", requires: ["streaming"], nativeSize: { w: 1200, h: 240 }, factory: /* @__PURE__ */ __name(() => makeP5Renderer(PITCHWHEEL_P5_CODE, "pitchwheel"), "factory") },
   // Hydra renderers (WebGL shader-based) — compiled from bundled code STRINGS
   // (#252) so `makeHydraRenderer` can offload them to an OffscreenCanvas worker
   // (a HydraPatternFn closure can't cross to a worker; on the main thread a heavy
@@ -14319,7 +14351,7 @@ function getZoneHeightOverride(fileId, trackKey) {
   return entry?.heightPx;
 }
 __name(getZoneHeightOverride, "getZoneHeightOverride");
-function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
+function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash, vizId) {
   ensureDoc();
   const overrides = ensureZoneOverridesMap(fileId);
   if (!overrides) return;
@@ -14331,7 +14363,12 @@ function setZoneHeightOverride(fileId, trackKey, heightPx, contentHash) {
       if (Object.keys(rest).length === 0) overrides.delete(trackKey);
       else overrides.set(trackKey, rest);
     } else {
-      overrides.set(trackKey, { ...existing, heightPx, ...contentHash ? { contentHash } : {} });
+      overrides.set(trackKey, {
+        ...existing,
+        heightPx,
+        ...contentHash ? { contentHash } : {},
+        ...vizId ? { vizId } : {}
+      });
     }
   }, HEIGHT_RESIZE_ORIGIN);
 }
@@ -20683,16 +20720,17 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         const onMove = /* @__PURE__ */ __name((ev) => {
           ev.preventDefault();
           const delta = ev.clientY - startY;
-          const newH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
-          entry.container.style.height = `${newH}px`;
-          entry.zoneDesc.heightInPx = newH;
-          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
+          const dragH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, startH + delta));
           const nw = entry.native.w, nh = entry.native.h;
           const cropW = Math.max(0.01, entry.crop.w);
           const cropH = Math.max(0.01, entry.crop.h);
           const scaleByW = contentW2 / (cropW * nw);
-          const scaleByH = newH / (cropH * nh);
+          const scaleByH = dragH / (cropH * nh);
           const scale = Math.min(scaleByW, scaleByH);
+          const dispH = Math.max(MIN_ZONE_HEIGHT, Math.min(MAX_ZONE_HEIGHT, Math.round(cropH * nh * scale)));
+          entry.container.style.height = `${dispH}px`;
+          entry.zoneDesc.heightInPx = dispH;
+          editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           const tx3 = -entry.crop.x * nw * scale;
           const ty = -entry.crop.y * nh * scale;
           applyLayout(entry.container, entry.container.querySelector("canvas"), { scale, tx: tx3, ty });
@@ -20706,7 +20744,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           resizeHandle.style.opacity = "1";
           if (fileId) {
             const hash = entry.container.getAttribute("data-viz-zone-hash") ?? void 0;
-            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash);
+            setZoneHeightOverride(fileId, entry.trackKey, entry.zoneDesc.heightInPx, hash, entry.vizId);
           }
           editor.changeViewZones((acc) => acc.layoutZone(entry.zoneId));
           delete entry.container.dataset.resizing;
@@ -20719,20 +20757,36 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const tryRefine = /* @__PURE__ */ __name(() => {
         refineAttempts++;
         const actual = readCanvasNative(entry.container);
-        if (actual && (actual.w !== entry.native.w || actual.h !== entry.native.h)) {
-          entry.native = actual;
-          entry.canvas = entry.container.querySelector("canvas");
-          const contentW2 = editor.getLayoutInfo().contentWidth || 400;
-          const refined = computeLayout(contentW2, entry.native, entry.crop);
-          editor.changeViewZones((acc) => {
-            entry.zoneDesc.heightInPx = refined.zoneH;
-            entry.container.style.height = `${refined.zoneH}px`;
-            acc.layoutZone(entry.zoneId);
-          });
-          applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
-          return;
+        if (actual) {
+          if (actual.w !== entry.native.w || actual.h !== entry.native.h) {
+            entry.native = actual;
+            entry.canvas = entry.container.querySelector("canvas");
+            const contentW2 = editor.getLayoutInfo().contentWidth || 400;
+            const refined = computeLayout(contentW2, entry.native, entry.crop);
+            const hOverride = fileId ? getZoneHeightOverride(fileId, entry.trackKey) : void 0;
+            editor.changeViewZones((acc) => {
+              if (hOverride == null) {
+                entry.zoneDesc.heightInPx = refined.zoneH;
+                entry.container.style.height = `${refined.zoneH}px`;
+              }
+              acc.layoutZone(entry.zoneId);
+            });
+            if (hOverride == null) {
+              applyLayout(entry.container, entry.container.querySelector("canvas"), refined);
+            } else {
+              const nw = entry.native.w, nh = entry.native.h;
+              const cropW = Math.max(0.01, entry.crop.w);
+              const cropH = Math.max(0.01, entry.crop.h);
+              const scale = Math.min(contentW2 / (cropW * nw), hOverride / (cropH * nh));
+              applyLayout(entry.container, entry.container.querySelector("canvas"), {
+                scale,
+                tx: -entry.crop.x * nw * scale,
+                ty: -entry.crop.y * nh * scale
+              });
+            }
+          }
         }
-        if (refineAttempts < 10) requestAnimationFrame(tryRefine);
+        if (refineAttempts < 180) requestAnimationFrame(tryRefine);
       }, "tryRefine");
       requestAnimationFrame(tryRefine);
     }
@@ -20846,7 +20900,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       const vizLineIdx = ranges[0].startLineNumber - 1;
       if (vizLineIdx < 0 || vizLineIdx >= lines.length) continue;
       let blockStart = vizLineIdx;
-      while (blockStart >= 0 && !lines[blockStart].trim().startsWith("$:")) {
+      while (blockStart >= 0 && blockLabelAt(lines[blockStart]) == null) {
         blockStart--;
       }
       if (blockStart < 0) continue;
@@ -20854,7 +20908,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       let foundViz = false;
       for (let j = blockStart; j < lines.length; j++) {
         const next = lines[j].trim();
-        if (j > blockStart && (next.startsWith("$:") || next.startsWith("setcps"))) break;
+        if (j > blockStart && (blockLabelAt(lines[j]) != null || next.startsWith("setcps"))) break;
         if (next !== "" && !next.startsWith("//")) blockEnd = j;
         if (/\.viz\s*\(/.test(next)) {
           foundViz = true;
@@ -20866,7 +20920,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         blockEnd = blockStart;
         for (let j = blockStart + 1; j < lines.length; j++) {
           const next = lines[j].trim();
-          if (next.startsWith("$:") || next.startsWith("setcps")) break;
+          if (blockLabelAt(lines[j]) != null || next.startsWith("setcps")) break;
           if (next !== "" && !next.startsWith("//")) blockEnd = j;
         }
       }
@@ -24357,6 +24411,8 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
   onActiveTabChange,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  onOpenPopoutPreview,
+  onOpenBackdropSettings,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -24776,9 +24832,13 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
       splitGroupWithTab,
       updateGroupBackground,
       closeTab: closeTabById,
-      findTabByFileId
+      findTabByFileId,
+      // #240 — forward Cmd+K W to the app host (which owns the runtime + audio
+      // bus needed to mount the popout). Undefined when the host doesn't wire
+      // it → the command's `shell.openPopoutPreview?.()` no-ops.
+      openPopoutPreview: onOpenPopoutPreview
     }),
-    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId]
+    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
   const getActiveTab = React8.useCallback(() => activeTab, [activeTab]);
@@ -25149,6 +25209,11 @@ var WorkspaceShell = React8.forwardRef(/* @__PURE__ */ __name(function Workspace
                     });
                   }, "onToggleBackground"),
                   isBackground: groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // #372 — forward the viz chrome's settings click to the host
+                  // popover, tagged with this tab's fileId so the app opens the
+                  // controls for the right backdrop (no-picker; the file is the
+                  // source). Omitted when the host supplies no handler.
+                  onOpenBackdropSettings: onOpenBackdropSettings ? (rect) => onOpenBackdropSettings(tab.fileId, rect) : void 0,
                   onSave: /* @__PURE__ */ __name(() => {
                     onSaveFileRef.current?.(tab);
                   }, "onSave")
@@ -27850,6 +27915,99 @@ function compilePreset(preset) {
   throw new Error(`Unknown renderer: ${renderer}`);
 }
 __name(compilePreset, "compilePreset");
+function usePopoutPreview({
+  descriptor,
+  hapStream,
+  analyser,
+  scheduler,
+  onClose,
+  theme = "dark"
+}) {
+  const windowRef = React8.useRef(null);
+  const rendererRef = React8.useRef(null);
+  const rafRef = React8.useRef(null);
+  const cleanup = React8.useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    rendererRef.current?.destroy();
+    rendererRef.current = null;
+    if (windowRef.current && !windowRef.current.closed) {
+      windowRef.current.close();
+    }
+    windowRef.current = null;
+  }, []);
+  React8.useEffect(() => {
+    if (!descriptor) {
+      cleanup();
+      return;
+    }
+    const popup = window.open(
+      "",
+      `viz-popout-${descriptor.id}`,
+      "width=800,height=600,menubar=no,toolbar=no,location=no,status=no"
+    );
+    if (!popup) {
+      console.warn("Pop-out blocked by browser \u2014 allow popups for this site");
+      onClose();
+      return;
+    }
+    windowRef.current = popup;
+    popup.document.title = `Viz: ${descriptor.label}`;
+    popup.document.body.style.margin = "0";
+    popup.document.body.style.padding = "0";
+    popup.document.body.style.overflow = "hidden";
+    const container = popup.document.createElement("div");
+    container.style.width = "100vw";
+    container.style.height = "100vh";
+    container.style.position = "relative";
+    popup.document.body.appendChild(container);
+    applyTheme(container, theme);
+    popup.document.body.style.background = container.style.getPropertyValue("--background") || "#090912";
+    try {
+      const renderer = descriptor.factory();
+      rendererRef.current = renderer;
+      const components = {};
+      if (hapStream) components.streaming = { hapStream };
+      if (analyser) components.audio = { analyser, audioCtx: analyser.context };
+      if (scheduler) components.queryable = { scheduler };
+      renderer.mount(
+        container,
+        components,
+        { w: 800, h: 600 },
+        (err) => console.error("Viz popout error:", err)
+      );
+      const onResize = /* @__PURE__ */ __name(() => {
+        renderer.resize(popup.innerWidth, popup.innerHeight);
+      }, "onResize");
+      popup.addEventListener("resize", onResize);
+    } catch (e) {
+      console.error("Failed to mount viz in popout:", e);
+    }
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed);
+        cleanup();
+        onClose();
+      }
+    }, 500);
+    return () => {
+      clearInterval(checkClosed);
+      cleanup();
+    };
+  }, [descriptor?.id]);
+  React8.useEffect(() => {
+    if (!rendererRef.current) return;
+    const components = {};
+    if (hapStream) components.streaming = { hapStream };
+    if (analyser) components.audio = { analyser, audioCtx: analyser.context };
+    if (scheduler) components.queryable = { scheduler };
+    rendererRef.current.update(components);
+  }, [hapStream, analyser, scheduler]);
+  return { cleanup };
+}
+__name(usePopoutPreview, "usePopoutPreview");
 var EMPTY_META = Object.freeze({});
 function useTrackMeta(fileId, trackId) {
   const subscribe3 = React8.useCallback(
@@ -28632,18 +28790,6 @@ async function touchProject(id) {
   db.close();
 }
 __name(touchProject, "touchProject");
-async function setProjectBackgroundCrop(id, crop) {
-  const db = await openDb4();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap4(store.get(id));
-  if (existing) {
-    const { backgroundCrop: _unused, ...rest } = existing;
-    const next = crop == null ? rest : { ...rest, backgroundCrop: crop };
-    await wrap4(store.put(next));
-  }
-  db.close();
-}
-__name(setProjectBackgroundCrop, "setProjectBackgroundCrop");
 async function renameProject(id, name) {
   const db = await openDb4();
   const store = tx2(db, "readwrite");
@@ -29169,7 +29315,8 @@ function VizEditorChrome({
   onTogglePausePreview,
   onChangePreviewSource,
   onToggleBackground,
-  isBackground
+  isBackground,
+  onOpenBackdropSettings
 }) {
   const [liveOn, setLiveOn] = React8.useState(() => getVizLive(file.id));
   React8.useEffect(() => {
@@ -29309,6 +29456,28 @@ function VizEditorChrome({
                 border: `1px solid ${isBackground ? "var(--accent-dim)" : "var(--border)"}`
               },
               children: isBackground ? "\u25A0 bg" : "\u25A0"
+            }
+          ),
+          isBackground && onOpenBackdropSettings && /* @__PURE__ */ jsxRuntime.jsx(
+            "button",
+            {
+              "data-testid": "viz-chrome-bg-settings",
+              onClick: (e) => onOpenBackdropSettings(e.currentTarget.getBoundingClientRect()),
+              title: "Backdrop controls (opacity, quality, crop\\u2026)",
+              style: {
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "3px 6px",
+                borderRadius: 3,
+                fontSize: 9,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                userSelect: "none",
+                background: "none",
+                color: "var(--accent-strong, var(--accent))",
+                border: "1px solid var(--accent-dim)"
+              },
+              children: "\u25BE"
             }
           ),
           /* @__PURE__ */ jsxRuntime.jsx(
@@ -30246,7 +30415,6 @@ exports.setInlineVizResolution = setInlineVizResolution;
 exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
 exports.setMusicalTimelineSubRowHeight = setMusicalTimelineSubRowHeight;
 exports.setPerfEnabled = setPerfEnabled;
-exports.setProjectBackgroundCrop = setProjectBackgroundCrop;
 exports.setSignalAliases = setSignalAliases;
 exports.setSubfolderOrder = setSubfolderOrder;
 exports.setTierFlag = setTierFlag;
@@ -30288,6 +30456,7 @@ exports.undo = undo;
 exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
 exports.updateVizConfig = updateVizConfig;
+exports.usePopoutPreview = usePopoutPreview;
 exports.useTrackMeta = useTrackMeta;
 exports.useWorkspaceFile = useWorkspaceFile;
 exports.validatePersistedState = validatePersistedState;

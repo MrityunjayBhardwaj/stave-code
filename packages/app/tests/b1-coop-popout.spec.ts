@@ -4,10 +4,10 @@ import { test, expect, type Page } from '@playwright/test'
 // The whole Phase B plan rests on the COOP=same-origin + COEP=credentialless
 // header (Q2, LIVE on `performance`). COOP `same-origin` severs cross-window
 // DOM relationships (window.opener, synchronous popup.document access). The
-// plan named PopoutPreview.tsx as the present casualty — but GROUNDING the code
-// shows `usePopoutPreview` is NEVER imported in live src (the Cmd+K W command
-// calls `shell.openPopoutPreview?.()`, which the app never implements → no-op).
-// So there is no LIVE pop-out today. This spike still characterises COOP's
+// plan named PopoutPreview.tsx as the present casualty. (#240 has since WIRED
+// the pop-out: `usePopoutPreview` is driven by StrudelEditorClient via the
+// `onOpenPopoutPreview` shell prop, so Cmd+K W now opens a real window — see
+// viz-popout.spec.ts.) This spike still characterises COOP's
 // effect on the EXACT pattern PopoutPreview uses (window.open('') + synchronous
 // popup.document createElement/appendChild/body.style, lines 53-83, 95), because
 // the pop-out WILL be wired eventually and a future worker-hosting popup needs

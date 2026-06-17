@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  getProject,
   listProjects,
   createProject,
   renameProject,
@@ -19,6 +18,7 @@ import {
   canRedo,
   subscribeToUndoState,
   type ProjectMeta,
+  type CropRegion,
   type WorkspaceShellHandle,
   type HapStream,
   type BreakpointStore,
@@ -87,6 +87,40 @@ import { PerfOverlay } from "./PerfOverlay";
 
 interface StaveAppProps {
   initialProject: ProjectMeta;
+}
+
+// #372 — per-VIZ-FILE backdrop crop persistence (app-side localStorage, keyed
+// by viz file id). Mirrors StrudelEditorClient's per-tab backdrop store: the
+// project-global `ProjectMeta.backgroundCrop` was retired (same move as #371
+// for the backdrop file). Best-effort; a parse/write failure degrades to "no
+// crop" rather than throwing.
+function backdropCropsKey(projectId: string): string {
+  return `stave:backdropCrops:${projectId}`;
+}
+function loadBackdropCrops(projectId: string): Map<string, CropRegion> {
+  if (typeof window === "undefined") return new Map();
+  try {
+    const raw = window.localStorage.getItem(backdropCropsKey(projectId));
+    if (!raw) return new Map();
+    const obj = JSON.parse(raw) as Record<string, CropRegion>;
+    return new Map(Object.entries(obj));
+  } catch {
+    return new Map();
+  }
+}
+function saveBackdropCrops(
+  projectId: string,
+  crops: ReadonlyMap<string, CropRegion>,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      backdropCropsKey(projectId),
+      JSON.stringify(Object.fromEntries(crops)),
+    );
+  } catch {
+    /* best-effort */
+  }
 }
 
 /**
@@ -196,15 +230,19 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [backgroundFileId, setBackgroundFileId] = useState<string | null>(
     null,
   );
-  // Backdrop crop — mirrors ProjectMeta.backgroundCrop. Restored on
-  // project load alongside backgroundFileId; persisted on Save in
-  // the crop popup. `null` means full-rect (default).
-  const [backgroundCrop, setBackgroundCropState] = useState<{
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  } | null>(null);
+  // #372 — per-VIZ-FILE backdrop crop, keyed by the backdrop viz file id
+  // (`backgroundFileId`, the resolved backdrop). A crop "follows the viz":
+  // it shows wherever that viz is the backdrop and never bleeds across viz
+  // files (the #371 self-review gap). Persisted per-project in localStorage
+  // — NOT ProjectMeta, whose project-global crop slot was retired here, the
+  // same move #371 made for the backdrop file. Absent for a viz = full-rect.
+  const [backgroundCrops, setBackgroundCrops] = useState<
+    Map<string, CropRegion>
+  >(() => loadBackdropCrops(activeProject.id));
+  // Resolved crop for the currently-rendered backdrop viz.
+  const backgroundCrop: CropRegion | null = backgroundFileId
+    ? backgroundCrops.get(backgroundFileId) ?? null
+    : null;
 
   // File-list revision counter — bumps whenever the workspace
   // file list mutates (add / remove / rename). Read by the MenuBar's
@@ -499,28 +537,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     [],
   );
 
-  // Restore the per-project backdrop CROP when the active project
-  // changes. The backdrop *file* itself is restored per-tab by
-  // StrudelEditorClient (#347 `tabBackdrops` → `setBackgroundFile` on
-  // the active-tab sync), which is the source of truth — so this effect
-  // no longer reads/pushes `backgroundFileId` (#371 retired the
-  // project-global slot, which used to double-restore and fight the
-  // per-tab path on reload). Crop stays project-global
-  // (`ProjectMeta.backgroundCrop`); it's plain React state consumed by
-  // the shell wrapper render, so no shell handle / rAF gating is needed.
+  // Restore the per-viz backdrop crop map when the active project changes.
+  // Synchronous localStorage read (#372) — replaces the old project-global
+  // `ProjectMeta.backgroundCrop` fetch (retired). The backdrop *file* is
+  // restored per-tab by StrudelEditorClient; the resolved crop is derived
+  // above from `backgroundCrops` + `backgroundFileId`, so no shell push here.
   useEffect(() => {
-    let cancelled = false;
-    getProject(activeProject.id)
-      .then((meta) => {
-        if (cancelled) return;
-        setBackgroundCropState(meta?.backgroundCrop ?? null);
-      })
-      .catch((err) =>
-        console.warn("[stave] backdrop crop restore failed:", err),
-      );
-    return () => {
-      cancelled = true;
-    };
+    setBackgroundCrops(loadBackdropCrops(activeProject.id));
   }, [activeProject.id]);
 
   // Phase 20-01 PR-B (DB-01) — refs hold the latest runtime accessors
@@ -956,13 +979,24 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       rect && rect.width > 0
         ? { w: Math.round(rect.width), h: Math.round(rect.height) }
         : undefined;
+    // Key the crop by the backdrop VIZ file (#372) — captured here so the
+    // persist closure writes the right entry even if the resolved backdrop
+    // changes while the popup is open.
+    const vizId = backgroundFileId;
     setCropTarget({
       mode: "backdrop",
       adapter: createBackdropCropAdapter({
-        projectId: activeProject.id,
-        fileId: backgroundFileId,
+        fileId: vizId,
         initialCrop: backgroundCrop,
-        onChange: (c) => setBackgroundCropState(c),
+        persist: (c) => {
+          setBackgroundCrops((prev) => {
+            const next = new Map(prev);
+            if (c) next.set(vizId, c);
+            else next.delete(vizId);
+            saveBackdropCrops(activeProject.id, next);
+            return next;
+          });
+        },
         renderSize,
       }),
     });

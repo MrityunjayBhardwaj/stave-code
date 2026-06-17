@@ -738,6 +738,8 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
   onActiveTabChange,
   onBackgroundFileChange,
   onActiveBackdropChange,
+  onOpenPopoutPreview,
+  onOpenBackdropSettings,
   backgroundCrop,
   onTabClose,
   previewProviderFor,
@@ -1483,8 +1485,12 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
       updateGroupBackground,
       closeTab: closeTabById,
       findTabByFileId,
+      // #240 — forward Cmd+K W to the app host (which owns the runtime + audio
+      // bus needed to mount the popout). Undefined when the host doesn't wire
+      // it → the command's `shell.openPopoutPreview?.()` no-ops.
+      openPopoutPreview: onOpenPopoutPreview,
     }),
-    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId],
+    [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview],
   )
   shellActionsRef.current = shellActions
 
@@ -2070,6 +2076,14 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
                   },
                   isBackground:
                     groups.get(groupId)?.backgroundFileId === tab.fileId,
+                  // #372 — forward the viz chrome's settings click to the host
+                  // popover, tagged with this tab's fileId so the app opens the
+                  // controls for the right backdrop (no-picker; the file is the
+                  // source). Omitted when the host supplies no handler.
+                  onOpenBackdropSettings: onOpenBackdropSettings
+                    ? (rect: DOMRect) =>
+                        onOpenBackdropSettings(tab.fileId, rect)
+                    : undefined,
                   onSave: () => {
                     // Bridge to the host-supplied save callback. The host
                     // owns the persistence layer (e.g., flushToPreset for

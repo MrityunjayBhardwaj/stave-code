@@ -139,6 +139,9 @@ export {
 } from './visualizers/vizPreset'
 export { compilePreset } from './visualizers/vizCompiler'
 export { mountVizRenderer } from './visualizers/mountVizRenderer'
+// #240 — viz pop-out: the hook drives a window.open() preview; the app host
+// wires it through `WorkspaceShellProps.onOpenPopoutPreview` (Cmd+K W).
+export { usePopoutPreview } from './visualizers/editor/PopoutPreview'
 
 // Named signal bus — renderer-agnostic per-sound / per-track musical signals
 // (Phase 21). PURE module (no p5/hydra import — P12); renderers wrap its shape
@@ -377,7 +380,6 @@ export {
   renameProject,
   deleteProject,
   duplicateProject,
-  setProjectBackgroundCrop,
   type ProjectMeta,
 } from './workspace/projectRegistry'
 
