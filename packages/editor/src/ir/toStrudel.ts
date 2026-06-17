@@ -101,9 +101,15 @@ function gen(ir: PatternIR): string {
       if (canCollapse(ir.children)) {
         return collapseToMini(ir.children)
       }
-      // Non-collapsible: use Strudel's cat() for sequential composition
+      // Non-collapsible: Seq is FASTCAT — all children share ONE cycle
+      // (fastcat ≡ Seq, grounded: parseStrudel.ts:1314). Emit `fastcat(...)`,
+      // NOT `cat(...)`: `cat`/`slowcat` give each child a WHOLE cycle, so a
+      // round-trip would stretch a 1-cycle sequence into N cycles (#434).
+      // `userMethod` is 'fastcat' (parsed form) or undefined (mini-/seq-derived);
+      // both are one-cycle, so `fastcat(...)` is the faithful canonical form —
+      // and it parses back to Seq via parseTimeSequenceRoot, closing the loop.
       const parts = ir.children.map(gen)
-      return `cat(${parts.join(', ')})`
+      return `fastcat(${parts.join(', ')})`
     }
 
     case 'Stack': {
