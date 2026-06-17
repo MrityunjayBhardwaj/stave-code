@@ -477,6 +477,22 @@ describe('FullSongTimeline — move a clip (drag body → reorder / §2.1 wrap, 
     expect(onMoveClip).not.toHaveBeenCalled()
   })
 
+  it('clears a held selection after a reorder (no stale armIndex, #448)', async () => {
+    const onMoveClip = vi.fn()
+    const { grid, container } = renderReorderable(onMoveClip)
+    await settle()
+    // Select arm 1 (a non-drag click) — the highlight shows.
+    fireEvent.pointerDown(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
+    // Now reorder arm 0 → arm 1's span; the arm list reindexes, so selection clears.
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    expect(onMoveClip).toHaveBeenCalledWith({ kind: 'reorder', sourceOffset: 9, fromIndex: 0, toIndex: 1 })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
+  })
+
   it('dragging a BARE track’s clip → onMoveClip wrap (§2.1, lead = drop cycle)', async () => {
     const onMoveClip = vi.fn()
     const { grid } = renderWrappable(onMoveClip)
@@ -532,6 +548,17 @@ describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert 
     fireEvent.keyDown(grid, { key: 'd', metaKey: true })
     expect(onDuplicateClip).not.toHaveBeenCalled()
   })
+
+  it('clears the selection after duplicating (no stale armIndex, #448)', async () => {
+    const onDuplicateClip = vi.fn()
+    const { grid, container } = renderDuplicatable(onDuplicateClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 }) // select arm 0
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
+    fireEvent.keyDown(grid, { key: 'd', metaKey: true })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
+  })
 })
 
 describe('FullSongTimeline — split a clip (select + S → split arm at midpoint, #386)', () => {
@@ -562,6 +589,17 @@ describe('FullSongTimeline — split a clip (select + S → split arm at midpoin
     await settle()
     fireEvent.keyDown(grid, { key: 's' })
     expect(onSplitClip).not.toHaveBeenCalled()
+  })
+
+  it('clears the selection after splitting (#448)', async () => {
+    const onSplitClip = vi.fn()
+    const { grid, container } = renderSplittable(onSplitClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 }) // select arm 0 [0,2)
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
+    fireEvent.keyDown(grid, { key: 's' })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
   })
 
   it('⌘-S (save) does not trigger a split', async () => {
