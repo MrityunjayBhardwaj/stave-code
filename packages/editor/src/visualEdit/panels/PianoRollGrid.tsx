@@ -274,7 +274,10 @@ export function PianoRollGrid(): React.ReactElement {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
         {rows.map((midi) => {
-          const black = isBlackKey(midi)
+          // Piano black/white striping only makes sense for note-name rows;
+          // for numeric patterns a row is a raw value (MIDI or degree), not a
+          // key, so stripe uniformly and let the numeric label carry the pitch.
+          const black = !model.numeric && isBlackKey(midi)
           return (
             <div key={midi} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span

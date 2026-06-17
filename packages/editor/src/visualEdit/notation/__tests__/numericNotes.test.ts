@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { parseStepGrid, parsePianoRoll } from '../parse'
-import { serializePianoRoll } from '../serialize'
+import { parseStepGrid, parsePianoRoll, applyRollGain } from '../parse'
+import { serializePianoRoll, serializeRollGain } from '../serialize'
 import { placeNote } from '../place'
 import { pitchToMidi } from '../pitch'
+import type { PianoRollModel } from '../model'
 
 /**
  * #469 — bare-numeric note/degree patterns in the Piano Roll.
@@ -92,5 +93,59 @@ describe('#469 — numeric note/degree patterns', () => {
     expect(pitchToMidi('-7')).toBe(-7)
     expect(pitchToMidi('c3')).toBe(48) // engine convention c3 = 48
     expect(pitchToMidi('xyz')).toBeNull()
+  })
+
+  // gap 1 — the velocity (.gain) lane is pitch-agnostic (aligns by start
+  // column), so it must work identically on numeric patterns.
+  describe('velocity lane on numeric patterns', () => {
+    const withGains = (mini: string, gains: Record<number, number>): PianoRollModel => {
+      const r = parsePianoRoll(mini)
+      if (!r.ok) throw new Error(`expected ${mini} to parse`)
+      return {
+        ...r.model,
+        notes: r.model.notes.map((n) =>
+          gains[n.start] != null ? { ...n, gain: gains[n.start] } : n,
+        ),
+      }
+    }
+
+    it('serializes a per-note gain string aligned to numeric notes', () => {
+      const m = withGains('60 62 64', { 0: 1, 1: 0.5, 2: 0.25 })
+      expect(serializeRollGain(m)).toEqual({ kind: 'write', value: '1 0.5 0.25', quoted: true })
+    })
+
+    it('applies a scalar .gain as a uniform base, preserving the numeric flag', () => {
+      const r = parsePianoRoll('60 62')
+      if (!r.ok) throw new Error('parse')
+      const m = applyRollGain(r.model, { mini: null, numeric: 0.4, foreign: false })
+      expect(m.notes.every((n) => n.gain === 0.4)).toBe(true)
+      expect(m.numeric).toBe(true) // applyRollGain spreads the model
+    })
+
+    it('applies an aligned string .gain onto numeric notes by column', () => {
+      const r = parsePianoRoll('60 ~ 64')
+      if (!r.ok) throw new Error('parse')
+      const m = applyRollGain(r.model, { mini: '1 ~ 0.5', numeric: null, foreign: false })
+      expect(m.notes.find((n) => n.start === 0)?.gain).toBeUndefined() // neutral 1 stays bare
+      expect(m.notes.find((n) => n.start === 2)?.gain).toBe(0.5)
+    })
+  })
+
+  // gap 2 — a `<...>` alternation of numeric values (multi-bar roll path)
+  describe('numeric alternation (multi-bar)', () => {
+    it('binds and round-trips `<60 62>`', () => {
+      const r = parsePianoRoll('<60 62>')
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.model.numeric).toBe(true)
+      expect(r.model.bars).toBe(2)
+      expect(serializePianoRoll(r.model)).toBe('<60 62>')
+    })
+
+    it('binds and round-trips a degree alternation `<0 1 2>`', () => {
+      const r = parsePianoRoll('<0 1 2>')
+      expect(r.ok).toBe(true)
+      if (r.ok) expect(serializePianoRoll(r.model)).toBe('<0 1 2>')
+    })
   })
 })
