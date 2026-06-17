@@ -24,6 +24,7 @@ import {
   parseRoot,
   applyChain,
   splitRootAndChain,
+  stripParserPrelude,
 } from './parseStrudel'
 
 /**
@@ -60,11 +61,34 @@ export function runRawStage(input: PatternIR): PatternIR {
   }
   const tracks = extractTracks(code)
   if (tracks.length === 0) {
-    const trimStart = code.search(/\S/)
-    const start = trimStart >= 0 ? trimStart : 0
+    // Phase 20-14 parser-gap PARITY (#113) — strip the leading prelude
+    // (whole-line comments, blank lines, recognised boot side-effects like
+    // `setcps(…)` / `samples(…)`) before lifting, exactly as parseStrudel's
+    // no-`$:` branch does (parseStrudel.ts:804). Without this, a bare pattern
+    // PRECEDED by a prelude statement (`setcps(120/240)\ns("bd hh sd")`) lifted
+    // the WHOLE source as one Code node → MINI-EXPANDED read `setcps(…)` as the
+    // root and the pattern fell through to opaque Code → zero events → an empty
+    // timeline. parseStrudel got this fix in 20-14; the STAGED pipeline (the
+    // snapshot/timeline path via runPasses) had diverged and still lifted the
+    // raw source. A lone bare pattern (no prelude) is unaffected — strip is a
+    // no-op there.
+    const stripped = stripParserPrelude(code)
+    if (!stripped.body.trim()) {
+      // Source is ENTIRELY prelude (no musical body) — empty Code lift.
+      // MINI-EXPANDED maps an empty Code → IR.pure(), preserving the
+      // synthetic-d1 shape downstream (mirrors parseStrudel.ts:805-810).
+      return {
+        tag: 'Code' as const,
+        code: '',
+        lang: 'strudel' as const,
+        loc: [{ start: stripped.offset, end: code.length }],
+      }
+    }
+    const bodyTrimStart = stripped.body.search(/\S/)
+    const start = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0)
     return {
       tag: 'Code' as const,
-      code: code.trim(),
+      code: stripped.body.trim(),
       lang: 'strudel' as const,
       loc: [{ start, end: code.length }],
     }

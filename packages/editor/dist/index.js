@@ -3236,11 +3236,20 @@ function runRawStage(input) {
   }
   const tracks = extractTracks(code);
   if (tracks.length === 0) {
-    const trimStart = code.search(/\S/);
-    const start = trimStart >= 0 ? trimStart : 0;
+    const stripped = stripParserPrelude(code);
+    if (!stripped.body.trim()) {
+      return {
+        tag: "Code",
+        code: "",
+        lang: "strudel",
+        loc: [{ start: stripped.offset, end: code.length }]
+      };
+    }
+    const bodyTrimStart = stripped.body.search(/\S/);
+    const start = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0);
     return {
       tag: "Code",
-      code: code.trim(),
+      code: stripped.body.trim(),
       lang: "strudel",
       loc: [{ start, end: code.length }]
     };

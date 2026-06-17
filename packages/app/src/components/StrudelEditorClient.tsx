@@ -97,6 +97,11 @@ const STRUDEL_PASSES: readonly Pass<PatternIR>[] = [
 // other; if WINDOW_CYCLES changes there, update this to match.
 const TIMELINE_WINDOW_CYCLES = 2;
 
+// #457 — debounce for republishing the IR snapshot on a stopped code edit, so
+// the Song timeline / IR Inspector track the source as the user types without
+// thrashing analyzeSong on every keystroke. ~one comfortable typing pause.
+const SNAPSHOT_REFRESH_DEBOUNCE_MS = 300;
+
 /**
  * Parse the file's current source into IR and publish an IRSnapshot for the
  * Inspector + full-song timeline. parseStrudel + collect are pure and cheap on
@@ -708,6 +713,43 @@ export default function StrudelEditorClient({
   const [runtimeStates, setRuntimeStates] = useState<Map<string, {
     isPlaying: boolean; error: Error | null; bpm?: number; autoRefresh: boolean;
   }>>(new Map());
+  // Latest-value ref so the content-change subscription (#457, below) can read
+  // the active file's play/live state without re-binding the subscription on
+  // every state change.
+  const runtimeStatesRef = useRef(runtimeStates);
+  runtimeStatesRef.current = runtimeStates;
+
+  // #457 — keep the Song timeline + IR Inspector snapshot in sync with the
+  // SOURCE while the runtime isn't live-evaluating. The snapshot is otherwise
+  // republished only on a successful eval (onEvaluateSuccess) or on song-view
+  // entry (#394), so a code edit with no re-eval — every edit while stopped,
+  // since nothing auto-evaluates — left the timeline frozen at the last eval.
+  // subscribeToWorkspaceFile fires on BOTH typing and Pattern-panel write-backs
+  // (both mutate the workspace file); captureAndPublishSnapshot is pure on the
+  // source string (and a no-op for non-Strudel files), so it's safe off the
+  // eval lifecycle. Skipped while live-coding (playing && autoRefresh): there
+  // the runtime's own debounced re-eval owns the snapshot, so republishing here
+  // would double-publish and flash a mid-keystroke broken parse.
+  useEffect(() => {
+    const fid = watchedFileId;
+    if (!fid) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = subscribeToWorkspaceFile(fid, () => {
+      const st = runtimeStatesRef.current.get(fid);
+      if (st?.isPlaying && st.autoRefresh) return; // eval-path owns it
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        captureAndPublishSnapshot(
+          fid,
+          runtimesRef.current.get(fid)?.getCurrentCycle?.() ?? null,
+        );
+      }, SNAPSHOT_REFRESH_DEBOUNCE_MS);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsub();
+    };
+  }, [watchedFileId]);
 
   const getOrCreateRuntime = useCallback((fileId: string): LiveCodingRuntime | null => {
     if (runtimesRef.current.has(fileId)) return runtimesRef.current.get(fileId)!;
