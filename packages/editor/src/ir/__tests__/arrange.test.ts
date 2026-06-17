@@ -151,3 +151,46 @@ describe('Phase 5a — round-trip', () => {
     if (u.tag === 'Arrange') expect(u.arms.map(a => a.weight)).toEqual([2, 1])
   })
 })
+
+describe('#434 — fastcat/Seq round-trip preserves ONE-cycle semantics', () => {
+  // A non-collapsible fastcat: children can't fold into mini, so toStrudel must
+  // pick a function form. The bug emitted `cat(...)` (slowcat = one cycle PER
+  // child) → a 1-cycle sequence became 2-cycle. Now it emits `fastcat(...)`.
+  const FASTCAT = 'fastcat(note("c3").fast(2), note("e3"))'
+
+  it('toStrudel emits fastcat() for a non-collapsible Seq, not cat()', () => {
+    const code = toStrudel(parse(FASTCAT))
+    expect(code).toMatch(/^fastcat\(/)
+    expect(code).not.toMatch(/^cat\(/)
+  })
+
+  it('parse → toStrudel → parse is identity (Seq + userMethod fastcat)', () => {
+    const first = unwrapD1(parse(FASTCAT))
+    expect(first.tag).toBe('Seq')
+    if (first.tag === 'Seq') expect(first.userMethod).toBe('fastcat')
+    const round = unwrapD1(parse(toStrudel(first)))
+    expect(round.tag).toBe('Seq')
+    if (round.tag === 'Seq') expect(round.userMethod).toBe('fastcat')
+  })
+
+  it('round-tripped code keeps ONE-cycle timing in real Strudel', async () => {
+    // Ground truth: the re-emitted code must produce the SAME onsets as the
+    // original over the same window. The old cat() emit would shift e3 to
+    // cycle 1 (period 2); fastcat() keeps both in cycle 0 (period 1).
+    const original = await strudelOnsets(FASTCAT, 2)
+    const reemitted = await strudelOnsets(toStrudel(parse(FASTCAT)), 2)
+    const norm = (xs: typeof original) =>
+      xs.map(e => ({ note: e.note, begin: +e.begin.toFixed(4), end: +e.end.toFixed(4) }))
+        .sort((a, b) => a.begin - b.begin)
+    expect(norm(reemitted)).toEqual(norm(original))
+  })
+
+  it('patternToJSON/patternFromJSON preserves userMethod=fastcat (serialize fix)', () => {
+    const ir = parse(FASTCAT)
+    const back = unwrapD1(patternFromJSON(patternToJSON(ir)))
+    expect(back.tag).toBe('Seq')
+    if (back.tag === 'Seq') expect(back.userMethod).toBe('fastcat')
+    // and the JSON-restored IR still re-emits fastcat (not cat)
+    expect(toStrudel(back)).toMatch(/^fastcat\(/)
+  })
+})
