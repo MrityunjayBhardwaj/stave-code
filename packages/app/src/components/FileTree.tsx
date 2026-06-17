@@ -28,7 +28,6 @@ interface FileTreeProps {
   projectName: string;
   onOpenFile: (fileId: string, intent?: { preview?: boolean }) => void;
   activeFileId: string | null;
-  onToggleCollapse: () => void;
   /** Called when a user drops a single .zip onto the sidebar. If set,
    *  the tree skips the normal file-by-file import and delegates. */
   onImportZipProject?: (file: File) => void;
@@ -191,7 +190,7 @@ function applyFolderOrder(
 // ── Main component ──────────────────────────────────────────────────
 
 export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({
-  projectName, onOpenFile, activeFileId, onToggleCollapse, onImportZipProject, onFileHistory,
+  projectName, onOpenFile, activeFileId, onImportZipProject, onFileHistory,
 }, forwardedRef) {
   // Subscribe to file list changes — re-list whenever a file is added,
   // removed, or renamed. `fileListRev` is the dep that forces the memo
@@ -258,109 +257,11 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, folderOrderRev]);
 
-  // ── Resizable width ─────────────────────────────────────────────────
-  // The sidebar width is draggable via a thin handle on the right edge.
-  // Persisted to localStorage so it survives refresh. Clamped to a
-  // reasonable min/max to avoid degenerate states.
-  const MIN_WIDTH = 160;
-  const MAX_WIDTH = 600;
-  const DEFAULT_WIDTH = 240;
-  const [width, setWidth] = useState<number>(() => {
-    if (typeof window === "undefined") return DEFAULT_WIDTH;
-    const saved = window.localStorage.getItem("stave:sidebar-width");
-    const parsed = saved ? parseInt(saved, 10) : NaN;
-    if (Number.isFinite(parsed) && parsed >= MIN_WIDTH && parsed <= MAX_WIDTH) {
-      return parsed;
-    }
-    return DEFAULT_WIDTH;
-  });
-
-  // Persist to localStorage (debounced slightly via rAF)
-  const persistTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (persistTimerRef.current !== null) cancelAnimationFrame(persistTimerRef.current);
-    persistTimerRef.current = requestAnimationFrame(() => {
-      try { window.localStorage.setItem("stave:sidebar-width", String(width)); } catch { /* ignore quota */ }
-    });
-    return () => {
-      if (persistTimerRef.current !== null) cancelAnimationFrame(persistTimerRef.current);
-    };
-  }, [width]);
-
-  const sidebarRef = useRef<HTMLDivElement>(null);
-  const [resizing, setResizing] = useState(false);
-  const [resizeHover, setResizeHover] = useState(false);
-  // Sidebar hover state — drives VS Code-style hover-only header
-  // actions (New file / New folder appear only while the cursor is
-  // inside the panel).
+  // Sidebar hover state — drives VS Code-style hover-only header actions
+  // (New file / New folder appear only while the cursor is inside the panel).
+  // Width / resize / drag-to-collapse are owned by the parent ResizableSidebar
+  // wrapper so the left-panel width stays tab-invariant (#341).
   const [sidebarHover, setSidebarHover] = useState(false);
-  // Mid-drag collapse intent. While true, the sidebar visually folds to
-  // zero width but stays mounted so the window-level drag listeners keep
-  // running — that's how VS Code lets the user pull the edge back past
-  // the threshold and "uncollapse" in the same gesture. The real parent
-  // `onToggleCollapse()` only fires on mouseup if the intent is still
-  // active at that point.
-  const [pendingCollapse, setPendingCollapse] = useState(false);
-
-  // During a drag, track mouse globally (user can drag outside the
-  // sidebar). Using window listeners instead of React events so the
-  // drag works even if the pointer leaves the handle briefly.
-  //
-  // VS Code-style collapse / uncollapse: pulling the edge further left
-  // than half the minimum width visually folds the sidebar shut but the
-  // drag KEEPS RUNNING. Pulling back past the threshold within the same
-  // gesture re-expands it. Only on mouseup (with pending still true) do
-  // we commit by calling onToggleCollapse. The raw (unclamped) cursor
-  // offset drives this — the clamped `width` plateaus at MIN_WIDTH and
-  // would never cross back either way.
-  const COLLAPSE_THRESHOLD = Math.floor(MIN_WIDTH / 2); // 80px
-  useEffect(() => {
-    if (!resizing) return;
-    const handleMove = (e: MouseEvent) => {
-      if (!sidebarRef.current) return;
-      const rect = sidebarRef.current.getBoundingClientRect();
-      const raw = e.clientX - rect.left;
-      if (raw < COLLAPSE_THRESHOLD) {
-        setPendingCollapse(true);
-        return;
-      }
-      setPendingCollapse(false);
-      const next = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, raw));
-      setWidth(next);
-    };
-    const handleUp = () => {
-      setResizing(false);
-      // Read from the closure-captured DOM signal — the intent flag's
-      // latest value is what we saw in the last `handleMove` invocation.
-      // React state won't help us here because setResizing(false) runs
-      // synchronously with this callback. Use a ref for the latest value.
-      if (pendingCollapseRef.current) {
-        setPendingCollapse(false);
-        onToggleCollapse();
-      }
-    };
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-    const prevSelect = document.body.style.userSelect;
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-      document.body.style.userSelect = prevSelect;
-      document.body.style.cursor = "";
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resizing]);
-
-  // Mirror `pendingCollapse` state into a ref so the mouseup handler
-  // inside the stable effect above reads the latest value without
-  // needing `pendingCollapse` as an effect dep (which would re-subscribe
-  // window listeners on every threshold crossing).
-  const pendingCollapseRef = useRef(false);
-  useEffect(() => {
-    pendingCollapseRef.current = pendingCollapse;
-  }, [pendingCollapse]);
 
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
 
@@ -1040,22 +941,12 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
     [moveFileToFolder, moveFolderToFolder, betweenFolderTarget, reorderFolderWithin, reorderChildWithin, importNativeFiles],
   );
 
-  // While `pendingCollapse` is true we fold the sidebar to zero width
-  // but keep it mounted so the ongoing drag can uncommit the collapse
-  // (see the resize effect above).
-  const renderedWidth = pendingCollapse ? 0 : width;
   return (
     <div
-      ref={sidebarRef}
       data-sidebar
       onMouseEnter={() => setSidebarHover(true)}
       onMouseLeave={() => setSidebarHover(false)}
-      style={{
-        ...styles.sidebar,
-        width: renderedWidth,
-        minWidth: renderedWidth,
-        overflow: pendingCollapse ? "hidden" : undefined,
-      }}
+      style={styles.sidebar}
     >
       <div style={styles.header}>
         <span style={styles.title} title={projectName}>{projectName}</span>
@@ -1198,29 +1089,6 @@ export const FileTree = React.forwardRef<FileTreeHandle, FileTreeProps>(function
           onDeleteFolder={handleDeleteFolder}
         />
       )}
-
-      {/* Resize handle — 5px wide strip on the right edge. Cursor is
-          col-resize; mousedown enters resize mode and window-level
-          listeners (see effect above) drive the width update. Hover
-          previews the accent at reduced intensity; drag shows it fully.*/}
-      <div
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setResizing(true);
-        }}
-        onMouseEnter={() => setResizeHover(true)}
-        onMouseLeave={() => setResizeHover(false)}
-        style={{
-          ...styles.resizeHandle,
-          ...(resizing
-            ? styles.resizeHandleActive
-            : resizeHover
-              ? styles.resizeHandleHover
-              : {}),
-        }}
-        title="Drag to resize sidebar"
-        aria-label="Resize sidebar"
-      />
     </div>
   );
 });
@@ -1587,36 +1455,16 @@ function fileIconFor(name: string): string {
 
 const styles: Record<string, React.CSSProperties> = {
   sidebar: {
-    // width + minWidth overridden dynamically by the resize hook
+    // Width / resize / border / background are owned by the parent
+    // ResizableSidebar wrapper (#341) — the tree just fills it.
+    width: "100%",
     height: "100%",
-    background: "var(--bg-sidebar)",
-    borderRight: "1px solid var(--border-subtle)",
     display: "flex",
     flexDirection: "column" as const,
     fontFamily: "system-ui, -apple-system, sans-serif",
     fontSize: 13,
     color: "var(--text-chrome)",
     userSelect: "none" as const,
-    position: "relative" as const,
-    zIndex: 1,
-  },
-  resizeHandle: {
-    position: "absolute" as const,
-    top: 0,
-    right: -2,
-    width: 5,
-    height: "100%",
-    cursor: "col-resize",
-    zIndex: 10,
-    background: "transparent",
-    transition: "background 260ms ease-out",
-  },
-  resizeHandleHover: {
-    background: "color-mix(in srgb, var(--accent-strong) 45%, transparent)",
-  },
-  resizeHandleActive: {
-    background: "var(--accent-strong)",
-    transition: "background 80ms ease-out",
   },
   header: {
     display: "flex",

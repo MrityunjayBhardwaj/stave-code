@@ -811,6 +811,7 @@ export function IRInspectorPanel(
           padding: 16,
           fontSize: "0.9em",
           opacity: 0.7,
+          width: "100%",
           height: "100%",
         }}
       >
@@ -829,6 +830,7 @@ export function IRInspectorPanel(
       style={{
         padding: 12,
         fontSize: "0.9em",
+        width: "100%",
         height: "100%",
         overflow: "auto",
         outline: "none",

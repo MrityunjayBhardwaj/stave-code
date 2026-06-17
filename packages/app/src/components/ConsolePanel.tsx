@@ -415,13 +415,12 @@ function shortenPath(p: string): string {
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
-    width: 360,
-    maxWidth: 360,
+    // Width + right border + background are owned by the ResizableSidebar
+    // wrapper (#341); the console fills it so it matches every other tab.
+    width: "100%",
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    background: "var(--bg-panel)",
-    borderRight: "1px solid var(--border-subtle)",
     fontFamily: "system-ui, -apple-system, sans-serif",
     minWidth: 0,
   },

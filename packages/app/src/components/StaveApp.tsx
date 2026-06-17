@@ -37,9 +37,7 @@ import { MenuBar } from "./MenuBar";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 import { TemplateModal } from "./TemplateModal";
 import { ProjectSwitcherModal } from "./ProjectSwitcherModal";
-import { OutlineView } from "./OutlineView";
 import {
-  revealLineInFile,
   bumpEditorFontSize,
   toggleEditorMinimap,
   cycleEditorTheme,
@@ -56,7 +54,7 @@ import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
-import { StatusBar, type StatusBarRuntimeState } from "./StatusBar";
+import { ResizableSidebar } from "./ResizableSidebar";
 import { ConsolePanel } from "./ConsolePanel";
 import { IRInspectorPanel } from "./IRInspectorPanel";
 import { registerCommand } from "../commands/registry";
@@ -413,7 +411,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   //   file in the tree.
   const shellRef = useRef<WorkspaceShellHandle | null>(null);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
-  const [activeRuntime, setActiveRuntime] = useState<StatusBarRuntimeState | null>(null);
 
   // Tell the history service which file is focused so the History panel's
   // File scope targets it (Phase G, #197).
@@ -610,18 +607,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getIsPausedRef.current = s?.getIsPaused ?? (() => false);
       onResumeRef.current = s?.onResume ?? (() => {});
       onPauseChangedRef.current = s?.onPauseChanged ?? (() => () => {});
-      setActiveRuntime((prev) => {
-        if (!s) return prev === null ? prev : null;
-        if (
-          prev &&
-          prev.isPlaying === s.isPlaying &&
-          prev.bpm === s.bpm &&
-          prev.error === s.error
-        ) {
-          return prev; // same values — skip re-render
-        }
-        return { isPlaying: s.isPlaying, bpm: s.bpm, error: s.error };
-      });
     },
     [],
   );
@@ -942,13 +927,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       render: () => null,
     }));
     unregs.push(registerPanel({
-      id: "outline",
-      title: "Outline",
-      icon: "symbol-class",
-      order: 40,
-      render: () => null,
-    }));
-    unregs.push(registerPanel({
       id: "console",
       title: "Console",
       icon: "terminal",
@@ -1066,68 +1044,55 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             }}
           />
         )}
-        {!zenMode && activePanelId === "explorer" && (
-          <FileTree
-            ref={fileTreeRef}
-            projectName={activeProject.name}
-            onOpenFile={handleOpenFile}
-            activeFileId={activeFileId}
-            onToggleCollapse={() => setActivePanelId(null)}
-            onImportZipProject={handleImportZip}
-            onFileHistory={(fileId) => {
-              setFileHistoryTarget(fileId);
-              setActivePanelId("snapshots");
-            }}
-          />
-        )}
-        {!zenMode && activePanelId === "search" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>SEARCH</div>
-            <WorkspaceSearchView
-              ref={searchViewRef}
-              compact
-              onOpenFile={(id) => handleOpenFile(id, { preview: true })}
-            />
-          </div>
-        )}
-        {!zenMode && activePanelId === "snapshots" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>VERSION HISTORY</div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <HistoryPanel
-                onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+        {/* The left panel's width is owned in ONE place — ResizableSidebar —
+            so resize/collapse behave identically regardless of which tab is
+            active (#341). Switching tabs swaps only the content. */}
+        {!zenMode && activePanelId !== null && (
+          <ResizableSidebar onCollapse={() => setActivePanelId(null)}>
+            {activePanelId === "explorer" && (
+              <FileTree
+                ref={fileTreeRef}
+                projectName={activeProject.name}
+                onOpenFile={handleOpenFile}
+                activeFileId={activeFileId}
+                onImportZipProject={handleImportZip}
+                onFileHistory={(fileId) => {
+                  setFileHistoryTarget(fileId);
+                  setActivePanelId("snapshots");
+                }}
               />
-            </div>
-          </div>
-        )}
-        {!zenMode && activePanelId === "console" && <ConsolePanel />}
-        {!zenMode && activePanelId === "ir-inspector" && (
-          <IRInspectorPanel
-            getHapStream={() => getHapStreamRef.current()}
-            getBreakpointStore={() => getBreakpointStoreRef.current()}
-            getIsPaused={() => getIsPausedRef.current()}
-            onResume={() => onResumeRef.current()}
-            onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
-          />
-        )}
-        {!zenMode && activePanelId === "outline" && (
-          <div style={styles.panelRoot} data-sidebar>
-            <div style={styles.panelHeader}>OUTLINE</div>
-            <OutlineView
-              activeFileId={activeFileId}
-              onJump={(fileId, line) => {
-                handleOpenFile(fileId, { preview: false });
-                // The tab may need a tick to mount its Monaco instance;
-                // retry up to a few times until the editor is registered.
-                let tries = 0;
-                const tick = () => {
-                  if (revealLineInFile(fileId, line)) return;
-                  if (++tries < 10) setTimeout(tick, 40);
-                };
-                setTimeout(tick, 50);
-              }}
-            />
-          </div>
+            )}
+            {activePanelId === "search" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>SEARCH</div>
+                <WorkspaceSearchView
+                  ref={searchViewRef}
+                  compact
+                  onOpenFile={(id) => handleOpenFile(id, { preview: true })}
+                />
+              </div>
+            )}
+            {activePanelId === "snapshots" && (
+              <div style={styles.panelRoot} data-sidebar>
+                <div style={styles.panelHeader}>VERSION HISTORY</div>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <HistoryPanel
+                    onOpenHistoryTab={(req) => shellRef.current?.openHistoryTab(req)}
+                  />
+                </div>
+              </div>
+            )}
+            {activePanelId === "console" && <ConsolePanel />}
+            {activePanelId === "ir-inspector" && (
+              <IRInspectorPanel
+                getHapStream={() => getHapStreamRef.current()}
+                getBreakpointStore={() => getBreakpointStoreRef.current()}
+                getIsPaused={() => getIsPausedRef.current()}
+                onResume={() => onResumeRef.current()}
+                onPauseChanged={(cb) => onPauseChangedRef.current(cb)}
+              />
+            )}
+          </ResizableSidebar>
         )}
 
         <div style={styles.editorArea}>
@@ -1364,19 +1329,6 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
       <DialogHost />
 
-      {!zenMode && <StatusBar
-        projectName={activeProject.name}
-        activeFilePath={
-          activeFileId
-            ? listWorkspaceFiles().find((f) => f.id === activeFileId)?.path ?? null
-            : null
-        }
-        runtime={activeRuntime}
-        canUndo={undoState.canUndo}
-        canRedo={undoState.canRedo}
-        onOpenConsole={() => setActivePanelId("console")}
-      />}
-
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
@@ -1446,10 +1398,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
   panelRoot: {
-    width: 240,
+    // Width + right border + background are owned by the ResizableSidebar
+    // wrapper (#341); the panel content just fills it.
+    width: "100%",
     height: "100%",
-    background: "var(--bg-panel)",
-    borderRight: "1px solid var(--border-subtle)",
     display: "flex",
     flexDirection: "column",
     fontFamily: "system-ui, -apple-system, sans-serif",
