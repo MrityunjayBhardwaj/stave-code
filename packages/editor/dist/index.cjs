@@ -32450,6 +32450,24 @@ function detectAllArrangeCalls(doc) {
   return nodes.map((n) => buildCall(doc, n)).filter((c) => c !== null);
 }
 __name(detectAllArrangeCalls, "detectAllArrangeCalls");
+function detectBarePattern(doc, pos) {
+  const program = parseProgram(doc);
+  if (!program?.body) return null;
+  for (const stmt of program.body) {
+    const exprStmt = stmt?.type === "LabeledStatement" ? stmt.body : stmt;
+    if (exprStmt?.type !== "ExpressionStatement") continue;
+    const expr = exprStmt.expression;
+    if (!expr || pos < expr.start || pos > expr.end) continue;
+    let hasCombinator = false;
+    walk2(expr, (n) => {
+      if (isCombinatorCall(n)) hasCombinator = true;
+    });
+    if (hasCombinator) return null;
+    return { patternRange: [expr.start, expr.end] };
+  }
+  return null;
+}
+__name(detectBarePattern, "detectBarePattern");
 
 // src/visualEdit/arrange/serialize.ts
 function asWeight(n) {
@@ -32914,6 +32932,7 @@ exports.deriveVizQuality = deriveVizQuality;
 exports.detectAllArrangeCalls = detectAllArrangeCalls;
 exports.detectAllChunks = detectAllChunks;
 exports.detectArrangeAt = detectArrangeAt;
+exports.detectBarePattern = detectBarePattern;
 exports.detectChunk = detectChunk;
 exports.detectPeriod = detectPeriod;
 exports.detectWorkerVizCapabilities = detectWorkerVizCapabilities;
