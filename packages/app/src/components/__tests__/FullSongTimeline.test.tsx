@@ -533,3 +533,44 @@ describe('FullSongTimeline — duplicate a clip (select + ⌘/Ctrl-D → insert 
     expect(onDuplicateClip).not.toHaveBeenCalled()
   })
 })
+
+describe('FullSongTimeline — split a clip (select + S → split arm at midpoint, #386)', () => {
+  function renderSplittable(onSplitClip: ReturnType<typeof vi.fn>) {
+    const utils = renderFull({ ir: {} as never, onSplitClip })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    return { ...utils, grid }
+  }
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  it('selecting a 2-cycle arm then S → onSplitClip(firstWeight = midpoint 1)', async () => {
+    const onSplitClip = vi.fn()
+    const { grid } = renderSplittable(onSplitClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 }) // arm 0 [0,2)
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 's' })
+    expect(onSplitClip).toHaveBeenCalledTimes(1)
+    // weight 2 → midpoint firstWeight = floor(2/2) = 1
+    expect(onSplitClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0, firstWeight: 1 })
+  })
+
+  it('S with nothing selected is a no-op', async () => {
+    const onSplitClip = vi.fn()
+    const { grid } = renderSplittable(onSplitClip)
+    await settle()
+    fireEvent.keyDown(grid, { key: 's' })
+    expect(onSplitClip).not.toHaveBeenCalled()
+  })
+
+  it('⌘-S (save) does not trigger a split', async () => {
+    const onSplitClip = vi.fn()
+    const { grid } = renderSplittable(onSplitClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 's', metaKey: true })
+    expect(onSplitClip).not.toHaveBeenCalled()
+  })
+})

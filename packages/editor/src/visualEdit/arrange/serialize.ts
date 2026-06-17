@@ -133,4 +133,23 @@ export function wrapBare(
   ]
 }
 
+/**
+ * Split arm `i` at a whole-cycle boundary: `[n, pat]` → `[n₁, pat], [n₂, pat]`
+ * (same pattern verbatim in both halves), where `n₁ = firstWeight` and
+ * `n₂ = n − firstWeight`. Both halves must be ≥ 1 whole cycle, so this only
+ * applies to an `arrange` arm whose weight is ≥ 2; `firstWeight` is clamped to
+ * `[1, n−1]`. Returns no edits for a `cat`/`slowcat` arm (implicit weight 1 —
+ * a single cycle can't be sliced into two whole cycles) or a weight-1 arm.
+ */
+export function splitArm(doc: string, call: ArrangeCall, i: number, firstWeight: number): OffsetEdit[] {
+  const arm = call.arms[i]
+  if (!arm || !arm.weightRange) return [] // cat/slowcat arm: weight 1, indivisible
+  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10)
+  if (!Number.isFinite(n) || n < 2) return []
+  const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1))
+  const n2 = n - n1
+  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1])
+  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }]
+}
+
 export { patternText }

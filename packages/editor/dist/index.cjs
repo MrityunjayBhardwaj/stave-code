@@ -32539,6 +32539,17 @@ function wrapBare(patternRange, leadingWeight, patternWeight) {
   ];
 }
 __name(wrapBare, "wrapBare");
+function splitArm(doc, call, i, firstWeight) {
+  const arm = call.arms[i];
+  if (!arm || !arm.weightRange) return [];
+  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10);
+  if (!Number.isFinite(n) || n < 2) return [];
+  const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
+  const n2 = n - n1;
+  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1]);
+  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
+}
+__name(splitArm, "splitArm");
 
 // src/visualEdit/notation/resize.ts
 function resizeGrid(model, nextSteps, mode) {
@@ -33165,6 +33176,7 @@ exports.setWeight = setWeight;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.shellStateKeyFor = shellStateKeyFor;
+exports.splitArm = splitArm;
 exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;
 exports.stopSampleSound = stopSampleSound;

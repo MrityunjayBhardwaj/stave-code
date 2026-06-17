@@ -56,6 +56,7 @@ import {
   reorderArm,
   insertArm,
   wrapBare,
+  splitArm,
   useTrackMeta,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
@@ -1113,6 +1114,22 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // Split a clip on the Song canvas (Phase 5c, #386): slice the selected arm at
+  // a whole-cycle boundary into two arms with the SAME pattern (splitArm). The
+  // gesture passes the first half's cycle count (the clip midpoint); the
+  // serializer clamps it to [1, n−1] and no-ops a clip < 2 cycles or a cat arm.
+  const handleSplitClip = React.useCallback(
+    (req: { sourceOffset: number | null; armIndex: number; firstWeight: number }) => {
+      if (!snapshot?.source || req.sourceOffset == null) return
+      const call = detectArrangeAt(snapshot.code, req.sourceOffset)
+      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
+      const edits = splitArm(snapshot.code, call, req.armIndex, req.firstWeight)
+      if (edits.length === 0) return
+      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -1196,6 +1213,7 @@ export function MusicalTimeline(
           onDeleteClip={handleDeleteClip}
           onMoveClip={handleMoveClip}
           onDuplicateClip={handleDuplicateClip}
+          onSplitClip={handleSplitClip}
           onBindLane={handleBindLane}
         />
       ) : (
