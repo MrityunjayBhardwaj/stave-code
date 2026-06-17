@@ -51,6 +51,7 @@ import {
   applyOffsetEditsToFile,
   detectArrangeAt,
   setWeight,
+  removeArm,
   useTrackMeta,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
@@ -1038,6 +1039,26 @@ export function MusicalTimeline(
     [snapshot],
   )
 
+  // Delete a clip on the Song canvas (Phase 5c, #386): the timeline hands up the
+  // selected clip's lane source anchor + arm index. We parse the arrangement at
+  // that anchor against the SAME snapshot text the offsets came from, build a
+  // surgical remove-arm edit (the serializer drops the arm + one separator), and
+  // route it through the write-back (source `arrange.structure`, the reserved
+  // structural-edit channel). A combinator's sole remaining arm is NOT removed
+  // (a lane keeps ≥1 clip, PV122 #5) — `removeArm` returns no edits, so this
+  // no-ops. The debounced re-eval republishes the IR and the lane re-derives.
+  const handleDeleteClip = React.useCallback(
+    (req: { sourceOffset: number | null; armIndex: number }) => {
+      if (!snapshot?.source || req.sourceOffset == null) return
+      const call = detectArrangeAt(snapshot.code, req.sourceOffset)
+      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
+      const edits = removeArm(snapshot.code, call, req.armIndex)
+      if (edits.length === 0) return
+      applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+    },
+    [snapshot],
+  )
+
   const bpm = cpsToBpm(currentCps)
   const barBeat = formatBarBeat(currentCycle)
 
@@ -1118,6 +1139,7 @@ export function MusicalTimeline(
           getDrawerOpen={props.getDrawerOpen}
           getActiveTabId={props.getActiveTabId}
           onTrimClip={handleTrimClip}
+          onDeleteClip={handleDeleteClip}
           onBindLane={handleBindLane}
         />
       ) : (
