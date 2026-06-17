@@ -478,8 +478,23 @@ function walk(ir, ctx) {
     }
     case "Cycle": {
       if (ir.items.length === 0) return [];
-      const item = ir.items[ctx.cycle % ir.items.length];
-      return withWrapperLoc(walk(item, ctx), ir.loc);
+      const weights = ir.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+      const period = weights.reduce((s, w) => s + w, 0);
+      if (period <= 0) return [];
+      const pos = (ctx.cycle % period + period) % period;
+      const innerCycle = Math.floor(ctx.cycle / period);
+      let acc = 0;
+      let selected = 0;
+      for (let k = 0; k < ir.items.length; k++) {
+        if (pos < acc + weights[k]) {
+          selected = k;
+          break;
+        }
+        acc += weights[k];
+      }
+      const item = ir.items[selected];
+      const target = item.tag === "Elongate" ? item.body : item;
+      return withWrapperLoc(walk(target, { ...ctx, cycle: innerCycle }), ir.loc);
     }
     case "Arrange": {
       if (ir.arms.length === 0) return [];
@@ -1521,6 +1536,29 @@ function parseMini(input, isSample = false, baseOffset = 0) {
   }
 }
 __name(parseMini, "parseMini");
+function readTrailingModifier(input, i, tokens) {
+  if (i < input.length && input[i] === "*") {
+    const start = i;
+    i++;
+    let numStr = "";
+    while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++];
+    const factor = parseFloat(numStr);
+    if (!isNaN(factor) && factor > 0) tokens.push({ type: "repeat", factor, start, end: i });
+  } else if (i < input.length && input[i] === "?") {
+    const start = i;
+    i++;
+    tokens.push({ type: "sometimes", start, end: i });
+  } else if (i < input.length && input[i] === "@") {
+    const start = i;
+    i++;
+    let numStr = "";
+    while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++];
+    const factor = parseFloat(numStr);
+    if (!isNaN(factor) && factor > 0) tokens.push({ type: "elongate", factor, start, end: i });
+  }
+  return i;
+}
+__name(readTrailingModifier, "readTrailingModifier");
 function tokenize(input) {
   const tokens = [];
   let i = 0;
@@ -1538,6 +1576,7 @@ function tokenize(input) {
     if (ch === "]") {
       tokens.push({ type: "rbracket", start: i, end: i + 1 });
       i++;
+      i = readTrailingModifier(input, i, tokens);
       continue;
     }
     if (ch === "<") {
@@ -1548,6 +1587,7 @@ function tokenize(input) {
     if (ch === ">") {
       tokens.push({ type: "rangle", start: i, end: i + 1 });
       i++;
+      i = readTrailingModifier(input, i, tokens);
       continue;
     }
     if (ch === "{") {
@@ -1558,6 +1598,7 @@ function tokenize(input) {
     if (ch === "}") {
       tokens.push({ type: "rcurly", start: i, end: i + 1 });
       i++;
+      i = readTrailingModifier(input, i, tokens);
       continue;
     }
     if (ch === ",") {
@@ -1568,6 +1609,7 @@ function tokenize(input) {
     if (ch === "~") {
       tokens.push({ type: "rest", start: i, end: i + 1 });
       i++;
+      i = readTrailingModifier(input, i, tokens);
       continue;
     }
     if (/[a-zA-Z0-9#-]/.test(ch)) {
@@ -1617,29 +1659,7 @@ function tokenize(input) {
           });
         }
       }
-      if (i < input.length && input[i] === "*") {
-        const repeatStart = i;
-        i++;
-        let numStr = "";
-        while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++];
-        const factor = parseFloat(numStr);
-        if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: "repeat", factor, start: repeatStart, end: i });
-        }
-      } else if (i < input.length && input[i] === "?") {
-        const someStart = i;
-        i++;
-        tokens.push({ type: "sometimes", start: someStart, end: i });
-      } else if (i < input.length && input[i] === "@") {
-        const elongateStart = i;
-        i++;
-        let numStr = "";
-        while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++];
-        const factor = parseFloat(numStr);
-        if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: "elongate", factor, start: elongateStart, end: i });
-        }
-      }
+      i = readTrailingModifier(input, i, tokens);
       continue;
     }
     i++;
@@ -1687,6 +1707,16 @@ function rotate(arr, by) {
   return [...arr.slice(n), ...arr.slice(0, n)];
 }
 __name(rotate, "rotate");
+function applyTrailingModifier(node, tokens, i, baseOffset) {
+  if (i >= tokens.length) return { node, i };
+  const next = tokens[i];
+  const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
+  if (next.type === "repeat") return { node: IR.fast(next.factor, node, { loc: modLoc }), i: i + 1 };
+  if (next.type === "sometimes") return { node: IR.choice(0.5, node, IR.pure(), { loc: modLoc }), i: i + 1 };
+  if (next.type === "elongate") return { node: IR.elongate(next.factor, node, { loc: modLoc }), i: i + 1 };
+  return { node, i };
+}
+__name(applyTrailingModifier, "applyTrailingModifier");
 function parseTokens(tokens, isSample, baseOffset = 0) {
   const nodes = [];
   let i = 0;
@@ -1724,27 +1754,14 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
           };
         }
       }
-      if (i < tokens.length) {
-        const next = tokens[i];
-        if (next.type === "repeat") {
-          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
-          node = IR.fast(next.factor, node, { loc: modLoc });
-          i++;
-        } else if (next.type === "sometimes") {
-          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
-          node = IR.choice(0.5, node, IR.pure(), { loc: modLoc });
-          i++;
-        } else if (next.type === "elongate") {
-          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }];
-          node = IR.elongate(next.factor, node, { loc: modLoc });
-          i++;
-        }
-      }
+      ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
       nodes.push(node);
     } else if (tok.type === "rest") {
       const restLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }];
-      nodes.push(IR.sleep(1, { loc: restLoc }));
+      let node = IR.sleep(1, { loc: restLoc });
       i++;
+      ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
+      nodes.push(node);
     } else if (tok.type === "lbracket") {
       const openStart = tok.start;
       let closeEnd = tok.end;
@@ -1767,15 +1784,13 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
       }
       const subNodes = parseTokens(subTokens, isSample, baseOffset);
       if (subNodes.length > 0) {
-        if (subNodes.length === 1) {
-          nodes.push(subNodes[0]);
-        } else {
-          nodes.push({
-            tag: "Seq",
-            children: subNodes,
-            loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
-          });
-        }
+        let node = subNodes.length === 1 ? subNodes[0] : {
+          tag: "Seq",
+          children: subNodes,
+          loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
+        };
+        ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
+        nodes.push(node);
       }
     } else if (tok.type === "lcurly") {
       const openStart = tok.start;
@@ -1802,14 +1817,14 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
         i++;
       }
       const trackNodes = segments.map((seg) => parseTokens(seg, isSample, baseOffset)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
-      if (trackNodes.length === 0) ; else if (trackNodes.length === 1) {
-        nodes.push(trackNodes[0]);
-      } else {
-        nodes.push({
+      if (trackNodes.length === 0) ; else {
+        let node = trackNodes.length === 1 ? trackNodes[0] : {
           tag: "Stack",
           tracks: trackNodes,
           loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
-        });
+        };
+        ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
+        nodes.push(node);
       }
     } else if (tok.type === "langle") {
       const openStart = tok.start;
@@ -1833,11 +1848,13 @@ function parseTokens(tokens, isSample, baseOffset = 0) {
       }
       const cycleNodes = parseTokens(cycleTokens, isSample, baseOffset);
       if (cycleNodes.length > 0) {
-        nodes.push({
+        let node = {
           tag: "Cycle",
           items: cycleNodes,
           loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
-        });
+        };
+        ({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset));
+        nodes.push(node);
       }
     } else {
       i++;
