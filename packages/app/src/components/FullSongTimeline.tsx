@@ -717,9 +717,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (mv.armIndex >= 0) {
         if (mv.toIndex !== mv.armIndex) {
           onMoveClip?.({ kind: 'reorder', sourceOffset: mv.sourceOffset, fromIndex: mv.armIndex, toIndex: mv.toIndex })
+          // The arm list reindexes after a reorder, so the held armIndex would
+          // now point at a different clip — clear it (matching DELETE).
+          setSelected(null)
         }
       } else if (mv.leadCycle > 0) {
         onMoveClip?.({ kind: 'wrap', sourceOffset: mv.sourceOffset, leadingWeight: mv.leadCycle, patternWeight: 1 })
+        // §2.1 wrap rewrites the bare clip into an arrange() — drop the stale selection.
+        setSelected(null)
       }
     },
     [handleSeekAtClientX, onMoveClip],
@@ -758,6 +763,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         if (!onDuplicateClip) return
         e.preventDefault()
         onDuplicateClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
+        // A clone arm is inserted after the selection, shifting later indices —
+        // clear the held armIndex so a follow-up keystroke can't hit the wrong clip.
+        setSelected(null)
         return
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -782,6 +790,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           armIndex: selected.armIndex,
           firstWeight: Math.floor(weight / 2),
         })
+        // Split inserts a second arm, reindexing the list — clear the selection.
+        setSelected(null)
       }
     },
     [selected, onDeleteClip, onDuplicateClip, onSplitClip],
