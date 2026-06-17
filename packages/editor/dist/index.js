@@ -118,6 +118,7 @@ var IR = {
   chunk: /* @__PURE__ */ __name((n, transform, body, meta) => attachMeta({ tag: "Chunk", n, transform, body }, meta), "chunk"),
   ply: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Ply", n, body }, meta), "ply"),
   pick: /* @__PURE__ */ __name((selector, lookup, meta) => attachMeta({ tag: "Pick", selector, lookup }, meta), "pick"),
+  namedPick: /* @__PURE__ */ __name((selector, entries3, method, rawArgs, meta) => attachMeta({ tag: "NamedPick", selector, entries: entries3, method, rawArgs }, meta), "namedPick"),
   struct: /* @__PURE__ */ __name((mask, body, meta) => attachMeta({ tag: "Struct", mask, body }, meta), "struct"),
   swing: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Swing", n, body }, meta), "swing"),
   shuffle: /* @__PURE__ */ __name((n, body, meta) => attachMeta({ tag: "Shuffle", n, body }, meta), "shuffle"),
@@ -680,6 +681,54 @@ function walk(ir, ctx) {
       }
       return out;
     }
+    case "NamedPick": {
+      if (ir.entries.length === 0) return [];
+      const selectorEvents = walk(ir.selector, ctx);
+      if (selectorEvents.length === 0) return [];
+      let innerCycle = ctx.cycle;
+      if (ir.method === "pickRestart" && ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
+        const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
+        const period = weights.reduce((s, w) => s + w, 0);
+        if (period > 0) {
+          const pos = (ctx.cycle % period + period) % period;
+          let acc = 0;
+          for (const w of weights) {
+            if (pos < acc + w) {
+              innerCycle = pos - acc;
+              break;
+            }
+            acc += w;
+          }
+        }
+      }
+      const out = [];
+      for (const sel of selectorEvents) {
+        const key = sel.note == null ? null : String(sel.note);
+        const entry = key == null ? void 0 : ir.entries.find((e) => e.key === key);
+        if (!entry) continue;
+        const subCtx = {
+          ...ctx,
+          time: sel.begin,
+          cycle: innerCycle,
+          duration: sel.end - sel.begin,
+          begin: sel.begin,
+          end: sel.end
+        };
+        const subEvents = walk(entry.pattern, subCtx);
+        const selectorLoc = sel.loc?.[0];
+        const wrapperLoc = ir.loc?.[0];
+        for (const e of subEvents) {
+          const childLoc = e.loc ?? [];
+          const newLoc = [
+            ...childLoc,
+            ...selectorLoc ? [selectorLoc] : [],
+            ...wrapperLoc ? [wrapperLoc] : []
+          ];
+          out.push(newLoc.length > 0 ? { ...e, loc: newLoc } : e);
+        }
+      }
+      return out;
+    }
     case "Struct": {
       const slots = ir.mask.trim().split(/\s+/);
       const total = slots.length;
@@ -955,6 +1004,8 @@ function gen(ir) {
       const elems = ir.lookup.map((p) => gen(p));
       return `${sel}.pick([${elems.join(", ")}])`;
     }
+    case "NamedPick":
+      return `${gen(ir.selector)}.${ir.method}(${ir.rawArgs})`;
     case "Struct": {
       return `${gen(ir.body)}.struct("${ir.mask}")`;
     }
@@ -2780,7 +2831,14 @@ function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], b
       if (!isNaN(val)) return IR.fx(method, { [method]: val }, ir, tagMeta(method, callSiteRange));
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
     }
+    case "pickRestart":
+    case "pickReset":
     case "pick": {
+      const namedEntries = parseNamedPickEntries(args, baseOffset, bindings);
+      if (namedEntries && namedEntries.length > 0) {
+        return IR.namedPick(ir, namedEntries, method, subbedArgs, tagMeta(method, callSiteRange));
+      }
+      if (method !== "pick") return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const inner = args.trim();
       if (!(inner.startsWith("[") && inner.endsWith("]"))) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange);
       const arrayBody = inner.slice(1, -1);
@@ -2915,6 +2973,64 @@ function parseArrayLiteralElement(elem, receiverContext, baseOffset = 0, binding
   return parseExpression(trimmed, baseOffset + leadingWs, void 0, bindings);
 }
 __name(parseArrayLiteralElement, "parseArrayLiteralElement");
+function topLevelColonIndex(s) {
+  let depth = 0;
+  let inStr = false;
+  let q = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (c === q && s[i - 1] !== "\\") inStr = false;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      inStr = true;
+      q = c;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (c === ":" && depth === 0) return i;
+  }
+  return -1;
+}
+__name(topLevelColonIndex, "topLevelColonIndex");
+function normalizePickKey(rawKey) {
+  const t = rawKey.trim();
+  if (!t) return null;
+  if (t.startsWith('"') && t.endsWith('"') || t.startsWith("'") && t.endsWith("'")) {
+    return t.slice(1, -1);
+  }
+  return t;
+}
+__name(normalizePickKey, "normalizePickKey");
+function parseNamedPickEntries(args, baseOffset, bindings) {
+  const trimmed = args.trim();
+  if (!(trimmed.startsWith("{") && trimmed.endsWith("}"))) return null;
+  const braceOpen = args.indexOf("{");
+  const braceClose = args.lastIndexOf("}");
+  if (braceClose <= braceOpen) return null;
+  const body = args.slice(braceOpen + 1, braceClose);
+  const bodyOffsetInArgs = braceOpen + 1;
+  const parts = splitArgsWithOffsets(body);
+  if (parts.length === 0) return null;
+  const entries3 = [];
+  for (const part of parts) {
+    const colon = topLevelColonIndex(part.value);
+    if (colon < 0) return null;
+    const rawKey = part.value.slice(0, colon);
+    const rawVal = part.value.slice(colon + 1);
+    const key = normalizePickKey(rawKey);
+    if (key == null) return null;
+    const keyStart = baseOffset + bodyOffsetInArgs + part.offset;
+    const keyLoc = { start: keyStart, end: keyStart + rawKey.trim().length };
+    const valOffset = baseOffset + bodyOffsetInArgs + part.offset + colon + 1;
+    const pattern = parseArrayLiteralElement(rawVal, "note", valOffset, bindings);
+    entries3.push({ key, pattern, keyLoc });
+  }
+  return entries3;
+}
+__name(parseNamedPickEntries, "parseNamedPickEntries");
 function offsetOfSubArg(args, subArg, argsBaseOffset) {
   const trimmedSub = subArg.trim();
   if (!trimmedSub) return argsBaseOffset;

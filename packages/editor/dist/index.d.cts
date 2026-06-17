@@ -174,6 +174,17 @@ interface ArrangeArm {
      *  pattern-expression range. Optional only for hand-built fixtures. */
     loc?: SourceLocation[];
 }
+/** One named arm of a `NamedPick` (object-form pick family). #463 Stage 1. */
+interface NamedPickEntry {
+    /** The lookup key — the bare/quoted object key, normalized to its string
+     *  form. The selector's per-cycle STRING value (`ev.note`) matches this. */
+    key: string;
+    /** The section's sub-IR (the object value expression, e.g. `s("bd sd")`). */
+    pattern: PatternIR;
+    /** Source range of the key token (`verse` in `{verse: …}`) — lets a clip
+     *  gesture bind the section's content back to its definition site. */
+    keyLoc?: SourceLocation;
+}
 interface PlayParams {
     s?: string;
     gain?: number;
@@ -310,6 +321,14 @@ type PatternIR = {
     loc?: SourceLocation[];
     userMethod?: string;
 } | {
+    tag: 'NamedPick';
+    selector: PatternIR;
+    entries: NamedPickEntry[];
+    method: string;
+    rawArgs: string;
+    loc?: SourceLocation[];
+    userMethod?: string;
+} | {
     tag: 'Struct';
     mask: string;
     body: PatternIR;
@@ -441,6 +460,7 @@ declare const IR: {
     readonly chunk: (n: number, transform: PatternIR, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly ply: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly pick: (selector: PatternIR, lookup: PatternIR[], meta?: TagMeta) => PatternIR;
+    readonly namedPick: (selector: PatternIR, entries: NamedPickEntry[], method: string, rawArgs: string, meta?: TagMeta) => PatternIR;
     readonly struct: (mask: string, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly swing: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
     readonly shuffle: (n: number, body: PatternIR, meta?: TagMeta) => PatternIR;
