@@ -91,6 +91,34 @@ type Token =
   | { type: 'rcurly';   start: number; end: number }
   | { type: 'comma';    start: number; end: number }
 
+// Read at most one trailing modifier at `input[i]` — `*n` (repeat), `?`
+// (sometimes), or `@n` (elongate) — and push its token. Returns the advanced
+// index. Shared by the atom AND rest paths so a rest weights/repeats exactly
+// like an atom: `~@4` is a 4-cycle rest, not a rest followed by a bogus atom
+// `4` (the `@`/digits would otherwise fall through as "unknown" + an atom).
+function readTrailingModifier(input: string, i: number, tokens: Token[]): number {
+  if (i < input.length && input[i] === '*') {
+    const start = i
+    i++ // skip *
+    let numStr = ''
+    while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++]
+    const factor = parseFloat(numStr)
+    if (!isNaN(factor) && factor > 0) tokens.push({ type: 'repeat', factor, start, end: i })
+  } else if (i < input.length && input[i] === '?') {
+    const start = i
+    i++
+    tokens.push({ type: 'sometimes', start, end: i })
+  } else if (i < input.length && input[i] === '@') {
+    const start = i
+    i++ // skip @
+    let numStr = ''
+    while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++]
+    const factor = parseFloat(numStr)
+    if (!isNaN(factor) && factor > 0) tokens.push({ type: 'elongate', factor, start, end: i })
+  }
+  return i
+}
+
 function tokenize(input: string): Token[] {
   const tokens: Token[] = []
   let i = 0
@@ -101,16 +129,23 @@ function tokenize(input: string): Token[] {
     if (/\s/.test(ch)) { i++; continue }
 
     if (ch === '[') { tokens.push({ type: 'lbracket', start: i, end: i + 1 }); i++; continue }
-    if (ch === ']') { tokens.push({ type: 'rbracket', start: i, end: i + 1 }); i++; continue }
+    // A closing delimiter can carry a trailing weight/modifier on the whole
+    // group: `[a b]@2`, `<a b>@2`, `{a b}@2`. Read it here so it doesn't fall
+    // through as "unknown" + a bogus atom (`<a b>@2` → … + Play("2")).
+    if (ch === ']') { tokens.push({ type: 'rbracket', start: i, end: i + 1 }); i++; i = readTrailingModifier(input, i, tokens); continue }
     if (ch === '<') { tokens.push({ type: 'langle',   start: i, end: i + 1 }); i++; continue }
-    if (ch === '>') { tokens.push({ type: 'rangle',   start: i, end: i + 1 }); i++; continue }
+    if (ch === '>') { tokens.push({ type: 'rangle',   start: i, end: i + 1 }); i++; i = readTrailingModifier(input, i, tokens); continue }
     if (ch === '{') { tokens.push({ type: 'lcurly',   start: i, end: i + 1 }); i++; continue }
-    if (ch === '}') { tokens.push({ type: 'rcurly',   start: i, end: i + 1 }); i++; continue }
+    if (ch === '}') { tokens.push({ type: 'rcurly',   start: i, end: i + 1 }); i++; i = readTrailingModifier(input, i, tokens); continue }
     if (ch === ',') { tokens.push({ type: 'comma',    start: i, end: i + 1 }); i++; continue }
 
     if (ch === '~') {
       tokens.push({ type: 'rest', start: i, end: i + 1 })
       i++
+      // A rest carries a trailing weight/modifier just like an atom (`~@4` =
+      // a 4-cycle rest arm in a slowcat). Without this the `@4` would be
+      // dropped and `4` re-read as a bogus atom.
+      i = readTrailingModifier(input, i, tokens)
       continue
     }
 
@@ -170,29 +205,7 @@ function tokenize(input: string): Token[] {
       }
 
       // Check for trailing *n (repeat), ? (sometimes), or @n (elongate)
-      if (i < input.length && input[i] === '*') {
-        const repeatStart = i
-        i++ // skip *
-        let numStr = ''
-        while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++]
-        const factor = parseFloat(numStr)
-        if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: 'repeat', factor, start: repeatStart, end: i })
-        }
-      } else if (i < input.length && input[i] === '?') {
-        const someStart = i
-        i++
-        tokens.push({ type: 'sometimes', start: someStart, end: i })
-      } else if (i < input.length && input[i] === '@') {
-        const elongateStart = i
-        i++ // skip @
-        let numStr = ''
-        while (i < input.length && /[0-9.]/.test(input[i])) numStr += input[i++]
-        const factor = parseFloat(numStr)
-        if (!isNaN(factor) && factor > 0) {
-          tokens.push({ type: 'elongate', factor, start: elongateStart, end: i })
-        }
-      }
+      i = readTrailingModifier(input, i, tokens)
       continue
     }
 
@@ -251,6 +264,26 @@ function rotate<T>(arr: T[], by: number): T[] {
   if (arr.length === 0) return arr
   const n = ((by % arr.length) + arr.length) % arr.length
   return [...arr.slice(n), ...arr.slice(0, n)]
+}
+
+// Wrap `node` in the structural tag a trailing modifier token implies — Fast
+// for `*n`, Choice for `?`, Elongate for `@n` — consuming that token. Each
+// wrapper's loc spans just the modifier token (the body keeps its own loc).
+// Shared by the atom and rest paths so `~@4` elongates the Sleep the same way
+// `a@4` elongates a Play (without it, `<~@4 …>` would lose the rest's weight).
+function applyTrailingModifier(
+  node: PatternIR,
+  tokens: Token[],
+  i: number,
+  baseOffset: number,
+): { node: PatternIR; i: number } {
+  if (i >= tokens.length) return { node, i }
+  const next = tokens[i]
+  const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }]
+  if (next.type === 'repeat') return { node: IR.fast(next.factor, node, { loc: modLoc }), i: i + 1 }
+  if (next.type === 'sometimes') return { node: IR.choice(0.5, node, IR.pure(), { loc: modLoc }), i: i + 1 }
+  if (next.type === 'elongate') return { node: IR.elongate(next.factor, node, { loc: modLoc }), i: i + 1 }
+  return { node, i }
 }
 
 // ---------------------------------------------------------------------------
@@ -316,29 +349,18 @@ function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): Patter
       // 19-05 T-07: each wrapper tag's loc spans just the modifier token
       // (e.g. `*N` for Fast, `?` for Choice, `@N` for Elongate). The wrapped
       // body keeps its own atomLoc — distinct components, distinct ranges.
-      if (i < tokens.length) {
-        const next = tokens[i]
-        if (next.type === 'repeat') {
-          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }]
-          node = IR.fast(next.factor, node, { loc: modLoc })
-          i++
-        } else if (next.type === 'sometimes') {
-          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }]
-          node = IR.choice(0.5, node, IR.pure(), { loc: modLoc })
-          i++
-        } else if (next.type === 'elongate') {
-          const modLoc = [{ start: baseOffset + next.start, end: baseOffset + next.end }]
-          node = IR.elongate(next.factor, node, { loc: modLoc })
-          i++
-        }
-      }
+      ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
 
       nodes.push(node)
     } else if (tok.type === 'rest') {
       // 19-05 T-07: Sleep from `~` carries the `~`'s position.
       const restLoc = [{ start: baseOffset + tok.start, end: baseOffset + tok.end }]
-      nodes.push(IR.sleep(1, { loc: restLoc }))
+      let node: PatternIR = IR.sleep(1, { loc: restLoc })
       i++
+      // A trailing `@n`/`*n`/`?` weights/repeats the rest — `~@4` is a
+      // 4-cycle rest arm in a slowcat (mirrors the atom path above).
+      ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
+      nodes.push(node)
     } else if (tok.type === 'lbracket') {
       // Sub-sequence: collect tokens until matching ]
       const openStart = tok.start
@@ -362,19 +384,21 @@ function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): Patter
       }
       const subNodes = parseTokens(subTokens, isSample, baseOffset)
       if (subNodes.length > 0) {
-        if (subNodes.length === 1) {
-          // Single-child sub-sequences keep the child node — `[a]` is
-          // equivalent to `a`. Don't synthesize a wrapper Seq.
-          nodes.push(subNodes[0])
-        } else {
-          // 19-05 T-07: synthetic Seq from `[...]` spans `[` to `]`.
-          // Literal construction (rest-spread `IR.seq` can't take meta).
-          nodes.push({
-            tag: 'Seq',
-            children: subNodes,
-            loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
-          })
-        }
+        // Single-child sub-sequences keep the child node — `[a]` is
+        // equivalent to `a`. Don't synthesize a wrapper Seq.
+        // 19-05 T-07: synthetic Seq from `[...]` spans `[` to `]`.
+        // Literal construction (rest-spread `IR.seq` can't take meta).
+        let node: PatternIR =
+          subNodes.length === 1
+            ? subNodes[0]
+            : {
+                tag: 'Seq',
+                children: subNodes,
+                loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
+              }
+        // A trailing `@n`/`*n`/`?` weights/repeats the whole group (`[a b]@2`).
+        ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
+        nodes.push(node)
       }
     } else if (tok.type === 'lcurly') {
       // Polymetric: collect tokens until matching `}`, splitting on
@@ -410,16 +434,20 @@ function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): Patter
         .map(s => (s.length === 1 ? s[0] : IR.seq(...s)))
       if (trackNodes.length === 0) {
         // {} — nothing to play
-      } else if (trackNodes.length === 1) {
-        nodes.push(trackNodes[0]) // single segment is just a sub-sequence
       } else {
+        // Single segment is just a sub-sequence; multi-segment is a Stack.
         // 19-05 T-07: synthetic Stack from `{...}` spans `{` to `}`.
         // Literal construction (rest-spread `IR.stack` can't take meta).
-        nodes.push({
-          tag: 'Stack',
-          tracks: trackNodes,
-          loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
-        })
+        let node: PatternIR =
+          trackNodes.length === 1
+            ? trackNodes[0]
+            : {
+                tag: 'Stack',
+                tracks: trackNodes,
+                loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
+              }
+        ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
+        nodes.push(node)
       }
     } else if (tok.type === 'langle') {
       // Cycle (alternation): collect until matching >
@@ -446,11 +474,15 @@ function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): Patter
       if (cycleNodes.length > 0) {
         // 19-05 T-07: synthetic Cycle from `<...>` spans `<` to `>`.
         // Literal construction (rest-spread `IR.cycle` can't take meta).
-        nodes.push({
+        let node: PatternIR = {
           tag: 'Cycle',
           items: cycleNodes,
           loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
-        })
+        }
+        // A trailing `@n` weights the whole alternation as one slowcat arm
+        // (`<<a b>@2 c>` — the inner `<a b>` occupies 2 cycles per period).
+        ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
+        nodes.push(node)
       }
     } else {
       // Skip unknown tokens (rbracket, rangle without matching open, etc.)

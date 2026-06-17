@@ -950,41 +950,31 @@ exports[`strudel.cc parity corpus — structural IR shape > arpoon parses to a s
                                   "tag": "Param",
                                   "userMethod": "gain",
                                   "value": {
-                                    "children": [
-                                      {
-                                        "items": [
-                                          {
-                                            "duration": 0.25,
-                                            "note": "5",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
+                                    "body": {
+                                      "items": [
+                                        {
+                                          "duration": 0.25,
+                                          "note": "5",
+                                          "params": {
+                                            "gain": 1,
+                                            "velocity": 1,
                                           },
-                                          {
-                                            "duration": 0.25,
-                                            "note": "8",
-                                            "params": {
-                                              "gain": 1,
-                                              "velocity": 1,
-                                            },
-                                            "tag": "Play",
-                                          },
-                                        ],
-                                        "tag": "Cycle",
-                                      },
-                                      {
-                                        "duration": 0.25,
-                                        "note": "16",
-                                        "params": {
-                                          "gain": 1,
-                                          "velocity": 1,
+                                          "tag": "Play",
                                         },
-                                        "tag": "Play",
-                                      },
-                                    ],
-                                    "tag": "Seq",
+                                        {
+                                          "duration": 0.25,
+                                          "note": "8",
+                                          "params": {
+                                            "gain": 1,
+                                            "velocity": 1,
+                                          },
+                                          "tag": "Play",
+                                        },
+                                      ],
+                                      "tag": "Cycle",
+                                    },
+                                    "factor": 16,
+                                    "tag": "Fast",
                                   },
                                 },
                                 "method": "decay",
@@ -3598,179 +3588,161 @@ exports[`strudel.cc parity corpus — structural IR shape > bakery-G3-backtick p
       "inner": {
         "children": [
           {
-            "items": [
-              {
-                "body": {
+            "body": {
+              "items": [
+                {
+                  "body": {
+                    "duration": 1,
+                    "note": "bd",
+                    "params": {
+                      "gain": 1,
+                      "s": "bd",
+                      "velocity": 1,
+                    },
+                    "tag": "Play",
+                  },
+                  "factor": 3,
+                  "tag": "Fast",
+                },
+                {
+                  "body": {
+                    "children": [
+                      {
+                        "duration": 1,
+                        "note": "hh",
+                        "params": {
+                          "gain": 1,
+                          "s": "hh",
+                          "slice": 1,
+                          "velocity": 1,
+                        },
+                        "tag": "Play",
+                      },
+                      {
+                        "duration": 1,
+                        "note": "hh",
+                        "params": {
+                          "gain": 1,
+                          "s": "hh",
+                          "slice": 1,
+                          "velocity": 1,
+                        },
+                        "tag": "Play",
+                      },
+                      {
+                        "duration": 1,
+                        "note": "hh",
+                        "params": {
+                          "gain": 1,
+                          "s": "hh",
+                          "slice": 1,
+                          "velocity": 1,
+                        },
+                        "tag": "Play",
+                      },
+                    ],
+                    "tag": "Seq",
+                  },
+                  "factor": 2,
+                  "tag": "Fast",
+                },
+                {
                   "duration": 1,
-                  "note": "bd",
+                  "note": "casio",
                   "params": {
                     "gain": 1,
-                    "s": "bd",
+                    "s": "casio",
+                    "slice": 2,
                     "velocity": 1,
                   },
                   "tag": "Play",
                 },
-                "factor": 3,
-                "tag": "Fast",
-              },
-              {
-                "children": [
-                  {
-                    "duration": 1,
-                    "note": "hh",
-                    "params": {
-                      "gain": 1,
-                      "s": "hh",
-                      "slice": 1,
-                      "velocity": 1,
-                    },
-                    "tag": "Play",
+                {
+                  "duration": 1,
+                  "note": "-",
+                  "params": {
+                    "gain": 1,
+                    "s": "-",
+                    "velocity": 1,
                   },
-                  {
-                    "duration": 1,
-                    "note": "hh",
-                    "params": {
-                      "gain": 1,
-                      "s": "hh",
-                      "slice": 1,
-                      "velocity": 1,
-                    },
-                    "tag": "Play",
+                  "tag": "Play",
+                },
+                {
+                  "duration": 1,
+                  "note": "hh",
+                  "params": {
+                    "gain": 1,
+                    "s": "hh",
+                    "slice": 1,
+                    "velocity": 1,
                   },
-                  {
-                    "duration": 1,
-                    "note": "hh",
-                    "params": {
-                      "gain": 1,
-                      "s": "hh",
-                      "slice": 1,
-                      "velocity": 1,
-                    },
-                    "tag": "Play",
-                  },
-                ],
-                "tag": "Seq",
-              },
-              {
-                "duration": 1,
-                "note": "2",
-                "params": {
-                  "gain": 1,
-                  "s": "2",
-                  "velocity": 1,
+                  "tag": "Play",
                 },
-                "tag": "Play",
-              },
-              {
-                "duration": 1,
-                "note": "casio",
-                "params": {
-                  "gain": 1,
-                  "s": "casio",
-                  "slice": 2,
-                  "velocity": 1,
-                },
-                "tag": "Play",
-              },
-              {
-                "duration": 1,
-                "note": "-",
-                "params": {
-                  "gain": 1,
-                  "s": "-",
-                  "velocity": 1,
-                },
-                "tag": "Play",
-              },
-              {
-                "duration": 1,
-                "note": "hh",
-                "params": {
-                  "gain": 1,
-                  "s": "hh",
-                  "slice": 1,
-                  "velocity": 1,
-                },
-                "tag": "Play",
-              },
-            ],
-            "tag": "Cycle",
-          },
-          {
-            "duration": 1,
-            "note": "4",
-            "params": {
-              "gain": 1,
-              "s": "4",
-              "velocity": 1,
+              ],
+              "tag": "Cycle",
             },
-            "tag": "Play",
+            "factor": 4,
+            "tag": "Fast",
           },
           {
-            "items": [
-              {
-                "duration": 1,
-                "note": "-",
-                "params": {
-                  "gain": 1,
-                  "s": "-",
-                  "velocity": 1,
+            "body": {
+              "items": [
+                {
+                  "duration": 1,
+                  "note": "-",
+                  "params": {
+                    "gain": 1,
+                    "s": "-",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
                 },
-                "tag": "Play",
-              },
-              {
-                "duration": 1,
-                "note": "-",
-                "params": {
-                  "gain": 1,
-                  "s": "-",
-                  "velocity": 1,
+                {
+                  "duration": 1,
+                  "note": "-",
+                  "params": {
+                    "gain": 1,
+                    "s": "-",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
                 },
-                "tag": "Play",
-              },
-              {
-                "duration": 1,
-                "note": "-",
-                "params": {
-                  "gain": 1,
-                  "s": "-",
-                  "velocity": 1,
+                {
+                  "duration": 1,
+                  "note": "-",
+                  "params": {
+                    "gain": 1,
+                    "s": "-",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
                 },
-                "tag": "Play",
-              },
-              {
-                "duration": 1,
-                "note": "metal",
-                "params": {
-                  "gain": 1,
-                  "s": "metal",
-                  "slice": 1,
-                  "velocity": 1,
+                {
+                  "duration": 1,
+                  "note": "metal",
+                  "params": {
+                    "gain": 1,
+                    "s": "metal",
+                    "slice": 1,
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
                 },
-                "tag": "Play",
-              },
-              {
-                "duration": 1,
-                "note": "-",
-                "params": {
-                  "gain": 1,
-                  "s": "-",
-                  "velocity": 1,
+                {
+                  "duration": 1,
+                  "note": "-",
+                  "params": {
+                    "gain": 1,
+                    "s": "-",
+                    "velocity": 1,
+                  },
+                  "tag": "Play",
                 },
-                "tag": "Play",
-              },
-            ],
-            "tag": "Cycle",
-          },
-          {
-            "duration": 1,
-            "note": "4",
-            "params": {
-              "gain": 1,
-              "s": "4",
-              "velocity": 1,
+              ],
+              "tag": "Cycle",
             },
-            "tag": "Play",
+            "factor": 4,
+            "tag": "Fast",
           },
         ],
         "tag": "Seq",
@@ -4732,38 +4704,27 @@ exports[`strudel.cc parity corpus — structural IR shape > belldub parses to a 
               "via": {
                 "args": ""0 0.5".fast(2)",
                 "inner": {
-                  "children": [
-                    {
-                      "children": [
-                        {
-                          "duration": 1,
-                          "tag": "Sleep",
-                        },
-                        {
-                          "duration": 1,
-                          "note": "hh",
-                          "params": {
-                            "gain": 1,
-                            "s": "hh",
-                            "velocity": 1,
-                          },
-                          "tag": "Play",
-                        },
-                      ],
-                      "tag": "Seq",
-                    },
-                    {
-                      "duration": 1,
-                      "note": "4",
-                      "params": {
-                        "gain": 1,
-                        "s": "4",
-                        "velocity": 1,
+                  "body": {
+                    "children": [
+                      {
+                        "duration": 1,
+                        "tag": "Sleep",
                       },
-                      "tag": "Play",
-                    },
-                  ],
-                  "tag": "Seq",
+                      {
+                        "duration": 1,
+                        "note": "hh",
+                        "params": {
+                          "gain": 1,
+                          "s": "hh",
+                          "velocity": 1,
+                        },
+                        "tag": "Play",
+                      },
+                    ],
+                    "tag": "Seq",
+                  },
+                  "factor": 4,
+                  "tag": "Fast",
                 },
                 "method": "room",
               },

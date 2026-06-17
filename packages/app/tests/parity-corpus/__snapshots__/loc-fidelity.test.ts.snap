@@ -448,8 +448,8 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".gain("<.5 .8>*16")",
   },
   {
-    "tag": "Seq",
-    "text": "<.5 .8>*16",
+    "tag": "Fast",
+    "text": "*16",
   },
   {
     "tag": "Cycle",
@@ -462,10 +462,6 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "8",
-  },
-  {
-    "tag": "Play",
-    "text": "16",
   },
   {
     "tag": "FX",
@@ -1903,6 +1899,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
 < - - - metal:1 - >*4",
   },
   {
+    "tag": "Fast",
+    "text": "*4",
+  },
+  {
     "tag": "Cycle",
     "text": "<bd*3 [hh:1 hh:1 hh:1]*2 casio:2 - hh:1>",
   },
@@ -1913,6 +1913,10 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "bd",
+  },
+  {
+    "tag": "Fast",
+    "text": "*2",
   },
   {
     "tag": "Seq",
@@ -1932,10 +1936,6 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   },
   {
     "tag": "Play",
-    "text": "2",
-  },
-  {
-    "tag": "Play",
     "text": "casio",
   },
   {
@@ -1947,8 +1947,8 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": "hh",
   },
   {
-    "tag": "Play",
-    "text": "4",
+    "tag": "Fast",
+    "text": "*4",
   },
   {
     "tag": "Cycle",
@@ -1973,10 +1973,6 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "-",
-  },
-  {
-    "tag": "Play",
-    "text": "4",
   },
 ]
 `;
@@ -2530,8 +2526,8 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
     "text": ".room("0 0.5".fast(2))",
   },
   {
-    "tag": "Seq",
-    "text": "[~ hh]*4",
+    "tag": "Fast",
+    "text": "*4",
   },
   {
     "tag": "Seq",
@@ -2544,10 +2540,6 @@ exports[`loc-fidelity — every IR loc slices to its source token (20-15 pre-mor
   {
     "tag": "Play",
     "text": "hh",
-  },
-  {
-    "tag": "Play",
-    "text": "4",
   },
   {
     "tag": "Choice",

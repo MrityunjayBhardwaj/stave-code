@@ -2312,6 +2312,8 @@ function applyMethod(
       return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)
     }
 
+    case 'pickRestart':
+    case 'pickReset':
     case 'pick': {
       // Tier 4 (Phase 19-04 Task T-02). `.pick(lookup)` per pick.mjs:44-54:
       //   pat.fmap(i => lookup[clamp(round(i), 0, len-1)]).innerJoin()
@@ -2324,8 +2326,20 @@ function applyMethod(
       // (inhabit, pickF, pickmod, pickRestart, pickReset, pickOut).
       // RESEARCH §1.4.
       //
-      // v1 limitation: array-form lookup only; object/named-key form
-      // (Strudel's `pick({a: ..., b: ...})`) deferred to a follow-up.
+      // #463 Stage 1 — OBJECT/named-key form `.pickRestart({verse:…, …})`:
+      // the selector's STRING value keys the lookup. Tried FIRST for all
+      // three grounded variants (pick=innerJoin, pickRestart=restartJoin,
+      // pickReset=resetJoin); the variant drives collect's inner-cycle
+      // timing. `subbedArgs` is carried verbatim as `rawArgs` so toStrudel
+      // round-trips byte-identically to the opaque Code it replaces.
+      const namedEntries = parseNamedPickEntries(args, baseOffset, bindings)
+      if (namedEntries && namedEntries.length > 0) {
+        return IR.namedPick(ir, namedEntries, method, subbedArgs, tagMeta(method, callSiteRange))
+      }
+      // Array-form lookup is structured for `pick` only (innerJoin); the
+      // array form of pickRestart/pickReset stays opaque (PV37) until a
+      // consumer needs it.
+      if (method !== 'pick') return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (P33 / PV37)
       const inner = args.trim()
       if (!(inner.startsWith('[') && inner.endsWith(']'))) return wrapAsOpaque(ir, method, subbedArgs, callSiteRange)   // D-03 (P33 / PV37)
       const arrayBody = inner.slice(1, -1)
@@ -2691,6 +2705,82 @@ function parseArrayLiteralElement(
 
   // Full expression — parse as-is.
   return parseExpression(trimmed, baseOffset + leadingWs, undefined, bindings)
+}
+
+/** Index of the first top-level `:` (object key/value separator) in an
+ *  entry slice — not inside quotes, parens, brackets, or braces. #463 St.1. */
+function topLevelColonIndex(s: string): number {
+  let depth = 0
+  let inStr = false
+  let q = ''
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (inStr) {
+      if (c === q && s[i - 1] !== '\\') inStr = false
+      continue
+    }
+    if (c === '"' || c === "'" || c === '`') { inStr = true; q = c; continue }
+    if (c === '(' || c === '[' || c === '{') depth++
+    else if (c === ')' || c === ']' || c === '}') depth--
+    else if (c === ':' && depth === 0) return i
+  }
+  return -1
+}
+
+/** Normalize an object-key token to its matching string (strip surrounding
+ *  quotes). Returns null for an empty token. #463 Stage 1. */
+function normalizePickKey(rawKey: string): string | null {
+  const t = rawKey.trim()
+  if (!t) return null
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    return t.slice(1, -1)
+  }
+  return t
+}
+
+/**
+ * Parse an object-literal pick-family arg `{key: pat, …}` into ordered
+ * NamedPickEntry[] (#463 Stage 1). Returns null when `args` is not an object
+ * literal OR any entry is malformed — the caller then falls back to the
+ * array-form path / wrapAsOpaque (PV37 preserved).
+ *
+ * Each value is parsed with `parseArrayLiteralElement` (the same sub-pattern
+ * grammar as array-form pick elements, binding-aware, loc-correct). The key
+ * is normalized to its string form so it matches the selector's per-cycle
+ * value; `keyLoc` points at the key token so a clip gesture can bind the
+ * section's definition site (Stage 2).
+ */
+function parseNamedPickEntries(
+  args: string,
+  baseOffset: number,
+  bindings?: ReadonlyMap<string, PatternIR>,
+): import('./PatternIR').NamedPickEntry[] | null {
+  const trimmed = args.trim()
+  if (!(trimmed.startsWith('{') && trimmed.endsWith('}'))) return null
+  const braceOpen = args.indexOf('{')
+  const braceClose = args.lastIndexOf('}')
+  if (braceClose <= braceOpen) return null
+  const body = args.slice(braceOpen + 1, braceClose)
+  const bodyOffsetInArgs = braceOpen + 1
+  const parts = splitArgsWithOffsets(body)
+  if (parts.length === 0) return null
+  const entries: import('./PatternIR').NamedPickEntry[] = []
+  for (const part of parts) {
+    const colon = topLevelColonIndex(part.value)
+    if (colon < 0) return null // malformed entry → bail to opaque
+    const rawKey = part.value.slice(0, colon)
+    const rawVal = part.value.slice(colon + 1)
+    const key = normalizePickKey(rawKey)
+    if (key == null) return null
+    // keyLoc: part.value is already trimmed, so the key starts at part.offset
+    // within `body`; it spans the trimmed key token.
+    const keyStart = baseOffset + bodyOffsetInArgs + part.offset
+    const keyLoc: SourceLocation = { start: keyStart, end: keyStart + rawKey.trim().length }
+    const valOffset = baseOffset + bodyOffsetInArgs + part.offset + colon + 1
+    const pattern = parseArrayLiteralElement(rawVal, 'note', valOffset, bindings)
+    entries.push({ key, pattern, keyLoc })
+  }
+  return entries
 }
 
 /**
