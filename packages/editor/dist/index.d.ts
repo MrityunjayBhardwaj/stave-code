@@ -739,6 +739,15 @@ interface HapEvent {
      * supplied (Phase 20-06).
      */
     irNodeId?: string;
+    /**
+     * Monotonic evaluate() generation this hap belongs to (#339). Stamped by
+     * `emit` from the engine-supplied epoch (see {@link HapStream.setEpoch}).
+     * `loc` offsets are only valid against the text of THIS epoch's eval —
+     * consumers (useHighlighting) use the change to know when the loc
+     * coordinate system reset and stale position anchors must be rebuilt.
+     * Absent for engines that don't track eval generations.
+     */
+    epoch?: number;
 }
 type HapHandler$1 = (event: HapEvent) => void;
 /**
@@ -747,8 +756,14 @@ type HapHandler$1 = (event: HapEvent) => void;
  */
 declare class HapStream {
     private handlers;
+    private epoch;
     on(handler: HapHandler$1): void;
     off(handler: HapHandler$1): void;
+    /**
+     * Set the evaluate() generation stamped onto subsequently-emitted events
+     * (#339). Called by the engine at the start of each `evaluate()`.
+     */
+    setEpoch(epoch: number): void;
     /**
      * Called by the engine scheduler for each scheduled Hap.
      * Enriches the raw data and fans it out to all subscribers.
@@ -1214,6 +1229,7 @@ declare class StrudelEngine implements LiveCodingEngine {
     private audioCtx;
     private analyserNode;
     private hapStream;
+    private evalEpoch;
     private initialized;
     private evalResolve;
     private runtimeErrorHandler;

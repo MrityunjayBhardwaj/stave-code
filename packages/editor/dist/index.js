@@ -3098,12 +3098,23 @@ __name(normalizeStrudelHap, "normalizeStrudelHap");
 var _HapStream = class _HapStream {
   constructor() {
     this.handlers = /* @__PURE__ */ new Set();
+    // #339 — current evaluate() generation. Stamped onto every event emitted
+    // via `emit`, so position-tracking consumers can detect a fresh eval (and
+    // therefore a reset loc coordinate system). 0 until the engine sets it.
+    this.epoch = 0;
   }
   on(handler) {
     this.handlers.add(handler);
   }
   off(handler) {
     this.handlers.delete(handler);
+  }
+  /**
+   * Set the evaluate() generation stamped onto subsequently-emitted events
+   * (#339). Called by the engine at the start of each `evaluate()`.
+   */
+  setEpoch(epoch) {
+    this.epoch = epoch;
   }
   /**
    * Called by the engine scheduler for each scheduled Hap.
@@ -3136,7 +3147,8 @@ var _HapStream = class _HapStream {
       midiNote: noteToMidi(hap?.value?.note ?? hap?.value?.n),
       s: hap?.value?.s ?? null,
       color: hap?.value?.color ?? null,
-      loc: hap?.context?.locations ?? hap?.context?.loc ?? null
+      loc: hap?.context?.locations ?? hap?.context?.loc ?? null,
+      epoch: this.epoch
     };
     if (lookup && event.loc && event.loc.length > 0) {
       const begin = Number(hap?.whole?.begin ?? 0);
@@ -3902,6 +3914,10 @@ var _StrudelEngine = class _StrudelEngine {
     this.audioCtx = null;
     this.analyserNode = null;
     this.hapStream = new HapStream();
+    // #339 — monotonic evaluate() generation, stamped onto every emitted hap
+    // via hapStream.setEpoch. Lets useHighlighting tell a fresh eval (loc
+    // offsets reset) from the running pattern re-emitting stale-coordinate locs.
+    this.evalEpoch = 0;
     this.initialized = false;
     // Resolve function for the current in-flight evaluate() call
     this.evalResolve = null;
@@ -4353,6 +4369,8 @@ var _StrudelEngine = class _StrudelEngine {
         });
       });
       if (!result.error) {
+        this.evalEpoch++;
+        this.hapStream.setEpoch(this.evalEpoch);
         const sched = this.repl.scheduler;
         this.trackSchedulers = /* @__PURE__ */ new Map();
         for (const [id, pattern] of capturedPatterns) {
@@ -19681,29 +19699,89 @@ function useHighlighting(editor, hapStream) {
   const timeoutIdsRef = useRef([]);
   const hapCollectionsRef = useRef(/* @__PURE__ */ new Map());
   const hapCounterRef = useRef(0);
+  const anchorsRef = useRef(/* @__PURE__ */ new Map());
+  const epochRef = useRef(void 0);
+  const editsRef = useRef(
+    []
+  );
+  const clearAnchors = useCallback(() => {
+    for (const a of anchorsRef.current.values()) a.clear();
+    anchorsRef.current.clear();
+  }, []);
   const clearAll = useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
-  }, []);
+    clearAnchors();
+  }, [clearAnchors]);
   useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
+    epochRef.current = void 0;
+    editsRef.current = [];
+    clearAnchors();
+    const model0 = editor.getModel();
+    const changeSub = model0?.onDidChangeContent((e) => {
+      for (const c of e.changes) {
+        editsRef.current.push({
+          at: c.rangeOffset,
+          removed: c.rangeLength,
+          added: c.text.length
+        });
+      }
+    });
+    const translateOffset = /* @__PURE__ */ __name((offset) => {
+      let o = offset;
+      for (const { at, removed, added } of editsRef.current) {
+        if (o >= at + removed) o += added - removed;
+        else if (o > at) o = at + Math.min(added, o - at);
+      }
+      return o;
+    }, "translateOffset");
+    const anchorRangeFor = /* @__PURE__ */ __name((model, start, end) => {
+      const key = `${start}:${end}`;
+      let anchor = anchorsRef.current.get(key);
+      if (!anchor) {
+        anchor = editor.createDecorationsCollection([
+          {
+            range: locToRange(
+              model,
+              translateOffset(start),
+              translateOffset(end)
+            ),
+            options: { stickiness: 1 }
+            // NeverGrowsWhenTypingAtEdges
+          }
+        ]);
+        anchorsRef.current.set(key, anchor);
+      }
+      return anchor.getRange(0);
+    }, "anchorRangeFor");
     const handler = /* @__PURE__ */ __name((event) => {
       if (!event.loc || event.loc.length === 0) return;
       const model = editor.getModel();
       if (!model) return;
+      if (event.epoch !== void 0 && event.epoch !== epochRef.current) {
+        epochRef.current = event.epoch;
+        editsRef.current = [];
+        clearAnchors();
+      }
+      const locs = event.loc;
+      for (const { start, end } of locs) anchorRangeFor(model, start, end);
       const hapKey = `hap-${hapCounterRef.current++}`;
       const showDelay = Math.max(0, event.scheduledAheadMs);
       const clearDelay = showDelay + event.audioDuration * 1e3;
       const className = getDecorationClassName(event.color);
       const showId = window.setTimeout(() => {
-        const decorations = event.loc.map(({ start, end }) => ({
-          range: locToRange(model, start, end),
+        const m = editor.getModel();
+        if (!m) return;
+        const decorations = locs.map(({ start, end }) => anchorRangeFor(m, start, end)).filter((range) => range !== null).map((range) => ({
+          range,
           options: {
             className,
             stickiness: 1
             // NeverGrowsWhenTypingAtEdges
           }
         }));
+        if (decorations.length === 0) return;
         const collection = editor.createDecorationsCollection(decorations);
         hapCollectionsRef.current.set(hapKey, collection);
       }, showDelay);
@@ -19715,10 +19793,12 @@ function useHighlighting(editor, hapStream) {
     }, "handler");
     hapStream.on(handler);
     return () => {
+      changeSub?.dispose();
       hapStream.off(handler);
       teardown(timeoutIdsRef.current, hapCollectionsRef.current);
+      clearAnchors();
     };
-  }, [editor, hapStream]);
+  }, [editor, hapStream, clearAnchors]);
   return { clearAll };
 }
 __name(useHighlighting, "useHighlighting");
