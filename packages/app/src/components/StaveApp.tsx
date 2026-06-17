@@ -52,6 +52,7 @@ import { CropPopup, createBackdropCropAdapter } from "./CropPopup";
 import { DialogHost } from "./DialogHost";
 import { showPrompt, showToast, showConfirm } from "../dialogs/host";
 import { CommandPalette, type PaletteRow } from "./CommandPalette";
+import { DocsSearchPalette } from "./DocsSearchPalette";
 import { WorkspaceSearchView, type WorkspaceSearchViewHandle } from "./WorkspaceSearchView";
 import { ActivityBar } from "./ActivityBar";
 import { ResizableSidebar } from "./ResizableSidebar";
@@ -160,6 +161,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const [undoState, setUndoState] = useState({ canUndo: false, canRedo: false });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+  const [docsSearchOpen, setDocsSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<
@@ -890,6 +892,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       run: () => setQuickOpenOpen(true),
     }));
     unregs.push(registerCommand({
+      id: "stave.docs.search",
+      title: "Search Documentation",
+      category: "Help",
+      description: "Fuzzy-search the 900+ docs entries across all runtimes.",
+      keybinding: "mod+shift+d",
+      run: () => setDocsSearchOpen(true),
+    }));
+    unregs.push(registerCommand({
       id: "stave.workspaceSearch",
       title: "Search in Files",
       category: "Find",
@@ -1341,6 +1351,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         placeholder="Search files by name..."
         hideCommands
         extraRows={quickOpenRows}
+      />
+
+      <DocsSearchPalette
+        open={docsSearchOpen}
+        onClose={() => setDocsSearchOpen(false)}
       />
 
     </div>

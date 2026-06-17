@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Astro emits pretty URLs (e.g. /docs/getting-started/) — opt Next into
+  // the same convention so the static /docs/ tree under public/ resolves
+  // directly instead of 308-ing to a non-existent slug.
+  trailingSlash: true,
+
   // Only transpile the local workspace package — it ships TypeScript/JSX source.
   // The @strudel/* and @kabelsalat/* packages are pre-compiled ESM bundles;
   // adding them to transpilePackages causes Turbopack to try statically resolving
