@@ -6,6 +6,6 @@
  * arms = clips); these surgical ops ride `writeback`'s reserved
  * `arrange.weights` / `arrange.structure` sources. PV121 / PV122.
  */
-export { detectArrangeAt, detectAllArrangeCalls } from './parse'
+export { detectArrangeAt, detectAllArrangeCalls, detectBarePattern } from './parse'
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './parse'
 export { setWeight, reorderArm, insertArm, removeArm, wrapBare, patternText } from './serialize'
