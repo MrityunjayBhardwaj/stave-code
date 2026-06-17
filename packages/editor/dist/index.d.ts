@@ -8006,6 +8006,14 @@ interface PianoRollModel {
     notes: RollNote[];
     /** see `StepGridModel.gainForeign` — a `.gain` we read but don't manage. */
     gainForeign?: boolean;
+    /**
+     * The pitch tokens are bare integers (`note("60 62")` MIDI, `n("0 1 2")`
+     * degrees) rather than note names (#469). Row math is the same (the number
+     * IS the row), but new/dragged notes must emit numbers, not `c4`, so the
+     * pattern round-trips. A pattern mixes one convention or the other, never
+     * both (mixed is rejected at parse).
+     */
+    numeric?: boolean;
 }
 /**
  * Parse outcome. `ok: false` is a first-class result, not an exception — every
@@ -8064,7 +8072,12 @@ declare function serializePianoRoll(model: PianoRollModel): string | null;
  * placement and newly-created notes; the round-trip itself stores the token
  * verbatim, so emission style never threatens fidelity for existing notes.
  */
-/** `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token. */
+/**
+ * `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token.
+ * A bare integer (`60`, `0`, `-7`) maps to that row directly — `note("60")`
+ * is MIDI; `n("0")` is a degree/index. Either way the number IS the row, and
+ * the verbatim token is what the serializer writes back (#469).
+ */
 declare function pitchToMidi(token: string): number | null;
 /** MIDI number → canonical note token (sharps as `#`). Inverse of pitchToMidi. */
 declare function midiToPitch(midi: number): string;

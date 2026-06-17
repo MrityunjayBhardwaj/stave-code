@@ -24472,6 +24472,9 @@ __name(patternKind, "patternKind");
 // src/visualEdit/notation/parse.ts
 var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
 var NOTE = /^[a-gA-G][bs#]?-?\d$/;
+var isBareRest = /* @__PURE__ */ __name((s, i) => s[i] === "-" && (i + 1 >= s.length || /[\s[\]@,*(!]/.test(s[i + 1])), "isBareRest");
+var NUMERIC = /^-?\d+$/;
+var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => ATOM.test(t) || allowNumeric && NUMERIC.test(t), "isAtomToken");
 var MAX_STEPS = 64;
 var gcd = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcd(b, a % b), "gcd");
 var lcm = /* @__PURE__ */ __name((a, b) => a / gcd(a, b) * b, "lcm");
@@ -24570,13 +24573,13 @@ function readEuclid(src, i) {
   return { ok: true, spec: { k, n, rot }, next: close + 1 };
 }
 __name(readEuclid, "readEuclid");
-function parseGroup(inner, elongation) {
+function parseGroup(inner, elongation, allowNumeric = false) {
   const commaParts = splitTopLevel(inner);
   if (commaParts.length > 1) {
     const atoms = [];
     for (const raw of commaParts) {
       const token = raw.trim();
-      if (/[\s[\]]/.test(token) || !ATOM.test(token)) {
+      if (/[\s[\]]/.test(token) || !isAtomToken(token, allowNumeric)) {
         return { reason: "stacked sub-sequences are beyond the editable subset" };
       }
       atoms.push(token);
@@ -24591,7 +24594,7 @@ function parseGroup(inner, elongation) {
       i++;
       continue;
     }
-    if (ch === "~") {
+    if (ch === "~" || isBareRest(inner, i)) {
       slots.push({ atoms: [], units: 1 });
       i++;
       continue;
@@ -24610,14 +24613,14 @@ function parseGroup(inner, elongation) {
       const atoms = [];
       for (const raw of chord.split(",")) {
         const token = raw.trim();
-        if (!ATOM.test(token)) return { reason: `unsupported token "${token}"` };
+        if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
         atoms.push(token);
       }
       slots.push({ atoms, units: elong2.value });
       continue;
     }
     const match = inner.slice(i).match(/^[^\s[\]@,*(!]+/);
-    if (!match || !ATOM.test(match[0])) {
+    if (!match || !isAtomToken(match[0], allowNumeric)) {
       return { reason: `unsupported token "${match?.[0] ?? ch}"` };
     }
     i += match[0].length;
@@ -24633,7 +24636,7 @@ function parseGroup(inner, elongation) {
   return { atoms: [], elongation, sub: slots };
 }
 __name(parseGroup, "parseGroup");
-function tokenize2(mini) {
+function tokenize2(mini, allowNumeric = false) {
   const src = mini.trim();
   if (src === "") return { ok: true, steps: [] };
   if (/[<>{}/?%._|]/.test(src)) {
@@ -24647,7 +24650,7 @@ function tokenize2(mini) {
       i++;
       continue;
     }
-    if (ch === "~") {
+    if (ch === "~" || isBareRest(src, i)) {
       steps.push({ atoms: [], elongation: 1, sub: null });
       i++;
       continue;
@@ -24660,13 +24663,13 @@ function tokenize2(mini) {
       const elong2 = readElongation(src, i);
       if (!elong2.ok) return { ok: false, reason: elong2.reason };
       i = elong2.next;
-      const group = parseGroup(inner, elong2.value);
+      const group = parseGroup(inner, elong2.value, allowNumeric);
       if ("reason" in group) return { ok: false, reason: group.reason };
       steps.push(group);
       continue;
     }
     const match = src.slice(i).match(/^[^\s[\]@,*(!]+/);
-    if (!match || !ATOM.test(match[0])) {
+    if (!match || !isAtomToken(match[0], allowNumeric)) {
       return { ok: false, reason: `unsupported token "${match?.[0] ?? ch}"` };
     }
     i += match[0].length;
@@ -24864,7 +24867,11 @@ function applyRollGain(model, gain) {
 __name(applyRollGain, "applyRollGain");
 function parsePianoRoll(mini) {
   const alt = unwrapAlternation(mini);
-  const tok = tokenize2(alt ?? mini);
+  const tok = tokenize2(
+    alt ?? mini,
+    /* allowNumeric */
+    true
+  );
   if (!tok.ok) return tok;
   if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
   const div = division(tok.steps);
@@ -24874,19 +24881,37 @@ function parsePianoRoll(mini) {
   }
   const notes = [];
   let col = 0;
+  let sawNumeric = false;
+  let sawNamed = false;
   for (const step of tok.steps) {
     const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
     const total = stepUnits(step);
     for (const slot of slots) {
       const span = step.elongation * div * slot.units / total;
       for (const token of slot.atoms) {
-        if (!NOTE.test(token)) return { ok: false, reason: `"${token}" is not a note name` };
-        notes.push({ pitch: token.toLowerCase(), start: col, duration: span });
+        const isNum = /^-?\d+$/.test(token);
+        if (!isNum && !NOTE.test(token)) {
+          return { ok: false, reason: `"${token}" is not a note name` };
+        }
+        if (isNum) sawNumeric = true;
+        else sawNamed = true;
+        notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
       }
       col += span;
     }
   }
-  return { ok: true, model: { steps: col, ...alt !== null ? { bars } : {}, notes } };
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
+  }
+  return {
+    ok: true,
+    model: {
+      steps: col,
+      ...alt !== null ? { bars } : {},
+      notes,
+      ...sawNumeric ? { numeric: true } : {}
+    }
+  };
 }
 __name(parsePianoRoll, "parsePianoRoll");
 
@@ -25463,6 +25488,7 @@ __name(SequencerGrid, "SequencerGrid");
 var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
 function pitchToMidi(token) {
+  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
   const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)$/);
   if (!m) return null;
   const [, letter, accidental, octave] = m;
@@ -25533,6 +25559,7 @@ function setGroupGain(model, start, gain) {
   };
 }
 __name(setGroupGain, "setGroupGain");
+var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
 function contentRange(model) {
   const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
   if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
@@ -25630,7 +25657,7 @@ function PianoRollGrid() {
       };
       beginGesture();
     } else {
-      mutate((prev) => placeNote(prev, midiToPitch(midi), step, 1));
+      mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1));
     }
   }, "onCellDown");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
@@ -25657,11 +25684,12 @@ function PianoRollGrid() {
       return;
     }
     const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1));
-    const newPitch = midiToPitch(midi);
+    const newPitch = tokenForRow(!!model.numeric, midi);
     const dur = Math.max(1, Math.min(d.duration, d.steps - newStart));
     const moved = {
       steps: d.steps,
       ...model.bars != null ? { bars: model.bars } : {},
+      ...model.numeric ? { numeric: true } : {},
       notes: [...d.baseNotes, { pitch: newPitch, start: newStart, duration: dur }]
     };
     mutate(() => moved);
@@ -25700,7 +25728,7 @@ function PianoRollGrid() {
                   textAlign: "right",
                   color: black ? "var(--foreground-muted, #a0a0aa)" : "var(--foreground, #e6e6ea)"
                 },
-                children: midiToPitch(midi)
+                children: tokenForRow(!!model.numeric, midi)
               }
             ),
             /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, step) => {
@@ -25713,7 +25741,7 @@ function PianoRollGrid() {
                 {
                   type: "button",
                   "aria-pressed": on,
-                  "aria-label": `${midiToPitch(midi)} step ${step + 1}`,
+                  "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
                   "data-roll-cell": `${midi}:${step}`,
                   "data-playing": step === playingStep ? "true" : void 0,
                   onPointerDown: (e) => {
@@ -25738,7 +25766,7 @@ function PianoRollGrid() {
                     "span",
                     {
                       "data-roll-resize": `${midi}:${note.start}`,
-                      "aria-label": `resize ${midiToPitch(midi)}`,
+                      "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
                       onPointerDown: (e) => {
                         e.preventDefault();
                         e.stopPropagation();
