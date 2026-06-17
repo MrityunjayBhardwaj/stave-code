@@ -57,6 +57,12 @@ import {
   insertArm,
   wrapBare,
   splitArm,
+  detectPickControlAt,
+  pickSetWeight,
+  pickRemoveArm,
+  pickReorderArm,
+  pickDuplicateArm,
+  pickSplitArm,
   useTrackMeta,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
@@ -1036,8 +1042,17 @@ export function MusicalTimeline(
     (req: { sourceOffset: number | null; armIndex: number; weight: number }) => {
       if (!snapshot?.source || req.sourceOffset == null) return
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
-      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
-      const edits = setWeight(snapshot.code, call, req.armIndex, req.weight)
+      if (call) {
+        if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
+        const edits = setWeight(snapshot.code, call, req.armIndex, req.weight)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.weights', snapshot.code)
+        return
+      }
+      // #463 Stage 2 — a pick* track's clips are the `<…@w …>` control arms.
+      const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
+      if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
+      const edits = pickSetWeight(snapshot.code, ctl, req.armIndex, req.weight)
       if (edits.length === 0) return
       applyOffsetEditsToFile(snapshot.source, edits, 'arrange.weights', snapshot.code)
     },
@@ -1056,8 +1071,17 @@ export function MusicalTimeline(
     (req: { sourceOffset: number | null; armIndex: number }) => {
       if (!snapshot?.source || req.sourceOffset == null) return
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
-      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
-      const edits = removeArm(snapshot.code, call, req.armIndex)
+      if (call) {
+        if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
+        const edits = removeArm(snapshot.code, call, req.armIndex)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        return
+      }
+      // #463 Stage 2 — pick* section clip.
+      const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
+      if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
+      const edits = pickRemoveArm(snapshot.code, ctl, req.armIndex)
       if (edits.length === 0) return
       applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
     },
@@ -1081,8 +1105,16 @@ export function MusicalTimeline(
       if (!snapshot?.source || req.sourceOffset == null) return
       if (req.kind === 'reorder') {
         const call = detectArrangeAt(snapshot.code, req.sourceOffset)
-        if (!call) return
-        const edits = reorderArm(snapshot.code, call, req.fromIndex, req.toIndex)
+        if (call) {
+          const edits = reorderArm(snapshot.code, call, req.fromIndex, req.toIndex)
+          if (edits.length === 0) return
+          applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+          return
+        }
+        // #463 Stage 2 — reorder pick* control sections.
+        const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
+        if (!ctl) return
+        const edits = pickReorderArm(snapshot.code, ctl, req.fromIndex, req.toIndex)
         if (edits.length === 0) return
         applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
       } else {
@@ -1104,10 +1136,19 @@ export function MusicalTimeline(
     (req: { sourceOffset: number | null; armIndex: number }) => {
       if (!snapshot?.source || req.sourceOffset == null) return
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
-      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
-      const arm = call.arms[req.armIndex]
-      const armSource = snapshot.code.slice(arm.armRange[0], arm.armRange[1])
-      const edits = insertArm(snapshot.code, call, req.armIndex + 1, armSource)
+      if (call) {
+        if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
+        const arm = call.arms[req.armIndex]
+        const armSource = snapshot.code.slice(arm.armRange[0], arm.armRange[1])
+        const edits = insertArm(snapshot.code, call, req.armIndex + 1, armSource)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        return
+      }
+      // #463 Stage 2 — clone a pick* control section.
+      const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
+      if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
+      const edits = pickDuplicateArm(snapshot.code, ctl, req.armIndex)
       if (edits.length === 0) return
       applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
     },
@@ -1122,8 +1163,17 @@ export function MusicalTimeline(
     (req: { sourceOffset: number | null; armIndex: number; firstWeight: number }) => {
       if (!snapshot?.source || req.sourceOffset == null) return
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
-      if (!call || req.armIndex < 0 || req.armIndex >= call.arms.length) return
-      const edits = splitArm(snapshot.code, call, req.armIndex, req.firstWeight)
+      if (call) {
+        if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
+        const edits = splitArm(snapshot.code, call, req.armIndex, req.firstWeight)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        return
+      }
+      // #463 Stage 2 — split a pick* control section.
+      const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
+      if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
+      const edits = pickSplitArm(snapshot.code, ctl, req.armIndex, req.firstWeight)
       if (edits.length === 0) return
       applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
     },
