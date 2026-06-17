@@ -113,6 +113,10 @@ export class StrudelEngine implements LiveCodingEngine {
   private audioCtx: AudioContext | null = null
   private analyserNode: AnalyserNode | null = null
   private hapStream: HapStream = new HapStream()
+  // #339 — monotonic evaluate() generation, stamped onto every emitted hap
+  // via hapStream.setEpoch. Lets useHighlighting tell a fresh eval (loc
+  // offsets reset) from the running pattern re-emitting stale-coordinate locs.
+  private evalEpoch = 0
   private initialized = false
   // Resolve function for the current in-flight evaluate() call
   private evalResolve: ((result: { error?: Error }) => void) | null = null
@@ -755,6 +759,17 @@ export class StrudelEngine implements LiveCodingEngine {
       })
 
       if (!result.error) {
+        // #339 — bump the eval generation ONLY on a SUCCESSFUL evaluate, the
+        // moment a new pattern is committed and its haps (carrying fresh
+        // new-text loc offsets) begin to flow. A FAILED eval (half-written
+        // syntax) leaves the OLD pattern playing with OLD-coordinate offsets,
+        // so the epoch must NOT change — else useHighlighting would reset its
+        // anchors and re-project the still-old offsets onto the edited model,
+        // reintroducing the wrong-line drift. Runs synchronously before any
+        // new-pattern hap can emit (no await between here and return).
+        this.evalEpoch++
+        this.hapStream.setEpoch(this.evalEpoch)
+
         // Build PatternSchedulers from captured patterns
         const sched = (this.repl as any).scheduler // eslint-disable-line @typescript-eslint/no-explicit-any
         this.trackSchedulers = new Map<string, PatternScheduler>()

@@ -27,6 +27,15 @@ export interface HapEvent {
    * supplied (Phase 20-06).
    */
   irNodeId?: string
+  /**
+   * Monotonic evaluate() generation this hap belongs to (#339). Stamped by
+   * `emit` from the engine-supplied epoch (see {@link HapStream.setEpoch}).
+   * `loc` offsets are only valid against the text of THIS epoch's eval —
+   * consumers (useHighlighting) use the change to know when the loc
+   * coordinate system reset and stale position anchors must be rebuilt.
+   * Absent for engines that don't track eval generations.
+   */
+  epoch?: number
 }
 
 type HapHandler = (event: HapEvent) => void
@@ -38,12 +47,25 @@ type HapHandler = (event: HapEvent) => void
 export class HapStream {
   private handlers: Set<HapHandler> = new Set()
 
+  // #339 — current evaluate() generation. Stamped onto every event emitted
+  // via `emit`, so position-tracking consumers can detect a fresh eval (and
+  // therefore a reset loc coordinate system). 0 until the engine sets it.
+  private epoch = 0
+
   on(handler: HapHandler): void {
     this.handlers.add(handler)
   }
 
   off(handler: HapHandler): void {
     this.handlers.delete(handler)
+  }
+
+  /**
+   * Set the evaluate() generation stamped onto subsequently-emitted events
+   * (#339). Called by the engine at the start of each `evaluate()`.
+   */
+  setEpoch(epoch: number): void {
+    this.epoch = epoch
   }
 
   /**
@@ -87,6 +109,7 @@ export class HapStream {
       s: hap?.value?.s ?? null,
       color: hap?.value?.color ?? null,
       loc: hap?.context?.locations ?? hap?.context?.loc ?? null,
+      epoch: this.epoch,
     }
 
     // PV38 clause 2 — onTrigger-side identity carry. Mirror the
