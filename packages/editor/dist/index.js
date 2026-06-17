@@ -685,22 +685,26 @@ function walk(ir, ctx) {
       if (ir.entries.length === 0) return [];
       const selectorEvents = walk(ir.selector, ctx);
       if (selectorEvents.length === 0) return [];
-      let innerCycle = ctx.cycle;
-      if (ir.method === "pickRestart" && ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
+      let selectedArm;
+      let dwellLocal = ctx.cycle;
+      if (ir.selector.tag === "Cycle" && ir.selector.items.length > 0) {
         const weights = ir.selector.items.map((it) => it.tag === "Elongate" && it.factor > 0 ? it.factor : 1);
         const period = weights.reduce((s, w) => s + w, 0);
         if (period > 0) {
           const pos = (ctx.cycle % period + period) % period;
           let acc = 0;
-          for (const w of weights) {
-            if (pos < acc + w) {
-              innerCycle = pos - acc;
+          for (let k = 0; k < weights.length; k++) {
+            if (pos < acc + weights[k]) {
+              selectedArm = k;
+              dwellLocal = pos - acc;
               break;
             }
-            acc += w;
+            acc += weights[k];
           }
         }
       }
+      const innerCycle = ir.method === "pickRestart" ? dwellLocal : ctx.cycle;
+      const armIndex = ctx.armIndex ?? selectedArm;
       const out = [];
       for (const sel of selectorEvents) {
         const key = sel.note == null ? null : String(sel.note);
@@ -712,7 +716,8 @@ function walk(ir, ctx) {
           cycle: innerCycle,
           duration: sel.end - sel.begin,
           begin: sel.begin,
-          end: sel.end
+          end: sel.end,
+          ...armIndex !== void 0 ? { armIndex } : {}
         };
         const subEvents = walk(entry.pattern, subCtx);
         const selectorLoc = sel.loc?.[0];
@@ -21804,14 +21809,14 @@ function headOf(h, branch = h.currentBranch) {
 }
 __name(headOf, "headOf");
 function getFileContentAt(h, fileId, commitId) {
-  let walk3 = commitId;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = commitId;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     if (Object.prototype.hasOwnProperty.call(c.files, fileId)) {
       return c.files[fileId];
     }
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return null;
 }
@@ -21819,15 +21824,15 @@ __name(getFileContentAt, "getFileContentAt");
 function snapshotAt(h, commitId) {
   const files = {};
   let order;
-  let walk3 = commitId;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = commitId;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     for (const f of Object.keys(c.files)) {
       if (!Object.prototype.hasOwnProperty.call(files, f)) files[f] = c.files[f];
     }
     if (order === void 0 && c.order !== void 0) order = c.order;
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return { files, order };
 }
@@ -21836,12 +21841,12 @@ function listCommits(h, branch = h.currentBranch) {
   const head = h.branches[branch]?.head;
   if (!head) return [];
   const out = [];
-  let walk3 = head;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = head;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     if (!c.pinned) out.push(c);
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return out;
 }
@@ -21861,24 +21866,24 @@ function fileHistory(h, fileId) {
 }
 __name(fileHistory, "fileHistory");
 function nearestWriter(h, fromCommit, fileId) {
-  let walk3 = fromCommit;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = fromCommit;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
-    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk3;
-    walk3 = c.parent;
+    if (Object.prototype.hasOwnProperty.call(c.files, fileId)) return walk4;
+    walk4 = c.parent;
   }
   return null;
 }
 __name(nearestWriter, "nearestWriter");
 function filesAliveAt(h, commitId) {
   const alive = /* @__PURE__ */ new Set();
-  let walk3 = commitId;
-  while (walk3 !== null) {
-    const c = h.commits[walk3];
+  let walk4 = commitId;
+  while (walk4 !== null) {
+    const c = h.commits[walk4];
     if (!c) break;
     for (const f of Object.keys(c.files)) alive.add(f);
-    walk3 = c.parent;
+    walk4 = c.parent;
   }
   return alive;
 }
@@ -22005,9 +22010,9 @@ function prune(h, now2, opts = {}) {
   }
   const keep = /* @__PURE__ */ new Set([...display, ...needed]);
   const nearestKeptAncestor = /* @__PURE__ */ __name((start) => {
-    let walk3 = start;
-    while (walk3 !== null && !keep.has(walk3)) walk3 = h.commits[walk3]?.parent ?? null;
-    return walk3;
+    let walk4 = start;
+    while (walk4 !== null && !keep.has(walk4)) walk4 = h.commits[walk4]?.parent ?? null;
+    return walk4;
   }, "nearestKeptAncestor");
   let mutated = keep.size !== all.length;
   const commits = {};
@@ -32663,6 +32668,205 @@ function splitArm(doc, call, i, firstWeight) {
   return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
 }
 __name(splitArm, "splitArm");
+var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
+function parseProgram2(doc) {
+  try {
+    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+  } catch {
+    return null;
+  }
+}
+__name(parseProgram2, "parseProgram");
+function isPickCall(node) {
+  return node && node.type === "CallExpression" && node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier" && PICK_METHODS.has(node.callee.property.name) && node.callee.object?.type === "Literal" && typeof node.callee.object.value === "string";
+}
+__name(isPickCall, "isPickCall");
+function walk3(node, visit) {
+  if (!node || typeof node !== "object") return;
+  if (typeof node.type === "string" && typeof node.start === "number") visit(node);
+  for (const key of Object.keys(node)) {
+    if (key === "type" || key === "start" || key === "end") continue;
+    const child = node[key];
+    if (Array.isArray(child)) for (const c of child) walk3(c, visit);
+    else if (child && typeof child === "object") walk3(child, visit);
+  }
+}
+__name(walk3, "walk");
+function scanControlArms(raw, litStart) {
+  const open = raw.indexOf("<");
+  if (open < 0) return null;
+  let depth = 0;
+  let close = -1;
+  for (let i2 = open; i2 < raw.length; i2++) {
+    if (raw[i2] === "<") depth++;
+    else if (raw[i2] === ">") {
+      depth--;
+      if (depth === 0) {
+        close = i2;
+        break;
+      }
+    }
+  }
+  if (close < 0) return null;
+  const inner = raw.slice(open + 1, close);
+  const innerBase = litStart + open + 1;
+  const arms = [];
+  let i = 0;
+  const n = inner.length;
+  while (i < n) {
+    while (i < n && /\s/.test(inner[i])) i++;
+    if (i >= n) break;
+    const armStart = i;
+    let d = 0;
+    let atRel = -1;
+    while (i < n) {
+      const c = inner[i];
+      if (c === "[" || c === "<" || c === "{" || c === "(") d++;
+      else if (c === "]" || c === ">" || c === "}" || c === ")") d--;
+      else if (d === 0 && c === "@") {
+        atRel = i;
+        break;
+      } else if (d === 0 && /\s/.test(c)) break;
+      i++;
+    }
+    const headEnd = atRel >= 0 ? atRel : i;
+    let weightRange = null;
+    let weight = 1;
+    if (atRel >= 0) {
+      i = atRel + 1;
+      const digitsStart = i;
+      while (i < n && /[0-9.]/.test(inner[i])) i++;
+      if (i > digitsStart) {
+        weightRange = [innerBase + digitsStart, innerBase + i];
+        weight = parseFloat(inner.slice(digitsStart, i)) || 1;
+      }
+      let dd = 0;
+      while (i < n) {
+        const c = inner[i];
+        if (c === "[" || c === "<" || c === "{" || c === "(") dd++;
+        else if (c === "]" || c === ">" || c === "}" || c === ")") dd--;
+        else if (dd === 0 && /\s/.test(c)) break;
+        i++;
+      }
+    }
+    arms.push({
+      armRange: [innerBase + armStart, innerBase + i],
+      headRange: [innerBase + armStart, innerBase + headEnd],
+      weightRange,
+      weight
+    });
+  }
+  if (arms.length === 0) return null;
+  return { arms, innerRange: [innerBase, innerBase + inner.length] };
+}
+__name(scanControlArms, "scanControlArms");
+function buildControl(doc, node) {
+  const lit = node.callee.object;
+  const raw = doc.slice(lit.start, lit.end);
+  const scanned = scanControlArms(raw, lit.start);
+  if (!scanned) return null;
+  return {
+    method: node.callee.property.name,
+    callRange: [node.start, node.end],
+    stringRange: [lit.start, lit.end],
+    innerRange: scanned.innerRange,
+    arms: scanned.arms
+  };
+}
+__name(buildControl, "buildControl");
+function detectPickControlAt(doc, pos) {
+  const program = parseProgram2(doc);
+  if (!program) return null;
+  let best = null;
+  walk3(program, (n) => {
+    if (!isPickCall(n)) return;
+    if (pos < n.start || pos > n.end) return;
+    if (!best || n.start > best.start) best = n;
+  });
+  return best ? buildControl(doc, best) : null;
+}
+__name(detectPickControlAt, "detectPickControlAt");
+function detectAllPickControls(doc) {
+  const program = parseProgram2(doc);
+  if (!program) return [];
+  const nodes = [];
+  walk3(program, (n) => {
+    if (isPickCall(n)) nodes.push(n);
+  });
+  nodes.sort((a, b) => a.start - b.start);
+  return nodes.map((n) => buildControl(doc, n)).filter((c) => c !== null);
+}
+__name(detectAllPickControls, "detectAllPickControls");
+
+// src/visualEdit/pickControl/serialize.ts
+function asWeight2(n) {
+  return Math.max(1, Math.round(n));
+}
+__name(asWeight2, "asWeight");
+function armText2(doc, control, i) {
+  return doc.slice(control.arms[i].armRange[0], control.arms[i].armRange[1]);
+}
+__name(armText2, "armText");
+function headText(doc, control, i) {
+  return doc.slice(control.arms[i].headRange[0], control.arms[i].headRange[1]);
+}
+__name(headText, "headText");
+function setWeight2(doc, control, i, weight) {
+  const w = asWeight2(weight);
+  const arm = control.arms[i];
+  if (!arm) return [];
+  if (arm.weightRange) return [{ range: arm.weightRange, text: String(w) }];
+  if (w === 1) return [];
+  return [{ range: [arm.headRange[1], arm.headRange[1]], text: `@${w}` }];
+}
+__name(setWeight2, "setWeight");
+function splitArm2(doc, control, i, firstWeight) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  const n = asWeight2(arm.weight);
+  if (n < 2) return [];
+  const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
+  const n2 = n - n1;
+  const head = headText(doc, control, i);
+  return [{ range: arm.armRange, text: `${head}@${n1} ${head}@${n2}` }];
+}
+__name(splitArm2, "splitArm");
+function removeArm2(doc, control, i) {
+  const n = control.arms.length;
+  if (i < 0 || i >= n || n <= 1) return [];
+  if (i < n - 1) {
+    return [{ range: [control.arms[i].armRange[0], control.arms[i + 1].armRange[0]], text: "" }];
+  }
+  return [{ range: [control.arms[i - 1].armRange[1], control.arms[i].armRange[1]], text: "" }];
+}
+__name(removeArm2, "removeArm");
+function reorderArm2(doc, control, from, to) {
+  const n = control.arms.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return [];
+  const order = Array.from({ length: n }, (_, k) => k);
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  const text = order.map((k) => armText2(doc, control, k)).join(" ");
+  return [{ range: control.innerRange, text }];
+}
+__name(reorderArm2, "reorderArm");
+function insertArm2(doc, control, at, armSource) {
+  const n = control.arms.length;
+  const idx = Math.max(0, Math.min(at, n));
+  if (n === 0) return [{ range: control.innerRange, text: armSource }];
+  if (idx === n) {
+    const end = control.arms[n - 1].armRange[1];
+    return [{ range: [end, end], text: ` ${armSource}` }];
+  }
+  const start = control.arms[idx].armRange[0];
+  return [{ range: [start, start], text: `${armSource} ` }];
+}
+__name(insertArm2, "insertArm");
+function duplicateArm(doc, control, i) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  return insertArm2(doc, control, i + 1, armText2(doc, control, i));
+}
+__name(duplicateArm, "duplicateArm");
 
 // src/visualEdit/notation/resize.ts
 function resizeGrid(model, nextSteps, mode) {
@@ -32921,6 +33125,6 @@ function isPersistableTab(t) {
 }
 __name(isPersistableTab, "isPersistableTab");
 
-export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EditorView, ErrorBoundary, FSCOPE_P5_CODE, GLSL_VIZ, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, INLINE_VIZ_ACTION_SIZE_VAR, IR, IREventCollectSystem, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MIXER_TAB_ID, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, StrudelParseSystem, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, analyzeEvents, analyzeSong, applyEdits, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, backdropQualityFactor, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, collect, collectCycles, commitWorkspace, compilePreset, computeSections, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getBackdropOpacity, getBackdropQuality, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getPerfEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackMeta, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBundledPresetId, isChunkFresh, isDocReady, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, merge, midiToPitch, mountVizRenderer, normalizeEdits, normalizeStrudelHap, noteToMidi, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onSignalAliasesChange, onThemeChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, perf, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, removeArm2 as pickRemoveArm, reorderArm2 as pickReorderArm, setWeight2 as pickSetWeight, splitArm2 as pickSplitArm, pitchToMidi, placeNote, previewProviderRegistry, propagate, pruneZoneOverrides, publishIRSnapshot, readCurrentCycle, readPersistedActiveTabId, readPersistedOpen, redo, registerBottomPanelTab, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerRuntimeProvider, removeArm, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revertFileToSeed, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setBackdropOpacity, setBackdropQuality, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setPerfEnabled, setProjectBackgroundCrop, setSignalAliases, setSubfolderOrder, setTierFlag, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, shellStateKeyFor, splitArm, startHistoryDriver, startSampleSound, stopSampleSound, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, usePopoutPreview, useTrackMeta, useWorkspaceFile, validatePersistedState, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
