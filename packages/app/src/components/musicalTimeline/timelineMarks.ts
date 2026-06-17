@@ -51,6 +51,17 @@ export function collectNoteMarks(
   // then resolves the OUTER combinator (that offset lies only inside it, not the
   // inner one) so a nested combinator arm edits as one outer clip. `sourceByLane`
   // keeps the innermost (content) anchor for expand→bind. First-event-wins.
+  //
+  // #456 — in a MULTI-track (`$:`) file, `collect` appends a Track-WRAPPER loc
+  // spanning the whole `$:` line (`withWrapperLoc` in collect.ts), whose start is
+  // the line start = `ev.dollarPos` — STRICTLY before the combinator (which sits
+  // after the `$: ` prefix). The raw minimum then picks that wrapper offset, which
+  // lies OUTSIDE every combinator, so `detectArrangeAt` resolves null and the clip
+  // op silently no-ops (selection still works — it's display-side). A single-track
+  // file has no wrapper loc, which is why standalone arranges wrote back fine. So
+  // we EXCLUDE the wrapper loc (`start === ev.dollarPos`) from the minimum; the
+  // combinator start always exceeds `dollarPos`, so this never drops a real
+  // combinator and is a no-op when `dollarPos` is absent (hand-built IR).
   const arrangeByLane = new Map<string, number>()
   // Clip derivation (#386): per lane, the active arrange-arm index for each
   // integer cycle (events of one arm share a cycle; arms span whole cycles —
@@ -76,7 +87,11 @@ export function collectNoteMarks(
       let outer: number | undefined
       for (const l of ev.loc) {
         const s = l?.start
-        if (typeof s === 'number' && Number.isFinite(s) && (outer === undefined || s < outer)) outer = s
+        if (typeof s !== 'number' || !Number.isFinite(s)) continue
+        // Skip the `$:` Track-wrapper loc (#456) — it starts before every
+        // combinator and would make `detectArrangeAt` miss.
+        if (ev.dollarPos !== undefined && s === ev.dollarPos) continue
+        if (outer === undefined || s < outer) outer = s
       }
       if (outer !== undefined) arrangeByLane.set(key, outer)
     }
