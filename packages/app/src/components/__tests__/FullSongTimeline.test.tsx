@@ -344,3 +344,74 @@ describe('FullSongTimeline — trim a clip (drag right edge → set-weight, #437
     expect(onTrimClip).not.toHaveBeenCalled()
   })
 })
+
+describe('FullSongTimeline — delete a clip (select body + Delete → remove-arm, #386)', () => {
+  // Same `arrange([2, s("bd")], [2, s("hh")])`-shaped fixture: the bd lane has two
+  // real clips (arm 0 [0,2), arm 1 [2,4)) at 200px/cycle, so arm 0's body centre
+  // sits at x≈200 and arm 1's at x≈600 (bd row y≈10). The hh lane carries no
+  // armIndex events, so it gets ONE implicit clip (armIndex −1, not deletable).
+  function renderDeletable(onDeleteClip: ReturnType<typeof vi.fn>) {
+    const utils = renderFull({ ir: {} as never, onDeleteClip })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    return { ...utils, grid }
+  }
+
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  it('selecting arm 0’s body then Delete → onDeleteClip(arm 0)', async () => {
+    const onDeleteClip = vi.fn()
+    const { grid, container } = renderDeletable(onDeleteClip)
+    await settle()
+    // Click arm 0's body (x≈200 = cycle 1, bd row) → selects it (highlight shows).
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
+    // Delete removes that arm — assert the VALUE (sourceOffset = bd lane anchor 9).
+    fireEvent.keyDown(grid, { key: 'Delete' })
+    expect(onDeleteClip).toHaveBeenCalledTimes(1)
+    expect(onDeleteClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0 })
+    // Selection clears after the delete fires.
+    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
+  })
+
+  it('Backspace also deletes the selected clip (arm 1)', async () => {
+    const onDeleteClip = vi.fn()
+    const { grid } = renderDeletable(onDeleteClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 600, clientY: 10, pointerId: 1 }) // arm 1 body
+    fireEvent.pointerUp(grid, { clientX: 600, clientY: 10, pointerId: 1 })
+    fireEvent.keyDown(grid, { key: 'Backspace' })
+    expect(onDeleteClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 1 })
+  })
+
+  it('Delete with nothing selected is a no-op', async () => {
+    const onDeleteClip = vi.fn()
+    const { grid } = renderDeletable(onDeleteClip)
+    await settle()
+    fireEvent.keyDown(grid, { key: 'Delete' })
+    expect(onDeleteClip).not.toHaveBeenCalled()
+  })
+
+  it('clicking the bare/implicit clip (hh lane) does not select → Delete no-ops', async () => {
+    const onDeleteClip = vi.fn()
+    const { grid, container } = renderDeletable(onDeleteClip)
+    await settle()
+    // hh row (y≈30) has only the implicit clip (armIndex −1) — not selectable.
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 30, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 30, pointerId: 1 })
+    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
+    fireEvent.keyDown(grid, { key: 'Delete' })
+    expect(onDeleteClip).not.toHaveBeenCalled()
+  })
+
+  it('clicking a clip still seeks (seek-anywhere preserved alongside select)', async () => {
+    const onDeleteClip = vi.fn()
+    const { grid, onSeek } = renderDeletable(onDeleteClip)
+    await settle()
+    fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    expect(onSeek).toHaveBeenCalledTimes(1)
+  })
+})

@@ -93,6 +93,16 @@ export interface FullSongTimelineProps {
     armIndex: number
     weight: number
   }) => void
+  /** Delete a clip (Phase 5c, #386). Fired when a selected clip is removed
+   *  (click a clip to select, then Delete/Backspace). Receives the clip's lane
+   *  source anchor + arm index; the parent parses the arrangement at the anchor
+   *  and writes a surgical remove-arm edit. Optional — without it clips can't be
+   *  selected/deleted. A combinator's SOLE remaining arm is not deletable
+   *  (a lane keeps ≥1 clip, PV122 #5); the serializer no-ops that case. */
+  readonly onDeleteClip?: (req: {
+    sourceOffset: number | null
+    armIndex: number
+  }) => void
 }
 
 /** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
@@ -398,6 +408,41 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     weight: number
   } | null>(null)
 
+  // ── Select + delete a clip (Phase 5c, #386) ───────────────────────────────
+  // Clicking a clip's BODY selects it (and still seeks — seek-anywhere is
+  // preserved); Delete/Backspace then drops the arm. Only real arms
+  // (`armIndex ≥ 0`) are selectable; a bare track's implicit clip has no arm to
+  // remove. Selection is keyed by lane + arm; the highlight rect is re-derived
+  // in render from the live scene/layout so it tracks zoom, scroll, and re-eval.
+  const { onDeleteClip } = props
+  const [selected, setSelected] = useState<{
+    laneKey: string
+    armIndex: number
+    sourceOffset: number | null
+  } | null>(null)
+
+  // Hit-test a clip BODY (not its edge) under a client point → { lane, clip },
+  // or null. Mirrors `clipEdgeAt` but matches CONTAINMENT (`clipAtCycle`) and
+  // skips the bare implicit clip. Reads live refs so it stays closure-stable.
+  const clipBodyAt = React.useCallback(
+    (clientX: number, clientY: number) => {
+      const el = areaRef.current
+      if (!el) return null
+      const rect = el.getBoundingClientRect()
+      const cw = contentWidthFor(rect.width, zoomRef.current)
+      const contentX = clientX - rect.left + scrollLeftRef.current
+      const laneKey = laneAtY(layoutRef.current, clientY - rect.top)
+      if (laneKey == null) return null
+      const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
+      if (!lane) return null
+      const cyc = xToSongCycle(contentX, displayCycles, cw)
+      const clip = clipAtCycle(lane, cyc)
+      if (!clip || clip.armIndex < 0) return null
+      return { lane, clip }
+    },
+    [displayCycles],
+  )
+
   // Hit-test a clip's right edge under a client point → the draggable clip, or
   // null. We scan the lane's clips and match proximity to each clip's RIGHT EDGE
   // directly (not `clipAtCycle`): that grabs the LAST clip's edge too (its end is
@@ -434,7 +479,15 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     (e: React.PointerEvent) => {
       const hit = clipEdgeAt(e.clientX, e.clientY)
       if (!hit) {
-        handleSeekAtClientX(e.clientX) // not on a clip edge → seek (unchanged)
+        // Not on a clip edge → select a clip body (Phase 5c) if over one, then
+        // seek (seek-anywhere preserved). Empty space clears the selection.
+        const body = onDeleteClip ? clipBodyAt(e.clientX, e.clientY) : null
+        setSelected(
+          body
+            ? { laneKey: body.lane.laneKey, armIndex: body.clip.armIndex, sourceOffset: body.lane.sourceOffset }
+            : null,
+        )
+        handleSeekAtClientX(e.clientX)
         return
       }
       // Begin a trim drag: capture the pointer so the whole gesture is ours and
@@ -458,7 +511,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const cw = contentWidthFor(areaRef.current!.getBoundingClientRect().width, zoomRef.current)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, displayCycles, cw))
     },
-    [clipEdgeAt, handleSeekAtClientX, displayCycles],
+    [clipEdgeAt, clipBodyAt, handleSeekAtClientX, displayCycles, onDeleteClip],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -505,6 +558,32 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     },
     [onTrimClip],
   )
+
+  // Delete/Backspace on the focused grid removes the selected clip. The grid is
+  // focusable (tabIndex) so a click-to-select leaves it ready for the keystroke.
+  const handleGridKeyDown = React.useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      if (!selected || !onDeleteClip) return
+      e.preventDefault()
+      onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
+      setSelected(null)
+    },
+    [selected, onDeleteClip],
+  )
+
+  // The selection highlight rect, derived from the LIVE scene + layout so it
+  // follows zoom/scroll and vanishes if the arm disappears after a re-eval.
+  const selectionRect = useMemo(() => {
+    if (!selected) return null
+    const lane = scene.lanes.find((l) => l.laneKey === selected.laneKey)
+    const clip = lane?.clips.find((c) => c.armIndex === selected.armIndex)
+    const box = layout.boxes.find((b) => b.laneKey === selected.laneKey)
+    if (!lane || !clip || !box) return null
+    const left = songCycleToX(clip.startCycle, displayCycles, contentWidth)
+    const right = songCycleToX(clip.endCycle, displayCycles, contentWidth)
+    return { left, width: Math.max(1, right - left), top: box.top, height: box.height }
+  }, [selected, scene, layout, displayCycles, contentWidth])
 
   const periodLabel =
     analysis == null
@@ -709,11 +788,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           data-full-song="grid"
           ref={areaRef}
           style={styles.grid}
+          tabIndex={0}
           onScroll={handleGridScroll}
           onPointerDown={handleGridPointerDown}
           onPointerMove={handleGridPointerMove}
           onPointerUp={(e) => endTrimDrag(e, true)}
           onPointerCancel={(e) => endTrimDrag(e, false)}
+          onKeyDown={handleGridKeyDown}
           onDoubleClick={(e) => handleExpandAtClientY(e.clientY)}
         >
           {/* Inner content is contentWidth wide (the scroll spacer for the native
@@ -739,6 +820,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             )}
             {trimEdgeX != null && (
               <div data-full-song="trim-edge" style={{ ...styles.trimEdge, left: trimEdgeX }} />
+            )}
+            {selectionRect && (
+              <div
+                data-full-song="clip-selection"
+                style={{
+                  ...styles.clipSelection,
+                  left: selectionRect.left,
+                  width: selectionRect.width,
+                  top: selectionRect.top,
+                  height: selectionRect.height,
+                }}
+              />
             )}
           </div>
         </div>
@@ -995,5 +1088,16 @@ const styles = {
     opacity: 0.9,
     boxShadow: '0 0 6px var(--accent, rgba(110,168,254,0.6))',
     pointerEvents: 'none' as const,
+  },
+  // Selected-clip highlight (Phase 5c): an accent outline + faint fill over the
+  // arm's [start,end) × lane box, in content space (tracks zoom/scroll).
+  clipSelection: {
+    position: 'absolute' as const,
+    border: '1.5px solid var(--accent, #6ea8fe)',
+    borderRadius: 2,
+    background: 'var(--accent-faint, rgba(110,168,254,0.14))',
+    boxShadow: '0 0 6px var(--accent, rgba(110,168,254,0.5))',
+    pointerEvents: 'none' as const,
+    boxSizing: 'border-box' as const,
   },
 } satisfies Record<string, React.CSSProperties>
