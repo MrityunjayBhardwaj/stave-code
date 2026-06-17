@@ -79,7 +79,7 @@ async function setCode(page: Page, code: string): Promise<void> {
       window as unknown as { monaco?: { editor?: { getEditors?: () => { getModel?: () => { setValue: (v: string) => void } | null }[] } } }
     ).monaco?.editor?.getEditors?.()?.[0]
     if (!e) return false
-    e.getModel()?.setValue(c)
+    e.getModel?.()?.setValue(c)
     return true
   }, code)
   expect(ok).toBe(true)
@@ -90,7 +90,7 @@ async function press(page: Page, key: string): Promise<void> {
   await page.evaluate(() =>
     (
       window as unknown as { monaco?: { editor?: { getEditors?: () => { focus?: () => void }[] } } }
-    ).monaco?.editor?.getEditors?.()?.[0]?.focus(),
+    ).monaco?.editor?.getEditors?.()?.[0]?.focus?.(),
   )
   await page.keyboard.press(key)
 }
@@ -99,7 +99,7 @@ async function scrollTo(page: Page, top: number): Promise<void> {
   await page.evaluate((t) => {
     ;(
       window as unknown as { monaco?: { editor?: { getEditors?: () => { setScrollTop?: (n: number) => void }[] } } }
-    ).monaco?.editor?.getEditors?.()?.[0]?.setScrollTop(t)
+    ).monaco?.editor?.getEditors?.()?.[0]?.setScrollTop?.(t)
   }, top)
 }
 
