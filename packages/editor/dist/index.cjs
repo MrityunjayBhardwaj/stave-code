@@ -25717,7 +25717,7 @@ function PianoRollGrid() {
       },
       children: /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" }, children: [
         rows.map((midi) => {
-          const black = isBlackKey(midi);
+          const black = !model.numeric && isBlackKey(midi);
           return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 6 }, children: [
             /* @__PURE__ */ jsxRuntime.jsx(
               "span",
