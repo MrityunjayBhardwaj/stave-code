@@ -326,11 +326,31 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
       if (close === -1) return { ok: false, reason: 'unbalanced brackets' }
       const inner = src.slice(i + 1, close)
       i = close + 1
+      // A group can carry a `*n` multiplier (`[sd hh]*2`) the same way an atom
+      // can — read it before the elongation (Strudel writes `[…]*2`). euclid /
+      // `!` on a group stay out of the editable subset for now (#467 follow-up).
+      const mult = readMultiplier(src, i)
+      if (!mult.ok) return { ok: false, reason: mult.reason }
+      i = mult.next
       const elong = readElongation(src, i)
       if (!elong.ok) return { ok: false, reason: elong.reason }
       i = elong.next
+      if (mult.value > 1 && elong.value > 1) {
+        return { ok: false, reason: '* combined with @ is beyond the editable subset' }
+      }
       const group = parseGroup(inner, elong.value, allowNumeric)
       if ('reason' in group) return { ok: false, reason: group.reason }
+      if (mult.value > 1) {
+        // `[…]*n` ≡ the group's slots played n times within the step (n× faster).
+        // A collapsed group (bare atom / chord, no sub) seeds a single slot.
+        const base: Slot[] = group.sub ?? [{ atoms: group.atoms, units: 1 }]
+        const sub: Slot[] = []
+        for (let r = 0; r < mult.value; r++) {
+          for (const slot of base) sub.push({ atoms: [...slot.atoms], units: slot.units })
+        }
+        steps.push({ atoms: [], elongation: group.elongation, sub })
+        continue
+      }
       steps.push(group)
       continue
     }

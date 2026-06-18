@@ -119,7 +119,7 @@ describe('step grid — parse', () => {
 
   it('rejects `*` combined with other modifiers (conservative scope)', () => {
     expect(parseStepGrid('bd*2@2').ok).toBe(false) // * with @
-    expect(parseStepGrid('[bd hh]*2').ok).toBe(false) // group multiplier
+    expect(parseStepGrid('[bd hh]*2@2').ok).toBe(false) // group * with @
     expect(parseStepGrid('bd*0').ok).toBe(false) // zero multiplier
     expect(parseStepGrid('bd*').ok).toBe(false) // missing count
   })
@@ -255,6 +255,46 @@ describe('step grid — `*` is parse-only sugar', () => {
     if (!sugar.ok || !expanded.ok) return
     expect(sugar.model).toEqual(expanded.model)
     expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+  })
+})
+
+describe('step grid — `[group]*n` (#467 nested-group multiplier, parse-only sugar)', () => {
+  // `[sd hh]*2` ≡ the group played n× within its slot → the group's slots
+  // repeated n times. Serializes to the expanded sequence (same sugar law as
+  // atom `*n`); the onsets are identical to the original.
+  it('binds `[sd hh]*2` (previously rejected) and expands it', () => {
+    const r = parseStepGrid('[sd hh]*2')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('sd hh sd hh')
+  })
+
+  it('handles a rest in the group and a higher count', () => {
+    const r = parseStepGrid('[~ sd]*2')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('~ sd ~ sd')
+    expect(parseStepGrid('[sd hh]*3').ok).toBe(true)
+  })
+
+  it('composes with sibling steps (`bd [sd hh]*2`)', () => {
+    const r = parseStepGrid('bd [sd hh]*2')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('bd ~ ~ ~ sd hh sd hh')
+  })
+
+  it('the expanded form re-parses to the same model (stable)', () => {
+    const sugar = parseStepGrid('[sd hh]*2')
+    const expanded = parseStepGrid('sd hh sd hh')
+    expect(sugar.ok && expanded.ok).toBe(true)
+    if (!sugar.ok || !expanded.ok) return
+    expect(sugar.model).toEqual(expanded.model)
+  })
+
+  it('applies to the piano roll too (`[60 62]*2`)', () => {
+    expect(parsePianoRoll('[60 62]*2').ok).toBe(true)
+    expect(parsePianoRoll('[c3 e3]*2').ok).toBe(true)
   })
 })
 
