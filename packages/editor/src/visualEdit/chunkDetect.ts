@@ -197,17 +197,39 @@ function innermostChainUnder(doc: string, expr: any, pos: number): any {
   const head = headOut.ref
   if (!head || !Array.isArray(head.arguments)) return expr
   for (const arg of head.arguments) {
-    if (
-      arg &&
-      arg.type === 'CallExpression' &&
-      typeof arg.start === 'number' &&
-      pos >= arg.start &&
-      pos <= arg.end
-    ) {
-      return innermostChainUnder(doc, arg, pos)
-    }
+    const inner = chainArgUnder(arg, pos)
+    if (inner) return innermostChainUnder(doc, inner, pos)
   }
   return expr
+}
+
+/**
+ * The chain expression to descend into for a combinator argument under `pos`:
+ * the arg itself when it's a pattern chain (`stack`/`cat`/`layer` args), OR —
+ * for an `arrange([w, pat])` arm — the `pat` CallExpression element inside the
+ * `[w, pat]` ArrayExpression (#472). Returns null when `pos` isn't inside a
+ * descendable chain arg (e.g. on the weight literal, or a non-chain arg), so the
+ * cursor keeps the enclosing combinator chain. Without the array case, an
+ * arrange arm leaf never binds a panel — the cursor resolves to the whole
+ * `arrange(...)` (head `arrange`, no mini) → standby.
+ */
+function chainArgUnder(arg: any, pos: number): any {
+  if (!arg || typeof arg.start !== 'number' || pos < arg.start || pos > arg.end) return null
+  if (arg.type === 'CallExpression') return arg
+  if (arg.type === 'ArrayExpression' && Array.isArray(arg.elements)) {
+    for (const el of arg.elements) {
+      if (
+        el &&
+        el.type === 'CallExpression' &&
+        typeof el.start === 'number' &&
+        pos >= el.start &&
+        pos <= el.end
+      ) {
+        return el
+      }
+    }
+  }
+  return null
 }
 
 /**

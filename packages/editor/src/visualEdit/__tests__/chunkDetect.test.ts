@@ -107,6 +107,50 @@ describe('chunkDetect — nested in combinators (#395)', () => {
   })
 })
 
+describe('chunkDetect — arrange [w, pat] arms (#472)', () => {
+  const arrDoc = '$: arrange([2, s("bd ~ sd")], [2, s("hh*4").gain(0.5)], [4, note("c3 e3")])'
+
+  it('binds the leaf inside an arrange arm (the `pat` in `[w, pat]`)', () => {
+    const c = detectChunk(arrDoc, arrDoc.indexOf('bd ~ sd'))!
+    expect(c.headFn).toBe('s')
+    expect(c.miniString).toBe('bd ~ sd')
+    expect(c.label).toBeNull() // nested target carries no `$:`
+    expect(classifyChunk(c)).toBe('step')
+    expect(doc(c, arrDoc)).toBe('s("bd ~ sd")')
+  })
+
+  it('binds the note leaf in a later arm → roll-shaped', () => {
+    const c = detectChunk(arrDoc, arrDoc.indexOf('c3 e3'))!
+    expect(c.headFn).toBe('note')
+    expect(classifyChunk(c)).toBe('roll')
+    expect(doc(c, arrDoc)).toBe('note("c3 e3")')
+  })
+
+  it('keeps the full chain of an arm leaf (incl. trailing methods)', () => {
+    const c = detectChunk(arrDoc, arrDoc.indexOf('hh*4'))!
+    expect(doc(c, arrDoc)).toBe('s("hh*4").gain(0.5)')
+  })
+
+  it('the arm miniRange is the write-back target + fresh', () => {
+    const c = detectChunk(arrDoc, arrDoc.indexOf('bd ~ sd'))!
+    expect(arrDoc.slice(c.miniRange![0], c.miniRange![1])).toBe('bd ~ sd')
+    expect(isChunkFresh(arrDoc, c)).toBe(true)
+  })
+
+  it('a cursor on the WEIGHT literal keeps the whole arrange (not an arm)', () => {
+    const c = detectChunk(arrDoc, arrDoc.indexOf('[2,') + 1)! // on the `2`
+    expect(c.headFn).toBe('arrange')
+    expect(doc(c, arrDoc)).toBe(arrDoc)
+  })
+
+  it('cat(...) bare arms still bind (refactor regression guard)', () => {
+    const d = '$: cat(s("bd"), note("c3 e3"))'
+    const c = detectChunk(d, d.indexOf('c3 e3'))!
+    expect(c.headFn).toBe('note')
+    expect(doc(c, d)).toBe('note("c3 e3")')
+  })
+})
+
 /** slice a chunk's statementRange out of the doc */
 function doc(c: ChunkInfo, source: string): string {
   return source.slice(c.statementRange[0], c.statementRange[1])

@@ -48,6 +48,7 @@ import {
   subscribeIRSnapshot,
   subscribeToTrackMeta,
   revealLineInFile,
+  revealOffsetInFile,
   applyOffsetEditsToFile,
   detectArrangeAt,
   detectBarePattern,
@@ -1024,8 +1025,13 @@ export function MusicalTimeline(
   const handleBindLane = React.useCallback(
     (sourceOffset: number | null) => {
       if (!snapshot?.source || sourceOffset == null) return
-      const line = countLines(snapshot.code, sourceOffset)
-      revealLineInFile(snapshot.source, line)
+      // Position the cursor at the lane's exact source OFFSET (line + column),
+      // not column 1: a track that is one arm of a combinator on a shared line
+      // (`arrange([w, pat], …)`) only binds when the cursor lands INSIDE the arm
+      // leaf — column 1 resolves to the whole combinator → standby (#472). The
+      // offset is the leaf's innermost atom (loc[0].start), which is inside the
+      // mini for every layout, so this also keeps the top-level single-track case.
+      revealOffsetInFile(snapshot.source, sourceOffset)
     },
     [snapshot],
   )

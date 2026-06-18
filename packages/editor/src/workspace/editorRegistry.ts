@@ -124,6 +124,30 @@ export function revealLineInFile(fileId: string, line: number): boolean {
 }
 
 /**
+ * Reveal a source CHARACTER OFFSET in the editor for `fileId`, placing the cursor
+ * at its exact line AND column (not column 1). Returns true if the editor was
+ * found. Use this when the cursor position must land INSIDE a specific
+ * expression — e.g. binding a track that is one arm of a combinator on a shared
+ * line (`arrange([w, pat], …)`): column 1 resolves to the whole combinator
+ * (standby), while the leaf's own offset descends to the arm (#472). Falls back
+ * to line-only reveal if the model can't map the offset.
+ */
+export function revealOffsetInFile(fileId: string, offset: number): boolean {
+  const editor = editors.get(fileId)
+  if (!editor) return false
+  try {
+    const pos = editor.getModel?.()?.getPositionAt?.(offset)
+    if (!pos) return false
+    editor.revealLineInCenter?.(pos.lineNumber)
+    editor.setPosition?.(pos)
+    editor.focus?.()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Apply a batch of surgical offset edits to the model of `fileId`'s editor as
  * ONE undo step, tagged with `source`. Returns false (no-op) when the editor
  * isn't mounted, the monaco namespace hasn't been captured, there are no edits,

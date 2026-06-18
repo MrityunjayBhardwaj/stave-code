@@ -257,6 +257,7 @@ export {
 } from './workspace/undoManager'
 export {
   revealLineInFile,
+  revealOffsetInFile,
   applyOffsetEditsToFile,
   getEditorFontSize,
   getEditorMinimap,
