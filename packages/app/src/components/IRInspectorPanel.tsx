@@ -147,6 +147,11 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
   // timeline-clip combinator). Teal-300 placeholder, distinct from Cycle's
   // cyan (#06b6d4) and Builder's green; final token lands in the design pass.
   Arrange:  "var(--ir-arrange, #2dd4bf)",
+  // #463 / #475 — NamedPick tag (object/named-key pick family:
+  // pickRestart/pickReset/pick). Same pick family as Pick (#34d399) so it
+  // shares the emerald hue, but a darker emerald-600 keeps the two chips
+  // distinguishable; final token lands in the design pass.
+  NamedPick: "var(--ir-named-pick, #059669)",
 };
 
 // summarize / children moved to IRInspectorChrome.ts (Phase 20-04 wave δ)

@@ -39,6 +39,9 @@ export function summarize(node: PatternIR): string {
     case 'Struct':   return `mask="${node.mask}"`
     case 'Swing':    return `n=${node.n}`
     case 'Pick':     return `${node.lookup.length} entries`
+    // #463 / #475 — named/object pick family. Developer chrome shows the
+    // combinator + the named keys so the structure is visible at a glance.
+    case 'NamedPick': return `${node.method} {${node.entries.map((e) => e.key).join(', ')}}`
     case 'Shuffle':  return `n=${node.n}`
     case 'Scramble': return `n=${node.n}`
     case 'Chop':     return `n=${node.n}`
@@ -145,6 +148,11 @@ export function children(node: PatternIR): readonly PatternIR[] {
     // distinguished selector child — render selector first, then the
     // lookup entries as siblings.
     case 'Pick':  return [node.selector, ...node.lookup]
+    // #463 / #475 — named/object pick family; same selector-first shape as
+    // Pick, entries' patterns as siblings. (children() already degraded
+    // safely via `default: return []`, but the explicit case lets irMode
+    // drill into the entries too — parity with projectedChildren.)
+    case 'NamedPick': return [node.selector, ...node.entries.map((e) => e.pattern)]
     // Phase 20-04 T-12 / D-05 (developer tree expansion).
     // Wrapper case: expose via.inner as a child so the inspector tree can
     // drill into the wrapped receiver. Parse-failure case (no via): leaf.

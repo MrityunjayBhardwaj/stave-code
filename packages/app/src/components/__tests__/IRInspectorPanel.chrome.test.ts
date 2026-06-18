@@ -134,4 +134,34 @@ describe('20-11 — Track developer chrome (musician-track-identity / PV35)', ()
     expect(kids.length).toBe(1)
     expect(kids[0]).toBe(body)
   })
+
+  // #463 / #475 — NamedPick developer chrome.
+  it('summarize(NamedPick) shows the method + named keys', () => {
+    const node = IR.namedPick(
+      IR.code('"<a b>"'),
+      [
+        { key: 'verse', pattern: IR.play('bd', 1) },
+        { key: 'chorus', pattern: IR.play('hh', 1) },
+      ],
+      'pickRestart',
+      '{verse: s("bd"), chorus: s("hh")}',
+    ) as PatternIR
+    expect(summarize(node)).toBe('pickRestart {verse, chorus}')
+  })
+
+  it('children(NamedPick) returns [selector, ...entries.patterns]', () => {
+    const selector = IR.code('"<a b>"')
+    const verse = IR.play('bd', 1)
+    const chorus = IR.play('hh', 1)
+    const node = IR.namedPick(
+      selector,
+      [
+        { key: 'verse', pattern: verse },
+        { key: 'chorus', pattern: chorus },
+      ],
+      'pickRestart',
+      '{verse: s("bd"), chorus: s("hh")}',
+    ) as PatternIR
+    expect(children(node)).toEqual([selector, verse, chorus])
+  })
 })
