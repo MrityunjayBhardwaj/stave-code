@@ -24469,9 +24469,34 @@ function patternKind(chunk) {
 }
 __name(patternKind, "patternKind");
 
+// src/visualEdit/notation/pitch.ts
+var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+var DEFAULT_OCTAVE = 3;
+function pitchToMidi(token) {
+  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
+  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
+  if (!m) return null;
+  const [, letter, accidental, octave] = m;
+  let semitone = SEMITONE_OF[letter];
+  if (accidental === "s" || accidental === "#") semitone += 1;
+  else if (accidental === "b") semitone -= 1;
+  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
+  return (oct + 1) * 12 + semitone;
+}
+__name(pitchToMidi, "pitchToMidi");
+function midiToPitch(midi) {
+  const octave = Math.floor(midi / 12) - 1;
+  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
+}
+__name(midiToPitch, "midiToPitch");
+function isBlackKey(midi) {
+  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
+}
+__name(isBlackKey, "isBlackKey");
+
 // src/visualEdit/notation/parse.ts
 var ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/;
-var NOTE = /^[a-gA-G][bs#]?-?\d$/;
 var isBareRest = /* @__PURE__ */ __name((s, i) => s[i] === "-" && (i + 1 >= s.length || /[\s[\]@,*(!]/.test(s[i + 1])), "isBareRest");
 var NUMERIC = /^-?\d+$/;
 var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => ATOM.test(t) || allowNumeric && NUMERIC.test(t), "isAtomToken");
@@ -24905,7 +24930,7 @@ function parsePianoRoll(mini) {
       const span = step.elongation * div * slot.units / total;
       for (const token of slot.atoms) {
         const isNum = /^-?\d+$/.test(token);
-        if (!isNum && !NOTE.test(token)) {
+        if (!isNum && pitchToMidi(token) === null) {
           return { ok: false, reason: `"${token}" is not a note name` };
         }
         if (isNum) sawNumeric = true;
@@ -25498,30 +25523,6 @@ function SequencerGrid() {
   );
 }
 __name(SequencerGrid, "SequencerGrid");
-
-// src/visualEdit/notation/pitch.ts
-var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
-var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
-function pitchToMidi(token) {
-  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
-  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)$/);
-  if (!m) return null;
-  const [, letter, accidental, octave] = m;
-  let semitone = SEMITONE_OF[letter];
-  if (accidental === "s" || accidental === "#") semitone += 1;
-  else if (accidental === "b") semitone -= 1;
-  return (parseInt(octave, 10) + 1) * 12 + semitone;
-}
-__name(pitchToMidi, "pitchToMidi");
-function midiToPitch(midi) {
-  const octave = Math.floor(midi / 12) - 1;
-  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
-}
-__name(midiToPitch, "midiToPitch");
-function isBlackKey(midi) {
-  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
-}
-__name(isBlackKey, "isBlackKey");
 
 // src/visualEdit/notation/place.ts
 function placeNote(model, pitch, start, duration) {

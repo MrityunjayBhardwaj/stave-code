@@ -8074,9 +8074,11 @@ declare function serializePianoRoll(model: PianoRollModel): string | null;
  */
 /**
  * `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token.
- * A bare integer (`60`, `0`, `-7`) maps to that row directly — `note("60")`
- * is MIDI; `n("0")` is a degree/index. Either way the number IS the row, and
- * the verbatim token is what the serializer writes back (#469).
+ * The octave is OPTIONAL — a bare name (`c`, `eb`, `f#`) defaults to octave 3,
+ * matching Strudel (`note("c")` plays C3). A bare integer (`60`, `0`, `-7`)
+ * maps to that row directly — `note("60")` is MIDI; `n("0")` is a degree/index.
+ * Either way the number IS the row, and the verbatim token is what the
+ * serializer writes back (#469).
  */
 declare function pitchToMidi(token: string): number | null;
 /** MIDI number → canonical note token (sharps as `#`). Inverse of pitchToMidi. */
