@@ -6151,13 +6151,25 @@ function innermostChainUnder(doc, expr, pos) {
   const head = headOut.ref;
   if (!head || !Array.isArray(head.arguments)) return expr;
   for (const arg of head.arguments) {
-    if (arg && arg.type === "CallExpression" && typeof arg.start === "number" && pos >= arg.start && pos <= arg.end) {
-      return innermostChainUnder(doc, arg, pos);
-    }
+    const inner = chainArgUnder(arg, pos);
+    if (inner) return innermostChainUnder(doc, inner, pos);
   }
   return expr;
 }
 __name(innermostChainUnder, "innermostChainUnder");
+function chainArgUnder(arg, pos) {
+  if (!arg || typeof arg.start !== "number" || pos < arg.start || pos > arg.end) return null;
+  if (arg.type === "CallExpression") return arg;
+  if (arg.type === "ArrayExpression" && Array.isArray(arg.elements)) {
+    for (const el of arg.elements) {
+      if (el && el.type === "CallExpression" && typeof el.start === "number" && pos >= el.start && pos <= el.end) {
+        return el;
+      }
+    }
+  }
+  return null;
+}
+__name(chainArgUnder, "chainArgUnder");
 function collectChain(doc, expr, headOut) {
   const calls = [];
   let node = expr;
