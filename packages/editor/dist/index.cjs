@@ -6418,6 +6418,21 @@ function revealLineInFile(fileId, line) {
   }
 }
 __name(revealLineInFile, "revealLineInFile");
+function revealOffsetInFile(fileId, offset) {
+  const editor = editors.get(fileId);
+  if (!editor) return false;
+  try {
+    const pos = editor.getModel?.()?.getPositionAt?.(offset);
+    if (!pos) return false;
+    editor.revealLineInCenter?.(pos.lineNumber);
+    editor.setPosition?.(pos);
+    editor.focus?.();
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(revealOffsetInFile, "revealOffsetInFile");
 function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
   const editor = editors.get(fileId);
   if (!editor || !monacoNs || edits.length === 0) return false;
@@ -33500,6 +33515,7 @@ exports.restoreFileToCommit = restoreFileToCommit;
 exports.restoreProject = restoreProject;
 exports.restoreSnapshot = restoreSnapshot;
 exports.revealLineInFile = revealLineInFile;
+exports.revealOffsetInFile = revealOffsetInFile;
 exports.revertFileToSeed = revertFileToSeed;
 exports.runChainAppliedStage = runChainAppliedStage;
 exports.runFinalStage = runFinalStage;
