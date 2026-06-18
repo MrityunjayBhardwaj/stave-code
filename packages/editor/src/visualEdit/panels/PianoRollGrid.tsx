@@ -59,6 +59,14 @@ function setGroupGain(model: PianoRollModel, start: number, gain: number): Piano
   }
 }
 
+/**
+ * The token for a row. A numeric pattern (#469) emits the bare row number
+ * (`60`, `0`) so new/dragged notes keep the pattern's convention and round-trip;
+ * a note-name pattern emits `c4`. The row value itself is the same either way.
+ */
+const tokenForRow = (numeric: boolean, midi: number): string =>
+  numeric ? String(midi) : midiToPitch(midi)
+
 /** content pitch range padded around the notes */
 function contentRange(model: PianoRollModel): { lo: number; hi: number } {
   const midis = model.notes
@@ -192,7 +200,7 @@ export function PianoRollGrid(): React.ReactElement {
       beginGesture()
     } else {
       // empty cell → place a one-step note (its own undo)
-      mutate((prev) => placeNote(prev, midiToPitch(midi), step, 1))
+      mutate((prev) => placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1))
     }
   }
 
@@ -225,11 +233,12 @@ export function PianoRollGrid(): React.ReactElement {
       return
     }
     const newStart = Math.max(0, Math.min(step - d.grabOffset, d.steps - 1))
-    const newPitch = midiToPitch(midi)
+    const newPitch = tokenForRow(!!model.numeric, midi)
     const dur = Math.max(1, Math.min(d.duration, d.steps - newStart))
     const moved: PianoRollModel = {
       steps: d.steps,
       ...(model.bars != null ? { bars: model.bars } : {}),
+      ...(model.numeric ? { numeric: true } : {}),
       notes: [...d.baseNotes, { pitch: newPitch, start: newStart, duration: dur }],
     }
     // rebuild from the fixed base each time → no accumulation drift; a move
@@ -265,7 +274,10 @@ export function PianoRollGrid(): React.ReactElement {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
         {rows.map((midi) => {
-          const black = isBlackKey(midi)
+          // Piano black/white striping only makes sense for note-name rows;
+          // for numeric patterns a row is a raw value (MIDI or degree), not a
+          // key, so stripe uniformly and let the numeric label carry the pitch.
+          const black = !model.numeric && isBlackKey(midi)
           return (
             <div key={midi} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span
@@ -278,7 +290,7 @@ export function PianoRollGrid(): React.ReactElement {
                     : 'var(--foreground, #e6e6ea)',
                 }}
               >
-                {midiToPitch(midi)}
+                {tokenForRow(!!model.numeric, midi)}
               </span>
               <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
                 {Array.from({ length: model.steps }, (_, step) => {
@@ -291,7 +303,7 @@ export function PianoRollGrid(): React.ReactElement {
                       key={step}
                       type="button"
                       aria-pressed={on}
-                      aria-label={`${midiToPitch(midi)} step ${step + 1}`}
+                      aria-label={`${tokenForRow(!!model.numeric, midi)} step ${step + 1}`}
                       data-roll-cell={`${midi}:${step}`}
                       data-playing={step === playingStep ? 'true' : undefined}
                       onPointerDown={(e) => {
@@ -325,7 +337,7 @@ export function PianoRollGrid(): React.ReactElement {
                       {isTail && (
                         <span
                           data-roll-resize={`${midi}:${note!.start}`}
-                          aria-label={`resize ${midiToPitch(midi)}`}
+                          aria-label={`resize ${tokenForRow(!!model.numeric, midi)}`}
                           onPointerDown={(e) => {
                             e.preventDefault()
                             e.stopPropagation()

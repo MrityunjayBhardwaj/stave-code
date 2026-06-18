@@ -78,6 +78,14 @@ export interface PianoRollModel {
   notes: RollNote[]
   /** see `StepGridModel.gainForeign` — a `.gain` we read but don't manage. */
   gainForeign?: boolean
+  /**
+   * The pitch tokens are bare integers (`note("60 62")` MIDI, `n("0 1 2")`
+   * degrees) rather than note names (#469). Row math is the same (the number
+   * IS the row), but new/dragged notes must emit numbers, not `c4`, so the
+   * pattern round-trips. A pattern mixes one convention or the other, never
+   * both (mixed is rejected at parse).
+   */
+  numeric?: boolean
 }
 
 /**

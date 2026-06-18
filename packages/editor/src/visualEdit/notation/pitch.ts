@@ -11,8 +11,14 @@
 const SEMITONE_OF: Record<string, number> = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }
 const SHARP_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
 
-/** `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token. */
+/**
+ * `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token.
+ * A bare integer (`60`, `0`, `-7`) maps to that row directly — `note("60")`
+ * is MIDI; `n("0")` is a degree/index. Either way the number IS the row, and
+ * the verbatim token is what the serializer writes back (#469).
+ */
 export function pitchToMidi(token: string): number | null {
+  if (/^-?\d+$/.test(token)) return parseInt(token, 10)
   const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)$/)
   if (!m) return null
   const [, letter, accidental, octave] = m
