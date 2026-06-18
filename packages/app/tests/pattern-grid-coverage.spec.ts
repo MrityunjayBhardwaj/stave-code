@@ -122,3 +122,32 @@ test.describe('#469 — numeric patterns bind the Piano Roll', () => {
     expect(await strudelValue(page)).toBe('$: note("60 62 64")')
   })
 })
+
+test.describe('#467 — `[group]*n` multiplier binds the grid', () => {
+  test('sequencer: `s("[bd hh]*2")` binds as the expanded 4-step sequence', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("[bd hh]*2")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await expect(grid).toHaveCount(1) // previously fell to standby
+    // bd lane: cols 0 + 2; hh lane: cols 1 + 3 (sd hh sd hh → bd hh bd hh here).
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-seq-cell="0:1"]')).toHaveAttribute('aria-pressed', 'false')
+    await expect(grid.locator('[data-seq-cell="0:2"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-seq-cell="1:1"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-seq-cell="1:3"]')).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+test.describe('#467 — bare note names (no octave) bind the Piano Roll', () => {
+  test('`note("c e g")` binds on the octave-3 rows (c3=48, e3=52, g3=55)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: note("c e g")')
+    const drawer = await openPattern(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="piano-roll"]')
+    await expect(grid).toHaveCount(1) // previously fell to standby ("not a note name")
+    await expect(grid.locator('[data-roll-cell="48:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-roll-cell="52:1"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.locator('[data-roll-cell="55:2"]')).toHaveAttribute('aria-pressed', 'true')
+  })
+})

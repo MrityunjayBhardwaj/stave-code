@@ -119,7 +119,7 @@ describe('step grid — parse', () => {
 
   it('rejects `*` combined with other modifiers (conservative scope)', () => {
     expect(parseStepGrid('bd*2@2').ok).toBe(false) // * with @
-    expect(parseStepGrid('[bd hh]*2').ok).toBe(false) // group multiplier
+    expect(parseStepGrid('[bd hh]*2@2').ok).toBe(false) // group * with @
     expect(parseStepGrid('bd*0').ok).toBe(false) // zero multiplier
     expect(parseStepGrid('bd*').ok).toBe(false) // missing count
   })
@@ -255,6 +255,46 @@ describe('step grid — `*` is parse-only sugar', () => {
     if (!sugar.ok || !expanded.ok) return
     expect(sugar.model).toEqual(expanded.model)
     expect(serializeStepGrid(sugar.model)).toBe(serializeStepGrid(expanded.model))
+  })
+})
+
+describe('step grid — `[group]*n` (#467 nested-group multiplier, parse-only sugar)', () => {
+  // `[sd hh]*2` ≡ the group played n× within its slot → the group's slots
+  // repeated n times. Serializes to the expanded sequence (same sugar law as
+  // atom `*n`); the onsets are identical to the original.
+  it('binds `[sd hh]*2` (previously rejected) and expands it', () => {
+    const r = parseStepGrid('[sd hh]*2')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('sd hh sd hh')
+  })
+
+  it('handles a rest in the group and a higher count', () => {
+    const r = parseStepGrid('[~ sd]*2')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('~ sd ~ sd')
+    expect(parseStepGrid('[sd hh]*3').ok).toBe(true)
+  })
+
+  it('composes with sibling steps (`bd [sd hh]*2`)', () => {
+    const r = parseStepGrid('bd [sd hh]*2')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializeStepGrid(r.model)).toBe('bd ~ ~ ~ sd hh sd hh')
+  })
+
+  it('the expanded form re-parses to the same model (stable)', () => {
+    const sugar = parseStepGrid('[sd hh]*2')
+    const expanded = parseStepGrid('sd hh sd hh')
+    expect(sugar.ok && expanded.ok).toBe(true)
+    if (!sugar.ok || !expanded.ok) return
+    expect(sugar.model).toEqual(expanded.model)
+  })
+
+  it('applies to the piano roll too (`[60 62]*2`)', () => {
+    expect(parsePianoRoll('[60 62]*2').ok).toBe(true)
+    expect(parsePianoRoll('[c3 e3]*2').ok).toBe(true)
   })
 })
 
@@ -425,9 +465,39 @@ describe('pitch', () => {
   it('returns null for non-notes', () => {
     expect(pitchToMidi('bd')).toBeNull()
   })
+  it('a bare note name (no octave) defaults to octave 3 — grounded vs Strudel (#467)', () => {
+    // noteToMidi('c') === noteToMidi('c3') === 48 in @strudel/core.
+    expect(pitchToMidi('c')).toBe(48)
+    expect(pitchToMidi('c3')).toBe(48)
+    expect(pitchToMidi('C')).toBe(48) // case-insensitive
+    expect(pitchToMidi('e')).toBe(52)
+    expect(pitchToMidi('g')).toBe(55)
+    expect(pitchToMidi('eb')).toBe(51) // c→48, eb = 51
+    expect(pitchToMidi('f#')).toBe(54)
+    expect(pitchToMidi('bd')).toBeNull() // still not a note (b + stray d)
+  })
   it('flags black keys', () => {
     expect(isBlackKey(49)).toBe(true) // c#3
     expect(isBlackKey(48)).toBe(false) // c3
+  })
+})
+
+describe('piano roll — bare note names (#467)', () => {
+  it('binds `note("c d f e")` (previously rejected for missing octaves)', () => {
+    const r = parsePianoRoll('c d f e')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.notes.map((n) => n.pitch)).toEqual(['c', 'd', 'f', 'e'])
+  })
+  it('preserves the verbatim token on round-trip (lower-cased)', () => {
+    const r = parsePianoRoll('g c g c')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializePianoRoll(r.model)).toBe('g c g c')
+  })
+  it('still rejects mixed numeric+named and true non-notes', () => {
+    expect(parsePianoRoll('c 60').ok).toBe(false) // #469 XOR gate intact
+    expect(parsePianoRoll('bd sd').ok).toBe(false) // sample names, not notes
   })
 })
 

@@ -22,11 +22,15 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
+import { pitchToMidi } from './pitch'
 
 /** an atom token allowed in a grid lane (sound, optional :variant) */
 const ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/
 /** a melodic note token for the roll */
-const NOTE = /^[a-gA-G][bs#]?-?\d$/
+// Note-name validity is owned by `pitchToMidi` (the row-math authority) — a
+// separate NOTE regex here drifted out of sync (it required an octave, so bare
+// `c` was rejected even though pitchToMidi maps it to C3). Single source = no
+// drift (P189). `note`/`n` row tokens are validated via pitchToMidi below.
 
 /**
  * A bare `-` is a rest, identical to `~` — grounded against real `@strudel`
@@ -326,11 +330,31 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
       if (close === -1) return { ok: false, reason: 'unbalanced brackets' }
       const inner = src.slice(i + 1, close)
       i = close + 1
+      // A group can carry a `*n` multiplier (`[sd hh]*2`) the same way an atom
+      // can — read it before the elongation (Strudel writes `[…]*2`). euclid /
+      // `!` on a group stay out of the editable subset for now (#467 follow-up).
+      const mult = readMultiplier(src, i)
+      if (!mult.ok) return { ok: false, reason: mult.reason }
+      i = mult.next
       const elong = readElongation(src, i)
       if (!elong.ok) return { ok: false, reason: elong.reason }
       i = elong.next
+      if (mult.value > 1 && elong.value > 1) {
+        return { ok: false, reason: '* combined with @ is beyond the editable subset' }
+      }
       const group = parseGroup(inner, elong.value, allowNumeric)
       if ('reason' in group) return { ok: false, reason: group.reason }
+      if (mult.value > 1) {
+        // `[…]*n` ≡ the group's slots played n times within the step (n× faster).
+        // A collapsed group (bare atom / chord, no sub) seeds a single slot.
+        const base: Slot[] = group.sub ?? [{ atoms: group.atoms, units: 1 }]
+        const sub: Slot[] = []
+        for (let r = 0; r < mult.value; r++) {
+          for (const slot of base) sub.push({ atoms: [...slot.atoms], units: slot.units })
+        }
+        steps.push({ atoms: [], elongation: group.elongation, sub })
+        continue
+      }
       steps.push(group)
       continue
     }
@@ -607,7 +631,7 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
       const span = (step.elongation * div * slot.units) / total
       for (const token of slot.atoms) {
         const isNum = /^-?\d+$/.test(token)
-        if (!isNum && !NOTE.test(token)) {
+        if (!isNum && pitchToMidi(token) === null) {
           return { ok: false, reason: `"${token}" is not a note name` }
         }
         if (isNum) sawNumeric = true
