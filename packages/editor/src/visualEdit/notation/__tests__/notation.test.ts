@@ -465,9 +465,39 @@ describe('pitch', () => {
   it('returns null for non-notes', () => {
     expect(pitchToMidi('bd')).toBeNull()
   })
+  it('a bare note name (no octave) defaults to octave 3 — grounded vs Strudel (#467)', () => {
+    // noteToMidi('c') === noteToMidi('c3') === 48 in @strudel/core.
+    expect(pitchToMidi('c')).toBe(48)
+    expect(pitchToMidi('c3')).toBe(48)
+    expect(pitchToMidi('C')).toBe(48) // case-insensitive
+    expect(pitchToMidi('e')).toBe(52)
+    expect(pitchToMidi('g')).toBe(55)
+    expect(pitchToMidi('eb')).toBe(51) // c→48, eb = 51
+    expect(pitchToMidi('f#')).toBe(54)
+    expect(pitchToMidi('bd')).toBeNull() // still not a note (b + stray d)
+  })
   it('flags black keys', () => {
     expect(isBlackKey(49)).toBe(true) // c#3
     expect(isBlackKey(48)).toBe(false) // c3
+  })
+})
+
+describe('piano roll — bare note names (#467)', () => {
+  it('binds `note("c d f e")` (previously rejected for missing octaves)', () => {
+    const r = parsePianoRoll('c d f e')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.model.notes.map((n) => n.pitch)).toEqual(['c', 'd', 'f', 'e'])
+  })
+  it('preserves the verbatim token on round-trip (lower-cased)', () => {
+    const r = parsePianoRoll('g c g c')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(serializePianoRoll(r.model)).toBe('g c g c')
+  })
+  it('still rejects mixed numeric+named and true non-notes', () => {
+    expect(parsePianoRoll('c 60').ok).toBe(false) // #469 XOR gate intact
+    expect(parsePianoRoll('bd sd').ok).toBe(false) // sample names, not notes
   })
 })
 

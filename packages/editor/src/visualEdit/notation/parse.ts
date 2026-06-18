@@ -22,11 +22,15 @@ import type {
   StepGridModel,
   StepLane,
 } from './model'
+import { pitchToMidi } from './pitch'
 
 /** an atom token allowed in a grid lane (sound, optional :variant) */
 const ATOM = /^[a-zA-Z][a-zA-Z0-9#]*(:\d+)?$/
 /** a melodic note token for the roll */
-const NOTE = /^[a-gA-G][bs#]?-?\d$/
+// Note-name validity is owned by `pitchToMidi` (the row-math authority) — a
+// separate NOTE regex here drifted out of sync (it required an octave, so bare
+// `c` was rejected even though pitchToMidi maps it to C3). Single source = no
+// drift (P189). `note`/`n` row tokens are validated via pitchToMidi below.
 
 /**
  * A bare `-` is a rest, identical to `~` — grounded against real `@strudel`
@@ -627,7 +631,7 @@ export function parsePianoRoll(mini: string): ParseResult<PianoRollModel> {
       const span = (step.elongation * div * slot.units) / total
       for (const token of slot.atoms) {
         const isNum = /^-?\d+$/.test(token)
-        if (!isNum && !NOTE.test(token)) {
+        if (!isNum && pitchToMidi(token) === null) {
           return { ok: false, reason: `"${token}" is not a note name` }
         }
         if (isNum) sawNumeric = true

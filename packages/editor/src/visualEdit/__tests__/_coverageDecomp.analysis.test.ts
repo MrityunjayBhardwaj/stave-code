@@ -100,6 +100,7 @@ describe('ANALYSIS: pattern-grid coverage blocker decomposition (#467)', () => {
     let candidates = 0
     let bound = 0
     const failBuckets = new Map<string, number>()
+    const reasonBuckets = new Map<string, number>()
     const examples = new Map<string, string>()
 
     for (const code of codes) {
@@ -111,6 +112,9 @@ describe('ANALYSIS: pattern-grid coverage blocker decomposition (#467)', () => {
         } else {
           const bucket = featureBucket(mini, res.reason)
           failBuckets.set(bucket, (failBuckets.get(bucket) ?? 0) + 1)
+          // Normalize the reason (strip the specific token) so they aggregate.
+          const reason = res.reason.replace(/"[^"]*"/, '"…"')
+          reasonBuckets.set(reason, (reasonBuckets.get(reason) ?? 0) + 1)
           if (!examples.has(bucket)) examples.set(bucket, `${mini.slice(0, 50)}  ⟶  ${res.reason}`)
         }
       }
@@ -124,6 +128,12 @@ describe('ANALYSIS: pattern-grid coverage blocker decomposition (#467)', () => {
     console.log(`failure buckets (by offending feature, descending):`)
     for (const [bucket, count] of sorted) {
       console.log(`  ${String(count).padStart(4)}  ${bucket.padEnd(26)} e.g. ${examples.get(bucket)}`)
+    }
+    console.log('')
+    const reasonSorted = [...reasonBuckets.entries()].sort((a, b) => b[1] - a[1])
+    console.log(`failure REASONS (parser's own message, descending):`)
+    for (const [reason, count] of reasonSorted) {
+      console.log(`  ${String(count).padStart(4)}  ${reason}`)
     }
     console.log('')
 
