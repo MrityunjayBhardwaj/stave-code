@@ -24634,11 +24634,26 @@ function tokenize2(mini, allowNumeric = false) {
       if (close === -1) return { ok: false, reason: "unbalanced brackets" };
       const inner = src.slice(i + 1, close);
       i = close + 1;
+      const mult2 = readMultiplier(src, i);
+      if (!mult2.ok) return { ok: false, reason: mult2.reason };
+      i = mult2.next;
       const elong2 = readElongation(src, i);
       if (!elong2.ok) return { ok: false, reason: elong2.reason };
       i = elong2.next;
+      if (mult2.value > 1 && elong2.value > 1) {
+        return { ok: false, reason: "* combined with @ is beyond the editable subset" };
+      }
       const group = parseGroup(inner, elong2.value, allowNumeric);
       if ("reason" in group) return { ok: false, reason: group.reason };
+      if (mult2.value > 1) {
+        const base = group.sub ?? [{ atoms: group.atoms, units: 1 }];
+        const sub = [];
+        for (let r = 0; r < mult2.value; r++) {
+          for (const slot of base) sub.push({ atoms: [...slot.atoms], units: slot.units });
+        }
+        steps.push({ atoms: [], elongation: group.elongation, sub });
+        continue;
+      }
       steps.push(group);
       continue;
     }
