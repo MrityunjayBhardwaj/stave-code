@@ -262,3 +262,53 @@ test('editing an arrange arm leaf via the grid writes back INSIDE the arm (arran
   await page.screenshot({ path: 'test-results/chain-7-arm-writeback.png' })
   expect(errors, `write-back errors:\n${errors.join('\n')}`).toEqual([])
 })
+
+test('the REAL expand→bind gesture on an arrange lane opens the grid #472', async ({ page }) => {
+  const errors = setup(page)
+  await bootShell(page)
+  // arrange on a $: line, a bare sibling on the next line — both labelled so each
+  // is its own lane in source order.
+  await typeSongAndEval(page, '$: arrange([2, s("bd sd")], [2, s("hh")])\n$: s("cp")')
+  await openSongView(page)
+
+  const cursorLine = () =>
+    page.evaluate(() => {
+      const eds =
+        ((window as unknown as {
+          monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; getPosition: () => { lineNumber: number } | null }> } } }
+        ).monaco?.editor?.getEditors?.()) ?? []
+      const ed = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+      return ed?.getPosition?.()?.lineNumber ?? 0
+    })
+  const drawer = page.locator('[data-bottom-panel="root"]')
+  const gridKind = async () => {
+    await drawer.locator('role=tab[name="Pattern"]').click()
+    await page.waitForTimeout(300)
+    if ((await drawer.locator('[data-bottom-panel-tab="sequencer"]').count()) > 0) return 'sequencer'
+    if ((await drawer.locator('[data-bottom-panel-tab="piano-roll"]').count()) > 0) return 'piano-roll'
+    return 'standby'
+  }
+
+  // Bind the ARRANGE lane via its REAL disclosure caret (the genuine UX:
+  // onBindLane → handleBindLane → revealOffsetInFile). The arrange is on line 1,
+  // so it is the first lane (d1); its caret is the one in view. (The single-hit
+  // `cp` sibling lane's caret can sit off-screen in the timeline grid — not
+  // relevant here.)
+  const arrangeCaret = page.locator('[data-full-song-lane-expand]').first()
+  await arrangeCaret.scrollIntoViewIfNeeded()
+  await arrangeCaret.click()
+  await page.waitForTimeout(250)
+
+  const line = await cursorLine()
+  const kind = await gridKind()
+  console.log(`[BIND-GESTURE] arrange lane expand→bind → cursor line ${line}, grid ${kind}`)
+  await page.screenshot({ path: 'test-results/chain-8-bind-gesture.png' })
+
+  // #472 user-facing guarantee through the REAL gesture: the bind lands the
+  // cursor on the arrange line (1) AND opens the grid (Sequencer for the
+  // s("bd sd") arm), not standby. Pre-fix the cursor parked at column 1 → the
+  // whole arrange(...) resolved → standby.
+  expect(line, 'bind moves the cursor to the arrange line').toBe(1)
+  expect(kind, 'arrange lane expand→bind must open the grid, not standby').toBe('sequencer')
+  expect(errors, `bind-gesture errors:\n${errors.join('\n')}`).toEqual([])
+})
