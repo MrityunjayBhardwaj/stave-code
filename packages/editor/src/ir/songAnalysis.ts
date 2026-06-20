@@ -143,6 +143,48 @@ export function detectPeriod(fingerprints: readonly string[]): number | null {
 }
 
 /**
+ * The Song-view DISPLAY period — the longest SINGLE lane's own loop, NOT the
+ * global combined period. This is the DAW/sequencer idiom for tracks of
+ * differing lengths (Ableton/Logic Live Loops/Elektron polymeter): each track
+ * keeps its own length and they PHASE; the least-common-multiple is only WHEN
+ * they realign, never the displayed span. A 5-cycle track beside a 4-cycle
+ * track shows a 5-cycle view (the 4-cycle loop repeats/phases inside it), not
+ * lcm(5,4)=20 (#488, grounded in real DAW manuals).
+ *
+ * Per lane: `detectPeriod` over THAT lane's fingerprints. Returns the `max`
+ * across lanes. Returns `null` if ANY active lane has no detectable period
+ * within `horizon` — the caller then grows the horizon (or, at the cap, falls
+ * back to the analyzed length, marking the song aperiodic). For a single lane
+ * this is identical to `detectPeriod`; for equal-length lanes `max == lcm` so
+ * equal-length songs are unchanged — only differing lengths diverge, exactly
+ * the polymeter case. Cheaper convergence too: it needs ~2× the LONGEST lane,
+ * not 2× the lcm.
+ */
+export function detectDisplayPeriod(
+  events: readonly IREvent[],
+  horizon: number,
+): number | null {
+  const byLane = new Map<string, IREvent[]>()
+  for (const ev of events) {
+    const key = laneKeyOf(ev)
+    let bucket = byLane.get(key)
+    if (!bucket) {
+      bucket = []
+      byLane.set(key, bucket)
+    }
+    bucket.push(ev)
+  }
+  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon))
+  let maxPeriod = 0
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon))
+    if (p === null) return null // a lane hasn't looped yet within the horizon
+    if (p > maxPeriod) maxPeriod = p
+  }
+  return maxPeriod > 0 ? maxPeriod : null
+}
+
+/**
  * Partition `[0, horizon)` into contiguous sections, cutting wherever the set
  * of active lanes (lanes with ≥1 onset in that cycle) changes. Captures the
  * musical arc — intro/drop/breakdown emerge as the active-lane set thins and
@@ -188,7 +230,9 @@ export function analyzeEvents(
   reachedCap = false,
 ): SongAnalysis {
   const lanes = accumulateLanes(events, horizon)
-  const periodCycles = detectPeriod(cycleFingerprints(events, horizon))
+  // Per-lane MAX, not the global combined period — differing-length tracks
+  // phase and the view spans the longest single loop (#488, see detectDisplayPeriod).
+  const periodCycles = detectDisplayPeriod(events, horizon)
   const sections = computeSections(lanes, horizon)
   return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap }
 }
@@ -283,17 +327,23 @@ export async function analyzeSong(
     // analyze. Short-circuit to an empty analysis rather than growing the
     // horizon to the cap over empty cycles.
     if (events.length === 0) return analyzeEvents([], 0, false)
-    const period = detectPeriod(cycleFingerprints(events, horizon))
+    // The DISPLAY period = the longest single lane's loop (#488). Differing-
+    // length tracks phase; the view spans the longest one. `null` until EVERY
+    // active lane has looped at least twice within the horizon, so we keep
+    // growing until the slowest lane resolves (or the cap forces aperiodic).
+    const period = detectDisplayPeriod(events, horizon)
     if (period !== null) {
-      // Trim the analysis to exactly ONE loop. The full-song view spans
+      // Trim the analysis to exactly ONE display loop. The full-song view spans
       // `displayCycles` and wraps the playhead there; if lanes/sections kept
       // the wider collection horizon (e.g. 8 with period 4), the cells beyond
       // the period would pile up off the view edge and the playhead — which
       // wraps at the period — would no longer line up with them. Keeping the
-      // view exactly one period wide makes displayCycles === periodCycles ===
-      // cell span === the audible loop. periodCycles is the period we DETECTED
-      // over the full horizon (re-detecting over just [0, period) would find
-      // null, since one loop has no internal repetition).
+      // view exactly one display period wide makes displayCycles === periodCycles
+      // === the longest lane's loop. For equal-length lanes this is the audible
+      // loop; for differing lengths a shorter lane shows its loop + a phasing
+      // remainder (DAW-idiomatic — exact on pass 1, phases after). periodCycles
+      // is the period DETECTED over the full horizon (re-detecting over just
+      // [0, period) would find null, since one loop has no internal repetition).
       const lanes = accumulateLanes(events, period)
       const sections = computeSections(lanes, period)
       return { periodCycles: period, horizonCycles: period, lanes, sections, reachedCap: false }
