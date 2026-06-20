@@ -18,6 +18,7 @@ import {
   insertArm,
   removeArm,
   wrapBare,
+  materializeBareDelete,
   splitArm,
   applyEdits,
 } from '../index'
@@ -122,6 +123,43 @@ describe('arrange parser — detectBarePattern (§2.1 wrap target)', () => {
     expect(applyEdits(doc, wrapBare(bare.patternRange, 3, 1))).toBe(
       'arrange([3, silence], [1, s("bd hh")])',
     )
+  })
+
+  // #489 — materialize a bare loop into an arrange by carving a one-cycle gap at
+  // a selected bar over an N-bar span (the explicit "introduce the combinator").
+  describe('materializeBareDelete (#489)', () => {
+    const doc = 's("bd*4")'
+    const range: [number, number] = [0, doc.length]
+
+    it('carves a middle bar: gap at bar 2 of 4 → [2,pat],[1,silence],[1,pat]', () => {
+      expect(applyEdits(doc, materializeBareDelete(doc, range, 2, 4))).toBe(
+        'arrange([2, s("bd*4")], [1, silence], [1, s("bd*4")])',
+      )
+    })
+
+    it('gap at the FIRST bar drops the leading pat arm', () => {
+      expect(applyEdits(doc, materializeBareDelete(doc, range, 0, 4))).toBe(
+        'arrange([1, silence], [3, s("bd*4")])',
+      )
+    })
+
+    it('gap at the LAST bar drops the trailing pat arm', () => {
+      expect(applyEdits(doc, materializeBareDelete(doc, range, 3, 4))).toBe(
+        'arrange([3, s("bd*4")], [1, silence])',
+      )
+    })
+
+    it('refuses to empty the track — deleting the sole bar is a no-op', () => {
+      expect(materializeBareDelete(doc, range, 0, 1)).toEqual([])
+    })
+
+    it('preserves the pattern bytes verbatim in every surviving arm', () => {
+      const d = 'note("c e g").s("sawtooth")'
+      const out = applyEdits(d, materializeBareDelete(d, [0, d.length], 1, 3))
+      expect(out).toBe(
+        'arrange([1, note("c e g").s("sawtooth")], [1, silence], [1, note("c e g").s("sawtooth")])',
+      )
+    })
   })
 })
 
