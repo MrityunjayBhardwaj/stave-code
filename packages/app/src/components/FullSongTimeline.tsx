@@ -109,18 +109,18 @@ export interface FullSongTimelineProps {
     sourceOffset: number | null
     armIndex: number
   }) => void
-  /** Move a clip by dragging its body horizontally (Phase 5c, #386). Two shapes:
-   *   - `reorder`: the clip is a real arm — swap it to a new slot in the combinator
-   *     (`reorderArm(fromIndex → toIndex)`). Clip time-order = arm order (PV122 #1).
-   *   - `wrap`: the clip is a bare track's implicit clip — there is no combinator
-   *     yet, so the first placement WRAPS the pattern (§2.1 `wrapBare`):
-   *     `pattern → arrange([leadingWeight, silence], [patternWeight, pattern])`.
-   *   The parent resolves the anchor and writes the surgical edit. Optional —
-   *   without it clips can't be dragged (trim/select/delete still work). */
+  /** Move a clip by dragging its body horizontally (Phase 5c, #386). Only a REAL
+   *  arrange/cat arm is movable: `reorder` swaps it to a new slot in the
+   *  combinator (`reorderArm(fromIndex → toIndex)`). Clip time-order = arm order
+   *  (PV122 #1). A bare track's implicit clip (`armIndex < 0`) is NOT movable —
+   *  a uniform pattern tiles every cycle identically, so dragging it would swap
+   *  identical content (an identity); injecting a leading `silence` to "place" it
+   *  invents a gap the source never had (#488). Starting an arrangement from a
+   *  bare pattern is an explicit action (type `arrange(...)`), not a drag. The
+   *  parent resolves the anchor and writes the surgical edit. Optional — without
+   *  it clips can't be dragged (trim/select/delete still work). */
   readonly onMoveClip?: (
-    req:
-      | { kind: 'reorder'; sourceOffset: number | null; fromIndex: number; toIndex: number }
-      | { kind: 'wrap'; sourceOffset: number | null; leadingWeight: number; patternWeight: number },
+    req: { kind: 'reorder'; sourceOffset: number | null; fromIndex: number; toIndex: number },
   ) => void
   /** Duplicate a clip (Phase 5c, #386). Fired on ⌘/Ctrl-D with a clip selected:
    *  insert a verbatim clone of the arm right after it (`insertArm`). Receives the
@@ -480,7 +480,6 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     endCycle: number
     dragging: boolean
     toIndex: number // reorder target (real arm)
-    leadCycle: number // wrap lead (bare clip)
   } | null>(null)
   const [moveGhost, setMoveGhost] = useState<{
     left: number
@@ -490,10 +489,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   } | null>(null)
 
   // Hit-test a clip BODY (not its edge) under a client point → { lane, clip },
-  // or null. Matches CONTAINMENT (`clipAtCycle`). `includeBare` keeps the bare
-  // implicit clip (armIndex < 0) — wanted for MOVE (wrap), not for select/delete.
+  // or null. Matches CONTAINMENT (`clipAtCycle`). A bare track's implicit clip
+  // (armIndex < 0) is NEVER returned — it isn't selectable, deletable, or movable
+  // (#488: a uniform pattern has no distinct clip to act on).
   const clipBodyAt = React.useCallback(
-    (clientX: number, clientY: number, includeBare = false) => {
+    (clientX: number, clientY: number) => {
       const el = areaRef.current
       if (!el) return null
       const rect = el.getBoundingClientRect()
@@ -505,7 +505,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!lane) return null
       const cyc = xToSongCycle(contentX, displayCycles, cw)
       const clip = clipAtCycle(lane, cyc)
-      if (!clip || (clip.armIndex < 0 && !includeBare)) return null
+      if (!clip || clip.armIndex < 0) return null
       return { lane, clip }
     },
     [displayCycles],
@@ -563,7 +563,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         // resolves on pointer-up: a MOVE drag if the pointer travelled, else a
         // click (select + seek). A press off any clip clears selection + seeks.
         const interactive = !!(onDeleteClip || onMoveClip || onDuplicateClip || onSplitClip)
-        const body = interactive ? clipBodyAt(e.clientX, e.clientY, !!onMoveClip) : null
+        const body = interactive ? clipBodyAt(e.clientX, e.clientY) : null
         if (body) {
           e.preventDefault()
           try {
@@ -585,7 +585,6 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             endCycle: body.clip.endCycle,
             dragging: false,
             toIndex: body.clip.armIndex,
-            leadCycle: body.clip.startCycle,
           }
           return
         }
@@ -635,8 +634,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         return
       }
       // Move drag (Phase 5c): once the press travels past the threshold, preview
-      // the destination — a reorder slot for a real arm, or the wrap lead for a
-      // bare clip — and stash the target on the ref for commit.
+      // the reorder destination (the arm whose span the pointer falls in) and
+      // stash it on the ref for commit. Only real arms reach here — a bare clip
+      // can't start a move (clipBodyAt excludes it, #488).
       const mv = moveDragRef.current
       if (mv && e.pointerId === mv.pointerId) {
         if (!mv.dragging && Math.abs(e.clientX - mv.startClientX) < CLIP_MOVE_THRESHOLD_PX) return
@@ -644,32 +644,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         const contentX = e.clientX - rect.left + scrollLeftRef.current
         const cyc = xToSongCycle(contentX, displayCycles, cw)
         const box = layoutRef.current.boxes.find((b) => b.laneKey === mv.laneKey)
-        if (mv.armIndex >= 0) {
-          const spans = armSpansNow()
-          let to = mv.armIndex
-          if (spans.length) {
-            const inSpan = spans.find((s) => cyc >= s.startCycle && cyc < s.endCycle)
-            to = inSpan
-              ? inSpan.armIndex
-              : cyc < spans[0].startCycle
-                ? spans[0].armIndex
-                : spans[spans.length - 1].armIndex
-          }
-          mv.toIndex = to
-          const tgt = spans.find((s) => s.armIndex === to)
-          if (box && tgt) {
-            const left = songCycleToX(tgt.startCycle, displayCycles, cw)
-            const right = songCycleToX(tgt.endCycle, displayCycles, cw)
-            setMoveGhost({ left, width: Math.max(2, right - left), top: box.top, height: box.height })
-          }
-        } else {
-          const lead = Math.max(0, Math.round(cyc))
-          mv.leadCycle = lead
-          if (box) {
-            const left = songCycleToX(lead, displayCycles, cw)
-            const right = songCycleToX(lead + 1, displayCycles, cw)
-            setMoveGhost({ left, width: Math.max(2, right - left), top: box.top, height: box.height })
-          }
+        const spans = armSpansNow()
+        let to = mv.armIndex
+        if (spans.length) {
+          const inSpan = spans.find((s) => cyc >= s.startCycle && cyc < s.endCycle)
+          to = inSpan
+            ? inSpan.armIndex
+            : cyc < spans[0].startCycle
+              ? spans[0].armIndex
+              : spans[spans.length - 1].armIndex
+        }
+        mv.toIndex = to
+        const tgt = spans.find((s) => s.armIndex === to)
+        if (box && tgt) {
+          const left = songCycleToX(tgt.startCycle, displayCycles, cw)
+          const right = songCycleToX(tgt.endCycle, displayCycles, cw)
+          setMoveGhost({ left, width: Math.max(2, right - left), top: box.top, height: box.height })
         }
         return
       }
@@ -677,7 +667,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // movable body. Direct style write (no React state) so hover never churns.
       el.style.cursor = clipEdgeAt(e.clientX, e.clientY)
         ? 'col-resize'
-        : onMoveClip && clipBodyAt(e.clientX, e.clientY, true)
+        : onMoveClip && clipBodyAt(e.clientX, e.clientY)
           ? 'grab'
           : ''
     },
@@ -729,16 +719,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         return
       }
       if (!commit) return
-      if (mv.armIndex >= 0) {
-        if (mv.toIndex !== mv.armIndex) {
-          onMoveClip?.({ kind: 'reorder', sourceOffset: mv.sourceOffset, fromIndex: mv.armIndex, toIndex: mv.toIndex })
-          // The arm list reindexes after a reorder, so the held armIndex would
-          // now point at a different clip — clear it (matching DELETE).
-          setSelected(null)
-        }
-      } else if (mv.leadCycle > 0) {
-        onMoveClip?.({ kind: 'wrap', sourceOffset: mv.sourceOffset, leadingWeight: mv.leadCycle, patternWeight: 1 })
-        // §2.1 wrap rewrites the bare clip into an arrange() — drop the stale selection.
+      // Only real arms reach a move commit (bare clips never start one, #488).
+      if (mv.toIndex !== mv.armIndex) {
+        onMoveClip?.({ kind: 'reorder', sourceOffset: mv.sourceOffset, fromIndex: mv.armIndex, toIndex: mv.toIndex })
+        // The arm list reindexes after a reorder, so the held armIndex would
+        // now point at a different clip — clear it (matching DELETE).
         setSelected(null)
       }
     },

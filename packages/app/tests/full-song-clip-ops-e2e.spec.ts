@@ -172,11 +172,12 @@ test.describe('full-song clip ops on a multi-track $: song', () => {
     expect(errors, errors.join('\n')).toEqual([])
   })
 
-  test('MOVE (wrap) — drag a BARE sibling track introduces a combinator (§2.1)', async ({ page }) => {
+  test('MOVE — dragging a BARE sibling track is a no-op (no combinator introduced) (#488)', async ({ page }) => {
     const errors = setup(page)
     await bootShell(page)
-    // sibling 2 (note(...).slow(2)) is a 2-cycle BARE track — room to drag its
-    // implicit clip right so wrapBare introduces arrange([lead, silence], [1, …]).
+    // sibling 2 (note(...).slow(2)) is a 2-cycle BARE track. Its implicit clip
+    // tiles every cycle identically, so dragging it must NOT rewrite it into an
+    // arrange([…, silence], …) — that would invent a gap the source never had.
     await typeSongAndEval(page, SONG)
     await openSongView(page)
 
@@ -193,15 +194,15 @@ test.describe('full-song clip ops on a multi-track $: song', () => {
     await page.mouse.move(box.x + box.width * 0.6, y, { steps: 4 })
     await page.mouse.up()
 
-    // The bare sibling line is rewritten into an arrange(...) with a leading
-    // silence; the arrange track + the OTHER sibling stay byte-identical.
-    await expect
-      .poll(() => strudelSource(page), { timeout: 8_000 })
-      .toMatch(/arrange\(\[\d+, silence\], \[1, note\("c2 eb2 g2 c3"\)\.s\("sawtooth"\)\.slow\(2\)\]\)/)
+    // The whole program is byte-identical — no silence, no new arrange, every
+    // track (the arrange + both siblings) untouched.
+    await page.waitForTimeout(1000)
     const src = await strudelSource(page)
+    expect(src, 'no leading silence introduced').not.toContain('silence')
+    expect(src, 'the bare sibling stays bare').toContain(SIB2)
     expect(src, 'the arrange track must be untouched').toContain(ARRANGE)
     expect(src, 'sibling 1 must be untouched').toContain(SIB1)
-    await page.screenshot({ path: 'test-results/clipop-move-wrap.png' })
+    await page.screenshot({ path: 'test-results/clipop-move-bare-noop.png' })
     expect(errors, errors.join('\n')).toEqual([])
   })
 

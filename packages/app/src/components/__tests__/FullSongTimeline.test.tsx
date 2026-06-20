@@ -32,7 +32,7 @@ const { TRIM_EVENTS, BARE_EVENTS, NESTED_EVENTS } = vi.hoisted(() => ({
   ],
   // A BARE track: events with NO armIndex → no clipsByLane entry → the scene
   // synthesises ONE implicit clip (armIndex −1) spanning the song. Used for the
-  // §2.1 wrap (move-on-a-bare-track) test.
+  // bare-clip-is-not-movable test (#488: dragging it must be a no-op).
   BARE_EVENTS: [
     { begin: 0, end: 1, s: 'bd', loc: [{ start: 0, end: 9 }] },
     { begin: 1, end: 2, s: 'bd', loc: [{ start: 0, end: 9 }] },
@@ -450,7 +450,7 @@ describe('FullSongTimeline — delete a clip (select body + Delete → remove-ar
   })
 })
 
-describe('FullSongTimeline — move a clip (drag body → reorder / §2.1 wrap, #386)', () => {
+describe('FullSongTimeline — move a clip (drag body → reorder; bare clip = no-op, #386/#488)', () => {
   // Reorder fixture: the same two-arm bd lane (arm 0 [0,2), arm 1 [2,4)) at
   // 200px/cycle. Dragging arm 0's body (x≈200) right into arm 1's span (x≈600 =
   // cycle 3) reorders it to slot 1.
@@ -519,20 +519,18 @@ describe('FullSongTimeline — move a clip (drag body → reorder / §2.1 wrap, 
     expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
   })
 
-  it('dragging a BARE track’s clip → onMoveClip wrap (§2.1, lead = drop cycle)', async () => {
+  it('dragging a BARE track’s clip is a no-op — onMoveClip never fires (#488)', async () => {
     const onMoveClip = vi.fn()
-    const { grid } = renderWrappable(onMoveClip)
+    const { grid, container } = renderWrappable(onMoveClip)
     await settle()
-    // The implicit clip spans [0,4); drag it to start at cycle 3.
+    // The implicit clip tiles [0,4) uniformly; dragging it must NOT introduce an
+    // arrange/silence (a uniform pattern has no distinct clip to move).
     fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
     fireEvent.pointerMove(grid, { clientX: 600, clientY: 10, pointerId: 1 }) // cycle 3
     fireEvent.pointerUp(grid, { clientX: 600, clientY: 10, pointerId: 1 })
-    expect(onMoveClip).toHaveBeenCalledWith({
-      kind: 'wrap',
-      sourceOffset: 0,
-      leadingWeight: 3,
-      patternWeight: 1,
-    })
+    expect(onMoveClip).not.toHaveBeenCalled()
+    // A bare clip isn't selectable either — the press falls through to seek.
+    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
   })
 })
 
