@@ -19,6 +19,7 @@ import {
   removeArm,
   wrapBare,
   materializeBareDelete,
+  materializeBareSplit,
   splitArm,
   applyEdits,
 } from '../index'
@@ -158,6 +159,46 @@ describe('arrange parser — detectBarePattern (§2.1 wrap target)', () => {
       const out = applyEdits(d, materializeBareDelete(d, [0, d.length], 1, 3))
       expect(out).toBe(
         'arrange([1, note("c e g").s("sawtooth")], [1, silence], [1, note("c e g").s("sawtooth")])',
+      )
+    })
+  })
+
+  // #489 (reframe) — split-first materialization: selecting the whole bare loop
+  // and splitting it introduces the combinator with NO audible change (two arms,
+  // same pattern), after which the arms are individually selectable.
+  describe('materializeBareSplit (#489)', () => {
+    const doc = 's("bd*4")'
+    const range: [number, number] = [0, doc.length]
+
+    it('splits at an interior bar: bar 2 of 4 → [2,pat],[2,pat] (same sound)', () => {
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 2, 4))).toBe(
+        'arrange([2, s("bd*4")], [2, s("bd*4")])',
+      )
+    })
+
+    it('split at bar 1 of 4 → [1,pat],[3,pat]', () => {
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 1, 4))).toBe(
+        'arrange([1, s("bd*4")], [3, s("bd*4")])',
+      )
+    })
+
+    it('clamps the boundary into [1, span−1] — both halves stay ≥ 1 cycle', () => {
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 0, 4))).toBe(
+        'arrange([1, s("bd*4")], [3, s("bd*4")])',
+      )
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 4, 4))).toBe(
+        'arrange([3, s("bd*4")], [1, s("bd*4")])',
+      )
+    })
+
+    it('refuses a span < 2 — a 1-cycle loop has no interior boundary', () => {
+      expect(materializeBareSplit(doc, range, 1, 1)).toEqual([])
+    })
+
+    it('preserves the pattern bytes verbatim in both arms', () => {
+      const d = 'note("c e g").s("sawtooth")'
+      expect(applyEdits(d, materializeBareSplit(d, [0, d.length], 1, 4))).toBe(
+        'arrange([1, note("c e g").s("sawtooth")], [3, note("c e g").s("sawtooth")])',
       )
     })
   })

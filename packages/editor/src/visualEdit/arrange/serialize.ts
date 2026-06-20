@@ -168,6 +168,37 @@ export function materializeBareDelete(
 }
 
 /**
+ * #489 — MATERIALIZE a bare loop into an `arrange` by SPLITTING it at a whole-cycle
+ * boundary `barIndex` over an arrangement of `span` whole cycles. The bare pattern
+ * (one implicit loop spanning the song) becomes two ADDRESSABLE arms with IDENTICAL
+ * sound — a uniform loop tiled across `span` cycles plays the same whether expressed
+ * as one bare loop or as `arrange([k, pat], [span−k, pat])` (grounded in haps):
+ *   `pat`  →  `arrange([barIndex, pat], [span−barIndex, pat])`
+ * with `pat`'s bytes preserved verbatim in BOTH arms. This is the split-first
+ * materialization entry-point (D1, reframe): selecting the whole bare clip and
+ * splitting it introduces the combinator with no audible change, after which the
+ * resulting arms are individually selectable and the existing arrange ops
+ * (`removeArm` → carve a gap, `reorderArm`, `splitArm`, `setWeight`) apply.
+ *
+ * Both halves must be ≥ 1 whole cycle, so `span ≥ 2` is required (a 1-cycle loop
+ * has no interior boundary — extend it first, #487); `barIndex` is clamped to
+ * `[1, span−1]`. `span < 2` returns no edits. Pure text surgery; never re-emits
+ * through `toStrudel` (PV123).
+ */
+export function materializeBareSplit(
+  doc: string,
+  patternRange: [number, number],
+  barIndex: number,
+  span: number,
+): OffsetEdit[] {
+  const total = asWeight(span)
+  if (total < 2) return [] // no interior whole-cycle boundary to split on
+  const k = Math.max(1, Math.min(Math.round(barIndex), total - 1))
+  const pat = doc.slice(patternRange[0], patternRange[1])
+  return [{ range: patternRange, text: `arrange([${k}, ${pat}], [${total - k}, ${pat}])` }]
+}
+
+/**
  * Split arm `i` at a whole-cycle boundary: `[n, pat]` → `[n₁, pat], [n₂, pat]`
  * (same pattern verbatim in both halves), where `n₁ = firstWeight` and
  * `n₂ = n − firstWeight`. Both halves must be ≥ 1 whole cycle, so this only

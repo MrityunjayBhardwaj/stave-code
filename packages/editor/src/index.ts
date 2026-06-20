@@ -527,6 +527,8 @@ export {
   insertArm,
   removeArm,
   wrapBare,
+  materializeBareDelete,
+  materializeBareSplit,
   splitArm,
   detectPickControlAt,
   detectAllPickControls,

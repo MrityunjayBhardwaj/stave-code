@@ -64,4 +64,12 @@ describe('#489 materializeBareDelete — runtime gap (haps grounding)', () => {
     const counts = await hapsPerCycle(code, 4)
     expect(counts).toEqual([4, 4, 4, 0])
   })
+
+  it('SPLIT a bare loop is sonically IDENTICAL — two arms, no gap', async () => {
+    // materializeBareSplit(barIndex=2, span=4) → arrange([2, pat], [2, pat]).
+    // The split-first reframe requires zero audible change: a uniform loop tiled
+    // across 4 cycles plays the same whether bare or split into two arms.
+    const split = await hapsPerCycle('arrange([2, s("bd*4")], [2, s("bd*4")])', 4)
+    expect(split).toEqual([4, 4, 4, 4])
+  })
 })
