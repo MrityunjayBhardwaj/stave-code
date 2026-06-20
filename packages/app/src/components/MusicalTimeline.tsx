@@ -51,11 +51,13 @@ import {
   revealOffsetInFile,
   applyOffsetEditsToFile,
   detectArrangeAt,
+  detectBarePattern,
   setWeight,
   removeArm,
   reorderArm,
   insertArm,
   splitArm,
+  materializeBareSplit,
   detectPickControlAt,
   pickSetWeight,
   pickRemoveArm,
@@ -1151,8 +1153,13 @@ export function MusicalTimeline(
   // a whole-cycle boundary into two arms with the SAME pattern (splitArm). The
   // gesture passes the first half's cycle count (the clip midpoint); the
   // serializer clamps it to [1, n−1] and no-ops a clip < 2 cycles or a cat arm.
+  // A BARE clip (`armIndex < 0`) has no combinator yet — splitting MATERIALIZES it
+  // (#489): detectBarePattern finds the pattern's range and materializeBareSplit
+  // rewrites `pat` → `arrange([firstWeight, pat], [span−firstWeight, pat])` (same
+  // sound, two addressable arms). This is the explicit "introduce the combinator"
+  // entry-point that replaced the removed drag-to-wrap (#488).
   const handleSplitClip = React.useCallback(
-    (req: { sourceOffset: number | null; armIndex: number; firstWeight: number }) => {
+    (req: { sourceOffset: number | null; armIndex: number; firstWeight: number; span: number }) => {
       if (!snapshot?.source || req.sourceOffset == null) return
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
       if (call) {
@@ -1164,8 +1171,18 @@ export function MusicalTimeline(
       }
       // #463 Stage 2 — split a pick* control section.
       const ctl = detectPickControlAt(snapshot.code, req.sourceOffset)
-      if (!ctl || req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
-      const edits = pickSplitArm(snapshot.code, ctl, req.armIndex, req.firstWeight)
+      if (ctl) {
+        if (req.armIndex < 0 || req.armIndex >= ctl.arms.length) return
+        const edits = pickSplitArm(snapshot.code, ctl, req.armIndex, req.firstWeight)
+        if (edits.length === 0) return
+        applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
+        return
+      }
+      // #489 — bare loop: materialize into an arrange by splitting (armIndex < 0).
+      if (req.armIndex >= 0) return
+      const bare = detectBarePattern(snapshot.code, req.sourceOffset)
+      if (!bare) return
+      const edits = materializeBareSplit(snapshot.code, bare.patternRange, req.firstWeight, req.span)
       if (edits.length === 0) return
       applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
     },
