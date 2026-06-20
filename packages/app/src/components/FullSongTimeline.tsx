@@ -557,6 +557,15 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
 
   const handleGridPointerDown = React.useCallback(
     (e: React.PointerEvent) => {
+      // Take keyboard focus on any grid press so the clip-op shortcuts (S split,
+      // ⌘/Ctrl-D duplicate, Delete/Backspace) reach `handleGridKeyDown`. The
+      // clip-select and trim branches below call `preventDefault()` (to suppress
+      // text selection + the native drag image), which ALSO suppresses the
+      // browser's default focus-on-pointerdown — so without this explicit focus
+      // the grid (tabIndex=0) never becomes `document.activeElement` and the
+      // keystroke leaks to Monaco / the last-focused control (#488). `preventScroll`
+      // so taking focus never yanks the timeline into view mid-gesture.
+      areaRef.current?.focus({ preventScroll: true })
       const hit = clipEdgeAt(e.clientX, e.clientY)
       if (!hit) {
         // Not a clip edge. A press on a clip BODY begins a PENDING gesture that
