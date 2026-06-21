@@ -851,3 +851,64 @@ describe('20-12 α-5 — flattenLeafVoices', () => {
     expect(leaves).toHaveLength(1)
   })
 })
+
+// -----------------------------------------------------------------------------
+// #463 / #475 — NamedPick projection (regression: the `kids is not iterable`
+// white-screen). NamedPick was added producer-side but never projected; the
+// `default` arm returned the node object → spliceHiddenChildren threw on the
+// non-iterable, unmounting the editor shell.
+// -----------------------------------------------------------------------------
+
+describe('#475 — NamedPick projection (object/named-key pick family)', () => {
+  it('projectedChildren returns [selector, ...entries.patterns] (NOT the node — the crash)', () => {
+    const root = parseStrudel(
+      '"<a b>".pickRestart({ verse: s("bd"), chorus: s("hh") })',
+    )
+    const np = find(root, (n) => n.tag === 'NamedPick')
+    expect(np?.tag).toBe('NamedPick')
+
+    // The exact call that threw: projectedChildren must be iterable.
+    const kids = projectedChildren(np as PatternIR)
+    expect(Array.isArray(kids)).toBe(true)
+    expect(() => {
+      for (const _k of kids) void _k
+    }).not.toThrow()
+    // selector first, then one child per named entry (verse, chorus).
+    expect(kids).toHaveLength(3)
+    if (np?.tag === 'NamedPick') {
+      expect(kids[0]).toBe(np.selector)
+      expect(kids.slice(1)).toEqual(np.entries.map((e) => e.pattern))
+    }
+  })
+
+  it('projectedLabel returns the user method ("pickRestart"), never the IR tag (PV32)', () => {
+    const root = parseStrudel(
+      '"<a b>".pickRestart({ verse: s("bd"), chorus: s("hh") })',
+    )
+    const np = find(root, (n) => n.tag === 'NamedPick') as PatternIR
+    expect(projectedLabel(np)).toBe('pickRestart')
+    expect(projectedLabel(np)).not.toBe('NamedPick')
+  })
+
+  it('projectedLabel falls back to node.method for a hand-built node with no userMethod', () => {
+    const np = IR.namedPick(
+      IR.code('"<a b>"'),
+      [{ key: 'verse', pattern: IR.play('bd', 1) }],
+      'pickReset',
+      '{verse: s("bd")}',
+    )
+    // Hand-built (no tagMeta) → userMethod undefined → method token shown.
+    expect(np.tag === 'NamedPick' && np.userMethod).toBeUndefined()
+    expect(projectedLabel(np)).toBe('pickReset')
+  })
+
+  it('the hardened default arm degrades a future unhandled tag to an opaque leaf (no crash)', () => {
+    // Simulate a producer-added tag that slipped past tsc. The old arm
+    // returned the node object (non-iterable, the crash); the hardened arm
+    // returns [] for children and the raw tag for the label.
+    const ghost = { tag: 'FutureTag', loc: [] } as unknown as PatternIR
+    expect(projectedChildren(ghost)).toEqual([])
+    expect(() => projectedLabel(ghost)).not.toThrow()
+    expect(projectedLabel(ghost)).toBe('FutureTag')
+  })
+})

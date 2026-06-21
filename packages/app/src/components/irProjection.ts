@@ -184,12 +184,40 @@ export function projectedLabel(node: PatternIR): string | undefined {
     // combinator name (the source token), never the IR tag (PV32).
     case 'Arrange':
       return node.mode
+    // #463 / #475 — object/named-key pick family. The userMethod short-circuit
+    // above returns the method ('pickRestart'/'pickReset'/'pick') for parser-
+    // produced nodes; this arm covers hand-built nodes with no userMethod,
+    // falling back to `method` (the source token, never the IR tag — PV32).
+    case 'NamedPick':
+      return node.method
     default: {
-      // Exhaustiveness check — TS error if a tag is missing.
-      const _exhaustive: never = node
-      return _exhaustive
+      // Exhaustiveness guard (compile-time) + runtime fail-safe (#475). A tag
+      // added to PatternIR but not handled above is a `tsc` error here. If it
+      // slips past an un-typechecked build, degrade to the raw tag name rather
+      // than returning the node object — see reportUnhandledTag.
+      reportUnhandledTag(node)
+      return (node as { tag: string }).tag
     }
   }
+}
+
+/**
+ * Compile-time exhaustiveness guard with a runtime fail-safe (#475).
+ *
+ * The `node: never` parameter makes an unhandled PatternIR tag a `tsc` error
+ * at the call site — preserving the original `const _exhaustive: never`
+ * guarantee that forces every new tag to be projected. But unlike the old
+ * arm (which `return`ed the node object, making projectedChildren yield a
+ * non-iterable and white-screen the inspector — the #475 crash), this only
+ * warns. The caller supplies a safe structural fallback (empty children /
+ * raw tag label), matching children()'s existing `default: return []`.
+ */
+function reportUnhandledTag(node: never): void {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[IR Inspector] unhandled PatternIR tag "${(node as { tag?: string }).tag}" ` +
+      `in projection — rendering as an opaque leaf. Add a projection case (#475).`,
+  )
 }
 
 export function projectedChildren(node: PatternIR): readonly PatternIR[] {
@@ -309,9 +337,20 @@ export function projectedChildren(node: PatternIR): readonly PatternIR[] {
     // patterns ARE the structural children (ordered, one per timeline clip).
     case 'Arrange':
       return node.arms.map((a) => a.pattern)
+    // #463 / #475 — object/named-key pick family. Mirrors Pick: the selector
+    // is the distinguished child, the entries' patterns are the structural
+    // siblings the user typed (one per named key). Without this case the tag
+    // fell through to `default` and returned the node object → the
+    // `kids is not iterable` white-screen.
+    case 'NamedPick':
+      return [node.selector, ...node.entries.map((e) => e.pattern)]
     default: {
-      const _exhaustive: never = node
-      return _exhaustive
+      // Exhaustiveness guard (compile-time) + runtime fail-safe (#475).
+      // The old arm `return _exhaustive` returned the node object here — a
+      // non-iterable that crashed spliceHiddenChildren. Degrade to an opaque
+      // leaf instead (matches children()'s `default: return []`).
+      reportUnhandledTag(node)
+      return []
     }
   }
 }
