@@ -1,12 +1,13 @@
 /**
  * Full-song view: MOVE a clip by dragging its body (#386 / Phase 5c) —
- * Playwright observation (AnviDev observe gate). Two shapes:
- *   - reorder: drag a real arm's clip into another arm's time-span → reorderArm.
- *   - wrap (§2.1): drag a BARE track's clip → detectBarePattern + wrapBare
- *     INTRODUCES the combinator (`pattern → arrange([lead, silence], [1, pattern])`).
+ * Playwright observation (AnviDev observe gate).
+ *   - reorder: drag a REAL arm's clip into another arm's time-span → reorderArm.
+ *   - bare clip: NOT movable (#488). A uniform pattern tiles every cycle
+ *     identically, so a drag would swap identical content; injecting a leading
+ *     `silence` to "place" it invents a gap the source never had. The drag is a
+ *     no-op (the old wrap-to-arrange gesture was removed).
  *
- * Unit tests cover the substrate (editor arrange.test.ts: reorderArm,
- * detectBarePattern, wrapBare) and the gesture geometry (FullSongTimeline.test.tsx).
+ * Unit tests cover the reorder substrate (editor arrange.test.ts: reorderArm).
  * This drives the REAL app end-to-end.
  */
 import { test, expect, type Page } from '@playwright/test'
@@ -92,7 +93,7 @@ test('reorder: dragging arm 0’s clip into arm 1’s span swaps the arm order',
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
 
-test('wrap (§2.1): dragging a bare track’s clip introduces the combinator', async ({ page }) => {
+test('a bare track’s clip is NOT movable — dragging it leaves the source untouched (#488)', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
@@ -100,25 +101,31 @@ test('wrap (§2.1): dragging a bare track’s clip introduces the combinator', a
   })
 
   await bootShell(page)
-  // A bare, multi-cycle track so there's room to drag the implicit clip right.
-  await typeSongAndEval(page, 's("bd hh cp sd").slow(4)')
+  // A bare, multi-cycle track. Its implicit clip tiles every cycle identically,
+  // so a drag would swap identical content (an identity); injecting a leading
+  // `silence` to "place" it would invent a gap the source never had (#488).
+  const SRC = 's("bd hh cp sd").slow(4)'
+  await typeSongAndEval(page, SRC)
   await openSongView(page)
 
   const grid = page.locator('[data-full-song="grid"]')
   const box = await grid.boundingBox()
   if (!box) throw new Error('no grid box')
   const y = box.y + 8
-  // Grab the implicit clip's body and drag it well to the right (later cycle) →
-  // wrapBare introduces `arrange([lead, silence], [1, …])`.
+  // Drag the implicit clip's body well to the right — this must NOT rewrite the
+  // pattern into an `arrange([…, silence], …)`.
   await page.mouse.move(box.x + box.width * 0.2, y)
   await page.mouse.down()
   await page.mouse.move(box.x + box.width * 0.5, y, { steps: 4 })
   await page.mouse.move(box.x + box.width * 0.7, y, { steps: 4 })
   await page.mouse.up()
 
-  await expect
-    .poll(() => strudelSource(page), { timeout: 8_000 })
-    .toMatch(/arrange\(\[\d+, silence\], \[1, s\("bd hh cp sd"\)\.slow\(4\)\]\)/)
-  await page.screenshot({ path: 'test-results/arrange-move-wrap.png' })
+  // Settle, then assert the source is byte-for-byte unchanged — no arrange, no silence.
+  await page.waitForTimeout(1000)
+  const after = await strudelSource(page)
+  expect(after).toBe(SRC)
+  expect(after).not.toContain('silence')
+  expect(after).not.toContain('arrange(')
+  await page.screenshot({ path: 'test-results/arrange-move-bare-noop.png' })
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
