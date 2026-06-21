@@ -32792,6 +32792,13 @@ function removeArm(doc, call, i) {
   return [{ range: [call.arms[i - 1].armRange[1], call.arms[i].armRange[1]], text: "" }];
 }
 __name(removeArm, "removeArm");
+function silenceArm(doc, call, i) {
+  const arm = call.arms[i];
+  if (!arm) return [];
+  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
+  return [{ range: arm.patternRange, text: "silence" }];
+}
+__name(silenceArm, "silenceArm");
 function wrapBare(patternRange, leadingWeight, patternWeight) {
   const lead = asWeight(leadingWeight);
   const pw = asWeight(patternWeight);
@@ -32801,6 +32808,28 @@ function wrapBare(patternRange, leadingWeight, patternWeight) {
   ];
 }
 __name(wrapBare, "wrapBare");
+function materializeBareDelete(doc, patternRange, barIndex, span) {
+  const total = asWeight(span);
+  const i = Math.max(0, Math.min(Math.round(barIndex), total - 1));
+  const lead = i;
+  const rest = total - i - 1;
+  if (lead === 0 && rest === 0) return [];
+  const pat = doc.slice(patternRange[0], patternRange[1]);
+  const arms = [];
+  if (lead > 0) arms.push(`[${lead}, ${pat}]`);
+  arms.push(`[1, silence]`);
+  if (rest > 0) arms.push(`[${rest}, ${pat}]`);
+  return [{ range: patternRange, text: `arrange(${arms.join(", ")})` }];
+}
+__name(materializeBareDelete, "materializeBareDelete");
+function materializeBareSplit(doc, patternRange, barIndex, span) {
+  const total = asWeight(span);
+  if (total < 2) return [];
+  const k = Math.max(1, Math.min(Math.round(barIndex), total - 1));
+  const pat = doc.slice(patternRange[0], patternRange[1]);
+  return [{ range: patternRange, text: `arrange([${k}, ${pat}], [${total - k}, ${pat}])` }];
+}
+__name(materializeBareSplit, "materializeBareSplit");
 function splitArm(doc, call, i, firstWeight) {
   const arm = call.arms[i];
   if (!arm || !arm.weightRange) return [];
@@ -33529,6 +33558,8 @@ exports.listWorkspaceFiles = listWorkspaceFiles;
 exports.liveCodingRuntimeRegistry = liveCodingRuntimeRegistry;
 exports.loadShellState = loadShellState;
 exports.makeFixedKey = makeFixedKey;
+exports.materializeBareDelete = materializeBareDelete;
+exports.materializeBareSplit = materializeBareSplit;
 exports.merge = merge;
 exports.midiToPitch = midiToPitch;
 exports.mountVizRenderer = mountVizRenderer;
@@ -33646,6 +33677,7 @@ exports.setWeight = setWeight;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.shellStateKeyFor = shellStateKeyFor;
+exports.silenceArm = silenceArm;
 exports.splitArm = splitArm;
 exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;

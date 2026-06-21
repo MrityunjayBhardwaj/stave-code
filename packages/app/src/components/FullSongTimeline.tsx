@@ -26,6 +26,7 @@ import * as React from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SongAnalysis, PatternIR } from '@stave/editor'
 import {
+  collectCycles,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
 } from '@stave/editor'
@@ -138,23 +139,56 @@ export interface FullSongTimelineProps {
   /** Split a clip (Phase 5c, #386). Fired on `S` with a clip selected: slice the
    *  arm at a whole-cycle boundary into two (`splitArm`). `firstWeight` is the
    *  first half's cycle count (the gesture uses the clip midpoint). Only a clip
-   *  spanning ≥ 2 cycles is splittable. Optional. */
+   *  spanning ≥ 2 cycles is splittable. For a bare track's implicit clip
+   *  (`armIndex < 0`) `span` is the clip's whole-song length, so the parent can
+   *  MATERIALIZE the loop into `arrange([firstWeight, pat], [span−firstWeight, pat])`
+   *  (#489). Real arms ignore `span` (the parser supplies the arm weight). Optional. */
   readonly onSplitClip?: (req: {
     sourceOffset: number | null
     armIndex: number
     firstWeight: number
+    span: number
   }) => void
 }
 
-/** Display span: one loop period, or the analyzed horizon when none. ≥ 1. */
-function displaySpan(analysis: SongAnalysis | null): number {
+/** A bare loop's single implicit clip spans the SONG, not just its one-cycle
+ *  period — so it has room to be split into addressable bars (#489 D3). A pure
+ *  bare song (no `arrange`/`cat` combinator) is floored to this many cycles;
+ *  extensible later via #487. A real arrangement already defines its own span. */
+const MIN_BARE_SPAN = 4
+
+/** The natural display span: one loop period, or the analyzed horizon. ≥ 1. */
+function naturalSpan(analysis: SongAnalysis | null): number {
   if (!analysis) return 1
   return Math.max(1, analysis.periodCycles ?? analysis.horizonCycles)
 }
 
+/** Display span in cycles. The natural span, but a pure bare loop is floored to
+ *  `MIN_BARE_SPAN` so its single implicit clip is splittable (#489 D3). A real
+ *  arrangement keeps its own length — flooring a period-2 arrange to 4 would paint
+ *  empty bars past the last arm. ≥ 1. */
+function displaySpan(analysis: SongAnalysis | null, bareSong: boolean): number {
+  const natural = naturalSpan(analysis)
+  return bareSong ? Math.max(MIN_BARE_SPAN, natural) : natural
+}
+
 export function FullSongTimeline(props: FullSongTimelineProps): React.ReactElement {
   const { analysis, onSeek } = props
-  const displayCycles = displaySpan(analysis)
+  // A pure bare loop gets a floored, splittable display span (#489 D3); a real
+  // arrangement keeps its own length. "Bare" = NO collected event carries an
+  // `armIndex` (no `arrange`/`cat` combinator). We probe over the natural span so
+  // an arrange whose first cycles are silent still registers its later arms. This
+  // reads the runtime collector (mockable, so the gesture tests stay correct) —
+  // NOT the raw IR shape, which tests pass opaquely.
+  const natCycles = naturalSpan(analysis)
+  const bareSong = useMemo(() => {
+    if (props.ir == null) return false
+    const evs = collectCycles(props.ir, 0, Math.max(1, Math.ceil(natCycles))) as Array<{
+      armIndex?: number
+    }>
+    return !evs.some((e) => typeof e.armIndex === 'number')
+  }, [props.ir, natCycles])
+  const displayCycles = displaySpan(analysis, bareSong)
 
   // ── Grid width via ResizeObserver (mirrors MusicalTimeline DB-04) ────────
   const areaRef = useRef<HTMLDivElement>(null)
@@ -384,15 +418,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // reordering clips in time doesn't reshuffle the instrument rows — the SAME
   // first-seen stability `stableTrackOrder` gives the top-level lanes, one level
   // down. The previous order rides in a ref and is threaded back each rebuild
-  // (mirrors MusicalTimeline's `slotMapRef`). Recomputed only when the analysis
-  // or marks change (NOT on scroll/zoom), and idempotent on a no-op re-eval.
+  // (mirrors MusicalTimeline's `slotMapRef`). Recomputed only when the analysis,
+  // marks, or display span change (NOT on scroll/zoom), idempotent on a no-op
+  // re-eval. The scene is built over the authoritative `displayCycles` span
+  // (#489) — bare-loop floor included — so clip geometry and the bare-split
+  // materialize agree on where each clip ends.
   const voiceOrderRef = useRef<VoiceOrderByLane>(EMPTY_VOICE_ORDER)
   const scene = useMemo(() => {
-    const raw = buildTimelineScene(analysis, marks)
+    const raw = buildTimelineScene(analysis, marks, displayCycles)
     const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
     voiceOrderRef.current = order
     return ordered
-  }, [analysis, marks])
+  }, [analysis, marks, displayCycles])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -506,11 +543,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   } | null>(null)
 
   // Hit-test a clip BODY (not its edge) under a client point → { lane, clip },
-  // or null. Matches CONTAINMENT (`clipAtCycle`). A bare track's implicit clip
-  // (armIndex < 0) is NEVER returned — it isn't selectable, deletable, or movable
-  // (#488: a uniform pattern has no distinct clip to act on).
+  // or null. Matches CONTAINMENT (`clipAtCycle`). `includeBare` keeps a bare
+  // track's implicit clip (armIndex < 0): it is SELECTABLE (#489 — select then
+  // split/delete) but still NOT MOVABLE (#488 — a uniform loop can't reorder/wrap;
+  // the move path passes `false`).
   const clipBodyAt = React.useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number, includeBare = false) => {
       const el = areaRef.current
       if (!el) return null
       const rect = el.getBoundingClientRect()
@@ -522,7 +560,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!lane) return null
       const cyc = xToSongCycle(contentX, displayCycles, cw)
       const clip = clipAtCycle(lane, cyc)
-      if (!clip || clip.armIndex < 0) return null
+      if (!clip || (clip.armIndex < 0 && !includeBare)) return null
       return { lane, clip }
     },
     [displayCycles],
@@ -580,7 +618,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         // resolves on pointer-up: a MOVE drag if the pointer travelled, else a
         // click (select + seek). A press off any clip clears selection + seeks.
         const interactive = !!(onDeleteClip || onMoveClip || onDuplicateClip || onSplitClip)
-        const body = interactive ? clipBodyAt(e.clientX, e.clientY) : null
+        // Include the bare clip: it's selectable (#489). It won't move — a bare
+        // press has no reorder target (armSpansNow is empty) and the move commit
+        // no-ops for armIndex < 0, so the gesture resolves to a select on pointer-up.
+        const body = interactive ? clipBodyAt(e.clientX, e.clientY, true) : null
         if (body) {
           e.preventDefault()
           try {
@@ -727,11 +768,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         /* best-effort */
       }
       if (!mv.dragging) {
-        setSelected(
-          mv.armIndex >= 0
-            ? { laneKey: mv.laneKey, armIndex: mv.armIndex, sourceOffset: mv.sourceOffset }
-            : null,
-        )
+        // A click selects the clip — real arm OR a bare track's implicit clip
+        // (armIndex < 0), which is then splittable/deletable (#489). Seek-anywhere
+        // is preserved.
+        setSelected({ laneKey: mv.laneKey, armIndex: mv.armIndex, sourceOffset: mv.sourceOffset })
         handleSeekAtClientX(e.clientX)
         return
       }
@@ -775,9 +815,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const handleGridKeyDown = React.useCallback(
     (e: React.KeyboardEvent) => {
       if (!selected) return
+      // A bare track's implicit clip (armIndex < 0) supports only SPLIT — that
+      // materializes the combinator (#489). Deleting or duplicating the WHOLE
+      // uniform loop is out of scope (split first, then act on the pieces).
+      const bareClip = selected.armIndex < 0
       // ⌘/Ctrl-D duplicates the selected clip (insert a clone arm after it).
       if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) {
-        if (!onDuplicateClip) return
+        if (!onDuplicateClip || bareClip) return
         e.preventDefault()
         onDuplicateClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
         // A clone arm is inserted after the selection, shifting later indices —
@@ -786,7 +830,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         return
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!onDeleteClip) return
+        if (!onDeleteClip || bareClip) return
         e.preventDefault()
         onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
         setSelected(null)
@@ -806,6 +850,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           sourceOffset: selected.sourceOffset,
           armIndex: selected.armIndex,
           firstWeight: Math.floor(weight / 2),
+          // For a bare clip the span IS the whole-song width — the parent
+          // materializes `arrange([k, pat], [span−k, pat])` (#489).
+          span: weight,
         })
         // Split inserts a second arm, reindexing the list — clear the selection.
         setSelected(null)

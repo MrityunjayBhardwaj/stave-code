@@ -428,14 +428,16 @@ describe('FullSongTimeline — delete a clip (select body + Delete → remove-ar
     expect(onDeleteClip).not.toHaveBeenCalled()
   })
 
-  it('clicking the bare/implicit clip (hh lane) does not select → Delete no-ops', async () => {
+  it('clicking the bare/implicit clip (hh lane) selects it, but Delete no-ops (#489)', async () => {
     const onDeleteClip = vi.fn()
     const { grid, container } = renderDeletable(onDeleteClip)
     await settle()
-    // hh row (y≈30) has only the implicit clip (armIndex −1) — not selectable.
+    // hh row (y≈30) has only the implicit clip (armIndex −1). It IS selectable now
+    // (#489 — select → split), but deleting the WHOLE uniform loop is out of scope
+    // (split first), so Delete is a no-op for a bare clip.
     fireEvent.pointerDown(grid, { clientX: 200, clientY: 30, pointerId: 1 })
     fireEvent.pointerUp(grid, { clientX: 200, clientY: 30, pointerId: 1 })
-    expect(container.querySelector('[data-full-song="clip-selection"]')).toBeNull()
+    expect(container.querySelector('[data-full-song="clip-selection"]')).not.toBeNull()
     fireEvent.keyDown(grid, { key: 'Delete' })
     expect(onDeleteClip).not.toHaveBeenCalled()
   })
@@ -603,8 +605,8 @@ describe('FullSongTimeline — split a clip (select + S → split arm at midpoin
     fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
     fireEvent.keyDown(grid, { key: 's' })
     expect(onSplitClip).toHaveBeenCalledTimes(1)
-    // weight 2 → midpoint firstWeight = floor(2/2) = 1
-    expect(onSplitClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0, firstWeight: 1 })
+    // weight 2 → midpoint firstWeight = floor(2/2) = 1; span = clip width (2)
+    expect(onSplitClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0, firstWeight: 1, span: 2 })
   })
 
   it('S with nothing selected is a no-op', async () => {
@@ -661,7 +663,7 @@ describe('FullSongTimeline — NESTED combinator arm binds the OUTER arrange (#4
     fireEvent.pointerDown(grid, { clientX: 133, clientY: 10, pointerId: 1 }) // select cat block
     fireEvent.pointerUp(grid, { clientX: 133, clientY: 10, pointerId: 1 })
     fireEvent.keyDown(grid, { key: 's' })
-    expect(onSplitClip).toHaveBeenCalledWith({ sourceOffset: 0, armIndex: 0, firstWeight: 1 })
+    expect(onSplitClip).toHaveBeenCalledWith({ sourceOffset: 0, armIndex: 0, firstWeight: 1, span: 2 })
   })
 
   it('⌘-D on the cat block dispatches the OUTER arrange offset (0), not the inner cat (12)', async () => {

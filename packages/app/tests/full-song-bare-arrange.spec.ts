@@ -1,24 +1,18 @@
 /**
- * Full-song view: DELETE a clip by selecting it + pressing Delete (#386 /
- * Phase 5c) — Playwright observation (AnviDev observe gate).
+ * Full-song view: a BARE loop is a single selectable clip spanning the song, and
+ * SPLITTING it MATERIALIZES the `arrange` combinator (#489) — Playwright
+ * observation (AnviDev observe gate).
  *
- * The unit tests cover the substrate (editor arrange.test.ts: removeArm) and the
- * gesture (FullSongTimeline.test.tsx: select body + Delete → onDeleteClip). This
- * drives the REAL app end-to-end to prove the whole write-back loop works:
- *   click a clip body → select → Delete → remove-arm serializer → registry
- *   write-back → the editor SOURCE loses that arm → the debounced re-eval
- *   republishes the IR → the lane disappears.
+ * A bare loop (`$: s("bd*4")`, period 1) is shown as ONE clip spanning a floored
+ * arrangement span (MIN_BARE_SPAN = 4 bars, D3) so it has room to split. Clicking
+ * it selects (it was non-selectable before #489); pressing S materializes
+ * `arrange([2, s("bd*4")], [2, s("bd*4")])` — sonically identical, two addressable
+ * arms. This is the split-first entry-point that replaced drag-to-wrap (#488).
  *
- * We TYPE the song (not setValue) so the onChange → file store → IR-snapshot
- * path fires (same reason as the trim spec).
+ * Unit + haps substrate: editor arrange.test.ts (materializeBareSplit) and
+ * arrange-materialize-haps.test.ts (the split is [4,4,4,4] — no gap).
  */
 import { test, expect, type Page } from '@playwright/test'
-
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
-
-// Two arms, period 2 + 2 = 4. Arm 0 (bd) spans cycles [0,2) → its body sits in
-// the first half of the first lane. Bare patterns so the body isn't obscured.
-const ARRANGE_SONG = 'arrange([2, s("bd")], [2, s("hh")])'
 
 async function bootShell(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -37,6 +31,8 @@ async function bootShell(page: Page): Promise<void> {
     { timeout: 20_000 },
   )
 }
+
+const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 async function typeSongAndEval(page: Page, code: string): Promise<void> {
   await page.evaluate(() => {
@@ -61,7 +57,7 @@ function strudelSource(page: Page): Promise<string> {
   })
 }
 
-test('selecting arm 0’s clip and pressing Delete leaves a GAP (silence) in its place', async ({ page }) => {
+test('a bare loop is selectable and pressing S materializes the arrange', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
@@ -69,38 +65,27 @@ test('selecting arm 0’s clip and pressing Delete leaves a GAP (silence) in its
   })
 
   await bootShell(page)
-  await typeSongAndEval(page, ARRANGE_SONG)
+  await typeSongAndEval(page, 's("bd*4")')
 
   await page.locator('[data-musical-timeline="view-toggle"]').click()
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
   await page.waitForTimeout(400)
 
-  expect(await strudelSource(page)).toContain('arrange([2, s("bd")]')
-
-  // Click arm 0's body (the bd lane, first half = cycle ~1 of 4 → 0.25·W) to
-  // select it — well clear of the edges at 0 and 0.5·W so it's a body, not a trim.
+  // The bare loop is ONE clip across the floored 4-bar span. Click its body to
+  // select (pre-#489 this was a no-op — bare clips weren't selectable).
   const grid = page.locator('[data-full-song="grid"]')
   const box = await grid.boundingBox()
   if (!box) throw new Error('no grid box')
-  const y = box.y + 8 // first (bd) lane row
-  await page.mouse.click(box.x + box.width * 0.25, y)
+  await page.mouse.click(box.x + box.width * 0.25, box.y + 8)
   await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
 
-  // Delete the selected clip → its pattern is replaced with `silence`, KEEPING
-  // its width (#491 — a gap, not a ripple; later clips stay put). Use grid.press
-  // (focuses the widget first) not page.keyboard.press after a mouse.click — the
-  // latter dispatches to document.body (P178).
-  await grid.press('Delete')
-
-  // The silence-arm edit applied to the model; the debounced re-eval follows.
-  // arm 0 becomes `[2, silence]`, arm 1 (hh) unchanged in place.
+  // S splits the 4-bar bare clip at its midpoint → materialize the combinator.
+  await grid.press('s')
   await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain(
-    'arrange([2, silence], [2, s("hh")])',
+    'arrange([2, s("bd*4")], [2, s("bd*4")])',
   )
-  // arm 0's bd pattern is gone (replaced by silence); hh stays.
-  expect(await strudelSource(page)).not.toContain('s("bd")')
 
-  await page.screenshot({ path: 'test-results/arrange-delete.png' })
+  await page.screenshot({ path: 'test-results/bare-arrange.png' })
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })

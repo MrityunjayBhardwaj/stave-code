@@ -17,7 +17,10 @@ import {
   reorderArm,
   insertArm,
   removeArm,
+  silenceArm,
   wrapBare,
+  materializeBareDelete,
+  materializeBareSplit,
   splitArm,
   applyEdits,
 } from '../index'
@@ -123,6 +126,83 @@ describe('arrange parser — detectBarePattern (§2.1 wrap target)', () => {
       'arrange([3, silence], [1, s("bd hh")])',
     )
   })
+
+  // #489 — materialize a bare loop into an arrange by carving a one-cycle gap at
+  // a selected bar over an N-bar span (the explicit "introduce the combinator").
+  describe('materializeBareDelete (#489)', () => {
+    const doc = 's("bd*4")'
+    const range: [number, number] = [0, doc.length]
+
+    it('carves a middle bar: gap at bar 2 of 4 → [2,pat],[1,silence],[1,pat]', () => {
+      expect(applyEdits(doc, materializeBareDelete(doc, range, 2, 4))).toBe(
+        'arrange([2, s("bd*4")], [1, silence], [1, s("bd*4")])',
+      )
+    })
+
+    it('gap at the FIRST bar drops the leading pat arm', () => {
+      expect(applyEdits(doc, materializeBareDelete(doc, range, 0, 4))).toBe(
+        'arrange([1, silence], [3, s("bd*4")])',
+      )
+    })
+
+    it('gap at the LAST bar drops the trailing pat arm', () => {
+      expect(applyEdits(doc, materializeBareDelete(doc, range, 3, 4))).toBe(
+        'arrange([3, s("bd*4")], [1, silence])',
+      )
+    })
+
+    it('refuses to empty the track — deleting the sole bar is a no-op', () => {
+      expect(materializeBareDelete(doc, range, 0, 1)).toEqual([])
+    })
+
+    it('preserves the pattern bytes verbatim in every surviving arm', () => {
+      const d = 'note("c e g").s("sawtooth")'
+      const out = applyEdits(d, materializeBareDelete(d, [0, d.length], 1, 3))
+      expect(out).toBe(
+        'arrange([1, note("c e g").s("sawtooth")], [1, silence], [1, note("c e g").s("sawtooth")])',
+      )
+    })
+  })
+
+  // #489 (reframe) — split-first materialization: selecting the whole bare loop
+  // and splitting it introduces the combinator with NO audible change (two arms,
+  // same pattern), after which the arms are individually selectable.
+  describe('materializeBareSplit (#489)', () => {
+    const doc = 's("bd*4")'
+    const range: [number, number] = [0, doc.length]
+
+    it('splits at an interior bar: bar 2 of 4 → [2,pat],[2,pat] (same sound)', () => {
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 2, 4))).toBe(
+        'arrange([2, s("bd*4")], [2, s("bd*4")])',
+      )
+    })
+
+    it('split at bar 1 of 4 → [1,pat],[3,pat]', () => {
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 1, 4))).toBe(
+        'arrange([1, s("bd*4")], [3, s("bd*4")])',
+      )
+    })
+
+    it('clamps the boundary into [1, span−1] — both halves stay ≥ 1 cycle', () => {
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 0, 4))).toBe(
+        'arrange([1, s("bd*4")], [3, s("bd*4")])',
+      )
+      expect(applyEdits(doc, materializeBareSplit(doc, range, 4, 4))).toBe(
+        'arrange([3, s("bd*4")], [1, s("bd*4")])',
+      )
+    })
+
+    it('refuses a span < 2 — a 1-cycle loop has no interior boundary', () => {
+      expect(materializeBareSplit(doc, range, 1, 1)).toEqual([])
+    })
+
+    it('preserves the pattern bytes verbatim in both arms', () => {
+      const d = 'note("c e g").s("sawtooth")'
+      expect(applyEdits(d, materializeBareSplit(d, [0, d.length], 1, 4))).toBe(
+        'arrange([1, note("c e g").s("sawtooth")], [3, note("c e g").s("sawtooth")])',
+      )
+    })
+  })
 })
 
 describe('arrange serializer — surgical, byte-fidelity', () => {
@@ -176,6 +256,36 @@ describe('arrange serializer — surgical, byte-fidelity', () => {
     const doc = 'arrange([2, s("bd")])'
     const call = detectArrangeAt(doc, 0)!
     expect(removeArm(doc, call, 0)).toEqual([])
+  })
+
+  // #491 — GAP delete: silence an arm IN PLACE, keeping its width (later arms
+  // do NOT slide left — the timeline is absolute, unlike removeArm's ripple).
+  it('silence-arm replaces the arm pattern with silence, width kept', () => {
+    const doc = 'arrange([2, s("bd")], [1, s("hh")], [1, s("cp")])'
+    const call = detectArrangeAt(doc, 0)!
+    expect(applyEdits(doc, silenceArm(doc, call, 1))).toBe(
+      'arrange([2, s("bd")], [1, silence], [1, s("cp")])',
+    )
+    // last arm — same in-place silencing, no separator change
+    expect(applyEdits(doc, silenceArm(doc, call, 2))).toBe(
+      'arrange([2, s("bd")], [1, s("hh")], [1, silence])',
+    )
+  })
+
+  it('silence-arm on a cat arm (implicit weight 1) → silence', () => {
+    const doc = 'cat(s("bd"), s("hh"))'
+    const call = detectArrangeAt(doc, 0)!
+    expect(applyEdits(doc, silenceArm(doc, call, 0))).toBe('cat(silence, s("hh"))')
+  })
+
+  it('silence-arm is a no-op on an already-silent arm; may silence the sole arm', () => {
+    const doc = 'arrange([2, silence], [1, s("hh")])'
+    const call = detectArrangeAt(doc, 0)!
+    expect(silenceArm(doc, call, 0)).toEqual([]) // already silence
+    // unlike removeArm, silencing the SOLE arm is allowed (a muted track)
+    const solo = 'arrange([4, s("bd")])'
+    const soloCall = detectArrangeAt(solo, 0)!
+    expect(applyEdits(solo, silenceArm(solo, soloCall, 0))).toBe('arrange([4, silence])')
   })
 
   it('insert-arm adds an arm at an index and at the end', () => {

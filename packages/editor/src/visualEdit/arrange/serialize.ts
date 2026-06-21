@@ -114,6 +114,25 @@ export function removeArm(doc: string, call: ArrangeCall, i: number): OffsetEdit
 }
 
 /**
+ * #491 — GAP delete: silence arm `i` IN PLACE, keeping its cycle width. The
+ * DAW-standard plain Delete leaves a gap (the arrangement timeline is absolute —
+ * later clips do NOT slide left), unlike `removeArm` which ripples the arm out and
+ * shortens the loop. We replace ONLY the arm's pattern with `silence`, preserving
+ * the `[n, …]` weight wrapper (and every other arm verbatim):
+ *   `[n, pat]`        →  `[n, silence]`   (arrange arm — width n kept)
+ *   `pat` (cat arm)   →  `silence`        (implicit width 1 kept)
+ * Already-silent arm → no edits. Silencing every arm is allowed (a muted track,
+ * `arrange([n, silence])` is valid) — unlike `removeArm`, this never empties the
+ * combinator, so there's no sole-arm guard. Pure text surgery (PV123).
+ */
+export function silenceArm(doc: string, call: ArrangeCall, i: number): OffsetEdit[] {
+  const arm = call.arms[i]
+  if (!arm) return []
+  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === 'silence') return []
+  return [{ range: arm.patternRange, text: 'silence' }]
+}
+
+/**
  * §2.1 "introduce the combinator". A bare steady pattern has no `arrange` to
  * edit; the first time it is placed in time it must be WRAPPED:
  *   `pattern`  →  `arrange([leadingWeight, silence], [patternWeight, pattern])`
@@ -131,6 +150,71 @@ export function wrapBare(
     { range: [patternRange[0], patternRange[0]], text: `arrange([${lead}, silence], [${pw}, ` },
     { range: [patternRange[1], patternRange[1]], text: `])` },
   ]
+}
+
+/**
+ * #489 — MATERIALIZE a bare loop into an `arrange` by carving a one-cycle gap at
+ * `barIndex` over an arrangement of `span` whole cycles. The bare pattern (one
+ * implicit loop) becomes:
+ *   `pat`  →  `arrange([barIndex, pat], [1, silence], [span−barIndex−1, pat])`
+ * with zero-width arms dropped (gap at bar 0 → no leading `pat`; gap at the last
+ * bar → no trailing `pat`). `pat`'s bytes are preserved verbatim in each surviving
+ * arm. This is the EXPLICIT "introduce the combinator" entry-point for a uniform
+ * loop — the deliberate counterpart of the removed drag-to-wrap (#488).
+ *
+ * Refuses to empty the track: deleting the SOLE bar (span 1, or every non-gap arm
+ * gone) would leave `arrange([1, silence])` = all silence, so it returns no edits
+ * (a lane keeps ≥1 sounding clip — PV122 #5). `span ≥ 1`, `barIndex` clamped to
+ * `[0, span)`. Pure text surgery; never re-emits through `toStrudel` (PV123).
+ */
+export function materializeBareDelete(
+  doc: string,
+  patternRange: [number, number],
+  barIndex: number,
+  span: number,
+): OffsetEdit[] {
+  const total = asWeight(span)
+  const i = Math.max(0, Math.min(Math.round(barIndex), total - 1))
+  const lead = i
+  const rest = total - i - 1
+  if (lead === 0 && rest === 0) return [] // deleting the sole bar empties the track
+  const pat = doc.slice(patternRange[0], patternRange[1])
+  const arms: string[] = []
+  if (lead > 0) arms.push(`[${lead}, ${pat}]`)
+  arms.push(`[1, silence]`)
+  if (rest > 0) arms.push(`[${rest}, ${pat}]`)
+  return [{ range: patternRange, text: `arrange(${arms.join(', ')})` }]
+}
+
+/**
+ * #489 — MATERIALIZE a bare loop into an `arrange` by SPLITTING it at a whole-cycle
+ * boundary `barIndex` over an arrangement of `span` whole cycles. The bare pattern
+ * (one implicit loop spanning the song) becomes two ADDRESSABLE arms with IDENTICAL
+ * sound — a uniform loop tiled across `span` cycles plays the same whether expressed
+ * as one bare loop or as `arrange([k, pat], [span−k, pat])` (grounded in haps):
+ *   `pat`  →  `arrange([barIndex, pat], [span−barIndex, pat])`
+ * with `pat`'s bytes preserved verbatim in BOTH arms. This is the split-first
+ * materialization entry-point (D1, reframe): selecting the whole bare clip and
+ * splitting it introduces the combinator with no audible change, after which the
+ * resulting arms are individually selectable and the existing arrange ops
+ * (`removeArm` → carve a gap, `reorderArm`, `splitArm`, `setWeight`) apply.
+ *
+ * Both halves must be ≥ 1 whole cycle, so `span ≥ 2` is required (a 1-cycle loop
+ * has no interior boundary — extend it first, #487); `barIndex` is clamped to
+ * `[1, span−1]`. `span < 2` returns no edits. Pure text surgery; never re-emits
+ * through `toStrudel` (PV123).
+ */
+export function materializeBareSplit(
+  doc: string,
+  patternRange: [number, number],
+  barIndex: number,
+  span: number,
+): OffsetEdit[] {
+  const total = asWeight(span)
+  if (total < 2) return [] // no interior whole-cycle boundary to split on
+  const k = Math.max(1, Math.min(Math.round(barIndex), total - 1))
+  const pat = doc.slice(patternRange[0], patternRange[1])
+  return [{ range: patternRange, text: `arrange([${k}, ${pat}], [${total - k}, ${pat}])` }]
 }
 
 /**

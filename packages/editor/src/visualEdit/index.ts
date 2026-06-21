@@ -31,7 +31,10 @@ export {
   reorderArm,
   insertArm,
   removeArm,
+  silenceArm,
   wrapBare,
+  materializeBareDelete,
+  materializeBareSplit,
   splitArm,
 } from './arrange'
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
