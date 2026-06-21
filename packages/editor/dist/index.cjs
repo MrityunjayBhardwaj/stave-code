@@ -32754,6 +32754,13 @@ function removeArm(doc, call, i) {
   return [{ range: [call.arms[i - 1].armRange[1], call.arms[i].armRange[1]], text: "" }];
 }
 __name(removeArm, "removeArm");
+function silenceArm(doc, call, i) {
+  const arm = call.arms[i];
+  if (!arm) return [];
+  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
+  return [{ range: arm.patternRange, text: "silence" }];
+}
+__name(silenceArm, "silenceArm");
 function wrapBare(patternRange, leadingWeight, patternWeight) {
   const lead = asWeight(leadingWeight);
   const pw = asWeight(patternWeight);
@@ -33632,6 +33639,7 @@ exports.setWeight = setWeight;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.shellStateKeyFor = shellStateKeyFor;
+exports.silenceArm = silenceArm;
 exports.splitArm = splitArm;
 exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;
