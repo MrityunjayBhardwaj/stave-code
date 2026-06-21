@@ -1128,6 +1128,27 @@ function detectPeriod(fingerprints) {
   return null;
 }
 __name(detectPeriod, "detectPeriod");
+function detectDisplayPeriod(events, horizon) {
+  const byLane = /* @__PURE__ */ new Map();
+  for (const ev of events) {
+    const key = laneKeyOf(ev);
+    let bucket = byLane.get(key);
+    if (!bucket) {
+      bucket = [];
+      byLane.set(key, bucket);
+    }
+    bucket.push(ev);
+  }
+  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
+  let maxPeriod = 0;
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    if (p === null) return null;
+    if (p > maxPeriod) maxPeriod = p;
+  }
+  return maxPeriod > 0 ? maxPeriod : null;
+}
+__name(detectDisplayPeriod, "detectDisplayPeriod");
 function computeSections(lanes, horizon) {
   if (horizon <= 0) return [];
   const signatureAt = /* @__PURE__ */ __name((cycle) => lanes.filter((l) => (l.onsetsByCycle[cycle] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
@@ -1151,7 +1172,7 @@ function computeSections(lanes, horizon) {
 __name(computeSections, "computeSections");
 function analyzeEvents(events, horizon, reachedCap = false) {
   const lanes = accumulateLanes(events, horizon);
-  const periodCycles = detectPeriod(cycleFingerprints(events, horizon));
+  const periodCycles = detectDisplayPeriod(events, horizon);
   const sections = computeSections(lanes, horizon);
   return { periodCycles, horizonCycles: horizon, lanes, sections, reachedCap };
 }
@@ -1198,7 +1219,7 @@ async function analyzeSong(ir, opts = {}) {
     const ok = await collectUpTo(horizon);
     if (!ok) break;
     if (events.length === 0) return analyzeEvents([], 0, false);
-    const period = detectPeriod(cycleFingerprints(events, horizon));
+    const period = detectDisplayPeriod(events, horizon);
     if (period !== null) {
       const lanes = accumulateLanes(events, period);
       const sections = computeSections(lanes, period);

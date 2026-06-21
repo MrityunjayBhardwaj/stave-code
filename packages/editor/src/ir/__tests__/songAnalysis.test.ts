@@ -5,6 +5,7 @@ import {
   accumulateLanes,
   cycleFingerprints,
   detectPeriod,
+  detectDisplayPeriod,
   computeSections,
   analyzeEvents,
   analyzeSong,
@@ -130,6 +131,52 @@ describe('analyzeEvents', () => {
     expect(a.periodCycles).toBe(2) // hh every other cycle → period 2
     expect(a.lanes.map((l) => l.laneKey)).toEqual(['bd', 'hh'])
     expect(a.reachedCap).toBe(false)
+  })
+
+  it('uses the LONGEST single lane (max), not the global lcm, for differing lengths (#488)', () => {
+    // Lane 'a' loops every 5; lane 'b' loops every 4. Global combined period
+    // would be lcm(5,4)=20, but the DAW-idiomatic display span is the longest
+    // single loop = 5 (the 4-cycle lane phases inside it).
+    const events: IREvent[] = []
+    for (let c = 0; c < 16; c++) {
+      events.push(ev(c, 'a', c % 5))
+      events.push(ev(c, 'b', c % 4))
+    }
+    // Global (lcm) detection can't even resolve at horizon 16 — it needs 2×lcm=40
+    // cycles to confirm period 20; the per-lane max resolves at 2×5=10. Cheaper.
+    expect(detectPeriod(cycleFingerprints(events, 16))).toBeNull()
+    const a = analyzeEvents(events, 16)
+    expect(a.periodCycles).toBe(5) // the NEW (max-track) basis
+  })
+})
+
+describe('detectDisplayPeriod (#488 — max single-lane, not lcm)', () => {
+  // Build events where each lane loops at its own period (note = cycle % p).
+  const lanesOf = (specs: Array<[string, number]>, horizon: number): IREvent[] => {
+    const out: IREvent[] = []
+    for (let c = 0; c < horizon; c++) for (const [lane, p] of specs) out.push(ev(c, lane, c % p))
+    return out
+  }
+
+  it('returns the MAX of per-lane periods (5 vs 4 → 5, not lcm 20)', () => {
+    expect(detectDisplayPeriod(lanesOf([['a', 5], ['b', 4]], 16), 16)).toBe(5)
+  })
+
+  it('equals lcm when lengths are equal or divisible (no divergence)', () => {
+    expect(detectDisplayPeriod(lanesOf([['a', 4], ['b', 4]], 16), 16)).toBe(4) // equal
+    expect(detectDisplayPeriod(lanesOf([['a', 4], ['b', 2]], 16), 16)).toBe(4) // divisible
+  })
+
+  it('matches detectPeriod for a single lane', () => {
+    const single = lanesOf([['a', 5]], 16)
+    expect(detectDisplayPeriod(single, 16)).toBe(detectPeriod(cycleFingerprints(single, 16)))
+  })
+
+  it('returns null until every lane has looped twice within the horizon', () => {
+    // Lane 'a' (period 5) needs ≥10 cycles to confirm; at horizon 8 it cannot.
+    expect(detectDisplayPeriod(lanesOf([['a', 5], ['b', 4]], 8), 8)).toBeNull()
+    // Grow to 16 → both resolve → 5.
+    expect(detectDisplayPeriod(lanesOf([['a', 5], ['b', 4]], 16), 16)).toBe(5)
   })
 })
 
