@@ -172,6 +172,17 @@ function displaySpan(analysis: SongAnalysis | null, bareSong: boolean): number {
   return bareSong ? Math.max(MIN_BARE_SPAN, natural) : natural
 }
 
+/** Cycles of empty timeline kept PAST the dragged edge while EXTENDING the last
+ *  clip, so there's always room to drag into (#487). Transient — present only
+ *  mid-drag; at rest the span is exactly the song (no permanent blank). */
+const EXTEND_MARGIN_CYCLES = 2
+/** Viewport-right band (px) where a live extend drag auto-scrolls more empty
+ *  timeline into view (classic drag-edge autoscroll). */
+const EXTEND_AUTOSCROLL_BAND_PX = 48
+/** Max px the autoscroll advances per frame while the cursor is held in the band
+ *  — a deliberate, controllable pace (~7px/frame ≈ 420px/s at 60fps), not a rush. */
+const EXTEND_AUTOSCROLL_STEP_PX = 7
+
 export function FullSongTimeline(props: FullSongTimelineProps): React.ReactElement {
   const { analysis, onSeek } = props
   // A pure bare loop gets a floored, splittable display span (#489 D3); a real
@@ -188,7 +199,22 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     }>
     return !evs.some((e) => typeof e.armIndex === 'number')
   }, [props.ir, natCycles])
-  const displayCycles = displaySpan(analysis, bareSong)
+  // The TRUE content length — the rest span; also the playhead loop-wrap, the
+  // note-mark collection window, and the bare-track implicit clip's end. The bare
+  // floor (#489) is folded in HERE so the clip extents use the floored span while
+  // the extend-drag (#487) layers a transient viewport span on top.
+  const loopCycles = displaySpan(analysis, bareSong)
+  // While EXTENDING the last clip, the visual span temporarily grows past the
+  // content so there's empty timeline to drag into (#487). null at rest →
+  // displayCycles == loopCycles (no permanent blank). `contentWidth` scales with
+  // the span (below) so px/cycle stays constant: the grid WIDENS + auto-scrolls
+  // instead of compressing, and the dragged edge tracks the cursor 1:1.
+  const [dragSpanCycles, setDragSpanCycles] = useState<number | null>(null)
+  const displayCycles = dragSpanCycles ?? loopCycles
+  const dragSpanRef = useRef<number | null>(dragSpanCycles)
+  dragSpanRef.current = dragSpanCycles
+  const loopCyclesRef = useRef(loopCycles)
+  loopCyclesRef.current = loopCycles
 
   // ── Grid width via ResizeObserver (mirrors MusicalTimeline DB-04) ────────
   const areaRef = useRef<HTMLDivElement>(null)
@@ -240,9 +266,33 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // follow/zoom-driven scroll (don't suspend) from a user drag/wheel (suspend).
   const programmaticScrollRef = useRef(-1)
 
-  const contentWidth = contentWidthFor(areaWidth, zoom)
+  const restContentWidth = contentWidthFor(areaWidth, zoom)
+  // While extending, scale contentWidth with the grown span so px/cycle is the
+  // SAME as at rest — the grid widens past the viewport and scrolls, instead of
+  // compressing the clips (#487, constant-ppc grow + auto-scroll). At rest
+  // (dragSpanCycles == null) this is just the fit-to-view width.
+  const contentWidth =
+    dragSpanCycles != null && loopCycles > 0
+      ? (restContentWidth * dragSpanCycles) / loopCycles
+      : restContentWidth
   const pxPerCycle = displayCycles > 0 ? contentWidth / displayCycles : 0
   const ticks = rulerTicks(displayCycles, pxPerCycle, units)
+
+  // Content width as the pointer handlers see it: rest width (zoom-scaled),
+  // scaled by the live (grown) drag span so the handler math matches the
+  // rendered transform during an extend (#487). Rest width when not extending.
+  const dragAwareContentWidth = React.useCallback((viewportWidth: number): number => {
+    const rest = contentWidthFor(viewportWidth, zoomRef.current)
+    const ds = dragSpanRef.current
+    const lc = loopCyclesRef.current
+    return ds != null && lc > 0 ? (rest * ds) / lc : rest
+  }, [])
+  // Constant px/cycle (the REST basis) — the extend drag maps the cursor at this
+  // fixed scale so the dragged edge follows 1:1 with no jump as the span grows.
+  const restPxPerCycle = React.useCallback((viewportWidth: number): number => {
+    const lc = loopCyclesRef.current
+    return lc > 0 ? contentWidthFor(viewportWidth, zoomRef.current) / lc : 0
+  }, [])
 
   // Apply a new zoom, keeping the song point under `cursorX` (viewport-relative)
   // pinned beneath the cursor. State drives the new content width; the layout
@@ -338,8 +388,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (Date.now() < userScrollUntilRef.current) return
       const dc = displayCyclesRef.current
       const vw = areaWidthRef.current
-      const cw = contentWidthFor(vw, zoomRef.current)
-      const ph = songCycleToX(wrapSongPosition(pos, dc), dc, cw)
+      const cw = dragAwareContentWidth(vw)
+      const ph = songCycleToX(wrapSongPosition(pos, loopCyclesRef.current), dc, cw)
       const target = followScrollLeft(ph, vw, cw, scrollLeftRef.current)
       if (Math.abs(target - scrollLeftRef.current) < 1) return
       const el = areaRef.current
@@ -382,7 +432,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const wrappedPos = wrapSongPosition(songPos, displayCycles)
+  // Wrap the playhead at the TRUE period (not the padded extend span) so it
+  // loops with the audio, never into the transient trailing room (#487).
+  const wrappedPos = wrapSongPosition(songPos, loopCycles)
   // Playhead lives in CONTENT space (inside the scrolled/translated inner div),
   // so it maps against contentWidth, not the viewport width.
   const playheadX = songCycleToX(wrappedPos, displayCycles, contentWidth)
@@ -398,13 +450,15 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!el) return
       const rect = el.getBoundingClientRect()
       const contentX = clientX - rect.left + scrollLeftRef.current
-      const cycle = xToSongCycle(contentX, displayCycles, contentWidthFor(rect.width, zoomRef.current))
+      const cycle = xToSongCycle(contentX, displayCycles, dragAwareContentWidth(rect.width))
       // A manual seek is user navigation — suspend follow briefly so it doesn't
-      // immediately yank the view back as the sought playhead resumes.
+      // immediately yank the view back as the sought playhead resumes. Clamp to
+      // the true song end so a click in the transient extend room (past the song)
+      // seeks to the end, not into empty space (#487).
       userScrollUntilRef.current = Date.now() + USER_SCROLL_GUARD_MS
-      onSeek(cycle)
+      onSeek(Math.min(cycle, loopCycles))
     },
-    [displayCycles, onSeek],
+    [displayCycles, loopCycles, dragAwareContentWidth, onSeek],
   )
 
   const sections = analysis?.sections ?? []
@@ -413,16 +467,20 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // (collected app-side from the IR over the display span). Memoised so the
   // collect + build run only when the analysis or IR changes — NOT on scroll or
   // zoom (those only move the shared transform the canvas already redraws against).
-  const marks = useMemo(() => collectNoteMarks(props.ir ?? null, displayCycles), [props.ir, displayCycles])
+  // Marks are collected over the TRUE content length (`loopCycles`, bare-floor
+  // included #489) — collecting over the grown extend span (#487) would tile the
+  // looping pattern into the trailing room instead of leaving it empty. The
+  // scene's transform basis still uses the (possibly grown) `displayCycles` so the
+  // canvas and the component agree (PV116).
+  const marks = useMemo(() => collectNoteMarks(props.ir ?? null, loopCycles), [props.ir, loopCycles])
   // Per-lane voice sub-row order is pinned first-seen across re-evals (#480) so
   // reordering clips in time doesn't reshuffle the instrument rows — the SAME
   // first-seen stability `stableTrackOrder` gives the top-level lanes, one level
   // down. The previous order rides in a ref and is threaded back each rebuild
   // (mirrors MusicalTimeline's `slotMapRef`). Recomputed only when the analysis,
   // marks, or display span change (NOT on scroll/zoom), idempotent on a no-op
-  // re-eval. The scene is built over the authoritative `displayCycles` span
-  // (#489) — bare-loop floor included — so clip geometry and the bare-split
-  // materialize agree on where each clip ends.
+  // re-eval. The scene is built over the (possibly grown) `displayCycles` span so
+  // clip geometry and the bare-split materialize agree on where each clip ends.
   const voiceOrderRef = useRef<VoiceOrderByLane>(EMPTY_VOICE_ORDER)
   const scene = useMemo(() => {
     const raw = buildTimelineScene(analysis, marks, displayCycles)
@@ -504,7 +562,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     startCycle: number
     origWeight: number
     weight: number
+    /** Latest pointer clientX — the rAF auto-scroll reads it so HOLDING the edge
+     *  in the right-edge band keeps scrolling empty timeline in (#487). */
+    lastClientX: number
   } | null>(null)
+  // rAF handle for the extend auto-scroll (runs only while the cursor is held in
+  // the right-edge band during a trim drag).
+  const trimRafRef = useRef<number | null>(null)
 
   // ── Select + delete a clip (Phase 5c, #386) ───────────────────────────────
   // Clicking a clip's BODY selects it (and still seeks — seek-anywhere is
@@ -552,7 +616,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const el = areaRef.current
       if (!el) return null
       const rect = el.getBoundingClientRect()
-      const cw = contentWidthFor(rect.width, zoomRef.current)
+      const cw = dragAwareContentWidth(rect.width)
       const contentX = clientX - rect.left + scrollLeftRef.current
       const laneKey = laneAtY(layoutRef.current, clientY - rect.top)
       if (laneKey == null) return null
@@ -563,7 +627,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!clip || (clip.armIndex < 0 && !includeBare)) return null
       return { lane, clip }
     },
-    [displayCycles],
+    [displayCycles, dragAwareContentWidth],
   )
 
   // The combinator's arms as time-spans, in arm order — gathered across ALL
@@ -589,7 +653,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const el = areaRef.current
       if (!el) return null
       const rect = el.getBoundingClientRect()
-      const cw = contentWidthFor(rect.width, zoomRef.current)
+      const cw = dragAwareContentWidth(rect.width)
       const contentX = clientX - rect.left + scrollLeftRef.current
       const laneKey = laneAtY(layoutRef.current, clientY - rect.top)
       if (laneKey == null) return null
@@ -607,8 +671,72 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       return best ? { lane, clip: best } : null
     },
-    [onTrimClip, displayCycles],
+    [onTrimClip, displayCycles, dragAwareContentWidth],
   )
+
+  // Apply an extend at a given clientX: map the cursor to a whole-cycle weight at
+  // the CONSTANT rest px/cycle (edge tracks the cursor 1:1), grow the visual span
+  // so there's room past the edge, and move the trim-edge ghost. Shared by the
+  // pointer-move handler and the rAF auto-scroll so HOLDING at the edge keeps
+  // extending against the scrolled-in room (#487).
+  const applyTrim = React.useCallback(
+    (clientX: number): void => {
+      const drag = trimDragRef.current
+      const el = areaRef.current
+      if (!drag || !el) return
+      const rect = el.getBoundingClientRect()
+      const ppc = restPxPerCycle(rect.width)
+      if (ppc <= 0) return
+      const contentX = clientX - rect.left + scrollLeftRef.current
+      const newEnd = Math.max(drag.startCycle + 1, Math.round(contentX / ppc))
+      drag.weight = newEnd - drag.startCycle
+      const needed = Math.max(loopCyclesRef.current, newEnd + EXTEND_MARGIN_CYCLES)
+      if (dragSpanRef.current == null || needed > dragSpanRef.current) {
+        dragSpanRef.current = needed
+        setDragSpanCycles(needed)
+      }
+      const gcw = dragAwareContentWidth(rect.width)
+      setTrimEdgeX(songCycleToX(newEnd, dragSpanRef.current ?? loopCyclesRef.current, gcw))
+    },
+    [restPxPerCycle, dragAwareContentWidth],
+  )
+
+  const stopExtendAutoScroll = React.useCallback((): void => {
+    if (trimRafRef.current != null) {
+      cancelAnimationFrame(trimRafRef.current)
+      trimRafRef.current = null
+    }
+  }, [])
+
+  // Auto-scroll loop: while a trim drag holds the cursor in the right-edge band,
+  // advance scrollLeft each frame (programmatic — marked so the scroll handler
+  // doesn't treat it as a user pan, PV118) and re-apply the extend so the edge
+  // follows the revealed empty timeline. Self-cancels when the drag ends or the
+  // cursor leaves the band.
+  const extendAutoScrollTick = React.useCallback((): void => {
+    const drag = trimDragRef.current
+    const el = areaRef.current
+    if (!drag || !el) {
+      trimRafRef.current = null
+      return
+    }
+    const rect = el.getBoundingClientRect()
+    const into = drag.lastClientX - (rect.left + rect.width - EXTEND_AUTOSCROLL_BAND_PX)
+    if (into > 0) {
+      const gcw = dragAwareContentWidth(rect.width)
+      const maxScroll = Math.max(0, gcw - rect.width)
+      const step = Math.min(EXTEND_AUTOSCROLL_STEP_PX, Math.max(2, into * 0.16))
+      const next = Math.min(maxScroll, scrollLeftRef.current + step)
+      if (next > scrollLeftRef.current) {
+        scrollLeftRef.current = next
+        programmaticScrollRef.current = next
+        el.scrollLeft = next
+        setScrollLeft(next)
+        applyTrim(drag.lastClientX)
+      }
+    }
+    trimRafRef.current = requestAnimationFrame(extendAutoScrollTick)
+  }, [applyTrim, dragAwareContentWidth])
 
   const handleGridPointerDown = React.useCallback(
     (e: React.PointerEvent) => {
@@ -677,11 +805,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         startCycle: hit.clip.startCycle,
         origWeight: w,
         weight: w,
+        lastClientX: e.clientX,
       }
-      const cw = contentWidthFor(areaRef.current!.getBoundingClientRect().width, zoomRef.current)
+      const cw = dragAwareContentWidth(areaRef.current!.getBoundingClientRect().width)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, displayCycles, cw))
     },
-    [clipEdgeAt, clipBodyAt, handleSeekAtClientX, displayCycles, onDeleteClip, onMoveClip],
+    [clipEdgeAt, clipBodyAt, handleSeekAtClientX, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -689,15 +818,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const el = areaRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const cw = contentWidthFor(rect.width, zoomRef.current)
+      const cw = dragAwareContentWidth(rect.width)
       const drag = trimDragRef.current
       if (drag && e.pointerId === drag.pointerId) {
-        const contentX = e.clientX - rect.left + scrollLeftRef.current
-        const cyc = xToSongCycle(contentX, displayCycles, cw)
-        // Snap to whole cycles (clip boundaries are cycle-aligned), floor at 1.
-        const newEnd = Math.max(drag.startCycle + 1, Math.round(cyc))
-        drag.weight = newEnd - drag.startCycle
-        setTrimEdgeX(songCycleToX(newEnd, displayCycles, cw))
+        // EXTEND: the edge tracks the cursor 1:1 at the constant rest px/cycle and
+        // the span grows to make room (applyTrim). While the cursor is held in the
+        // right-edge band, the rAF auto-scroll pulls more empty timeline into view
+        // so the edge can keep going past the viewport (#487 — grow + auto-scroll).
+        drag.lastClientX = e.clientX
+        applyTrim(e.clientX)
+        const into = e.clientX - (rect.left + rect.width - EXTEND_AUTOSCROLL_BAND_PX)
+        if (into > 0) {
+          if (trimRafRef.current == null) trimRafRef.current = requestAnimationFrame(extendAutoScrollTick)
+        } else {
+          stopExtendAutoScroll()
+        }
         return
       }
       // Move drag (Phase 5c): once the press travels past the threshold, preview
@@ -738,7 +873,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           ? 'grab'
           : ''
     },
-    [clipEdgeAt, clipBodyAt, armSpansNow, displayCycles, onMoveClip],
+    [clipEdgeAt, clipBodyAt, armSpansNow, displayCycles, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
   )
 
   const endTrimDrag = React.useCallback(
@@ -747,6 +882,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (!drag || e.pointerId !== drag.pointerId) return
       trimDragRef.current = null
       setTrimEdgeX(null)
+      stopExtendAutoScroll()
+      // Collapse the transient extend room → refit to the song (no permanent
+      // blank). The committed re-eval grows the period so the extended clip
+      // fills the timeline; until then we snap back to the pre-drag fit.
+      if (dragSpanRef.current != null) {
+        dragSpanRef.current = null
+        setDragSpanCycles(null)
+        scrollLeftRef.current = 0
+        programmaticScrollRef.current = 0
+        if (areaRef.current) areaRef.current.scrollLeft = 0
+        setScrollLeft(0)
+      }
       try {
         areaRef.current?.releasePointerCapture?.(e.pointerId)
       } catch {
@@ -760,8 +907,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         })
       }
     },
-    [onTrimClip],
+    [onTrimClip, stopExtendAutoScroll],
   )
+
+  // Cancel any in-flight extend auto-scroll on unmount (the drag's own teardown
+  // handles the normal case; this guards an unmount mid-drag).
+  useEffect(() => stopExtendAutoScroll, [stopExtendAutoScroll])
 
   // End a body gesture (Phase 5c). A non-drag is a CLICK → select (real arm) +
   // seek. A drag commits a MOVE: reorder a real arm, or wrap a bare clip (§2.1).

@@ -352,6 +352,33 @@ describe('FullSongTimeline — trim a clip (drag right edge → set-weight, #437
     expect(onTrimClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 1, weight: 1 })
   })
 
+  it('EXTENDS the LAST clip past the song end → grows the span + set-weight (#487)', async () => {
+    const onTrimClip = vi.fn()
+    const { grid, container } = renderTrimmable(onTrimClip)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    // At rest the visual span is exactly the song (period 4) — NO trailing blank,
+    // so the ruler shows 4 major ticks and the last clip's edge sits at the wall.
+    expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(4)
+    // Grab arm 1's right edge (the song end, cycle 4 → x=800) and drag RIGHT to
+    // a content-x mapping to cycle 6 (1200px at the constant 200px/cycle). The
+    // edge tracks the cursor 1:1 (constant px/cycle) and the span grows to make
+    // room: displayCycles = max(4, 6 + EXTEND_MARGIN(2)) = 8.
+    fireEvent.pointerDown(grid, { clientX: 798, clientY: 10, pointerId: 1 })
+    fireEvent.pointerMove(grid, { clientX: 1200, clientY: 10, pointerId: 1 }) // cycle 6
+    // Mid-drag the span GREW — 8 major ticks now (the empty extend room is real
+    // timeline). The pre-#487 code held the span fixed at 4; this is the
+    // discriminator for the grow logic.
+    expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(8)
+    fireEvent.pointerUp(grid, { clientX: 1200, clientY: 10, pointerId: 1 })
+    // arm 1 extended from weight 2 (span [2,4)) to weight 4 (end cycle 6).
+    expect(onTrimClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 1, weight: 4 })
+    // On release the transient room collapses → back to 4 majors (no permanent
+    // blank; the real re-eval would then grow the period to fill it).
+    expect(container.querySelectorAll('[data-full-song-tick="major"]').length).toBe(4)
+  })
+
   it('a click that lands NOT on a clip edge seeks instead of trimming', async () => {
     const onTrimClip = vi.fn()
     const { grid, onSeek } = renderTrimmable(onTrimClip)
