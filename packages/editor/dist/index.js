@@ -26116,6 +26116,33 @@ var QUICK_TRANSFORMS = [
   { label: "Speed", method: "speed", value: 1.5 },
   { label: "Gain", method: "gain", value: 0.8 }
 ];
+var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
+function parseManagedGain(raw) {
+  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
+  if (!quote || raw[raw.length - 1] !== quote) return null;
+  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length < 2) return null;
+  let ceiling = 0;
+  for (const t of tokens) {
+    if (t === "~") continue;
+    const m = GAIN_TOKEN2.exec(t);
+    if (!m) return null;
+    ceiling = Math.max(ceiling, parseFloat(m[1]));
+  }
+  return { tokens, ceiling, quote };
+}
+__name(parseManagedGain, "parseManagedGain");
+function scaleManagedGain(mg, value) {
+  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
+  const out = mg.tokens.map((t) => {
+    if (t === "~") return "~";
+    const m = GAIN_TOKEN2.exec(t);
+    const nv = factor === null ? value : parseFloat(m[1]) * factor;
+    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
+  });
+  return mg.quote + out.join(" ") + mg.quote;
+}
+__name(scaleManagedGain, "scaleManagedGain");
 var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function knobsFromChunk(chunk) {
   const knobs = [];
@@ -26131,6 +26158,12 @@ function knobsFromChunk(chunk) {
         value: a.numeric
       });
     });
+    if (call.name === "gain" && call.args.length === 1 && call.args[0].numeric === null) {
+      const mg = parseManagedGain(call.args[0].raw);
+      if (mg) {
+        knobs.push({ chainIndex, argIndex: 0, method: "gain", label: "gain", value: mg.ceiling, gain: mg });
+      }
+    }
   });
   return knobs;
 }
@@ -26139,10 +26172,15 @@ function Mixer() {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const knobs = chunk ? knobsFromChunk(chunk) : [];
   const writeKnob = React17.useCallback(
-    (chainIndex, argIndex, value) => {
+    (entry, value) => {
       applyEdit((fresh, wb) => {
-        const arg = fresh.chain[chainIndex]?.args[argIndex];
+        const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
         if (!arg) return;
+        if (entry.gain) {
+          const mg = parseManagedGain(arg.raw) ?? entry.gain;
+          wb.replaceRange(arg.range, scaleManagedGain(mg, value), "knob");
+          return;
+        }
         wb.replaceRange(arg.range, formatNumber(value), "knob");
       });
     },
@@ -26208,7 +26246,7 @@ function Mixer() {
             label: k.label,
             value: k.value,
             range: knobRangeFor(k.method, k.value),
-            onChange: (v) => writeKnob(k.chainIndex, k.argIndex, v),
+            onChange: (v) => writeKnob(k, v),
             onGestureStart: beginGesture,
             onGestureEnd: endGesture
           },

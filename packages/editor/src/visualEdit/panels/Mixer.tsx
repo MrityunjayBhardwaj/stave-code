@@ -22,6 +22,55 @@ import { MIXER_TAB_ID } from './tabs'
 import { useActiveChunk } from './useActiveChunk'
 import { QUICK_TRANSFORMS } from './quickTransforms'
 
+/**
+ * A per-column `.gain("…")` velocity string the grid authored — flat numeric
+ * tokens (with optional `~` rests and `@n` holds). Carried on the gain knob so
+ * dragging the knob rescales every column proportionally (a master fader over
+ * the per-step velocities) instead of leaving the chunk with no gain control.
+ */
+interface ManagedGain {
+  tokens: string[]
+  /** loudest column (the knob's value); rests/`~` excluded */
+  ceiling: number
+  /** the original quote character, preserved on write-back */
+  quote: string
+}
+
+const GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/
+
+/**
+ * Read a `.gain` arg's raw text as a managed per-column velocity string, or
+ * null when it isn't one we authored (a scalar, a single-token broadcast, a
+ * signal/identifier, or a token shape we don't manage → the Mixer hands off and
+ * shows no knob, exactly as before).
+ */
+function parseManagedGain(raw: string): ManagedGain | null {
+  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === '`' ? raw[0] : ''
+  if (!quote || raw[raw.length - 1] !== quote) return null
+  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== '')
+  if (tokens.length < 2) return null // single token = broadcast, not per-column
+  let ceiling = 0
+  for (const t of tokens) {
+    if (t === '~') continue
+    const m = GAIN_TOKEN.exec(t)
+    if (!m) return null // a token we didn't author → foreign, hands off
+    ceiling = Math.max(ceiling, parseFloat(m[1]))
+  }
+  return { tokens, ceiling, quote }
+}
+
+/** Rescale every column so the loudest hits the knob's new value (shape kept). */
+function scaleManagedGain(mg: ManagedGain, value: number): string {
+  const factor = mg.ceiling > 0 ? value / mg.ceiling : null
+  const out = mg.tokens.map((t) => {
+    if (t === '~') return '~'
+    const m = GAIN_TOKEN.exec(t) as RegExpExecArray
+    const nv = factor === null ? value : parseFloat(m[1]) * factor
+    return formatNumber(Math.max(0, nv)) + (m[2] ?? '')
+  })
+  return mg.quote + out.join(' ') + mg.quote
+}
+
 /** one knob = one numeric argument of one chain call */
 interface KnobEntry {
   chainIndex: number
@@ -29,6 +78,8 @@ interface KnobEntry {
   method: string
   label: string
   value: number
+  /** present when the knob is a master fader over a per-column gain string */
+  gain?: ManagedGain
 }
 
 const MIXER_HINT = 'Click a pattern to adjust its sound with knobs.'
@@ -50,6 +101,15 @@ function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {
         value: a.numeric as number,
       })
     })
+    // A per-column `.gain("…")` velocity has no numeric arg, so it surfaced no
+    // knob and `+ gain` is disabled (gain is present) — a dead state. Surface a
+    // master gain knob at the ceiling; dragging it rescales all columns.
+    if (call.name === 'gain' && call.args.length === 1 && call.args[0].numeric === null) {
+      const mg = parseManagedGain(call.args[0].raw)
+      if (mg) {
+        knobs.push({ chainIndex, argIndex: 0, method: 'gain', label: 'gain', value: mg.ceiling, gain: mg })
+      }
+    }
   })
   return knobs
 }
@@ -60,10 +120,17 @@ export function Mixer(): React.ReactElement {
   const knobs = chunk ? knobsFromChunk(chunk) : []
 
   const writeKnob = React.useCallback(
-    (chainIndex: number, argIndex: number, value: number): void => {
+    (entry: KnobEntry, value: number): void => {
       applyEdit((fresh, wb) => {
-        const arg = fresh.chain[chainIndex]?.args[argIndex]
+        const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex]
         if (!arg) return
+        if (entry.gain) {
+          // re-read the fresh arg so the scale reflects the current columns; the
+          // whole `.gain("…")` arg is rewritten as one surgical edit (one undo).
+          const mg = parseManagedGain(arg.raw) ?? entry.gain
+          wb.replaceRange(arg.range, scaleManagedGain(mg, value), 'knob')
+          return
+        }
         wb.replaceRange(arg.range, formatNumber(value), 'knob')
       })
     },
@@ -142,7 +209,7 @@ export function Mixer(): React.ReactElement {
               label={k.label}
               value={k.value}
               range={knobRangeFor(k.method, k.value)}
-              onChange={(v) => writeKnob(k.chainIndex, k.argIndex, v)}
+              onChange={(v) => writeKnob(k, v)}
               onGestureStart={beginGesture}
               onGestureEnd={endGesture}
             />

@@ -143,6 +143,51 @@ test.describe('Mixer (#381)', () => {
     await expect(drawer.locator('[data-mixer-transform="room"]')).toBeDisabled()
   })
 
+  test('per-column .gain("…") surfaces a master knob that rescales every column (#478)', async ({
+    page,
+  }) => {
+    await boot(page)
+    // A per-step velocity (what a cell drag writes). Before #478 this fell to a
+    // dead state: no knob (string arg) + `+ gain` disabled (gain present).
+    await setStrudelCode(page, '$: s("bd*8").gain("1 1 1 1 0.625 1 1 1")')
+    const drawer = await openMixer(page)
+
+    const slider = drawer.locator('[data-knob="gain"] [role="slider"]')
+    await expect(drawer.locator('[data-knob="gain"]')).toHaveCount(1) // the fix
+    await expect(slider).toHaveAttribute('aria-valuenow', '1') // ceiling = loudest column
+
+    // Drag the master knob DOWN → every column rescales proportionally.
+    const box = await slider.boundingBox()
+    if (!box) throw new Error('no knob box')
+    const cx = box.x + box.width / 2
+    const cy = box.y + box.height / 2
+    await page.mouse.move(cx, cy)
+    await page.mouse.down()
+    await page.mouse.move(cx, cy + 60, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(120)
+
+    const after = await strudelValue(page)
+    const m = after.match(/^\$: s\("bd\*8"\)\.gain\("([^"]+)"\)$/)
+    expect(m, `unexpected doc after drag: ${after}`).not.toBeNull()
+    const cols = m![1].split(' ').map(Number)
+    expect(cols).toHaveLength(8) // mini + column count intact
+    const ceiling = Math.max(...cols)
+    expect(ceiling).toBeLessThan(1) // dragged down
+    // the softened column (index 4) stays the lowest, at the original 0.625 ratio
+    expect(cols[4]).toBeLessThan(ceiling)
+    expect(cols[4] / ceiling).toBeCloseTo(0.625, 2)
+  })
+
+  test('a signal .gain still shows no knob — only managed numeric gains scale (#478)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd*8").gain(sine)')
+    const drawer = await openMixer(page)
+    await expect(drawer.locator('[data-knob="gain"]')).toHaveCount(0)
+  })
+
   test('standby when the cursor is not in an editable chunk', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '// just a comment')
