@@ -110,7 +110,7 @@ test.describe('full-song clip ops on a multi-track $: song', () => {
     expect(errors, errors.join('\n')).toEqual([])
   })
 
-  test('DELETE — select arm 0 (bd) + Delete removes the arm', async ({ page }) => {
+  test('DELETE — select arm 0 (bd) + Delete leaves a gap (silence) in its place', async ({ page }) => {
     const errors = setup(page)
     await bootShell(page)
     await typeSongAndEval(page, SONG)
@@ -121,8 +121,9 @@ test.describe('full-song clip ops on a multi-track $: song', () => {
     await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
     await grid.press('Delete')
 
+    // #491 — arm 0's bd becomes `[2, silence]`, width kept; later arms stay put.
     await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain(
-      'arrange([2, s("hh")], [4, s("cp")])',
+      'arrange([2, silence], [2, s("hh")], [4, s("cp")])',
     )
     await expectSiblingsUntouched(page)
     await page.screenshot({ path: 'test-results/clipop-delete.png' })

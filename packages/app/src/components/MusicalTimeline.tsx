@@ -53,7 +53,7 @@ import {
   detectArrangeAt,
   detectBarePattern,
   setWeight,
-  removeArm,
+  silenceArm,
   reorderArm,
   insertArm,
   splitArm,
@@ -1068,18 +1068,20 @@ export function MusicalTimeline(
   // Delete a clip on the Song canvas (Phase 5c, #386): the timeline hands up the
   // selected clip's lane source anchor + arm index. We parse the arrangement at
   // that anchor against the SAME snapshot text the offsets came from, build a
-  // surgical remove-arm edit (the serializer drops the arm + one separator), and
-  // route it through the write-back (source `arrange.structure`, the reserved
-  // structural-edit channel). A combinator's sole remaining arm is NOT removed
-  // (a lane keeps ≥1 clip, PV122 #5) — `removeArm` returns no edits, so this
-  // no-ops. The debounced re-eval republishes the IR and the lane re-derives.
+  // surgical GAP edit: `silenceArm` replaces the arm's pattern with `silence`,
+  // KEEPING its cycle width (#491) — the DAW-standard plain Delete leaves a gap,
+  // the arrangement timeline is absolute so later clips do NOT slide left (unlike
+  // a ripple `removeArm`). Routed through the write-back (`arrange.structure`).
+  // Deleting an already-silent clip is a no-op; silencing every arm (a muted
+  // track) is allowed. The debounced re-eval republishes the IR and the lane
+  // re-derives. (`removeArm` stays in @stave/editor for a future ripple-delete.)
   const handleDeleteClip = React.useCallback(
     (req: { sourceOffset: number | null; armIndex: number }) => {
       if (!snapshot?.source || req.sourceOffset == null) return
       const call = detectArrangeAt(snapshot.code, req.sourceOffset)
       if (call) {
         if (req.armIndex < 0 || req.armIndex >= call.arms.length) return
-        const edits = removeArm(snapshot.code, call, req.armIndex)
+        const edits = silenceArm(snapshot.code, call, req.armIndex)
         if (edits.length === 0) return
         applyOffsetEditsToFile(snapshot.source, edits, 'arrange.structure', snapshot.code)
         return

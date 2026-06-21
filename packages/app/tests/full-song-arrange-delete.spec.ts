@@ -61,7 +61,7 @@ function strudelSource(page: Page): Promise<string> {
   })
 }
 
-test('selecting arm 0’s clip and pressing Delete removes the arm from the source', async ({ page }) => {
+test('selecting arm 0’s clip and pressing Delete leaves a GAP (silence) in its place', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
@@ -87,14 +87,18 @@ test('selecting arm 0’s clip and pressing Delete removes the arm from the sour
   await page.mouse.click(box.x + box.width * 0.25, y)
   await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
 
-  // Delete the selected clip → the arm (and one separator) is removed. Use
-  // grid.press (focuses the widget first) not page.keyboard.press after a
-  // mouse.click — the latter dispatches to document.body (P178).
+  // Delete the selected clip → its pattern is replaced with `silence`, KEEPING
+  // its width (#491 — a gap, not a ripple; later clips stay put). Use grid.press
+  // (focuses the widget first) not page.keyboard.press after a mouse.click — the
+  // latter dispatches to document.body (P178).
   await grid.press('Delete')
 
-  // The remove-arm edit applied to the model; the debounced re-eval follows.
-  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain('arrange([2, s("hh")])')
-  // arm 0 (bd) is gone entirely.
+  // The silence-arm edit applied to the model; the debounced re-eval follows.
+  // arm 0 becomes `[2, silence]`, arm 1 (hh) unchanged in place.
+  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain(
+    'arrange([2, silence], [2, s("hh")])',
+  )
+  // arm 0's bd pattern is gone (replaced by silence); hh stays.
   expect(await strudelSource(page)).not.toContain('s("bd")')
 
   await page.screenshot({ path: 'test-results/arrange-delete.png' })

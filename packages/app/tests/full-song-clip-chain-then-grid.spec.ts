@@ -190,7 +190,9 @@ test('chained clip ops in one session compose, then the result binds the grid (o
     ['split', 's', 'arrange([2, s("bd")], [2, s("bd")], [4, s("hh")])'],
     ['duplicate', `${MOD}+d`, 'arrange([2, s("bd")], [2, s("bd")], [2, s("bd")], [4, s("hh")])'],
     ['split', 's', 'arrange([1, s("bd")], [1, s("bd")], [2, s("bd")], [2, s("bd")], [4, s("hh")])'],
-    ['delete', 'Delete', 'arrange([1, s("bd")], [2, s("bd")], [2, s("bd")], [4, s("hh")])'],
+    // #491 — Delete leaves a GAP: arm 0 becomes `[1, silence]` (width kept), the
+    // rest stay in place (not a ripple/remove).
+    ['delete', 'Delete', 'arrange([1, silence], [1, s("bd")], [2, s("bd")], [2, s("bd")], [4, s("hh")])'],
   ]
   for (const [name, key, expected] of steps) {
     await selectArm0AndPress(page, key)
