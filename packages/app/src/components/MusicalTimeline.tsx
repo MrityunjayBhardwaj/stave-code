@@ -266,24 +266,37 @@ function formatNoteTooltip(event: IREvent, fallbackTrackId: string): string {
  */
 function collectTopLevelSlots(
   node: PatternIR,
-): { slotKey: string; displayLabel: string }[] {
-  const summarize = (t: PatternIR): { slotKey: string; displayLabel: string } => {
+): { slotKey: string; displayLabel: string; pos: number | undefined }[] {
+  const summarize = (
+    t: PatternIR,
+    ordinal: number,
+  ): { slotKey: string; displayLabel: string; pos: number | undefined } => {
     const outer = t as Extract<PatternIR, { tag: 'Track' }>
     const pos = outer.loc?.[0]?.start
-    const slotKey = pos !== undefined ? `$${pos}` : outer.trackId
+    // Row identity is the `$:` ORDINAL (its index among the top-level `$:`
+    // tracks, in source order), NOT the source character offset (#483). A
+    // char-offset key churns whenever text ABOVE a track changes length:
+    // editing one track's content shifted the next track's offset, so its
+    // slotKey flipped and the old key lingered in `hasHadEventsRef` as a
+    // stale raw-`$N` ghost row. The ordinal is invariant under content edits
+    // and `.p()` renames; it only changes when `$:` lines are added, removed,
+    // or reordered — which is a genuine track-identity change. `pos` is still
+    // returned so events (which carry `dollarPos`) can be mapped to the slot.
+    const slotKey = `$${ordinal}`
     // Peek one level for a `.p()`-wrapped inner Track; that name becomes
     // the row label.
     const body = outer.body
     if (body.tag === 'Track' && body.userMethod === 'p') {
-      return { slotKey, displayLabel: body.trackId }
+      return { slotKey, displayLabel: body.trackId, pos }
     }
-    return { slotKey, displayLabel: outer.trackId }
+    return { slotKey, displayLabel: outer.trackId, pos }
   }
-  if (node.tag === 'Track') return [summarize(node)]
+  if (node.tag === 'Track') return [summarize(node, 0)]
   if (node.tag === 'Stack') {
-    const out: { slotKey: string; displayLabel: string }[] = []
+    const out: { slotKey: string; displayLabel: string; pos: number | undefined }[] = []
+    let ordinal = 0
     for (const child of node.tracks) {
-      if (child.tag === 'Track') out.push(summarize(child))
+      if (child.tag === 'Track') out.push(summarize(child, ordinal++))
     }
     return out
   }
@@ -291,12 +304,21 @@ function collectTopLevelSlots(
 }
 
 /** Compute the slot key for an event-derived group. The first event's
- *  `dollarPos` is the canonical identity; falling back to trackId
- *  matches the pre-`dollarPos` behavior for hand-built fixtures. */
-function groupSlotKey(group: { trackId: string; events: readonly IREvent[] }): string {
-  const first = group.events[0]
-  const pos = first?.dollarPos
-  return pos !== undefined ? `$${pos}` : group.trackId
+ *  `dollarPos` (source offset of its `$:` line) is mapped to the matching
+ *  IR slot's ORDINAL via `posToOrdinal` (#483), so the event side and the IR
+ *  side agree on the same stable key. Falls back to `trackId` for hand-built
+ *  fixtures or events with no matching `$:` slot (no `dollarPos`, or a
+ *  position the IR walk didn't surface). */
+function groupSlotKey(
+  group: { trackId: string; events: readonly IREvent[] },
+  posToOrdinal: ReadonlyMap<number, string>,
+): string {
+  const pos = group.events[0]?.dollarPos
+  if (pos !== undefined) {
+    const ordinalKey = posToOrdinal.get(pos)
+    if (ordinalKey !== undefined) return ordinalKey
+  }
+  return group.trackId
 }
 
 /**
@@ -725,6 +747,11 @@ export function MusicalTimeline(
   // entirely on stop+play. Cleared alongside slotMapRef on file switch
   // and on the transport-stop edge.
   const hasHadEventsRef = useRef<Set<string>>(new Set())
+  // #483 — last-seen display label per slotKey, so a reserved (ghosted) slot
+  // whose track is no longer in the IR (commented `$:` line) shows its last
+  // known orbit/`.p()` name instead of the raw internal slot key. Reset
+  // alongside slotMapRef/hasHadEventsRef on file switch + transport edge.
+  const slotLabelRef = useRef<Map<string, string>>(new Map())
 
   // File-switch reset: run BEFORE slot-map derivation so the new file's
   // tracks claim slots starting from 0 instead of inheriting the prior
@@ -732,6 +759,7 @@ export function MusicalTimeline(
   if (snapshot && snapshot.source !== lastSourceRef.current) {
     slotMapRef.current = new Map()
     hasHadEventsRef.current = new Set()
+    slotLabelRef.current = new Map()
     lastSourceRef.current = snapshot.source
   }
 
@@ -751,6 +779,7 @@ export function MusicalTimeline(
   if (prevCycleNullRef.current !== cycleIsNull) {
     slotMapRef.current = new Map()
     hasHadEventsRef.current = new Set()
+    slotLabelRef.current = new Map()
   }
   prevCycleNullRef.current = cycleIsNull
 
@@ -771,9 +800,16 @@ export function MusicalTimeline(
   // direct Track children. Nested `.p()` Tracks are inside those bodies
   // and contribute their NAME as a display label, not a separate slot.
   const irSlots = snapshot?.ir ? collectTopLevelSlots(snapshot.ir) : []
+  // #483 — map each `$:` track's source offset to its ordinal slotKey so the
+  // event groups (which carry `dollarPos`) resolve to the SAME stable key the
+  // IR walk assigned. Built fresh each render from the current IR.
+  const posToOrdinal = new Map<number, string>()
+  for (const s of irSlots) {
+    if (s.pos !== undefined) posToOrdinal.set(s.pos, s.slotKey)
+  }
   const groupBySlotKey = new Map<string, { displayLabel: string; events: readonly IREvent[] }>()
   for (const g of groups) {
-    const key = groupSlotKey(g)
+    const key = groupSlotKey(g, posToOrdinal)
     // Events from a `.p()`-wrapped Track carry the INNER trackId (the
     // user's chosen name). For events from a plain `$:` line, trackId
     // is the synthetic `d{N}`. Either way it's the right display label.
@@ -793,10 +829,14 @@ export function MusicalTimeline(
   for (const [key, { displayLabel }] of groupBySlotKey) {
     slotDisplay.set(key, displayLabel)
   }
+  // #483 — remember each slot's current label so a later ghost render (slot
+  // reserved but gone from the IR) shows the last known orbit/`.p()` name, not
+  // the raw ordinal key. Reset with the slot map on file switch + transport edge.
+  for (const [key, label] of slotDisplay) slotLabelRef.current.set(key, label)
 
   const currentSlotKeys = [
     ...irSlots.map((s) => s.slotKey),
-    ...groups.map(groupSlotKey),
+    ...groups.map((g) => groupSlotKey(g, posToOrdinal)),
   ]
   slotMapRef.current = stableTrackOrder(slotMapRef.current, currentSlotKeys)
   const slotMap = slotMapRef.current
@@ -805,16 +845,16 @@ export function MusicalTimeline(
   // entered into the set on a prior render with events; subsequent
   // event-less renders keep the row visible because its slot is still
   // in the set. Cleared on transport transitions + file switch.
-  for (const g of groups) hasHadEventsRef.current.add(groupSlotKey(g))
+  for (const g of groups) hasHadEventsRef.current.add(groupSlotKey(g, posToOrdinal))
 
   // Filter to slot keys that have ever produced events this session.
-  // Display label is read from `slotDisplay` so the chrome shows the
-  // inner `.p()` name when present, falling back to the outer `d{N}`.
+  // Display label is read from `slotDisplay` (live IR/event label), then the
+  // remembered label for a ghost slot, never the raw internal slotKey (#483).
   const orderedTracks = Array.from(slotMap.entries())
     .sort(([, a], [, b]) => a - b)
     .filter(([slotKey]) => hasHadEventsRef.current.has(slotKey))
     .map(([slotKey]) => ({
-      trackId: slotDisplay.get(slotKey) ?? slotKey,
+      trackId: slotDisplay.get(slotKey) ?? slotLabelRef.current.get(slotKey) ?? slotKey,
       events: groupBySlotKey.get(slotKey)?.events ?? [],
     }))
 
