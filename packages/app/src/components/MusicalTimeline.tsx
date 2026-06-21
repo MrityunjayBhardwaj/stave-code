@@ -1322,6 +1322,7 @@ export function MusicalTimeline(
         <FullSongTimeline
           analysis={analysis}
           ir={snapshot?.ir ?? null}
+          getHapStream={props.getHapStream}
           getSongPosition={props.getSongPosition ?? (() => null)}
           onSeek={props.onSeek ?? (() => {})}
           getDrawerOpen={props.getDrawerOpen}

@@ -24,12 +24,13 @@
 
 import * as React from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SongAnalysis, PatternIR } from '@stave/editor'
+import type { SongAnalysis, PatternIR, HapStream } from '@stave/editor'
 import {
   collectCycles,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
 } from '@stave/editor'
+import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
 import {
@@ -80,6 +81,10 @@ export interface FullSongTimelineProps {
   /** The evaluated IR snapshot — source of the mini-note marks the canvas draws
    *  (collected app-side over the display span). Null before the first eval. */
   readonly ir?: PatternIR | null
+  /** Live hap stream accessor — drives the per-note LIVE overlay (#500/U3): the
+   *  hap stream lights scene marks under the following playhead. Optional — the
+   *  overlay simply never lights when unset (the static scene still renders). */
+  readonly getHapStream?: () => HapStream | null
   /** Transport-offset-aware song position (cycles), or null when stopped. */
   readonly getSongPosition: () => number | null
   /** Seek the transport to an absolute song cycle. */
@@ -1262,6 +1267,20 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 contentWidth={contentWidth}
                 viewportWidth={areaWidth}
                 layout={layout}
+              />
+            )}
+            {/* Live overlay (#500/U3): lights the scene marks that are sounding
+                now, over the static base canvas, under the playhead. Sits ABOVE
+                the base canvas, BELOW the playhead/selection (DOM order). */}
+            {areaWidth > 0 && props.getHapStream && (
+              <SongTimelineLiveOverlay
+                scene={scene}
+                layout={layout}
+                scrollLeft={scrollLeft}
+                contentWidth={contentWidth}
+                viewportWidth={areaWidth}
+                playheadCycle={playheadVisible ? wrappedPos : null}
+                getHapStream={props.getHapStream}
               />
             )}
             {playheadVisible && (
