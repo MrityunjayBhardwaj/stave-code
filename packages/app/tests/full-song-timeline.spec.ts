@@ -3,7 +3,7 @@
  *
  * AnviDev observe gate: unit/component tests cover the analyze math and the
  * axis; this drives the REAL app to confirm the end-to-end path works —
- *   1. The "Song / Live" toggle switches the timeline into full-song mode.
+ *   1. The full-song canvas is the timeline's only view (#497/U5).
  *   2. analyzeSong runs on the REAL evaluated IR → lane rows + onset cells +
  *      section chips render (proves the IR-snapshot → analyzeSong wiring).
  *   3. A loop length is detected and shown ("loop N cycles" / "N cycles").
@@ -109,10 +109,8 @@ test('full-song view: analysis renders, loop detected, ruler seek fires without 
   await setStrudelCode(page, 'stack(s("bd hh bd hh"), s("~ cp"))')
   await evalStrudel(page)
 
-  // Switch to the full-song view.
-  const toggle = page.locator('[data-musical-timeline="view-toggle"]')
-  await toggle.waitFor({ timeout: 10_000 })
-  await toggle.click()
+  // The full-song canvas is the only timeline view now (#497/U5).
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
 
   // (1) Analysis renders lane rows from the real evaluated IR.
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
@@ -149,8 +147,4 @@ test('full-song view: analysis renders, loop detected, ruler seek fires without 
   // Still coherent after the seek/re-eval.
   expect(await page.locator('[data-full-song-lane]').count()).toBeGreaterThanOrEqual(2)
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
-
-  // Toggle back to the live window — round-trips cleanly.
-  await toggle.click()
-  await page.locator('[data-musical-timeline="ruler"]').waitFor({ timeout: 5_000 })
 })

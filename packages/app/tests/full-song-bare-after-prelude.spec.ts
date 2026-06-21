@@ -58,7 +58,8 @@ test('a bare pattern after a setcps prelude renders a timeline row', async ({ pa
   await bootShell(page)
   await typeSongAndEval(page, 'setcps(120/240)\nsound("bd hh sd")')
 
-  await page.locator('[data-musical-timeline="view-toggle"]').click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
 
   // The fix: at least one lane row appears (before the fix the IR had zero
   // events → zero lanes → an empty timeline).

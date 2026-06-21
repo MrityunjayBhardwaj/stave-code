@@ -108,9 +108,8 @@ test('full-song view: Follow auto-scrolls to keep the playhead in view; off free
   await evalStrudel(page)
 
   // Enter the full-song view and wait for analysis + a live playhead.
-  const toggle = page.locator('[data-musical-timeline="view-toggle"]')
-  await toggle.waitFor({ timeout: 10_000 })
-  await toggle.click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 8_000 })
 

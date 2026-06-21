@@ -86,9 +86,8 @@ test('full-song view: expanding a drum lane splits it into per-voice sub-rows (#
   await evalStrudel(page)
 
   // Enter the full-song view.
-  const toggle = page.locator('[data-musical-timeline="view-toggle"]')
-  await toggle.waitFor({ timeout: 10_000 })
-  await toggle.click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
 
   const heightCollapsed = await canvasHeight(page)
