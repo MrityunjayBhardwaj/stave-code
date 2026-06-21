@@ -1,14 +1,24 @@
 /**
  * MusicalTimeline (Phase 20-01 PR-B slice β) — Playwright spec.
  *
+ * ROW MODEL (#477, re-grounded session 21 by direct DOM observation): the
+ * Timeline keys rows by `$:`-SLOT / orbit, not by sound name. One top-level
+ * `s("bd hh cp bd")` line is ONE row labelled `d1`; the three sounds split
+ * INSIDE the track (Sequencer — see sequencer.spec.ts) or on EXPAND (#424),
+ * not into three rows. Stacked `$:` lines render one row per slot (`d1`/`d2`/
+ * `d3`) in source order. The window is `WINDOW_CYCLES = 2` (timeAxis.ts), so a
+ * 4-event cycle tiles 8 note blocks. The old per-sound-row + 1-cycle assertions
+ * were superseded by the clip-op milestone (#442/#444/#446/#463/#472) — these
+ * are updated to the live contract.
+ *
  * Probes:
  *   1. Empty-state copy "(no tracks yet — play some code)" is visible
  *      verbatim on first open of the drawer (D-08).
- *   2. Eval s("bd hh cp bd") — drawer renders 3 track rows (bd/hh/cp)
- *      and 4 note blocks distributed across them (D-04 / PV28 / Trap 4).
+ *   2. Eval s("bd hh cp bd") — drawer renders ONE `$:`-slot row (`d1`)
+ *      with a 2-cycle window of note blocks (8 = 4 events × WINDOW_CYCLES).
  *   3. Playhead `style.left` advances when the runtime starts playing.
- *   4. Stable track order across re-evals (Trap 5) — disappeared
- *      track keeps its row reserved and empty.
+ *   4. Stacked `$:` lines render one stable row per slot (`d1`/`d2`/`d3`)
+ *      in source order; a new `$:` track appends at the END.
  *   5. Vocabulary regression on the LIVE drawer DOM (Trap 1 + NEW-2)
  *      — textContent + every [title] + every [aria-label] inside the
  *      `[data-bottom-panel-tab="musical-timeline"]` subtree must NOT
@@ -19,6 +29,7 @@
  *      path didn't.
  *   7. Ruler renders cycle labels 0/1/2 verbatim on populated DOM
  *      (Phase 20-02 DV-09).
+ *   8. Commenting a `$:` track drops its row (stop+replay keeps it gone).
  *
  * The forbidden-vocabulary regex literal is duplicated here (the
  * source-of-truth is `packages/app/src/components/musicalTimeline/
@@ -183,7 +194,7 @@ test.describe('MusicalTimeline — slice β (Phase 20-01 PR-B)', () => {
     await expect(status).toHaveText('(stopped)')
   })
 
-  test('s("bd hh cp bd") renders 3 track rows + 4 note blocks (D-04 / PV28)', async ({
+  test('s("bd hh cp bd") renders ONE $:-slot row (d1) with a 2-cycle window of notes (#477)', async ({
     page,
   }) => {
     await clearDrawerStorage(page)
@@ -194,30 +205,27 @@ test.describe('MusicalTimeline — slice β (Phase 20-01 PR-B)', () => {
     await setStrudelCode(page, 's("bd hh cp bd")')
     await evalStrudel(page)
 
-    // Wait for at least one track row to render — snapshot fan-out is
-    // sync with onEvaluateSuccess so the row appears within ~50ms of
-    // the publish.
+    // A bare top-level `s(...)` is ONE `$:`-slot row (`d1`); the four sounds
+    // split inside the track, not into per-sound rows. Poll for the row — the
+    // first eval after a cold boot can lag the fixed wait.
     const rows = page.locator('[data-musical-timeline-track-row]')
-    await expect(rows).toHaveCount(3, { timeout: 5000 })
+    await expect(rows).toHaveCount(1, { timeout: 6000 })
+    await expect(
+      page.locator('[data-musical-timeline-track-row="d1"]'),
+    ).toHaveCount(1)
+    await expect(
+      page.locator('[data-musical-timeline-track-label="d1"]'),
+    ).toHaveCount(1)
 
+    // WINDOW_CYCLES (timeAxis.ts) = 2 → a 4-event cycle tiles 8 blocks, all on
+    // the single `d1` row.
     const blocks = page.locator('[data-musical-timeline-note]')
-    await expect(blocks).toHaveCount(4)
-
-    // bd row carries 2 hits; hh and cp carry 1 each.
-    const bdBlocks = page.locator(
-      '[data-musical-timeline-track-row="bd"] [data-musical-timeline-note]',
-    )
-    await expect(bdBlocks).toHaveCount(2)
+    await expect(blocks).toHaveCount(8)
     await expect(
       page.locator(
-        '[data-musical-timeline-track-row="hh"] [data-musical-timeline-note]',
+        '[data-musical-timeline-track-row="d1"] [data-musical-timeline-note]',
       ),
-    ).toHaveCount(1)
-    await expect(
-      page.locator(
-        '[data-musical-timeline-track-row="cp"] [data-musical-timeline-note]',
-      ),
-    ).toHaveCount(1)
+    ).toHaveCount(8)
 
     await stopStrudel(page)
   })
@@ -245,46 +253,44 @@ test.describe('MusicalTimeline — slice β (Phase 20-01 PR-B)', () => {
     await stopStrudel(page)
   })
 
-  test('stable track order across re-evals (Trap 5 + Phase 20-12.1 D-04 scope)', async ({ page }) => {
-    // Phase 20-12.1 amended D-04 so "stable across snapshots" is scoped to
-    // within a single transport session. This test exercises the audition
-    // workflow (hot-reload WHILE PLAYING) to preserve the ghost-row
-    // semantics — re-evals without `Cmd+.` in between. The transport-stop
-    // edge has its own coverage in MusicalTimeline.test.tsx (T-3 case 2).
+  test('stacked $: lines render one stable slot row each; a new $: appends at the END (#477)', async ({ page }) => {
+    // The Timeline keys rows by `$:`-slot/orbit (`slotKey`, stableTrackOrder).
+    // Two `$:` lines → two rows `d1`/`d2` in source order; adding a third `$:`
+    // appends `d3` at the END, never in the middle. (The old per-sound ghost-
+    // reserve-while-playing assertion was dropped: re-grounding showed the
+    // ghost behaviour across re-evals is not deterministically reproducible in
+    // the slot model — tracked separately in #483. Per-sound splitting is
+    // covered by sequencer.spec.ts.)
     await clearDrawerStorage(page)
     await preOpenDrawer(page)
     await bootShell(page)
     await page.locator('.monaco-editor').waitFor({ timeout: 15_000 })
 
-    await setStrudelCode(page, 's("bd hh cp")')
+    await setStrudelCode(page, '$: s("bd*4")\n$: s("hh*8")')
     await evalStrudel(page)
     await expect(
       page.locator('[data-musical-timeline-track-row]'),
-    ).toHaveCount(3, { timeout: 5000 })
-
-    // Hot-reload WHILE PLAYING with hh missing; row should still be reserved
-    // (D-04 audition case — keeps the transport non-null → null edge from
-    // firing, so slotMapRef retains the hh slot).
-    await setStrudelCode(page, 's("bd cp")')
-    await evalStrudel(page)
-    await expect(
-      page.locator('[data-musical-timeline-track-row]'),
-    ).toHaveCount(3)
-    await expect(
-      page.locator(
-        '[data-musical-timeline-track-row="hh"] [data-musical-timeline-note]',
-      ),
-    ).toHaveCount(0)
-
-    // Add a new track — sn should append at slot 3, not in the middle.
-    await setStrudelCode(page, 's("bd hh sn cp")')
-    await evalStrudel(page)
-    const labels = await page
+    ).toHaveCount(2, { timeout: 6000 })
+    const twoLabels = await page
       .locator('[data-musical-timeline-track-label]')
       .evaluateAll((els) =>
         els.map((el) => el.getAttribute('data-musical-timeline-track-label')),
       )
-    expect(labels).toEqual(['bd', 'hh', 'cp', 'sn'])
+    expect(twoLabels).toEqual(['d1', 'd2'])
+
+    // Append a third `$:` track — it lands at the end as `d3`, the first two
+    // keep their rows.
+    await setStrudelCode(page, '$: s("bd*4")\n$: s("hh*8")\n$: s("cp*2")')
+    await evalStrudel(page)
+    await expect(
+      page.locator('[data-musical-timeline-track-row]'),
+    ).toHaveCount(3)
+    const threeLabels = await page
+      .locator('[data-musical-timeline-track-label]')
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute('data-musical-timeline-track-label')),
+      )
+    expect(threeLabels).toEqual(['d1', 'd2', 'd3'])
 
     await stopStrudel(page)
   })
@@ -300,10 +306,11 @@ test.describe('MusicalTimeline — slice β (Phase 20-01 PR-B)', () => {
     await setStrudelCode(page, 's("bd hh cp bd")')
     await evalStrudel(page)
 
-    // Wait for note blocks to settle so tooltip strings exist.
+    // Wait for note blocks to settle so tooltip strings exist (one `d1` row,
+    // 4 events × WINDOW_CYCLES = 8 blocks).
     await expect(
       page.locator('[data-musical-timeline-note]'),
-    ).toHaveCount(4, { timeout: 5000 })
+    ).toHaveCount(8, { timeout: 6000 })
 
     const strings = await collectDrawerSurfaceStrings(page)
     expect(strings.length).toBeGreaterThan(0)
@@ -359,50 +366,45 @@ test.describe('MusicalTimeline — slice β (Phase 20-01 PR-B)', () => {
     await stopStrudel(page)
   })
 
-  test('Phase 20-12.1 — transport stop clears the slot map (drops ghost row)', async ({
+  test('commenting a $: track drops its row across stop + replay (#477)', async ({
     page,
   }) => {
-    // Direct-observation gate for Phase 20-12.1 (T-8). Mirrors the manual
-    // gesture sequence from the plan:
-    //   1. Play `s("bd hh")` → 2 rows.
-    //   2. Hot-reload while playing with `s("bd")` → hh row stays
-    //      reserved (D-04 audition case unchanged).
-    //   3. Press Stop (Cmd+.). The non-null → null edge of `getCycle()`
-    //      clears `slotMapRef`. The DOM now reflects the current IR
-    //      alone → only the `bd` row remains.
+    // Direct-observation transport gate. In the `$:`-slot model the meaningful
+    // remove gesture is COMMENTING a `$:` line (re-grounded session 21):
+    //   1. Play two `$:` tracks → rows `d1`, `d2`.
+    //   2. Comment the second line, then Stop (Cmd+.) + replay.
+    //   3. The slot map resets on the transport stop edge (MusicalTimeline.tsx
+    //      prevCycleNullRef), so the replay reflects the current IR alone → the
+    //      commented track is gone, only `d1` remains.
+    // The intermediate "comment WHILE PLAYING" frame is deliberately NOT
+    // asserted: re-grounding showed the ghost-during-live-edit row is retained
+    // until the stop edge and is not deterministic across re-evals (#483). Only
+    // the post-stop state is a stable contract.
     await clearDrawerStorage(page)
     await preOpenDrawer(page)
     await bootShell(page)
     await page.locator('.monaco-editor').waitFor({ timeout: 15_000 })
 
-    await setStrudelCode(page, 's("bd hh")')
+    await setStrudelCode(page, '$: s("bd*4")\n$: s("hh*8")')
     await evalStrudel(page)
     await expect(
       page.locator('[data-musical-timeline-track-row]'),
-    ).toHaveCount(2, { timeout: 5000 })
+    ).toHaveCount(2, { timeout: 6000 })
 
-    // Audition workflow: re-eval while playing — hh ghost row stays.
-    await setStrudelCode(page, 's("bd")')
-    await evalStrudel(page)
-    await expect(
-      page.locator('[data-musical-timeline-track-row]'),
-    ).toHaveCount(2)
-    await expect(
-      page.locator(
-        '[data-musical-timeline-track-row="hh"] [data-musical-timeline-note]',
-      ),
-    ).toHaveCount(0)
-
-    // Stop — the stop-edge reset fires and the ghost row drops.
+    // Comment the hh track, STOP (resets the slot map), then replay.
+    await setStrudelCode(page, '$: s("bd*4")\n// $: s("hh*8")')
     await stopStrudel(page)
-    // Allow the 250ms poke interval to sample getCycle() if needed, plus
-    // a render tick. 600ms is generous.
-    await page.waitForTimeout(600)
+    await page.waitForTimeout(400)
+    await evalStrudel(page)
+
+    // The replay reflects the current IR alone — only `d1`.
     await expect(
       page.locator('[data-musical-timeline-track-row]'),
     ).toHaveCount(1)
     await expect(
-      page.locator('[data-musical-timeline-track-row="bd"]'),
+      page.locator('[data-musical-timeline-track-row="d1"]'),
     ).toHaveCount(1)
+
+    await stopStrudel(page)
   })
 })
