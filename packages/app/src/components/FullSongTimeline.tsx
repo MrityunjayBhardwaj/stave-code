@@ -31,6 +31,11 @@ import {
 } from '@stave/editor'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
+import {
+  applyStableVoiceOrder,
+  EMPTY_VOICE_ORDER,
+  type VoiceOrderByLane,
+} from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import { SongTimelineCanvas } from './SongTimelineCanvas'
@@ -375,7 +380,19 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // collect + build run only when the analysis or IR changes — NOT on scroll or
   // zoom (those only move the shared transform the canvas already redraws against).
   const marks = useMemo(() => collectNoteMarks(props.ir ?? null, displayCycles), [props.ir, displayCycles])
-  const scene = useMemo(() => buildTimelineScene(analysis, marks), [analysis, marks])
+  // Per-lane voice sub-row order is pinned first-seen across re-evals (#480) so
+  // reordering clips in time doesn't reshuffle the instrument rows — the SAME
+  // first-seen stability `stableTrackOrder` gives the top-level lanes, one level
+  // down. The previous order rides in a ref and is threaded back each rebuild
+  // (mirrors MusicalTimeline's `slotMapRef`). Recomputed only when the analysis
+  // or marks change (NOT on scroll/zoom), and idempotent on a no-op re-eval.
+  const voiceOrderRef = useRef<VoiceOrderByLane>(EMPTY_VOICE_ORDER)
+  const scene = useMemo(() => {
+    const raw = buildTimelineScene(analysis, marks)
+    const { scene: ordered, order } = applyStableVoiceOrder(raw, voiceOrderRef.current)
+    voiceOrderRef.current = order
+    return ordered
+  }, [analysis, marks])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
