@@ -114,6 +114,25 @@ export function removeArm(doc: string, call: ArrangeCall, i: number): OffsetEdit
 }
 
 /**
+ * #491 — GAP delete: silence arm `i` IN PLACE, keeping its cycle width. The
+ * DAW-standard plain Delete leaves a gap (the arrangement timeline is absolute —
+ * later clips do NOT slide left), unlike `removeArm` which ripples the arm out and
+ * shortens the loop. We replace ONLY the arm's pattern with `silence`, preserving
+ * the `[n, …]` weight wrapper (and every other arm verbatim):
+ *   `[n, pat]`        →  `[n, silence]`   (arrange arm — width n kept)
+ *   `pat` (cat arm)   →  `silence`        (implicit width 1 kept)
+ * Already-silent arm → no edits. Silencing every arm is allowed (a muted track,
+ * `arrange([n, silence])` is valid) — unlike `removeArm`, this never empties the
+ * combinator, so there's no sole-arm guard. Pure text surgery (PV123).
+ */
+export function silenceArm(doc: string, call: ArrangeCall, i: number): OffsetEdit[] {
+  const arm = call.arms[i]
+  if (!arm) return []
+  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === 'silence') return []
+  return [{ range: arm.patternRange, text: 'silence' }]
+}
+
+/**
  * §2.1 "introduce the combinator". A bare steady pattern has no `arrange` to
  * edit; the first time it is placed in time it must be WRAPPED:
  *   `pattern`  →  `arrange([leadingWeight, silence], [patternWeight, pattern])`

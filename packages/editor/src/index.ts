@@ -526,6 +526,7 @@ export {
   reorderArm,
   insertArm,
   removeArm,
+  silenceArm,
   wrapBare,
   materializeBareDelete,
   materializeBareSplit,

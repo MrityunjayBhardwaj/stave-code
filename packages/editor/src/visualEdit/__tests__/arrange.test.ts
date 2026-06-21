@@ -17,6 +17,7 @@ import {
   reorderArm,
   insertArm,
   removeArm,
+  silenceArm,
   wrapBare,
   materializeBareDelete,
   materializeBareSplit,
@@ -255,6 +256,36 @@ describe('arrange serializer — surgical, byte-fidelity', () => {
     const doc = 'arrange([2, s("bd")])'
     const call = detectArrangeAt(doc, 0)!
     expect(removeArm(doc, call, 0)).toEqual([])
+  })
+
+  // #491 — GAP delete: silence an arm IN PLACE, keeping its width (later arms
+  // do NOT slide left — the timeline is absolute, unlike removeArm's ripple).
+  it('silence-arm replaces the arm pattern with silence, width kept', () => {
+    const doc = 'arrange([2, s("bd")], [1, s("hh")], [1, s("cp")])'
+    const call = detectArrangeAt(doc, 0)!
+    expect(applyEdits(doc, silenceArm(doc, call, 1))).toBe(
+      'arrange([2, s("bd")], [1, silence], [1, s("cp")])',
+    )
+    // last arm — same in-place silencing, no separator change
+    expect(applyEdits(doc, silenceArm(doc, call, 2))).toBe(
+      'arrange([2, s("bd")], [1, s("hh")], [1, silence])',
+    )
+  })
+
+  it('silence-arm on a cat arm (implicit weight 1) → silence', () => {
+    const doc = 'cat(s("bd"), s("hh"))'
+    const call = detectArrangeAt(doc, 0)!
+    expect(applyEdits(doc, silenceArm(doc, call, 0))).toBe('cat(silence, s("hh"))')
+  })
+
+  it('silence-arm is a no-op on an already-silent arm; may silence the sole arm', () => {
+    const doc = 'arrange([2, silence], [1, s("hh")])'
+    const call = detectArrangeAt(doc, 0)!
+    expect(silenceArm(doc, call, 0)).toEqual([]) // already silence
+    // unlike removeArm, silencing the SOLE arm is allowed (a muted track)
+    const solo = 'arrange([4, s("bd")])'
+    const soloCall = detectArrangeAt(solo, 0)!
+    expect(applyEdits(solo, silenceArm(solo, soloCall, 0))).toBe('arrange([4, silence])')
   })
 
   it('insert-arm adds an arm at an index and at the end', () => {
