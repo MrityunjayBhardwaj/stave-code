@@ -847,6 +847,20 @@ export function MusicalTimeline(
   // in the set. Cleared on transport transitions + file switch.
   for (const g of groups) hasHadEventsRef.current.add(groupSlotKey(g, posToOrdinal))
 
+  // #485 — labels currently shown by a LIVE slot (one that has events THIS
+  // render). A `$:` ordinal is positional, so a structural edit (add/remove/
+  // reorder/comment a `$:` line, or the bare→multi transition where the bare row
+  // keyed by `trackId` and the new first `$:` keys by `$0`) renumbers tracks and
+  // leaves a STALE ghost slot whose remembered label is now displayed by a live
+  // row. Such a ghost is an inheritance of another track's slot — it must be
+  // dropped, never rendered as a duplicate/phantom row (the row's events are
+  // looked up by trackId in the grid, so a duplicate-labelled ghost even mirrors
+  // the live row's notes). Live orbit labels (`d1`/`d2`/…) and `.p()` names are
+  // unique per `$:` line, so this only ever removes a colliding GHOST.
+  const liveLabels = new Set<string>()
+  for (const key of groupBySlotKey.keys()) {
+    liveLabels.add(slotDisplay.get(key) ?? slotLabelRef.current.get(key) ?? key)
+  }
   // Filter to slot keys that have ever produced events this session.
   // Display label is read from `slotDisplay` (live IR/event label), then the
   // remembered label for a ghost slot, never the raw internal slotKey (#483).
@@ -857,6 +871,8 @@ export function MusicalTimeline(
       trackId: slotDisplay.get(slotKey) ?? slotLabelRef.current.get(slotKey) ?? slotKey,
       events: groupBySlotKey.get(slotKey)?.events ?? [],
     }))
+    // Drop a ghost (no events this render) whose label a live row already shows.
+    .filter((t) => t.events.length > 0 || !liveLabels.has(t.trackId))
 
   // ── Phase 20-06: HapStream subscription drives activeKeys (D-01 / DEC-NEW-1)
   // ────────────────────────────────────────────────────────────────────────
