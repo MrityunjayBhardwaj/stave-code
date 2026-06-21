@@ -40,6 +40,10 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
+import {
+  loadTimelineCamera,
+  saveTimelineCamera,
+} from './musicalTimeline/timelineCameraPersistence'
 import { SongTimelineCanvas } from './SongTimelineCanvas'
 import {
   songCycleToX,
@@ -244,7 +248,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // the grid scrolls horizontally. The ruler tracks the grid's scrollLeft (one
   // scrollbar, on the grid). Refs mirror state so the imperative wheel/button
   // handlers and the seek math read live values without stale closures.
-  const [zoom, setZoom] = useState(MIN_ZOOM)
+  // Seed zoom from the persisted camera (#501/U4) so a reload restores the
+  // user's last zoom; clamp it to the live range in case MIN/MAX moved.
+  const [zoom, setZoom] = useState(() => {
+    const c = loadTimelineCamera()
+    return c && Number.isFinite(c.zoom) ? clampZoom(c.zoom) : MIN_ZOOM
+  })
   const [scrollLeft, setScrollLeft] = useState(0)
   const [units, setUnits] = useState<RulerUnits>('cycles')
   const zoomRef = useRef(zoom)
@@ -500,7 +509,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // alignment). The layout is the single vertical source of truth shared by the
   // canvas draw, the canvas host height, the DOM lane labels, and the hit-test.
   const { onBindLane } = props
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  // Seed expanded lanes from the persisted camera (#501/U4). Stale lane keys
+  // (from another song) are harmless — computeLaneLayout only expands lanes
+  // present in the current scene.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(loadTimelineCamera()?.expanded ?? []),
+  )
   // Lane + per-voice sub-row height follow the shared "timeline row height"
   // editor setting (#459) — the same source the Live monitor reads — so the
   // Song view matches it instead of a private constant. The setting governs
@@ -519,6 +533,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   sceneRef.current = scene
   const layoutRef = useRef<LaneLayout>(layout)
   layoutRef.current = layout
+
+  // Persist the camera (zoom + expanded lanes) so a reload restores it
+  // (#501/U4). Global, best-effort; fires on each change — these are user
+  // gestures (zoom button/wheel, expand toggle), not per-frame churn.
+  useEffect(() => {
+    saveTimelineCamera({ zoom, expanded: [...expanded] })
+  }, [zoom, expanded])
 
   // Toggle a lane's expansion and bind it into the Pattern panel. Binding fires
   // on every activation (expand OR collapse) — clicking a lane selects it.
