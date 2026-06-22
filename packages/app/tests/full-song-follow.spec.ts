@@ -1,12 +1,11 @@
 /**
  * Full-song view: follow playhead (auto-scroll) — Playwright observation spec (#415).
  *
- * AnviDev observe gate: songAxis.test.ts covers the followScrollLeft math and
- * FullSongTimeline.test.tsx covers the toggle in jsdom (which has no real
- * layout/scroll); this drives the REAL app to confirm the end-to-end behaviour
- * against a real playing song —
+ * AnviDev observe gate: songAxis.test.ts covers the followScrollLeft math
+ * (center-lock, #505); this drives the REAL app to confirm the end-to-end
+ * behaviour against a real playing song —
  *   1. With the song zoomed in and Follow ON (default), the grid auto-scrolls
- *      to keep the moving playhead within the viewport (scrollLeft tracks it).
+ *      to keep the moving playhead centered (scrollLeft tracks it).
  *   2. With Follow OFF, the view stays where the user left it (no auto-scroll)
  *      even as the playhead drifts past the edge.
  *   3. No console / page errors throughout.
@@ -69,22 +68,24 @@ async function evalStrudel(page: Page): Promise<void> {
   await page.waitForTimeout(1800)
 }
 
-/** Sample the grid's scrollLeft, the playhead's content-x, and the viewport
- *  width over `n` ticks spaced `gapMs` apart. */
+/** Sample the grid's scrollLeft, the playhead's ON-SCREEN viewport-x, and the
+ *  viewport width over `n` ticks spaced `gapMs` apart. The playhead now lives in
+ *  a sticky marks overlay positioned at `contentX - scrollLeft` (#506), so its
+ *  on-screen x is read directly from the bounding rects (rect.x - grid rect.x),
+ *  not derived by subtracting scrollLeft. */
 async function sampleScroll(
   page: Page,
   n: number,
   gapMs: number,
-): Promise<Array<{ scrollLeft: number; playheadX: number; clientWidth: number }>> {
-  const out: Array<{ scrollLeft: number; playheadX: number; clientWidth: number }> = []
+): Promise<Array<{ scrollLeft: number; viewportX: number; clientWidth: number }>> {
+  const out: Array<{ scrollLeft: number; viewportX: number; clientWidth: number }> = []
   for (let i = 0; i < n; i++) {
     const s = await page.locator('[data-full-song="grid"]').evaluate((el) => {
       const playhead = el.querySelector('[data-full-song="playhead"]') as HTMLElement | null
+      const gridX = el.getBoundingClientRect().x
       return {
         scrollLeft: el.scrollLeft,
-        // offsetLeft is content-space x (grid-content is not translated; the
-        // grid scrolls natively), so playheadX - scrollLeft is the on-screen x.
-        playheadX: playhead ? playhead.offsetLeft : Number.NaN,
+        viewportX: playhead ? playhead.getBoundingClientRect().x - gridX : Number.NaN,
         clientWidth: el.clientWidth,
       }
     })
@@ -108,9 +109,8 @@ test('full-song view: Follow auto-scrolls to keep the playhead in view; off free
   await evalStrudel(page)
 
   // Enter the full-song view and wait for analysis + a live playhead.
-  const toggle = page.locator('[data-musical-timeline="view-toggle"]')
-  await toggle.waitFor({ timeout: 10_000 })
-  await toggle.click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 8_000 })
 
@@ -119,7 +119,8 @@ test('full-song view: Follow auto-scrolls to keep the playhead in view; off free
   expect(await followToggle.getAttribute('data-follow')).toBe('on')
 
   // Zoom in hard so the content is many viewports wide — the playhead then
-  // sweeps well past the dead-zone band each cycle, forcing follow to scroll.
+  // sweeps across the viewport and follow (center-lock, #505) scrolls to keep it
+  // centered.
   for (let i = 0; i < 6; i++) await page.locator('[data-full-song-zoom-in]').click()
   const grid = page.locator('[data-full-song="grid"]')
   const overflow = await grid.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }))
@@ -131,12 +132,51 @@ test('full-song view: Follow auto-scrolls to keep the playhead in view; off free
   const onScrolls = onSamples.map((s) => s.scrollLeft)
   const scrollRange = Math.max(...onScrolls) - Math.min(...onScrolls)
   expect(scrollRange, `follow ON should auto-scroll; samples=${onScrolls.join(',')}`).toBeGreaterThan(5)
+  const viewportXs: number[] = []
   for (const s of onSamples) {
-    if (Number.isNaN(s.playheadX)) continue // playhead briefly absent between wraps
-    const viewportX = s.playheadX - s.scrollLeft
-    expect(viewportX).toBeGreaterThanOrEqual(-24)
-    expect(viewportX).toBeLessThanOrEqual(s.clientWidth + 24)
+    if (Number.isNaN(s.viewportX)) continue // playhead briefly absent between wraps
+    expect(s.viewportX).toBeGreaterThanOrEqual(-24)
+    expect(s.viewportX).toBeLessThanOrEqual(s.clientWidth + 24)
+    viewportXs.push(s.viewportX - s.clientWidth / 2) // signed distance from centre
   }
+  // (1b) Center-lock (#505): away from the start/end clamp the playhead sits at
+  //      the viewport centre — at least one sample is within ~15% of centre.
+  //      (Samples near a loop wrap are clamped left, so we assert "some", not
+  //      "all", to stay robust to the short starter loop.)
+  const cw = onSamples[0]?.clientWidth ?? 0
+  const nearCentre = viewportXs.some((d) => Math.abs(d) <= cw * 0.15)
+  expect(
+    nearCentre,
+    `center-lock should hold the playhead near centre; offsets=${viewportXs.map((d) => Math.round(d)).join(',')}`,
+  ).toBe(true)
+
+  // (1c) No jitter (#506): with the playhead center-locked, its ON-SCREEN x must
+  //      be steady frame-to-frame. The old content-space playhead differenced the
+  //      native (integer, current-frame) scroll against the canvas's React (float,
+  //      lagged) scroll → a ~±2px sign-flipping sawtooth EVERY frame. Sample the
+  //      on-screen x each animation frame and assert almost no sign-flips.
+  const flipRatio = await grid.evaluate(async (el) => {
+    const ph = el.querySelector('[data-full-song="playhead"]') as HTMLElement
+    const gridX = el.getBoundingClientRect().x
+    const xs: number[] = []
+    await new Promise<void>((resolve) => {
+      let n = 0
+      const tick = () => {
+        xs.push(ph.getBoundingClientRect().x - gridX)
+        if (++n >= 90) return resolve()
+        requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
+    const d = xs.slice(1).map((x, i) => +(x - xs[i]).toFixed(2))
+    let flips = 0
+    for (let i = 1; i < d.length; i++) {
+      if (d[i] !== 0 && d[i - 1] !== 0 && Math.sign(d[i]) !== Math.sign(d[i - 1])) flips++
+    }
+    return flips / d.length
+  })
+  // Pre-fix this was ~1.0 (flip every frame); the fix drives it to ~0.
+  expect(flipRatio, `playhead on-screen x should not sawtooth; flipRatio=${flipRatio.toFixed(2)}`).toBeLessThan(0.2)
 
   // (2) Follow OFF → the view stays put. Turn it off, park the scroll, wait past
   //     the manual-scroll guard, then confirm scrollLeft no longer tracks.

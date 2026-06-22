@@ -24,12 +24,13 @@
 
 import * as React from 'react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SongAnalysis, PatternIR } from '@stave/editor'
+import type { SongAnalysis, PatternIR, HapStream } from '@stave/editor'
 import {
   collectCycles,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
 } from '@stave/editor'
+import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { buildTimelineScene, clipAtCycle } from './musicalTimeline/timelineScene'
 import {
@@ -39,12 +40,17 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks } from './musicalTimeline/timelineMarks'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
+import {
+  loadTimelineCamera,
+  saveTimelineCamera,
+} from './musicalTimeline/timelineCameraPersistence'
 import { SongTimelineCanvas } from './SongTimelineCanvas'
 import {
   songCycleToX,
   xToSongCycle,
   wrapSongPosition,
   clampZoom,
+  clampRestoreZoom,
   contentWidthFor,
   scrollLeftForZoom,
   followScrollLeft,
@@ -80,6 +86,10 @@ export interface FullSongTimelineProps {
   /** The evaluated IR snapshot — source of the mini-note marks the canvas draws
    *  (collected app-side over the display span). Null before the first eval. */
   readonly ir?: PatternIR | null
+  /** Live hap stream accessor — drives the per-note LIVE overlay (#500/U3): the
+   *  hap stream lights scene marks under the following playhead. Optional — the
+   *  overlay simply never lights when unset (the static scene still renders). */
+  readonly getHapStream?: () => HapStream | null
   /** Transport-offset-aware song position (cycles), or null when stopped. */
   readonly getSongPosition: () => number | null
   /** Seek the transport to an absolute song cycle. */
@@ -239,7 +249,17 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // the grid scrolls horizontally. The ruler tracks the grid's scrollLeft (one
   // scrollbar, on the grid). Refs mirror state so the imperative wheel/button
   // handlers and the seek math read live values without stale closures.
-  const [zoom, setZoom] = useState(MIN_ZOOM)
+  // Seed zoom from the persisted camera (#501/U4) so a reload restores the
+  // user's last zoom — but cap the *restored* value (#505): an extreme stored
+  // zoom would land on a center-locked playhead (the song scrolls under a pinned
+  // playhead) that reads as frozen on a fresh load. `clampRestoreZoom` keeps the
+  // landing within a range where the playhead visibly glides; live zoom still
+  // spans the full `clampZoom` range. The save effect below then re-persists the
+  // capped value, so the camera converges to a restorable zoom.
+  const [zoom, setZoom] = useState(() => {
+    const c = loadTimelineCamera()
+    return c && Number.isFinite(c.zoom) ? clampRestoreZoom(c.zoom) : MIN_ZOOM
+  })
   const [scrollLeft, setScrollLeft] = useState(0)
   const [units, setUnits] = useState<RulerUnits>('cycles')
   const zoomRef = useRef(zoom)
@@ -495,7 +515,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // alignment). The layout is the single vertical source of truth shared by the
   // canvas draw, the canvas host height, the DOM lane labels, and the hit-test.
   const { onBindLane } = props
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  // Seed expanded lanes from the persisted camera (#501/U4). Stale lane keys
+  // (from another song) are harmless — computeLaneLayout only expands lanes
+  // present in the current scene.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(loadTimelineCamera()?.expanded ?? []),
+  )
   // Lane + per-voice sub-row height follow the shared "timeline row height"
   // editor setting (#459) — the same source the Live monitor reads — so the
   // Song view matches it instead of a private constant. The setting governs
@@ -514,6 +539,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   sceneRef.current = scene
   const layoutRef = useRef<LaneLayout>(layout)
   layoutRef.current = layout
+
+  // Persist the camera (zoom + expanded lanes) so a reload restores it
+  // (#501/U4). Global, best-effort; fires on each change — these are user
+  // gestures (zoom button/wheel, expand toggle), not per-frame churn.
+  useEffect(() => {
+    saveTimelineCamera({ zoom, expanded: [...expanded] })
+  }, [zoom, expanded])
 
   // Toggle a lane's expansion and bind it into the Pattern panel. Binding fires
   // on every activation (expand OR collapse) — clicking a lane selects it.
@@ -1264,36 +1296,70 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 layout={layout}
               />
             )}
-            {playheadVisible && (
-              <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX }} />
-            )}
-            {trimEdgeX != null && (
-              <div data-full-song="trim-edge" style={{ ...styles.trimEdge, left: trimEdgeX }} />
-            )}
-            {selectionRect && (
-              <div
-                data-full-song="clip-selection"
-                style={{
-                  ...styles.clipSelection,
-                  left: selectionRect.left,
-                  width: selectionRect.width,
-                  top: selectionRect.top,
-                  height: selectionRect.height,
-                }}
+            {/* Live overlay (#500/U3): lights the scene marks that are sounding
+                now, over the static base canvas, under the playhead. Sits ABOVE
+                the base canvas, BELOW the playhead/selection (DOM order). */}
+            {areaWidth > 0 && props.getHapStream && (
+              <SongTimelineLiveOverlay
+                scene={scene}
+                layout={layout}
+                scrollLeft={scrollLeft}
+                contentWidth={contentWidth}
+                viewportWidth={areaWidth}
+                playheadCycle={playheadVisible ? wrappedPos : null}
+                getHapStream={props.getHapStream}
               />
             )}
-            {moveGhost && (
-              <div
-                data-full-song="clip-move-ghost"
-                style={{
-                  ...styles.moveGhost,
-                  left: moveGhost.left,
-                  width: moveGhost.width,
-                  top: moveGhost.top,
-                  height: moveGhost.height,
-                }}
-              />
-            )}
+            {/* Marks overlay (#506): playhead, trim edge, clip selection and move
+                ghost live here, pinned to the viewport EXACTLY like the base
+                canvas + live overlay (sticky left:0, pulled back over them with a
+                negative margin) and offset by the SAME React-state `scrollLeft`
+                the canvas draws against. Keeping every mark on the canvas's scroll
+                clock — not the natively-scrolled content's integer `el.scrollLeft`
+                — stops the playhead jittering against the lanes: the old
+                content-space `left: playheadX` differenced the native, integer-
+                quantized, current-frame scroll against the canvas's float,
+                one-frame-lagged React scroll, a ~2px per-frame sawtooth. */}
+            <div
+              data-full-song="marks"
+              style={{
+                ...styles.marksOverlay,
+                marginTop: -layout.totalHeight,
+                width: areaWidth,
+                height: layout.totalHeight,
+              }}
+            >
+              {playheadVisible && (
+                <div data-full-song="playhead" style={{ ...styles.playhead, left: playheadX - scrollLeft }} />
+              )}
+              {trimEdgeX != null && (
+                <div data-full-song="trim-edge" style={{ ...styles.trimEdge, left: trimEdgeX - scrollLeft }} />
+              )}
+              {selectionRect && (
+                <div
+                  data-full-song="clip-selection"
+                  style={{
+                    ...styles.clipSelection,
+                    left: selectionRect.left - scrollLeft,
+                    width: selectionRect.width,
+                    top: selectionRect.top,
+                    height: selectionRect.height,
+                  }}
+                />
+              )}
+              {moveGhost && (
+                <div
+                  data-full-song="clip-move-ghost"
+                  style={{
+                    ...styles.moveGhost,
+                    left: moveGhost.left - scrollLeft,
+                    width: moveGhost.width,
+                    top: moveGhost.top,
+                    height: moveGhost.height,
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1527,6 +1593,15 @@ const styles = {
     overflowY: 'hidden' as const,
     background: 'var(--bg-input, #0f0f1a)',
     cursor: 'pointer' as const,
+  },
+  // Sticky viewport pin for the interactive marks (#506) — mirrors the base
+  // canvas + live overlay (sticky left:0, marginTop:-height set inline). Children
+  // are positioned in viewport space (`contentX - scrollLeft`) so they ride the
+  // canvas's React-state scroll clock, never the natively-scrolled content.
+  marksOverlay: {
+    position: 'sticky' as const,
+    left: 0,
+    pointerEvents: 'none' as const,
   },
   playhead: {
     position: 'absolute' as const,

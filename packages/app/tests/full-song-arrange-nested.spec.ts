@@ -65,7 +65,8 @@ test('splitting a nested cat-block clip slices the OUTER arrange arm, inner cat 
   // is a single clip (arm 0, cycles [0,2)); period = 2 + 1 = 3.
   await typeSongAndEval(page, "arrange([2, cat(s(\"bd\"), s(\"sd\"))], [1, s(\"hh\")]).p('drums')")
 
-  await page.locator('[data-musical-timeline="view-toggle"]').click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
   await page.waitForTimeout(400)

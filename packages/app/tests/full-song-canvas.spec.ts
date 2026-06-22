@@ -96,9 +96,8 @@ test('full-song view: canvas mounts, draws content, and zoom/scroll drive it', a
   await evalStrudel(page)
 
   // Enter the full-song view.
-  const toggle = page.locator('[data-musical-timeline="view-toggle"]')
-  await toggle.waitFor({ timeout: 10_000 })
-  await toggle.click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
 
   // (1) The canvas body mounted; the old per-cell DOM heatmap is gone.

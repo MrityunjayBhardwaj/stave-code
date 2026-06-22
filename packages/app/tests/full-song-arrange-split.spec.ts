@@ -62,7 +62,8 @@ test('selecting a 2-cycle clip and pressing S slices it into two 1-cycle halves'
   await bootShell(page)
   await typeSongAndEval(page, 'arrange([2, s("bd")], [2, s("hh")])')
 
-  await page.locator('[data-musical-timeline="view-toggle"]').click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
   await page.waitForTimeout(400)
