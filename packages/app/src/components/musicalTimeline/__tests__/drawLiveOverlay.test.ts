@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   drawLiveOverlay,
-  isMarkLit,
+  pickLitNotes,
   markSig,
   MIN_LIT_CYCLES,
+  MAX_LIT_DISTANCE_CYCLES,
   type LiveOverlayTheme,
 } from '../drawLiveOverlay'
 import { laneMarkBands, markRect, COARSEN_PX } from '../drawTimeline'
@@ -79,32 +80,49 @@ describe('markSig', () => {
   })
 })
 
-describe('isMarkLit', () => {
+describe('pickLitNotes (#507 nearest-occurrence)', () => {
   const note: SceneNote = { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw' }
   const active = new Set(['saw|60'])
 
-  it('lit when the playhead is inside [cycle,end) AND the sig is firing', () => {
-    expect(isMarkLit(note, 1.2, active)).toBe(true)
+  it('lights a note inside its window when the sig is firing', () => {
+    expect(pickLitNotes([note], 1.2, active).has(note)).toBe(true)
   })
-  it('dark before the onset', () => {
-    expect(isMarkLit(note, 0.9, active)).toBe(false)
-  })
-  it('dark after the offset', () => {
-    expect(isMarkLit(note, 1.6, active)).toBe(false)
+  it('still lights a SHORT note while its sig fires even when the playhead has drifted just past it (the offset the strict gate missed)', () => {
+    // playhead 0.1 cycle past the 0.5-wide note's end — within MAX_LIT_DISTANCE.
+    expect(pickLitNotes([note], 1.6, active).has(note)).toBe(true)
+    // and just before the onset, too.
+    expect(pickLitNotes([note], 0.9, active).has(note)).toBe(true)
   })
   it('dark when the sig is NOT firing (degrade: mark exists but did not sound)', () => {
-    expect(isMarkLit(note, 1.2, new Set())).toBe(false)
-    expect(isMarkLit(note, 1.2, new Set(['bd|']))).toBe(false)
+    expect(pickLitNotes([note], 1.2, new Set()).size).toBe(0)
+    expect(pickLitNotes([note], 1.2, new Set(['bd|'])).size).toBe(0)
   })
-  it('a zero-duration trigger still lights for a minimum window', () => {
+  it('picks the occurrence of a sig NEAREST the playhead (disambiguates repeats)', () => {
+    const near: SceneNote = { cycle: 4, end: 4.06, pitch: 60, gain: 1, voice: 'saw' }
+    const far: SceneNote = { cycle: 0, end: 0.06, pitch: 60, gain: 1, voice: 'saw' }
+    const lit = pickLitNotes([far, near], 4.0, active)
+    expect(lit.has(near)).toBe(true)
+    expect(lit.has(far)).toBe(false)
+    expect(lit.size).toBe(1)
+  })
+  it('does not light a stale occurrence beyond MAX_LIT_DISTANCE_CYCLES', () => {
+    const far: SceneNote = { cycle: 0, end: 0.06, pitch: 60, gain: 1, voice: 'saw' }
+    expect(pickLitNotes([far], far.cycle + MAX_LIT_DISTANCE_CYCLES + 0.2, active).size).toBe(0)
+  })
+  it('a zero-duration trigger still lights near its onset', () => {
     const hit: SceneNote = { cycle: 2, end: 2, pitch: null, gain: 1, voice: 'bd' }
     const drums = new Set(['bd|'])
-    expect(isMarkLit(hit, 2, drums)).toBe(true)
-    expect(isMarkLit(hit, 2 + MIN_LIT_CYCLES / 2, drums)).toBe(true)
-    expect(isMarkLit(hit, 2 + MIN_LIT_CYCLES * 2, drums)).toBe(false)
+    expect(pickLitNotes([hit], 2, drums).has(hit)).toBe(true)
+    expect(pickLitNotes([hit], 2 + MIN_LIT_CYCLES / 2, drums).has(hit)).toBe(true)
   })
-  it('a non-finite playhead is never lit', () => {
-    expect(isMarkLit(note, Number.NaN, active)).toBe(false)
+  it('lights one occurrence per active sig (distinct sigs each light)', () => {
+    const a: SceneNote = { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw' }
+    const b: SceneNote = { cycle: 1.1, end: 1.6, pitch: 67, gain: 1, voice: 'saw' }
+    const lit = pickLitNotes([a, b], 1.2, new Set(['saw|60', 'saw|67']))
+    expect(lit.size).toBe(2)
+  })
+  it('a non-finite playhead lights nothing', () => {
+    expect(pickLitNotes([note], Number.NaN, active).size).toBe(0)
   })
 })
 
@@ -127,6 +145,15 @@ describe('drawLiveOverlay', () => {
   it('does not light a mark whose sig is absent (degrade)', () => {
     const scene = sceneFixture()
     const { ctx, rects } = mockCtx()
+    // 'flute|99' is in no lane → nothing lights (degrade: mark exists, did not sound).
+    drawLiveOverlay(ctx, scene, WIDE, layoutFor(scene), 1.2, new Set(['flute|99']), THEME)
+    expect(rects.length).toBe(0)
+  })
+
+  it("does not light a firing sig whose nearest occurrence is beyond the distance cap", () => {
+    const scene = sceneFixture()
+    const { ctx, rects } = mockCtx()
+    // note1 (saw|67) sits at [2,2.5); playhead 1.2 is 0.8 cycles away (> cap).
     drawLiveOverlay(ctx, scene, WIDE, layoutFor(scene), 1.2, new Set(['saw|67']), THEME)
     expect(rects.length).toBe(0)
   })

@@ -44,24 +44,63 @@ export function markSig(voice: string | null | undefined, pitch: number | null |
  *  `MIN_MARK_W` width flooring. */
 export const MIN_LIT_CYCLES = 1 / 16
 
+/** Max playhead→mark gap (cycles) at which an active sig may still light its
+ *  NEAREST occurrence. Bounds staleness so an active sig can't light a mark far
+ *  from the playhead, while staying loose enough to absorb the audio↔rAF clock
+ *  offset that strict `[cycle,end)` containment cannot (#507). The lit DURATION
+ *  is still bounded by the hap-driven sig-active window, not this cap — so a
+ *  short note lights only while it sounds, just reliably. */
+export const MAX_LIT_DISTANCE_CYCLES = 0.5
+
+const EMPTY_LIT: ReadonlySet<SceneNote> = new Set()
+
+/** Distance (cycles) from the playhead to a mark: 0 inside its `[cycle, end)`
+ *  (end floored to `MIN_LIT_CYCLES`), else the gap to the nearer edge. */
+function cycleDistance(note: SceneNote, playheadCycle: number): number {
+  const end = Math.max(note.end, note.cycle + MIN_LIT_CYCLES)
+  if (playheadCycle >= note.cycle && playheadCycle < end) return 0
+  return playheadCycle < note.cycle ? note.cycle - playheadCycle : playheadCycle - end
+}
+
 /**
- * Is this mark lit at `playheadCycle`? TWO gates (design §4):
- *  1. TEMPORAL — the playhead is within the mark's `[cycle, end)` (floored to a
- *     minimum window so a zero-duration trigger still lights). Picks WHICH mark
- *     of a voice is sounding now (sequential marks of one voice don't overlap).
- *  2. CONFIRMED — the mark's voice+pitch signature is in the firing set the hap
+ * Which marks light at `playheadCycle`. TWO gates (design §4, revised #507):
+ *  1. CONFIRMED — the mark's voice+pitch signature is in the firing set the hap
  *     stream maintains. Handles `?`/degrade/conditional patterns: a scene mark
- *     that did NOT actually sound this pass has no active hap → stays dark. PURE.
+ *     that did NOT actually sound this pass has no active hap → stays dark. The
+ *     sig-active window (hap arrival → audible duration) bounds HOW LONG a mark
+ *     lights, i.e. lights ≈ while the note sounds.
+ *  2. NEAREST — for each active sig, light the single occurrence NEAREST the
+ *     playhead (within `MAX_LIT_DISTANCE_CYCLES`). Picks WHICH occurrence of a
+ *     voice+pitch is sounding now. This replaces strict `[cycle,end)` containment
+ *     (the original temporal gate), which the audio↔rAF clock offset made too
+ *     brittle for SHORT, SPARSE notes: their narrow window rarely coincided with
+ *     the (lookahead-offset) sig-active instant, so they barely lit while dense
+ *     lanes — always having some mark under the playhead — masked it (#507).
+ *     "Nearest" is robust to that offset and self-disambiguating: same-sig
+ *     occurrences are spaced, so the nearest one IS the one sounding.
+ *
+ * PURE. Returns the set of notes (subset of `notes`) to light.
  */
-export function isMarkLit(
-  note: SceneNote,
+export function pickLitNotes(
+  notes: readonly SceneNote[],
   playheadCycle: number,
   activeSigs: ReadonlySet<string>,
-): boolean {
-  if (!Number.isFinite(playheadCycle)) return false
-  const end = Math.max(note.end, note.cycle + MIN_LIT_CYCLES)
-  if (playheadCycle < note.cycle || playheadCycle >= end) return false
-  return activeSigs.has(markSig(note.voice, note.pitch))
+): ReadonlySet<SceneNote> {
+  if (!Number.isFinite(playheadCycle) || activeSigs.size === 0) return EMPTY_LIT
+  // Best (min-distance) occurrence per active sig.
+  const best = new Map<string, { note: SceneNote; dist: number }>()
+  for (const n of notes) {
+    const sig = markSig(n.voice, n.pitch)
+    if (!activeSigs.has(sig)) continue
+    const dist = cycleDistance(n, playheadCycle)
+    if (dist > MAX_LIT_DISTANCE_CYCLES) continue
+    const cur = best.get(sig)
+    if (!cur || dist < cur.dist) best.set(sig, { note: n, dist })
+  }
+  if (best.size === 0) return EMPTY_LIT
+  const out = new Set<SceneNote>()
+  for (const b of best.values()) out.add(b.note)
+  return out
 }
 
 /**
@@ -95,8 +134,11 @@ export function drawLiveOverlay(
     if (!box || box.height <= 0) return
     if (laneRenderMode(pxPerCycle, lane.notes.length > 0, box.expanded) !== 'marks') return
     for (const band of laneMarkBands(lane, box)) {
+      // Per band (one voice), light the nearest active-sig occurrence (#507).
+      const lit = pickLitNotes(band.notes, playheadCycle, activeSigs)
+      if (lit.size === 0) continue
       for (const n of band.notes) {
-        if (!isMarkLit(n, playheadCycle, activeSigs)) continue
+        if (!lit.has(n)) continue
         const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
         if (!r) continue
         drawLitMark(ctx, r, n.gain, theme)

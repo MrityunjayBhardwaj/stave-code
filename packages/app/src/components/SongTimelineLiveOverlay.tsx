@@ -99,8 +99,8 @@ export function SongTimelineLiveOverlay(
     if (!hapStream) return
     const handler = (event: HapEvent): void => {
       // Address by VOICE + PITCH (design §4) — the dimensions a hap carries. A
-      // hap has no trackId, so the lane is recovered by the playhead-temporal
-      // gate in `isMarkLit`, not this key.
+      // hap has no trackId, so WHICH occurrence is sounding is recovered by the
+      // nearest-occurrence selection in `pickLitNotes`, not this key (#507).
       const sig = markSig(event.s, event.midiNote)
       // Same timing as the live monitor (MusicalTimeline / useHighlighting):
       // show after the lookahead, clear after the audible duration.
