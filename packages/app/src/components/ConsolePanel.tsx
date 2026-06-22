@@ -32,7 +32,7 @@ import {
 
 const RUNTIME_LABELS: Record<string, string> = {
   strudel: "Strudel",
-  sonicpi: "Sonic Pi",
+  sonicpi: "Sonic Web",
   p5: "p5.js",
   hydra: "Hydra",
   stave: "Stave",

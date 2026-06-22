@@ -155,7 +155,7 @@ export class P5VizRenderer implements VizRenderer {
       // Skip names already a property on the uniform object (built-ins win the
       // collision; the merge already let custom win the alias-RESOLUTION).
       // Resolve built-ins + custom aliases for the ACTIVE viz engine (Strudel
-      // today; the single wire-point — when Sonic Pi Web lands, source the
+      // today; the single wire-point — when Sonic Web lands, source the
       // engine from the running LiveCodingEngine here). Custom wins on collision.
       const mergedAliases = resolveAliasesForEngine(
         getStoredSignalAliases(),

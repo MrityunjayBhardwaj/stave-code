@@ -340,7 +340,7 @@ export class HydraVizRenderer implements VizRenderer {
       // through the alias map we just set. Skip names already on the bag so a
       // collision with a built-in thunk (`uKick`, `u`, `H`, …) is preserved.
       // Resolve built-ins + custom aliases for the ACTIVE viz engine (Strudel
-      // today; the single wire-point — when Sonic Pi Web lands, source the
+      // today; the single wire-point — when Sonic Web lands, source the
       // engine from the running LiveCodingEngine here). Custom wins on collision.
       const mergedAliases = resolveAliasesForEngine(
         getStoredSignalAliases(),
