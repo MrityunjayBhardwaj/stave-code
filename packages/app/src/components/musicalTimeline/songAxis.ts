@@ -122,14 +122,18 @@ export function scrollLeftForZoom(params: {
 // edge (no oscillation, because the clamped target equals the clamped current).
 
 export interface FollowOptions {
-  /** Width of the centered no-scroll band as a fraction of the viewport. The
-   *  playhead may drift within this band without triggering an auto-scroll.
-   *  0 = recenter on every step; 1 = only scroll once it leaves the viewport.
-   *  Clamped to [0, 1]. Default 0.6 (the middle 60%). */
+  /** Width of a centered no-scroll band as a fraction of the viewport, enabling
+   *  page-follow instead of center-lock. The playhead drifts within this band
+   *  without auto-scrolling, then recenters once it leaves. 0 = center-lock
+   *  (recenter every step); 1 = only scroll once it leaves the viewport.
+   *  Clamped to [0, 1]. Default 0 (center-lock). */
   readonly deadZone?: number
 }
 
-const DEFAULT_DEAD_ZONE = 0.6
+// Default 0 = CENTER-LOCK (#505): recenter the playhead every frame so the song
+// scrolls smoothly under a fixed playhead, clamped at the ends. A band > 0 is
+// opt-in Ableton-style page-follow (hold, then jump at the edge).
+const DEFAULT_DEAD_ZONE = 0
 
 /**
  * Target horizontal scroll offset that keeps the playhead within a centered

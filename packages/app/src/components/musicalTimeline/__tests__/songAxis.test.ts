@@ -135,50 +135,41 @@ describe('scrollLeftForZoom (cursor-centered)', () => {
   })
 })
 
-describe('followScrollLeft', () => {
-  // viewport 800, content 1600 (zoom 2) → maxScroll 800. Default band = middle
-  // 60% → in-band span of viewport-x is [160, 640].
-  it('returns the current offset unchanged when the playhead is in-band (no churn)', () => {
-    // playhead content-x 800, scrollLeft 400 → viewport-x 400 (dead centre).
+describe('followScrollLeft (center-lock, #505)', () => {
+  // viewport 800, content 1600 (zoom 2) -> maxScroll 800. Default = center-lock:
+  // target = playheadX - viewportWidth/2, clamped to [0, maxScroll].
+  it('keeps the playhead centered every step (smooth continuous pan)', () => {
+    // playhead 800 -> target 400; scrollLeft already 400 (centered) -> 400.
     expect(followScrollLeft(800, 800, 1600, 400)).toBe(400)
-    // viewport-x 640 (right band edge) is still in-band.
-    expect(followScrollLeft(1040, 800, 1600, 400)).toBe(400)
-  })
-
-  it('recenters the playhead when it exits the band to the right', () => {
-    // playhead content-x 1200, scrollLeft 0 → viewport-x 1200 > 640 → out of band.
-    // target = 1200 - 400 = 800 (clamped to maxScroll 800).
-    expect(followScrollLeft(1200, 800, 1600, 0)).toBe(800)
-  })
-
-  it('recenters when the playhead exits the band to the left', () => {
-    // playhead content-x 600, scrollLeft 700 → viewport-x -100 < 160 → out of band.
-    // target = 600 - 400 = 200.
+    // playhead drifts 1px past center -> recenters by 1px (no dead-zone hold).
+    expect(followScrollLeft(820, 800, 1600, 400)).toBe(420)
+    // a playhead the old 0.6 band would have held in place now recenters.
+    expect(followScrollLeft(1040, 800, 1600, 400)).toBe(640)
     expect(followScrollLeft(600, 800, 1600, 700)).toBe(200)
   })
 
-  it('clamps (pins) at the song ends without oscillating', () => {
-    // near the end: playhead 1550, already scrolled to max 800 → viewport-x 750
-    // (out of band) but recenter target 1150 clamps back to 800 == current → no churn.
-    expect(followScrollLeft(1550, 800, 1600, 800)).toBe(800)
-    // near the start: playhead 40, scrollLeft 0 → target -360 clamps to 0.
+  it('clamps (pins) at the song ends so the playhead drifts into the margin', () => {
+    // near the start: target 40 - 400 = -360 -> clamps to 0 (playhead left of center).
     expect(followScrollLeft(40, 800, 1600, 0)).toBe(0)
+    // near the end: target 1550 - 400 = 1150 -> clamps to maxScroll 800.
+    expect(followScrollLeft(1550, 800, 1600, 800)).toBe(800)
   })
 
   it('no-ops when there is nothing to scroll (not zoomed) or on degenerate input', () => {
-    // content == viewport → maxScroll 0 → returns the clamped current offset.
-    expect(followScrollLeft(400, 800, 800, 0)).toBe(0)
+    expect(followScrollLeft(400, 800, 800, 0)).toBe(0) // content == viewport
     expect(followScrollLeft(400, 0, 1600, 123)).toBe(123) // viewportWidth 0
     expect(followScrollLeft(Number.NaN, 800, 1600, 400)).toBe(400) // non-finite playhead
-    // an out-of-range current offset is clamped into the scrollable range: with
-    // current clamped to 800, a playhead at 1200 is dead-centre → in-band → 800.
+    // an out-of-range current offset doesn't matter under center-lock: target
+    // is derived from the playhead, not the current offset.
     expect(followScrollLeft(1200, 800, 1600, 5000)).toBe(800)
   })
 
-  it('recenters on every step when deadZone is 0', () => {
-    // band 0 → in-band span collapses to the exact centre; any drift recenters.
-    // playhead 820, scrollLeft 400 → viewport-x 420 ≠ 400 → target 820 - 400 = 420.
-    expect(followScrollLeft(820, 800, 1600, 400, { deadZone: 0 })).toBe(420)
+  it('opt-in page-follow (deadZone > 0): holds in-band, recenters at the edge', () => {
+    const band = { deadZone: 0.6 } // middle 60% -> in-band viewport-x [160, 640]
+    // playhead 1040, scrollLeft 400 -> viewport-x 640 (right edge) is in-band -> hold.
+    expect(followScrollLeft(1040, 800, 1600, 400, band)).toBe(400)
+    // playhead 1200, scrollLeft 0 -> viewport-x 1200 out of band -> recenter to 800.
+    expect(followScrollLeft(1200, 800, 1600, 0, band)).toBe(800)
   })
 })
 

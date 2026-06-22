@@ -1,12 +1,11 @@
 /**
  * Full-song view: follow playhead (auto-scroll) — Playwright observation spec (#415).
  *
- * AnviDev observe gate: songAxis.test.ts covers the followScrollLeft math and
- * FullSongTimeline.test.tsx covers the toggle in jsdom (which has no real
- * layout/scroll); this drives the REAL app to confirm the end-to-end behaviour
- * against a real playing song —
+ * AnviDev observe gate: songAxis.test.ts covers the followScrollLeft math
+ * (center-lock, #505); this drives the REAL app to confirm the end-to-end
+ * behaviour against a real playing song —
  *   1. With the song zoomed in and Follow ON (default), the grid auto-scrolls
- *      to keep the moving playhead within the viewport (scrollLeft tracks it).
+ *      to keep the moving playhead centered (scrollLeft tracks it).
  *   2. With Follow OFF, the view stays where the user left it (no auto-scroll)
  *      even as the playhead drifts past the edge.
  *   3. No console / page errors throughout.
@@ -118,7 +117,8 @@ test('full-song view: Follow auto-scrolls to keep the playhead in view; off free
   expect(await followToggle.getAttribute('data-follow')).toBe('on')
 
   // Zoom in hard so the content is many viewports wide — the playhead then
-  // sweeps well past the dead-zone band each cycle, forcing follow to scroll.
+  // sweeps across the viewport and follow (center-lock, #505) scrolls to keep it
+  // centered.
   for (let i = 0; i < 6; i++) await page.locator('[data-full-song-zoom-in]').click()
   const grid = page.locator('[data-full-song="grid"]')
   const overflow = await grid.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }))
@@ -130,12 +130,24 @@ test('full-song view: Follow auto-scrolls to keep the playhead in view; off free
   const onScrolls = onSamples.map((s) => s.scrollLeft)
   const scrollRange = Math.max(...onScrolls) - Math.min(...onScrolls)
   expect(scrollRange, `follow ON should auto-scroll; samples=${onScrolls.join(',')}`).toBeGreaterThan(5)
+  const viewportXs: number[] = []
   for (const s of onSamples) {
     if (Number.isNaN(s.playheadX)) continue // playhead briefly absent between wraps
     const viewportX = s.playheadX - s.scrollLeft
     expect(viewportX).toBeGreaterThanOrEqual(-24)
     expect(viewportX).toBeLessThanOrEqual(s.clientWidth + 24)
+    viewportXs.push(viewportX - s.clientWidth / 2) // signed distance from centre
   }
+  // (1b) Center-lock (#505): away from the start/end clamp the playhead sits at
+  //      the viewport centre — at least one sample is within ~15% of centre.
+  //      (Samples near a loop wrap are clamped left, so we assert "some", not
+  //      "all", to stay robust to the short starter loop.)
+  const cw = onSamples[0]?.clientWidth ?? 0
+  const nearCentre = viewportXs.some((d) => Math.abs(d) <= cw * 0.15)
+  expect(
+    nearCentre,
+    `center-lock should hold the playhead near centre; offsets=${viewportXs.map((d) => Math.round(d)).join(',')}`,
+  ).toBe(true)
 
   // (2) Follow OFF → the view stays put. Turn it off, park the scroll, wait past
   //     the manual-scroll guard, then confirm scrollLeft no longer tracks.
