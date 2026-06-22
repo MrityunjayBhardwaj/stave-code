@@ -29,6 +29,8 @@ import { SEQUENCER_TAB_ID } from './tabs'
 import { isStepChunk } from './patternKind'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
+import { addLane, removeLane } from '../notation/lane'
+import { DRUM_SOUNDS } from './soundCatalog'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
@@ -107,6 +109,22 @@ export function SequencerGrid(): React.ReactElement {
         }
         return toggleCell(prev, laneIndex, stepIndex, value)
       })
+    },
+    [mutate],
+  )
+
+  // Add a new drum voice (#516). The new lane is all-rest, so it stages in the
+  // model and only writes to the source on the first hit (useGridModel keeps it
+  // because serialize is unchanged). Remove drops the voice from the pattern.
+  const addVoice = React.useCallback(
+    (sound: string): void => {
+      mutate((prev) => addLane(prev, sound))
+    },
+    [mutate],
+  )
+  const removeVoice = React.useCallback(
+    (sound: string): void => {
+      mutate((prev) => removeLane(prev, sound))
     },
     [mutate],
   )
@@ -223,6 +241,28 @@ export function SequencerGrid(): React.ReactElement {
             >
               {lane.sound}
             </span>
+            <button
+              type="button"
+              aria-label={`remove ${lane.sound}`}
+              data-seq-remove-voice={lane.sound}
+              title={`Remove ${lane.sound}`}
+              onClick={() => removeVoice(lane.sound)}
+              style={{
+                width: 16,
+                height: 16,
+                flex: '0 0 auto',
+                padding: 0,
+                lineHeight: '14px',
+                fontSize: 12,
+                borderRadius: 3,
+                border: '1px solid var(--border, #3a3a42)',
+                background: 'transparent',
+                color: 'var(--foreground-muted, #a0a0aa)',
+                cursor: 'pointer',
+              }}
+            >
+              ×
+            </button>
             <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
               {lane.cells.map((on, stepIndex) => {
                 const gain = model.gains?.[stepIndex] ?? 1
@@ -284,6 +324,33 @@ export function SequencerGrid(): React.ReactElement {
             </div>
           </div>
         ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <span style={{ width: 56, flex: '0 0 auto' }} />
+          <select
+            data-seq-add-voice
+            aria-label="add drum voice"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) addVoice(e.target.value)
+            }}
+            style={{
+              fontSize: 11,
+              padding: '3px 8px',
+              borderRadius: 4,
+              border: '1px dashed var(--border, #3a3a42)',
+              background: 'var(--background-elevated, #26262c)',
+              color: 'var(--foreground-muted, #a0a0aa)',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="">+ add voice…</option>
+            {DRUM_SOUNDS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   )

@@ -21,6 +21,9 @@ import { VisualEditStandby } from './VisualEditStandby'
 import { MIXER_TAB_ID } from './tabs'
 import { useActiveChunk } from './useActiveChunk'
 import { QUICK_TRANSFORMS } from './quickTransforms'
+import { patternKind } from './patternKind'
+import { readChainMethod } from './chainMethod'
+import { INSTRUMENTS, DRUM_KITS, type SoundGroup } from './soundCatalog'
 
 /**
  * A per-column `.gain("…")` velocity string the grid authored — flat numeric
@@ -114,6 +117,62 @@ function knobsFromChunk(chunk: ChunkInfo): KnobEntry[] {
   return knobs
 }
 
+/**
+ * A grouped `<select>` for sound assignment (#514 instrument / #515 kit). When
+ * the chunk's current value isn't in the curated catalog (a hand-typed sound or
+ * a kit outside the shortlist), it's surfaced as a leading option so the picker
+ * still shows what's set — the write-back accepts any string (PV141 #6).
+ */
+function SoundSelect({
+  label,
+  groups,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string
+  groups: SoundGroup[]
+  value: string
+  placeholder: string
+  onChange: (v: string) => void
+}): React.ReactElement {
+  const known = groups.some((g) => g.options.some((o) => o.value === value))
+  return (
+    <label
+      data-mixer-sound={label.toLowerCase()}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}
+    >
+      <span style={{ color: 'var(--foreground-muted, #a0a0aa)' }}>{label}</span>
+      <select
+        data-mixer-sound-select={label.toLowerCase()}
+        value={known ? value : value === '' ? '' : '__custom__'}
+        onChange={(e) => e.target.value !== '__custom__' && onChange(e.target.value)}
+        style={{
+          padding: '4px 8px',
+          fontSize: 12,
+          borderRadius: 4,
+          border: '1px solid var(--border, #3a3a42)',
+          background: 'var(--background-elevated, #26262c)',
+          color: 'var(--foreground, #e6e6ea)',
+          maxWidth: 220,
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {value !== '' && !known && <option value="__custom__">{value} (current)</option>}
+        {groups.map((g) => (
+          <optgroup key={g.group} label={g.group}>
+            {g.options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 export function Mixer(): React.ReactElement {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
 
@@ -149,6 +208,22 @@ export function Mixer(): React.ReactElement {
     [applyEdit],
   )
 
+  // Sound assignment (#514 instrument / #515 kit): write a string-valued chain
+  // method. Replace an existing `.sound`/`.s`/`.bank` arg in place, else append
+  // `.canonical('value')`. Single-quoted literal (PV44 — double quotes reify to
+  // mini). Reuses the `'knob'` write source, like `addTransform`.
+  const writeChainMethod = React.useCallback(
+    (names: string[], canonical: string, value: string): void => {
+      if (value === '') return
+      applyEdit((fresh, wb) => {
+        const cur = readChainMethod(fresh, names)
+        if (cur) wb.replaceRange(cur.range, `'${value}'`, 'knob')
+        else wb.insertAt(fresh.exprRange[1], `.${canonical}('${value}')`, 'knob')
+      })
+    },
+    [applyEdit],
+  )
+
   // Standby only when there's no editable pattern under the cursor. A pattern
   // with no numeric args still shows the quick-transform row so effects can be
   // added (then dragged).
@@ -161,6 +236,7 @@ export function Mixer(): React.ReactElement {
   }
 
   const present = new Set(chunk.chain.map((c) => c.name))
+  const kind = patternKind(chunk)
 
   return (
     <div
@@ -175,6 +251,24 @@ export function Mixer(): React.ReactElement {
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       }}
     >
+      {kind === 'roll' && (
+        <SoundSelect
+          label="Instrument"
+          groups={INSTRUMENTS}
+          value={readChainMethod(chunk, ['sound', 's'])?.value ?? ''}
+          placeholder="Default synth"
+          onChange={(v) => writeChainMethod(['sound', 's'], 'sound', v)}
+        />
+      )}
+      {kind === 'step' && (
+        <SoundSelect
+          label="Kit"
+          groups={DRUM_KITS}
+          value={readChainMethod(chunk, ['bank'])?.value ?? ''}
+          placeholder="Default kit"
+          onChange={(v) => writeChainMethod(['bank'], 'bank', v)}
+        />
+      )}
       <div data-mixer-transforms style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {QUICK_TRANSFORMS.map((t) => (
           <button
