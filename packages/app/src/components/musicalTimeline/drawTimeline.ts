@@ -23,7 +23,7 @@
 
 import type { TimelineScene, SceneLane, SceneNote } from './timelineScene'
 import { NO_VOICE } from './timelineScene'
-import type { LaneLayout, SubRowBox } from './laneLayout'
+import type { LaneLayout, LaneBox } from './laneLayout'
 import { BEATS_PER_BAR } from './songAxis'
 
 /** The HORIZONTAL view transform + viewport, all in CSS pixels. Vertical
@@ -156,13 +156,23 @@ export function drawTimeline(
     }
     if (mode === 'density') {
       drawDensity(ctx, lane, top, rowHeight, pxPerCycle, scene.peakDensity, firstCycle, lastCycle, toScreenX)
-    } else if (box.subRows) {
-      // Expanded multi-voice lane (#424): each voice draws in its own sub-band —
-      // a melodic voice keeps its pitch-Y spread, a percussive voice a flat
-      // baseline PER VOICE, so a drum stack's bd/sd/hh no longer overlap.
-      drawVoiceMarks(ctx, lane, box.subRows, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
     } else {
-      drawMarks(ctx, lane, top, rowHeight, expanded, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
+      // Marks: one band per voice sub-row (expanded multi-voice lane #424 — each
+      // voice keeps its own pitch-Y spread / percussive baseline so a drum stack's
+      // bd/sd/hh don't overlap) or a single band (collapsed / single-voice).
+      // `laneMarkBands` is the SHARED geometry the live overlay (#500) also draws
+      // against, so a lit mark sits exactly over its base mark — one source, no
+      // drift (PV120). All marks share the lane color; gain drives intensity.
+      ctx.fillStyle = lane.color
+      for (const band of laneMarkBands(lane, box)) {
+        for (const n of band.notes) {
+          const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
+          if (!r) continue
+          ctx.globalAlpha = 0.4 + 0.6 * Math.min(1, Math.max(0, n.gain))
+          ctx.fillRect(r.x, r.y, r.w, r.h)
+        }
+      }
+      ctx.globalAlpha = 1
     }
   })
 }
@@ -253,126 +263,96 @@ function drawDensity(
   ctx.globalAlpha = 1
 }
 
-function drawMarks(
-  ctx: CanvasRenderingContext2D,
-  lane: SceneLane,
-  top: number,
-  rowHeight: number,
-  expanded: boolean,
-  pxPerCycle: number,
-  viewportWidth: number,
-  firstCycle: number,
-  lastCycle: number,
-  toScreenX: (c: number) => number,
-): void {
-  const padY = 3
-  // Collapsed lane: the bar scales with the row height, so the timeline
-  // row-height setting grows it like the live monitor (#459). An expanded
-  // single-band lane keeps a thin mark so its pitch spread reads as a contour
-  // over the much taller note-detail band, not one fat bar.
-  const markH = expanded ? 4 : barHeightForBand(rowHeight - 2 * padY)
-  placeMarks(
-    ctx,
-    lane.notes,
-    lane.color,
-    top + padY,
-    Math.max(1, rowHeight - 2 * padY - markH),
-    markH,
-    lane.pitchMin,
-    lane.pitchMax,
-    pxPerCycle,
-    viewportWidth,
-    firstCycle,
-    lastCycle,
-    toScreenX,
-  )
+/** Per-voice (expanded) padding above/below a sub-row's mark band. */
+const VOICE_BAND_PAD_Y = 2
+/** Collapsed / single-band padding above/below the lane's mark band. */
+const SINGLE_BAND_PAD_Y = 3
+
+/** One horizontal band a lane's marks render into: a `[bandTop, bandTop+bandH]`
+ *  strip plus the marks that belong to it, the pitch range that maps note→Y, and
+ *  the bar height. A collapsed lane has ONE band (all its notes); an expanded
+ *  multi-voice lane has one band PER voice sub-row (#424). The single source the
+ *  base renderer and the live overlay (#500) both place marks against. */
+export interface MarkBand {
+  readonly notes: readonly SceneNote[]
+  readonly bandTop: number
+  readonly bandH: number
+  readonly markH: number
+  readonly pMin: number | null
+  readonly pMax: number | null
 }
 
 /**
- * Draw an expanded multi-voice lane (#424): one sub-band per voice. A melodic
- * voice gets its own pitch-Y spread (auto-fit to THAT voice's range); a
- * percussive voice gets a flat baseline centred in its band — one baseline per
- * voice, so a drum stack's bd/sd/hh sit on separate lines instead of overlapping.
- * Sub-row geometry comes straight from the shared `LaneLayout` (PV120), so the
- * marks line up with the gutter labels exactly.
+ * The mark bands a lane draws into, given its layout box. An expanded lane split
+ * into voice sub-rows yields one band per voice — each melodic voice keeps its
+ * own pitch-Y spread, each percussive voice a flat baseline, so a drum stack's
+ * bd/sd/hh sit on separate lines (#424); sub-row geometry comes straight from the
+ * shared `LaneLayout` (PV120). Otherwise a single band: the bar scales with the
+ * row height so the row-height setting grows it like the live monitor (#459); an
+ * expanded single band keeps a thin mark so its pitch spread reads as a contour.
+ * PURE — the geometry the base `drawTimeline` and the live overlay both consume,
+ * so a lit mark lands exactly over its base mark (no drift).
  */
-function drawVoiceMarks(
-  ctx: CanvasRenderingContext2D,
-  lane: SceneLane,
-  subRows: readonly SubRowBox[],
-  pxPerCycle: number,
-  viewportWidth: number,
-  firstCycle: number,
-  lastCycle: number,
-  toScreenX: (c: number) => number,
-): void {
-  const padY = 2
-  const voiceByKey = new Map(lane.voices.map((v) => [v.key, v]))
-  for (const sr of subRows) {
-    const voice = voiceByKey.get(sr.voiceKey)
-    const notes = lane.notes.filter((n) => (n.voice ?? NO_VOICE) === sr.voiceKey)
-    // Per-voice bar scales with the sub-row height, so resizing the row-height
-    // setting grows the sub-row bars just like the live monitor's (#459).
-    const markH = barHeightForBand(sr.height - 2 * padY)
-    placeMarks(
-      ctx,
-      notes,
-      lane.color,
-      sr.top + padY,
-      Math.max(1, sr.height - 2 * padY - markH),
+export function laneMarkBands(lane: SceneLane, box: LaneBox): MarkBand[] {
+  if (box.subRows) {
+    const voiceByKey = new Map(lane.voices.map((v) => [v.key, v]))
+    return box.subRows.map((sr) => {
+      const voice = voiceByKey.get(sr.voiceKey)
+      const markH = barHeightForBand(sr.height - 2 * VOICE_BAND_PAD_Y)
+      return {
+        notes: lane.notes.filter((n) => (n.voice ?? NO_VOICE) === sr.voiceKey),
+        bandTop: sr.top + VOICE_BAND_PAD_Y,
+        bandH: Math.max(1, sr.height - 2 * VOICE_BAND_PAD_Y - markH),
+        markH,
+        pMin: voice?.pitchMin ?? null,
+        pMax: voice?.pitchMax ?? null,
+      }
+    })
+  }
+  const markH = box.expanded ? 4 : barHeightForBand(box.height - 2 * SINGLE_BAND_PAD_Y)
+  return [
+    {
+      notes: lane.notes,
+      bandTop: box.top + SINGLE_BAND_PAD_Y,
+      bandH: Math.max(1, box.height - 2 * SINGLE_BAND_PAD_Y - markH),
       markH,
-      voice?.pitchMin ?? null,
-      voice?.pitchMax ?? null,
-      pxPerCycle,
-      viewportWidth,
-      firstCycle,
-      lastCycle,
-      toScreenX,
-    )
-  }
+      pMin: lane.pitchMin,
+      pMax: lane.pitchMax,
+    },
+  ]
 }
 
 /**
- * Place a set of marks within one band `[bandTop, bandTop + bandH]`. Melodic
- * marks (pitch within a real `[pMin, pMax]` range) map pitch→Y (high pitch near
- * the top, DAW convention); percussive marks (no pitch, or a single-pitch voice
- * where `pMax === pMin`) sit on the band's centre baseline. Width is
- * DURATION-proportional (mirrors the live view's `eventToRect`), floored at
- * `MIN_MARK_W` so a zero-duration trigger still shows; the canvas clips marks
- * crossing the viewport edge. Shared by the single-band and per-voice paths so
- * both render identically.
+ * The rect for one mark within a band, or null if it's outside the visible cycle
+ * window / off-screen. Melodic marks (pitch within a real `[pMin, pMax]` range)
+ * map pitch→Y (high pitch near the top, DAW convention); percussive marks (no
+ * pitch, or a single-pitch voice where `pMax === pMin`) sit on the band's centre
+ * baseline. Width is DURATION-proportional (mirrors the live view's
+ * `eventToRect`), floored at `MIN_MARK_W` so a zero-duration trigger still shows.
+ * PURE — shared by the base draw and the live overlay so both agree pixel-for-
+ * pixel on where a mark sits.
  */
-function placeMarks(
-  ctx: CanvasRenderingContext2D,
-  notes: readonly SceneNote[],
-  color: string,
-  bandTop: number,
-  bandH: number,
-  markH: number,
-  pMin: number | null,
-  pMax: number | null,
+export function markRect(
+  note: SceneNote,
+  band: MarkBand,
   pxPerCycle: number,
   viewportWidth: number,
   firstCycle: number,
   lastCycle: number,
   toScreenX: (c: number) => number,
-): void {
+): { x: number; y: number; w: number; h: number } | null {
+  if (note.cycle < firstCycle || note.cycle >= lastCycle) return null
+  const x = toScreenX(note.cycle)
+  const w = Math.max(MIN_MARK_W, (note.end - note.cycle) * pxPerCycle)
+  if (x < -w || x > viewportWidth) return null
+  const { bandTop, bandH, markH, pMin, pMax } = band
   const hasPitch = pMin != null && pMax != null && pMax > pMin
-  ctx.fillStyle = color
-  for (const n of notes) {
-    if (n.cycle < firstCycle || n.cycle >= lastCycle) continue
-    const x = toScreenX(n.cycle)
-    const markW = Math.max(MIN_MARK_W, (n.end - n.cycle) * pxPerCycle)
-    if (x < -markW || x > viewportWidth) continue
-    let y: number
-    if (n.pitch != null && hasPitch) {
-      const t = (n.pitch - pMin!) / (pMax! - pMin!)
-      y = bandTop + (1 - t) * bandH // high pitch near the band top (DAW convention)
-    } else {
-      y = bandTop + bandH / 2
-    }
-    ctx.globalAlpha = 0.4 + 0.6 * Math.min(1, Math.max(0, n.gain))
-    ctx.fillRect(x, y, markW, markH)
+  let y: number
+  if (note.pitch != null && hasPitch) {
+    const t = (note.pitch - pMin) / (pMax - pMin)
+    y = bandTop + (1 - t) * bandH // high pitch near the band top (DAW convention)
+  } else {
+    y = bandTop + bandH / 2
   }
-  ctx.globalAlpha = 1
+  return { x, y, w, h: markH }
 }

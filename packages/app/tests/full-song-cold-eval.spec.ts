@@ -80,9 +80,8 @@ test('Song view populates right after a cold eval — no round-trip, no empty ga
   await evalStrudel(page)
   await page.waitForTimeout(300)
 
-  const toggle = page.locator('[data-musical-timeline="view-toggle"]')
-  await toggle.waitFor({ timeout: 10_000 })
-  await toggle.click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
 
   // The eager on-entry capture means lanes appear quickly, WITHOUT toggling
   // back to Live first. A generous-but-bounded budget keeps this robust on CI

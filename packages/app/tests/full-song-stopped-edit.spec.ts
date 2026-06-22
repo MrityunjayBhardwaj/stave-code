@@ -61,7 +61,8 @@ test('Song view re-analyzes a code edit that is never re-evaluated (#457)', asyn
   await page.keyboard.press(`${MOD}+Enter`)
   await page.waitForTimeout(1500)
 
-  await page.locator('[data-musical-timeline="view-toggle"]').click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   await expect.poll(() => page.locator('[data-full-song-lane]').count(), { timeout: 8_000 }).toBe(2)
 

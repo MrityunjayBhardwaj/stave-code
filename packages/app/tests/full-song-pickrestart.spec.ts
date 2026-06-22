@@ -72,7 +72,8 @@ test('pickRestart song renders section content (not the control labels)', async 
 
   // Enter the full-song view; one lane (the d1 track) renders — it was the
   // opaque-Code label timeline before, now real content.
-  await page.locator('[data-musical-timeline="view-toggle"]').click()
+  // Song canvas is the only timeline view now (#497/U5) -- wait for it.
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
   await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
   expect(await page.locator('[data-full-song-lane]').count()).toBeGreaterThanOrEqual(1)
 
