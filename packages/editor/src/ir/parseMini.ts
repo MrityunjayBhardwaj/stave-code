@@ -362,43 +362,71 @@ function parseTokens(tokens: Token[], isSample: boolean, baseOffset = 0): Patter
       ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
       nodes.push(node)
     } else if (tok.type === 'lbracket') {
-      // Sub-sequence: collect tokens until matching ]
+      // Sub-sequence OR chord: collect tokens until matching `]`, splitting on
+      // TOP-LEVEL commas. `[a b c]` (no comma) is a Seq; `[a,b,c]` is a Stack —
+      // parallel notes each spanning the full cycle (a chord), mirroring Strudel
+      // mini-notation. Without this split a comma-chord parsed identically to a
+      // space-sequence, so the structural IR ARPEGGIATED chords (#508). The
+      // `{...}` polymeter arm below splits the same way; brackets just never did.
       const openStart = tok.start
       let closeEnd = tok.end // fallback if `]` is missing
       i++ // skip [
-      const subTokens: Token[] = []
-      let depth = 1
+      const segments: Token[][] = [[]]
+      let depth = 1 // matches the outer `]`
+      let group = 0 // nesting inside [] {} <> — split commas only at the top level
       while (i < tokens.length && depth > 0) {
         const t = tokens[i]
-        if (t.type === 'lbracket') depth++
-        if (t.type === 'rbracket') {
+        if (t.type === 'lbracket') {
+          depth++
+          group++
+        } else if (t.type === 'rbracket') {
           depth--
           if (depth === 0) {
             closeEnd = t.end
             i++
             break
           }
+          group--
+        } else if (t.type === 'lcurly' || t.type === 'langle') {
+          group++
+        } else if (t.type === 'rcurly' || t.type === 'rangle') {
+          group--
         }
-        subTokens.push(t)
+        if (group === 0 && t.type === 'comma') {
+          segments.push([])
+        } else {
+          segments[segments.length - 1].push(t)
+        }
         i++
       }
-      const subNodes = parseTokens(subTokens, isSample, baseOffset)
-      if (subNodes.length > 0) {
-        // Single-child sub-sequences keep the child node — `[a]` is
-        // equivalent to `a`. Don't synthesize a wrapper Seq.
-        // 19-05 T-07: synthetic Seq from `[...]` spans `[` to `]`.
-        // Literal construction (rest-spread `IR.seq` can't take meta).
-        let node: PatternIR =
-          subNodes.length === 1
-            ? subNodes[0]
-            : {
-                tag: 'Seq',
-                children: subNodes,
-                loc: [{ start: baseOffset + openStart, end: baseOffset + closeEnd }],
-              }
-        // A trailing `@n`/`*n`/`?` weights/repeats the whole group (`[a b]@2`).
-        ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
-        nodes.push(node)
+      // 19-05 T-07: synthetic Seq/Stack from `[...]` spans `[` to `]`.
+      const loc = [{ start: baseOffset + openStart, end: baseOffset + closeEnd }]
+      if (segments.length > 1) {
+        // Chord — each comma segment is a full-cycle sub-sequence; stack them.
+        const tracks = segments
+          .map(seg => parseTokens(seg, isSample, baseOffset))
+          .filter(s => s.length > 0)
+          .map(s => (s.length === 1 ? s[0] : IR.seq(...s)))
+        if (tracks.length > 0) {
+          // Single non-empty segment (e.g. `[a,]`) degrades to that segment.
+          let node: PatternIR =
+            tracks.length === 1 ? tracks[0] : { tag: 'Stack', tracks, loc }
+          // A trailing `@n`/`*n`/`?` weights/repeats the whole chord.
+          ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
+          nodes.push(node)
+        }
+      } else {
+        const subNodes = parseTokens(segments[0], isSample, baseOffset)
+        if (subNodes.length > 0) {
+          // Single-child sub-sequences keep the child node — `[a]` is
+          // equivalent to `a`. Don't synthesize a wrapper Seq.
+          // Literal construction (rest-spread `IR.seq` can't take meta).
+          let node: PatternIR =
+            subNodes.length === 1 ? subNodes[0] : { tag: 'Seq', children: subNodes, loc }
+          // A trailing `@n`/`*n`/`?` weights/repeats the whole group (`[a b]@2`).
+          ;({ node, i } = applyTrailingModifier(node, tokens, i, baseOffset))
+          nodes.push(node)
+        }
       }
     } else if (tok.type === 'lcurly') {
       // Polymetric: collect tokens until matching `}`, splitting on
