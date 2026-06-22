@@ -130,3 +130,41 @@ test('Song camera (zoom + expanded lane) persists across a reload (#501/U4)', as
 
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })
+
+test('a persisted extreme zoom is capped on load so the playhead still glides (#505)', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  // Seed an EXTREME stored zoom (16× = 1600%, far above the 400% restore cap)
+  // straight into the camera, before the app boots. On load the Song view must
+  // clamp the *restored* zoom so a fresh session never lands center-locked.
+  await preOpenDrawer(page)
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem(
+        'stave:timelineCamera',
+        JSON.stringify({ zoom: 16, expanded: [] }),
+      )
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  await evalStarter(page)
+  await enterSongView(page)
+
+  // Restored zoom is capped to MAX_RESTORE_ZOOM (400%) — not the stored 1600%,
+  // but still zoomed in past Fit.
+  const restoredPct = Number(
+    await page.locator('[data-full-song-zoom]').getAttribute('data-full-song-zoom'),
+  )
+  expect(restoredPct).toBe(400)
+
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})

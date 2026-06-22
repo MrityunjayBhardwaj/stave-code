@@ -80,6 +80,22 @@ export function clampZoom(zoom: number): number {
   return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom))
 }
 
+/** Ceiling for the zoom *restored from the persisted camera* on load (#505).
+ *  The camera (#501) can store any zoom up to MAX_ZOOM, but restoring an extreme
+ *  zoom drops the user straight onto a center-locked playhead — the song scrolls
+ *  beneath a pinned playhead, which can read as frozen on a fresh load until the
+ *  scrolling lanes are noticed. Landing at most this far in keeps the playhead
+ *  visibly gliding across the viewport on play. Tunable; 4 = 400%. */
+export const MAX_RESTORE_ZOOM = 4
+
+/** Clamp a zoom *restored from persistence* to `[MIN_ZOOM, MAX_RESTORE_ZOOM]`;
+ *  non-finite → MIN_ZOOM. Used only on load (#505) — live zoom (buttons/wheel)
+ *  still spans the full `clampZoom` range up to MAX_ZOOM. */
+export function clampRestoreZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return MIN_ZOOM
+  return Math.max(MIN_ZOOM, Math.min(MAX_RESTORE_ZOOM, zoom))
+}
+
 /** Content width at a given zoom (`viewportWidth * zoom`, never below the viewport). */
 export function contentWidthFor(viewportWidth: number, zoom: number): number {
   if (viewportWidth <= 0) return 0

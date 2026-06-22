@@ -4,12 +4,14 @@ import {
   xToSongCycle,
   wrapSongPosition,
   clampZoom,
+  clampRestoreZoom,
   contentWidthFor,
   scrollLeftForZoom,
   followScrollLeft,
   rulerTicks,
   MIN_ZOOM,
   MAX_ZOOM,
+  MAX_RESTORE_ZOOM,
   BEATS_PER_BAR,
   MAX_TICKS,
 } from '../songAxis'
@@ -86,6 +88,23 @@ describe('clampZoom', () => {
   it('falls back to MIN_ZOOM for non-finite (incl. infinity)', () => {
     expect(clampZoom(Number.NaN)).toBe(MIN_ZOOM)
     expect(clampZoom(Number.POSITIVE_INFINITY)).toBe(MIN_ZOOM)
+  })
+})
+
+describe('clampRestoreZoom (#505)', () => {
+  it('caps a restored extreme zoom at MAX_RESTORE_ZOOM (well below MAX_ZOOM)', () => {
+    expect(MAX_RESTORE_ZOOM).toBeLessThan(MAX_ZOOM)
+    expect(clampRestoreZoom(MAX_ZOOM)).toBe(MAX_RESTORE_ZOOM)
+    expect(clampRestoreZoom(11.39)).toBe(MAX_RESTORE_ZOOM) // e.g. a persisted 1139%
+  })
+  it('passes through a moderate zoom unchanged', () => {
+    expect(clampRestoreZoom(MAX_RESTORE_ZOOM)).toBe(MAX_RESTORE_ZOOM)
+    expect(clampRestoreZoom(2)).toBe(2)
+    expect(clampRestoreZoom(0.2)).toBe(MIN_ZOOM)
+  })
+  it('falls back to MIN_ZOOM for non-finite (incl. infinity)', () => {
+    expect(clampRestoreZoom(Number.NaN)).toBe(MIN_ZOOM)
+    expect(clampRestoreZoom(Number.POSITIVE_INFINITY)).toBe(MIN_ZOOM)
   })
 })
 

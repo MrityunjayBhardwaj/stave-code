@@ -50,6 +50,7 @@ import {
   xToSongCycle,
   wrapSongPosition,
   clampZoom,
+  clampRestoreZoom,
   contentWidthFor,
   scrollLeftForZoom,
   followScrollLeft,
@@ -249,10 +250,15 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // scrollbar, on the grid). Refs mirror state so the imperative wheel/button
   // handlers and the seek math read live values without stale closures.
   // Seed zoom from the persisted camera (#501/U4) so a reload restores the
-  // user's last zoom; clamp it to the live range in case MIN/MAX moved.
+  // user's last zoom — but cap the *restored* value (#505): an extreme stored
+  // zoom would land on a center-locked playhead (the song scrolls under a pinned
+  // playhead) that reads as frozen on a fresh load. `clampRestoreZoom` keeps the
+  // landing within a range where the playhead visibly glides; live zoom still
+  // spans the full `clampZoom` range. The save effect below then re-persists the
+  // capped value, so the camera converges to a restorable zoom.
   const [zoom, setZoom] = useState(() => {
     const c = loadTimelineCamera()
-    return c && Number.isFinite(c.zoom) ? clampZoom(c.zoom) : MIN_ZOOM
+    return c && Number.isFinite(c.zoom) ? clampRestoreZoom(c.zoom) : MIN_ZOOM
   })
   const [scrollLeft, setScrollLeft] = useState(0)
   const [units, setUnits] = useState<RulerUnits>('cycles')
